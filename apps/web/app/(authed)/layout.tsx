@@ -1,30 +1,37 @@
 import Link from 'next/link';
+import { Seal } from '~/components/mira/seal';
+
+const NAV = [
+  { href: '/digest', label: 'digest' },
+  { href: '/drafts', label: 'drafts' },
+  { href: '/coach', label: 'coach' },
+  { href: '/connect', label: 'connect' },
+  { href: '/settings', label: 'settings' },
+] as const;
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
-      <header className="border-b border-hairline">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-8 py-6">
-          <Link href="/digest" className="font-serif text-xl">
+      <div className="pointer-events-none fixed top-6 right-6 z-10">
+        <Seal />
+      </div>
+
+      <header className="reading-column pt-10 pb-2">
+        <div className="flex items-baseline justify-between gap-6">
+          <Link href="/digest" className="font-display text-2xl italic travel-underline">
             mira
           </Link>
-          <nav className="flex items-center gap-6 text-sm">
-            <Link href="/digest" className="smallcaps">
-              digest
-            </Link>
-            <Link href="/drafts" className="smallcaps">
-              drafts
-            </Link>
-            <Link href="/coach" className="smallcaps">
-              coach
-            </Link>
-            <Link href="/settings" className="smallcaps">
-              settings
-            </Link>
+          <nav className="flex items-baseline gap-6">
+            {NAV.map((item) => (
+              <Link key={item.href} href={item.href} className="smallcaps travel-underline">
+                {item.label}
+              </Link>
+            ))}
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-8 py-12">{children}</main>
+
+      {children}
     </div>
   );
 }
