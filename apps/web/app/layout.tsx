@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Fraunces, Spline_Sans_Mono, Caveat } from 'next/font/google';
 import { GrainOverlay } from '~/components/mira/grain-overlay';
 import './globals.css';
@@ -27,6 +27,9 @@ const caveat = Caveat({
 export const metadata: Metadata = {
   title: 'mira',
   description: 'a quiet ai for new parents.',
+};
+
+export const viewport: Viewport = {
   themeColor: '#f5efe3',
 };
 
