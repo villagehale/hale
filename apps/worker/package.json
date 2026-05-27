@@ -1,0 +1,32 @@
+{
+  "name": "@mira/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "lint": "biome lint .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@mira/db": "workspace:*",
+    "@mira/types": "workspace:*",
+    "@mira/tools-contracts": "workspace:*",
+    "@anthropic-ai/sdk": "^0.41.0",
+    "drizzle-orm": "^0.38.3",
+    "pg-boss": "^10.1.6",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
