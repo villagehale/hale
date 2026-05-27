@@ -18,6 +18,7 @@ type ToolImplementation<TName extends ReviewerToolName> = (
 const implementations: { [K in ReviewerToolName]: ToolImplementation<K> } = {
   check_action_time_window: async (raw) => {
     const input = REVIEWER_TOOLS.check_action_time_window.input.parse(raw);
+    void input;
     return {
       tool: 'check_action_time_window',
       ok: true,

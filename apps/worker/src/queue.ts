@@ -9,8 +9,6 @@ export async function startQueue(): Promise<PgBoss> {
   boss = new PgBoss({
     connectionString: config.DATABASE_URL,
     schema: 'pgboss',
-    // The worker is a long-running consumer; allow generous batch parallelism.
-    newJobCheckIntervalSeconds: 2,
   });
   boss.on('error', (err) => logger.error({ err }, 'pg-boss error'));
   await boss.start();
