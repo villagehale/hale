@@ -146,9 +146,11 @@ export default function CoachPage() {
             </label>
             <textarea
               id="coach-input"
+              name="question"
               rows={3}
               placeholder="what tends to happen at five months? do we need to start solids yet?"
               className="field"
+              autoComplete="off"
             />
             <div className="flex flex-wrap items-center justify-between gap-y-4 gap-x-6">
               <div className="flex items-center gap-4">
@@ -158,9 +160,11 @@ export default function CoachPage() {
                   aria-label="hold to talk"
                   title="hold-to-talk — type if you prefer"
                 >
-                  <span className="text-madder">◉</span> hold to talk
+                  <span className="text-madder" aria-hidden>◉</span> hold to talk
                 </button>
-                <button type="button" className="btn-ghost">+ photo</button>
+                <button type="button" className="btn-ghost" aria-label="attach a photo">
+                  <span aria-hidden>+</span> photo
+                </button>
               </div>
               <button type="button" className="btn-primary">ask →</button>
             </div>

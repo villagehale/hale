@@ -340,6 +340,7 @@ strong { font-weight: 500; color: var(--color-iron); }
   letter-spacing: -0.005em;
   text-decoration: none;
   cursor: pointer;
+  touch-action: manipulation;
   transition: background 200ms var(--ease-press), color 200ms var(--ease-press), transform 160ms var(--ease-press);
 }
 
@@ -350,6 +351,11 @@ strong { font-weight: 500; color: var(--color-iron); }
 }
 
 .btn-primary:active { transform: translateY(1px); }
+
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-bone), 0 0 0 5px var(--color-madder);
+}
 
 .btn-secondary {
   display: inline-flex;
@@ -365,12 +371,18 @@ strong { font-weight: 500; color: var(--color-iron); }
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
+  touch-action: manipulation;
   transition: border-color 200ms var(--ease-press), background 200ms var(--ease-press);
 }
 
 .btn-secondary:hover {
   border-color: var(--color-iron);
   background: var(--color-bone-soft);
+}
+
+.btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-bone), 0 0 0 5px var(--color-madder);
 }
 
 .btn-ghost {
@@ -386,9 +398,21 @@ strong { font-weight: 500; color: var(--color-iron); }
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
+  touch-action: manipulation;
   letter-spacing: -0.005em;
   transition: color 160ms var(--ease-quiet);
   position: relative;
+}
+
+.btn-ghost:focus-visible {
+  outline: none;
+  color: var(--color-madder-deep);
+}
+
+.btn-ghost:focus-visible::after {
+  background: var(--color-madder-deep);
+  transform: scaleX(1);
+  height: 2px;
 }
 
 .btn-ghost::after {
@@ -473,6 +497,13 @@ strong { font-weight: 500; color: var(--color-iron); }
   transition: border-color 200ms var(--ease-quiet), box-shadow 200ms var(--ease-quiet), background 200ms var(--ease-quiet);
 }
 
+.field:focus,
+.field:focus-visible {
+  outline: none;
+  border-color: var(--color-iron);
+  box-shadow: 0 0 0 3px var(--color-madder-wash);
+}
+
 .field:focus {
   outline: none;
   border-color: var(--color-iron);
@@ -492,11 +523,19 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
   display: flex;
   align-items: baseline;
   gap: 0.85rem;
-  padding: 0.45rem 0;
+  padding: 0.45rem 0.25rem;
+  margin-inline: -0.25rem;
   color: var(--color-slate);
   text-decoration: none;
+  border-radius: var(--r-sm);
   transition: color 180ms var(--ease-quiet);
   position: relative;
+}
+
+.nav-item:focus-visible {
+  outline: none;
+  color: var(--color-iron);
+  box-shadow: 0 0 0 2px var(--color-madder);
 }
 
 .nav-item .nav-folio {

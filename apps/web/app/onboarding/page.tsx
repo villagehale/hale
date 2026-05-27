@@ -29,11 +29,10 @@ export default function OnboardingPage() {
 
         <div className="flex items-baseline gap-3">
           <span className="eyebrow">enrolment</span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" aria-hidden>
             {[1, 2, 3, 4, 5].map((s) => (
               <span
                 key={s}
-                aria-hidden
                 className="block h-px w-6"
                 style={{
                   background: s <= step ? 'var(--color-iron)' : 'var(--color-rule-strong)',
@@ -41,7 +40,9 @@ export default function OnboardingPage() {
               />
             ))}
           </div>
-          <span className="meta tabular">{step}/5</span>
+          <span className="meta tabular" aria-live="polite" aria-atomic="true">
+            step {step} of 5
+          </span>
         </div>
       </header>
 
@@ -106,6 +107,8 @@ export default function OnboardingPage() {
                       value={babyName}
                       onChange={(e) => setBabyName(e.currentTarget.value)}
                       placeholder="maya"
+                      autoComplete="off"
+                      spellCheck={false}
                     />
                   </div>
 
@@ -117,11 +120,12 @@ export default function OnboardingPage() {
                       className="field mt-2"
                       value={babyDob}
                       onChange={(e) => setBabyDob(e.currentTarget.value)}
+                      autoComplete="bday"
                     />
                   </div>
 
-                  <div>
-                    <span className="eyebrow">how do you want to parent?</span>
+                  <fieldset>
+                    <legend className="eyebrow">how do you want to parent?</legend>
                     <p className="meta mt-1">affects coach voice + which frameworks i lean on. you can change this any time.</p>
                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {[
@@ -129,23 +133,32 @@ export default function OnboardingPage() {
                         { id: 'attachment', label: 'attachment', note: 'sears · siegel' },
                         { id: 'structured', label: 'structured', note: 'karp · ferber' },
                         { id: 'undecided', label: 'still figuring it out', note: "i'll be neutral" },
-                      ].map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setParentingStyle(opt.id)}
-                          className={`text-left p-4 rounded-[var(--r-md)] transition-colors ${
-                            parentingStyle === opt.id
-                              ? 'bg-vellum border border-iron'
-                              : 'border border-rule-strong hover:border-iron'
-                          }`}
-                        >
-                          <span className="font-display text-xl block">{opt.label}</span>
-                          <span className="meta block mt-1">{opt.note}</span>
-                        </button>
-                      ))}
+                      ].map((opt) => {
+                        const selected = parentingStyle === opt.id;
+                        return (
+                          <label
+                            key={opt.id}
+                            className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors block ${
+                              selected
+                                ? 'bg-vellum border border-iron'
+                                : 'border border-rule-strong hover:border-iron'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="parenting-style"
+                              value={opt.id}
+                              checked={selected}
+                              onChange={() => setParentingStyle(opt.id)}
+                              className="sr-only"
+                            />
+                            <span className="font-display text-xl block">{opt.label}</span>
+                            <span className="meta block mt-1">{opt.note}</span>
+                          </label>
+                        );
+                      })}
                     </div>
-                  </div>
+                  </fieldset>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">

@@ -49,15 +49,23 @@ export function Sidebar() {
       </nav>
 
       {/* "Today" — a small block of running data, like a date stamp on a journal entry */}
-      <div className="mt-auto pt-10 space-y-3">
+      <div className="mt-auto pt-10 space-y-2">
         <div className="rule-vellum" />
-        <p className="eyebrow text-iron">today's run</p>
-        <p className="meta tabular text-iron">
-          14 passes · $0.31 · 1 awaits you
-        </p>
-        <p className="meta">
-          mira drafts everything. nothing sends without your tap until day 8.
-        </p>
+        <p className="eyebrow text-iron pt-2">today</p>
+        <dl className="meta text-iron space-y-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <dt>passes</dt>
+            <dd className="tabular">14</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <dt>cost</dt>
+            <dd className="tabular">$0.31</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <dt>awaiting</dt>
+            <dd className="tabular">1</dd>
+          </div>
+        </dl>
       </div>
     </aside>
   );

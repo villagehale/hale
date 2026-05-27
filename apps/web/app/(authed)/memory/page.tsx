@@ -1,5 +1,31 @@
+'use client';
+
+import { useState } from 'react';
 import { PageCorner } from '~/components/mira/page-corner';
 import { Folio } from '~/components/mira/folio';
+
+function DestructiveButton({
+  label,
+  confirmLabel,
+  className,
+}: {
+  label: string;
+  confirmLabel: string;
+  className: string;
+}) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={() => setArmed((v) => !v)}
+      onBlur={() => setArmed(false)}
+      aria-pressed={armed}
+    >
+      {armed ? confirmLabel : label}
+    </button>
+  );
+}
 
 interface Fact {
   id: string;
@@ -109,22 +135,28 @@ const TYPE_GROUPS: Array<{
 ];
 
 function ConfidenceBar({ value }: { value: number }) {
+  const percent = Math.round(value * 100);
   return (
     <div className="flex items-center gap-2">
       <div
-        aria-hidden
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`confidence ${percent}%`}
+        tabIndex={0}
         className="h-1 w-24 rounded-full"
         style={{ background: 'var(--color-rule)' }}
       >
         <div
+          aria-hidden
           className="h-full rounded-full"
-          style={{
-            width: `${value * 100}%`,
-            background: 'var(--color-iron)',
-          }}
+          style={{ width: `${percent}%`, background: 'var(--color-iron)' }}
         />
       </div>
-      <span className="meta tabular">{(value * 100).toFixed(0)}%</span>
+      <span className="meta tabular" aria-hidden>
+        {percent}%
+      </span>
     </div>
   );
 }
@@ -225,7 +257,11 @@ export default function MemoryPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" className="btn-ghost text-sm">edit</button>
-                  <button type="button" className="btn-ghost text-sm">forget</button>
+                  <DestructiveButton
+                    label="forget"
+                    confirmLabel="tap again to forget"
+                    className="btn-ghost text-sm"
+                  />
                 </div>
               </div>
             </article>
@@ -249,7 +285,11 @@ export default function MemoryPage() {
             </p>
             <div className="pt-2 flex flex-wrap items-center gap-x-6 gap-y-3">
               <button type="button" className="btn-secondary">export everything</button>
-              <button type="button" className="btn-ghost">delete everything</button>
+              <DestructiveButton
+                label="delete everything"
+                confirmLabel="tap again to delete everything"
+                className="btn-ghost"
+              />
             </div>
           </div>
         </div>

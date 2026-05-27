@@ -117,7 +117,7 @@ export default function DraftsPage() {
 
                   <div className="border-l-2 border-madder pl-5">
                     <span className="eyebrow text-iron">why this draft</span>
-                    <p className="mt-1 text-slate italic">{draft.rationale}</p>
+                    <p className="mt-1 text-slate"><em>{draft.rationale}</em></p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
