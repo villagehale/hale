@@ -1,43 +1,44 @@
 import type { Metadata, Viewport } from 'next';
-import { Spectral, DM_Sans, JetBrains_Mono } from 'next/font/google';
+import { Source_Serif_4, Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
-const spectral = Spectral({
+const sourceSerif = Source_Serif_4({
   subsets: ['latin'],
   variable: '--font-display',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
+  weight: ['300', '400', '500', '600'],
   style: ['normal', 'italic'],
 });
 
-const dmSans = DM_Sans({
+const geist = Geist({
   subsets: ['latin'],
   variable: '--font-body',
-  display: 'swap',
-  weight: ['400', '500', '600', '700'],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
   display: 'swap',
   weight: ['400', '500', '600'],
 });
 
+const geistMono = Geist_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+  weight: ['400', '500'],
+});
+
 export const metadata: Metadata = {
-  title: 'mira — household platform for new parents',
-  description: 'mira watches your inbox, calendar, and household admin so you can hold your baby.',
+  title: 'mira · a household almanac',
+  description:
+    'mira is a household platform for the first year and the next eighteen. it watches the inbox, the calendar, the photos — and does the easy ninety percent so you can hold your baby.',
 };
 
 export const viewport: Viewport = {
-  themeColor: '#faf7f2',
+  themeColor: '#f4f0e8',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${spectral.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}
+      className={`${sourceSerif.variable} ${geist.variable} ${geistMono.variable}`}
     >
       <body>{children}</body>
     </html>

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LongDate } from '~/components/mira/long-date';
+import { PageCorner } from '~/components/mira/page-corner';
 import { Folio } from '~/components/mira/folio';
 import { ToneLabel, type EntryTone } from '~/components/mira/tone';
 import { StreakLadder, type AutonomyLevel } from '~/components/mira/streak-ladder';
@@ -21,7 +21,7 @@ const ENTRIES: Entry[] = [
   {
     id: 'pediatric',
     tone: 'done',
-    detail: '04:12',
+    detail: '4:12 am',
     category: 'pediatric',
     level: 3,
     streak: 8,
@@ -32,7 +32,7 @@ const ENTRIES: Entry[] = [
   {
     id: 'diapers',
     tone: 'done',
-    detail: '04:14',
+    detail: '4:14 am',
     category: 'supplies',
     level: 4,
     streak: 12,
@@ -56,7 +56,7 @@ const ENTRIES: Entry[] = [
     id: 'sleep',
     tone: 'coach',
     detail: 'a note for context',
-    category: 'coaching',
+    category: 'coach',
     level: 1,
     streak: 0,
     body:
@@ -78,63 +78,78 @@ const ENTRIES: Entry[] = [
 
 export default function DigestPage() {
   return (
-    <div className="space-y-16 lg:space-y-24">
-      {/* HERO */}
-      <header className="rise rise-1 grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 items-end">
-        <div className="lg:col-span-2">
-          <span className="eyebrow">№ 01 · today</span>
-          <p className="mt-3"><LongDate /></p>
-        </div>
-        <div className="lg:col-span-10">
-          <h1 className="font-display">
-            today's <em className="text-copper not-italic">digest</em>
-          </h1>
+    <div>
+      <PageCorner folio="i" section="digest · today" />
+
+      {/* ── Headline ────────────────────────────────────────────────────── */}
+      <header className="rise rise-1 mb-16 lg:mb-24">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">today's letter</span>
+            <p className="meta mt-2">for the family · before breakfast</p>
+          </div>
+          <div className="lg:col-span-9">
+            <h1 className="font-display">
+              five things <span className="text-madder">on the table</span> this morning.
+            </h1>
+          </div>
         </div>
       </header>
 
-      {/* SUMMARY STRIP */}
-      <section className="rise rise-2 grid grid-cols-2 md:grid-cols-4 gap-y-6 gap-x-6 border-y border-hairline py-8">
-        {[
-          { label: 'handled', value: '03', detail: 'on your behalf' },
-          { label: 'awaiting', value: '01', detail: 'tap to decide' },
-          { label: 'needs you', value: '01', detail: 'i cannot act' },
-          { label: "today's cost", value: '$0.31', detail: '14 agent passes' },
-        ].map((stat) => (
-          <div key={stat.label}>
-            <span className="eyebrow">{stat.label}</span>
-            <p className="font-display text-4xl mt-2 tabular">{stat.value}</p>
-            <p className="meta mt-1">{stat.detail}</p>
-          </div>
-        ))}
+      {/* ── Tally ───────────────────────────────────────────────────────── */}
+      <section className="rise rise-2 mb-16 lg:mb-24">
+        <div className="grid grid-cols-2 md:grid-cols-4 border-y border-rule">
+          {[
+            { label: 'i handled', value: '3', detail: 'on your behalf' },
+            { label: 'awaiting you', value: '1', detail: 'tap to decide' },
+            { label: 'needs you', value: '1', detail: 'i cannot act' },
+            { label: 'today · cost', value: '$0.31', detail: '14 passes' },
+          ].map((stat, idx) => (
+            <div
+              key={stat.label}
+              className={`py-7 px-5 ${idx > 0 ? 'md:border-l border-rule' : ''} ${idx > 1 ? 'border-t md:border-t-0' : ''} ${idx % 2 === 1 ? 'border-l' : ''}`}
+            >
+              <span className="eyebrow">{stat.label}</span>
+              <p className="font-display text-[2.5rem] lg:text-[3rem] mt-1 tabular leading-none">
+                {stat.value}
+              </p>
+              <p className="meta mt-3">{stat.detail}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* ENTRIES */}
-      <section className="space-y-12 lg:space-y-16">
+      {/* ── Entries ─────────────────────────────────────────────────────── */}
+      <section>
         {ENTRIES.map((entry, idx) => {
           const delay = `rise-${Math.min(idx + 3, 7)}`;
           return (
-            <article key={entry.id} className={`rise ${delay}`}>
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-y-4 md:gap-x-6">
-                <div className="md:col-span-1">
+            <article
+              key={entry.id}
+              className={`rise ${delay} py-12 lg:py-14 border-t border-rule first:border-t-0`}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
+                <div className="md:col-span-2">
                   <Folio index={idx + 1} />
+                  <p className="mt-3 eyebrow text-iron">{entry.category}</p>
+                  <p className="meta mt-1">{entry.detail}</p>
                 </div>
 
-                <div className="md:col-span-8">
-                  <ToneLabel tone={entry.tone} detail={entry.detail} />
-
-                  <p className="mt-5 text-lg lg:text-xl leading-snug text-ink-soft">
+                <div className="md:col-span-7">
+                  <ToneLabel tone={entry.tone} />
+                  <p className="mt-4 text-lg lg:text-[1.15rem] leading-relaxed text-iron">
                     {entry.body}
                   </p>
 
                   {(entry.primaryAction || entry.secondaryAction) && (
-                    <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
+                    <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
                       {entry.primaryAction ? (
-                        <button type="button" className="btn-ghost">
+                        <button type="button" className="btn-primary">
                           {entry.primaryAction.label}
                         </button>
                       ) : null}
                       {entry.secondaryAction ? (
-                        <button type="button" className="meta hover:text-ink">
+                        <button type="button" className="btn-ghost">
                           {entry.secondaryAction.label}
                         </button>
                       ) : null}
@@ -142,8 +157,8 @@ export default function DigestPage() {
                   )}
                 </div>
 
-                <div className="md:col-span-3 md:border-l md:border-hairline md:pl-6">
-                  <span className="eyebrow">{entry.category}</span>
+                <div className="md:col-span-3 md:border-l md:border-rule md:pl-6">
+                  <span className="eyebrow">trust ladder</span>
                   <div className="mt-3">
                     <StreakLadder level={entry.level} streak={entry.streak} />
                   </div>
@@ -154,17 +169,19 @@ export default function DigestPage() {
         })}
       </section>
 
-      {/* CLOSING + TICKER */}
-      <section className="rise rise-7 space-y-10">
-        <div className="border-t border-hairline pt-8 grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
+      {/* ── Tomorrow + colophon ─────────────────────────────────────────── */}
+      <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
+        <div className="border-t border-rule pt-10 grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
           <div className="lg:col-span-3">
             <span className="eyebrow">tomorrow</span>
+            <p className="meta mt-2">on the horizon</p>
           </div>
           <div className="lg:col-span-9">
-            <p className="text-lg text-ink-soft leading-snug">
-              two things on the horizon — maya's vaccine visit thursday at ten, and the
-              parental-leave benefit renewal due wednesday. i'll handle the renewal
-              paperwork tonight and surface anything you need to sign by morning.
+            <p className="text-lg text-iron leading-relaxed">
+              Two things on the horizon — maya's vaccine visit thursday at ten,
+              and the parental-leave benefit renewal due wednesday. I'll handle
+              the renewal paperwork tonight and surface anything you need to
+              sign by morning.
             </p>
             <div className="mt-6">
               <Link href="/live" className="btn-ghost">watch live →</Link>
@@ -178,9 +195,14 @@ export default function DigestPage() {
             '$0.31 today · $4.20 month-to-date',
             'trial day 3 of 7',
             'no autonomous medical actions ever',
-            'pipeda compliant · canadian data residency',
+            'pipeda · canadian data residency',
           ]}
         />
+
+        <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded">
+          <p className="meta">colophon · digest no. 003 · printed at 04:30 am</p>
+          <p className="meta">edited by mira · approved by no one yet</p>
+        </div>
       </section>
     </div>
   );

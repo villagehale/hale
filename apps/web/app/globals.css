@@ -1,93 +1,114 @@
 @import "tailwindcss";
 
 /*
- * Mira — "Warm Home" design system.
+ * Mira — "Almanac" design system.
  *
- * Inspired by Tripfix's warm-cream-with-white-cards aesthetic, adapted
- * for a newborn-family platform. Honey-copper signature accent, soft
- * rounded corners, gentle drop shadows, friendly spring animations.
- * Distinctive Spectral display + DM Sans body — not the same fonts as
- * Tripfix or any prior pass.
+ * The product reads like a private almanac for one household: a quietly
+ * bound book of observations rather than a dashboard. Type is editorial
+ * (Source Serif 4 + Geist), the palette is bone + iron + madder, and
+ * every screen carries a running head and a colophon so the product
+ * feels like a document, not an app.
+ *
+ * Hard rules baked in:
+ *   - no italic by default on headlines (italics are only on real <em>
+ *     spans in body copy or genuine quoted phrases)
+ *   - no floating cards on cream; sections are bounded by hairlines + folios
+ *   - 16px form inputs on mobile (iOS no-zoom)
+ *   - prefers-reduced-motion respected for every animation
  */
 
 @theme {
   /* ── Palette ─────────────────────────────────────────────────────────── */
-  --color-cream: #faf7f2;
-  --color-cream-deep: #f5f1e9;
-  --color-cream-soft: #fdfbf6;
-  --color-surface: #ffffff;
-  --color-ink: #2d2a26;
-  --color-ink-soft: #5c5852;
-  --color-ink-mute: #8a8580;
-  --color-hairline: rgb(45 42 38 / 0.08);
-  --color-hairline-strong: rgb(45 42 38 / 0.20);
+  --color-bone: #f4f0e8;            /* primary paper */
+  --color-bone-soft: #f8f5ee;       /* main-stage paper, slightly lighter */
+  --color-vellum: #eae3d2;          /* section fold / spine / quote */
+  --color-vellum-deep: #ddd5bf;     /* hairline-strong as warm tone */
+  --color-iron: #1f1b17;            /* primary ink */
+  --color-slate: #5d564d;           /* secondary ink */
+  --color-faded: #928879;           /* tertiary ink, meta */
+  --color-rule: rgb(31 27 23 / 0.10);
+  --color-rule-strong: rgb(31 27 23 / 0.22);
+  --color-rule-faint: rgb(31 27 23 / 0.05);
 
-  /* Signature: warm honey-copper. Distinct from Tripfix's yellow. */
-  --color-copper: #d17a47;
-  --color-copper-deep: #a35a2f;
-  --color-copper-soft: #f7e5d5;
-  --color-copper-glow: #fde9d4;
+  /* Signature: madder red. Warm dyed-cloth tone, distinctive, not copper. */
+  --color-madder: #b23a2b;
+  --color-madder-deep: #842516;
+  --color-madder-tint: #f4dcd4;
+  --color-madder-wash: #f9ece6;
 
-  /* Supporting tones */
-  --color-sage: #7a9676;
-  --color-sage-soft: #dde6d8;
-  --color-clay: #b86844;
-  --color-dust: #c4b8a5;
-  --color-mist: #b5ad9f;
+  /* Supporting palette */
+  --color-moss: #586a3a;            /* done / nature */
+  --color-moss-tint: #e2e6d4;
+  --color-indigo: #2c3e5c;          /* coach / contemplative */
+  --color-indigo-tint: #d8dde6;
+  --color-ochre: #c68a26;           /* awaiting / handwriting */
+  --color-ochre-tint: #f3e6c8;
+
+  /* Legacy token aliases — kept so existing components compile. */
+  --color-cream: var(--color-bone);
+  --color-cream-deep: var(--color-vellum);
+  --color-cream-soft: var(--color-bone-soft);
+  --color-surface: var(--color-bone-soft);
+  --color-ink: var(--color-iron);
+  --color-ink-soft: var(--color-slate);
+  --color-ink-mute: var(--color-faded);
+  --color-hairline: var(--color-rule);
+  --color-hairline-strong: var(--color-rule-strong);
+  --color-copper: var(--color-madder);
+  --color-copper-deep: var(--color-madder-deep);
+  --color-copper-soft: var(--color-madder-tint);
+  --color-copper-glow: var(--color-madder-wash);
+  --color-sage: var(--color-moss);
+  --color-sage-soft: var(--color-moss-tint);
+  --color-mist: var(--color-indigo);
+  --color-clay: var(--color-ochre);
+  --color-dust: var(--color-faded);
 
   /* ── Type ────────────────────────────────────────────────────────────── */
-  --font-display: "Spectral", "Times New Roman", ui-serif, Georgia, serif;
-  --font-body:
-    "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "Menlo", monospace;
+  --font-display: "Source Serif 4", "Iowan Old Style", "Charter", Cambria, ui-serif, Georgia, serif;
+  --font-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
 
-  --tracking-display: -0.018em;
-  --tracking-headline: -0.012em;
-  --tracking-eyebrow: 0.14em;
-  --tracking-mono: 0.02em;
+  --tracking-display: -0.014em;
+  --tracking-headline: -0.008em;
+  --tracking-eyebrow: 0.18em;
+  --tracking-mono: 0.04em;
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
   --shell-pad-x: clamp(1.25rem, 4vw, 5rem);
   --rhythm-section: clamp(3rem, 6vw, 5rem);
 
-  /* ── Radius (Tripfix-inspired softness) ──────────────────────────────── */
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
-  --r-xl: 16px;
-  --r-2xl: 24px;
+  /* ── Radius (almanac is mostly flat; subtle rounding for inputs only) ── */
+  --r-sm: 2px;
+  --r-md: 3px;
+  --r-lg: 4px;
+  --r-xl: 6px;
   --r-full: 9999px;
 
-  /* ── Shadow (gentle elevation, no harshness) ────────────────────────── */
-  --shadow-soft: 0 1px 2px rgb(45 42 38 / 0.04), 0 4px 12px rgb(45 42 38 / 0.04);
-  --shadow-card: 0 1px 2px rgb(45 42 38 / 0.04), 0 8px 24px rgb(45 42 38 / 0.06);
-  --shadow-lift: 0 2px 4px rgb(45 42 38 / 0.06), 0 16px 40px rgb(45 42 38 / 0.10);
-
-  /* ── Curves (iOS-style spring, borrowed from Tripfix's ease-spring) ─── */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-glide: cubic-bezier(0.16, 0.84, 0.44, 1);
-  --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* ── Curves ──────────────────────────────────────────────────────────── */
+  --ease-quiet: cubic-bezier(0.22, 0.61, 0.36, 1);     /* default for everything */
+  --ease-press: cubic-bezier(0.32, 0.72, 0.24, 1);      /* button feedback */
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
 
-* { border-color: var(--color-hairline); }
+* { border-color: var(--color-rule); }
 
 html {
-  background: var(--color-cream);
-  color: var(--color-ink);
+  background: var(--color-bone);
+  color: var(--color-iron);
   font-family: var(--font-body);
-  font-feature-settings: "kern", "liga", "calt", "ss01";
+  font-feature-settings: "kern", "liga", "calt", "ss01", "ss02";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--color-cream);
-  color: var(--color-ink);
+  background: var(--color-bone);
+  color: var(--color-iron);
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.62;
   font-weight: 400;
   min-height: 100vh;
 }
@@ -96,22 +117,35 @@ body {
   body { font-size: 16px; }
 }
 
-/* Headlines: Spectral, characterful italic-capable */
+/* Headlines: Source Serif 4 — generous, characterful, not italic. */
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   letter-spacing: var(--tracking-display);
-  font-weight: 400;
-  line-height: 1.05;
+  font-weight: 400;          /* book weight, never bold display */
+  line-height: 1.02;
+  color: var(--color-iron);
+  font-style: normal;        /* HARD RULE: no italic display by default */
 }
 
-h1 { font-size: clamp(2.5rem, 6.5vw, 5.5rem); }
-h2 { font-size: clamp(1.85rem, 4vw, 3.25rem); }
-h3 { font-size: clamp(1.35rem, 2.4vw, 2rem); }
+h1 { font-size: clamp(2.5rem, 6vw, 5.25rem); }
+h2 { font-size: clamp(1.85rem, 3.6vw, 3rem); }
+h3 { font-size: clamp(1.25rem, 2vw, 1.75rem); line-height: 1.15; }
+
+/* Inside the authed main-stage the available width is smaller (the sidebar
+ * eats ~22vw on desktop), so the page H1 needs a tighter ceiling or the
+ * headline overflows the column. */
+.main-stage h1 { font-size: clamp(2.25rem, 4.4vw, 3.75rem); line-height: 1.04; }
+.main-stage h2 { font-size: clamp(1.5rem, 2.6vw, 2.25rem); }
+
+/* Body emphasis inside running prose — italics only on real <em>. */
+em { font-style: italic; color: var(--color-iron); }
+strong { font-weight: 500; color: var(--color-iron); }
 
 /* ── Type utilities ────────────────────────────────────────────────────── */
 
 .font-display { font-family: var(--font-display); }
 .font-body { font-family: var(--font-body); }
+.font-mono { font-family: var(--font-mono); }
 
 .eyebrow {
   font-family: var(--font-mono);
@@ -119,19 +153,42 @@ h3 { font-size: clamp(1.35rem, 2.4vw, 2rem); }
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
   font-weight: 500;
-  color: var(--color-ink-mute);
+  color: var(--color-faded);
 }
 
 .meta {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   letter-spacing: var(--tracking-mono);
-  color: var(--color-ink-mute);
+  color: var(--color-faded);
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ── Shell + layout ────────────────────────────────────────────────────── */
+/* Magazine folio — small caps numerics in the gutter. */
+.folio {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  font-size: 0.72rem;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-faded);
+  display: inline-block;
+}
+
+/* Drop cap, used sparingly on long-form openers. */
+.dropcap::first-letter {
+  font-family: var(--font-display);
+  float: left;
+  font-size: 3.6rem;
+  line-height: 0.92;
+  padding-right: 0.6rem;
+  padding-top: 0.32rem;
+  color: var(--color-madder);
+  font-weight: 400;
+}
+
+/* ── Shell + bound-book layout ─────────────────────────────────────────── */
 
 .shell {
   width: 100%;
@@ -144,13 +201,19 @@ h3 { font-size: clamp(1.35rem, 2.4vw, 2rem); }
   display: grid;
   grid-template-columns: 1fr;
   min-height: 100vh;
+  background: var(--color-bone);
 }
 
 @media (min-width: 1024px) {
   .editorial-layout {
-    grid-template-columns: clamp(240px, 20vw, 300px) 1fr;
+    /* minmax(0, 1fr) is intentional — without the `0` floor, a long word in
+     * any descendant H1 expands the column to its min-content width and
+     * blows the horizontal scroll. */
+    grid-template-columns: clamp(260px, 22vw, 320px) minmax(0, 1fr);
   }
 }
+
+/* ── Sidebar = the book's "spine" ──────────────────────────────────────── */
 
 .sidebar {
   display: none;
@@ -158,256 +221,329 @@ h3 { font-size: clamp(1.35rem, 2.4vw, 2rem); }
 
 @media (min-width: 1024px) {
   .sidebar {
-    display: block;
+    display: flex;
+    flex-direction: column;
     position: sticky;
     top: 0;
     align-self: start;
     height: 100vh;
-    background: var(--color-cream-deep);
-    border-right: 1px solid var(--color-hairline);
-    padding: 2.5rem 2rem 2rem;
+    background: var(--color-vellum);
+    padding: 2.25rem 1.75rem 1.5rem 2rem;
     overflow-y: auto;
+    color: var(--color-iron);
+    /* the "stitch line" — a single right-edge rule that reads as binding */
+    box-shadow: inset -1px 0 0 var(--color-rule-strong);
   }
 }
 
-.main-stage {
-  padding: clamp(1.5rem, 3vw, 3rem) var(--shell-pad-x) clamp(3rem, 6vw, 6rem);
-}
-
-@media (min-width: 1024px) {
-  .main-stage { padding-top: clamp(3rem, 5vw, 5rem); }
-}
-
-.top-header {
+/* The mobile-only running head */
+.runninghead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem var(--shell-pad-x);
-  border-bottom: 1px solid var(--color-hairline);
-  background: var(--color-cream-soft);
+  padding: 0.9rem var(--shell-pad-x);
+  background: var(--color-bone);
+  border-bottom: 1px solid var(--color-rule);
   position: sticky;
   top: 0;
   z-index: 20;
 }
 
 @media (min-width: 1024px) {
-  .top-header { display: none; }
+  .runninghead { display: none; }
 }
 
-/* ── Cards (the friendly Tripfix-inspired surface) ─────────────────────── */
-
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--r-lg);
-  padding: 1.25rem;
-  box-shadow: var(--shadow-soft);
-  transition: box-shadow 280ms var(--ease-glide), transform 280ms var(--ease-spring);
+.main-stage {
+  padding: clamp(1.5rem, 3vw, 3rem) var(--shell-pad-x) clamp(3rem, 6vw, 6rem);
+  background: var(--color-bone-soft);
+  min-height: 100vh;
 }
 
-.card:hover { box-shadow: var(--shadow-card); }
-
-@media (min-width: 768px) {
-  .card { padding: 1.5rem; }
+@media (min-width: 1024px) {
+  .main-stage {
+    padding-top: clamp(2.5rem, 4vw, 4rem);
+    padding-bottom: clamp(4rem, 6vw, 6rem);
+  }
 }
 
-.card-lg {
-  background: var(--color-surface);
-  border: 1px solid var(--color-hairline);
+/* ── Page-corner running head (desktop, top-right of main stage) ───────── */
+
+.page-corner {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .page-corner {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1.5rem;
+    border-bottom: 1px solid var(--color-rule);
+    padding-bottom: 0.9rem;
+    margin-bottom: clamp(2.5rem, 4vw, 4rem);
+    color: var(--color-faded);
+  }
+}
+
+/* ── The two structural patterns ───────────────────────────────────────── */
+
+/* Hairline rule — the only divider used in the product */
+.rule {
+  border: 0;
+  border-top: 1px solid var(--color-rule);
+}
+.rule-strong {
+  border: 0;
+  border-top: 1px solid var(--color-rule-strong);
+}
+.rule-vellum {
+  border: 0;
+  border-top: 1px solid var(--color-vellum-deep);
+}
+
+/* A "fold" — used for elevated sections that need warmth but no card */
+.fold {
+  background: var(--color-vellum);
+  padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.25rem, 2.5vw, 2rem);
   border-radius: var(--r-xl);
-  padding: 1.5rem;
-  box-shadow: var(--shadow-card);
 }
 
-@media (min-width: 768px) {
-  .card-lg { padding: 2rem; }
+.fold-tint {
+  background: var(--color-madder-wash);
+  padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.25rem, 2.5vw, 2rem);
+  border-radius: var(--r-xl);
 }
 
-/* Cream-tinted callout card */
-.card-warm {
-  background: var(--color-copper-glow);
-  border: 1px solid var(--color-copper-soft);
-  border-radius: var(--r-lg);
-  padding: 1.5rem;
+/* Margin note — small text aligned in the editorial gutter on desktop */
+.margin-note {
+  color: var(--color-faded);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: var(--tracking-mono);
+  line-height: 1.6;
 }
 
-/* ── Buttons (Tripfix-inspired roundness + warmth) ─────────────────────── */
+/* ── Buttons (almanac-flat: thin rule, madder text, no shadow) ─────────── */
 
 .btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.7rem 1.4rem;
-  background: var(--color-copper);
-  color: var(--color-surface);
-  border: 1px solid var(--color-copper);
+  gap: 0.55rem;
+  padding: 0.7rem 1.25rem;
+  background: var(--color-iron);
+  color: var(--color-bone);
+  border: 1px solid var(--color-iron);
   border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.875rem;
   font-weight: 500;
+  letter-spacing: -0.005em;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: var(--shadow-soft);
-  transition: background 240ms var(--ease-press), transform 240ms var(--ease-spring), box-shadow 240ms var(--ease-press);
+  transition: background 200ms var(--ease-press), color 200ms var(--ease-press), transform 160ms var(--ease-press);
 }
 
 .btn-primary:hover {
-  background: var(--color-copper-deep);
-  border-color: var(--color-copper-deep);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-card);
+  background: var(--color-madder);
+  border-color: var(--color-madder);
+  color: var(--color-bone);
 }
+
+.btn-primary:active { transform: translateY(1px); }
 
 .btn-secondary {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.7rem 1.4rem;
-  background: var(--color-surface);
-  color: var(--color-ink);
-  border: 1px solid var(--color-hairline-strong);
+  padding: 0.7rem 1.25rem;
+  background: transparent;
+  color: var(--color-iron);
+  border: 1px solid var(--color-rule-strong);
   border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: background 240ms var(--ease-press), transform 240ms var(--ease-spring);
+  transition: border-color 200ms var(--ease-press), background 200ms var(--ease-press);
 }
 
 .btn-secondary:hover {
-  background: var(--color-cream);
-  transform: translateY(-1px);
+  border-color: var(--color-iron);
+  background: var(--color-bone-soft);
 }
 
 .btn-ghost {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.5rem 0.25rem;
+  padding: 0.45rem 0;
   background: transparent;
-  color: var(--color-ink);
+  color: var(--color-iron);
   border: 0;
   font-family: var(--font-body);
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: color 240ms var(--ease-glide);
+  letter-spacing: -0.005em;
+  transition: color 160ms var(--ease-quiet);
+  position: relative;
 }
 
-.btn-ghost:hover { color: var(--color-copper-deep); }
+.btn-ghost::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: var(--color-iron);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 280ms var(--ease-quiet);
+}
 
-/* ── Pills + badges ────────────────────────────────────────────────────── */
+.btn-ghost:hover { color: var(--color-madder); }
+.btn-ghost:hover::after { background: var(--color-madder); transform: scaleX(1); }
+
+/* ── Pills + tags ──────────────────────────────────────────────────────── */
 
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.3rem 0.7rem;
-  background: var(--color-cream-deep);
-  color: var(--color-ink-soft);
+  padding: 0.25rem 0.65rem;
+  background: var(--color-vellum);
+  color: var(--color-iron);
   border-radius: var(--r-full);
   font-family: var(--font-mono);
   font-size: 0.7rem;
   font-weight: 500;
-  letter-spacing: var(--tracking-mono);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
 }
 
-.pill-copper {
-  background: var(--color-copper-soft);
-  color: var(--color-copper-deep);
+.pill-madder { background: var(--color-madder-tint); color: var(--color-madder-deep); }
+.pill-moss { background: var(--color-moss-tint); color: var(--color-moss); }
+.pill-indigo { background: var(--color-indigo-tint); color: var(--color-indigo); }
+.pill-ochre { background: var(--color-ochre-tint); color: var(--color-ochre); }
+
+/* Stamp — a postmark-style label for "trial mode", "draft only", etc. */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--color-madder);
+  color: var(--color-madder);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  border-radius: 1px;
 }
 
-.pill-sage {
-  background: var(--color-sage-soft);
-  color: var(--color-sage);
-}
-
-/* ── Tone stripe (kept from prior pass, recolored) ────────────────────── */
+/* ── Tone stripe ───────────────────────────────────────────────────────── */
 
 .tone-stripe {
   display: inline-block;
-  width: 24px;
-  height: 3px;
-  border-radius: 2px;
+  width: 28px;
+  height: 2px;
   vertical-align: middle;
+  border-radius: 1px;
 }
 
-.tone-stripe[data-tone="done"] { background: var(--color-sage); }
-.tone-stripe[data-tone="awaiting"] { background: var(--color-copper); }
-.tone-stripe[data-tone="coach"] { background: var(--color-mist); }
-.tone-stripe[data-tone="needs-you"] { background: var(--color-clay); }
+.tone-stripe[data-tone="done"] { background: var(--color-moss); }
+.tone-stripe[data-tone="awaiting"] { background: var(--color-ochre); }
+.tone-stripe[data-tone="coach"] { background: var(--color-indigo); }
+.tone-stripe[data-tone="needs-you"] { background: var(--color-madder); }
 
 /* ── Field (form inputs) — 16px on mobile to prevent iOS zoom ─────────── */
 
 .field {
   width: 100%;
-  background: var(--color-surface);
-  border: 1px solid var(--color-hairline-strong);
+  background: var(--color-bone-soft);
+  border: 1px solid var(--color-rule-strong);
   border-radius: var(--r-md);
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.95rem;
   font-family: var(--font-body);
   font-size: 16px;
-  color: var(--color-ink);
-  transition: border-color 240ms var(--ease-glide), box-shadow 240ms var(--ease-glide);
+  color: var(--color-iron);
+  transition: border-color 200ms var(--ease-quiet), box-shadow 200ms var(--ease-quiet), background 200ms var(--ease-quiet);
 }
 
 .field:focus {
   outline: none;
-  border-color: var(--color-copper);
-  box-shadow: 0 0 0 4px var(--color-copper-soft);
+  border-color: var(--color-iron);
+  background: var(--color-bone);
+  box-shadow: 0 0 0 3px var(--color-vellum);
 }
 
 .field::placeholder {
-  color: var(--color-ink-mute);
+  color: var(--color-faded);
 }
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
 
-/* ── Travel underline (nav active state) ──────────────────────────────── */
+/* ── Nav (sidebar + mobile) ────────────────────────────────────────────── */
 
-.travel-underline {
-  position: relative;
-  display: inline-block;
+.nav-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+  padding: 0.45rem 0;
+  color: var(--color-slate);
   text-decoration: none;
+  transition: color 180ms var(--ease-quiet);
+  position: relative;
 }
 
-.travel-underline::after {
+.nav-item .nav-folio {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--color-faded);
+  width: 1.6rem;
+  flex-shrink: 0;
+}
+
+.nav-item .nav-label {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+  position: relative;
+}
+
+.nav-item:hover { color: var(--color-iron); }
+.nav-item:hover .nav-folio { color: var(--color-madder); }
+
+.nav-item[aria-current="page"] { color: var(--color-iron); }
+.nav-item[aria-current="page"] .nav-folio { color: var(--color-madder); }
+.nav-item[aria-current="page"] .nav-label::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -3px;
-  height: 2px;
-  background: var(--color-copper);
-  border-radius: 1px;
-  transform-origin: left;
-  transform: scaleX(0);
-  transition: transform 360ms var(--ease-glide);
+  left: 0; right: 0; bottom: -3px;
+  height: 1px;
+  background: var(--color-madder);
 }
 
-.travel-underline:hover::after { transform: scaleX(1); }
-.travel-underline[aria-current="page"]::after {
-  transform: scaleX(1);
-  background: var(--color-ink);
-}
+/* ── Quiet, paper-turning reveal ───────────────────────────────────────── */
 
-/* ── Motion (spring-eased reveal) ──────────────────────────────────────── */
-
-@keyframes warm-rise {
-  from { opacity: 0; transform: translateY(0.5rem); }
+@keyframes settle {
+  from { opacity: 0; transform: translateY(0.4rem); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.rise { opacity: 0; animation: warm-rise 0.6s var(--ease-spring) forwards; }
-.rise-1 { animation-delay: 60ms; }
-.rise-2 { animation-delay: 160ms; }
-.rise-3 { animation-delay: 260ms; }
-.rise-4 { animation-delay: 380ms; }
-.rise-5 { animation-delay: 520ms; }
-.rise-6 { animation-delay: 680ms; }
-.rise-7 { animation-delay: 860ms; }
+.rise { opacity: 0; animation: settle 0.55s var(--ease-quiet) forwards; }
+.rise-1 { animation-delay: 40ms; }
+.rise-2 { animation-delay: 120ms; }
+.rise-3 { animation-delay: 220ms; }
+.rise-4 { animation-delay: 340ms; }
+.rise-5 { animation-delay: 480ms; }
+.rise-6 { animation-delay: 640ms; }
+.rise-7 { animation-delay: 820ms; }
 
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; opacity: 1; }
@@ -416,31 +552,19 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
 
 ::selection {
-  background: var(--color-copper-soft);
-  color: var(--color-copper-deep);
+  background: var(--color-madder);
+  color: var(--color-bone);
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-hairline-strong);
-  border-radius: 4px;
+  background: var(--color-rule-strong);
+  border-radius: 2px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--color-mist); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-faded); }
 
-/* ── Hairline divider ──────────────────────────────────────────────────── */
-
-.hairline {
-  border: 0;
-  border-top: 1px solid var(--color-hairline);
-}
-
-.hairline-strong {
-  border: 0;
-  border-top: 1px solid var(--color-hairline-strong);
-}
-
-/* ── Marquee (kept, restyled) ──────────────────────────────────────────── */
+/* ── Marquee (kept for landing) ────────────────────────────────────────── */
 
 @keyframes marquee-slide {
   from { transform: translateX(0); }
@@ -449,8 +573,8 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
 
 .marquee {
   overflow: hidden;
-  background: var(--color-cream-deep);
-  border-block: 1px solid var(--color-hairline);
+  background: var(--color-vellum);
+  border-block: 1px solid var(--color-rule);
   padding-block: 0.85rem;
 }
 
@@ -458,18 +582,31 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
   display: flex;
   width: max-content;
   gap: 3rem;
-  animation: marquee-slide 38s linear infinite;
+  animation: marquee-slide 42s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
 
 .marquee-item {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
-  color: var(--color-ink-soft);
+  color: var(--color-slate);
   white-space: nowrap;
+}
+
+/* ── Quote block — pull-quote treatment, sparingly used ────────────────── */
+
+.pullquote {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.4vw, 2.25rem);
+  line-height: 1.18;
+  color: var(--color-iron);
+  font-style: italic;
+  letter-spacing: var(--tracking-display);
+  border-left: 2px solid var(--color-madder);
+  padding-left: 1.25rem;
 }
 
 /* ── Mobile safe-area helpers ──────────────────────────────────────────── */
@@ -480,3 +617,32 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
   /* prevent iOS zoom on focus */
   input, textarea, select { font-size: 16px !important; }
 }
+
+/* ── Travel-underline kept (used by some pages) ────────────────────────── */
+
+.travel-underline {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+}
+
+.travel-underline::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -2px;
+  height: 1px;
+  background: var(--color-iron);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 280ms var(--ease-quiet);
+}
+
+.travel-underline:hover::after { transform: scaleX(1); }
+.travel-underline[aria-current="page"]::after {
+  transform: scaleX(1);
+  background: var(--color-madder);
+}
+
+/* hairline aliases (kept so existing components compile) */
+.hairline { border: 0; border-top: 1px solid var(--color-rule); }
+.hairline-strong { border: 0; border-top: 1px solid var(--color-rule-strong); }

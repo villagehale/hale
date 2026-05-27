@@ -9,24 +9,23 @@ const DAY_NAMES = [
 ] as const;
 
 const MONTH_NAMES = [
-  'january',
-  'february',
-  'march',
-  'april',
+  'jan',
+  'feb',
+  'mar',
+  'apr',
   'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
 ] as const;
 
 /**
- * Compact long date used as eyebrow above page headlines. Plain numerics
- * (Editorial Cabin uses size + position for emphasis, not spelled-out
- * dates — that was the previous pass).
+ * Compact long date stamp, used as the right-side of the page corner and
+ * in section headers. Lower-case typographic style throughout.
  */
 export function LongDate({ date = new Date() }: { date?: Date }) {
   const dayName = DAY_NAMES[date.getDay()];
@@ -34,7 +33,7 @@ export function LongDate({ date = new Date() }: { date?: Date }) {
   const day = date.getDate();
   const year = date.getFullYear();
   return (
-    <span className="eyebrow">
+    <span className="eyebrow tabular">
       {dayName} · {monthName} {day} · {year}
     </span>
   );

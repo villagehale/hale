@@ -1,4 +1,4 @@
-import { LongDate } from '~/components/mira/long-date';
+import { PageCorner } from '~/components/mira/page-corner';
 import { Folio } from '~/components/mira/folio';
 
 interface Fact {
@@ -52,7 +52,7 @@ const FACTS: Fact[] = [
     id: '5',
     type: 'medical',
     key: 'maya · pediatrician',
-    value: "dr. anita chen, queen west pediatrics, queen west clinic",
+    value: 'dr. anita chen, queen west pediatrics, queen west clinic',
     source: 'stated in setup · confirmed in 2 visit emails',
     confidence: 0.99,
     observedTimes: 3,
@@ -86,76 +86,146 @@ const FACTS: Fact[] = [
   },
 ];
 
-const TYPE_COLOR: Record<Fact['type'], string> = {
-  preference: 'text-copper',
-  routine: 'text-sage',
-  medical: 'text-copper-deep',
-  logistic: 'text-clay',
-  relationship: 'text-sage',
-  voice: 'text-clay',
+const TYPE_PILL: Record<Fact['type'], string> = {
+  preference: 'pill-madder',
+  routine: 'pill-moss',
+  medical: 'pill-madder',
+  logistic: 'pill',
+  relationship: 'pill-moss',
+  voice: 'pill-indigo',
 };
+
+const TYPE_GROUPS: Array<{
+  type: Fact['type'];
+  label: string;
+  description: string;
+}> = [
+  { type: 'preference', label: 'preferences', description: 'how this family chooses, when given a choice.' },
+  { type: 'routine', label: 'routines', description: 'who does what, when. the weekly rhythm.' },
+  { type: 'voice', label: 'voice', description: 'how each parent writes to each recipient.' },
+  { type: 'medical', label: 'medical', description: 'the people, places, and prescriptions i must know.' },
+  { type: 'logistic', label: 'logistics', description: 'supply cadences, schedules, and the small rhythms of daily care.' },
+  { type: 'relationship', label: 'relationships', description: 'who is in this family\'s circle and what they expect.' },
+];
+
+function ConfidenceBar({ value }: { value: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        aria-hidden
+        className="h-1 w-24 rounded-full"
+        style={{ background: 'var(--color-rule)' }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${value * 100}%`,
+            background: 'var(--color-iron)',
+          }}
+        />
+      </div>
+      <span className="meta tabular">{(value * 100).toFixed(0)}%</span>
+    </div>
+  );
+}
 
 export default function MemoryPage() {
   return (
-    <div className="space-y-16 lg:space-y-24">
-      <header className="rise rise-1 grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 items-end">
-        <div className="lg:col-span-2">
-          <span className="eyebrow">№ 05 · memory</span>
-          <p className="mt-3"><LongDate /></p>
-        </div>
-        <div className="lg:col-span-10">
-          <h1 className="font-display">
-            what i <em className="text-copper">know</em> about
-            <br />
-            your household.
-          </h1>
+    <div>
+      <PageCorner folio="v" section="memory · the family graph" />
+
+      <header className="rise rise-1 mb-12 lg:mb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">memory garden</span>
+            <p className="meta mt-2">every fact, named and sourced</p>
+          </div>
+          <div className="lg:col-span-9">
+            <h1 className="font-display">
+              what i <span className="text-madder">remember</span>
+              <br />
+              about your household.
+            </h1>
+          </div>
         </div>
       </header>
 
-      <section className="rise rise-2 grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-y border-hairline py-8">
-        <div className="lg:col-span-3">
-          <span className="eyebrow">the promise</span>
-        </div>
-        <div className="lg:col-span-9 text-lg lg:text-xl text-ink-soft leading-relaxed">
-          <p>
-            every fact below comes from a specific signal i observed. you can edit
-            any of them, mark any of them wrong, or delete any of them — and i
-            will retrain my behavior around the change before the next digest.
-            this is the only consumer ai product that shows you what it remembers.
-          </p>
+      {/* ── The promise ────────────────────────────────────────────────── */}
+      <section className="rise rise-2 mb-16 lg:mb-20 fold">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-8">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-iron">the promise</span>
+          </div>
+          <div className="lg:col-span-9 text-iron text-lg leading-relaxed">
+            <p>
+              Every fact below comes from a specific signal I observed. You can
+              edit any of them, mark any of them wrong, or delete any of them —
+              and I will retrain my behavior around the change before the next
+              digest. <em>This is the only consumer ai product that shows you what it remembers.</em>
+            </p>
+            <div className="mt-5 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <span className="meta">{FACTS.length} facts in memory</span>
+              <span className="meta">last updated · 06:18 am</span>
+              <span className="meta">canadian residency · per-key encryption</span>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+      {/* ── Faceted index ──────────────────────────────────────────────── */}
+      <section className="rise rise-3 mb-12 border-y border-rule py-6">
+        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-3">
+          <span className="eyebrow">browse</span>
+          <button type="button" className="btn-ghost" aria-current="true">all · {FACTS.length}</button>
+          {TYPE_GROUPS.map((g) => {
+            const count = FACTS.filter((f) => f.type === g.type).length;
+            return (
+              <button key={g.type} type="button" className="btn-ghost">
+                {g.label} · {count}
+              </button>
+            );
+          })}
+          <span className="ml-auto">
+            <button type="button" className="btn-ghost">+ add a fact</button>
+          </span>
+        </div>
+      </section>
+
+      {/* ── Cards grid (no shadow — just paper-toned panels) ───────────── */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-rule">
         {FACTS.map((fact, idx) => {
           const delay = `rise-${Math.min(idx + 3, 7)}`;
           return (
-            <article key={fact.id} className={`rise ${delay} border-t border-hairline pt-6 space-y-4`}>
+            <article
+              key={fact.id}
+              className={`rise ${delay} bg-bone-soft p-6 lg:p-7 space-y-4 flex flex-col`}
+            >
               <div className="flex items-baseline justify-between gap-3">
-                <span className={`eyebrow ${TYPE_COLOR[fact.type]}`}>{fact.type}</span>
+                <span className={`pill ${TYPE_PILL[fact.type]}`}>{fact.type}</span>
                 <Folio index={idx + 1} />
               </div>
 
-              <h3 className="font-display text-2xl leading-tight">
+              <h3 className="font-display text-[1.5rem] leading-tight">
                 {fact.key}
               </h3>
 
-              <p className="text-ink-soft leading-relaxed">{fact.value}</p>
+              <p className="text-iron leading-relaxed flex-grow">{fact.value}</p>
 
-              <div className="border-l-2 border-hairline-strong pl-4 py-1">
-                <span className="eyebrow text-ink-soft">source</span>
-                <p className="meta mt-1 italic">{fact.source}</p>
+              <div className="border-l-2 border-rule-strong pl-4">
+                <span className="eyebrow text-iron">source</span>
+                <p className="mt-1 meta italic">{fact.source}</p>
               </div>
 
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <div className="flex items-baseline gap-3">
-                  <span className="meta tabular">
-                    confidence · {(fact.confidence * 100).toFixed(0)}%
-                  </span>
+              <div className="flex items-end justify-between gap-3 pt-2 border-t border-rule">
+                <div>
+                  <p className="meta">confidence</p>
+                  <div className="mt-1.5">
+                    <ConfidenceBar value={fact.confidence} />
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button type="button" className="meta hover:text-ink">edit</button>
-                  <button type="button" className="meta hover:text-copper-deep">delete</button>
+                  <button type="button" className="btn-ghost text-sm">edit</button>
+                  <button type="button" className="btn-ghost text-sm">forget</button>
                 </div>
               </div>
             </article>
@@ -163,20 +233,24 @@ export default function MemoryPage() {
         })}
       </section>
 
-      <section className="rise rise-7 border-t border-hairline pt-10 grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
-        <div className="lg:col-span-3">
-          <span className="eyebrow">your rights</span>
-        </div>
-        <div className="lg:col-span-9 text-ink-soft leading-relaxed space-y-3">
-          <p>
-            request a full export of everything you see on this page in
-            machine-readable form. delete everything in one tap. the family graph
-            never leaves canadian-region storage. nothing here is shared with any
-            third party, ever.
-          </p>
-          <div className="pt-3 flex flex-wrap gap-x-5 gap-y-3">
-            <button type="button" className="btn-ghost">export everything</button>
-            <button type="button" className="btn-ghost">delete everything</button>
+      {/* ── Your rights ────────────────────────────────────────────────── */}
+      <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">your rights</span>
+            <p className="meta mt-2">non-negotiable</p>
+          </div>
+          <div className="lg:col-span-9 text-slate leading-relaxed space-y-5">
+            <p>
+              Request a full export of everything you see on this page in
+              machine-readable form. Delete everything in one tap. The family
+              graph never leaves Canadian-region storage. Nothing here is shared
+              with any third party, ever.
+            </p>
+            <div className="pt-2 flex flex-wrap items-center gap-x-6 gap-y-3">
+              <button type="button" className="btn-secondary">export everything</button>
+              <button type="button" className="btn-ghost">delete everything</button>
+            </div>
           </div>
         </div>
       </section>

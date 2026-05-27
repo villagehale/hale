@@ -3,12 +3,11 @@ interface MarqueeProps {
 }
 
 /**
- * Slow horizontal ticker — used as a footer device on long pages.
- * Plays the items list twice so the slide loop is seamless.
+ * Slow horizontal ticker, used as a footer device on long pages. The
+ * separator glyph is a small printer's diamond, which fits the almanac
+ * idiom better than a bullet.
  */
 export function Marquee({ items }: MarqueeProps) {
-  // Render the list twice so the keyframe slide loops seamlessly.
-  // Suffix each run so React keys stay unique across the duplicated set.
   const tracked = [
     ...items.map((item) => ({ key: `a-${item}`, item })),
     ...items.map((item) => ({ key: `b-${item}`, item })),
@@ -18,7 +17,8 @@ export function Marquee({ items }: MarqueeProps) {
       <div className="marquee-track">
         {tracked.map(({ key, item }) => (
           <span key={key} className="marquee-item">
-            ※ {item}
+            <span className="text-madder mr-3">◆</span>
+            {item}
           </span>
         ))}
       </div>

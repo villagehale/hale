@@ -1,4 +1,4 @@
-import { LongDate } from '~/components/mira/long-date';
+import { PageCorner } from '~/components/mira/page-corner';
 import { Folio } from '~/components/mira/folio';
 
 interface Source {
@@ -12,6 +12,7 @@ interface Source {
 
 const TIERS: Array<{
   tier: number;
+  folio: string;
   eyebrow: string;
   title: string;
   description: string;
@@ -19,10 +20,11 @@ const TIERS: Array<{
 }> = [
   {
     tier: 1,
+    folio: 'i',
     eyebrow: 'tier one',
     title: 'the universal sources',
     description:
-      'the four things every family already has. mira begins with these — connecting one is enough to see value in the first hour.',
+      'The four things every family already has. Mira begins with these — connecting one is enough to see value in the first hour.',
     sources: [
       {
         id: 'gmail',
@@ -60,16 +62,17 @@ const TIERS: Array<{
   },
   {
     tier: 2,
+    folio: 'ii',
     eyebrow: 'tier two',
     title: 'the newborn devices',
     description:
-      "the things that make this product different from every parenting app. real-time signals from your baby's monitor, your sleep tracker, your watch.",
+      "The things that make this product different from every parenting app. Real-time signals from your baby's monitor, your sleep tracker, your watch.",
     sources: [
       {
         id: 'apple-health',
         name: 'apple health',
         why: 'for maya, your own sleep, and stress signals during hard weeks.',
-        reads: ['baby + parent sleep duration', 'parent HRV (for crisis-quiet mode)'],
+        reads: ['baby + parent sleep duration', 'parent hrv (for crisis-quiet mode)'],
         acts: ['surface coaching context', 'auto-quiet during low-sleep weeks'],
         status: 'available',
       },
@@ -78,13 +81,13 @@ const TIERS: Array<{
         name: 'owlet (monitor)',
         why: 'so i can flag unusual movement and log overnight context.',
         reads: ['heart rate + spo2 events', 'motion windows'],
-        acts: ['log episodes', 'never send alerts on owlet\'s behalf'],
+        acts: ['log episodes', "never send alerts on owlet's behalf"],
         status: 'optional',
       },
       {
         id: 'hatch',
         name: 'hatch (sleep)',
-        why: "to log routine and detect patterns — not to start ferber on you.",
+        why: 'to log routine and detect patterns — not to start ferber on you.',
         reads: ['sleep/wake events', 'sound + light routine state'],
         acts: ['log routine consistency', 'suggest tweaks via coach only'],
         status: 'optional',
@@ -101,10 +104,11 @@ const TIERS: Array<{
   },
   {
     tier: 3,
+    folio: 'iii',
     eyebrow: 'tier three',
     title: 'the optional sources',
     description:
-      'the integrations that make mira indispensable over time. you can connect any of these at any pace — i save you time per connection, not all at once.',
+      'The integrations that make mira indispensable over time. You can connect any of these at any pace — i save you time per connection, not all at once.',
     sources: [
       {
         id: 'cra',
@@ -118,7 +122,7 @@ const TIERS: Array<{
         id: 'esdc',
         name: 'esdc (parental leave)',
         why: 'parental leave benefits, top-up applications, status checks.',
-        reads: ['benefit status', 'pay stub summaries (you upload)'],
+        reads: ['benefit status', 'pay-stub summaries (you upload)'],
         acts: ['draft applications + renewals'],
         status: 'optional',
       },
@@ -148,102 +152,120 @@ const STATUS_LABEL: Record<Source['status'], string> = {
   optional: 'connect later',
 };
 
-const STATUS_TONE: Record<Source['status'], string> = {
-  connected: 'text-sage',
-  available: 'text-copper',
-  optional: 'text-ink-mute',
-};
-
 export default function ConnectedPage() {
   return (
-    <div className="space-y-20 lg:space-y-28">
-      <header className="rise rise-1 grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 items-end">
-        <div className="lg:col-span-2">
-          <span className="eyebrow">№ 07 · connected</span>
-          <p className="mt-3"><LongDate /></p>
-        </div>
-        <div className="lg:col-span-10">
-          <h1 className="font-display">
-            three tiers <em className="text-copper">of trust.</em>
-          </h1>
+    <div>
+      <PageCorner folio="vii" section="connected · three tiers" />
+
+      <header className="rise rise-1 mb-16 lg:mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">integrations</span>
+            <p className="meta mt-2">every read and every action, named</p>
+          </div>
+          <div className="lg:col-span-9">
+            <h1 className="font-display">
+              three tiers <span className="text-madder">of trust.</span>
+            </h1>
+          </div>
         </div>
       </header>
 
-      <section className="rise rise-2 grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-12 text-lg lg:text-xl text-ink-soft leading-relaxed">
-        <div className="lg:col-span-3">
-          <span className="eyebrow">read this first</span>
-        </div>
-        <div className="lg:col-span-9">
-          <p>
-            for every source you connect, i show you exactly what i read and exactly
-            what i do with it. nothing is shared with a third party except where you
-            connect one. you can disconnect any source at any time and i will forget
-            anything that source contributed within twenty-four hours.
-          </p>
+      {/* ── Read this first ────────────────────────────────────────────── */}
+      <section className="rise rise-2 mb-20 fold">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-8">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-iron">read this first</span>
+          </div>
+          <div className="lg:col-span-9 text-iron text-lg leading-relaxed">
+            For every source you connect, I show you exactly what I read and
+            exactly what I do with it. Nothing is shared with a third party
+            except where you connect one. You can disconnect any source at any
+            time and I will forget anything that source contributed within
+            twenty-four hours.
+          </div>
         </div>
       </section>
 
+      {/* ── Tiers ──────────────────────────────────────────────────────── */}
       {TIERS.map((tier, tIdx) => (
-        <section key={tier.tier} className={`rise ${tIdx === 0 ? 'rise-3' : tIdx === 1 ? 'rise-5' : 'rise-7'}`}>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-12">
+        <section
+          key={tier.tier}
+          className={`rise ${tIdx === 0 ? 'rise-3' : tIdx === 1 ? 'rise-5' : 'rise-7'} mb-20`}
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-12">
             <div className="lg:col-span-3 lg:sticky lg:top-12 lg:self-start">
-              <span className="eyebrow">{tier.eyebrow}</span>
-              <h2 className="mt-5 font-display">
-                {tier.title}
-              </h2>
-              <p className="mt-4 text-ink-soft leading-relaxed">{tier.description}</p>
+              <div className="flex items-baseline gap-3">
+                <span className="folio">{tier.folio}</span>
+                <span className="eyebrow text-iron">{tier.eyebrow}</span>
+              </div>
+              <h2 className="mt-5 font-display">{tier.title}</h2>
+              <p className="mt-4 text-slate leading-relaxed">{tier.description}</p>
             </div>
 
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
-              {tier.sources.map((src, idx) => (
-                <article key={src.id} className="border-t border-hairline pt-6 space-y-5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <Folio index={idx + 1} />
-                    <span className={`eyebrow ${STATUS_TONE[src.status]}`}>
-                      {src.status === 'connected' ? '● connected' : '○ not yet'}
-                    </span>
-                  </div>
-
-                  <h3 className="font-display text-3xl leading-tight">
-                    {src.name}
-                  </h3>
-
-                  <p className="text-ink-soft leading-relaxed">{src.why}</p>
-
-                  <div className="space-y-3 border-l-2 border-hairline-strong pl-4 py-1">
-                    <div>
-                      <span className="eyebrow text-ink-soft">i read</span>
-                      <ul className="mt-1 space-y-0.5">
-                        {src.reads.map((r) => (
-                          <li key={r} className="meta">— {r}</li>
-                        ))}
-                      </ul>
+            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-px bg-rule">
+              {tier.sources.map((src, idx) => {
+                const connected = src.status === 'connected';
+                return (
+                  <article
+                    key={src.id}
+                    className="bg-bone-soft p-6 lg:p-7 space-y-5"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <Folio index={idx + 1} />
+                      <span
+                        className={connected ? 'pill pill-moss' : 'pill'}
+                      >
+                        {connected ? '● connected' : '○ not yet'}
+                      </span>
                     </div>
-                    <div>
-                      <span className="eyebrow text-ink-soft">i act on</span>
-                      <ul className="mt-1 space-y-0.5">
-                        {src.acts.map((a) => (
-                          <li key={a} className="meta">— {a}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
 
-                  <div className="pt-1">
-                    {src.status === 'connected' ? (
-                      <button type="button" className="btn-ghost">manage</button>
-                    ) : (
-                      <button type="button" className="btn-primary">
-                        {STATUS_LABEL[src.status]}
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
+                    <h3 className="font-display text-[1.75rem] leading-tight">
+                      {src.name}
+                    </h3>
+
+                    <p className="text-slate leading-relaxed">{src.why}</p>
+
+                    <div className="space-y-3 border-l-2 border-rule-strong pl-4">
+                      <div>
+                        <span className="eyebrow text-iron">i read</span>
+                        <ul className="mt-1 space-y-0.5">
+                          {src.reads.map((r) => (
+                            <li key={r} className="meta">— {r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <span className="eyebrow text-iron">i act on</span>
+                        <ul className="mt-1 space-y-0.5">
+                          {src.acts.map((a) => (
+                            <li key={a} className="meta">— {a}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      {connected ? (
+                        <button type="button" className="btn-ghost">manage →</button>
+                      ) : (
+                        <button type="button" className="btn-secondary">
+                          {STATUS_LABEL[src.status]} →
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
       ))}
+
+      <section className="rise rise-7 mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded">
+        <p className="meta">12 sources catalogued · 2 currently connected</p>
+        <p className="meta">request a new source · email hello@mira.family</p>
+      </section>
     </div>
   );
 }

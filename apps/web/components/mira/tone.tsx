@@ -2,7 +2,7 @@ export type EntryTone = 'done' | 'awaiting' | 'coach' | 'needs-you';
 
 const LABELS: Record<EntryTone, string> = {
   done: 'done',
-  awaiting: 'awaiting',
+  awaiting: 'awaiting you',
   coach: 'a quiet note',
   'needs-you': 'needs you',
 };
@@ -28,9 +28,9 @@ export function ToneLabel({ tone, detail }: ToneLabelProps) {
   return (
     <span className="inline-flex items-center gap-3">
       <ToneStripe tone={tone} />
-      <span className="eyebrow text-ink-soft">
+      <span className="eyebrow text-iron">
         {LABELS[tone]}
-        {detail ? <span className="text-ink-mute"> · {detail}</span> : null}
+        {detail ? <span className="text-faded"> · {detail}</span> : null}
       </span>
     </span>
   );
