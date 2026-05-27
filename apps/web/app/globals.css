@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/*
+ * Mira design tokens — "Editorial Inkwell"
+ * Warm paper + deep ink + restrained accents. NO defaults.
+ */
+
+@theme {
+  /* Palette */
+  --color-paper: #fbf7f0;
+  --color-paper-deep: #f3ede1;
+  --color-ink: #1a1614;
+  --color-ink-soft: #2a2522;
+  --color-ink-quiet: #6a6360;
+  --color-hairline: rgb(26 22 20 / 0.12);
+  --color-hairline-strong: rgb(26 22 20 / 0.24);
+
+  --color-terracotta: #c56a4b;
+  --color-terracotta-deep: #a04f33;
+  --color-sage: #7a9676;
+  --color-sage-deep: #5e7a5a;
+  --color-slate-blue: #6b7f8c;
+  --color-dust-rose: #d4a5a0;
+
+  /* Typography */
+  --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Letter-spacing for headers (negative for tight serifs) */
+  --tracking-headline: -0.02em;
+  --tracking-smallcaps: 0.14em;
+
+  /* Spacing — generous, magazine-like */
+  --spacing-gutter: 1.5rem;
+  --spacing-section: 4rem;
+
+  /* Hairline width */
+  --border-width-hairline: 1px;
+}
+
+/* Base reset for the editorial feel */
+
+* {
+  border-color: var(--color-hairline);
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv02", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Editorial serif headlines */
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  letter-spacing: var(--tracking-headline);
+  font-weight: 400;
+}
+
+/* Numerals: tabular for digest counts */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small-caps utility for status labels */
+.smallcaps {
+  text-transform: lowercase;
+  font-variant: small-caps;
+  letter-spacing: var(--tracking-smallcaps);
+  font-size: 0.78em;
+  font-weight: 500;
+}
+
+/* Hairline divider */
+.hairline {
+  border: 0;
+  border-top: var(--border-width-hairline) solid var(--color-hairline);
+  margin: 0;
+}
+
+/* Selection */
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* Hide scrollbar chrome but keep functional */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-paper);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-hairline-strong);
+  border-radius: 4px;
+}
