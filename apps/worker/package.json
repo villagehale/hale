@@ -13,10 +13,12 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@mira/db": "workspace:*",
-    "@mira/types": "workspace:*",
-    "@mira/tools-contracts": "workspace:*",
+    "@ai-sdk/anthropic": "^3.0.80",
     "@anthropic-ai/sdk": "^0.41.0",
+    "@mastra/core": "^1.37.1",
+    "@mira/db": "workspace:*",
+    "@mira/tools-contracts": "workspace:*",
+    "@mira/types": "workspace:*",
     "drizzle-orm": "^0.38.3",
     "pg-boss": "^10.1.6",
     "pino": "^9.6.0",

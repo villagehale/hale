@@ -1,11 +1,9 @@
+import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import type Anthropic from '@anthropic-ai/sdk';
-import { anthropic } from '../anthropic.js';
+import type { FrameworkCitation, CoachingFramework } from '@mira/types';
+import { sonnetModel } from '../mastra/model.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
-import type { FrameworkCitation, CoachingFramework } from '@mira/types';
-
-const COACH_MODEL = 'claude-sonnet-4-6';
 
 const frameworkSchema = z.enum([
   'karp',
@@ -59,7 +57,13 @@ interface CoachRunOutput {
 }
 
 export async function runCoach(input: CoachRunInput): Promise<CoachRunOutput> {
-  const systemPrompt = await loadPrompt('coach');
+  const instructions = await loadPrompt('coach');
+  const agent = new Agent({
+    id: 'mira-coach',
+    name: 'mira-coach',
+    instructions,
+    model: sonnetModel(),
+  });
 
   const userMessage = JSON.stringify({
     trigger: input.trigger,
@@ -68,48 +72,25 @@ export async function runCoach(input: CoachRunInput): Promise<CoachRunOutput> {
     memory_slice: input.memorySlice ?? null,
   });
 
-  const response = await anthropic().messages.create({
-    model: COACH_MODEL,
-    max_tokens: 1500,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
+  const result = await agent.generate(userMessage, {
+    structuredOutput: { schema: coachOutputSchema },
   });
 
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
-
-  const parsed = coachOutputSchema.safeParse(parseJson(text));
-  if (!parsed.success) {
-    logger.error(
-      { familyId: input.familyId, errors: parsed.error.flatten() },
-      'coach: invalid JSON output',
-    );
-    throw new Error(`Coach returned invalid JSON: ${parsed.error.message}`);
+  const parsed = result.object;
+  if (!parsed) {
+    logger.error({ familyId: input.familyId }, 'coach: agent returned no structured output');
+    throw new Error('Coach produced no structured output');
   }
 
   return {
-    adviceText: parsed.data.advice_text,
-    frameworkCitations: parsed.data.framework_citations.map((c) => ({
+    adviceText: parsed.advice_text,
+    frameworkCitations: parsed.framework_citations.map((c) => ({
       framework: c.framework as CoachingFramework,
       reference: c.reference,
       ...(c.excerpt && { excerpt: c.excerpt }),
     })),
-    confidence: parsed.data.confidence,
-    followUpQuestions: parsed.data.follow_up_questions,
-    flagForPediatrician: parsed.data.flag_for_pediatrician,
+    confidence: parsed.confidence,
+    followUpQuestions: parsed.follow_up_questions,
+    flagForPediatrician: parsed.flag_for_pediatrician,
   };
-}
-
-function parseJson(text: string): unknown {
-  const trimmed = text.trim();
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('coach output contained no JSON');
-    return JSON.parse(trimmed.slice(start, end + 1));
-  }
 }
