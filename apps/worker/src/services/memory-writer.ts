@@ -4,6 +4,36 @@ import type { EventType, ActionType, ReviewerVerdict } from '@mira/types';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 
+interface AuditWriteInput {
+  familyId: string;
+  actor: string;
+  actionTaken: string;
+  targetTable?: string;
+  targetId?: string;
+  before?: unknown;
+  after?: unknown;
+  agentRunId?: string;
+}
+
+/**
+ * Append a row to audit_log. Constraint: every action transition produces
+ * one of these. Append-only — never updated.
+ */
+export async function appendAuditEntry(input: AuditWriteInput): Promise<void> {
+  await db()
+    .insert(schema.auditLog)
+    .values({
+      familyId: input.familyId,
+      actor: input.actor,
+      actionTaken: input.actionTaken,
+      targetTable: input.targetTable,
+      targetId: input.targetId,
+      before: input.before,
+      after: input.after,
+      agentRunId: input.agentRunId,
+    });
+}
+
 interface RecordEventInput {
   familyId: string;
   source: string;
@@ -78,6 +108,16 @@ export async function recordEvent(input: RecordEventInput): Promise<{ eventId: s
     throw new Error('insert returned empty result — investigate');
   }
   logger.debug({ familyId: input.familyId, eventId: inserted.id }, 'memory: event recorded');
+
+  await appendAuditEntry({
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'event.classified',
+    targetTable: 'events',
+    targetId: inserted.id,
+    after: { eventType: input.eventType, confidence: input.classifierConfidence },
+  });
+
   return { eventId: inserted.id, duplicate: false };
 }
 
@@ -99,6 +139,17 @@ export async function recordAction(input: RecordActionInput): Promise<string> {
   if (!inserted) {
     throw new Error('action insert returned empty result');
   }
+
+  await appendAuditEntry({
+    familyId: input.familyId,
+    actor: input.draftedByAgentRunId,
+    actionTaken: 'action.drafted',
+    targetTable: 'actions',
+    targetId: inserted.id,
+    after: { actionType: input.actionType },
+    agentRunId: input.draftedByAgentRunId,
+  });
+
   return inserted.id;
 }
 
@@ -109,6 +160,16 @@ export async function recordReviewerVerdict(input: RecordReviewerVerdictInput): 
       : input.verdict.kind === 'reject'
         ? 'rejected'
         : 'flagged';
+
+  const existing = await db()
+    .select({ familyId: schema.actions.familyId })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, input.actionId))
+    .limit(1);
+  const familyId = existing[0]?.familyId;
+  if (!familyId) {
+    throw new Error(`recordReviewerVerdict: action ${input.actionId} not found`);
+  }
 
   await db()
     .update(schema.actions)
@@ -123,9 +184,32 @@ export async function recordReviewerVerdict(input: RecordReviewerVerdictInput): 
         input.verdict.kind === 'approve' ? 'drafted_for_approval' : 'needs_human',
     })
     .where(eq(schema.actions.id, input.actionId));
+
+  await appendAuditEntry({
+    familyId,
+    actor: 'system',
+    actionTaken: `action.reviewer.${verdictColumn}`,
+    targetTable: 'actions',
+    targetId: input.actionId,
+    after: {
+      verdict: verdictColumn,
+      rationale: input.verdict.rationale,
+      toolResults: input.verdict.toolResults.map((r) => ({ tool: r.tool, ok: r.ok })),
+    },
+  });
 }
 
 export async function recordExecution(input: RecordExecutionInput): Promise<void> {
+  const existing = await db()
+    .select({ familyId: schema.actions.familyId })
+    .from(schema.actions)
+    .where(eq(schema.actions.id, input.actionId))
+    .limit(1);
+  const familyId = existing[0]?.familyId;
+  if (!familyId) {
+    throw new Error(`recordExecution: action ${input.actionId} not found`);
+  }
+
   await db()
     .update(schema.actions)
     .set({
@@ -134,4 +218,13 @@ export async function recordExecution(input: RecordExecutionInput): Promise<void
       userVisibleState: input.ok ? 'autonomous' : 'needs_human',
     })
     .where(eq(schema.actions.id, input.actionId));
+
+  await appendAuditEntry({
+    familyId,
+    actor: 'system',
+    actionTaken: input.ok ? 'action.executed' : 'action.execution_failed',
+    targetTable: 'actions',
+    targetId: input.actionId,
+    after: input.result,
+  });
 }

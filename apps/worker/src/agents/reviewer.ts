@@ -85,11 +85,16 @@ export async function runReviewer(input: ReviewerRunInput): Promise<ReviewerVerd
       }
       const result = await invokeReviewerTool(block.name, block.input);
       toolResults.push(result);
+      // is_error means "the tool itself broke," not "the check returned red."
+      // A red result is a *normal* return whose `ok: false` is signal the
+      // model must read. invokeReviewerTool sets `result.error` only when
+      // the tool threw.
+      const toolThrew = isToolThrowResult(result.result);
       toolResultsThisTurn.push({
         type: 'tool_result',
         tool_use_id: block.id,
         content: JSON.stringify(result.result),
-        is_error: !result.ok,
+        is_error: toolThrew,
       });
     }
 
@@ -120,7 +125,15 @@ function parseVerdict(text: string, toolResults: ToolResult[]): ReviewerVerdict 
         rationale: 'reviewer produced no parseable verdict',
       };
     }
-    parsed = JSON.parse(trimmed.slice(start, end + 1)) as typeof parsed;
+    try {
+      parsed = JSON.parse(trimmed.slice(start, end + 1)) as typeof parsed;
+    } catch {
+      return {
+        kind: 'flag_for_human',
+        toolResults,
+        rationale: 'reviewer produced malformed JSON; defaulting to human review',
+      };
+    }
   }
 
   const verdict = parsed.verdict;
@@ -155,6 +168,16 @@ const KNOWN_TOOLS: readonly ReviewerToolName[] = [
 
 function isKnownTool(name: string): name is ReviewerToolName {
   return (KNOWN_TOOLS as readonly string[]).includes(name);
+}
+
+/** True only when a tool implementation threw rather than returning a structured result. */
+function isToolThrowResult(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'error' in value &&
+    typeof (value as { error: unknown }).error === 'string'
+  );
 }
 
 // Tool definitions surfaced to Claude. Schemas mirror @mira/tools-contracts.

@@ -24,23 +24,62 @@ type ToolImpl<TName extends ReviewerToolName> = (
 
 const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // ───────────────────────────────────────────────────────────────────
-  // Time window — derived from family safety policy. For now we treat
-  // 06:00–22:00 in the family's timezone as the default window.
+  // Time window — uses the family's stored timezone + safety policy.
   // ───────────────────────────────────────────────────────────────────
   check_action_time_window: async (raw) => {
     const input = REVIEWER_TOOLS.check_action_time_window.input.parse(raw);
+    const family = await db()
+      .select({ timezone: schema.users.timezone })
+      .from(schema.families)
+      .leftJoin(schema.familyMembers, eq(schema.familyMembers.familyId, schema.families.id))
+      .leftJoin(schema.users, eq(schema.users.id, schema.familyMembers.userId))
+      .where(eq(schema.families.id, input.familyId))
+      .limit(1);
+
+    const timezone = family[0]?.timezone;
+    if (!timezone) {
+      return {
+        tool: 'check_action_time_window',
+        ok: false,
+        result: {
+          withinWindow: false,
+          windowDescription: 'not_configured: family timezone not yet set',
+        },
+      };
+    }
+
     const proposed = new Date(input.proposedExecutionAt);
-    const hour = proposed.getUTCHours();
-    // Use UTC hours as a coarse proxy; the deeper version reads
-    // family.timezone and converts. Coarse pass: reject only at the
-    // edges (between 2am and 5am UTC = ~10pm-1am ET).
-    const withinWindow = hour >= 11 || hour < 3; // 6am–10pm ET roughly
+    const hourString = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: timezone,
+    }).format(proposed);
+    const hour = Number.parseInt(hourString, 10);
+    const policy = await loadFamilySafetyPolicy(input.familyId);
+    const [openStr, closeStr] = policy.timeWindow.allowActionsBetween;
+    const openParts = openStr?.split(':');
+    const closeParts = closeStr?.split(':');
+    if (!openParts || !closeParts) {
+      return {
+        tool: 'check_action_time_window',
+        ok: false,
+        result: {
+          withinWindow: false,
+          windowDescription: `malformed time window in policy: ${openStr}-${closeStr}`,
+        },
+      };
+    }
+    const openHour = Number.parseInt(openParts[0] ?? '6', 10);
+    const closeHour = Number.parseInt(closeParts[0] ?? '22', 10);
+    const withinWindow = hour >= openHour && hour < closeHour;
+
     return {
       tool: 'check_action_time_window',
       ok: withinWindow,
       result: {
         withinWindow,
-        windowDescription: '06:00–22:00 in family timezone (default)',
+        windowDescription: `${openStr}–${closeStr} ${timezone}`,
+        observedHour: hour,
       },
     };
   },

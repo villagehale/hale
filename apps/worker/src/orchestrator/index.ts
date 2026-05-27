@@ -89,75 +89,66 @@ export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
     return;
   }
 
-  if (
-    classified.suggestion.kind === 'autonomous_action' &&
-    classified.confidence.score >= CONFIDENCE_AUTONOMY_THRESHOLD
-  ) {
-    const actionType = classified.suggestion.actionType as ActionType;
-    if (!KNOWN_ACTION_TYPES.has(actionType)) {
-      logger.warn(
-        { familyId, eventId, actionType },
-        'orchestrator: classifier proposed unknown action_type — routed to human queue',
-      );
-      return;
-    }
-
-    // 4. Draft
-    const draft = await runDrafter({
-      familyId,
-      event: {
-        eventId,
-        eventType: classified.eventType,
-        payload: classified.payload,
-      },
-      actionType,
-    });
-
-    // 5. Record action (drafted state)
-    const actionId = await recordAction({
-      familyId,
-      eventId,
-      actionType: draft.actionType,
-      payload: draft.payload,
-      draftedByAgentRunId: draft.agentRunId,
-    });
-
-    // 6. Review
-    const verdict = await runReviewer({ familyId, draft });
-    await recordReviewerVerdict({ actionId, verdict });
-
-    if (verdict.kind !== 'approve') {
-      logger.info(
-        { familyId, actionId, verdict: verdict.kind, rationale: verdict.rationale },
-        'orchestrator: reviewer did not approve — surfaced to user',
-      );
-      return;
-    }
-
-    // 7. Execute
-    try {
-      const execution = await runExecutor({
-        familyId,
-        approved: {
-          ...draft,
-          verdict,
-          approvedAt: new Date().toISOString(),
-        },
-      });
-      await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
-      logger.info({ familyId, actionId }, 'orchestrator: action executed');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown executor error';
-      logger.error({ familyId, actionId, err }, 'orchestrator: executor failed');
-      await recordExecution({ actionId, result: { error: message }, ok: false });
-    }
+  if (classified.suggestion.kind !== 'autonomous_action') {
+    logger.debug({ familyId, eventId }, 'orchestrator: classifier did not suggest autonomous action');
     return;
   }
 
-  // Default fallback — confidence above human threshold but below autonomy.
-  // Action stays as drafted-for-approval, no further work.
-  logger.debug(
-    { familyId, eventId, confidence: classified.confidence.score },
-    'orchestrator: confident enough to surface, not enough to act',
-  );
+  const actionType = classified.suggestion.actionType as ActionType;
+  if (!KNOWN_ACTION_TYPES.has(actionType)) {
+    logger.warn(
+      { familyId, eventId, actionType },
+      'orchestrator: classifier proposed unknown action_type — routed to human queue',
+    );
+    return;
+  }
+
+  // Draft + Review run for everything ≥ HUMAN_THRESHOLD. The autonomy
+  // threshold gates *execution*, not drafting. This is what populates
+  // /drafts for the mid-confidence band the classifier prompt produces.
+  const draft = await runDrafter({
+    familyId,
+    event: { eventId, eventType: classified.eventType, payload: classified.payload },
+    actionType,
+  });
+
+  const actionId = await recordAction({
+    familyId,
+    eventId,
+    actionType: draft.actionType,
+    payload: draft.payload,
+    draftedByAgentRunId: draft.agentRunId,
+  });
+
+  const verdict = await runReviewer({ familyId, draft });
+  await recordReviewerVerdict({ actionId, verdict });
+
+  if (verdict.kind !== 'approve') {
+    logger.info(
+      { familyId, actionId, verdict: verdict.kind, rationale: verdict.rationale },
+      'orchestrator: reviewer did not approve — surfaced to user',
+    );
+    return;
+  }
+
+  if (classified.confidence.score < CONFIDENCE_AUTONOMY_THRESHOLD) {
+    logger.info(
+      { familyId, actionId, confidence: classified.confidence.score },
+      'orchestrator: reviewer approved but confidence below autonomy threshold — drafted for approval',
+    );
+    return;
+  }
+
+  try {
+    const execution = await runExecutor({
+      familyId,
+      approved: { ...draft, verdict, approvedAt: new Date().toISOString() },
+    });
+    await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
+    logger.info({ familyId, actionId }, 'orchestrator: action executed');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown executor error';
+    logger.error({ familyId, actionId, err }, 'orchestrator: executor failed');
+    await recordExecution({ actionId, result: { error: message }, ok: false });
+  }
 }
