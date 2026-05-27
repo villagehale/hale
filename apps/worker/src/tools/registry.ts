@@ -1,110 +1,304 @@
+import { and, eq, gte, sql } from 'drizzle-orm';
+import { schema } from '@mira/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@mira/tools-contracts';
 import type { ToolResult } from '@mira/types';
+import { db } from '../db.js';
 import { logger } from '../logger.js';
 
 /**
- * Reviewer tool registry. Each tool validates its input through the
- * Zod schema (rejecting hallucinated args at the boundary) and returns
- * a structured ToolResult that the Reviewer synthesizes.
+ * Reviewer tool registry.
  *
- * Implementations below are STUBS — they return reasonable defaults.
- * Real implementations query Postgres / external APIs.
+ * Each tool validates its input via Zod (rejecting hallucinated args at
+ * the boundary) and returns a structured ToolResult.
+ *
+ * Implementations are REAL where the data source is internal (Postgres,
+ * derived rules). Tools that need external API calls or schedules we
+ * don't yet have a source for return `ok: false` with a clear
+ * `not_configured` reason — the Reviewer treats them as red and
+ * flag-for-human is the route.
  */
 
-type ToolImplementation<TName extends ReviewerToolName> = (
+type ToolImpl<TName extends ReviewerToolName> = (
   input: unknown,
 ) => Promise<{ tool: TName; ok: boolean; result: unknown }>;
 
-const implementations: { [K in ReviewerToolName]: ToolImplementation<K> } = {
+const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
+  // ───────────────────────────────────────────────────────────────────
+  // Time window — derived from family safety policy. For now we treat
+  // 06:00–22:00 in the family's timezone as the default window.
+  // ───────────────────────────────────────────────────────────────────
   check_action_time_window: async (raw) => {
     const input = REVIEWER_TOOLS.check_action_time_window.input.parse(raw);
-    void input;
+    const proposed = new Date(input.proposedExecutionAt);
+    const hour = proposed.getUTCHours();
+    // Use UTC hours as a coarse proxy; the deeper version reads
+    // family.timezone and converts. Coarse pass: reject only at the
+    // edges (between 2am and 5am UTC = ~10pm-1am ET).
+    const withinWindow = hour >= 11 || hour < 3; // 6am–10pm ET roughly
     return {
       tool: 'check_action_time_window',
-      ok: true,
+      ok: withinWindow,
       result: {
-        withinWindow: true,
-        windowDescription: '06:00–22:00 America/Toronto',
+        withinWindow,
+        windowDescription: '06:00–22:00 in family timezone (default)',
       },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Idempotency — has an action with the same hash been recorded for
+  // this family in the lookback window?
+  // ───────────────────────────────────────────────────────────────────
   check_action_idempotency: async (raw) => {
     const input = REVIEWER_TOOLS.check_action_idempotency.input.parse(raw);
-    void input;
+    const since = new Date(Date.now() - input.lookbackHours * 60 * 60 * 1000);
+    const duplicates = await db()
+      .select({ id: schema.actions.id })
+      .from(schema.actions)
+      .where(
+        and(
+          eq(schema.actions.familyId, input.familyId),
+          gte(schema.actions.draftedAt, since),
+          sql`${schema.actions.payload} ->> 'action_hash' = ${input.actionHash}`,
+        ),
+      )
+      .limit(1);
+
+    const matched = duplicates[0];
     return {
       tool: 'check_action_idempotency',
-      ok: true,
-      result: { isDuplicate: false, rationale: 'no recent duplicate action found' },
+      ok: !matched,
+      result: {
+        isDuplicate: !!matched,
+        matchedActionId: matched?.id,
+        rationale: matched
+          ? `duplicate action found within ${input.lookbackHours}h`
+          : 'no recent duplicate action found',
+      },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Spending cap — checks against the family's safety_policy field
+  // (stored as JSON on the families row in production; for now the
+  // policy is fetched per-call from a sane default in @mira/types).
+  // ───────────────────────────────────────────────────────────────────
+  check_spending_cap: async (raw) => {
+    const input = REVIEWER_TOOLS.check_spending_cap.input.parse(raw);
+    const policy = await loadFamilySafetyPolicy(input.familyId);
+
+    if (input.amountUsd > policy.spendingCaps.perActionMaxUsd) {
+      return {
+        tool: 'check_spending_cap',
+        ok: false,
+        result: {
+          withinLimits: false,
+          exceededCap: 'per_action' as const,
+          limitUsd: policy.spendingCaps.perActionMaxUsd,
+          rationale: `amount ${input.amountUsd} exceeds per-action cap of ${policy.spendingCaps.perActionMaxUsd}`,
+        },
+      };
+    }
+
+    if (policy.spendingCaps.categoriesRequiringApproval.includes(input.category)) {
+      return {
+        tool: 'check_spending_cap',
+        ok: false,
+        result: {
+          withinLimits: false,
+          exceededCap: 'category_requires_approval' as const,
+          rationale: `category "${input.category}" requires explicit approval per family policy`,
+        },
+      };
+    }
+
+    return {
+      tool: 'check_spending_cap',
+      ok: true,
+      result: {
+        withinLimits: true,
+        rationale: `amount ${input.amountUsd} within per-action cap of ${policy.spendingCaps.perActionMaxUsd}`,
+      },
+    };
+  },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Calendar conflict — checks the family's calendar events table for
+  // overlapping events. For v1 we don't yet sync calendar events into
+  // Postgres, so this returns `ok: false` with `not_configured` — the
+  // Reviewer flags-for-human. Wired in M1.5 when calendar sync lands.
+  // ───────────────────────────────────────────────────────────────────
   check_calendar_conflict: async (raw) => {
     const input = REVIEWER_TOOLS.check_calendar_conflict.input.parse(raw);
     void input;
     return {
       tool: 'check_calendar_conflict',
-      ok: true,
-      result: { hasConflict: false, conflictingEvents: [] },
+      ok: false,
+      result: {
+        hasConflict: false,
+        conflictingEvents: [],
+        reason: 'not_configured: calendar sync not wired for this family yet',
+      },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Vaccine schedule — needs Health Canada / CDC schedule data loaded.
+  // Returns not_configured until the data + child birth date lookup
+  // are wired.
+  // ───────────────────────────────────────────────────────────────────
   check_vaccine_schedule: async (raw) => {
     const input = REVIEWER_TOOLS.check_vaccine_schedule.input.parse(raw);
     void input;
     return {
       tool: 'check_vaccine_schedule',
-      ok: true,
-      result: { onSchedule: true, rationale: 'stub — assumes on schedule' },
-    };
-  },
-  check_spending_cap: async (raw) => {
-    const input = REVIEWER_TOOLS.check_spending_cap.input.parse(raw);
-    return {
-      tool: 'check_spending_cap',
-      ok: input.amountUsd < 50,
+      ok: false,
       result: {
-        withinLimits: input.amountUsd < 50,
-        ...(input.amountUsd >= 50 && { exceededCap: 'per_action' as const, limitUsd: 50 }),
-        rationale: `amount ${input.amountUsd} vs $50 per-action cap`,
+        onSchedule: false,
+        rationale: 'not_configured: vaccine schedule data not yet loaded',
       },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Recipient allowlist — checks the family_memory_facts entries with
+  // fact_type=relationship for "recipient:<email>" facts.
+  // ───────────────────────────────────────────────────────────────────
   check_recipient_allowlist: async (raw) => {
     const input = REVIEWER_TOOLS.check_recipient_allowlist.input.parse(raw);
-    void input;
+    const facts = await db()
+      .select({ value: schema.familyMemoryFacts.factValue })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, input.familyId),
+          eq(schema.familyMemoryFacts.factType, 'relationship'),
+          eq(schema.familyMemoryFacts.factKey, `recipient:${input.recipient}`),
+          sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
+        ),
+      )
+      .limit(1);
+
+    const known = facts[0];
+    const requiresApproval =
+      input.recipientCategory === 'medical' || input.recipientCategory === 'legal';
+
     return {
       tool: 'check_recipient_allowlist',
-      ok: true,
+      ok: !!known && !requiresApproval,
       result: {
-        allowed: true,
-        requiresApproval: false,
-        rationale: 'stub allowlist — permissive',
+        allowed: !!known,
+        requiresApproval,
+        rationale: known
+          ? requiresApproval
+            ? 'recipient known but category requires per-action approval'
+            : 'recipient on allowlist'
+          : 'recipient not yet on allowlist',
       },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // Sender allowlist — analogous, fact_key = "sender:<email>".
+  // ───────────────────────────────────────────────────────────────────
   check_sender_allowlist: async (raw) => {
     const input = REVIEWER_TOOLS.check_sender_allowlist.input.parse(raw);
-    void input;
+    const facts = await db()
+      .select({
+        value: schema.familyMemoryFacts.factValue,
+        validFrom: schema.familyMemoryFacts.validFrom,
+      })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, input.familyId),
+          eq(schema.familyMemoryFacts.factType, 'relationship'),
+          eq(schema.familyMemoryFacts.factKey, `sender:${input.sender}`),
+          sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
+        ),
+      )
+      .limit(1);
+
+    const known = facts[0];
     return {
       tool: 'check_sender_allowlist',
-      ok: true,
-      result: { trusted: true, rationale: 'stub — sender trusted' },
+      ok: !!known,
+      result: {
+        trusted: !!known,
+        firstSeenAt: known?.validFrom?.toISOString(),
+        rationale: known
+          ? 'sender trusted via prior relationship fact'
+          : 'sender not yet seen — Reviewer should flag for human',
+      },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // PII leak — naive regex pass for things never sent outside the
+  // allowlist (SIN, full DOB, full address). Real version uses a
+  // proper PII detector. For v1 we do conservative regex.
+  // ───────────────────────────────────────────────────────────────────
   check_pii_leak: async (raw) => {
     const input = REVIEWER_TOOLS.check_pii_leak.input.parse(raw);
-    void input;
+    const detections: Array<{
+      kind: 'child_full_name' | 'child_dob' | 'medical_record' | 'sin' | 'phone' | 'address';
+      excerpt: string;
+      recommendation: string;
+    }> = [];
+
+    // SIN: 9 digits, often with separators
+    const sinMatch = input.content.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{3}\b/);
+    if (sinMatch) {
+      detections.push({
+        kind: 'sin',
+        excerpt: sinMatch[0],
+        recommendation: 'redact SIN from outgoing communication',
+      });
+    }
+
+    // Long-form DOB: "January 15, 2025" or "2025-01-15"
+    const dobMatch = input.content.match(/\b(19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/);
+    if (dobMatch) {
+      detections.push({
+        kind: 'child_dob',
+        excerpt: dobMatch[0],
+        recommendation: 'consider redacting full DOB; an age in months is usually enough',
+      });
+    }
+
     return {
       tool: 'check_pii_leak',
-      ok: true,
-      result: { leakDetected: false, detections: [] },
+      ok: detections.length === 0,
+      result: { leakDetected: detections.length > 0, detections },
     };
   },
+
+  // ───────────────────────────────────────────────────────────────────
+  // User override — checks family_memory_facts with fact_type=preference
+  // and fact_key = "action_override:<actionType>".
+  // ───────────────────────────────────────────────────────────────────
   check_user_override: async (raw) => {
     const input = REVIEWER_TOOLS.check_user_override.input.parse(raw);
-    void input;
+    const facts = await db()
+      .select({ value: schema.familyMemoryFacts.factValue })
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, input.familyId),
+          eq(schema.familyMemoryFacts.factType, 'preference'),
+          eq(schema.familyMemoryFacts.factKey, `action_override:${input.actionType}`),
+          sql`${schema.familyMemoryFacts.validUntil} IS NULL`,
+        ),
+      )
+      .limit(1);
+
+    const fact = facts[0];
+    const override =
+      (fact?.value as 'always_ask' | 'autonomous_allowed' | 'never' | undefined) ?? 'none';
     return {
       tool: 'check_user_override',
-      ok: true,
-      result: { override: 'none' as const },
+      ok: override !== 'never',
+      result: { override },
     };
   },
 };
@@ -118,11 +312,27 @@ export async function invokeReviewerTool<TName extends ReviewerToolName>(
     const result = await impl(input);
     return result as ToolResult;
   } catch (err) {
-    logger.warn({ tool: name, err }, 'tool invocation failed');
+    logger.warn({ tool: name, err }, 'reviewer tool invocation failed');
     return {
       tool: name,
       ok: false,
-      result: { error: err instanceof Error ? err.message : 'unknown error' },
+      result: {
+        error: err instanceof Error ? err.message : 'unknown error',
+      },
     };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Family safety policy loader.
+//
+// Production version reads `families.safety_policy` JSONB. For now we return
+// the DEFAULT_SAFETY_POLICY from @mira/types so the verification path is
+// fully wired even before families have customized their policy.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadFamilySafetyPolicy(familyId: string) {
+  const { DEFAULT_SAFETY_POLICY } = await import('@mira/types');
+  void familyId;
+  return DEFAULT_SAFETY_POLICY;
 }

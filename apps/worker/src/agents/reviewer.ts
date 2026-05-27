@@ -1,6 +1,12 @@
+import type Anthropic from '@anthropic-ai/sdk';
+import { anthropic } from '../anthropic.js';
+import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
 import type { DraftedAction, ReviewerVerdict, ToolResult } from '@mira/types';
 import { invokeReviewerTool } from '../tools/registry.js';
+import type { ReviewerToolName } from '@mira/tools-contracts';
+
+const REVIEWER_MODEL = 'claude-sonnet-4-6';
 
 interface ReviewerRunInput {
   familyId: string;
@@ -8,100 +14,267 @@ interface ReviewerRunInput {
 }
 
 /**
- * Reviewer agent — Claude Sonnet 4.6, REQUIRED tool use.
+ * Reviewer runs a tool-using loop:
+ *   1. Pass the draft to Claude with the reviewer system prompt + tool defs.
+ *   2. When Claude requests tool calls, dispatch them through invokeReviewerTool.
+ *   3. Loop until Claude returns a final verdict.
  *
- * Per Section 1.4 of the spec: Reviewer MUST invoke verification tools.
- * Reasoning from prose alone is not sufficient for approval.
- *
- * STUB: deterministically calls the relevant tools based on action type
- * and returns approve/reject/flag based on aggregate tool results. Real
- * version invokes Claude with the tool registry and synthesizes a verdict
- * from the tool outputs.
+ * Required tools per spec §3.4: time window, idempotency, recipient/sender
+ * allowlist (where applicable), spending cap (where applicable), PII leak.
  */
 export async function runReviewer(input: ReviewerRunInput): Promise<ReviewerVerdict> {
-  logger.debug(
-    { familyId: input.familyId, actionType: input.draft.actionType },
-    'reviewer: stub run',
-  );
+  const systemPrompt = await loadPrompt('reviewer');
+
+  const tools = REVIEWER_TOOL_DEFS;
+
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: JSON.stringify({
+        draft_action: {
+          id: input.draft.id,
+          action_type: input.draft.actionType,
+          payload: input.draft.payload,
+          recipient_visibility: input.draft.recipientVisibility,
+          family_id: input.familyId,
+        },
+      }),
+    },
+  ];
 
   const toolResults: ToolResult[] = [];
+  const MAX_ITERATIONS = 8;
 
-  // Always check time window + idempotency.
-  toolResults.push(
-    await invokeReviewerTool('check_action_time_window', {
-      familyId: input.familyId,
-      proposedExecutionAt: new Date().toISOString(),
-    }),
-  );
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const response = await anthropic().messages.create({
+      model: REVIEWER_MODEL,
+      max_tokens: 2000,
+      system: systemPrompt,
+      tools,
+      messages,
+    });
 
-  toolResults.push(
-    await invokeReviewerTool('check_action_idempotency', {
-      familyId: input.familyId,
-      actionHash: input.draft.id,
-      lookbackHours: 24,
-    }),
-  );
+    if (response.stop_reason === 'end_turn' || response.stop_reason === 'stop_sequence') {
+      const text = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n');
+      return parseVerdict(text, toolResults);
+    }
 
-  // Action-type-specific checks.
-  if (
-    input.draft.actionType === 'send_email' ||
-    input.draft.actionType === 'reply_to_email'
-  ) {
-    const payload = input.draft.payload as { to: string };
-    toolResults.push(
-      await invokeReviewerTool('check_recipient_allowlist', {
-        familyId: input.familyId,
-        recipient: payload.to,
-        recipientCategory: 'general',
-      }),
+    if (response.stop_reason !== 'tool_use') {
+      logger.warn({ stopReason: response.stop_reason }, 'reviewer: unexpected stop reason');
+      return { kind: 'flag_for_human', toolResults, rationale: 'reviewer loop ended unexpectedly' };
+    }
+
+    // Dispatch all requested tool calls in this turn.
+    const toolUseBlocks = response.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
     );
+
+    const toolResultsThisTurn: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of toolUseBlocks) {
+      if (!isKnownTool(block.name)) {
+        toolResultsThisTurn.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify({ error: `unknown tool: ${block.name}` }),
+          is_error: true,
+        });
+        continue;
+      }
+      const result = await invokeReviewerTool(block.name, block.input);
+      toolResults.push(result);
+      toolResultsThisTurn.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: JSON.stringify(result.result),
+        is_error: !result.ok,
+      });
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'user', content: toolResultsThisTurn });
   }
 
-  if (input.draft.actionType === 'create_calendar_event') {
-    const payload = input.draft.payload as { startsAt: string; durationMinutes: number };
-    toolResults.push(
-      await invokeReviewerTool('check_calendar_conflict', {
-        familyId: input.familyId,
-        startsAt: payload.startsAt,
-        durationMinutes: payload.durationMinutes,
-      }),
-    );
-  }
-
-  if (input.draft.actionType === 'place_supply_order') {
-    const payload = input.draft.payload as { amountUsd: number; category: string };
-    toolResults.push(
-      await invokeReviewerTool('check_spending_cap', {
-        familyId: input.familyId,
-        amountUsd: payload.amountUsd,
-        category: payload.category,
-      }),
-    );
-  }
-
-  const allOk = toolResults.every((r) => r.ok);
-
-  if (allOk) {
-    return {
-      kind: 'approve',
-      toolResults,
-      rationale: 'all verification tools passed',
-    };
-  }
-
-  const failedCount = toolResults.filter((r) => !r.ok).length;
-  if (failedCount === 1) {
-    return {
-      kind: 'flag_for_human',
-      toolResults,
-      rationale: 'single verification tool flagged — surfacing for human review',
-    };
-  }
-
+  logger.warn({ familyId: input.familyId }, 'reviewer: max iterations reached');
   return {
-    kind: 'reject',
+    kind: 'flag_for_human',
     toolResults,
-    rationale: `${failedCount} verification tools failed`,
-    remediation: 'modify the draft to address the failed checks and resubmit',
+    rationale: 'reviewer exceeded max iterations without producing a verdict',
   };
 }
+
+function parseVerdict(text: string, toolResults: ToolResult[]): ReviewerVerdict {
+  const trimmed = text.trim();
+  let parsed: { verdict?: string; rationale?: string; if_rejected_remediation_suggestion?: string };
+  try {
+    parsed = JSON.parse(trimmed) as typeof parsed;
+  } catch {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+      return {
+        kind: 'flag_for_human',
+        toolResults,
+        rationale: 'reviewer produced no parseable verdict',
+      };
+    }
+    parsed = JSON.parse(trimmed.slice(start, end + 1)) as typeof parsed;
+  }
+
+  const verdict = parsed.verdict;
+  const rationale = parsed.rationale ?? '';
+  if (verdict === 'approve') {
+    return { kind: 'approve', toolResults, rationale };
+  }
+  if (verdict === 'reject') {
+    return {
+      kind: 'reject',
+      toolResults,
+      rationale,
+      ...(parsed.if_rejected_remediation_suggestion && {
+        remediation: parsed.if_rejected_remediation_suggestion,
+      }),
+    };
+  }
+  return { kind: 'flag_for_human', toolResults, rationale };
+}
+
+const KNOWN_TOOLS: readonly ReviewerToolName[] = [
+  'check_calendar_conflict',
+  'check_vaccine_schedule',
+  'check_spending_cap',
+  'check_recipient_allowlist',
+  'check_sender_allowlist',
+  'check_action_time_window',
+  'check_action_idempotency',
+  'check_pii_leak',
+  'check_user_override',
+];
+
+function isKnownTool(name: string): name is ReviewerToolName {
+  return (KNOWN_TOOLS as readonly string[]).includes(name);
+}
+
+// Tool definitions surfaced to Claude. Schemas mirror @mira/tools-contracts.
+const REVIEWER_TOOL_DEFS: Anthropic.Tool[] = [
+  {
+    name: 'check_action_time_window',
+    description:
+      'Verifies the proposed execution time falls within the family-configured action window.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        proposedExecutionAt: { type: 'string', description: 'ISO 8601 datetime' },
+      },
+      required: ['familyId', 'proposedExecutionAt'],
+    },
+  },
+  {
+    name: 'check_action_idempotency',
+    description: 'Checks whether an action with the same hash has been recorded recently.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        actionHash: { type: 'string' },
+        lookbackHours: { type: 'number' },
+      },
+      required: ['familyId', 'actionHash', 'lookbackHours'],
+    },
+  },
+  {
+    name: 'check_spending_cap',
+    description: "Verifies the action's monetary cost is within the family's spending caps.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        amountUsd: { type: 'number' },
+        category: { type: 'string' },
+      },
+      required: ['familyId', 'amountUsd', 'category'],
+    },
+  },
+  {
+    name: 'check_recipient_allowlist',
+    description: 'Verifies the action recipient has been approved by the family.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        recipient: { type: 'string' },
+        recipientCategory: {
+          type: 'string',
+          enum: ['general', 'medical', 'legal', 'financial', 'unknown'],
+        },
+      },
+      required: ['familyId', 'recipient', 'recipientCategory'],
+    },
+  },
+  {
+    name: 'check_sender_allowlist',
+    description: 'Verifies an inbound sender is trusted via prior interaction.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        sender: { type: 'string' },
+      },
+      required: ['familyId', 'sender'],
+    },
+  },
+  {
+    name: 'check_calendar_conflict',
+    description: 'Checks for calendar conflicts at the proposed time.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        startsAt: { type: 'string' },
+        durationMinutes: { type: 'number' },
+      },
+      required: ['familyId', 'startsAt', 'durationMinutes'],
+    },
+  },
+  {
+    name: 'check_vaccine_schedule',
+    description: 'Checks proposed vaccine date against Health Canada / CDC schedule.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        childId: { type: 'string' },
+        vaccineType: { type: 'string' },
+        proposedDate: { type: 'string' },
+      },
+      required: ['childId', 'vaccineType', 'proposedDate'],
+    },
+  },
+  {
+    name: 'check_pii_leak',
+    description: 'Detects PII (SIN, DOB, address) in outgoing content not destined for an allowed recipient.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        content: { type: 'string' },
+        allowedRecipients: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['familyId', 'content', 'allowedRecipients'],
+    },
+  },
+  {
+    name: 'check_user_override',
+    description: "Checks whether the family has an explicit override for this action type.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        familyId: { type: 'string' },
+        actionType: { type: 'string' },
+      },
+      required: ['familyId', 'actionType'],
+    },
+  },
+];

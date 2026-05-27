@@ -1,5 +1,36 @@
+import { z } from 'zod';
+import type Anthropic from '@anthropic-ai/sdk';
+import { anthropic } from '../anthropic.js';
+import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
-import type { FrameworkCitation } from '@mira/types';
+import type { FrameworkCitation, CoachingFramework } from '@mira/types';
+
+const COACH_MODEL = 'claude-sonnet-4-6';
+
+const frameworkSchema = z.enum([
+  'karp',
+  'ferber',
+  'markham',
+  'siegel',
+  'lansbury',
+  'health_canada',
+  'aap',
+  'cps',
+]);
+
+const coachOutputSchema = z.object({
+  advice_text: z.string(),
+  framework_citations: z.array(
+    z.object({
+      framework: frameworkSchema,
+      reference: z.string(),
+      excerpt: z.string().optional(),
+    }),
+  ),
+  confidence: z.number().min(0).max(1),
+  follow_up_questions: z.array(z.string()),
+  flag_for_pediatrician: z.boolean(),
+});
 
 interface CoachRunInput {
   familyId: string;
@@ -7,6 +38,16 @@ interface CoachRunInput {
   trigger:
     | { kind: 'user_question'; question: string }
     | { kind: 'proactive'; context: Record<string, unknown> };
+  child?: {
+    name: string;
+    ageInMonths: number;
+    biologicalSex?: string;
+  };
+  parentingStyle?: string;
+  memorySlice?: {
+    relevantFacts: unknown[];
+    relevantEpisodes: unknown[];
+  };
 }
 
 interface CoachRunOutput {
@@ -17,39 +58,58 @@ interface CoachRunOutput {
   flagForPediatrician: boolean;
 }
 
-/**
- * Coach agent — Claude Sonnet 4.6, RAG over coaching knowledge base.
- *
- * Privacy rule: Coach NEVER sees email contents, calendar events, or any
- * data outside its scoped slice. Only child profile + parenting style +
- * episode memory of relevant scenarios.
- *
- * STUB: returns a believable mock.
- */
 export async function runCoach(input: CoachRunInput): Promise<CoachRunOutput> {
-  logger.debug({ familyId: input.familyId, triggerKind: input.trigger.kind }, 'coach: stub run');
+  const systemPrompt = await loadPrompt('coach');
+
+  const userMessage = JSON.stringify({
+    trigger: input.trigger,
+    child: input.child ?? null,
+    parenting_style: input.parentingStyle ?? null,
+    memory_slice: input.memorySlice ?? null,
+  });
+
+  const response = await anthropic().messages.create({
+    model: COACH_MODEL,
+    max_tokens: 1500,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+  });
+
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
+
+  const parsed = coachOutputSchema.safeParse(parseJson(text));
+  if (!parsed.success) {
+    logger.error(
+      { familyId: input.familyId, errors: parsed.error.flatten() },
+      'coach: invalid JSON output',
+    );
+    throw new Error(`Coach returned invalid JSON: ${parsed.error.message}`);
+  }
 
   return {
-    adviceText:
-      'around four months, many babies briefly regress in sleep as they reorganize their cycles. ' +
-      'gentle approaches that work for many families: maintain a consistent wind-down routine, ' +
-      'aim for naps every 1.5–2 hours of awake time, and lean into the dark/quiet environment.',
-    frameworkCitations: [
-      {
-        framework: 'karp',
-        reference: 'The Happiest Baby on the Block — 5 S\'s',
-        excerpt: 'Swaddle, side-stomach (held), shush, swing, suck.',
-      },
-      {
-        framework: 'health_canada',
-        reference: 'Caring for Kids — Healthy Sleep Habits',
-      },
-    ],
-    confidence: 0.88,
-    followUpQuestions: [
-      'is your wind-down routine consistent across both parents?',
-      'has anything else changed in the last week (travel, illness, daycare)?',
-    ],
-    flagForPediatrician: false,
+    adviceText: parsed.data.advice_text,
+    frameworkCitations: parsed.data.framework_citations.map((c) => ({
+      framework: c.framework as CoachingFramework,
+      reference: c.reference,
+      ...(c.excerpt && { excerpt: c.excerpt }),
+    })),
+    confidence: parsed.data.confidence,
+    followUpQuestions: parsed.data.follow_up_questions,
+    flagForPediatrician: parsed.data.flag_for_pediatrician,
   };
+}
+
+function parseJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('coach output contained no JSON');
+    return JSON.parse(trimmed.slice(start, end + 1));
+  }
 }

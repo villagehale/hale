@@ -1,5 +1,18 @@
+import { z } from 'zod';
+import type Anthropic from '@anthropic-ai/sdk';
+import { anthropic } from '../anthropic.js';
+import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
 import type { ActionType, DraftedAction } from '@mira/types';
+
+const DRAFTER_MODEL = 'claude-sonnet-4-6';
+
+const drafterOutputSchema = z.object({
+  payload: z.record(z.unknown()),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string(),
+  recipient_visibility: z.enum(['public', 'internal_only']),
+});
 
 interface DrafterRunInput {
   familyId: string;
@@ -8,43 +21,73 @@ interface DrafterRunInput {
     eventType: string;
     payload: Record<string, unknown>;
   };
-  actionType: string;
+  actionType: ActionType;
+  memorySlice?: {
+    relevantFacts: unknown[];
+    relevantEpisodes: unknown[];
+  };
+  voiceProfile?: unknown;
+  actionTemplateHint?: string;
 }
 
 interface DrafterRunOutput extends DraftedAction {
   agentRunId: string;
 }
 
-/**
- * Drafter agent — Claude Sonnet 4.6.
- *
- * STUB: returns a believable mock draft action with reasonable defaults.
- * Real version invokes Claude Agent SDK with the family voice profile
- * loaded from memory.
- */
 export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutput> {
-  logger.debug(
-    { familyId: input.familyId, eventType: input.event.eventType },
-    'drafter: stub run',
-  );
+  const systemPrompt = await loadPrompt('drafter');
 
-  const id = crypto.randomUUID();
-  const agentRunId = crypto.randomUUID();
+  const userMessage = JSON.stringify({
+    action_type: input.actionType,
+    event: input.event,
+    memory_slice: input.memorySlice ?? null,
+    voice_profile: input.voiceProfile ?? null,
+    action_template_hint: input.actionTemplateHint ?? null,
+  });
+
+  const response = await anthropic().messages.create({
+    model: DRAFTER_MODEL,
+    max_tokens: 1500,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+  });
+
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
+
+  const parsed = drafterOutputSchema.safeParse(parseJson(text));
+  if (!parsed.success) {
+    logger.error(
+      { familyId: input.familyId, raw: text, errors: parsed.error.flatten() },
+      'drafter: invalid JSON output',
+    );
+    throw new Error(`Drafter returned invalid JSON: ${parsed.error.message}`);
+  }
 
   return {
-    id,
+    id: crypto.randomUUID(),
     eventId: input.event.eventId,
     familyId: input.familyId,
-    actionType: input.actionType as ActionType,
-    payload: {
-      to: 'pediatric-office@example.com',
-      subject: 'Re: appointment reminder',
-      body: 'Thanks — confirming Thursday at 10:00. Pre-visit form attached.',
-    },
-    draftConfidence: 0.91,
-    rationale: 'stub drafter — routine confirmation reply',
-    recipientVisibility: 'public',
+    actionType: input.actionType,
+    payload: parsed.data.payload,
+    draftConfidence: parsed.data.confidence,
+    rationale: parsed.data.rationale,
+    recipientVisibility: parsed.data.recipient_visibility,
     draftedAt: new Date().toISOString(),
-    agentRunId,
+    agentRunId: crypto.randomUUID(),
   };
+}
+
+function parseJson(text: string): unknown {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('drafter output contained no JSON');
+    return JSON.parse(trimmed.slice(start, end + 1));
+  }
 }

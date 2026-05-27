@@ -3,23 +3,36 @@ import { runClassifier } from '../agents/classifier.js';
 import { runDrafter } from '../agents/drafter.js';
 import { runReviewer } from '../agents/reviewer.js';
 import { runExecutor } from '../services/executor.js';
-import { recordEvent, recordAction } from '../services/memory-writer.js';
+import {
+  recordEvent,
+  recordAction,
+  recordReviewerVerdict,
+  recordExecution,
+} from '../services/memory-writer.js';
+import type { ActionType } from '@mira/types';
+
+const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
+const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
+
+const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  'send_email',
+  'reply_to_email',
+  'create_calendar_event',
+  'update_calendar_event',
+  'place_supply_order',
+  'cancel_supply_order',
+  'fill_pdf_form',
+  'submit_government_form',
+  'book_clinic_portal',
+  'cancel_clinic_appointment',
+  'share_photos_with_family',
+  'add_to_digest_only',
+]);
 
 /**
- * Deterministic workflow runner. Section 1.3 of the spec — Orchestrator
- * has no LLM calls of its own; it's a state machine routing jobs through
- * the LLM agents in sequence.
- *
- * Flow:
- *   events.ingested → Classifier
- *     if confidence > 0.85 AND suggested = autonomous_action →
- *       Drafter → Reviewer
- *         if approve → Executor → audit_log
- *         if flag_for_human → human queue
- *         if reject → archive with rationale
- *     if confidence < 0.7 → human queue
- *     if suggested = surface_only → Memory Writer → daily digest
- *     if suggested = ignore → no-op (audit only)
+ * Deterministic workflow runner. Spec §1.3 — Orchestrator has no LLM
+ * calls of its own; it routes jobs through the LLM agents and
+ * deterministic services in sequence and records everything.
  */
 export interface OrchestratorJob {
   family_id: string;
@@ -28,20 +41,20 @@ export interface OrchestratorJob {
   received_at: string;
 }
 
-const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
-const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
-
 export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
-  logger.debug({ familyId: job.family_id, source: job.source }, 'orchestrator: start');
+  const familyId = job.family_id;
+  logger.debug({ familyId, source: job.source }, 'orchestrator: start');
 
+  // 1. Classify
   const classified = await runClassifier({
-    familyId: job.family_id,
+    familyId,
     source: job.source,
     rawContent: JSON.stringify(job.payload),
   });
 
-  await recordEvent({
-    familyId: job.family_id,
+  // 2. Record event (idempotent on dedup_hash)
+  const { eventId, duplicate } = await recordEvent({
+    familyId,
     source: job.source,
     eventType: classified.eventType,
     payload: classified.payload,
@@ -49,21 +62,30 @@ export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
     dedupHash: classified.dedupHash,
   });
 
+  if (duplicate) {
+    logger.debug({ familyId, eventId }, 'orchestrator: duplicate event, skipping downstream');
+    return;
+  }
+
+  // 3. Route by confidence + suggestion
   if (classified.confidence.score < CONFIDENCE_HUMAN_THRESHOLD) {
     logger.info(
-      { familyId: job.family_id, eventType: classified.eventType, confidence: classified.confidence.score },
-      'low confidence — routed to human queue',
+      { familyId, eventId, confidence: classified.confidence.score },
+      'orchestrator: low classifier confidence — routed to human queue',
     );
     return;
   }
 
-  if (classified.suggestion.kind === 'ignore') {
-    logger.debug({ eventType: classified.eventType }, 'classifier: ignore');
+  if (classified.suggestion.kind === 'ignore' || classified.suggestion.kind === 'surface_only') {
+    logger.debug(
+      { familyId, eventId, kind: classified.suggestion.kind },
+      'orchestrator: classifier routed to digest only',
+    );
     return;
   }
 
-  if (classified.suggestion.kind === 'surface_only') {
-    logger.debug({ eventType: classified.eventType }, 'classifier: surface only');
+  if (classified.suggestion.kind === 'needs_human') {
+    logger.info({ familyId, eventId }, 'orchestrator: classifier flagged needs_human');
     return;
   }
 
@@ -71,41 +93,71 @@ export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
     classified.suggestion.kind === 'autonomous_action' &&
     classified.confidence.score >= CONFIDENCE_AUTONOMY_THRESHOLD
   ) {
+    const actionType = classified.suggestion.actionType as ActionType;
+    if (!KNOWN_ACTION_TYPES.has(actionType)) {
+      logger.warn(
+        { familyId, eventId, actionType },
+        'orchestrator: classifier proposed unknown action_type — routed to human queue',
+      );
+      return;
+    }
+
+    // 4. Draft
     const draft = await runDrafter({
-      familyId: job.family_id,
-      event: classified,
-      actionType: classified.suggestion.actionType,
+      familyId,
+      event: {
+        eventId,
+        eventType: classified.eventType,
+        payload: classified.payload,
+      },
+      actionType,
     });
 
-    await recordAction({
-      familyId: job.family_id,
-      eventId: classified.eventId,
+    // 5. Record action (drafted state)
+    const actionId = await recordAction({
+      familyId,
+      eventId,
       actionType: draft.actionType,
       payload: draft.payload,
       draftedByAgentRunId: draft.agentRunId,
     });
 
-    const verdict = await runReviewer({
-      familyId: job.family_id,
-      draft,
-    });
+    // 6. Review
+    const verdict = await runReviewer({ familyId, draft });
+    await recordReviewerVerdict({ actionId, verdict });
 
-    if (verdict.kind === 'approve') {
-      await runExecutor({
-        familyId: job.family_id,
-        approved: { ...draft, verdict, approvedAt: new Date().toISOString() },
-      });
-    } else if (verdict.kind === 'flag_for_human') {
-      logger.info({ familyId: job.family_id }, 'reviewer: flagged for human');
-    } else {
+    if (verdict.kind !== 'approve') {
       logger.info(
-        { familyId: job.family_id, rationale: verdict.rationale },
-        'reviewer: rejected',
+        { familyId, actionId, verdict: verdict.kind, rationale: verdict.rationale },
+        'orchestrator: reviewer did not approve — surfaced to user',
       );
+      return;
+    }
+
+    // 7. Execute
+    try {
+      const execution = await runExecutor({
+        familyId,
+        approved: {
+          ...draft,
+          verdict,
+          approvedAt: new Date().toISOString(),
+        },
+      });
+      await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
+      logger.info({ familyId, actionId }, 'orchestrator: action executed');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown executor error';
+      logger.error({ familyId, actionId, err }, 'orchestrator: executor failed');
+      await recordExecution({ actionId, result: { error: message }, ok: false });
     }
     return;
   }
 
-  // Default: surface for human review.
-  logger.info({ familyId: job.family_id, eventType: classified.eventType }, 'routed to drafts');
+  // Default fallback — confidence above human threshold but below autonomy.
+  // Action stays as drafted-for-approval, no further work.
+  logger.debug(
+    { familyId, eventId, confidence: classified.confidence.score },
+    'orchestrator: confident enough to surface, not enough to act',
+  );
 }
