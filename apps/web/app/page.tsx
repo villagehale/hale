@@ -1,87 +1,162 @@
 import Link from 'next/link';
-import { ReadingColumn } from '~/components/mira/reading-column';
-import { Seal } from '~/components/mira/seal';
-import { LongDate } from '~/components/mira/long-date';
+import { Marquee } from '~/components/mira/marquee';
 
 export default function LandingPage() {
   return (
-    <>
-      <div className="pointer-events-none fixed top-8 right-8 z-10">
-        <Seal />
-      </div>
+    <main className="relative">
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <section className="shell pt-12 sm:pt-16 lg:pt-24 pb-20 lg:pb-32">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-12 items-end">
+          <div className="lg:col-span-2 rise rise-1">
+            <span className="eyebrow">№ 001 · toronto</span>
+          </div>
 
-      <ReadingColumn>
-        <header className="letter-rise letter-rise-1 mb-20">
-          <LongDate />
-        </header>
-
-        <h1 className="letter-rise letter-rise-2 mb-16 font-display italic">
-          a quiet ai
-          <br />
-          for the first year.
-        </h1>
-
-        <div className="letter-rise letter-rise-3 space-y-7 text-[1.08rem] leading-[1.75] text-ink-soft">
-          <p>
-            mira is for the first twelve months of your child's life. you connect your email,
-            your calendar, your photos. mira watches quietly. it reads the pediatric office,
-            the daycare waitlist, the diaper subscription, the grandparent's question about
-            what age was first solids.
-          </p>
-          <p>
-            for the first week it just listens. then it begins drafting replies, scheduling
-            checkups, filling forms — always asking before it acts, until you trust it
-            not to.
-          </p>
-          <p>
-            every morning you receive one short letter of what's been handled, and one short
-            note of what still needs you. nothing else.
-          </p>
+          <div className="lg:col-span-10 rise rise-2">
+            <h1 className="font-display leading-[0.92] tracking-tight">
+              <span className="block">a household</span>
+              <span className="block italic text-persimmon">platform</span>
+              <span className="block">for the first</span>
+              <span className="block">year, and the next eighteen.</span>
+            </h1>
+          </div>
         </div>
 
-        <hr className="hairline letter-rise letter-rise-4 my-20" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 mt-16 lg:mt-24">
+          <div className="lg:col-span-3 lg:col-start-3 rise rise-3">
+            <span className="eyebrow">what mira does</span>
+          </div>
+          <div className="lg:col-span-7 rise rise-4">
+            <p className="text-xl lg:text-2xl leading-snug text-ink-soft">
+              mira watches your inbox, your calendar, your photos, and the small
+              devices that already log your kid's life. it reads the pediatric
+              office, the daycare waitlist, the diaper subscription, the
+              grandparent who keeps asking how she slept. then it does the easy
+              ninety percent and asks you about the hard ten.
+            </p>
+          </div>
+        </div>
+      </section>
 
-        <section className="letter-rise letter-rise-5 mb-20">
-          <h2 className="mb-8 font-display">what mira does today</h2>
-          <ul className="space-y-5 text-[1.05rem] text-ink-soft">
-            <li>— confirms pediatric appointments. fills the pre-visit forms.</li>
-            <li>— reorders diapers, formula, wipes from your usual sources.</li>
-            <li>— files parental leave paperwork. ei, provincial top-ups, employer hr.</li>
-            <li>— drafts replies to teachers, clinics, daycares in your voice.</li>
-            <li>
-              — answers your questions about sleep, feeding, milestones, grounded in
-              health canada guidelines and named frameworks.
-            </li>
-          </ul>
-        </section>
+      {/* ── MARQUEE ROW ──────────────────────────────────────────────────── */}
+      <section className="border-y border-hairline bg-bone overflow-hidden">
+        <Marquee
+          items={[
+            'pediatric scheduling',
+            'parental leave paperwork',
+            'supply reorder',
+            'photo curation',
+            'milestone tracking',
+            'sleep coaching',
+            'daycare admin',
+            'co-parent coordination',
+          ]}
+        />
+      </section>
 
-        <hr className="hairline letter-rise letter-rise-6 my-20" />
+      {/* ── HOW IT WORKS ──────────────────────────────────────────────────── */}
+      <section className="shell py-20 lg:py-32">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">how it works</span>
+            <h2 className="mt-6 font-display italic text-persimmon">
+              trust,
+              <br />
+              earned in
+              <br />
+              four steps.
+            </h2>
+          </div>
 
-        <section className="letter-rise letter-rise-7 mb-24 space-y-8">
-          <h2 className="font-display">join the early cohort</h2>
-          <p className="text-[1.05rem] text-ink-soft">
-            ten toronto families in the first quarter. the product is free for one year in
-            exchange for honest feedback. canadian data residency, pipeda compliant.
-          </p>
+          <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+            {[
+              {
+                folio: '01',
+                title: 'connect',
+                body: 'gmail or outlook first. apple or google calendar second. photos when you trust me.',
+              },
+              {
+                folio: '02',
+                title: 'observe',
+                body: 'for seven days i only watch. you see what i see — no drafts, no actions.',
+              },
+              {
+                folio: '03',
+                title: 'draft',
+                body: "after seven days i start drafting replies, appointments, orders. you approve every one.",
+              },
+              {
+                folio: '04',
+                title: 'autonomy',
+                body: 'after five clean approvals for a kind of task, i act on my own for that kind. you can revoke any time.',
+              },
+            ].map((step) => (
+              <article key={step.folio} className="border-t border-hairline pt-6">
+                <span className="folio">{step.folio}</span>
+                <h3 className="mt-3 font-display italic text-2xl">{step.title}</h3>
+                <p className="mt-3 text-ink-soft leading-relaxed">{step.body}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
 
-          <div className="flex flex-wrap items-center gap-6">
-            <Link href="/sign-up" className="btn-ink">
+      {/* ── WHAT MIRA WILL NEVER DO ──────────────────────────────────────── */}
+      <section className="bg-ink text-cream py-20 lg:py-32">
+        <div className="shell grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-cream/60">the promises</span>
+          </div>
+          <div className="lg:col-span-9">
+            <h2 className="font-display text-cream">
+              mira will <em className="text-persimmon not-italic">never</em>
+            </h2>
+            <ul className="mt-12 space-y-6 text-xl leading-snug">
+              {[
+                'give medical advice — only your pediatrician will',
+                'send anything to anyone you have not greenlit',
+                'spend more than your per-action cap without asking',
+                'share your child with a recipient you have not approved',
+                'store data outside canada',
+                'sell your family graph to anyone, for any price',
+              ].map((item) => (
+                <li key={item} className="flex gap-6 items-start">
+                  <span className="folio text-cream/40 pt-2">·</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ──────────────────────────────────────────────────────────── */}
+      <section className="shell py-20 lg:py-32">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 items-end">
+          <div className="lg:col-span-7">
+            <h2 className="font-display italic">
+              join the early cohort of ten toronto families.
+            </h2>
+            <p className="mt-6 text-lg text-ink-soft">
+              free for one year in exchange for honest feedback. canadian data
+              residency. pipeda + quebec law 25 + casl compliant by default.
+            </p>
+          </div>
+
+          <div className="lg:col-span-5 flex flex-col gap-4 lg:items-end">
+            <Link href="/onboarding" className="btn-block">
               request an invite
             </Link>
-            <Link href="/digest" className="btn-ghost travel-underline">
-              see what a digest looks like →
+            <Link href="/digest" className="btn-ghost">
+              preview a digest →
             </Link>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <footer className="border-t border-hairline pt-10 pb-6">
-          <p className="hand text-ink-quiet">with care,</p>
-          <p className="hand text-ink mt-1">mira</p>
-          <p className="meta mt-8 text-ink-quiet">
-            mira · toronto · ca · pipeda + quebec law 25 compliant
-          </p>
-        </footer>
-      </ReadingColumn>
-    </>
+      <footer className="shell border-t border-hairline py-10 flex flex-wrap items-baseline justify-between gap-y-4 text-ink-mute">
+        <p className="meta">mira · toronto · canada</p>
+        <p className="meta">№ 001 · year one</p>
+      </footer>
+    </main>
   );
 }

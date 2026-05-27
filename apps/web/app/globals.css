@@ -1,200 +1,319 @@
 @import "tailwindcss";
 
 /*
- * Mira — "Quiet Letter" design system.
+ * Mira — "Editorial Cabin" design system.
  *
- * Reads like a handwritten letter, not a dashboard. Calibrated for a
- * sleep-deprived parent reading one-handed at 6am while holding their baby.
- *
- * - No pure white, no pure black.
- * - Single reading column, not a grid.
- * - Hairline rules instead of cards or shadows.
- * - First-person agent voice, lowercase, long-form dates.
- * - One small wax seal mark per page. No icons elsewhere.
+ * A confident, responsive magazine voice for new parents. Mobile reading
+ * still works one-handed, but desktop is a real editorial spread: big
+ * display typography, asymmetric grid, sticky sidebar, decorative
+ * gutters with folio numbers. Tablet sits between the two cleanly.
  */
 
 @theme {
-  /* ─── Palette ────────────────────────────────────────────────────────── */
-  --color-paper: #f5efe3;
-  --color-paper-deep: #ede5d2;
-  --color-cream: #e9dec8;
-  --color-ink: #1f1a15;
-  --color-ink-soft: #3a332b;
-  --color-ink-quiet: #7a7166;
-  --color-mist: #bfbaa9;
-  --color-hairline: rgb(31 26 21 / 0.10);
-  --color-hairline-strong: rgb(31 26 21 / 0.24);
-  --color-madder: #b83b1a;
-  --color-moss: #5e6b41;
-  --color-slate-quiet: #4a5764;
+  /* ── Palette ─────────────────────────────────────────────────────────── */
+  --color-cream: #f4ecdd;
+  --color-bone: #ede2cd;
+  --color-bone-deep: #e3d5b8;
+  --color-ink: #211712;
+  --color-ink-soft: #3f2f26;
+  --color-ink-mute: #87766a;
+  --color-hairline: rgb(33 23 18 / 0.12);
+  --color-hairline-strong: rgb(33 23 18 / 0.28);
+  --color-persimmon: #e8542a;
+  --color-persimmon-deep: #b13b18;
+  --color-forest: #2f4a36;
+  --color-forest-soft: #5d7762;
+  --color-lavender: #5a4a6b;
+  --color-lavender-soft: #897692;
 
-  /* ─── Typography ─────────────────────────────────────────────────────── */
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-body: "Fraunces", ui-serif, Georgia, serif;
-  --font-mono: "Spline Sans Mono", ui-monospace, "JetBrains Mono", monospace;
-  --font-hand: "Caveat", "Lucida Handwriting", cursive;
+  /* ── Type ────────────────────────────────────────────────────────────── */
+  --font-display: "Newsreader", "Source Serif 4", ui-serif, Georgia, serif;
+  --font-body: "Newsreader", "Source Serif 4", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Menlo", monospace;
 
-  /* Headline tracking and optical sizing */
-  --tracking-display: -0.02em;
-  --tracking-smallcaps: 0.16em;
-  --tracking-meta: 0.04em;
+  --tracking-display: -0.025em;
+  --tracking-headline: -0.015em;
+  --tracking-eyebrow: 0.18em;
+  --tracking-mono: 0.02em;
 
-  /* ─── Rhythm ─────────────────────────────────────────────────────────── */
-  --reading-width: 36rem;        /* 576px — comfortable one-handed reading */
-  --rhythm-entry: 4.5rem;        /* vertical space between digest entries */
-  --rhythm-section: 7rem;        /* between distinct sections */
+  /* ── Rhythm ──────────────────────────────────────────────────────────── */
+  --shell-pad-x: clamp(1.25rem, 4vw, 6rem);
+  --rhythm-section: clamp(3rem, 6vw, 5rem);
+  --rhythm-entry: clamp(2.25rem, 4vw, 3.5rem);
 
-  /* Animation curves */
-  --ease-letter: cubic-bezier(0.16, 0.84, 0.44, 1);
+  /* ── Curves ──────────────────────────────────────────────────────────── */
+  --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-glide: cubic-bezier(0.16, 0.84, 0.44, 1);
 }
 
-/* ─── Reset + base ────────────────────────────────────────────────────── */
+/* ── Base ──────────────────────────────────────────────────────────────── */
 
 * {
   border-color: var(--color-hairline);
 }
 
 html {
-  background: var(--color-paper);
+  background: var(--color-cream);
   color: var(--color-ink);
   font-family: var(--font-body);
-  font-feature-settings: "ss01", "cv02", "cv11", "kern", "liga", "calt";
+  font-feature-settings: "kern", "liga", "calt", "ss01";
   font-optical-sizing: auto;
+  font-variation-settings: "opsz" 22;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--color-paper);
+  background: var(--color-cream);
   color: var(--color-ink);
   font-size: 17px;
-  line-height: 1.6;
+  line-height: 1.55;
   font-weight: 400;
   min-height: 100vh;
 }
 
-/* Editorial display headlines use Fraunces with optical size cranked up
-   and tight tracking. Italic axis gets occasional duty for emphasis. */
+@media (min-width: 1024px) {
+  body { font-size: 18px; }
+}
+
+/* Headlines: Newsreader cranked up the optical size axis for display weight */
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   letter-spacing: var(--tracking-display);
   font-weight: 400;
-  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 1;
-  line-height: 1.05;
+  font-variation-settings: "opsz" 144;
+  line-height: 0.94;
 }
 
-h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); }
-h2 { font-size: clamp(1.75rem, 3.5vw, 2.5rem); }
-h3 { font-size: 1.5rem; }
+h1 { font-size: clamp(2.75rem, 7vw, 6rem); }
+h2 { font-size: clamp(2rem, 4.5vw, 3.5rem); }
+h3 { font-size: clamp(1.5rem, 2.5vw, 2.25rem); }
 
 p {
-  font-variation-settings: "opsz" 18, "SOFT" 0, "WONK" 0;
+  font-variation-settings: "opsz" 22;
 }
 
-/* ─── Reading column ──────────────────────────────────────────────────── */
+/* ── Display utilities ─────────────────────────────────────────────────── */
 
-.reading-column {
-  max-width: var(--reading-width);
-  margin-inline: auto;
-  padding-inline: 1.5rem;
+.display-mono { font-family: var(--font-mono); }
+
+.display-italic {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 144;
 }
 
-/* ─── Hairline + label utility ────────────────────────────────────────── */
-
-.hairline {
-  border: 0;
-  border-top: 1px solid var(--color-hairline-strong);
-}
-
-.hairline-soft {
-  border: 0;
-  border-top: 1px solid var(--color-hairline);
-}
-
-/* The signature "━━━━ done · 4:12 pm ━━━━" pattern used between entries.
-   Built as flex with hairlines on either side of an inline label. */
-.entry-mark {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.eyebrow {
   font-family: var(--font-mono);
   font-size: 0.72rem;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
   font-weight: 500;
-  letter-spacing: var(--tracking-smallcaps);
-  text-transform: lowercase;
-  color: var(--color-ink-quiet);
-}
-
-.entry-mark::before,
-.entry-mark::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--color-hairline-strong);
-}
-
-/* ─── Small-caps utility ──────────────────────────────────────────────── */
-
-.smallcaps {
-  font-family: var(--font-mono);
-  text-transform: lowercase;
-  letter-spacing: var(--tracking-smallcaps);
-  font-size: 0.72rem;
-  font-weight: 500;
+  color: var(--color-ink-mute);
 }
 
 .meta {
   font-family: var(--font-mono);
-  letter-spacing: var(--tracking-meta);
   font-size: 0.78rem;
-  color: var(--color-ink-quiet);
+  letter-spacing: var(--tracking-mono);
+  color: var(--color-ink-mute);
 }
 
-.hand {
-  font-family: var(--font-hand);
-  font-size: 1.25rem;
-  line-height: 1.2;
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ── Shell + grid ──────────────────────────────────────────────────────── */
+
+.shell {
+  width: 100%;
+  padding-inline: var(--shell-pad-x);
+  margin-inline: auto;
+  max-width: 1440px;
 }
 
-.tabular {
-  font-variant-numeric: tabular-nums;
+.shell-narrow {
+  width: 100%;
+  padding-inline: var(--shell-pad-x);
+  margin-inline: auto;
+  max-width: 880px;
 }
 
-/* ─── Letter-reveal animation (page load) ─────────────────────────────── */
-
-@keyframes letter-rise {
-  from {
-    opacity: 0;
-    transform: translateY(0.5rem);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Editorial layout: sidebar + main on desktop, stacked on mobile.
+   Sidebar is sticky and decorative — folio, date, cost.
+   Mobile keeps a slim top header. */
+.editorial-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  min-height: 100vh;
 }
 
-.letter-rise {
-  opacity: 0;
-  animation: letter-rise 0.9s var(--ease-letter) forwards;
-}
-
-.letter-rise-1 { animation-delay: 80ms; }
-.letter-rise-2 { animation-delay: 200ms; }
-.letter-rise-3 { animation-delay: 360ms; }
-.letter-rise-4 { animation-delay: 540ms; }
-.letter-rise-5 { animation-delay: 740ms; }
-.letter-rise-6 { animation-delay: 960ms; }
-.letter-rise-7 { animation-delay: 1200ms; }
-
-@media (prefers-reduced-motion: reduce) {
-  .letter-rise {
-    animation: none;
-    opacity: 1;
+@media (min-width: 1024px) {
+  .editorial-layout {
+    grid-template-columns: clamp(260px, 22vw, 320px) 1fr;
   }
 }
 
-/* ─── Underline travel for links ──────────────────────────────────────── */
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .sidebar {
+    display: block;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    border-right: 1px solid var(--color-hairline);
+    padding: 3.5rem var(--shell-pad-x) 2rem;
+    overflow-y: auto;
+  }
+}
+
+.main-stage {
+  padding-inline: var(--shell-pad-x);
+  padding-block: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+@media (min-width: 1024px) {
+  .main-stage {
+    padding-block: clamp(4rem, 7vw, 7rem);
+  }
+}
+
+/* Mobile-only top header */
+.top-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem var(--shell-pad-x);
+  border-bottom: 1px solid var(--color-hairline);
+  background: var(--color-cream);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+}
+
+@media (min-width: 1024px) {
+  .top-header { display: none; }
+}
+
+/* ── The reading column inside main-stage ──────────────────────────────── */
+
+.reading-column {
+  max-width: 660px;
+}
+
+@media (min-width: 1024px) {
+  .reading-column {
+    max-width: 720px;
+  }
+}
+
+/* Asymmetric two-column reading on wider screens — used selectively */
+.editorial-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .editorial-grid {
+    grid-template-columns: 64px 1fr;
+    gap: 2rem;
+  }
+}
+
+/* ── Folio + entry markers ─────────────────────────────────────────────── */
+
+.folio {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: var(--tracking-mono);
+  color: var(--color-ink-mute);
+  font-weight: 500;
+  padding-top: 0.6rem;
+  line-height: 1;
+}
+
+.tone-stripe {
+  display: inline-block;
+  width: 28px;
+  height: 4px;
+  vertical-align: middle;
+}
+
+.tone-stripe[data-tone="done"] { background: var(--color-forest); }
+.tone-stripe[data-tone="awaiting"] { background: var(--color-persimmon); }
+.tone-stripe[data-tone="coach"] { background: var(--color-lavender); }
+.tone-stripe[data-tone="needs-you"] { background: var(--color-persimmon-deep); }
+
+/* ── Buttons (color-block press) ───────────────────────────────────────── */
+
+.btn-block {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.6rem;
+  background: var(--color-ink);
+  color: var(--color-cream);
+  border: 1px solid var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 240ms var(--ease-press), background 240ms var(--ease-press);
+  isolation: isolate;
+}
+
+.btn-block::before {
+  content: "";
+  position: absolute;
+  inset: 4px -4px -4px 4px;
+  background: var(--color-persimmon);
+  z-index: -1;
+  transition: inset 240ms var(--ease-press);
+}
+
+.btn-block:hover {
+  transform: translate(-2px, -2px);
+}
+
+.btn-block:hover::before {
+  inset: 6px -6px -6px 6px;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0;
+  background: transparent;
+  color: var(--color-ink);
+  border: 0;
+  border-bottom: 1px solid var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 240ms var(--ease-glide), border-color 240ms var(--ease-glide);
+}
+
+.btn-ghost:hover {
+  color: var(--color-persimmon-deep);
+  border-color: var(--color-persimmon-deep);
+}
+
+/* ── Travel underline (for nav + inline links) ────────────────────────── */
 
 .travel-underline {
   position: relative;
@@ -208,79 +327,123 @@ p {
   left: 0;
   right: 0;
   bottom: -3px;
-  height: 1px;
-  background: currentColor;
+  height: 2px;
+  background: var(--color-persimmon);
   transform-origin: left;
   transform: scaleX(0);
-  transition: transform 360ms var(--ease-letter);
+  transition: transform 360ms var(--ease-glide);
 }
 
-.travel-underline:hover::after {
+.travel-underline:hover::after { transform: scaleX(1); }
+
+.travel-underline[aria-current="page"]::after {
   transform: scaleX(1);
+  background: var(--color-ink);
 }
 
-/* ─── Grain overlay (fixed) ───────────────────────────────────────────── */
+/* ── Grain overlay (warmer than before, multiply over cream) ──────────── */
 
 .grain {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.035;
+  opacity: 0.045;
   mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.10 0 0 0 0 0.08 0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.09 0 0 0 0 0.07 0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* ─── Selection + scrollbar ───────────────────────────────────────────── */
+/* ── Letter-reveal motion (slightly faster than before) ──────────────── */
 
-::selection {
-  background: var(--color-ink);
-  color: var(--color-paper);
+@keyframes editorial-rise {
+  from { opacity: 0; transform: translateY(0.6rem); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-::-webkit-scrollbar { width: 6px; }
+.rise { opacity: 0; animation: editorial-rise 0.7s var(--ease-glide) forwards; }
+.rise-1 { animation-delay: 60ms; }
+.rise-2 { animation-delay: 160ms; }
+.rise-3 { animation-delay: 280ms; }
+.rise-4 { animation-delay: 420ms; }
+.rise-5 { animation-delay: 580ms; }
+.rise-6 { animation-delay: 760ms; }
+.rise-7 { animation-delay: 960ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; opacity: 1; }
+}
+
+/* ── Marquee ticker (footer device) ────────────────────────────────────── */
+
+@keyframes marquee-slide {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.marquee {
+  overflow: hidden;
+  border-top: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-hairline);
+  padding-block: 0.85rem;
+  background: var(--color-bone);
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  gap: 3rem;
+  animation: marquee-slide 38s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
+}
+
+.marquee-item {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+  white-space: nowrap;
+}
+
+/* ── Selection + scrollbar ─────────────────────────────────────────────── */
+
+::selection { background: var(--color-persimmon); color: var(--color-cream); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--color-hairline-strong);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
-/* ─── Buttons (filled, minimal) ───────────────────────────────────────── */
+/* ── Form elements ─────────────────────────────────────────────────────── */
 
-.btn-ink {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.85rem 1.5rem;
-  background: var(--color-ink);
-  color: var(--color-paper);
-  border: 1px solid var(--color-ink);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: var(--tracking-smallcaps);
-  text-transform: lowercase;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 240ms var(--ease-letter), color 240ms var(--ease-letter);
-}
-
-.btn-ink:hover {
-  background: var(--color-paper);
-  color: var(--color-ink);
-}
-
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.25rem;
+.field {
+  width: 100%;
   background: transparent;
-  color: var(--color-ink);
   border: 0;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: var(--tracking-smallcaps);
-  text-transform: lowercase;
-  text-decoration: none;
-  cursor: pointer;
+  border-bottom: 1px solid var(--color-hairline-strong);
+  padding: 0.85rem 0;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--color-ink);
+  transition: border-color 240ms var(--ease-glide);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--color-persimmon);
+}
+
+.field::placeholder {
+  color: var(--color-ink-mute);
+  font-style: italic;
+}
+
+textarea.field {
+  resize: vertical;
+  min-height: 6rem;
+  line-height: 1.55;
 }

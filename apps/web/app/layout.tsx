@@ -1,44 +1,35 @@
 import type { Metadata, Viewport } from 'next';
-import { Fraunces, Spline_Sans_Mono, Caveat } from 'next/font/google';
+import { Newsreader, JetBrains_Mono } from 'next/font/google';
 import { GrainOverlay } from '~/components/mira/grain-overlay';
 import './globals.css';
 
-const fraunces = Fraunces({
+const newsreader = Newsreader({
   subsets: ['latin'],
   variable: '--font-display',
   display: 'swap',
-  axes: ['SOFT', 'WONK', 'opsz'],
+  axes: ['opsz'],
+  style: ['normal', 'italic'],
 });
 
-const splineSansMono = Spline_Sans_Mono({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   display: 'swap',
   weight: ['400', '500', '600'],
 });
 
-const caveat = Caveat({
-  subsets: ['latin'],
-  variable: '--font-hand',
-  display: 'swap',
-  weight: ['400', '500'],
-});
-
 export const metadata: Metadata = {
-  title: 'mira',
-  description: 'a quiet ai for new parents.',
+  title: 'mira — quiet ai for new parents',
+  description: 'mira watches your inbox, calendar, and household admin so you can hold your baby.',
 };
 
 export const viewport: Viewport = {
-  themeColor: '#f5efe3',
+  themeColor: '#f4ecdd',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${fraunces.variable} ${splineSansMono.variable} ${caveat.variable}`}
-    >
+    <html lang="en" className={`${newsreader.variable} ${jetbrainsMono.variable}`}>
       <body>
         <GrainOverlay />
         {children}

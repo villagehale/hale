@@ -1,7 +1,6 @@
 /**
- * Fixed-position grain overlay rendered into the body. CSS-only — no JS,
- * no runtime cost. The SVG turbulence filter is inlined as a data URL
- * in globals.css; this component only places the layer.
+ * Fixed-position SVG-noise grain overlay. CSS-only — no JS, no runtime cost.
+ * Adds subtle paper texture across the whole product.
  */
 export function GrainOverlay() {
   return <div className="grain" aria-hidden />;
