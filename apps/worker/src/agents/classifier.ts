@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
+import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import { anthropic } from '../anthropic.js';
+import type { ClassifierSuggestion, EventType } from '@mira/types';
+import { haikuModel } from '../mastra/model.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
-import type { ClassifierSuggestion, EventType } from '@mira/types';
-
-const CLASSIFIER_MODEL = 'claude-haiku-4-5-20251001';
 
 const eventTypeSchema = z.enum([
   'pediatric_appointment_reminder',
@@ -45,7 +44,7 @@ const classifierOutputSchema = z.object({
   event_type: eventTypeSchema,
   confidence: z.number().min(0).max(1),
   rationale: z.string(),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   suggested_action: suggestionSchema,
 });
 
@@ -71,7 +70,14 @@ interface ClassifierRunOutput {
 }
 
 export async function runClassifier(input: ClassifierRunInput): Promise<ClassifierRunOutput> {
-  const systemPrompt = await loadPrompt('classifier');
+  const instructions = await loadPrompt('classifier');
+  const agent = new Agent({
+    id: 'mira-classifier',
+    name: 'mira-classifier',
+    instructions,
+    model: haikuModel(),
+  });
+
   const dedupHash = createHash('sha256')
     .update(`${input.familyId}|${input.source}|${input.rawContent}`)
     .digest('hex');
@@ -81,58 +87,21 @@ export async function runClassifier(input: ClassifierRunInput): Promise<Classifi
     family_context_slice: input.familyContextSlice ?? null,
   });
 
-  const response = await anthropic().messages.create({
-    model: CLASSIFIER_MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
+  const result = await agent.generate(userMessage, {
+    structuredOutput: { schema: classifierOutputSchema },
   });
 
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
-
-  const parsed = classifierOutputSchema.safeParse(extractJson(text));
-  if (!parsed.success) {
-    logger.error(
-      { familyId: input.familyId, raw: text, errors: parsed.error.flatten() },
-      'classifier: invalid JSON output',
-    );
-    throw new Error(`Classifier returned invalid JSON: ${parsed.error.message}`);
+  const parsed = result.object;
+  if (!parsed) {
+    logger.error({ familyId: input.familyId }, 'classifier: agent returned no structured output');
+    throw new Error('Classifier produced no structured output');
   }
 
   return {
-    eventType: parsed.data.event_type,
-    payload: parsed.data.payload,
-    confidence: { score: parsed.data.confidence, rationale: parsed.data.rationale },
-    suggestion: parsed.data.suggested_action,
+    eventType: parsed.event_type,
+    payload: parsed.payload,
+    confidence: { score: parsed.confidence, rationale: parsed.rationale },
+    suggestion: parsed.suggested_action,
     dedupHash,
   };
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────
-
-/**
- * Extracts the first valid JSON object from a model response. Models
- * sometimes prefix or suffix JSON with prose — we tolerate that without
- * fragile string slicing.
- */
-function extractJson(text: string): unknown {
-  const trimmed = text.trim();
-  // Direct parse first (the prompt instructs JSON-only).
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    // Fall through to brace-extract.
-  }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error('classifier output contained no JSON object');
-  }
-  return JSON.parse(trimmed.slice(start, end + 1));
-}
-
-// Type-only import for the SDK's content-block discriminator
-import type Anthropic from '@anthropic-ai/sdk';
