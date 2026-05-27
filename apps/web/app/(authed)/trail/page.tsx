@@ -95,9 +95,9 @@ const ENTRIES: TrailEntry[] = [
 ];
 
 const ACTOR_COLOR: Record<TrailEntry['actor'], string> = {
-  mira: 'text-persimmon',
+  mira: 'text-copper',
   you: 'text-ink',
-  'co-parent': 'text-forest',
+  'co-parent': 'text-sage',
 };
 
 export default function TrailPage() {

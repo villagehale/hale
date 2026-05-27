@@ -63,7 +63,7 @@ export default function DraftsPage() {
         </div>
         <div className="lg:col-span-10">
           <h1 className="font-display">
-            three things <em className="italic text-persimmon">for your eye.</em>
+            three things <em className="text-copper">for your eye.</em>
           </h1>
         </div>
       </header>
@@ -81,7 +81,7 @@ export default function DraftsPage() {
                 <div className="md:col-span-8 space-y-6">
                   <div className="space-y-2">
                     <span className="eyebrow">to · {draft.recipient}</span>
-                    <h2 className="font-display italic text-3xl lg:text-4xl">
+                    <h2 className="font-display text-3xl lg:text-4xl">
                       {draft.subject}
                     </h2>
                   </div>
@@ -90,13 +90,13 @@ export default function DraftsPage() {
                     {draft.body}
                   </p>
 
-                  <div className="border-l-2 border-persimmon pl-5 py-1 text-ink-mute">
+                  <div className="border-l-2 border-copper pl-5 py-1 text-ink-mute">
                     <span className="eyebrow text-ink-soft">why this draft</span>
                     <p className="mt-1 italic">{draft.rationale}</p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-2">
-                    <button type="button" className="btn-block">approve and send</button>
+                    <button type="button" className="btn-primary">approve and send</button>
                     <button type="button" className="btn-ghost">edit</button>
                     <button type="button" className="meta hover:text-ink">skip</button>
                     <button type="button" className="meta hover:text-ink">always handle these</button>

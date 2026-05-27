@@ -1,64 +1,83 @@
 @import "tailwindcss";
 
 /*
- * Mira — "Editorial Cabin" design system.
+ * Mira — "Warm Home" design system.
  *
- * A confident, responsive magazine voice for new parents. Mobile reading
- * still works one-handed, but desktop is a real editorial spread: big
- * display typography, asymmetric grid, sticky sidebar, decorative
- * gutters with folio numbers. Tablet sits between the two cleanly.
+ * Inspired by Tripfix's warm-cream-with-white-cards aesthetic, adapted
+ * for a newborn-family platform. Honey-copper signature accent, soft
+ * rounded corners, gentle drop shadows, friendly spring animations.
+ * Distinctive Spectral display + DM Sans body — not the same fonts as
+ * Tripfix or any prior pass.
  */
 
 @theme {
   /* ── Palette ─────────────────────────────────────────────────────────── */
-  --color-cream: #f4ecdd;
-  --color-bone: #ede2cd;
-  --color-bone-deep: #e3d5b8;
-  --color-ink: #211712;
-  --color-ink-soft: #3f2f26;
-  --color-ink-mute: #87766a;
-  --color-hairline: rgb(33 23 18 / 0.12);
-  --color-hairline-strong: rgb(33 23 18 / 0.28);
-  --color-persimmon: #e8542a;
-  --color-persimmon-deep: #b13b18;
-  --color-forest: #2f4a36;
-  --color-forest-soft: #5d7762;
-  --color-lavender: #5a4a6b;
-  --color-lavender-soft: #897692;
+  --color-cream: #faf7f2;
+  --color-cream-deep: #f5f1e9;
+  --color-cream-soft: #fdfbf6;
+  --color-surface: #ffffff;
+  --color-ink: #2d2a26;
+  --color-ink-soft: #5c5852;
+  --color-ink-mute: #8a8580;
+  --color-hairline: rgb(45 42 38 / 0.08);
+  --color-hairline-strong: rgb(45 42 38 / 0.20);
+
+  /* Signature: warm honey-copper. Distinct from Tripfix's yellow. */
+  --color-copper: #d17a47;
+  --color-copper-deep: #a35a2f;
+  --color-copper-soft: #f7e5d5;
+  --color-copper-glow: #fde9d4;
+
+  /* Supporting tones */
+  --color-sage: #7a9676;
+  --color-sage-soft: #dde6d8;
+  --color-clay: #b86844;
+  --color-dust: #c4b8a5;
+  --color-mist: #b5ad9f;
 
   /* ── Type ────────────────────────────────────────────────────────────── */
-  --font-display: "Newsreader", "Source Serif 4", ui-serif, Georgia, serif;
-  --font-body: "Newsreader", "Source Serif 4", ui-serif, Georgia, serif;
+  --font-display: "Spectral", "Times New Roman", ui-serif, Georgia, serif;
+  --font-body:
+    "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Menlo", monospace;
 
-  --tracking-display: -0.025em;
-  --tracking-headline: -0.015em;
-  --tracking-eyebrow: 0.18em;
+  --tracking-display: -0.018em;
+  --tracking-headline: -0.012em;
+  --tracking-eyebrow: 0.14em;
   --tracking-mono: 0.02em;
 
-  /* ── Rhythm ──────────────────────────────────────────────────────────── */
-  --shell-pad-x: clamp(1.25rem, 4vw, 6rem);
+  /* ── Spacing & rhythm ────────────────────────────────────────────────── */
+  --shell-pad-x: clamp(1.25rem, 4vw, 5rem);
   --rhythm-section: clamp(3rem, 6vw, 5rem);
-  --rhythm-entry: clamp(2.25rem, 4vw, 3.5rem);
 
-  /* ── Curves ──────────────────────────────────────────────────────────── */
-  --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* ── Radius (Tripfix-inspired softness) ──────────────────────────────── */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 16px;
+  --r-2xl: 24px;
+  --r-full: 9999px;
+
+  /* ── Shadow (gentle elevation, no harshness) ────────────────────────── */
+  --shadow-soft: 0 1px 2px rgb(45 42 38 / 0.04), 0 4px 12px rgb(45 42 38 / 0.04);
+  --shadow-card: 0 1px 2px rgb(45 42 38 / 0.04), 0 8px 24px rgb(45 42 38 / 0.06);
+  --shadow-lift: 0 2px 4px rgb(45 42 38 / 0.06), 0 16px 40px rgb(45 42 38 / 0.10);
+
+  /* ── Curves (iOS-style spring, borrowed from Tripfix's ease-spring) ─── */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-glide: cubic-bezier(0.16, 0.84, 0.44, 1);
+  --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
 
-* {
-  border-color: var(--color-hairline);
-}
+* { border-color: var(--color-hairline); }
 
 html {
   background: var(--color-cream);
   color: var(--color-ink);
   font-family: var(--font-body);
   font-feature-settings: "kern", "liga", "calt", "ss01";
-  font-optical-sizing: auto;
-  font-variation-settings: "opsz" 22;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -67,46 +86,36 @@ html {
 body {
   background: var(--color-cream);
   color: var(--color-ink);
-  font-size: 17px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.6;
   font-weight: 400;
   min-height: 100vh;
 }
 
 @media (min-width: 1024px) {
-  body { font-size: 18px; }
+  body { font-size: 16px; }
 }
 
-/* Headlines: Newsreader cranked up the optical size axis for display weight */
+/* Headlines: Spectral, characterful italic-capable */
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   letter-spacing: var(--tracking-display);
   font-weight: 400;
-  font-variation-settings: "opsz" 144;
-  line-height: 0.94;
+  line-height: 1.05;
 }
 
-h1 { font-size: clamp(2.75rem, 7vw, 6rem); }
-h2 { font-size: clamp(2rem, 4.5vw, 3.5rem); }
-h3 { font-size: clamp(1.5rem, 2.5vw, 2.25rem); }
+h1 { font-size: clamp(2.5rem, 6.5vw, 5.5rem); }
+h2 { font-size: clamp(1.85rem, 4vw, 3.25rem); }
+h3 { font-size: clamp(1.35rem, 2.4vw, 2rem); }
 
-p {
-  font-variation-settings: "opsz" 22;
-}
+/* ── Type utilities ────────────────────────────────────────────────────── */
 
-/* ── Display utilities ─────────────────────────────────────────────────── */
-
-.display-mono { font-family: var(--font-mono); }
-
-.display-italic {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-variation-settings: "opsz" 144;
-}
+.font-display { font-family: var(--font-display); }
+.font-body { font-family: var(--font-body); }
 
 .eyebrow {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
   font-weight: 500;
@@ -122,7 +131,7 @@ p {
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ── Shell + grid ──────────────────────────────────────────────────────── */
+/* ── Shell + layout ────────────────────────────────────────────────────── */
 
 .shell {
   width: 100%;
@@ -131,26 +140,15 @@ p {
   max-width: 1440px;
 }
 
-.shell-narrow {
-  width: 100%;
-  padding-inline: var(--shell-pad-x);
-  margin-inline: auto;
-  max-width: 880px;
-}
-
-/* Editorial layout: sidebar + main on desktop, stacked on mobile.
-   Sidebar is sticky and decorative — folio, date, cost.
-   Mobile keeps a slim top header. */
 .editorial-layout {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0;
   min-height: 100vh;
 }
 
 @media (min-width: 1024px) {
   .editorial-layout {
-    grid-template-columns: clamp(260px, 22vw, 320px) 1fr;
+    grid-template-columns: clamp(240px, 20vw, 300px) 1fr;
   }
 }
 
@@ -165,155 +163,209 @@ p {
     top: 0;
     align-self: start;
     height: 100vh;
+    background: var(--color-cream-deep);
     border-right: 1px solid var(--color-hairline);
-    padding: 3.5rem var(--shell-pad-x) 2rem;
+    padding: 2.5rem 2rem 2rem;
     overflow-y: auto;
   }
 }
 
 .main-stage {
-  padding-inline: var(--shell-pad-x);
-  padding-block: clamp(2.5rem, 5vw, 4.5rem);
+  padding: clamp(1.5rem, 3vw, 3rem) var(--shell-pad-x) clamp(3rem, 6vw, 6rem);
 }
 
 @media (min-width: 1024px) {
-  .main-stage {
-    padding-block: clamp(4rem, 7vw, 7rem);
-  }
+  .main-stage { padding-top: clamp(3rem, 5vw, 5rem); }
 }
 
-/* Mobile-only top header */
 .top-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem var(--shell-pad-x);
+  padding: 1rem var(--shell-pad-x);
   border-bottom: 1px solid var(--color-hairline);
-  background: var(--color-cream);
+  background: var(--color-cream-soft);
   position: sticky;
   top: 0;
   z-index: 20;
-  backdrop-filter: blur(8px);
 }
 
 @media (min-width: 1024px) {
   .top-header { display: none; }
 }
 
-/* ── The reading column inside main-stage ──────────────────────────────── */
+/* ── Cards (the friendly Tripfix-inspired surface) ─────────────────────── */
 
-.reading-column {
-  max-width: 660px;
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--r-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 280ms var(--ease-glide), transform 280ms var(--ease-spring);
 }
 
-@media (min-width: 1024px) {
-  .reading-column {
-    max-width: 720px;
-  }
+.card:hover { box-shadow: var(--shadow-card); }
+
+@media (min-width: 768px) {
+  .card { padding: 1.5rem; }
 }
 
-/* Asymmetric two-column reading on wider screens — used selectively */
-.editorial-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.5rem;
+.card-lg {
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--r-xl);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
 }
 
 @media (min-width: 768px) {
-  .editorial-grid {
-    grid-template-columns: 64px 1fr;
-    gap: 2rem;
-  }
+  .card-lg { padding: 2rem; }
 }
 
-/* ── Folio + entry markers ─────────────────────────────────────────────── */
-
-.folio {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  letter-spacing: var(--tracking-mono);
-  color: var(--color-ink-mute);
-  font-weight: 500;
-  padding-top: 0.6rem;
-  line-height: 1;
+/* Cream-tinted callout card */
+.card-warm {
+  background: var(--color-copper-glow);
+  border: 1px solid var(--color-copper-soft);
+  border-radius: var(--r-lg);
+  padding: 1.5rem;
 }
 
-.tone-stripe {
-  display: inline-block;
-  width: 28px;
-  height: 4px;
-  vertical-align: middle;
-}
+/* ── Buttons (Tripfix-inspired roundness + warmth) ─────────────────────── */
 
-.tone-stripe[data-tone="done"] { background: var(--color-forest); }
-.tone-stripe[data-tone="awaiting"] { background: var(--color-persimmon); }
-.tone-stripe[data-tone="coach"] { background: var(--color-lavender); }
-.tone-stripe[data-tone="needs-you"] { background: var(--color-persimmon-deep); }
-
-/* ── Buttons (color-block press) ───────────────────────────────────────── */
-
-.btn-block {
-  position: relative;
+.btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.85rem 1.6rem;
-  background: var(--color-ink);
-  color: var(--color-cream);
-  border: 1px solid var(--color-ink);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
+  gap: 0.5rem;
+  padding: 0.7rem 1.4rem;
+  background: var(--color-copper);
+  color: var(--color-surface);
+  border: 1px solid var(--color-copper);
+  border-radius: var(--r-md);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
   font-weight: 500;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 240ms var(--ease-press), background 240ms var(--ease-press);
-  isolation: isolate;
+  box-shadow: var(--shadow-soft);
+  transition: background 240ms var(--ease-press), transform 240ms var(--ease-spring), box-shadow 240ms var(--ease-press);
 }
 
-.btn-block::before {
-  content: "";
-  position: absolute;
-  inset: 4px -4px -4px 4px;
-  background: var(--color-persimmon);
-  z-index: -1;
-  transition: inset 240ms var(--ease-press);
+.btn-primary:hover {
+  background: var(--color-copper-deep);
+  border-color: var(--color-copper-deep);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
 }
 
-.btn-block:hover {
-  transform: translate(-2px, -2px);
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.4rem;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--r-md);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 240ms var(--ease-press), transform 240ms var(--ease-spring);
 }
 
-.btn-block:hover::before {
-  inset: 6px -6px -6px 6px;
+.btn-secondary:hover {
+  background: var(--color-cream);
+  transform: translateY(-1px);
 }
 
 .btn-ghost {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0;
+  gap: 0.4rem;
+  padding: 0.5rem 0.25rem;
   background: transparent;
   color: var(--color-ink);
   border: 0;
-  border-bottom: 1px solid var(--color-ink);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: color 240ms var(--ease-glide), border-color 240ms var(--ease-glide);
+  transition: color 240ms var(--ease-glide);
 }
 
-.btn-ghost:hover {
-  color: var(--color-persimmon-deep);
-  border-color: var(--color-persimmon-deep);
+.btn-ghost:hover { color: var(--color-copper-deep); }
+
+/* ── Pills + badges ────────────────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  background: var(--color-cream-deep);
+  color: var(--color-ink-soft);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-mono);
 }
 
-/* ── Travel underline (for nav + inline links) ────────────────────────── */
+.pill-copper {
+  background: var(--color-copper-soft);
+  color: var(--color-copper-deep);
+}
+
+.pill-sage {
+  background: var(--color-sage-soft);
+  color: var(--color-sage);
+}
+
+/* ── Tone stripe (kept from prior pass, recolored) ────────────────────── */
+
+.tone-stripe {
+  display: inline-block;
+  width: 24px;
+  height: 3px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.tone-stripe[data-tone="done"] { background: var(--color-sage); }
+.tone-stripe[data-tone="awaiting"] { background: var(--color-copper); }
+.tone-stripe[data-tone="coach"] { background: var(--color-mist); }
+.tone-stripe[data-tone="needs-you"] { background: var(--color-clay); }
+
+/* ── Field (form inputs) — 16px on mobile to prevent iOS zoom ─────────── */
+
+.field {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--r-md);
+  padding: 0.75rem 1rem;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--color-ink);
+  transition: border-color 240ms var(--ease-glide), box-shadow 240ms var(--ease-glide);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--color-copper);
+  box-shadow: 0 0 0 4px var(--color-copper-soft);
+}
+
+.field::placeholder {
+  color: var(--color-ink-mute);
+}
+
+textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
+
+/* ── Travel underline (nav active state) ──────────────────────────────── */
 
 .travel-underline {
   position: relative;
@@ -328,52 +380,67 @@ p {
   right: 0;
   bottom: -3px;
   height: 2px;
-  background: var(--color-persimmon);
+  background: var(--color-copper);
+  border-radius: 1px;
   transform-origin: left;
   transform: scaleX(0);
   transition: transform 360ms var(--ease-glide);
 }
 
 .travel-underline:hover::after { transform: scaleX(1); }
-
 .travel-underline[aria-current="page"]::after {
   transform: scaleX(1);
   background: var(--color-ink);
 }
 
-/* ── Grain overlay (warmer than before, multiply over cream) ──────────── */
+/* ── Motion (spring-eased reveal) ──────────────────────────────────────── */
 
-.grain {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.045;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.09 0 0 0 0 0.07 0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
-/* ── Letter-reveal motion (slightly faster than before) ──────────────── */
-
-@keyframes editorial-rise {
-  from { opacity: 0; transform: translateY(0.6rem); }
+@keyframes warm-rise {
+  from { opacity: 0; transform: translateY(0.5rem); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.rise { opacity: 0; animation: editorial-rise 0.7s var(--ease-glide) forwards; }
+.rise { opacity: 0; animation: warm-rise 0.6s var(--ease-spring) forwards; }
 .rise-1 { animation-delay: 60ms; }
 .rise-2 { animation-delay: 160ms; }
-.rise-3 { animation-delay: 280ms; }
-.rise-4 { animation-delay: 420ms; }
-.rise-5 { animation-delay: 580ms; }
-.rise-6 { animation-delay: 760ms; }
-.rise-7 { animation-delay: 960ms; }
+.rise-3 { animation-delay: 260ms; }
+.rise-4 { animation-delay: 380ms; }
+.rise-5 { animation-delay: 520ms; }
+.rise-6 { animation-delay: 680ms; }
+.rise-7 { animation-delay: 860ms; }
 
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; opacity: 1; }
 }
 
-/* ── Marquee ticker (footer device) ────────────────────────────────────── */
+/* ── Selection + scrollbar ─────────────────────────────────────────────── */
+
+::selection {
+  background: var(--color-copper-soft);
+  color: var(--color-copper-deep);
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-hairline-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-mist); }
+
+/* ── Hairline divider ──────────────────────────────────────────────────── */
+
+.hairline {
+  border: 0;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.hairline-strong {
+  border: 0;
+  border-top: 1px solid var(--color-hairline-strong);
+}
+
+/* ── Marquee (kept, restyled) ──────────────────────────────────────────── */
 
 @keyframes marquee-slide {
   from { transform: translateX(0); }
@@ -382,10 +449,9 @@ p {
 
 .marquee {
   overflow: hidden;
-  border-top: 1px solid var(--color-hairline);
-  border-bottom: 1px solid var(--color-hairline);
+  background: var(--color-cream-deep);
+  border-block: 1px solid var(--color-hairline);
   padding-block: 0.85rem;
-  background: var(--color-bone);
 }
 
 .marquee-track {
@@ -395,55 +461,22 @@ p {
   animation: marquee-slide 38s linear infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .marquee-track { animation: none; }
-}
+@media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
 
 .marquee-item {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
   color: var(--color-ink-soft);
   white-space: nowrap;
 }
 
-/* ── Selection + scrollbar ─────────────────────────────────────────────── */
+/* ── Mobile safe-area helpers ──────────────────────────────────────────── */
 
-::selection { background: var(--color-persimmon); color: var(--color-cream); }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--color-hairline-strong);
-  border-radius: 4px;
-}
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
 
-/* ── Form elements ─────────────────────────────────────────────────────── */
-
-.field {
-  width: 100%;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--color-hairline-strong);
-  padding: 0.85rem 0;
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  color: var(--color-ink);
-  transition: border-color 240ms var(--ease-glide);
-}
-
-.field:focus {
-  outline: none;
-  border-color: var(--color-persimmon);
-}
-
-.field::placeholder {
-  color: var(--color-ink-mute);
-  font-style: italic;
-}
-
-textarea.field {
-  resize: vertical;
-  min-height: 6rem;
-  line-height: 1.55;
+@media (max-width: 768px) {
+  /* prevent iOS zoom on focus */
+  input, textarea, select { font-size: 16px !important; }
 }

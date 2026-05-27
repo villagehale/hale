@@ -81,7 +81,7 @@ export default function LivePage() {
         <div className="flex items-baseline justify-between gap-6 border-y border-hairline py-6">
           <div className="flex items-center gap-3">
             <span
-              className="block h-2 w-2 rounded-full bg-forest animate-pulse"
+              className="block h-2 w-2 rounded-full bg-sage animate-pulse"
               aria-hidden
             />
             <span className="eyebrow text-ink">listening</span>
@@ -127,7 +127,7 @@ export default function LivePage() {
             sent to a third party except where you connected one. your child's name,
             date of birth, and medical details are encrypted at rest with keys you
             can rotate. you can export or delete everything you see here in one tap
-            from <span className="font-display italic">trail</span>.
+            from <span className="font-display">trail</span>.
           </p>
         </div>
       </section>

@@ -87,12 +87,12 @@ const FACTS: Fact[] = [
 ];
 
 const TYPE_COLOR: Record<Fact['type'], string> = {
-  preference: 'text-persimmon',
-  routine: 'text-forest',
-  medical: 'text-persimmon-deep',
-  logistic: 'text-lavender',
-  relationship: 'text-forest',
-  voice: 'text-lavender',
+  preference: 'text-copper',
+  routine: 'text-sage',
+  medical: 'text-copper-deep',
+  logistic: 'text-clay',
+  relationship: 'text-sage',
+  voice: 'text-clay',
 };
 
 export default function MemoryPage() {
@@ -105,7 +105,7 @@ export default function MemoryPage() {
         </div>
         <div className="lg:col-span-10">
           <h1 className="font-display">
-            what i <em className="italic text-persimmon">know</em> about
+            what i <em className="text-copper">know</em> about
             <br />
             your household.
           </h1>
@@ -136,7 +136,7 @@ export default function MemoryPage() {
                 <Folio index={idx + 1} />
               </div>
 
-              <h3 className="font-display italic text-2xl leading-tight">
+              <h3 className="font-display text-2xl leading-tight">
                 {fact.key}
               </h3>
 
@@ -155,7 +155,7 @@ export default function MemoryPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="button" className="meta hover:text-ink">edit</button>
-                  <button type="button" className="meta hover:text-persimmon-deep">delete</button>
+                  <button type="button" className="meta hover:text-copper-deep">delete</button>
                 </div>
               </div>
             </article>

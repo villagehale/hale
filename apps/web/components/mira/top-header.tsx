@@ -22,7 +22,7 @@ export function TopHeader() {
 
   return (
     <header className="top-header">
-      <Link href="/digest" className="font-display italic text-2xl leading-none">
+      <Link href="/digest" className="font-display text-2xl leading-none">
         mira
       </Link>
 

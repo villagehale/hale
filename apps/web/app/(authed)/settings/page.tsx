@@ -32,7 +32,7 @@ export default function SettingsPage() {
         </div>
         <div className="lg:col-span-10">
           <h1 className="font-display">
-            tune the <em className="italic text-persimmon">trust ladder.</em>
+            tune the <em className="text-copper">trust ladder.</em>
           </h1>
         </div>
       </header>
@@ -45,23 +45,23 @@ export default function SettingsPage() {
         <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
           <div>
             <p className="meta text-ink-soft">primary parent</p>
-            <p className="font-display italic text-2xl mt-1">barton</p>
+            <p className="font-display text-2xl mt-1">barton</p>
             <p className="meta mt-1">barton@example.com</p>
           </div>
           <div>
             <p className="meta text-ink-soft">co-parent</p>
-            <p className="font-display italic text-2xl mt-1">invite pending</p>
+            <p className="font-display text-2xl mt-1">invite pending</p>
             <p className="meta mt-1">— send by qr or email</p>
             <button type="button" className="btn-ghost mt-3">send invite</button>
           </div>
           <div>
             <p className="meta text-ink-soft">child</p>
-            <p className="font-display italic text-2xl mt-1">maya · 4 months</p>
+            <p className="font-display text-2xl mt-1">maya · 4 months</p>
             <p className="meta mt-1">born 26 jan 2026</p>
           </div>
           <div>
             <p className="meta text-ink-soft">parenting style</p>
-            <p className="font-display italic text-2xl mt-1">gentle</p>
+            <p className="font-display text-2xl mt-1">gentle</p>
             <p className="meta mt-1">— affects coach voice + recommendations</p>
           </div>
         </div>
@@ -72,7 +72,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
           <div className="lg:col-span-3 lg:sticky lg:top-12 lg:self-start">
             <span className="eyebrow">trust ladder</span>
-            <h2 className="mt-5 font-display italic">
+            <h2 className="mt-5 font-display">
               what i can do <em className="not-italic">on my own.</em>
             </h2>
             <p className="mt-4 text-ink-soft leading-relaxed">
@@ -92,7 +92,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="md:col-span-5">
                     <span className="eyebrow">{row.category}</span>
-                    <h3 className="mt-2 font-display italic text-2xl leading-tight">
+                    <h3 className="mt-2 font-display text-2xl leading-tight">
                       {row.action}
                     </h3>
                     <p className="meta mt-1">to · {row.recipient}</p>
@@ -102,7 +102,7 @@ export default function SettingsPage() {
                     <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                       <button type="button" className="meta hover:text-ink">downgrade</button>
                       <button type="button" className="meta hover:text-ink">freeze here</button>
-                      <button type="button" className="meta hover:text-persimmon-deep">always ask</button>
+                      <button type="button" className="meta hover:text-copper-deep">always ask</button>
                     </div>
                   </div>
                 </div>
@@ -116,7 +116,7 @@ export default function SettingsPage() {
       <section className="rise rise-5 grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-hairline pt-10">
         <div className="lg:col-span-3">
           <span className="eyebrow">spending</span>
-          <h2 className="mt-5 font-display italic">caps + categories</h2>
+          <h2 className="mt-5 font-display">caps + categories</h2>
         </div>
         <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6">
           {[
@@ -146,14 +146,14 @@ export default function SettingsPage() {
       {/* KILL SWITCH */}
       <section className="rise rise-7 grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-hairline pt-10">
         <div className="lg:col-span-3">
-          <span className="eyebrow text-persimmon-deep">pause</span>
+          <span className="eyebrow text-copper-deep">pause</span>
         </div>
         <div className="lg:col-span-9 flex flex-wrap items-baseline gap-x-6 gap-y-4">
           <p className="text-lg text-ink-soft leading-snug max-w-md">
             need me to step back for a while? one tap pauses everything for 24 hours.
             i'll still log signals but i won't draft or act.
           </p>
-          <button type="button" className="btn-block">pause everything · 24h</button>
+          <button type="button" className="btn-primary">pause everything · 24h</button>
         </div>
       </section>
     </div>

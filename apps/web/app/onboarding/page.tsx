@@ -27,14 +27,14 @@ export default function OnboardingPage() {
       {/* HEADER */}
       <header className="shell pt-8 pb-6 border-b border-hairline">
         <div className="flex items-baseline justify-between gap-6">
-          <Link href="/" className="font-display italic text-2xl leading-none">
+          <Link href="/" className="font-display text-2xl leading-none">
             mira
           </Link>
           <div className="flex items-center gap-2">
             {[1, 2, 3, 4, 5].map((s) => (
               <span
                 key={s}
-                className={`block h-1 w-8 ${s <= step ? 'bg-persimmon' : 'bg-hairline-strong'}`}
+                className={`block h-1 w-8 ${s <= step ? 'bg-copper' : 'bg-hairline-strong'}`}
                 aria-hidden
               />
             ))}
@@ -47,7 +47,7 @@ export default function OnboardingPage() {
           <div className="lg:col-span-3">
             <Folio index={Number(meta.folio)} />
             <span className="eyebrow block mt-4">{meta.eyebrow}</span>
-            <h1 className="mt-6 font-display italic">
+            <h1 className="mt-6 font-display">
               {meta.title}
             </h1>
           </div>
@@ -70,7 +70,7 @@ export default function OnboardingPage() {
                 <div className="flex flex-wrap items-center gap-5 pt-4">
                   <button
                     type="button"
-                    className="btn-block"
+                    className="btn-primary"
                     onClick={() => setStep(2)}
                   >
                     sign in with passkey
@@ -85,7 +85,7 @@ export default function OnboardingPage() {
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-ink-soft leading-relaxed">
                   i need a few small things. you can type, or tap{' '}
-                  <button type="button" className="travel-underline italic">hold to talk</button>{' '}
+                  <button type="button" className="travel-underline">hold to talk</button>{' '}
                   if you're holding the baby.
                 </p>
 
@@ -129,11 +129,11 @@ export default function OnboardingPage() {
                           onClick={() => setParentingStyle(opt.id)}
                           className={`text-left border p-4 transition-colors ${
                             parentingStyle === opt.id
-                              ? 'border-ink bg-bone'
+                              ? 'border-ink bg-cream-deep'
                               : 'border-hairline-strong hover:border-ink'
                           }`}
                         >
-                          <span className="font-display italic text-xl">{opt.label}</span>
+                          <span className="font-display text-xl">{opt.label}</span>
                           <span className="meta block mt-1">{opt.note}</span>
                         </button>
                       ))}
@@ -143,7 +143,7 @@ export default function OnboardingPage() {
 
                 <div className="flex flex-wrap items-center gap-5 pt-4">
                   <button type="button" className="btn-ghost" onClick={() => setStep(1)}>← back</button>
-                  <button type="button" className="btn-block ml-auto" onClick={() => setStep(3)}>
+                  <button type="button" className="btn-primary ml-auto" onClick={() => setStep(3)}>
                     continue
                   </button>
                 </div>
@@ -166,7 +166,7 @@ export default function OnboardingPage() {
                   ].map((phase) => (
                     <div key={phase.eyebrow}>
                       <span className="eyebrow">{phase.eyebrow}</span>
-                      <p className="font-display italic text-2xl mt-2 leading-snug">
+                      <p className="font-display text-2xl mt-2 leading-snug">
                         {phase.body}
                       </p>
                     </div>
@@ -181,7 +181,7 @@ export default function OnboardingPage() {
 
                 <div className="flex flex-wrap items-center gap-5 pt-4">
                   <button type="button" className="btn-ghost" onClick={() => setStep(2)}>← back</button>
-                  <button type="button" className="btn-block ml-auto" onClick={() => setStep(4)}>
+                  <button type="button" className="btn-primary ml-auto" onClick={() => setStep(4)}>
                     i understand · continue
                   </button>
                 </div>
@@ -194,7 +194,7 @@ export default function OnboardingPage() {
                   connect one source first. gmail is the highest-leverage entry —
                   the pediatric office, daycare, government, and family all reach
                   you there. you can connect calendar and photos next from the{' '}
-                  <span className="font-display italic">connected</span> page.
+                  <span className="font-display">connected</span> page.
                 </p>
 
                 <div className="space-y-4">
@@ -209,10 +209,10 @@ export default function OnboardingPage() {
                       className="w-full text-left border border-hairline-strong p-5 flex items-baseline justify-between hover:border-ink transition-colors"
                     >
                       <div>
-                        <span className="font-display italic text-2xl">{opt.label}</span>
+                        <span className="font-display text-2xl">{opt.label}</span>
                         <span className="meta block mt-1">{opt.note}</span>
                       </div>
-                      <span className="eyebrow text-persimmon">connect →</span>
+                      <span className="eyebrow text-copper">connect →</span>
                     </button>
                   ))}
                 </div>
@@ -227,7 +227,7 @@ export default function OnboardingPage() {
                   <button type="button" className="btn-ghost ml-auto" onClick={() => setStep(5)}>
                     skip for now
                   </button>
-                  <button type="button" className="btn-block" onClick={() => setStep(5)}>
+                  <button type="button" className="btn-primary" onClick={() => setStep(5)}>
                     continue
                   </button>
                 </div>
@@ -242,9 +242,9 @@ export default function OnboardingPage() {
                   you can approve actions. neither of you can be locked out.
                 </p>
 
-                <div className="border border-hairline-strong p-6 bg-bone">
+                <div className="border border-hairline-strong p-6 bg-cream-deep">
                   <span className="eyebrow">share this link</span>
-                  <p className="font-display italic text-xl break-all mt-2">
+                  <p className="font-display text-xl break-all mt-2">
                     mira.family/invite/87c2-d9f5-12a8
                   </p>
                   <div className="flex flex-wrap items-center gap-3 mt-4">
@@ -261,7 +261,7 @@ export default function OnboardingPage() {
 
                 <div className="flex flex-wrap items-center gap-5 pt-4">
                   <button type="button" className="btn-ghost" onClick={() => setStep(4)}>← back</button>
-                  <Link href="/digest" className="btn-block ml-auto">
+                  <Link href="/digest" className="btn-primary ml-auto">
                     finish · go to my digest
                   </Link>
                 </div>

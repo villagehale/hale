@@ -14,7 +14,7 @@ export default function LandingPage() {
           <div className="lg:col-span-10 rise rise-2">
             <h1 className="font-display leading-[0.92] tracking-tight">
               <span className="block">a household</span>
-              <span className="block italic text-persimmon">platform</span>
+              <span className="block text-copper">platform</span>
               <span className="block">for the first</span>
               <span className="block">year, and the next eighteen.</span>
             </h1>
@@ -38,7 +38,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── MARQUEE ROW ──────────────────────────────────────────────────── */}
-      <section className="border-y border-hairline bg-bone overflow-hidden">
+      <section className="border-y border-hairline bg-cream-deep overflow-hidden">
         <Marquee
           items={[
             'pediatric scheduling',
@@ -58,7 +58,7 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-12">
           <div className="lg:col-span-3">
             <span className="eyebrow">how it works</span>
-            <h2 className="mt-6 font-display italic text-persimmon">
+            <h2 className="mt-6 font-display text-copper">
               trust,
               <br />
               earned in
@@ -92,7 +92,7 @@ export default function LandingPage() {
             ].map((step) => (
               <article key={step.folio} className="border-t border-hairline pt-6">
                 <span className="folio">{step.folio}</span>
-                <h3 className="mt-3 font-display italic text-2xl">{step.title}</h3>
+                <h3 className="mt-3 font-display text-2xl">{step.title}</h3>
                 <p className="mt-3 text-ink-soft leading-relaxed">{step.body}</p>
               </article>
             ))}
@@ -108,7 +108,7 @@ export default function LandingPage() {
           </div>
           <div className="lg:col-span-9">
             <h2 className="font-display text-cream">
-              mira will <em className="text-persimmon not-italic">never</em>
+              mira will <em className="text-copper not-italic">never</em>
             </h2>
             <ul className="mt-12 space-y-6 text-xl leading-snug">
               {[
@@ -133,7 +133,7 @@ export default function LandingPage() {
       <section className="shell py-20 lg:py-32">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 items-end">
           <div className="lg:col-span-7">
-            <h2 className="font-display italic">
+            <h2 className="font-display">
               join the early cohort of ten toronto families.
             </h2>
             <p className="mt-6 text-lg text-ink-soft">
@@ -143,7 +143,7 @@ export default function LandingPage() {
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-4 lg:items-end">
-            <Link href="/onboarding" className="btn-block">
+            <Link href="/onboarding" className="btn-primary">
               request an invite
             </Link>
             <Link href="/digest" className="btn-ghost">

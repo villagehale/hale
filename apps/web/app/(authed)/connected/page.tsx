@@ -149,8 +149,8 @@ const STATUS_LABEL: Record<Source['status'], string> = {
 };
 
 const STATUS_TONE: Record<Source['status'], string> = {
-  connected: 'text-forest',
-  available: 'text-persimmon',
+  connected: 'text-sage',
+  available: 'text-copper',
   optional: 'text-ink-mute',
 };
 
@@ -164,7 +164,7 @@ export default function ConnectedPage() {
         </div>
         <div className="lg:col-span-10">
           <h1 className="font-display">
-            three tiers <em className="italic text-persimmon">of trust.</em>
+            three tiers <em className="text-copper">of trust.</em>
           </h1>
         </div>
       </header>
@@ -188,7 +188,7 @@ export default function ConnectedPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-12">
             <div className="lg:col-span-3 lg:sticky lg:top-12 lg:self-start">
               <span className="eyebrow">{tier.eyebrow}</span>
-              <h2 className="mt-5 font-display italic">
+              <h2 className="mt-5 font-display">
                 {tier.title}
               </h2>
               <p className="mt-4 text-ink-soft leading-relaxed">{tier.description}</p>
@@ -204,7 +204,7 @@ export default function ConnectedPage() {
                     </span>
                   </div>
 
-                  <h3 className="font-display italic text-3xl leading-tight">
+                  <h3 className="font-display text-3xl leading-tight">
                     {src.name}
                   </h3>
 
@@ -233,7 +233,7 @@ export default function ConnectedPage() {
                     {src.status === 'connected' ? (
                       <button type="button" className="btn-ghost">manage</button>
                     ) : (
-                      <button type="button" className="btn-block">
+                      <button type="button" className="btn-primary">
                         {STATUS_LABEL[src.status]}
                       </button>
                     )}

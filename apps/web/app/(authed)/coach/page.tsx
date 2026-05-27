@@ -41,7 +41,7 @@ export default function CoachPage() {
         </div>
         <div className="lg:col-span-10">
           <h1 className="font-display">
-            ask me <em className="italic text-persimmon">anything.</em>
+            ask me <em className="text-copper">anything.</em>
           </h1>
         </div>
       </header>
@@ -74,7 +74,7 @@ export default function CoachPage() {
                     <span className="eyebrow">you · 06:48</span>
                   </div>
                   <div className="md:col-span-8">
-                    <p className="font-display italic text-2xl lg:text-3xl leading-snug">
+                    <p className="font-display text-2xl lg:text-3xl leading-snug">
                       "{entry.body}"
                     </p>
                   </div>
@@ -89,7 +89,7 @@ export default function CoachPage() {
                   <Folio index={idx + 1} />
                 </div>
                 <div className="md:col-span-3">
-                  <span className="eyebrow text-persimmon">mira · 06:48</span>
+                  <span className="eyebrow text-copper">mira · 06:48</span>
                   <p className="meta mt-2">confidence 0.88</p>
                 </div>
                 <div className="md:col-span-8 space-y-6">
@@ -97,7 +97,7 @@ export default function CoachPage() {
                     {entry.body}
                   </p>
                   {entry.citations ? (
-                    <div className="border-l-2 border-persimmon pl-5 py-1">
+                    <div className="border-l-2 border-copper pl-5 py-1">
                       <span className="eyebrow text-ink-soft">grounded in</span>
                       <ul className="mt-2 space-y-1.5">
                         {entry.citations.map((c) => (
@@ -112,7 +112,7 @@ export default function CoachPage() {
                       <ul className="mt-2 space-y-1.5">
                         {entry.followUps.map((q) => (
                           <li key={q}>
-                            <button type="button" className="travel-underline text-lg italic text-ink-soft">
+                            <button type="button" className="travel-underline text-lg text-ink-soft">
                               {q}
                             </button>
                           </li>
@@ -157,7 +157,7 @@ export default function CoachPage() {
                   + photo
                 </button>
               </div>
-              <button type="button" className="btn-block">
+              <button type="button" className="btn-primary">
                 ask
               </button>
             </div>

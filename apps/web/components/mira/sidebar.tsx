@@ -21,7 +21,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <Link href="/digest" className="block">
-        <span className="font-display italic text-3xl leading-none">mira</span>
+        <span className="font-display text-3xl leading-none">mira</span>
         <span className="meta block mt-1">a household platform</span>
       </Link>
 

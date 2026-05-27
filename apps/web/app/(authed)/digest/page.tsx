@@ -87,7 +87,7 @@ export default function DigestPage() {
         </div>
         <div className="lg:col-span-10">
           <h1 className="font-display">
-            today's <em className="text-persimmon not-italic italic">digest</em>
+            today's <em className="text-copper not-italic">digest</em>
           </h1>
         </div>
       </header>
