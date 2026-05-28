@@ -1,5 +1,5 @@
 {
-  "name": "@mira/db",
+  "name": "@haru/db",
   "version": "0.0.1",
   "private": true,
   "type": "module",

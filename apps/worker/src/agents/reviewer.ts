@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import type { DraftedAction, ReviewerVerdict, ToolResult } from '@mira/types';
+import type { DraftedAction, ReviewerVerdict, ToolResult } from '@haru/types';
 import { sonnetModel } from '../mastra/model.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
@@ -40,8 +40,8 @@ export async function runReviewer(input: ReviewerRunInput): Promise<ReviewerVerd
   const tools = buildReviewerTools(collected);
 
   const agent = new Agent({
-    id: 'mira-reviewer',
-    name: 'mira-reviewer',
+    id: 'haru-reviewer',
+    name: 'haru-reviewer',
     instructions,
     model: sonnetModel(),
     tools,

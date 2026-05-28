@@ -1,5 +1,5 @@
 {
-  "name": "@mira/web",
+  "name": "@haru/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@mira/db": "workspace:*",
-    "@mira/types": "workspace:*",
+    "@haru/db": "workspace:*",
+    "@haru/types": "workspace:*",
     "@clerk/nextjs": "^6.10.3",
     "drizzle-orm": "^0.38.3",
     "next": "^15.1.4",

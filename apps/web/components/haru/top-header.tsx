@@ -31,7 +31,7 @@ export function TopHeader() {
     <header className="runninghead">
       <div className="flex items-baseline gap-3">
         <Link href="/digest" className="font-display text-2xl leading-none">
-          mira
+          haru
         </Link>
         {current ? (
           <span className="eyebrow text-iron">{current.label}</span>

@@ -3,7 +3,7 @@ import { config } from './config.js';
 
 export const logger = pino({
   level: config.NODE_ENV === 'production' ? 'info' : 'debug',
-  base: { service: 'mira-worker' },
+  base: { service: 'haru-worker' },
   transport:
     config.NODE_ENV === 'production'
       ? undefined

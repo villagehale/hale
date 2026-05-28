@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import type { ApprovedAction, ExecutionResult } from '@mira/types';
+import type { ApprovedAction, ExecutionResult } from '@haru/types';
 
 interface ExecutorRunInput {
   familyId: string;
@@ -14,7 +14,7 @@ interface ExecutorRunInput {
  * require integrations (Google Calendar OAuth, Stripe + merchant
  * adapters, Computer Use for portal automation) that the worker
  * doesn't yet have credentials for. Those throw a clear
- * `MIRA_NOT_CONFIGURED` error so the system fails LOUD rather than
+ * `HARU_NOT_CONFIGURED` error so the system fails LOUD rather than
  * pretending to succeed — which would silently degrade the
  * autonomous-trust promise.
  */
@@ -136,8 +136,8 @@ async function sendEmail(input: ExecutorRunInput): Promise<ExecutionResult> {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function notConfigured(reason: string): Error {
-  const err = new Error(`MIRA_NOT_CONFIGURED: ${reason}`);
-  err.name = 'MiraNotConfiguredError';
+  const err = new Error(`HARU_NOT_CONFIGURED: ${reason}`);
+  err.name = 'HaruNotConfiguredError';
   return err;
 }
 

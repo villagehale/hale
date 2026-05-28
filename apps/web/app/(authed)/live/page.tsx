@@ -1,6 +1,6 @@
-import { PageCorner } from '~/components/mira/page-corner';
-import { Folio } from '~/components/mira/folio';
-import { ToneLabel, type EntryTone } from '~/components/mira/tone';
+import { PageCorner } from '~/components/haru/page-corner';
+import { Folio } from '~/components/haru/folio';
+import { ToneLabel, type EntryTone } from '~/components/haru/tone';
 
 interface LiveEvent {
   id: string;
@@ -136,7 +136,7 @@ export default function LivePage() {
             <p className="meta mt-2">a standing promise</p>
           </div>
           <div className="lg:col-span-9 text-slate text-lg leading-relaxed">
-            Every signal above stays in mira's Canadian database. Nothing has
+            Every signal above stays in haru's Canadian database. Nothing has
             been sent to a third party except where you connected one. Your
             child's name, date of birth, and medical details are encrypted at
             rest with keys you can rotate. You can export or delete everything

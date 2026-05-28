@@ -1,5 +1,5 @@
 import { and, eq, gte, lt } from 'drizzle-orm';
-import { schema } from '@mira/db';
+import { schema } from '@haru/db';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 

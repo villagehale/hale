@@ -1,6 +1,6 @@
 # Infra
 
-Deployment configuration for Mira.
+Deployment configuration for Haru.
 
 ## Production targets
 
@@ -47,7 +47,7 @@ fly deploy --config infra/fly.toml
 Verify the worker is consuming the queue:
 
 ```bash
-fly logs --app mira-worker
+fly logs --app haru-worker
 ```
 
 ### 4. Doppler secrets
@@ -59,8 +59,8 @@ doppler secrets upload .env.local
 
 ## Health checks
 
-- Web: `GET https://mira.family/api/health`
-- Worker: `GET https://mira-worker.fly.dev/health` (via Fly's internal health check)
+- Web: `GET https://haru.family/api/health`
+- Worker: `GET https://haru-worker.fly.dev/health` (via Fly's internal health check)
 
 ## Disaster recovery
 

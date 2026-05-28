@@ -1,7 +1,7 @@
-import { PageCorner } from '~/components/mira/page-corner';
-import { Folio } from '~/components/mira/folio';
-import { ToneLabel } from '~/components/mira/tone';
-import { StreakLadder, type AutonomyLevel } from '~/components/mira/streak-ladder';
+import { PageCorner } from '~/components/haru/page-corner';
+import { Folio } from '~/components/haru/folio';
+import { ToneLabel } from '~/components/haru/tone';
+import { StreakLadder, type AutonomyLevel } from '~/components/haru/streak-ladder';
 
 interface Draft {
   id: string;

@@ -1,12 +1,12 @@
-# CLAUDE.md — Mira project guidelines
+# CLAUDE.md — Haru project guidelines
 
-Behavioral guidelines for AI collaborators working on this codebase. Inherits the user's global CLAUDE.md; this file adds Mira-specific rules.
+Behavioral guidelines for AI collaborators working on this codebase. Inherits the user's global CLAUDE.md; this file adds Haru-specific rules.
 
 ## Project context
 
-Mira is a passive, event-driven, multi-agent AI product for newborn families in Canada. See `docs/superpowers/specs/2026-05-26-mira-newborn-platform-design.md` for the full spec.
+Haru is a passive, event-driven, multi-agent AI product for newborn families in Canada. See `docs/superpowers/specs/2026-05-26-haru-newborn-platform-design.md` for the full spec.
 
-## Hard rules (Mira-specific)
+## Hard rules (Haru-specific)
 
 1. **Privacy first.** This product handles newborn data — among the most sensitive data possible. Default to most restrictive. PIPEDA + Quebec Law 25 + CASL compliance is non-negotiable.
 

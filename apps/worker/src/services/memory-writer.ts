@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
-import { schema } from '@mira/db';
-import type { EventType, ActionType, ReviewerVerdict } from '@mira/types';
+import { schema } from '@haru/db';
+import type { EventType, ActionType, ReviewerVerdict } from '@haru/types';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 

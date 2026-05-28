@@ -25,9 +25,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'mira · a household almanac',
+  title: 'haru · a household almanac',
   description:
-    'mira is a household platform for the first year and the next eighteen. it watches the inbox, the calendar, the photos — and does the easy ninety percent so you can hold your baby.',
+    'haru is a household platform for the first year and the next eighteen. it watches the inbox, the calendar, the photos — and does the easy ninety percent so you can hold your baby.',
 };
 
 export const viewport: Viewport = {

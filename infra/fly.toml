@@ -1,8 +1,8 @@
-# Fly.io configuration for the Mira Agent Worker.
+# Fly.io configuration for the Haru Agent Worker.
 # Region: YYZ (Toronto) for Canadian data residency.
 # Deploys from apps/worker/Dockerfile via `fly deploy --config infra/fly.toml`.
 
-app = "mira-worker"
+app = "haru-worker"
 primary_region = "yyz"
 
 [build]

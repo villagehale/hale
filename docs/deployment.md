@@ -1,6 +1,6 @@
 # Deployment
 
-This document describes how Mira deploys to production.
+This document describes how Haru deploys to production.
 
 ## Topology
 
@@ -30,19 +30,19 @@ All three services are in Canadian regions for PIPEDA / Quebec Law 25 data resid
 | Env | Web | Worker | DB | Branch |
 |---|---|---|---|---|
 | local | `localhost:3000` | `localhost:4000` | Supabase local | feature |
-| preview | `mira-<sha>.vercel.app` | shared dev worker | dev Supabase | feature PRs |
-| production | `mira.family` | `mira-worker.fly.dev` | prod Supabase | `production` |
+| preview | `haru-<sha>.vercel.app` | shared dev worker | dev Supabase | feature PRs |
+| production | `haru.family` | `haru-worker.fly.dev` | prod Supabase | `production` |
 
 ## First-time deploy (in order)
 
 1. **Supabase project (Toronto region)** — create in dashboard, capture `DATABASE_URL` + `DATABASE_DIRECT_URL`.
 2. **Run migrations** — `pnpm db:migrate` from local with the production DB URLs.
 3. **Clerk** — create production application, get keys.
-4. **Doppler** — set up `mira-prod` config with all `.env.example` keys filled.
+4. **Doppler** — set up `haru-prod` config with all `.env.example` keys filled.
 5. **Vercel** — `vercel link`, set env vars via Doppler integration, deploy.
 6. **Fly.io worker** — `fly launch --config infra/fly.toml --no-deploy`, then `fly secrets set ...` for each env var, then `fly deploy`.
-7. **DNS** — point `mira.family` at Vercel; `worker.mira.family` at Fly (internal only — not exposed publicly).
-8. **Webhooks** — register Gmail watch, Calendar watch, Stripe webhooks against `https://mira.family/api/webhooks/<provider>`.
+7. **DNS** — point `haru.family` at Vercel; `worker.haru.family` at Fly (internal only — not exposed publicly).
+8. **Webhooks** — register Gmail watch, Calendar watch, Stripe webhooks against `https://haru.family/api/webhooks/<provider>`.
 
 ## CI/CD
 
@@ -60,7 +60,7 @@ GitHub Actions (`.github/workflows/ci.yml`):
 
 ## Health checks
 
-- Web: `https://mira.family/api/health`
+- Web: `https://haru.family/api/health`
 - Worker: Fly internal health check on `:4000/health`
 
 ## Cost expectations (initial)

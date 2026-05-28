@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { Marquee } from '~/components/mira/marquee';
+import { Marquee } from '~/components/haru/marquee';
 
 export default function LandingPage() {
   return (
     <main className="relative bg-bone">
       {/* ── Running head — like the top of an open book ─────────────────── */}
       <header className="shell flex items-baseline justify-between pt-6 pb-4 border-b border-rule">
-        <span className="font-display text-xl">mira</span>
+        <span className="font-display text-xl">haru</span>
         <div className="hidden sm:flex items-baseline gap-6 text-faded">
           <span className="eyebrow">vol. one · toronto edition</span>
           <span className="eyebrow tabular">mmxxvi</span>
@@ -35,12 +35,12 @@ export default function LandingPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12 mt-16 lg:mt-24">
           <div className="lg:col-span-3 lg:col-start-3 rise rise-3">
-            <span className="eyebrow">what mira does</span>
+            <span className="eyebrow">what haru does</span>
             <p className="meta mt-3">est. 2026 · canada</p>
           </div>
           <div className="lg:col-span-7 rise rise-4">
             <p className="text-xl lg:text-[1.45rem] leading-snug text-slate dropcap">
-              Mira watches your inbox, your calendar, your photos, and the small
+              Haru watches your inbox, your calendar, your photos, and the small
               devices that already log your baby's life. It reads the pediatric
               office, the daycare waitlist, the diaper subscription, the
               grandparent who keeps asking how she slept — and quietly does the
@@ -127,7 +127,7 @@ export default function LandingPage() {
 
           <div className="lg:col-span-9">
             <h2 className="font-display" style={{ color: 'var(--color-bone)' }}>
-              mira will <span className="text-madder">never</span>.
+              haru will <span className="text-madder">never</span>.
             </h2>
             <ul className="mt-12 divide-y" style={{ borderColor: 'rgba(244,240,232,0.18)' }}>
               {[
@@ -162,7 +162,7 @@ export default function LandingPage() {
           </div>
           <div className="lg:col-span-9">
             <blockquote className="pullquote max-w-[42rem]">
-              I built mira because my partner and I were drowning in admin while
+              I built haru because my partner and I were drowning in admin while
               trying to be present for our newborn. The job was too small for a
               nanny, too tedious for love, too important to fumble. A household
               needs an almanac, not another app.
@@ -200,7 +200,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="shell border-t border-rule py-10 flex flex-wrap items-baseline justify-between gap-y-4 text-faded">
-        <p className="meta">colophon · mira · toronto · canada · est. 2026</p>
+        <p className="meta">colophon · haru · toronto · canada · est. 2026</p>
         <p className="meta">set in source serif 4 + geist · printed for one family at a time</p>
       </footer>
     </main>

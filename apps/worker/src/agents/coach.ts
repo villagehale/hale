@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import type { FrameworkCitation, CoachingFramework } from '@mira/types';
+import type { FrameworkCitation, CoachingFramework } from '@haru/types';
 import { sonnetModel } from '../mastra/model.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
@@ -59,8 +59,8 @@ interface CoachRunOutput {
 export async function runCoach(input: CoachRunInput): Promise<CoachRunOutput> {
   const instructions = await loadPrompt('coach');
   const agent = new Agent({
-    id: 'mira-coach',
-    name: 'mira-coach',
+    id: 'haru-coach',
+    name: 'haru-coach',
     instructions,
     model: sonnetModel(),
   });

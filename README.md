@@ -1,6 +1,6 @@
-# Mira
+# Haru
 
-Passive, event-driven, multi-agent AI for newborn families in Canada. Mira ingests a family's data streams (email, calendar, photos), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
+Passive, event-driven, multi-agent AI for newborn families in Canada. Haru ingests a family's data streams (email, calendar, photos), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
 
 **Status:** Foundation scaffold. See `docs/superpowers/specs/` for the design spec.
 
@@ -17,7 +17,7 @@ Agent runtime is **Claude Agent SDK** with 5 specialized agents (Classifier, Dra
 ## Repository layout
 
 ```
-mira/
+haru/
 ├── apps/
 │   ├── web/                      Next.js app
 │   └── worker/                   Agent Worker service
@@ -51,4 +51,4 @@ Built for Canadian launch. PIPEDA + Quebec Law 25 + CASL compliance from day one
 
 ## License
 
-Proprietary. © 2026 Mira.
+Proprietary. © 2026 Haru.

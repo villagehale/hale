@@ -1,4 +1,4 @@
-# Mira — Newborn Platform Design
+# Haru — Newborn Platform Design
 
 **Date:** 2026-05-26
 **Status:** Draft for user review
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-**Mira** is a passive, event-driven, multi-agent autonomous AI system for new parents in Canada. It ingests a family's data streams (email, calendar, photos, integrations), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
+**Haru** is a passive, event-driven, multi-agent autonomous AI system for new parents in Canada. It ingests a family's data streams (email, calendar, photos, integrations), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
 
 The wedge is **household admin for newborn families** (paperwork, pediatric scheduling, supplies, photo curation, postpartum benefits) layered with **proactive parenting coaching** (sleep, feeding, milestones, behavior) grounded in named frameworks (Karp, Ferber, Markham, Health Canada, AAP).
 
@@ -742,7 +742,7 @@ Monorepo tool:  Turborepo with pnpm workspaces
 ### 8.2 Repository layout (Turborepo monorepo)
 
 ```
-mira/
+haru/
 ├── apps/
 │   ├── web/                      # Next.js app (UI + thin API + webhooks)
 │   │   ├── app/
@@ -923,7 +923,7 @@ WORKER_URL=
 3. **Auth provider final choice.** Clerk vs Supabase Auth. Clerk easier multi-tenant; Supabase Auth keeps stack uniform.
 4. **Storage final choice.** Supabase Storage (uniform) vs Cloudflare R2 (cheaper at scale).
 5. **Worker host final choice.** Fly.io YYZ Toronto preferred; Render Toronto-adjacent fallback.
-6. **Project name domain availability.** mira.ai, trymira.com, getmira.com, mira.family — to be verified.
+6. **Project name domain availability.** haru.ai, tryharu.com, getharu.com, haru.family — to be verified.
 7. **Pricing for paid tiers.** $19 / $49 are placeholders; real numbers come from design-partner WTP signal.
 8. **Co-parenting (separated/divorced) support.** Deferred to v2 per scope decisions.
 9. **Native mobile app.** Deferred — PWA-first; consider RN once retention validates.

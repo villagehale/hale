@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import type { ActionType, DraftedAction } from '@mira/types';
+import type { ActionType, DraftedAction } from '@haru/types';
 import { sonnetModel } from '../mastra/model.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
@@ -35,8 +35,8 @@ interface DrafterRunOutput extends DraftedAction {
 export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutput> {
   const instructions = await loadPrompt('drafter');
   const agent = new Agent({
-    id: 'mira-drafter',
-    name: 'mira-drafter',
+    id: 'haru-drafter',
+    name: 'haru-drafter',
     instructions,
     model: sonnetModel(),
   });

@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { PageCorner } from '~/components/mira/page-corner';
-import { Folio } from '~/components/mira/folio';
-import { ToneLabel, type EntryTone } from '~/components/mira/tone';
-import { StreakLadder, type AutonomyLevel } from '~/components/mira/streak-ladder';
-import { Marquee } from '~/components/mira/marquee';
+import { PageCorner } from '~/components/haru/page-corner';
+import { Folio } from '~/components/haru/folio';
+import { ToneLabel, type EntryTone } from '~/components/haru/tone';
+import { StreakLadder, type AutonomyLevel } from '~/components/haru/streak-ladder';
+import { Marquee } from '~/components/haru/marquee';
 
 interface Entry {
   id: string;
@@ -191,7 +191,7 @@ export default function DigestPage() {
 
         <Marquee
           items={[
-            'mira ran 14 agent passes',
+            'haru ran 14 agent passes',
             '$0.31 today · $4.20 month-to-date',
             'trial day 3 of 7',
             'no autonomous medical actions ever',
@@ -201,7 +201,7 @@ export default function DigestPage() {
 
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded">
           <p className="meta">colophon · digest no. 003 · printed at 04:30 am</p>
-          <p className="meta">edited by mira · approved by no one yet</p>
+          <p className="meta">edited by haru · approved by no one yet</p>
         </div>
       </section>
     </div>

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { PageCorner } from '~/components/mira/page-corner';
-import { Folio } from '~/components/mira/folio';
+import { PageCorner } from '~/components/haru/page-corner';
+import { Folio } from '~/components/haru/folio';
 
 function DestructiveButton({
   label,

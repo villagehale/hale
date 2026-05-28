@@ -1,5 +1,5 @@
 {
-  "name": "mira",
+  "name": "haru",
   "version": "0.0.1",
   "private": true,
   "description": "Passive multi-agent AI for newborn families",
@@ -17,9 +17,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "db:generate": "pnpm --filter @mira/db generate",
-    "db:migrate": "pnpm --filter @mira/db migrate",
-    "db:studio": "pnpm --filter @mira/db studio"
+    "db:generate": "pnpm --filter @haru/db generate",
+    "db:migrate": "pnpm --filter @haru/db migrate",
+    "db:studio": "pnpm --filter @haru/db studio"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

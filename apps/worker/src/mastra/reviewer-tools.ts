@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import type { ReviewerToolName } from '@mira/tools-contracts';
-import type { ToolResult } from '@mira/types';
+import type { ReviewerToolName } from '@haru/tools-contracts';
+import type { ToolResult } from '@haru/types';
 import { invokeReviewerTool } from '../tools/registry.js';
 
 /**
@@ -11,7 +11,7 @@ import { invokeReviewerTool } from '../tools/registry.js';
  * and returns a typed result, which Mastra feeds back into the
  * conversation as a tool result.
  *
- * Schemas come straight from @mira/tools-contracts — same Zod schemas
+ * Schemas come straight from @haru/tools-contracts — same Zod schemas
  * the registry uses, so input validation happens once at the boundary.
  *
  * Side effect: each `execute` records the ToolResult into the run-scoped
@@ -28,7 +28,7 @@ function makeTool<TName extends ReviewerToolName>(
   collected: ToolResult[],
 ) {
   // Permissive runtime schemas at this boundary — input/output validation
-  // already happens inside invokeReviewerTool via the @mira/tools-contracts
+  // already happens inside invokeReviewerTool via the @haru/tools-contracts
   // Zod schemas (REVIEWER_TOOLS[name].input.parse). Using z.unknown() here
   // sidesteps Mastra's tighter compile-time inference (which trips on our
   // discriminated tool registry typing).

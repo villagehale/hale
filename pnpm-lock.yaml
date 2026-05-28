@@ -23,10 +23,10 @@ importers:
       '@clerk/nextjs':
         specifier: ^6.10.3
         version: 6.39.4(next@15.5.18(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@mira/db':
+      '@haru/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@mira/types':
+      '@haru/types':
         specifier: workspace:*
         version: link:../../packages/types
       drizzle-orm:
@@ -78,18 +78,18 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.41.0
         version: 0.41.0
+      '@haru/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@haru/tools-contracts':
+        specifier: workspace:*
+        version: link:../../packages/tools-contracts
+      '@haru/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@mastra/core':
         specifier: ^1.37.1
         version: 1.37.1(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76))(@standard-community/standard-openapi@0.2.9(@standard-community/standard-json@0.3.5(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(quansync@0.2.11)(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76))(@standard-schema/spec@1.1.0)(openapi-types@12.1.3)(zod@3.25.76))(@types/json-schema@7.0.15)(express@5.2.1)(openapi-types@12.1.3)(zod@3.25.76)
-      '@mira/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@mira/tools-contracts':
-        specifier: workspace:*
-        version: link:../../packages/tools-contracts
-      '@mira/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       drizzle-orm:
         specifier: ^0.38.3
         version: 0.38.4(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.6)

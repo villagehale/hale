@@ -1,4 +1,4 @@
-import { createDb, type Database } from '@mira/db';
+import { createDb, type Database } from '@haru/db';
 import { config } from './config.js';
 
 let cached: Database | undefined;
