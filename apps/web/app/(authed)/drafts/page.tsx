@@ -17,15 +17,15 @@ interface Draft {
 const DRAFTS: Draft[] = [
   {
     id: 'tpl-rsvp',
-    recipient: 'toronto public library',
+    recipient: 'Toronto Public Library',
     category: 'family events',
     level: 2,
     streak: 3,
     subject: 'baby story-time, saturday',
     body:
-      "thanks for the note — saturday at ten thirty works. maya and i will be there. is there anything you would like us to bring?",
+      "thanks for the note — Saturday at ten thirty works. maya and i will be there. is there anything you would like us to bring?",
     rationale:
-      'the library sent an event invite. you have replied warmly to two of their previous notes, so i matched the tone. saturday morning is clear on the shared calendar.',
+      'the library sent an event invite. you have replied warmly to two of their previous notes, so I matched the tone. Saturday morning is clear on the shared calendar.',
   },
   {
     id: 'grandma-photo',
@@ -35,13 +35,13 @@ const DRAFTS: Draft[] = [
     streak: 7,
     subject: 're: how is she sleeping?',
     body:
-      'she slept six hours straight last night — first time. she was happier this morning. attaching a photo of her with the new bear you sent.',
+      'she slept six hours straight last night — first time. She was happier this morning. Attaching a photo of her with the new bear you sent.',
     rationale:
-      'your mother asked about sleep yesterday. i picked one photo from this morning that shows maya with the bear she gave at the shower.',
+      'your mother asked about sleep yesterday. I picked one photo from this morning that shows maya with the bear she gave at the shower.',
   },
   {
     id: 'daycare-form',
-    recipient: 'little owls daycare',
+    recipient: 'Little Owls Daycare',
     category: 'daycare',
     level: 2,
     streak: 1,
@@ -49,7 +49,7 @@ const DRAFTS: Draft[] = [
     body:
       'attaching the updated emergency contact form (chris removed, mom added). please confirm receipt — happy to drop off a printed copy if needed.',
     rationale:
-      'you updated emergency contacts on the family settings on friday. the daycare requires written confirmation; this draft uses your usual brief tone with them.',
+      'you updated emergency contacts on the family settings on Friday. the daycare requires written confirmation; this draft uses your usual brief tone with them.',
   },
 ];
 

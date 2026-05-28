@@ -21,8 +21,8 @@ const HISTORY: Exchange[] = [
     body:
       "around four months many babies become more aware of their environment and their cues change quickly. some lose interest in the pacifier; some need it more. it usually isn't about the pacifier itself — it's about a temporary shift in self-soothing. if maya is feeding well and sleep is acceptable, this is almost certainly fine.",
     citations: [
-      'karp · happiest baby — 4-month "wonder weeks" reorganization',
-      'health canada · caring for kids — self-soothing development',
+      'karp · Happiest Baby — 4-month "Wonder Weeks" reorganization',
+      'health canada · Caring for Kids — self-soothing development',
     ],
     followUps: [
       'is feeding still going smoothly?',
@@ -170,7 +170,7 @@ export default function CoachPage() {
             </div>
             <p className="meta">
               your question stays inside haru. coach never sees your inbox or
-              calendar — only maya's profile and your parenting-style preference.
+              calendar — only Maya's profile and your parenting-style preference.
             </p>
           </div>
         </div>

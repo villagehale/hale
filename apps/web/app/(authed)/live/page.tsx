@@ -17,7 +17,7 @@ const STREAM: LiveEvent[] = [
     at: '06:18',
     source: 'gmail · pediatric',
     tone: 'done',
-    summary: "maya's clinic confirmed thursday at 10 am, sent visit prep form.",
+    summary: "Maya's clinic confirmed Thursday at 10 am, sent visit prep form.",
     decision: 'auto-replied · pre-visit form filled and attached',
   },
   {
@@ -41,7 +41,7 @@ const STREAM: LiveEvent[] = [
     at: '04:32',
     source: 'gmail · tpl',
     tone: 'awaiting',
-    summary: 'toronto public library invited maya to baby story-time saturday 10:30.',
+    summary: 'Toronto Public Library invited maya to baby story-time Saturday 10:30.',
     decision: 'draft ready · awaiting your tap (asked because new recipient)',
   },
   {
@@ -50,7 +50,7 @@ const STREAM: LiveEvent[] = [
     source: 'gmail · pediatric',
     tone: 'needs-you',
     summary: 'pediatric office sent "please call us about lab results".',
-    decision: "surfaced for human — i don't act on calls",
+    decision: "surfaced for human — I don't act on calls",
   },
   {
     id: '6',

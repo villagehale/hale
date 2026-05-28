@@ -132,7 +132,7 @@ export default function OnboardingPage() {
                         { id: 'gentle', label: 'gentle', note: 'lansbury · markham' },
                         { id: 'attachment', label: 'attachment', note: 'sears · siegel' },
                         { id: 'structured', label: 'structured', note: 'karp · ferber' },
-                        { id: 'undecided', label: 'still figuring it out', note: "i'll be neutral" },
+                        { id: 'undecided', label: 'still figuring it out', note: "I'll be neutral" },
                       ].map((opt) => {
                         const selected = parentingStyle === opt.id;
                         return (
@@ -239,7 +239,7 @@ export default function OnboardingPage() {
                 </div>
 
                 <p className="meta">
-                  you approve every scope. i can't read attachments from senders
+                  you approve every scope. I can't read attachments from senders
                   not in your allowlist. you can revoke access in two taps.
                 </p>
 
