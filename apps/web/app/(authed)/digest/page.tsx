@@ -26,7 +26,7 @@ const ENTRIES: Entry[] = [
     level: 3,
     streak: 8,
     body:
-      "i confirmed maya's vaccine appointment for thursday at ten. the pre-visit form is filled and attached. the office should send a reminder eight in the morning the day before; i'll watch for it.",
+      "I confirmed Maya's vaccine appointment for Thursday at ten. The pre-visit form is filled and attached. The office should send a reminder eight in the morning the day before; I'll watch for it.",
     secondaryAction: { label: 'undo' },
   },
   {
@@ -37,7 +37,7 @@ const ENTRIES: Entry[] = [
     level: 4,
     streak: 12,
     body:
-      'i reordered diapers (size two, one case, $42.99) and routed it to your usual address. arriving wednesday. i can skip the next order if you would rather hold off.',
+      'I reordered diapers (size two, one case, $42.99) and routed it to your usual address. Arriving Wednesday. I can skip the next order if you would rather hold off.',
     secondaryAction: { label: 'undo' },
   },
   {
@@ -48,7 +48,7 @@ const ENTRIES: Entry[] = [
     level: 2,
     streak: 3,
     body:
-      'the toronto public library wrote about baby story-time on saturday at ten thirty. i drafted a short yes — should i send it and add the event?',
+      'the Toronto Public Library wrote about baby story-time on Saturday at ten thirty. I drafted a short yes — should i send it and add the event?',
     primaryAction: { label: 'approve and send' },
     secondaryAction: { label: 'skip' },
   },
@@ -71,7 +71,7 @@ const ENTRIES: Entry[] = [
     level: 1,
     streak: 0,
     body:
-      "your pediatrician's office sent a message asking you to call about maya's lab results. i don't act on phone calls — open it when you can.",
+      "your pediatrician's office sent a message asking you to call about Maya's lab results. I don't act on phone calls — open it when you can.",
     primaryAction: { label: 'open email' },
   },
 ];
@@ -178,8 +178,8 @@ export default function DigestPage() {
           </div>
           <div className="lg:col-span-9">
             <p className="text-lg text-iron leading-relaxed">
-              Two things on the horizon — maya's vaccine visit thursday at ten,
-              and the parental-leave benefit renewal due wednesday. I'll handle
+              Two things on the horizon — Maya's vaccine visit Thursday at ten,
+              and the parental-leave benefit renewal due Wednesday. I'll handle
               the renewal paperwork tonight and surface anything you need to
               sign by morning.
             </p>

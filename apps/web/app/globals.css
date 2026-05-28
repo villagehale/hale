@@ -36,13 +36,13 @@
   --color-madder-tint: #f4dcd4;
   --color-madder-wash: #f9ece6;
 
-  /* Supporting palette */
+  /* Supporting palette — kept in the warm dyed-cloth family. */
   --color-moss: #586a3a;            /* done / nature */
   --color-moss-tint: #e2e6d4;
-  --color-indigo: #2c3e5c;          /* coach / contemplative */
-  --color-indigo-tint: #d8dde6;
-  --color-ochre: #c68a26;           /* awaiting / handwriting */
-  --color-ochre-tint: #f3e6c8;
+  --color-indigo: #4b4a6b;          /* coach / contemplative — warmer slate-purple, lives in the parchment temperature */
+  --color-indigo-tint: #ddd9e3;
+  --color-ochre: #c77439;           /* awaiting / needs your eye — rust-orange, not yellow-mustard */
+  --color-ochre-tint: #f1ddc5;
 
   /* Legacy token aliases — kept so existing components compile. */
   --color-cream: var(--color-bone);

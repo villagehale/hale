@@ -36,7 +36,7 @@ const TIERS: Array<{
       },
       {
         id: 'gcal',
-        name: 'google calendar',
+        name: 'Google Calendar',
         why: 'so i can confirm appointments on the right day without conflicts.',
         reads: ['events', 'attendees', 'free/busy windows'],
         acts: ['create events', 'update or cancel events'],
@@ -44,7 +44,7 @@ const TIERS: Array<{
       },
       {
         id: 'photos',
-        name: 'google photos',
+        name: 'Google Photos',
         why: 'so i can notice milestones and curate weekly shares for grandparents — read only.',
         reads: ['photo metadata + ml tags', 'date + location (if you share it)'],
         acts: ['curate shares to your approved recipients'],
