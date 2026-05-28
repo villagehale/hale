@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import type { ClassifierSuggestion, EventType } from '@mira/types';
+import type { ClassifierSuggestion, EventType } from '@haru/types';
 import { haikuModel } from '../mastra/model.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
@@ -72,8 +72,8 @@ interface ClassifierRunOutput {
 export async function runClassifier(input: ClassifierRunInput): Promise<ClassifierRunOutput> {
   const instructions = await loadPrompt('classifier');
   const agent = new Agent({
-    id: 'mira-classifier',
-    name: 'mira-classifier',
+    id: 'haru-classifier',
+    name: 'haru-classifier',
     instructions,
     model: haikuModel(),
   });

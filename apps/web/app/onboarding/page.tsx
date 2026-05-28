@@ -25,7 +25,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-bone">
       {/* Running head — book top edge */}
       <header className="shell flex items-baseline justify-between pt-6 pb-4 border-b border-rule">
-        <Link href="/" className="font-display text-xl">mira</Link>
+        <Link href="/" className="font-display text-xl">haru</Link>
 
         <div className="flex items-baseline gap-3">
           <span className="eyebrow">enrolment</span>
@@ -58,7 +58,7 @@ export default function OnboardingPage() {
             {step === 1 ? (
               <section className="rise rise-1 space-y-8 max-w-2xl">
                 <p className="text-xl lg:text-[1.4rem] leading-snug text-slate">
-                  mira is a household almanac for the first year of your child's
+                  haru is a household almanac for the first year of your child's
                   life — and the next eighteen. I watch your inbox, your calendar,
                   your photos, and the small devices that already log your kid's
                   life, and I do the easy ninety percent of household admin so you
@@ -173,7 +173,7 @@ export default function OnboardingPage() {
             {step === 3 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-xl lg:text-[1.4rem] leading-snug text-slate">
-                  For the first seven days, mira drafts every action — but never
+                  For the first seven days, haru drafts every action — but never
                   commits it. You see exactly what would have happened. Nothing
                   sends. Nothing books. Nothing orders.
                 </p>
@@ -258,7 +258,7 @@ export default function OnboardingPage() {
             {step === 5 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate leading-relaxed">
-                  mira works best as a family unit. invite your co-parent and we
+                  haru works best as a family unit. invite your co-parent and we
                   will share the digest, drafts, and trail across both of you.
                   Either of you can approve actions. Neither of you can be locked
                   out.
@@ -267,7 +267,7 @@ export default function OnboardingPage() {
                 <div className="fold">
                   <span className="eyebrow">share this link</span>
                   <p className="font-display text-xl break-all mt-2">
-                    mira.family/invite/87c2-d9f5-12a8
+                    haru.family/invite/87c2-d9f5-12a8
                   </p>
                   <div className="flex flex-wrap items-center gap-5 mt-5">
                     <button type="button" className="btn-ghost">copy link</button>

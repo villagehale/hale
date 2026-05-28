@@ -22,7 +22,7 @@ export function Sidebar() {
       {/* Title slab — title + the slogan, treated like a book's title page */}
       <div>
         <Link href="/digest" className="block">
-          <span className="font-display text-[2.4rem] leading-none">mira</span>
+          <span className="font-display text-[2.4rem] leading-none">haru</span>
           <span className="meta block mt-2">an almanac for the family</span>
         </Link>
 

@@ -9,7 +9,7 @@ import {
   recordReviewerVerdict,
   recordExecution,
 } from '../services/memory-writer.js';
-import type { ActionType } from '@mira/types';
+import type { ActionType } from '@haru/types';
 
 const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
 const CONFIDENCE_HUMAN_THRESHOLD = 0.7;

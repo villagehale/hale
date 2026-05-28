@@ -1,6 +1,6 @@
-import { PageCorner } from '~/components/mira/page-corner';
-import { Folio } from '~/components/mira/folio';
-import { ToneLabel, type EntryTone } from '~/components/mira/tone';
+import { PageCorner } from '~/components/haru/page-corner';
+import { Folio } from '~/components/haru/folio';
+import { ToneLabel, type EntryTone } from '~/components/haru/tone';
 
 interface TrailEntry {
   id: string;
@@ -8,7 +8,7 @@ interface TrailEntry {
   time: string;
   category: string;
   tone: EntryTone;
-  actor: 'mira' | 'you' | 'co-parent';
+  actor: 'haru' | 'you' | 'co-parent';
   summary: string;
   detail: string;
   reversible: boolean;
@@ -21,7 +21,7 @@ const ENTRIES: TrailEntry[] = [
     time: '06:18',
     category: 'pediatric',
     tone: 'done',
-    actor: 'mira',
+    actor: 'haru',
     summary: "confirmed maya's vaccine appointment thursday at 10 am",
     detail: 'replied to clinic, added to calendar, attached pre-visit form',
     reversible: true,
@@ -32,7 +32,7 @@ const ENTRIES: TrailEntry[] = [
     time: '05:47',
     category: 'supplies',
     tone: 'done',
-    actor: 'mira',
+    actor: 'haru',
     summary: 'reordered diapers (size 2, one case, $42.99)',
     detail: 'auto-approved · within $50 per-action cap · arrival wednesday',
     reversible: true,
@@ -43,7 +43,7 @@ const ENTRIES: TrailEntry[] = [
     time: '04:32',
     category: 'family events',
     tone: 'awaiting',
-    actor: 'mira',
+    actor: 'haru',
     summary: 'drafted rsvp to toronto public library baby story-time',
     detail: 'awaiting your approval — held back because new recipient',
     reversible: false,
@@ -56,7 +56,7 @@ const ENTRIES: TrailEntry[] = [
     tone: 'done',
     actor: 'you',
     summary: 'approved playgroup rsvp draft',
-    detail: 'mira sent at 19:14 · received reply 21:02',
+    detail: 'haru sent at 19:14 · received reply 21:02',
     reversible: false,
   },
   {
@@ -66,7 +66,7 @@ const ENTRIES: TrailEntry[] = [
     category: 'pediatric',
     tone: 'done',
     actor: 'co-parent',
-    summary: "reviewed mira's draft for daycare emergency contact update",
+    summary: "reviewed haru's draft for daycare emergency contact update",
     detail: 'approved with one minor edit · sent at 14:57',
     reversible: false,
   },
@@ -76,7 +76,7 @@ const ENTRIES: TrailEntry[] = [
     time: '09:02',
     category: 'photos',
     tone: 'done',
-    actor: 'mira',
+    actor: 'haru',
     summary: 'shared 3 photos with grandma · maya + bear',
     detail: 'pre-approved share class · weekly cadence',
     reversible: true,
@@ -87,7 +87,7 @@ const ENTRIES: TrailEntry[] = [
     time: '11:31',
     category: 'paperwork',
     tone: 'done',
-    actor: 'mira',
+    actor: 'haru',
     summary: 'filed parental-leave benefit renewal form (ei)',
     detail: 'auto-filled and submitted · confirmation #EI-2026-058291',
     reversible: false,
@@ -95,13 +95,13 @@ const ENTRIES: TrailEntry[] = [
 ];
 
 const ACTOR_LABEL: Record<TrailEntry['actor'], string> = {
-  mira: 'mira',
+  haru: 'haru',
   you: 'you',
   'co-parent': 'co-parent',
 };
 
 const ACTOR_TONE: Record<TrailEntry['actor'], string> = {
-  mira: 'text-madder',
+  haru: 'text-madder',
   you: 'text-iron',
   'co-parent': 'text-indigo',
 };
@@ -154,7 +154,7 @@ export default function TrailPage() {
       <section className="rise rise-3 flex flex-wrap items-baseline gap-x-5 gap-y-3 border-b border-rule pb-5 mb-2">
         <span className="eyebrow">show</span>
         <button type="button" className="btn-ghost" aria-current="true">all</button>
-        <button type="button" className="btn-ghost">mira only</button>
+        <button type="button" className="btn-ghost">haru only</button>
         <button type="button" className="btn-ghost">parent decisions</button>
         <button type="button" className="btn-ghost">reversible</button>
         <button type="button" className="btn-ghost">pediatric</button>

@@ -1,6 +1,6 @@
-import { PageCorner } from '~/components/mira/page-corner';
-import { Folio } from '~/components/mira/folio';
-import { StreakLadder, type AutonomyLevel } from '~/components/mira/streak-ladder';
+import { PageCorner } from '~/components/haru/page-corner';
+import { Folio } from '~/components/haru/folio';
+import { StreakLadder, type AutonomyLevel } from '~/components/haru/streak-ladder';
 
 interface AutonomyRow {
   action: string;

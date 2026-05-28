@@ -4,7 +4,7 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
-  transpilePackages: ['@mira/db', '@mira/types'],
+  transpilePackages: ['@haru/db', '@haru/types'],
   serverExternalPackages: ['postgres', 'pg-boss'],
 };
 

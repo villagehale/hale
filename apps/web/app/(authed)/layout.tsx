@@ -1,5 +1,5 @@
-import { Sidebar } from '~/components/mira/sidebar';
-import { TopHeader } from '~/components/mira/top-header';
+import { Sidebar } from '~/components/haru/sidebar';
+import { TopHeader } from '~/components/haru/top-header';
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
   return (
