@@ -1,6 +1,6 @@
-import type { schema } from '@haru/db';
-import type { AutonomyLevel } from '~/components/haru/streak-ladder';
-import type { EntryTone } from '~/components/haru/tone';
+import type { schema } from '@hearth/db';
+import type { AutonomyLevel } from '~/components/hearth/streak-ladder';
+import type { EntryTone } from '~/components/hearth/tone';
 
 export type Action = typeof schema.actions.$inferSelect;
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
@@ -39,10 +39,21 @@ export interface TrailView {
   time: string;
   category: string;
   tone: EntryTone;
-  actor: 'haru' | 'you' | 'co-parent';
+  actor: 'hearth' | 'you' | 'co-parent';
   summary: string;
   detail: string;
 }
+
+/**
+ * Hard rule #1 (teen privacy): for children 13+, a parent sees category +
+ * Hearth's own rationale-summary + this placeholder — never the teen's raw
+ * subject/body/quoted text. The parent still approves on category + summary (the
+ * L2 model: authorize "reply to the school about X" without reading the teen's
+ * message). `teenContent` is an EXPLICIT mapper input so the redaction is
+ * structural: a caller that forgets to JOIN events still cannot leak raw teen
+ * text once the flag is true, because the raw fields never reach the view shape.
+ */
+export const TEEN_REDACTED_PLACEHOLDER = 'kept private — regarding your teenager';
 
 /** A drafted action's recipient lives in its payload; fall back to the action type. */
 function recipientFromPayload(payload: Record<string, unknown>): string {
@@ -55,14 +66,14 @@ function stringFromPayload(payload: Record<string, unknown>, key: string, fallba
   return typeof value === 'string' && value.length > 0 ? value : fallback;
 }
 
-export function toDraftView(action: Action): DraftView {
+export function toDraftView(action: Action, teenContent: boolean): DraftView {
   const payload = action.payload;
   return {
     id: action.id,
     recipient: recipientFromPayload(payload),
     category: action.actionType,
-    subject: stringFromPayload(payload, 'subject', action.actionType),
-    body: stringFromPayload(payload, 'body', ''),
+    subject: teenContent ? TEEN_REDACTED_PLACEHOLDER : stringFromPayload(payload, 'subject', action.actionType),
+    body: teenContent ? TEEN_REDACTED_PLACEHOLDER : stringFromPayload(payload, 'body', ''),
     rationale: stringFromPayload(payload, 'rationale', ''),
   };
 }
@@ -94,10 +105,16 @@ const STATE_TONE: Record<Action['userVisibleState'], EntryTone | null> = {
 
 /** Maps a today action to a digest entry. Reverted rows return null — they're
  * off the table and excluded by the caller. Body comes from the action payload;
- * empty bodies fall back to a one-line "what + state" summary. */
-export function toDigestEntry(action: Action): DigestEntryView | null {
+ * empty bodies fall back to a one-line "what + state" summary. Teen-content rows
+ * (rule #1) keep category + tone but the raw body becomes the redaction
+ * placeholder — the parent sees that something happened, in which category,
+ * without the teen's words. */
+export function toDigestEntry(action: Action, teenContent: boolean): DigestEntryView | null {
   const tone = STATE_TONE[action.userVisibleState];
   if (!tone) return null;
+  if (teenContent) {
+    return { id: action.id, tone, category: action.actionType, body: TEEN_REDACTED_PLACEHOLDER };
+  }
   const body = stringFromPayload(action.payload, 'body', '');
   return {
     id: action.id,
@@ -108,11 +125,11 @@ export function toDigestEntry(action: Action): DigestEntryView | null {
 }
 
 /** audit_log.actor is 'system' | agent_run uuid | user uuid; the timeline only
- * distinguishes haru vs. a parent. A non-system actor is a human ("you"); the
+ * distinguishes Hearth vs. a parent. A non-system actor is a human ("you"); the
  * co-parent distinction needs the acting user's role, which the audit row alone
  * doesn't carry — so human actors read as "you" until that join is wired. */
 function actorOf(entry: AuditLogEntry): TrailView['actor'] {
-  return entry.actor === 'system' ? 'haru' : 'you';
+  return entry.actor === 'system' ? 'hearth' : 'you';
 }
 
 const HH_MM = new Intl.DateTimeFormat('en-CA', {
@@ -122,14 +139,22 @@ const HH_MM = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Toronto',
 });
 
-export function toTrailView(entry: AuditLogEntry): TrailView {
+/**
+ * Teen-content trail rows (rule #1) keep the non-sensitive frame — time, category
+ * (target_table), actor, and the id-only detail — but `actionTaken` is redacted to
+ * the placeholder. `actionTaken` is Hearth's own phrasing, but it can quote the
+ * teen (e.g. an email subject), so it is redacted conservatively whenever the row
+ * resolves to teen_content. Rows the query layer cannot tie to teen_content (e.g.
+ * non-`actions` targets) keep their summary — see loadTrail for that join.
+ */
+export function toTrailView(entry: AuditLogEntry, teenContent: boolean): TrailView {
   return {
     id: entry.id,
     time: HH_MM.format(entry.occurredAt),
     category: entry.targetTable ?? 'action',
     tone: 'done',
     actor: actorOf(entry),
-    summary: entry.actionTaken,
+    summary: teenContent ? TEEN_REDACTED_PLACEHOLDER : entry.actionTaken,
     detail: entry.targetId ? `${entry.targetTable ?? 'record'} · ${entry.targetId}` : 'recorded',
   };
 }

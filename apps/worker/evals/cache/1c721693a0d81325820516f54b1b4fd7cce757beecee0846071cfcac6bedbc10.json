@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "subscription_renewal_due",
+    "confidence": 0.95,
+    "rationale": "Clear automated renewal notice from a known supply vendor with a specific date, amount, and actionable window to skip or modify.",
+    "payload": {
+      "vendor": "everydaybaby.ca",
+      "product": "Size 2 diapers",
+      "amount": 42.99,
+      "currency": "CAD",
+      "renewal_date": "2024-06-15",
+      "subscription_interval": "monthly",
+      "action_required_by": "2024-06-15"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2862,
+    "output": 236
+  }
+}

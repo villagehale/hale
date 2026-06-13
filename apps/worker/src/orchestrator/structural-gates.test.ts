@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@haru/tools-contracts';
+import type { IngestedEventPayload } from '@hearth/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion, FamilyStage } from '@haru/types';
+import type { ClassifierSuggestion, FamilyStage } from '@hearth/types';
 
 /**
  * Fix-wave B structural gates wired into the orchestrator AFTER the entitlement
@@ -105,7 +105,10 @@ vi.mock('../services/memory-writer.js', () => ({
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   loadActionApprovalHistory: vi.fn(async () => approvalHistory),
   loadCrossParentConsent: vi.fn(async () => crossParent),
-  loadChildStages: vi.fn(async () => childStages),
+  loadFamilyContext: vi.fn(async () => ({
+    stages: childStages,
+    contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
+  })),
 }));
 
 const { runOrchestrator } = await import('./index.js');

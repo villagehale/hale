@@ -20,7 +20,7 @@ export type Entitlement = 'autonomy_l3' | 'commerce' | 'portal_automation';
  *   family — L3 + commerce action types + portal automation ($49/mo CAD).
  *
  * `satisfies Record<PlanTier, ...>` is load-bearing (mirrors REQUIRED_CHECKS in
- * @haru/tools-contracts): adding a PlanTier without an entry is a COMPILE error,
+ * @hearth/tools-contracts): adding a PlanTier without an entry is a COMPILE error,
  * so no tier can ship without an explicit entitlement set.
  */
 export const PLAN_ENTITLEMENTS = {

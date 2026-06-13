@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "delivery_update",
+    "confidence": 0.95,
+    "rationale": "This is a standard parcel delivery notification from Canada Post indicating a package is out for delivery today with an expected window and no action required from the family.",
+    "payload": {
+      "sender": "Canada Post",
+      "tracking_number": "7023 1188 4421",
+      "shipper": "EverydayBaby",
+      "status": "out_for_delivery",
+      "expected_delivery_time": "before 8 PM today",
+      "signature_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2856,
+    "output": 228
+  }
+}

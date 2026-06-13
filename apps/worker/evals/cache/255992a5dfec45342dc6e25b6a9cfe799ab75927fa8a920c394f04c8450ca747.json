@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "Daycare is offering an enrollment spot and explicitly requesting confirmation and payment action within a deadline.",
+    "payload": {
+      "daycare_name": "Sunny Days Daycare",
+      "room_type": "toddler room",
+      "start_date": "2025-09-02",
+      "deposit_amount": 300,
+      "deposit_currency": "CAD",
+      "payment_method": "e-transfer",
+      "action_required": "confirm and pay deposit",
+      "deadline_days": 5,
+      "consequence": "spot released to next family on waitlist"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 3364,
+    "output": 270
+  }
+}

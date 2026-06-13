@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.95,
+    "rationale": "Routine notification from a school district about report card availability and optional parent-teacher conference booking for a Grade 3 student; no actionable reply required from the parent.",
+    "payload": {
+      "sender": "Elmwood Public School Board",
+      "sender_email": "office@elmwood-public.schoolboard.ca",
+      "grade": "Grade 3",
+      "notification_type": "report_card_available",
+      "report_card_term": "Term 2",
+      "access_method": "parent portal",
+      "teacher_name": "Ms. Tran",
+      "conference_window": "week of March 10",
+      "action_optional": true,
+      "booking_method": "parent portal"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3372,
+    "output": 285
+  }
+}

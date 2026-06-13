@@ -4,7 +4,7 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
-  transpilePackages: ['@haru/db', '@haru/types', '@haru/tools-contracts'],
+  transpilePackages: ['@hearth/db', '@hearth/types', '@hearth/tools-contracts'],
   serverExternalPackages: ['postgres', 'pg-boss'],
   webpack: (config) => {
     // Workspace packages use ESM '.js' import specifiers against .ts sources;

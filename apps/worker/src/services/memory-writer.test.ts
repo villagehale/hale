@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { schema, type Database } from '@haru/db';
-import type { ReviewerVerdict } from '@haru/types';
+import { schema, type Database } from '@hearth/db';
+import type { ReviewerVerdict } from '@hearth/types';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import {
   recordDrop,

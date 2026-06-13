@@ -10,4 +10,5 @@ export * from './actions.js';
 export * from './audit.js';
 export * from './agent-runs.js';
 export * from './outbound-sends.js';
+export * from './daily-digests.js';
 export * from './enums.js';

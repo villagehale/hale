@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Forwarded email with content removed; insufficient signal to classify reliably.",
+    "payload": {
+      "source": "email",
+      "subject": "Fwd:",
+      "childAge": 2,
+      "province": "ON",
+      "notes": "Forwarded message with content redacted; sender unknown; original context unavailable"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 2831,
+    "output": 194
+  }
+}

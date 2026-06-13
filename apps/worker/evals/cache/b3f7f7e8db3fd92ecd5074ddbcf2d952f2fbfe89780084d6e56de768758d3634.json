@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "The clinic is proposing a reschedule and explicitly asking the parent to reply with availability — this is a direct request requiring parental action, not a reminder.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Baby Chen",
+      "original_date": "June 23",
+      "proposed_date": "June 25",
+      "proposed_time": "2:00 PM",
+      "reason_for_change": "Dr. Okafor is out",
+      "requires_reply": true,
+      "alternatives_open": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2879,
+    "output": 270
+  }
+}

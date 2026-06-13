@@ -1,0 +1,1 @@
+ALTER TABLE "events" ADD COLUMN "teen_content" boolean DEFAULT false NOT NULL;

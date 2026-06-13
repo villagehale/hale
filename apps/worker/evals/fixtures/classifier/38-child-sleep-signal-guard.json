@@ -1,0 +1,19 @@
+{
+  "id": "38-child-sleep-signal-guard",
+  "note": "CHILD stage. An internal scheduler tick about a school-age child's disrupted sleep. STAGE GUARD: sleep_pattern_signal / feeding_pattern_signal are infant/newborn-only signals (per classifier.md + the child pack) and must NOT fire for a 9-year-old. Hand-derived: the safe classification for a developmental sleep observation at this stage is age_stage_milestone_due (a stage-appropriate developmental note) or unclassified — anything but the infant signals. eventTypeOneOf encodes 'NOT the infant signal'.",
+  "stage": "child",
+  "input": {
+    "source": "internal_scheduler",
+    "rawContent": "{\"trigger\":\"sleep_observation\",\"child_age_months\":108,\"note\":\"logged shorter overnight sleep and later bedtimes across the past two weeks for the 9-year-old\"}",
+    "familyContextSlice": {
+      "childrenAgesMonths": [108],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventTypeOneOf": ["age_stage_milestone_due", "unclassified"]
+  }
+}

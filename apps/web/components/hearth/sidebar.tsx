@@ -26,7 +26,7 @@ export function Sidebar() {
             className="font-display text-[2.4rem] leading-none"
             style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}
           >
-            haru
+            Hearth
           </span>
           <span className="meta block mt-2">holds the small things</span>
         </Link>
@@ -72,7 +72,7 @@ export function Sidebar() {
           </div>
         </dl>
 
-        {/* The one tasteful cat — haru, curled asleep at the foot. */}
+        {/* The one tasteful cat — Hearth, curled asleep at the foot. */}
         <div className="pt-4 flex items-end gap-3" aria-hidden>
           <Cat age="kitten" style={{ height: 44, width: 'auto' }} />
           <span className="meta">resting · listening</span>

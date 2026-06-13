@@ -1,6 +1,6 @@
-import { PageCorner } from '~/components/haru/page-corner';
-import { Folio } from '~/components/haru/folio';
-import { StreakLadder, type AutonomyLevel } from '~/components/haru/streak-ladder';
+import { PageCorner } from '~/components/hearth/page-corner';
+import { Folio } from '~/components/hearth/folio';
+import { StreakLadder, type AutonomyLevel } from '~/components/hearth/streak-ladder';
 
 interface AutonomyRow {
   action: string;
@@ -46,7 +46,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-y border-rule py-10">
           <div className="lg:col-span-3">
             <span className="eyebrow text-spruce">your family</span>
-            <p className="meta mt-2">two parents · one child · one almanac</p>
+            <p className="meta mt-2">your household · one almanac · every stage</p>
           </div>
           <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
             <div>

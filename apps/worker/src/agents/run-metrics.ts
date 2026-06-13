@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AgentName } from '@haru/types';
+import type { AgentName } from '@hearth/types';
 import { estimateCostUsd } from '../anthropic/cost.js';
 
 /**

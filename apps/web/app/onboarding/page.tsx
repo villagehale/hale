@@ -1,31 +1,93 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { saveOnboardingChildren } from '~/lib/onboarding/persist';
+import {
+  type ChildInput,
+  type ValidateChildResult,
+  type ValidatedChild,
+  unionStages,
+  validateChild,
+} from '~/lib/onboarding/children';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
 const STEP_META: Record<Step, { folio: string; section: string; title: string }> = {
   1: { folio: 'i', section: 'step one of five', title: 'welcome' },
-  2: { folio: 'ii', section: 'step two of five', title: 'tell me about your baby' },
+  2: { folio: 'ii', section: 'step two of five', title: 'tell me about your children' },
   3: { folio: 'iii', section: 'step three of five', title: 'how trial mode works' },
   4: { folio: 'iv', section: 'step four of five', title: 'connect one source' },
   5: { folio: 'v', section: 'step five of five', title: 'invite your co-parent' },
 };
 
+interface ChildRow extends ChildInput {
+  key: number;
+}
+
+const STAGE_BLURB: Record<string, string> = {
+  newborn: 'the newborn months — feeds, sleep, the pediatric office',
+  toddler: 'the toddler years — daycare, milestones, the small logistics',
+  child: 'the school years — classroom, activities, forms',
+  teenager: 'the teenage years — independence, scheduling, lighter touch',
+};
+
 export default function OnboardingPage() {
   const [step, setStep] = useState<Step>(1);
-  const [babyName, setBabyName] = useState('');
-  const [babyDob, setBabyDob] = useState('');
+  const [children, setChildren] = useState<ChildRow[]>([{ key: 0, name: '', dateOfBirth: '' }]);
   const [parentingStyle, setParentingStyle] = useState<string>('gentle');
+  const [saveState, setSaveState] = useState<
+    { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'preview' } | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
 
   const meta = STEP_META[step];
+
+  // Live derivation as birthdates are typed — never stored, always a function
+  // of date_of_birth. A complete-and-valid child contributes its stage to the
+  // preview; partial rows are simply ignored until they're valid.
+  const validChildren = useMemo<ValidatedChild[]>(
+    () =>
+      children
+        .map((c) => validateChild(c))
+        .filter((r): r is Extract<ValidateChildResult, { ok: true }> => r.ok)
+        .map((r) => r.child),
+    [children],
+  );
+  const previewStages = useMemo(() => unionStages(validChildren), [validChildren]);
+
+  function updateChild(key: number, patch: Partial<ChildInput>) {
+    setChildren((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  function addChild() {
+    setChildren((rows) => [...rows, { key: (rows.at(-1)?.key ?? 0) + 1, name: '', dateOfBirth: '' }]);
+  }
+
+  function removeChild(key: number) {
+    setChildren((rows) => (rows.length === 1 ? rows : rows.filter((r) => r.key !== key)));
+  }
+
+  async function handleContinue() {
+    setSaveState({ kind: 'saving' });
+    const result = await saveOnboardingChildren(children.map(({ name, dateOfBirth }) => ({ name, dateOfBirth })));
+    if (result.status === 'saved') {
+      setSaveState({ kind: 'saved' });
+    } else if (result.status === 'preview') {
+      setSaveState({ kind: 'preview' });
+    } else {
+      setSaveState({ kind: 'error', message: `child ${result.index + 1}: ${result.error.replace(/_/g, ' ')}` });
+      return;
+    }
+    setStep(3);
+  }
+
+  const canContinue = validChildren.length > 0 && validChildren.length === children.filter((c) => c.name.trim() || c.dateOfBirth).length;
 
   return (
     <div className="min-h-screen bg-linen">
       {/* Running head — book top edge */}
       <header className="shell flex items-baseline justify-between pt-6 pb-4 border-b border-rule">
-        <Link href="/" className="font-display text-xl">haru</Link>
+        <Link href="/" className="font-display text-xl">Hearth</Link>
 
         <div className="flex items-baseline gap-3">
           <span className="eyebrow">enrolment</span>
@@ -58,11 +120,11 @@ export default function OnboardingPage() {
             {step === 1 ? (
               <section className="rise rise-1 space-y-8 max-w-2xl">
                 <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
-                  haru is a household almanac for the first year of your child's
-                  life — and the next eighteen. I watch your inbox, your calendar,
-                  your photos, and the small devices that already log your kid's
-                  life, and I do the easy ninety percent of household admin so you
-                  can hold your baby.
+                  Hearth is a household almanac for childhood — from the first
+                  newborn weeks through the teenage years. I watch your inbox,
+                  your calendar, your photos, and the small devices that already
+                  log your family's life, and I do the easy ninety percent of
+                  household admin so you can be present.
                 </p>
                 <p className="text-lg text-slate-green leading-relaxed">
                   Set-up takes about four minutes. I will not do anything autonomously
@@ -73,7 +135,7 @@ export default function OnboardingPage() {
                 <div className="panel-apricot-tint">
                   <span className="eyebrow text-apricot-deep">a guarantee</span>
                   <p className="mt-2 text-slate-green">
-                    Your child's name, date of birth, and medical details are
+                    Your children's names, dates of birth, and medical details are
                     encrypted at rest with keys you can rotate. Canadian residency
                     is non-negotiable.
                   </p>
@@ -92,79 +154,149 @@ export default function OnboardingPage() {
             {step === 2 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  I need a few small things. You can type, or tap{' '}
-                  <button type="button" className="link">hold to talk</button>{' '}
-                  if you are holding the baby.
+                  Add each of your children — a name (or nickname) and a date of
+                  birth. I tailor everything to where each child actually is, so a
+                  newborn and a teenager in the same family both get the right care.
                 </p>
 
-                <div className="space-y-8">
-                  <div>
-                    <label htmlFor="baby-name" className="eyebrow">your child's name</label>
-                    <input
-                      id="baby-name"
-                      type="text"
-                      className="field mt-2"
-                      value={babyName}
-                      onChange={(e) => setBabyName(e.currentTarget.value)}
-                      placeholder="maya"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </div>
+                <div className="space-y-6">
+                  {children.map((child, idx) => {
+                    const validated = validateChild(child);
+                    const stage = validated.ok ? validated.child.stage : null;
+                    return (
+                      <div
+                        key={child.key}
+                        className="p-5 rounded-[var(--r-md)] border border-rule-strong space-y-5"
+                      >
+                        <div className="flex items-baseline justify-between">
+                          <span className="eyebrow">child {idx + 1}</span>
+                          {children.length > 1 ? (
+                            <button
+                              type="button"
+                              className="link meta"
+                              onClick={() => removeChild(child.key)}
+                            >
+                              remove
+                            </button>
+                          ) : null}
+                        </div>
 
-                  <div>
-                    <label htmlFor="baby-dob" className="eyebrow">date of birth</label>
-                    <input
-                      id="baby-dob"
-                      type="date"
-                      className="field mt-2"
-                      value={babyDob}
-                      onChange={(e) => setBabyDob(e.currentTarget.value)}
-                      autoComplete="bday"
-                    />
-                  </div>
-
-                  <fieldset>
-                    <legend className="eyebrow">how do you want to parent?</legend>
-                    <p className="meta mt-1">affects coach voice + which frameworks i lean on. you can change this any time.</p>
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {[
-                        { id: 'gentle', label: 'gentle', note: 'lansbury · markham' },
-                        { id: 'attachment', label: 'attachment', note: 'sears · siegel' },
-                        { id: 'structured', label: 'structured', note: 'karp · ferber' },
-                        { id: 'undecided', label: 'still figuring it out', note: "I'll be neutral" },
-                      ].map((opt) => {
-                        const selected = parentingStyle === opt.id;
-                        return (
-                          <label
-                            key={opt.id}
-                            className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors block ${
-                              selected
-                                ? 'bg-oat border border-spruce'
-                                : 'border border-rule-strong hover:border-spruce'
-                            }`}
-                          >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                          <div>
+                            <label htmlFor={`child-name-${child.key}`} className="eyebrow">
+                              name or nickname
+                            </label>
                             <input
-                              type="radio"
-                              name="parenting-style"
-                              value={opt.id}
-                              checked={selected}
-                              onChange={() => setParentingStyle(opt.id)}
-                              className="sr-only"
+                              id={`child-name-${child.key}`}
+                              type="text"
+                              className="field mt-2"
+                              value={child.name}
+                              onChange={(e) => updateChild(child.key, { name: e.currentTarget.value })}
+                              placeholder="maya"
+                              autoComplete="off"
+                              spellCheck={false}
                             />
-                            <span className="font-display text-xl block">{opt.label}</span>
-                            <span className="meta block mt-1">{opt.note}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
+                          </div>
+
+                          <div>
+                            <label htmlFor={`child-dob-${child.key}`} className="eyebrow">
+                              date of birth
+                            </label>
+                            <input
+                              id={`child-dob-${child.key}`}
+                              type="date"
+                              className="field mt-2"
+                              value={child.dateOfBirth}
+                              max={new Date().toISOString().slice(0, 10)}
+                              onChange={(e) => updateChild(child.key, { dateOfBirth: e.currentTarget.value })}
+                              autoComplete="bday"
+                            />
+                          </div>
+                        </div>
+
+                        {child.dateOfBirth ? (
+                          <p className="meta" aria-live="polite">
+                            {stage ? (
+                              <>
+                                <span className="text-spruce">{stage}</span> · {STAGE_BLURB[stage]}
+                              </>
+                            ) : (
+                              <span className="text-apricot-deep">
+                                {validated.ok ? '' : describeError(validated.error)}
+                              </span>
+                            )}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+
+                  <button type="button" className="btn-ghost" onClick={addChild}>
+                    + add another child
+                  </button>
                 </div>
+
+                {previewStages.length > 0 ? (
+                  <div className="panel-oat">
+                    <span className="eyebrow text-spruce">i'll tailor to</span>
+                    <p className="font-display text-xl mt-2">
+                      {previewStages.join(' + ')}
+                    </p>
+                    <p className="meta mt-1">
+                      derived live from each birthday — it shifts on its own as they grow.
+                    </p>
+                  </div>
+                ) : null}
+
+                <fieldset>
+                  <legend className="eyebrow">how do you want to parent?</legend>
+                  <p className="meta mt-1">affects coach voice + which frameworks i lean on. you can change this any time.</p>
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { id: 'gentle', label: 'gentle', note: 'lansbury · markham' },
+                      { id: 'attachment', label: 'attachment', note: 'sears · siegel' },
+                      { id: 'structured', label: 'structured', note: 'karp · ferber' },
+                      { id: 'undecided', label: 'still figuring it out', note: "I'll be neutral" },
+                    ].map((opt) => {
+                      const selected = parentingStyle === opt.id;
+                      return (
+                        <label
+                          key={opt.id}
+                          className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors block ${
+                            selected
+                              ? 'bg-oat border border-spruce'
+                              : 'border border-rule-strong hover:border-spruce'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="parenting-style"
+                            value={opt.id}
+                            checked={selected}
+                            onChange={() => setParentingStyle(opt.id)}
+                            className="sr-only"
+                          />
+                          <span className="font-display text-xl block">{opt.label}</span>
+                          <span className="meta block mt-1">{opt.note}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+
+                {saveState.kind === 'error' ? (
+                  <p className="meta text-apricot-deep" role="alert">{saveState.message}</p>
+                ) : null}
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
                   <button type="button" className="btn-ghost" onClick={() => setStep(1)}>← back</button>
-                  <button type="button" className="btn-primary ml-auto" onClick={() => setStep(3)}>
-                    continue →
+                  <button
+                    type="button"
+                    className="btn-primary ml-auto"
+                    onClick={handleContinue}
+                    disabled={!canContinue || saveState.kind === 'saving'}
+                  >
+                    {saveState.kind === 'saving' ? 'saving…' : 'continue →'}
                   </button>
                 </div>
               </section>
@@ -172,8 +304,19 @@ export default function OnboardingPage() {
 
             {step === 3 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
+                {saveState.kind === 'preview' ? (
+                  <output className="panel-apricot-tint block">
+                    <span className="eyebrow text-apricot-deep">preview only</span>
+                    <p className="mt-2 text-slate-green">
+                      You're in a development preview — sign-in isn't configured yet,
+                      so nothing you entered was saved. The stages above are derived
+                      live from the birthdates so you can see how Hearth would tailor.
+                    </p>
+                  </output>
+                ) : null}
+
                 <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
-                  For the first seven days, haru drafts every action — but never
+                  For the first seven days, Hearth drafts every action — but never
                   commits it. You see exactly what would have happened. Nothing
                   sends. Nothing books. Nothing orders.
                 </p>
@@ -213,8 +356,8 @@ export default function OnboardingPage() {
               <section className="rise rise-1 space-y-8 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
                   Connect one source first. Gmail is the highest-leverage entry —
-                  the pediatric office, daycare, government, and family all reach
-                  you there. You can connect calendar and photos next from the{' '}
+                  the pediatric office, daycare, school, government, and family all
+                  reach you there. You can connect calendar and photos next from the{' '}
                   <span className="font-display italic">connected</span> page.
                 </p>
 
@@ -258,7 +401,7 @@ export default function OnboardingPage() {
             {step === 5 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  haru works best as a family unit. invite your co-parent and we
+                  Hearth works best as a family unit. invite your co-parent and we
                   will share the digest, drafts, and trail across both of you.
                   Either of you can approve actions. Neither of you can be locked
                   out.
@@ -267,7 +410,7 @@ export default function OnboardingPage() {
                 <div className="panel">
                   <span className="eyebrow">share this link</span>
                   <p className="font-display text-xl break-all mt-2">
-                    haru.family/invite/87c2-d9f5-12a8
+                    hearth.family/invite/87c2-d9f5-12a8
                   </p>
                   <div className="flex flex-wrap items-center gap-5 mt-5">
                     <button type="button" className="btn-ghost">copy link</button>
@@ -295,4 +438,17 @@ export default function OnboardingPage() {
       </main>
     </div>
   );
+}
+
+function describeError(error: string): string {
+  switch (error) {
+    case 'dob_future':
+      return "that's in the future — check the year";
+    case 'dob_too_old':
+      return 'Hearth is for children under eighteen';
+    case 'dob_invalid':
+      return "that date doesn't look right";
+    default:
+      return '';
+  }
 }

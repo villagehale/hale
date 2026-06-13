@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 /*
- * haru — "Meadow" design system.
+ * Hearth — "Meadow" design system.
  *
  * The calm of a nursery at 4pm light. Soft geometric shapes that never
  * crowd, generous breathing air, a muted grown-up earth palette (spruce,
  * linen, apricot, sage). Restraint expressed as kindness, not austerity.
  * Type is warm on both sides (Fraunces display + Nunito body); imagery is
  * a hand-built flat color-block SVG kit. The motif is the daily arc — the
- * rhythm a newborn lives by and the rhythm haru quietly tends.
+ * rhythm a newborn lives by and the rhythm Hearth quietly tends.
  *
  * Hard rules baked in:
  *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
@@ -17,7 +17,7 @@
  *   - 16px form inputs on mobile (iOS no-zoom).
  *   - motion is "breathing not bouncing"; every animation — including the
  *     ambient hero sun-arc — is disabled under prefers-reduced-motion.
- *   - no emoji, ever; product name is always lowercase "haru".
+ *   - no emoji, ever; product name is always "Hearth".
  */
 
 @theme {

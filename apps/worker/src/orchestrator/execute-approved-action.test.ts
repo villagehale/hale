@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ActionType } from '@haru/types';
+import type { ActionType } from '@hearth/types';
 import { executeApprovedAction, type ExecuteApprovedDeps } from './index.js';
 
 /**

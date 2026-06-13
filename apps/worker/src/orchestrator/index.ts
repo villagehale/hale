@@ -21,7 +21,7 @@ import {
   loadFamilyCreatedAt,
   loadActionApprovalHistory,
   loadCrossParentConsent,
-  loadChildStages,
+  loadFamilyContext,
   markEventStage,
   recordHumanApproval,
 } from '../services/memory-writer.js';
@@ -32,12 +32,13 @@ import {
   type DraftedAction,
   type ApprovedAction,
   type ActionType,
-} from '@haru/types';
+  type FamilyStage,
+} from '@hearth/types';
 import {
   coverageSatisfiedWithResults,
   isCrossParentActionType,
   type IngestedEventPayload,
-} from '@haru/tools-contracts';
+} from '@hearth/tools-contracts';
 import {
   withinObservationWindow,
   streakSatisfiesAutonomy,
@@ -73,13 +74,13 @@ const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
 /** What the classify stage yields, whether fresh or replayed from a checkpoint. */
 interface ClassifiedState {
   eventId: string;
-  eventType: import('@haru/types').EventType;
+  eventType: import('@hearth/types').EventType;
   payload: Record<string, unknown>;
   confidence: number;
-  suggestion: import('@haru/types').ClassifierSuggestion;
-  /** Teen-content flag from the classifier. Not persisted on the event, so a
-   * resume reads false — harmless, as the teen cap is dormant until stage
-   * wiring lands (same TODO as classifier stages). */
+  suggestion: import('@hearth/types').ClassifierSuggestion;
+  /** Teen-content flag from the classifier, persisted on the event (FIX 1) so a
+   * crash-resume re-applies the rule-#1 teen-redaction cap with the same value
+   * the fresh pass saw. The cap is live on both the fresh and resume paths. */
   teenContent: boolean;
 }
 
@@ -110,11 +111,22 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
   // FIX 1 resume: a prior pass approved + autonomy-qualified the action and
   // checkpointed it, then crashed before (or during) the executor send. Re-drive
   // the executor exactly once — the outbound_sends claim dedups a true
-  // double-send — and advance the event to its terminal outcome.
+  // double-send — and advance the event to its terminal outcome. The rule-#1
+  // teen-redaction cap is re-applied inside resumeIntoExecutor using the
+  // persisted teen_content, so an autonomous-eligible teen-content action that
+  // crashed at the checkpoint is still capped on resume (never reaches executor).
   if (resume && resume.status === 'approved_pending_execute') {
-    await resumeIntoExecutor(familyId, resume.eventId);
+    await resumeIntoExecutor(familyId, resume.eventId, resume.teenContent);
     return;
   }
+
+  // Stage-aware family context, loaded once and reused: the classifier reads
+  // the context slice + stages (so a teenager family gets the teenager pack, not
+  // the default newborn pack), and the rule-#1 teen-redaction cap below reads the
+  // same stages. Empty children → ['newborn'] (the conservative default).
+  const familyContext = await loadFamilyContext(familyId);
+  const stages: FamilyStage[] =
+    familyContext.stages.length > 0 ? familyContext.stages : ['newborn'];
 
   // 1. Classify — skipped on resume, loaded from the checkpointed event instead.
   let classified: ClassifiedState;
@@ -134,10 +146,16 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       payload: resume.payload,
       confidence: resume.classifierConfidence,
       suggestion: resume.suggestion,
-      teenContent: false,
+      teenContent: resume.teenContent,
     };
   } else {
-    const fresh = await runClassifier({ familyId, source: job.source, rawContent });
+    const fresh = await runClassifier({
+      familyId,
+      source: job.source,
+      rawContent,
+      stages,
+      familyContextSlice: familyContext.contextSlice,
+    });
     const { eventId, duplicate } = await recordEvent({
       familyId,
       source: job.source,
@@ -146,6 +164,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       classifierConfidence: fresh.confidence.score,
       dedupHash: fresh.dedupHash,
       suggestion: fresh.suggestion,
+      teenContent: fresh.teenContent,
       classifierMetrics: fresh.runMetrics,
     });
 
@@ -329,11 +348,8 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
 
   // Rule #1 teen-redaction cap — a HARD structural cap that overrides the model:
   // a family with a teenager + a teen-content event never auto-executes,
-  // regardless of suggestion. Dormant until stage wiring lands (loadChildStages
-  // returns [] → defaults to ['newborn'], so the cap can't fire yet) — the same
-  // known TODO as the classifier's stages input (B17).
-  const childStages = await loadChildStages(familyId);
-  const stages = childStages.length > 0 ? childStages : (['newborn'] as const).slice();
+  // regardless of suggestion. Reuses the `stages` loaded once above (same source
+  // the classifier was given), so the model's pack and this cap can't disagree.
   if (teenRedactionCapApplies(stages, classified.teenContent)) {
     await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
@@ -452,14 +468,44 @@ async function executeAndRecord(
  * draft + approved verdict, re-mints the ApprovedAction (the stored tool-result
  * `ok` flags re-gate it exactly as the original pass), and runs the executor.
  * The outbound_sends claim guarantees the provider is hit at most once.
+ *
+ * Before re-driving, the rule-#1 teen-redaction cap is re-applied with the
+ * PERSISTED teen_content + the family's current stages — a hard structural cap
+ * that overrides a stale checkpoint. A teen-content action in a teenager family
+ * that reached this checkpoint (e.g. a checkpoint written before the cap was
+ * wired) is held back to drafted_for_approval, NOT executed.
  */
-async function resumeIntoExecutor(familyId: string, eventId: string): Promise<void> {
+async function resumeIntoExecutor(
+  familyId: string,
+  eventId: string,
+  teenContent: boolean,
+): Promise<void> {
   const existing = await loadActionForEvent(eventId);
   if (!existing) {
     throw new Error(
       `orchestrator: event ${eventId} at 'approved_pending_execute' but no action row found`,
     );
   }
+
+  const familyContext = await loadFamilyContext(familyId);
+  const stages: FamilyStage[] =
+    familyContext.stages.length > 0 ? familyContext.stages : ['newborn'];
+  if (teenRedactionCapApplies(stages, teenContent)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, eventId, actionId: existing.actionId, actionType: existing.actionType },
+      'orchestrator: teen-content event at approved_pending_execute in a family with a teenager — re-capped on resume (executor not reached)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId: existing.actionId,
+      actionType: existing.actionType,
+      reason: 'teen_redaction',
+      detail: { stages, resumed: true },
+    });
+    return;
+  }
+
   const verdict = await loadApprovedVerdictForAction(existing.actionId);
   if (!verdict || verdict.kind !== 'approve') {
     throw new Error(
@@ -525,9 +571,9 @@ function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
  * CONSENT BOUNDARY (hard rule #5): a human's approval IS the override for the
  * AUTONOMY gates (streak / 7-day window / confidence / entitlement-for-autonomy) —
  * that is the entire point of L2 "draft → human approves → execute". Those gates
- * decide whether HARU may act on its own; once a parent says "yes, send it", they
+ * decide whether HEARTH may act on its own; once a parent says "yes, send it", they
  * no longer apply. Cross-parent consent is NOT an autonomy gate — it is a separate
- * legal requirement that BOTH parents authorize Haru to act on their jointly-held
+ * legal requirement that BOTH parents authorize Hearth to act on their jointly-held
  * child's data. One parent's approval cannot waive the other parent's consent, so
  * this gate is re-checked here and a missing co-parent consent REFUSES execution
  * (audited action.gated.cross_parent_consent), even with a valid human approval.

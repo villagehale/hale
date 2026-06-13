@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "lab_results_ready",
+    "confidence": 0.95,
+    "rationale": "LifeLabs automated notification that lab results are available in the online account for a dependent; a direct one-way medical notice requiring no reply.",
+    "payload": {
+      "sender": "LifeLabs",
+      "message_type": "lab_results_available",
+      "action_required": "view_in_account",
+      "dependent_info": "One dependent (infant, 3 months old)"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2856,
+    "output": 210
+  }
+}

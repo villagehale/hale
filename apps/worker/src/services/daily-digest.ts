@@ -1,5 +1,5 @@
 import { and, eq, gte, lt } from 'drizzle-orm';
-import { schema } from '@haru/db';
+import { schema, type Database } from '@hearth/db';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -9,19 +9,19 @@ interface DailyDigestJob {
 }
 
 /**
- * Builds the daily digest for a family by reading today's actions
- * (autonomous, drafted_for_approval, needs_human) and writing a summary
- * row that the web app renders.
- *
- * Current implementation: pulls actions, logs counts. The summary table
- * write lands when `daily_digests` is added to the schema (next migration);
- * the read path is already real and exposes per-family activity counts.
+ * Builds the daily digest for a family by reading the day's actions and writing
+ * one daily_digests summary row the web app renders. Idempotent per day: the
+ * unique (family_id, digest_date) index upserts the row on a re-run rather than
+ * duplicating it, so a redelivered digest job recomputes the same row.
  */
-export async function runDailyDigest(job: DailyDigestJob): Promise<void> {
+export async function runDailyDigest(
+  job: DailyDigestJob,
+  database: Database = db(),
+): Promise<void> {
   const dayStart = new Date(`${job.digestDate}T00:00:00.000Z`);
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-  const todayActions = await db()
+  const todayActions = await database
     .select({
       id: schema.actions.id,
       actionType: schema.actions.actionType,
@@ -60,6 +60,30 @@ export async function runDailyDigest(job: DailyDigestJob): Promise<void> {
         break;
     }
   }
+
+  await database
+    .insert(schema.dailyDigests)
+    .values({
+      familyId: job.familyId,
+      digestDate: job.digestDate,
+      handledCount: counts.autonomous,
+      awaitingCount: counts.drafted,
+      needsYouCount: counts.needsHuman,
+      revertedCount: counts.reverted,
+      totalCount: todayActions.length,
+      generatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [schema.dailyDigests.familyId, schema.dailyDigests.digestDate],
+      set: {
+        handledCount: counts.autonomous,
+        awaitingCount: counts.drafted,
+        needsYouCount: counts.needsHuman,
+        revertedCount: counts.reverted,
+        totalCount: todayActions.length,
+        generatedAt: new Date(),
+      },
+    });
 
   logger.info(
     { familyId: job.familyId, date: job.digestDate, total: todayActions.length, counts },

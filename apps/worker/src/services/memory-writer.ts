@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { schema, type Database } from '@haru/db';
+import { schema, type Database } from '@hearth/db';
 import type {
   EventType,
   ActionType,
@@ -8,8 +8,8 @@ import type {
   PlanTier,
   Entitlement,
   FamilyStage,
-} from '@haru/types';
-import { deriveStage } from '@haru/types';
+} from '@hearth/types';
+import { ageInMonths, deriveStage } from '@hearth/types';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
@@ -114,6 +114,9 @@ interface RecordEventInput {
   dedupHash: string;
   /** Persisted so a crash-resume can route without re-classifying (B10). */
   suggestion: ClassifierSuggestion;
+  /** Teen-content flag, persisted so a crash-resume re-applies the rule-#1
+   * teen-redaction cap with the same value the fresh pass saw (FIX 1). */
+  teenContent: boolean;
   /** Classifier run metrics — its agent_runs row is written for every event. */
   classifierMetrics: AgentRunMetrics;
 }
@@ -185,6 +188,7 @@ export async function recordEvent(
       payload: input.payload,
       classifierConfidence: input.classifierConfidence,
       classifierSuggestion: input.suggestion,
+      teenContent: input.teenContent,
       classifiedAt: new Date(),
       dedupHash: input.dedupHash,
       status: 'classified',
@@ -528,8 +532,8 @@ export async function recordEntitlementGate(
           requiredEntitlement: input.requiredEntitlement,
           upgradeHint:
             input.requiredEntitlement === 'autonomy_l3'
-              ? 'Upgrade to Plus to let Haru act autonomously.'
-              : 'Upgrade to Family to let Haru act autonomously on commerce and portal actions.',
+              ? 'Upgrade to Plus to let Hearth act autonomously.'
+              : 'Upgrade to Family to let Hearth act autonomously on commerce and portal actions.',
         },
       },
     };
@@ -660,6 +664,9 @@ export interface ResumePoint {
   payload: Record<string, unknown>;
   classifierConfidence: number;
   suggestion: ClassifierSuggestion | null;
+  /** Persisted teen-content flag, so the resume path re-applies the rule-#1
+   * teen-redaction cap with the same value the fresh pass saw (FIX 1). */
+  teenContent: boolean;
 }
 
 /**
@@ -680,6 +687,7 @@ export async function loadResumePoint(
       payload: schema.events.payload,
       classifierConfidence: schema.events.classifierConfidence,
       classifierSuggestion: schema.events.classifierSuggestion,
+      teenContent: schema.events.teenContent,
     })
     .from(schema.events)
     .where(
@@ -696,6 +704,7 @@ export async function loadResumePoint(
     payload: row.payload,
     classifierConfidence: row.classifierConfidence ?? 0,
     suggestion: row.classifierSuggestion as ClassifierSuggestion | null,
+    teenContent: row.teenContent,
   };
 }
 
@@ -858,20 +867,70 @@ export async function loadChildNames(
 }
 
 /**
- * Derives the family's child stages from each child's date of birth, for the
- * teen-redaction cap. Returns [] when no children rows exist; the orchestrator
- * defaults that to ['newborn'] so the cap stays dormant until child data is
- * wired (the known stage-wiring TODO).
+ * The stage-aware context the orchestrator hands the classifier and the
+ * teen-redaction cap. `stages` is the distinct per-child stages (empty when the
+ * family has no children rows — the orchestrator defaults that to ['newborn']);
+ * `contextSlice` is the disambiguation slice the classifier prompt expects.
+ *
+ * knownClinics/knownDaycares are deliberately absent: the schema has no
+ * source-of-truth for them, so we omit rather than fabricate (the classifier
+ * type marks them optional).
  */
-export async function loadChildStages(
+export interface FamilyContext {
+  stages: FamilyStage[];
+  contextSlice: {
+    childrenAgesMonths: number[];
+    province: string;
+    timezone: string;
+  };
+}
+
+/**
+ * Loads everything stage-dependent for a family in one place: each child's
+ * derived stage + age in months (from the children rows), the family's province,
+ * and the primary parent's timezone. Deriving stage and age from the same
+ * children query keeps them consistent and avoids a second round-trip. Stages
+ * dedup naturally downstream via stagePackFor; ages are listed per child.
+ */
+export async function loadFamilyContext(
   familyId: string,
   database: Database = db(),
-): Promise<FamilyStage[]> {
-  const rows = await database
+): Promise<FamilyContext> {
+  const childRows = await database
     .select({ dateOfBirth: schema.children.dateOfBirth })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.map((r) => deriveStage(r.dateOfBirth));
+
+  const familyRows = await database
+    .select({ province: schema.families.provinceOrState })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  const family = familyRows[0];
+  if (!family) {
+    throw new Error(`loadFamilyContext: no family row for ${familyId}`);
+  }
+
+  const parentRows = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+
+  return {
+    stages: childRows.map((r) => deriveStage(r.dateOfBirth)),
+    contextSlice: {
+      childrenAgesMonths: childRows.map((r) => ageInMonths(r.dateOfBirth)),
+      province: family.province ?? '',
+      timezone: parentRows[0]?.timezone ?? 'America/Toronto',
+    },
+  };
 }
 
 /**
@@ -882,7 +941,7 @@ export async function loadChildStages(
  *     (the rule's own carve-out).
  *   coParentConsentGranted — is there an active (granted, not revoked)
  *     consent_records row of type 'autonomous_action_class' for that co-parent?
- *     That is the consent that authorizes Haru to act autonomously on the shared
+ *     That is the consent that authorizes Hearth to act autonomously on the shared
  *     family data the co-parent's account contributes.
  */
 export async function loadCrossParentConsent(
@@ -928,10 +987,10 @@ export async function loadCrossParentConsent(
  * that was approved at review (reviewer_verdict = 'approved'), then EXECUTED
  * (executed_at IS NOT NULL), and whose final user_visible_state is NOT
  * 'autonomous'. recordExecution stamps user_visible_state='autonomous' for
- * actions Haru ran on its own; the human-approval path (a parent approving a
+ * actions Hearth ran on its own; the human-approval path (a parent approving a
  * drafted_for_approval action in the product UI) executes the same action
  * WITHOUT that autonomous marker. Excluding 'autonomous' is what makes a streak
- * count consecutive HUMAN approvals, not Haru's own prior auto-executions —
+ * count consecutive HUMAN approvals, not Hearth's own prior auto-executions —
  * otherwise autonomy would bootstrap itself. With no human-approval write path
  * shipped yet, this returns zero qualifying rows, so every streak is 0 and L3
  * stays dark by default (correct per rule #4).

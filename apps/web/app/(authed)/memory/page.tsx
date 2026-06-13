@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { PageCorner } from '~/components/haru/page-corner';
-import { Folio } from '~/components/haru/folio';
+import { PageCorner } from '~/components/hearth/page-corner';
+import { Folio } from '~/components/hearth/folio';
 
 function DestructiveButton({
   label,

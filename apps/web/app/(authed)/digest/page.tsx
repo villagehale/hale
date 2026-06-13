@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { PageCorner } from '~/components/haru/page-corner';
-import { Folio } from '~/components/haru/folio';
-import { ToneLabel } from '~/components/haru/tone';
+import { PageCorner } from '~/components/hearth/page-corner';
+import { Folio } from '~/components/hearth/folio';
+import { ToneLabel } from '~/components/hearth/tone';
 import { loadDigest } from '~/lib/dashboard/queries';
 
 export default async function DigestPage() {
@@ -128,7 +128,7 @@ export default async function DigestPage() {
 
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
           <p className="meta">today's digest</p>
-          <p className="meta">tended by haru</p>
+          <p className="meta">tended by Hearth</p>
         </div>
       </section>
     </div>

@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
-import { type Database, schema } from '@haru/db';
+import { type Database, schema } from '@hearth/db';
 import { db as defaultDb } from '~/lib/db';
 import { clerkConfigured } from '~/lib/auth-config';
 

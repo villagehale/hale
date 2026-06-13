@@ -1,0 +1,20 @@
+{
+  "id": "37-teen-sin-first-job",
+  "note": "TEENAGER stage. A first-part-time-job offer requiring the teen to provide a SIN before the start date — legal_milestone_due. Hand-derived from taxonomy: SIN / first-job paperwork is an administrative milestone with a deadline → legal_milestone_due, surface_only (Hearth never submits identity paperwork on its own). Distinguished from tax_credit_eligibility_change (a benefits change, not an identity milestone).",
+  "stage": "teenager",
+  "input": {
+    "source": "email",
+    "rawContent": "From: hr@maplemart-grocery.ca\nSubject: Welcome aboard — paperwork before your first shift\n\nCongratulations on the part-time cashier role! Before the first shift on June 20, please bring a valid Social Insurance Number (SIN). If your teen does not yet have a SIN, they can apply for free through Service Canada. We also need a signed TD1 form on the first day.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [200],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "legal_milestone_due",
+    "kind": "surface_only"
+  }
+}

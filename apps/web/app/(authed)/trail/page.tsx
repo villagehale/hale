@@ -1,28 +1,28 @@
-import { PageCorner } from '~/components/haru/page-corner';
-import { Folio } from '~/components/haru/folio';
-import { ToneLabel } from '~/components/haru/tone';
+import { PageCorner } from '~/components/hearth/page-corner';
+import { Folio } from '~/components/hearth/folio';
+import { ToneLabel } from '~/components/hearth/tone';
 import { loadTrail } from '~/lib/dashboard/queries';
 
-const ACTOR_LABEL: Record<'haru' | 'you' | 'co-parent', string> = {
-  haru: 'haru',
+const ACTOR_LABEL: Record<'hearth' | 'you' | 'co-parent', string> = {
+  hearth: 'Hearth',
   you: 'you',
   'co-parent': 'co-parent',
 };
 
-const ACTOR_TONE: Record<'haru' | 'you' | 'co-parent', string> = {
-  haru: 'text-apricot-deep',
+const ACTOR_TONE: Record<'hearth' | 'you' | 'co-parent', string> = {
+  hearth: 'text-apricot-deep',
   you: 'text-spruce',
   'co-parent': 'text-sky-deep',
 };
 
 export default async function TrailPage() {
   const entries = await loadTrail();
-  const byHaru = entries.filter((entry) => entry.actor === 'haru').length;
-  const byParent = entries.length - byHaru;
+  const byHearth = entries.filter((entry) => entry.actor === 'hearth').length;
+  const byParent = entries.length - byHearth;
 
   const stats = [
     { label: 'recorded', value: String(entries.length), detail: 'actions' },
-    { label: 'by haru', value: String(byHaru), detail: 'autonomous' },
+    { label: 'by Hearth', value: String(byHearth), detail: 'autonomous' },
     { label: 'by a parent', value: String(byParent), detail: 'decisions' },
     { label: 'reverted', value: '0', detail: 'this view' },
   ];
@@ -69,7 +69,7 @@ export default async function TrailPage() {
       <section className="rise rise-3 flex flex-wrap items-baseline gap-x-5 gap-y-3 border-b border-rule pb-5 mb-2">
         <span className="eyebrow">show</span>
         <button type="button" className="btn-ghost" aria-current="true">all</button>
-        <button type="button" className="btn-ghost">haru only</button>
+        <button type="button" className="btn-ghost">Hearth only</button>
         <button type="button" className="btn-ghost">parent decisions</button>
         <span className="ml-auto">
           <button type="button" className="btn-ghost">export csv</button>
@@ -83,7 +83,7 @@ export default async function TrailPage() {
             nothing on the record yet.
           </p>
           <p className="meta mt-4 text-slate-green">
-            no data yet — connect a data source and every action, by haru or by
+            no data yet — connect a data source and every action, by Hearth or by
             you, lands here in an unbroken, exportable line.
           </p>
         </section>

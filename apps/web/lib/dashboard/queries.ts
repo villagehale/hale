@@ -1,5 +1,5 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
-import { type Database, schema } from '@haru/db';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { type Database, schema } from '@hearth/db';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 import {
@@ -12,6 +12,7 @@ import {
   toDraftView,
   toTrailView,
 } from './mappers';
+import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 
 /**
  * The dashboard pages run in a credential-less preview (no DATABASE_URL, no
@@ -36,8 +37,9 @@ async function readForFamily<T>(
 export function loadDrafts(): Promise<DraftView[]> {
   return readForFamily(async (database, familyId) => {
     const rows = await database
-      .select()
+      .select({ action: schema.actions, teenContent: schema.events.teenContent })
       .from(schema.actions)
+      .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
       .where(
         and(
           eq(schema.actions.familyId, familyId),
@@ -45,7 +47,7 @@ export function loadDrafts(): Promise<DraftView[]> {
         ),
       )
       .orderBy(desc(schema.actions.draftedAt));
-    return rows.map(toDraftView);
+    return rows.map((row) => toDraftView(row.action, row.teenContent));
   }, []);
 }
 
@@ -64,8 +66,9 @@ export function loadDigest(): Promise<DigestData> {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const rows = await database
-      .select()
+      .select({ action: schema.actions, teenContent: schema.events.teenContent })
       .from(schema.actions)
+      .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
       .where(
         and(
           eq(schema.actions.familyId, familyId),
@@ -74,20 +77,59 @@ export function loadDigest(): Promise<DigestData> {
       )
       .orderBy(desc(schema.actions.draftedAt));
     const entries = rows
-      .map(toDigestEntry)
+      .map((row) => toDigestEntry(row.action, row.teenContent))
       .filter((entry): entry is DigestEntryView => entry !== null);
-    return { tally: toDigestTally(rows), entries };
+    return { tally: toDigestTally(rows.map((row) => row.action)), entries };
   }, EMPTY_DIGEST);
+}
+
+const EMPTY_FAMILY_HEADER: FamilyHeaderView = { children: [], stages: [] };
+
+/**
+ * The family's children with their live-derived stages, for the header that
+ * tells the rest of the experience which stage(s) to tailor to. Same empty-state
+ * degradation as the other reads: no DB or no resolved family → empty header.
+ */
+export function loadFamilyHeader(): Promise<FamilyHeaderView> {
+  return readForFamily(async (database, familyId) => {
+    const rows = await database
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(schema.children.dateOfBirth);
+    return toFamilyHeader(rows);
+  }, EMPTY_FAMILY_HEADER);
 }
 
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
+    // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
+    // an actions row (target_table='actions', target_id=action uuid), which points
+    // at the event that carries the flag. We cast actions.id → text (always safe)
+    // to match the text target_id, rather than parsing target_id → uuid (which
+    // would error on any non-uuid target_id). LEFT JOINs keep rows that don't
+    // resolve to an action/event (other target tables) — those carry teenContent
+    // = null/false and render in full, the documented trail boundary: we redact
+    // exactly when a row resolves to teen_content, never claiming to cover targets
+    // we can't tie.
     const rows = await database
-      .select()
+      .select({ entry: schema.auditLog, teenContent: schema.events.teenContent })
       .from(schema.auditLog)
+      .leftJoin(
+        schema.actions,
+        and(
+          eq(schema.auditLog.targetTable, 'actions'),
+          eq(sql`${schema.actions.id}::text`, schema.auditLog.targetId),
+        ),
+      )
+      .leftJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
       .where(eq(schema.auditLog.familyId, familyId))
       .orderBy(desc(schema.auditLog.occurredAt))
       .limit(50);
-    return rows.map(toTrailView);
+    return rows.map((row) => toTrailView(row.entry, row.teenContent ?? false));
   }, []);
 }

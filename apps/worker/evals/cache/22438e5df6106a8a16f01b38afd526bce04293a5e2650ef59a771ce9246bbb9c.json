@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.88,
+    "rationale": "A 3-month-old infant's feeding tracker export shows a declining intake trend (daily volume down 15%, more frequent shorter feeds) — a proactive health signal about feeding behavior during an infant stage where such patterns warrant parental awareness.",
+    "payload": {
+      "metric": "feeding",
+      "window_days": 7,
+      "avg_feeds_per_day": 7.8,
+      "avg_volume_ml": 118,
+      "trend": "declining_intake",
+      "note": "daily volume down ~15% vs prior week; more frequent shorter feeds",
+      "child_age_months": 3
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2860,
+    "output": 260
+  }
+}

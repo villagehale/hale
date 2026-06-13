@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type Action,
   type AuditLogEntry,
+  TEEN_REDACTED_PLACEHOLDER,
   toDigestEntry,
   toDigestTally,
   toDraftView,
@@ -42,6 +43,7 @@ describe('toDraftView', () => {
           rationale: 'they sent an invite; matched your tone.',
         },
       }),
+      false,
     );
 
     expect(view).toEqual({
@@ -55,7 +57,7 @@ describe('toDraftView', () => {
   });
 
   it('falls back to placeholders when payload fields are missing', () => {
-    const view = toDraftView(action({ id: 'draft-2', actionType: 'place_supply_order', payload: {} }));
+    const view = toDraftView(action({ id: 'draft-2', actionType: 'place_supply_order', payload: {} }), false);
 
     expect(view.recipient).toBe('unspecified recipient');
     expect(view.subject).toBe('place_supply_order');
@@ -86,6 +88,7 @@ describe('toDigestEntry', () => {
   it('maps autonomous → done tone with the payload body', () => {
     const entry = toDigestEntry(
       action({ id: 'd1', userVisibleState: 'autonomous', payload: { body: 'reordered diapers.' } }),
+      false,
     );
     expect(entry).toEqual({ id: 'd1', tone: 'done', category: 'send_email', body: 'reordered diapers.' });
   });
@@ -93,6 +96,7 @@ describe('toDigestEntry', () => {
   it('maps needs_human → needs-you tone, synthesizing a body when none', () => {
     const entry = toDigestEntry(
       action({ id: 'd2', actionType: 'fill_pdf_form', userVisibleState: 'needs_human', payload: {} }),
+      false,
     );
     expect(entry).toEqual({
       id: 'd2',
@@ -103,7 +107,7 @@ describe('toDigestEntry', () => {
   });
 
   it('drops reverted actions (returns null)', () => {
-    expect(toDigestEntry(action({ userVisibleState: 'reverted' }))).toBeNull();
+    expect(toDigestEntry(action({ userVisibleState: 'reverted' }), false)).toBeNull();
   });
 });
 
@@ -126,23 +130,128 @@ function auditEntry(overrides: Partial<AuditLogEntry>): AuditLogEntry {
 }
 
 describe('toTrailView', () => {
-  it('renders a system actor as haru with a Toronto-time stamp', () => {
+  it('renders a system actor as hearth with a Toronto-time stamp', () => {
     // 14:05 UTC is 10:05 in America/Toronto (EDT, UTC-4) on 2026-06-11.
-    const view = toTrailView(auditEntry({ actor: 'system' }));
-    expect(view.actor).toBe('haru');
+    const view = toTrailView(auditEntry({ actor: 'system' }), false);
+    expect(view.actor).toBe('hearth');
     expect(view.time).toBe('10:05');
     expect(view.summary).toBe('sent rsvp to library');
     expect(view.detail).toBe('actions · act-9');
   });
 
   it('renders a non-system actor as a parent ("you")', () => {
-    const view = toTrailView(auditEntry({ actor: 'user-uuid-123' }));
+    const view = toTrailView(auditEntry({ actor: 'user-uuid-123' }), false);
     expect(view.actor).toBe('you');
   });
 
   it('falls back to "recorded" detail when no target id is present', () => {
-    const view = toTrailView(auditEntry({ targetId: null, targetTable: null }));
+    const view = toTrailView(auditEntry({ targetId: null, targetTable: null }), false);
     expect(view.detail).toBe('recorded');
     expect(view.category).toBe('action');
+  });
+});
+
+// ── Rule #1: teen content (children 13+) is redacted at the mapper layer ──────
+// The parent sees CATEGORY + Hearth's own rationale + a "kept private" placeholder,
+// NEVER the teen's raw body/subject/quoted text. teenContent is an EXPLICIT mapper
+// input so the redaction is structural — a future caller that forgets to JOIN
+// events still cannot leak raw teen text once the flag is set.
+describe('teen-content redaction', () => {
+  const TEEN_BODY = 'Mom I think I might be failing math, please do not tell dad';
+  const TEEN_SUBJECT = 're: your son is struggling in period 4';
+
+  describe('toDraftView', () => {
+    it('drops raw subject/body and keeps category + recipient + rationale when teen-content', () => {
+      const view = toDraftView(
+        action({
+          id: 'draft-teen',
+          actionType: 'reply_to_email',
+          payload: {
+            recipient: 'Riverdale Secondary School',
+            subject: TEEN_SUBJECT,
+            body: TEEN_BODY,
+            rationale: 'replying to the school about your teenager.',
+          },
+        }),
+        true,
+      );
+
+      // No raw teen text anywhere in the serialized view.
+      const serialized = JSON.stringify(view);
+      expect(serialized).not.toContain(TEEN_BODY);
+      expect(serialized).not.toContain(TEEN_SUBJECT);
+
+      // Category + non-sensitive recipient + Hearth's rationale survive; body/subject
+      // become the placeholder so the parent can authorize on category alone (L2).
+      expect(view.category).toBe('reply_to_email');
+      expect(view.recipient).toBe('Riverdale Secondary School');
+      expect(view.rationale).toBe('replying to the school about your teenager.');
+      expect(view.body).toBe(TEEN_REDACTED_PLACEHOLDER);
+      expect(view.subject).toBe(TEEN_REDACTED_PLACEHOLDER);
+    });
+
+    it('renders the full body/subject as today when NOT teen-content', () => {
+      const view = toDraftView(
+        action({
+          id: 'draft-1',
+          actionType: 'reply_to_email',
+          payload: {
+            recipient: 'Toronto Public Library',
+            subject: 'baby story-time, saturday',
+            body: 'Saturday at ten thirty works.',
+            rationale: 'they sent an invite; matched your tone.',
+          },
+        }),
+        false,
+      );
+      expect(view.body).toBe('Saturday at ten thirty works.');
+      expect(view.subject).toBe('baby story-time, saturday');
+    });
+  });
+
+  describe('toDigestEntry', () => {
+    it('drops the raw body and keeps category + tone when teen-content', () => {
+      const entry = toDigestEntry(
+        action({
+          id: 'd-teen',
+          actionType: 'reply_to_email',
+          userVisibleState: 'drafted_for_approval',
+          payload: { body: TEEN_BODY },
+        }),
+        true,
+      );
+      expect(entry).not.toBeNull();
+      expect(JSON.stringify(entry)).not.toContain(TEEN_BODY);
+      expect(entry?.category).toBe('reply_to_email');
+      expect(entry?.tone).toBe('awaiting');
+      expect(entry?.body).toBe(TEEN_REDACTED_PLACEHOLDER);
+    });
+
+    it('renders the full body as today when NOT teen-content', () => {
+      const entry = toDigestEntry(
+        action({ id: 'd1', userVisibleState: 'autonomous', payload: { body: 'reordered diapers.' } }),
+        false,
+      );
+      expect(entry?.body).toBe('reordered diapers.');
+    });
+  });
+
+  describe('toTrailView', () => {
+    it('drops the raw summary and keeps category/actor/time when teen-content', () => {
+      const view = toTrailView(
+        auditEntry({ actor: 'system', actionTaken: TEEN_BODY, targetTable: 'actions', targetId: 'act-teen' }),
+        true,
+      );
+      expect(JSON.stringify(view)).not.toContain(TEEN_BODY);
+      expect(view.actor).toBe('hearth');
+      expect(view.category).toBe('actions');
+      expect(view.time).toBe('10:05');
+      expect(view.summary).toBe(TEEN_REDACTED_PLACEHOLDER);
+    });
+
+    it('renders the full summary as today when NOT teen-content', () => {
+      const view = toTrailView(auditEntry({ actor: 'system' }), false);
+      expect(view.summary).toBe('sent rsvp to library');
+    });
   });
 });

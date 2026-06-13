@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Sleep pattern signals do not apply to school-age children (48–155 months); this 9-year-old is in the child stage where sleep changes reflect developmental, social, or activity factors, not infant/newborn patterns.",
+    "payload": {
+      "trigger": "sleep_observation",
+      "child_age_months": 108,
+      "note": "logged shorter overnight sleep and later bedtimes across the past two weeks for the 9-year-old",
+      "stage": "school_age_child"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 3324,
+    "output": 229
+  }
+}

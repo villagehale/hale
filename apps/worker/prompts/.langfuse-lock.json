@@ -2,17 +2,17 @@
   "classifier": {
     "name": "classifier",
     "version": null,
-    "sha256": "da4d9a49d9e7303fdc601b73ef981db54c0a91351ff9e0b8bbd9d3037f2dd0d5"
+    "sha256": "6ecd16ca1711bd245e7b075ba4e80bf3acfd59e5a2be789a0d676cd9b1cdb92d"
   },
   "coach": {
     "name": "coach",
     "version": null,
-    "sha256": "df68f23ac68af0e22898cacee681d2d8f0409e20089d5704ce87cf87e2ba0c53"
+    "sha256": "a7d865953f8b7429c7e065cfbe2a20330d7405344cf45ccb03082b0404754391"
   },
   "drafter": {
     "name": "drafter",
     "version": null,
-    "sha256": "72376b6b27119f9c533a6b7e53bccbf2c58bd6b24d09eaef87541ae039261df7"
+    "sha256": "bd7ccc92dab3818eeb327303f46db19107f1928d21c42d93b047c3e60c2135e9"
   },
   "memory-inferencer": {
     "name": "memory-inferencer",
@@ -22,17 +22,17 @@
   "packs/child": {
     "name": "packs/child",
     "version": null,
-    "sha256": "cf810e05f35ceb4d56f76c2b952b1d48b3a87539a065abbcf44d313592e1d116"
+    "sha256": "4bb281b4a3498b17f6e504261765a4478f51ff884311dd59538bdac4cd3c890f"
   },
   "packs/newborn": {
     "name": "packs/newborn",
     "version": null,
-    "sha256": "3dd402fcfab7ec53f10e74f5db9ee41f50eecc4f7b5c15d0b360799a3f18d35d"
+    "sha256": "8f8546cbbfaff0ea74818a45c5d7bc455266cea8bc94b548df02bd772a5fb708"
   },
   "packs/teenager": {
     "name": "packs/teenager",
     "version": null,
-    "sha256": "750fe628e8572379270258a7d15178b8b04d627af7f0691b01ee93ea0e7a3da9"
+    "sha256": "beae3c7c32321b5e80663f4a97e5f537ab4d0071424acea6482ad9eafd182123"
   },
   "packs/toddler": {
     "name": "packs/toddler",
@@ -42,6 +42,6 @@
   "reviewer": {
     "name": "reviewer",
     "version": null,
-    "sha256": "c6e95cc6cf88cadf790d9e635c90ff31d7861ea474e7a6e552870d467b7b208c"
+    "sha256": "9d478d8401681681bb7b44d6b74e6ebdb05fa07bf2a9e7c041531d46e2ab8327"
   }
 }

@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.95,
+    "rationale": "A secondary school registrar is notifying families of an exam schedule and a course-selection deadline for a Grade 10 student (15.5 years old).",
+    "payload": {
+      "sender": "northgate-secondary.schoolboard.ca",
+      "subject": "Final exam schedule + Grade 11 course selection",
+      "content_type": "exam_schedule_and_course_deadline",
+      "deadline": "2024-04-18",
+      "action_required": "student_course_selection_and_exam_prep",
+      "recipient_grade": "Grade 10",
+      "exam_date_period": "June",
+      "course_selection_portal": "student portal"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3428,
+    "output": 272
+  }
+}

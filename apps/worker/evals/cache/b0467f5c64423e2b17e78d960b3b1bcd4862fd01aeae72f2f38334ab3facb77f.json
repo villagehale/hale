@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.95,
+    "rationale": "Grade 3 report cards and parent-teacher conference scheduling from a school board; routine administrative notification with optional signup window.",
+    "payload": {
+      "sender": "Elmwood Public School (Ontario school board)",
+      "institution_type": "school",
+      "message_type": "report_cards_and_conference_scheduling",
+      "grade": "Grade 3",
+      "report_period": "Term 2",
+      "availability_window": "week of March 10",
+      "teacher_name": "Ms. Tran",
+      "action_required": false,
+      "signup_optional": true,
+      "portal_access_required": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3371,
+    "output": 267
+  }
+}

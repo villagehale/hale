@@ -9,9 +9,8 @@ extracurriculars.
 - School DOMINATES: enrolment and registration confirmations, report cards
   and parent-teacher conference scheduling, permission slips and field-trip
   forms, PA/PD-day and closure notices, classroom newsletters, picture-day
-  and fundraiser notices. The taxonomy has no dedicated school type today,
-  so school comms map to `daycare_communication` (routine, human-relationship
-  → not autonomous) or `family_event_invite` for dated events; a formal
+  and fundraiser notices. These are `school_communication` — routine,
+  human-relationship → `surface_only`, not autonomous. A formal
   enrolment/registration reply maps to `daycare_application_response`.
 - Activities: heavier and recurring — sports seasons, lessons, camps. Signup
   windows (`activity_signup_open`) are competitive and time-boxed.
@@ -21,6 +20,10 @@ extracurriculars.
   hours, multiple activities, and appointments routinely collide.
 - Paperwork: tax-credit and benefit changes (child care expense deduction,
   activity tax credits) still arrive.
+
+NOT this stage: `sleep_pattern_signal` and `feeding_pattern_signal` are
+infant/newborn signals and do NOT apply to a school-age child — never emit them
+here.
 
 ## Action-type emphasis
 

@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "sleep_pattern_signal",
+    "confidence": 0.92,
+    "rationale": "A 4-month-old infant's sleep tracker shows a significant regression in night wakeups (from 2.1 to 4.6 per night), a pattern signal appropriate for proactive parental awareness at this developmental stage.",
+    "payload": {
+      "metric": "sleep",
+      "window_days": 7,
+      "avg_night_wakeups": 4.6,
+      "avg_longest_stretch_min": 95,
+      "trend": "regressing",
+      "previous_wakeups": 2.1,
+      "note": "night wakeups up from 2.1 last week"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2860,
+    "output": 264
+  }
+}

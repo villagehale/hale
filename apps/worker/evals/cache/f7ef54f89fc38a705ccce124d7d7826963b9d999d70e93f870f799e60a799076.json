@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_reminder",
+    "confidence": 0.95,
+    "rationale": "This is a one-way automated notification confirming an existing well-baby appointment with no request for action or reply from the parent.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Baby Chen",
+      "appointment_date": "2024-06-23",
+      "appointment_time": "10:15 AM",
+      "provider_name": "Dr. Okafor",
+      "appointment_type": "well-baby visit"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2881,
+    "output": 230
+  }
+}

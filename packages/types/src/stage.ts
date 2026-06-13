@@ -79,6 +79,15 @@ export function deriveStage(dateOfBirth: string | Date, now: Date = new Date()):
 }
 
 /**
+ * A child's age in completed calendar months. Shares the same month arithmetic
+ * as deriveStage, so the classifier's childrenAgesMonths context slice and the
+ * stage boundaries can never disagree. Pure, no I/O.
+ */
+export function ageInMonths(dateOfBirth: string | Date, now: Date = new Date()): number {
+  return completedMonths(toCalendarDate(dateOfBirth), toCalendarDate(now));
+}
+
+/**
  * Whether a child has aged past the product's 18-year ceiling. deriveStage
  * still returns 'teenager' past this point; callers use this to offboard
  * explicitly rather than silently treating adults as teens.

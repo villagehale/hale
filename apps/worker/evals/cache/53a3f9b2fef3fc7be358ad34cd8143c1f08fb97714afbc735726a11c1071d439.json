@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "The forwarded email is nearly empty with content removed and no discernible subject or intent; classification is impossible from this signal.",
+    "payload": {
+      "source": "email",
+      "subject": "Fwd:",
+      "sender": "unknown",
+      "content_status": "removed_or_truncated"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 2832,
+    "output": 188
+  }
+}

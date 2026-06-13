@@ -1,0 +1,31 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.92,
+    "rationale": "An employer is notifying the parent that the teen's first part-time job requires a SIN application and TD1 form submission before the June 20 start date — a time-bound identity/administrative milestone the parent must help manage.",
+    "payload": {
+      "source": "employer",
+      "employer_name": "MapleMArt Grocery",
+      "job_title": "part-time cashier",
+      "first_shift_date": "2025-06-20",
+      "required_documents": [
+        {
+          "document": "Social Insurance Number (SIN)",
+          "notes": "Can apply free through Service Canada if teen does not yet have one"
+        },
+        {
+          "document": "TD1 form",
+          "notes": "Signed, due on first day"
+        }
+      ],
+      "child_age_months": 200
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3436,
+    "output": 318
+  }
+}

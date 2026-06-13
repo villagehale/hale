@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "Daycare is offering an enrollment slot and explicitly asking the family to confirm and submit a deposit within a deadline, making this a formal application response requiring action.",
+    "payload": {
+      "daycare_name": "Sunny Days Daycare",
+      "room_type": "toddler room",
+      "start_date": "2025-09-02",
+      "action_required": "confirm enrollment and submit deposit",
+      "deposit_amount": 300,
+      "deposit_currency": "CAD",
+      "deadline_days": 5,
+      "sender": "admin@sunnydays-daycare.ca",
+      "payment_method": "e-transfer"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 3363,
+    "output": 286
+  }
+}

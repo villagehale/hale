@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "activity_signup_open",
+    "confidence": 0.95,
+    "rationale": "A municipal recreation provider is announcing a time-boxed opening of toddler activity registrations (age-matched to the family's 31-month-old child) with explicit urgency (spots fill within minutes, log in early).",
+    "payload": {
+      "sender": "register@cityrec.ca",
+      "program_name": "Fall toddler programs",
+      "programs_offered": [
+        "Tumble Tots",
+        "Toddler Swim",
+        "Music & Movement"
+      ],
+      "age_range": "2-3 years",
+      "registration_opens": "Thursday 9:00 AM",
+      "availability_note": "Limited spots, fill within minutes",
+      "action_required": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3360,
+    "output": 280
+  }
+}

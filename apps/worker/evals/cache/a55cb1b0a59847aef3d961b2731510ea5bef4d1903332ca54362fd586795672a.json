@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "add_to_digest_only",
+      "digest_entry": {
+        "category": "calendar_conflict",
+        "priority": "medium",
+        "summary": "Heads up — Noah's 6-month checkup (Tue Jun 23, 10:15 AM) overlaps your work meeting at 10:00 AM.",
+        "detail": "You may want to reschedule one of them. The checkup and the work meeting both start in the same window on Tuesday Jun 23.",
+        "suggested_actions": [
+          "Reschedule the work meeting",
+          "Move the checkup to a different slot",
+          "Review your calendar and resolve manually"
+        ]
+      }
+    },
+    "confidence": 0.91,
+    "rationale": "No outbound communication is needed — this is an internal digest flag surfacing a calendar conflict between Noah's checkup and a work meeting for the parent to resolve.",
+    "recipient_visibility": "internal_only"
+  }
+}

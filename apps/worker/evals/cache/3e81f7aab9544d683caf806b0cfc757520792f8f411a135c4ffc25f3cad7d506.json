@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.9,
+    "rationale": "A daycare has notified the family that a spot has opened in response to their earlier application and is asking them to confirm and pay a deposit within a deadline.",
+    "payload": {
+      "daycare_name": "Maple Grove Childcare",
+      "room_type": "infant room",
+      "start_date": "September",
+      "deposit_amount": 200,
+      "deadline_days": 5,
+      "action_required": "confirm and submit deposit"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2875,
+    "output": 239
+  }
+}

@@ -40,7 +40,7 @@ describe('createRateLimiter', () => {
     await limiter.check('1.2.3.4');
 
     expect(expire).toHaveBeenCalledTimes(1);
-    expect(expire).toHaveBeenCalledWith('haru:waitlist:rl:1.2.3.4', 3600);
+    expect(expire).toHaveBeenCalledWith('hearth:waitlist:rl:1.2.3.4', 3600);
   });
 
   it('tracks each IP in its own bucket', async () => {
@@ -55,12 +55,22 @@ describe('createRateLimiter', () => {
 });
 
 describe('extractClientIp', () => {
-  it('takes the first entry of x-forwarded-for', () => {
-    const headers = new Headers({ 'x-forwarded-for': '203.0.113.7, 70.41.3.18, 150.172.238.178' });
+  it('takes the RIGHTMOST x-forwarded-for entry (the trusted-proxy hop), not the spoofable leftmost', () => {
+    // A client can prepend forged entries; only the rightmost (203.0.113.7,
+    // appended by our proxy) is trustworthy. The leftmost (1.1.1.1) is attacker-set.
+    const headers = new Headers({ 'x-forwarded-for': '1.1.1.1, 70.41.3.18, 203.0.113.7' });
     expect(extractClientIp(headers)).toBe('203.0.113.7');
   });
 
-  it('falls back to x-real-ip when x-forwarded-for is absent', () => {
+  it('prefers the platform header x-vercel-forwarded-for over x-forwarded-for', () => {
+    const headers = new Headers({
+      'x-vercel-forwarded-for': '203.0.113.7',
+      'x-forwarded-for': '1.1.1.1, 203.0.113.7',
+    });
+    expect(extractClientIp(headers)).toBe('203.0.113.7');
+  });
+
+  it('falls back to x-real-ip when no x-forwarded-for is present', () => {
     const headers = new Headers({ 'x-real-ip': '198.51.100.9' });
     expect(extractClientIp(headers)).toBe('198.51.100.9');
   });

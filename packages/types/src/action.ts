@@ -60,8 +60,8 @@ export type ApprovedAction<TPayload = Record<string, unknown>> = DraftedAction<T
  * `approve` AND every REQUIRED_CHECK for the action type was invoked with an
  * ok:true RESULT (hard rules #3 + #7 — a cap-exceeded check that ran but failed
  * blocks minting, not just a missing check). The coverage predicate is injected
- * (the worker passes `coverageSatisfiedWithResults` from @haru/tools-contracts)
- * because tools-contracts already imports @haru/types — importing it back here
+ * (the worker passes `coverageSatisfiedWithResults` from @hearth/tools-contracts)
+ * because tools-contracts already imports @hearth/types — importing it back here
  * would create a dependency cycle.
  */
 export function mintApprovedAction<TPayload = Record<string, unknown>>(

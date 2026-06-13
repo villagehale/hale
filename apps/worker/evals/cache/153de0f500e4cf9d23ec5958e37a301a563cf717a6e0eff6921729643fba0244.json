@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.72,
+    "rationale": "Email from brightpath-family.ca discusses an open house, a pending form, and fees—consistent with daycare enrollment or application communication, though the sender identity and institutional context are not fully explicit.",
+    "payload": {
+      "sender": "contact@brightpath-family.ca",
+      "subject": "A few things",
+      "items": [
+        "open house date moved",
+        "form submission pending",
+        "potential fee depending on option selected"
+      ],
+      "next_steps": "awaiting confirmation of new date from other location"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2865,
+    "output": 239
+  }
+}

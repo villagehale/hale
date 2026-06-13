@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
-import { type Database, schema } from '@haru/db';
+import { type Database, schema } from '@hearth/db';
 import {
   type ApprovedActionPayload,
   approvedActionPayloadSchema,
-} from '@haru/tools-contracts';
+} from '@hearth/tools-contracts';
 
 /**
  * Minimal queue surface the approve flow needs — just `send`. Injected so the

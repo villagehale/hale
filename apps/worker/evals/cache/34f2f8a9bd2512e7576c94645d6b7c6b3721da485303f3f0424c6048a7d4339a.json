@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "frontdesk@littlesprout-pediatrics.ca",
+      "subject": "Re: Confirm well-baby visit",
+      "body": "hi! yes, tuesday june 23 at 10:15 am with dr. okafor works great — we'll be there. thanks for getting us in!"
+    },
+    "confidence": 0.72,
+    "rationale": "Confirming the proposed appointment slot as offered since no conflicting calendar data is present in memory, though low-medium confidence because no calendar was checked to verify availability.",
+    "recipient_visibility": "public"
+  }
+}

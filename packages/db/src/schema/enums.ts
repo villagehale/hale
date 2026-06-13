@@ -103,5 +103,5 @@ export const consentTypeEnum = pgEnum('consent_type', [
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
-// is free for every stage and child. Values mirror @haru/types PlanTier.
+// is free for every stage and child. Values mirror @hearth/types PlanTier.
 export const planTierEnum = pgEnum('plan_tier', ['free', 'plus', 'family']);

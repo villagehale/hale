@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@haru/tools-contracts';
+import type { IngestedEventPayload } from '@hearth/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion } from '@haru/types';
+import type { ClassifierSuggestion } from '@hearth/types';
 
 /**
  * FIX 1 — an approved, autonomy-qualified action that crashes in the execute
@@ -134,7 +134,10 @@ vi.mock('../services/memory-writer.js', () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
   })),
-  loadChildStages: vi.fn(async () => ['newborn']),
+  loadFamilyContext: vi.fn(async () => ({
+    stages: ['newborn'],
+    contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
+  })),
 }));
 
 const { runOrchestrator } = await import('./index.js');

@@ -1,0 +1,15 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "Generic promotional email from a retailer with no family signal, request, or actionable content beyond marketing.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    }
+  },
+  "usage": {
+    "input": 2880,
+    "output": 135
+  }
+}

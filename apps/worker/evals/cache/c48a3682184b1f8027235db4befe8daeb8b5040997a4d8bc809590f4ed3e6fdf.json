@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.92,
+    "rationale": "Official Ontario government notification of G1 learner's permit eligibility at age 16, a legally-consequential milestone the parent must track and help the teen navigate.",
+    "payload": {
+      "source": "ontario.ca",
+      "milestone_type": "driver_licence_learner_permit",
+      "province": "ON",
+      "age_trigger": 16,
+      "child_age_months": 192,
+      "action_required": "Apply at DriveTest centre",
+      "requirements": [
+        "Vision test",
+        "Knowledge test",
+        "Two pieces of identification"
+      ],
+      "note": "No appointment required for knowledge test"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3429,
+    "output": 257
+  }
+}

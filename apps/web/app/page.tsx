@@ -5,12 +5,12 @@ const STEPS = [
   {
     shape: <Seed style={{ height: 56, width: 'auto' }} />,
     title: 'connect',
-    body: 'Gmail or Outlook first. Your calendar second. Photos only when you trust haru with them.',
+    body: 'Gmail or Outlook first. Your calendar second. Photos only when you trust Hearth with them.',
   },
   {
     shape: <Sprout style={{ height: 68, width: 'auto' }} />,
     title: 'observe',
-    body: 'For seven days haru only watches. You see exactly what it sees — no drafts, no actions, no exceptions.',
+    body: 'For seven days Hearth only watches. You see exactly what it sees — no drafts, no actions, no exceptions.',
   },
   {
     shape: <Sapling style={{ height: 80, width: 'auto' }} />,
@@ -20,7 +20,7 @@ const STEPS = [
   {
     shape: <Tree style={{ height: 84, width: 'auto' }} />,
     title: 'autonomy',
-    body: 'After five clean approvals of one kind of task, haru may handle that kind on its own. Revoke any time, with one tap.',
+    body: 'After five clean approvals of one kind of task, Hearth may handle that kind on its own. Revoke any time, with one tap.',
   },
 ] as const;
 
@@ -42,7 +42,7 @@ export default function LandingPage() {
           className="font-display text-2xl"
           style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}
         >
-          haru
+          Hearth
         </span>
         <Link href="/digest" className="btn-ghost">
           read a sample digest →
@@ -59,7 +59,7 @@ export default function LandingPage() {
               <Cat age="kitten" style={{ height: 64, width: 'auto' }} />
             </div>
             <p className="meta mt-4 max-w-md">
-              The kitten by the door is haru. It is a cat — its life is about as
+              The kitten by the door is Hearth. It is a cat — its life is about as
               long as a childhood, and it grows up right alongside your kid:
               newborn, toddler, child, teenager.
             </p>
@@ -67,7 +67,7 @@ export default function LandingPage() {
 
           <div className="lg:col-span-5 rise rise-2">
             <h1>
-              haru holds the small things, so you can hold the baby.
+              Hearth holds the small things, so you can hold the baby.
             </h1>
             <p
               className="mt-6 text-lg"
@@ -97,7 +97,7 @@ export default function LandingPage() {
               fontVariationSettings: '"opsz" 120, "SOFT" 50, "WONK" 0',
             }}
           >
-            haru watches the inbox, the calendar, the photos, and the small
+            Hearth watches the inbox, the calendar, the photos, and the small
             devices that already log your baby&rsquo;s life — the pediatric
             office, the daycare waitlist, the diaper subscription, the
             grandparent who keeps asking how she slept — and quietly does the
@@ -128,7 +128,7 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      {/* ── haru will never — the inverted night section ────────────────── */}
+      {/* ── Hearth will never — the inverted night section ────────────────── */}
       <section
         className="py-24 lg:py-32"
         style={{ background: 'var(--color-spruce)', color: 'var(--color-on-spruce)' }}
@@ -139,7 +139,7 @@ export default function LandingPage() {
               The promises
             </span>
             <h2 className="mt-3" style={{ color: 'var(--color-on-spruce)' }}>
-              haru will never.
+              Hearth will never.
             </h2>
             <p className="mt-6" style={{ color: 'var(--color-on-spruce-soft)', lineHeight: 1.6, maxWidth: '24rem' }}>
               This is the compliance core. PIPEDA, Quebec Law 25, and Canadian
@@ -191,7 +191,7 @@ export default function LandingPage() {
         <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
             <div className="lg:col-span-7">
-              <h2>Hold the baby. haru holds the rest.</h2>
+              <h2>Hold the baby. Hearth holds the rest.</h2>
               <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
                 Free for one year in exchange for honest feedback. Canadian data
                 residency. PIPEDA + Quebec Law 25 + CASL compliant by default.
@@ -211,7 +211,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
-        <p className="meta">haru · Toronto · Canada · a research preview</p>
+        <p className="meta">Hearth · Toronto · Canada · a research preview</p>
         <p className="meta flex items-center gap-2">
           set in Fraunces &amp; Nunito
           <Sun style={{ width: 18, height: 18 }} />

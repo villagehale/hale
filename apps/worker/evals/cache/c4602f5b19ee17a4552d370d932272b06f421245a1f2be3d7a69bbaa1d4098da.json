@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "Daycare (Maple Grove Childcare) is offering an accepted application slot in response to a prior application and requesting explicit confirmation and deposit payment within a deadline.",
+    "payload": {
+      "daycare_name": "Maple Grove Childcare",
+      "room_type": "infant room",
+      "start_date": "September",
+      "action_required": "confirm_spot_and_submit_deposit",
+      "deposit_amount": 200,
+      "deposit_currency": "CAD",
+      "deadline_business_days": 5,
+      "consequence_if_missed": "spot goes to next family on waitlist"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2874,
+    "output": 277
+  }
+}

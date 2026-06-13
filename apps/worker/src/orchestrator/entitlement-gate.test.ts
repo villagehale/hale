@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@haru/tools-contracts';
+import type { IngestedEventPayload } from '@hearth/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion, PlanTier } from '@haru/types';
+import type { ClassifierSuggestion, PlanTier } from '@hearth/types';
 
 /**
  * B18 — the entitlement gate. Invariant: an approved, high-confidence action
@@ -102,7 +102,10 @@ vi.mock('../services/memory-writer.js', () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
   })),
-  loadChildStages: vi.fn(async () => ['newborn']),
+  loadFamilyContext: vi.fn(async () => ({
+    stages: ['newborn'],
+    contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
+  })),
 }));
 
 const { runOrchestrator } = await import('./index.js');

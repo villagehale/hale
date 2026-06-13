@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.95,
+    "rationale": "Official Ontario communication about a teen's eligibility for a learner's permit — a legal/administrative milestone the parent must act on by a deadline.",
+    "payload": {
+      "source": "ontario.ca",
+      "milestone_type": "g1_learner_permit_eligibility",
+      "age_eligible": 16,
+      "teen_age_months": 192,
+      "details": "Vision and knowledge test required at DriveTest centre; two pieces of identification needed; no appointment required for knowledge test",
+      "province": "ON"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3430,
+    "output": 241
+  }
+}

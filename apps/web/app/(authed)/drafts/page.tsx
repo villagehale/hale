@@ -1,8 +1,8 @@
-import { PageCorner } from '~/components/haru/page-corner';
-import { Folio } from '~/components/haru/folio';
-import { ToneLabel } from '~/components/haru/tone';
-import { StreakLadder } from '~/components/haru/streak-ladder';
-import { ApproveButton } from '~/components/haru/approve-button';
+import { PageCorner } from '~/components/hearth/page-corner';
+import { Folio } from '~/components/hearth/folio';
+import { ToneLabel } from '~/components/hearth/tone';
+import { StreakLadder } from '~/components/hearth/streak-ladder';
+import { ApproveButton } from '~/components/hearth/approve-button';
 import { loadDrafts } from '~/lib/dashboard/queries';
 import { DRAFT_LEVEL } from '~/lib/dashboard/mappers';
 

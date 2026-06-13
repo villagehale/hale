@@ -1,6 +1,6 @@
-# Haru
+# Hearth
 
-Passive, event-driven, multi-agent household AI assistant for families, across every stage of childhood (0–18). Haru ingests a family's data streams (email, calendar, photos), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
+Passive, event-driven, multi-agent household AI assistant for families, across every stage of childhood (0–18). Hearth ingests a family's data streams (email, calendar, photos), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
 
 **Status:** Foundation scaffold. See `docs/superpowers/specs/` for the design spec.
 
@@ -51,4 +51,4 @@ Built for Canadian launch. PIPEDA + Quebec Law 25 + CASL compliance from day one
 
 ## License
 
-Proprietary. © 2026 Haru.
+Proprietary. © 2026 Hearth Lab.

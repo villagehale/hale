@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * haru — "Meadow" design system (product app).
+ * Hearth — "Meadow" design system (product app).
  *
  * The calm of a nursery at 4pm light. The same world as the landing
  * (apps/site): soft geometric shapes that never crowd, generous breathing
@@ -18,7 +18,7 @@
  *   - 16px form inputs on mobile (iOS no-zoom).
  *   - motion is "breathing not bouncing"; every animation is disabled under
  *     prefers-reduced-motion.
- *   - no emoji, ever; product name is always lowercase "haru".
+ *   - no emoji, ever; product name is always "Hearth".
  */
 
 @theme {
@@ -207,6 +207,34 @@ strong { font-weight: 700; }
   border: 1.5px solid var(--color-berry);
   color: var(--color-spruce);
   font-weight: 600;
+}
+
+/* ── Family band — each child + their live-derived stage, above each page ── */
+
+.family-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+  padding-bottom: clamp(1rem, 2vw, 1.5rem);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.family-band-children {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.family-band-child {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
 .editorial-layout {
@@ -468,7 +496,7 @@ strong { font-weight: 700; }
 }
 
 /* ── Tone marker — color + shape + label (never color alone) ───────────── *
- * The shape glyph lives in components/haru/tone.tsx as an inline SVG; the
+ * The shape glyph lives in components/hearth/tone.tsx as an inline SVG; the
  * text color here pairs with it. */
 
 .tone-done { color: var(--color-sage); }

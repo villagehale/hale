@@ -4,12 +4,12 @@ export interface WaitlistStore {
   add(email: string): Promise<{ created: boolean }>;
 }
 
-const SET_KEY = 'haru:waitlist';
-const META_KEY = 'haru:waitlist:joined_at';
+const SET_KEY = 'hearth:waitlist';
+const META_KEY = 'hearth:waitlist:joined_at';
 
 const RATE_LIMIT_MAX_PER_WINDOW = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
-const RATE_LIMIT_KEY_PREFIX = 'haru:waitlist:rl:';
+const RATE_LIMIT_KEY_PREFIX = 'hearth:waitlist:rl:';
 
 // The minimal redis surface the rate limiter needs. Injected so the decision
 // logic is testable without a live Upstash connection.
@@ -61,15 +61,23 @@ export function createRedisRateLimiter(): RateLimiter {
   return createRateLimiter(redisFromEnv());
 }
 
-// Behind Vercel the client IP is the first entry of x-forwarded-for; x-real-ip
-// is the fallback. Returns 'unknown' when neither is present so a missing
-// header collapses every such request into one shared bucket rather than
-// silently disabling the limit.
+// The client IP must come from a source the request can't forge, or the per-IP
+// rate limit is trivially evaded by rotating a spoofed x-forwarded-for. A client
+// can prepend entries to x-forwarded-for, so the LEFTMOST entry is attacker-
+// controlled; only the trusted proxy's own appends are reliable. Order of trust:
+//   1. x-vercel-forwarded-for / x-real-ip — set by the platform, not the client.
+//   2. RIGHTMOST x-forwarded-for entry — the hop closest to our trusted proxy.
+// Assumption: deployed behind a single trusted proxy (Vercel) that appends the
+// real client IP last. Returns 'unknown' when nothing is present so a missing
+// header collapses into one shared bucket rather than silently disabling the limit.
 export function extractClientIp(headers: Headers): string {
+  const platform = headers.get('x-vercel-forwarded-for')?.trim() || headers.get('x-real-ip')?.trim();
+  if (platform) return platform;
   const forwarded = headers.get('x-forwarded-for');
   if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
+    const entries = forwarded.split(',').map((entry) => entry.trim()).filter(Boolean);
+    const rightmost = entries.at(-1);
+    if (rightmost) return rightmost;
   }
-  return headers.get('x-real-ip')?.trim() || 'unknown';
+  return 'unknown';
 }

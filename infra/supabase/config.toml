@@ -2,7 +2,7 @@
 # The production project is created in the Supabase dashboard in the
 # ca-central-1 (Toronto) region for PIPEDA / Law 25 data residency.
 
-project_id = "haru"
+project_id = "hearth"
 
 [api]
 enabled = true

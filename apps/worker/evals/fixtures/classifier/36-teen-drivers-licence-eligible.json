@@ -1,0 +1,20 @@
+{
+  "id": "36-teen-drivers-licence-eligible",
+  "note": "TEENAGER stage. A provincial notice that the teen is now eligible to apply for a G1 learner's permit — legal_milestone_due. Hand-derived from taxonomy: a milestone with legal/administrative weight (driver's licence) that the family must act on by a date. Route surface_only — Hearth never files identity paperwork autonomously. This is the required teen-legal case; logistics ABOUT the teen, NOT teen-content.",
+  "stage": "teenager",
+  "input": {
+    "source": "email",
+    "rawContent": "From: noreply@ontario.ca\nSubject: Your teen may now be eligible for a G1 licence\n\nThis is a general reminder that residents turning 16 become eligible to apply for a G1 learner's permit. To apply, your teen must pass a vision and knowledge test at a DriveTest centre. Bring two pieces of identification. No appointment is required for the knowledge test.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [192],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "legal_milestone_due",
+    "kind": "surface_only"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "add_to_digest_only",
+      "digest_entry": {
+        "category": "supply_low_signal",
+        "summary": "size 2 diapers are running low — about 4 days left based on your subscription usage estimate.",
+        "suggested_action": "reorder size 2 diapers soon to avoid running out.",
+        "source_event_id": "evt-05"
+      }
+    },
+    "confidence": 0.92,
+    "rationale": "No outbound action is needed; a low-supply signal is best surfaced passively in the parent's digest so they can decide whether to reorder.",
+    "recipient_visibility": "internal_only"
+  }
+}

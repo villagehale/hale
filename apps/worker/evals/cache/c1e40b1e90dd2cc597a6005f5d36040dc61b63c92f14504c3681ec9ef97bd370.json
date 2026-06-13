@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "activity_signup_open",
+    "confidence": 0.9,
+    "rationale": "Municipal recreation authority announcing imminent parent-and-baby activity registration opening; family has a 5-month-old infant in the target age range.",
+    "payload": {
+      "source": "programs@cityrec.ca",
+      "activity_types": [
+        "Aquatots",
+        "Baby Music",
+        "Infant Massage"
+      ],
+      "registration_opens": "2024-06-18T09:00:00",
+      "timezone": "America/Toronto",
+      "note": "Popular sessions fill quickly"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2862,
+    "output": 228
+  }
+}

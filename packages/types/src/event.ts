@@ -21,9 +21,10 @@ export type EventType =
   | 'subscription_renewal_due'
   | 'order_confirmation'
   | 'delivery_update'
-  // Daycare / activities
+  // Daycare / school / activities
   | 'daycare_application_response'
   | 'daycare_communication'
+  | 'school_communication'
   | 'activity_signup_open'
   // Family / photos
   | 'milestone_photo_detected'
@@ -31,6 +32,8 @@ export type EventType =
   // Calendar
   | 'calendar_conflict_detected'
   | 'family_event_invite'
+  // Legal / administrative milestones (teen)
+  | 'legal_milestone_due'
   // Coach triggers (proactive)
   | 'age_stage_milestone_due'
   | 'sleep_pattern_signal'

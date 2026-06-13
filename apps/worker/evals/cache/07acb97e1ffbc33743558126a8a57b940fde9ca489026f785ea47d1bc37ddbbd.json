@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "This is a marketing email from a retailer promoting a flash sale with no family-specific signal, action request, or relevance to the child's care or milestones.",
+    "payload": {
+      "sender": "deals@megababy-outlet.com",
+      "subject": "🔥 48-HOUR FLASH SALE — up to 70% off EVERYTHING!!!",
+      "promotion_type": "flash_sale",
+      "discount": "up to 70% off",
+      "categories": [
+        "strollers",
+        "toys",
+        "nursery decor"
+      ]
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    }
+  },
+  "usage": {
+    "input": 2881,
+    "output": 240
+  }
+}

@@ -1,9 +1,9 @@
-import { PageCorner } from '~/components/haru/page-corner';
-import { Folio } from '~/components/haru/folio';
+import { PageCorner } from '~/components/hearth/page-corner';
+import { Folio } from '~/components/hearth/folio';
 
 interface Exchange {
   id: string;
-  role: 'you' | 'haru';
+  role: 'you' | 'hearth';
   body: string;
   citations?: string[];
   followUps?: string[];
@@ -17,7 +17,7 @@ const HISTORY: Exchange[] = [
   },
   {
     id: 'a1',
-    role: 'haru',
+    role: 'hearth',
     body:
       "around four months many babies become more aware of their environment and their cues change quickly. some lose interest in the pacifier; some need it more. it usually isn't about the pacifier itself — it's about a temporary shift in self-soothing. if maya is feeding well and sleep is acceptable, this is almost certainly fine.",
     citations: [
@@ -97,7 +97,7 @@ export default function CoachPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
                 <div className="md:col-span-2">
                   <Folio index={idx + 1} />
-                  <p className="eyebrow text-apricot-deep mt-2">haru · 06:48</p>
+                  <p className="eyebrow text-apricot-deep mt-2">Hearth · 06:48</p>
                   <p className="meta mt-1">confidence · 0.88</p>
                 </div>
                 <div className="md:col-span-10 space-y-6">
@@ -169,7 +169,7 @@ export default function CoachPage() {
               <button type="button" className="btn-primary">ask →</button>
             </div>
             <p className="meta">
-              your question stays inside haru. coach never sees your inbox or
+              your question stays inside Hearth. coach never sees your inbox or
               calendar — only Maya's profile and your parenting-style preference.
             </p>
           </div>

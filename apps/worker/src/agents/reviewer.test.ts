@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import type { DraftedAction, ToolResult } from '@haru/types';
-import { REQUIRED_CHECKS, type ReviewerToolName } from '@haru/tools-contracts';
+import type { DraftedAction, ToolResult } from '@hearth/types';
+import { REQUIRED_CHECKS, type ReviewerToolName } from '@hearth/tools-contracts';
 import { runReviewer, type ReviewerAnthropicClient } from './reviewer.js';
 
 /**

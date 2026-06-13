@@ -1,0 +1,20 @@
+{
+  "id": "34-child-school-report-card",
+  "note": "CHILD stage. A school sending a report card + parent-teacher conference scheduling notice — school_communication. Hand-derived from taxonomy: comms from a SCHOOL (vs a daycare) are school_communication; a routine human-relationship comm is surface_only, not autonomous. This is the required school-comms-for-a-child case and closes the old 'school maps to daycare_communication' gap.",
+  "stage": "child",
+  "input": {
+    "source": "email",
+    "rawContent": "From: office@elmwood-public.schoolboard.ca\nSubject: Term 2 report cards now available\n\nDear families, Term 2 report cards for Grade 3 are now posted to the parent portal. Parent-teacher conferences are the week of March 10; please book a slot through the portal if you would like to meet with Ms. Tran. No action is required if you do not wish to book.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [102],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "school_communication",
+    "kind": "surface_only"
+  }
+}

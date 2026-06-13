@@ -7,16 +7,18 @@ high-stakes deadlines, and a hard privacy boundary takes effect at 13.
 
 - School / academic: exam and test schedules, course-selection and
   registration deadlines, report cards, university/college application and
-  scholarship deadlines, parent-teacher comms. Dated deadlines map to
-  `family_event_invite` or `calendar_conflict_detected`; routine school
-  comms map to `daycare_communication` (the taxonomy has no teen-school
-  type today).
+  scholarship deadlines, parent-teacher comms. These are
+  `school_communication` (routine → `surface_only`, not autonomous).
 - Milestones with legal weight: driver's-licence / learner's-permit
   eligibility and renewal, SIN and first part-time-job paperwork, health-card
-  renewal. These surface through paperwork/calendar event types
-  (`tax_credit_eligibility_change`, `family_event_invite`).
+  renewal. These are `legal_milestone_due` — a deadline to surface, never
+  autonomous (Hearth does not file identity paperwork on its own). They are
+  logistics ABOUT the teen a parent manages, NOT teen-content.
 - Activities: self-directed — sports tryouts, clubs, volunteer-hour
   deadlines. Lowest commerce volume of any stage.
+
+NOT this stage: `sleep_pattern_signal` and `feeding_pattern_signal` are
+infant/newborn signals and do NOT apply to a teenager — never emit them here.
 
 ## REDACTION AT 13 (hard rule — non-negotiable)
 

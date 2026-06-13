@@ -17,9 +17,9 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: 'haru · holds the small things',
+  title: 'Hearth · holds the small things',
   description:
-    'haru is a calm, careful companion for newborn families in Canada. It watches the inbox, the calendar, the photos — and quietly handles the small admin so you can hold the baby.',
+    'Hearth is a calm, careful companion for newborn families in Canada. It watches the inbox, the calendar, the photos — and quietly handles the small admin so you can hold the baby.',
 };
 
 export const viewport: Viewport = {

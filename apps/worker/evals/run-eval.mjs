@@ -7,7 +7,7 @@
 // every subsequent run (cache hit = zero API calls = free).
 //
 // IMPORT vs REPLICATE: src/agents/classifier.ts is TypeScript and depends on
-// workspace packages (@haru/types, config, ../anthropic/client). The committed
+// workspace packages (@hearth/types, config, ../anthropic/client). The committed
 // apps/worker/dist/ is STALE (it still references the removed Mastra layer:
 // ../mastra/model.js and a date-suffixed model id), so importing the compiled
 // path would test dead code. We therefore REPLICATE the exact request shape:
@@ -86,11 +86,13 @@ const EVENT_TYPES = [
   'delivery_update',
   'daycare_application_response',
   'daycare_communication',
+  'school_communication',
   'activity_signup_open',
   'milestone_photo_detected',
   'family_share_request',
   'calendar_conflict_detected',
   'family_event_invite',
+  'legal_milestone_due',
   'age_stage_milestone_due',
   'sleep_pattern_signal',
   'feeding_pattern_signal',

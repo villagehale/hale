@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import type { IngestedEventPayload } from '@haru/tools-contracts';
+import type { IngestedEventPayload } from '@hearth/tools-contracts';
 import { getQueue } from '~/lib/queue';
 import { verifyWebhookSignature } from '~/lib/webhooks/signatures';
 import { resolveFamilyFromWebhook } from '~/lib/webhooks/resolve-family';

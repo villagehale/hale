@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.92,
+    "rationale": "A subscription supply vendor is notifying the family that a consumable (diapers) is running low and offering to ship early against their existing subscription.",
+    "payload": {
+      "supplier": "everydaybaby.ca",
+      "product": "Size 2 diapers",
+      "days_until_stockout": 5,
+      "subscription_active": true,
+      "action_offered": "ship_early"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2863,
+    "output": 211
+  }
+}

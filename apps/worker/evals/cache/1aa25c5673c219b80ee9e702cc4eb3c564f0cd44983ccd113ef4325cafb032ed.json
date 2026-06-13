@@ -1,0 +1,32 @@
+{
+  "parsed": {
+    "event_type": "family_event_invite",
+    "confidence": 0.92,
+    "rationale": "A family member (cousin) is inviting the family to a birthday celebration and explicitly asking them to confirm attendance (\"Let us know if you can make it\").",
+    "payload": {
+      "from": "cousin.mei@gmail.com",
+      "event_name": "Leo's 1st Birthday",
+      "date": "July 12",
+      "time": "2 PM",
+      "location": "cousin's place",
+      "attendees": [
+        "babies",
+        "families"
+      ],
+      "activities": [
+        "cake",
+        "bubbles",
+        "splash pad"
+      ],
+      "requires_rsvp": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2869,
+    "output": 265
+  }
+}

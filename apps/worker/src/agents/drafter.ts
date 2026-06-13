@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ActionType, DraftedAction } from '@haru/types';
+import type { ActionType, DraftedAction } from '@hearth/types';
 import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';

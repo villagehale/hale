@@ -4,6 +4,7 @@ import {
   text,
   jsonb,
   doublePrecision,
+  boolean,
   timestamp,
   index,
   uniqueIndex,
@@ -12,9 +13,9 @@ import { families } from './families.js';
 import { eventStatusEnum } from './enums.js';
 
 /**
- * Classifier's routing suggestion. Structurally mirrors @haru/types
- * ClassifierSuggestion; defined locally because @haru/db is a leaf package and
- * must not depend on @haru/types (would create a cycle).
+ * Classifier's routing suggestion. Structurally mirrors @hearth/types
+ * ClassifierSuggestion; defined locally because @hearth/db is a leaf package and
+ * must not depend on @hearth/types (would create a cycle).
  */
 type ClassifierSuggestion =
   | { kind: 'autonomous_action'; actionType: string }
@@ -37,6 +38,11 @@ export const events = pgTable(
     /** Classifier's routing suggestion, persisted so a crash-resume can route
      * without re-running the (billable) classifier — B10 re-entrancy. */
     classifierSuggestion: jsonb('classifier_suggestion').$type<ClassifierSuggestion>(),
+    /** Teen-content flag from the classifier (teenager-pack redaction rule).
+     * Persisted so a crash-resume re-applies the rule-#1 teen-redaction cap with
+     * the same value the fresh pass saw — without it, a resume reads false and an
+     * autonomous-eligible teen-content action could slip the cap. */
+    teenContent: boolean('teen_content').notNull().default(false),
     /** Pointer to raw signal in object storage; we don't persist heavy blobs in Postgres. */
     rawSignalRef: text('raw_signal_ref'),
     classifiedAt: timestamp('classified_at', { withTimezone: true }),

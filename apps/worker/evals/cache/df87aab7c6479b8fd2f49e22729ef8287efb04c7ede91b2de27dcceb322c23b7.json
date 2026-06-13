@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "family_share_request",
+    "confidence": 0.95,
+    "rationale": "A family member (grandmother) is explicitly requesting recent photos of the child to be shared.",
+    "payload": {
+      "sender": "grandma.ruth@gmail.com",
+      "sender_name": "Grandma Ruth",
+      "request_type": "photos",
+      "context": "For printing and display",
+      "tone": "affectionate",
+      "urgency": "low"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "share_photos_with_family"
+    }
+  },
+  "usage": {
+    "input": 2862,
+    "output": 189
+  }
+}

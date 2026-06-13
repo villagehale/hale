@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "The clinic is proposing a reschedule of an existing appointment and explicitly asking the parent to reply with availability—this is a logistics-based request requiring action, not a one-way reminder.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Mia",
+      "child_age_months": 24,
+      "appointment_type": "2-year checkup",
+      "reason_for_change": "Dr. Okafor unexpectedly away",
+      "proposed_date": "2024-07-11",
+      "proposed_time": "15:30",
+      "proposed_time_zone": "America/Toronto",
+      "original_date": "2024-07-09",
+      "flexibility_requested": true,
+      "sender_email": "frontdesk@littlesprout-pediatrics.ca"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 3377,
+    "output": 338
+  }
+}

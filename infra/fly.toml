@@ -1,8 +1,16 @@
-# Fly.io configuration for the Haru Agent Worker.
-# Region: YYZ (Toronto) for Canadian data residency.
+# Fly.io configuration for the Hearth Agent Worker.
+# Region: YYZ (Toronto) for Canadian data residency (CLAUDE.md hard rule #1).
 # Deploys from apps/worker/Dockerfile via `fly deploy --config infra/fly.toml`.
+#
+# The worker is a long-running pg-boss CONSUMER — it polls Postgres for jobs
+# (events.ingested, actions.approved, memory.inference.due, digest.daily.due)
+# and does NOT serve HTTP. See apps/worker/src/index.ts: it calls startQueue()
+# + registerConsumers() and then idles on SIGTERM/SIGINT. There is no listening
+# socket, so this config has NO [http_service] and NO HTTP health check — both
+# would fail (nothing answers on a port). Liveness is enforced by the Fly
+# machine restart policy: if the Node process exits, Fly restarts it.
 
-app = "haru-worker"
+app = "hearth-worker"
 primary_region = "yyz"
 
 [build]
@@ -10,32 +18,26 @@ primary_region = "yyz"
 
 [env]
   NODE_ENV = "production"
-  PORT = "4000"
 
-[http_service]
-  internal_port = 4000
-  force_https = true
-  auto_stop_machines = "off"   # workers must stay warm to consume the queue
-  auto_start_machines = true
-  min_machines_running = 1
-
-  [http_service.concurrency]
-    type = "requests"
-    soft_limit = 50
-    hard_limit = 100
-
+# Single always-on process. A queue consumer must stay warm; it cannot scale to
+# zero or it stops draining the queue. No [http_service] => Fly treats this as a
+# worker app with no inbound routing.
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
   memory_mb = 1024
 
+[processes]
+  worker = "node apps/worker/dist/index.js"
+
+# Keep exactly one worker machine running at all times in Toronto. pg-boss's own
+# advisory locks make a second machine safe (it would just share the queue), but
+# one is sufficient and keeps cost predictable. Scale with `fly scale count`.
+[[restart]]
+  policy = "always"
+  # processes omitted => applies to all (here: just `worker`).
+
+# Rolling deploys: bring up the new machine, drain SIGTERM on the old (the
+# worker stops pg-boss gracefully — see stopQueue({ graceful: true })).
 [deploy]
   strategy = "rolling"
-
-[checks.health]
-  type = "http"
-  port = 4000
-  path = "/health"
-  interval = "30s"
-  timeout = "10s"
-  grace_period = "30s"

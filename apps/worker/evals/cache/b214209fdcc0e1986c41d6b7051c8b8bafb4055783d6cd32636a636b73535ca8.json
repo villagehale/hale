@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Email is vague and lacks detail; sender is unknown to family context, and no prior conversation is provided to disambiguate what \"the thing we talked about\" refers to.",
+    "payload": {
+      "from": "j.reeve@outlook.com",
+      "subject": "hey",
+      "body": "Hi — just wanted to check in about the thing we talked about. Let me know. Thanks!"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 2832,
+    "output": 188
+  }
+}

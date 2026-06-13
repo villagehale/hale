@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Sleep pattern signal does not apply to school-age children; the child is 108 months (9 years old), well past the infant/newborn stage where sleep signals are actionable.",
+    "payload": {
+      "source": "internal_scheduler",
+      "trigger": "sleep_observation",
+      "child_age_months": 108,
+      "note": "logged shorter overnight sleep and later bedtimes across the past two weeks for the 9-year-old",
+      "reason_unclassified": "sleep_pattern_signal is only emitted for infants/newborns; this child is school-age"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    }
+  },
+  "usage": {
+    "input": 3323,
+    "output": 251
+  }
+}

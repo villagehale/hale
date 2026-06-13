@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "ei_correspondence",
+    "confidence": 0.95,
+    "rationale": "Federal Service Canada notice confirming EI parental benefits claim processed with payment details — a one-way administrative notification requiring no action from the family.",
+    "payload": {
+      "source_domain": "servicecanada.gc.ca",
+      "program": "EI parental benefits",
+      "claim_status": "processed",
+      "first_payment_amount": 668,
+      "first_payment_date": "2026-06-19",
+      "reference_number": "EI-2026-0042189"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2871,
+    "output": 235
+  }
+}

@@ -1,5 +1,5 @@
 /*
- * haru — "Meadow" illustration kit.
+ * Hearth — "Meadow" illustration kit.
  *
  * A small bespoke set of flat, geometric, color-blocked shapes drawn from
  * circles, arcs, and soft-cornered rectangles only (corner radii ≥ 8px).
@@ -7,7 +7,7 @@
  * drop-shadows, no strokes thinner than 2px. The vocabulary is the daily
  * arc — sun, moon, cloud, hill, house, tree, a sleeping curve — plus the
  * trust-ladder's growing shapes (seed → sprout → sapling → tree) and the
- * haru cat in four ages.
+ * Hearth cat in four ages.
  *
  * All shapes are ambient/compositional and decorative: each carries
  * aria-hidden so screen readers skip them; meaning lives in the copy.
@@ -151,8 +151,8 @@ export function Sapling({ className, style }: IlloProps) {
 
 /* Tree (full-grown) reuses <Tree /> at the top of the ladder. */
 
-/* ── The haru cat — one primitive, four ages ───────────────────────────── *
- * haru is a cat: its lifespan is roughly a childhood, which is the brand
+/* ── The Hearth cat — one primitive, four ages ───────────────────────────── *
+ * Hearth is a cat: its lifespan is roughly a childhood, which is the brand
  * thesis — it grows up alongside your kid. Drawn in the same circles/arcs/
  * soft-rect language as the rest of the kit.
  *

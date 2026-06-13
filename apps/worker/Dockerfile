@@ -23,7 +23,7 @@ COPY packages/types packages/types/
 COPY packages/tools-contracts packages/tools-contracts/
 
 # Build the worker (also builds its workspace dependencies via turbo)
-RUN pnpm turbo build --filter=@mira/worker
+RUN pnpm turbo build --filter=@hearth/worker
 
 # Prune devDependencies for the production image
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts
@@ -37,9 +37,13 @@ WORKDIR /app
 RUN groupadd --system --gid 1001 mira && \
     useradd --system --uid 1001 --gid mira mira
 
-# Copy built artifacts + production node_modules
+# Copy built artifacts + production node_modules. pnpm keeps per-package symlink
+# farms (apps/worker/node_modules/* -> ../../node_modules/.pnpm/...), so the
+# worker's own node_modules must be copied too — the root store alone doesn't
+# make `zod`/`pg-boss`/etc. resolvable from apps/worker/dist.
 COPY --from=builder --chown=mira:mira /app/node_modules ./node_modules
 COPY --from=builder --chown=mira:mira /app/apps/worker/dist ./apps/worker/dist
+COPY --from=builder --chown=mira:mira /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=builder --chown=mira:mira /app/apps/worker/package.json ./apps/worker/
 COPY --from=builder --chown=mira:mira /app/packages ./packages
 COPY --from=builder --chown=mira:mira /app/package.json ./

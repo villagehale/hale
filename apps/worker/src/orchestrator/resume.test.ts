@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@haru/tools-contracts';
+import type { IngestedEventPayload } from '@hearth/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion } from '@haru/types';
+import type { ClassifierSuggestion } from '@hearth/types';
 
 /**
  * B10 — crash-resume re-entrancy. The invariant: a job killed after the
@@ -71,6 +71,10 @@ vi.mock('../services/executor.js', () => ({ runExecutor: vi.fn() }));
 let crashAfterClassify = false;
 
 vi.mock('../services/memory-writer.js', () => ({
+  loadFamilyContext: vi.fn(async () => ({
+    stages: ['newborn'],
+    contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
+  })),
   loadResumePoint: vi.fn(async (_fam: string, hash: string) => store.get(hash) ?? null),
   recordEvent: vi.fn(async (input: StoredEvent & { dedupHash: string }) => {
     store.set(input.dedupHash, {

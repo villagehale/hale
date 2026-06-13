@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "The clinic is proposing to reschedule Mia's existing 2-year checkup and explicitly asking the parent to reply with availability, which is a clear actionable request requiring parental choice and confirmation.",
+    "payload": {
+      "child_name": "Mia",
+      "appointment_type": "2-year well-child checkup",
+      "clinic_name": "Little Sprout Pediatrics",
+      "proposed_date": "2025-07-11",
+      "proposed_time": "15:30",
+      "proposed_timezone": "America/Toronto",
+      "original_date": "2025-07-09",
+      "reason_for_change": "Dr. Okafor unexpectedly away",
+      "flexibility": "parent can suggest alternative afternoon times",
+      "action_requested": "confirm proposed time or reply with alternative availability"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 3376,
+    "output": 330
+  }
+}

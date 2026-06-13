@@ -1,0 +1,37 @@
+# Build context for the Fly worker image is the repo ROOT (apps/worker/Dockerfile
+# COPYs from root paths). The Dockerfile runs its own clean `pnpm install`, so
+# host artifacts must NOT be shipped into the build context — they bloat the
+# upload and risk leaking local secrets. The per-app apps/worker/.dockerignore
+# does NOT apply at a root context, so this file is the one that matters.
+
+# Dependencies (reinstalled inside the image)
+**/node_modules
+.pnpm-store
+
+# Build outputs (rebuilt inside the image)
+**/dist
+**/.next
+**/.turbo
+**/build
+**/out
+**/*.tsbuildinfo
+
+# Secrets / env — never into the image
+.env
+.env.*
+**/.env
+**/.env.*
+
+# VCS / CI / local
+.git
+.github
+.githooks
+.loop
+.playwright-mcp
+.claude
+
+# Docs and tests not needed at runtime
+docs
+**/*.test.ts
+**/vitest.config.ts
+**/vitest.setup.ts

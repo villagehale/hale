@@ -1,5 +1,5 @@
 {
-  "name": "@haru/worker",
+  "name": "@hearth/worker",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -20,9 +20,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",
-    "@haru/db": "workspace:*",
-    "@haru/tools-contracts": "workspace:*",
-    "@haru/types": "workspace:*",
+    "@hearth/db": "workspace:*",
+    "@hearth/tools-contracts": "workspace:*",
+    "@hearth/types": "workspace:*",
     "drizzle-orm": "^0.38.3",
     "pg-boss": "^10.1.6",
     "pino": "^9.6.0",

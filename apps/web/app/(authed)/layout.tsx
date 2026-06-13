@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { Sidebar } from '~/components/haru/sidebar';
-import { TopHeader } from '~/components/haru/top-header';
+import { Sidebar } from '~/components/hearth/sidebar';
+import { TopHeader } from '~/components/hearth/top-header';
+import { FamilyHeader } from '~/components/hearth/family-header';
 import { clerkConfigured } from '~/lib/auth-config';
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
@@ -26,6 +27,7 @@ export default async function AuthedLayout({ children }: { children: React.React
               because Clerk is not configured.
             </output>
           )}
+          <FamilyHeader />
           {children}
         </main>
       </div>

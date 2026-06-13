@@ -1,7 +1,7 @@
 /*
  * The hero's "one calm day" scene: a low Spruce hill, a small Oat house,
  * an Apricot sun on a slow 30s ambient arc, a Sky cloud drifting, and a
- * sleeping kitten (the youngest haru) curled beside the house. The sun's
+ * sleeping kitten (the youngest Hearth) curled beside the house. The sun's
  * arc is the only continuous motion — the brand's heartbeat — and it is
  * fully suppressed under prefers-reduced-motion (resolving to a static
  * mid-day frame, handled in globals.css).
@@ -48,7 +48,7 @@ export function HeroScene() {
         style={{ bottom: '20%', left: '18%', width: 'clamp(88px, 16vw, 136px)', height: 'auto' }}
       />
 
-      {/* the youngest haru, asleep by the door */}
+      {/* the youngest Hearth, asleep by the door */}
       <Cat
         age="kitten"
         className="absolute"

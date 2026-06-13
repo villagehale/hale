@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Email is too vague to classify — it references a prior conversation not present in the signal, contains no specific ask, and could relate to anything from a family member inquiry to a logistics issue.",
+    "payload": {
+      "sender": "j.reeve@outlook.com",
+      "subject": "hey",
+      "context_required": true,
+      "prior_conversation_missing": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 2833,
+    "output": 205
+  }
+}

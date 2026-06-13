@@ -5,7 +5,7 @@
  * MUST validate inputs/outputs against these schemas. This prevents
  * hallucinated tool args from triggering real-world actions.
  */
-import type { ActionType } from '@haru/types';
+import type { ActionType } from '@hearth/types';
 import { z } from 'zod';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ export type ReviewerToolName = keyof typeof REVIEWER_TOOLS;
 // via `coverageSatisfiedWithResults`).
 //
 // `satisfies Record<ActionType, ...>` is load-bearing: it makes adding a new
-// ActionType in @haru/types without a matrix entry a COMPILE ERROR. As the
+// ActionType in @hearth/types without a matrix entry a COMPILE ERROR. As the
 // product fans action types out across the four family stages, no new outward
 // action can ship un-gated by accident.
 //

@@ -6,7 +6,7 @@ hard rule #2). These `.md` files are the disk cache the runtime loader reads.
 Lifecycle:
 
 1. Edit a prompt **in Langfuse**, promote the version to the `production` label.
-2. `pnpm --filter @haru/worker prompts:pull` — writes the new text to disk and
+2. `pnpm --filter @hearth/worker prompts:pull` — writes the new text to disk and
    refreshes `.langfuse-lock.json` ({name, version, sha256} per prompt).
 3. Commit the changed `.md` files **and** `.langfuse-lock.json` together.
 

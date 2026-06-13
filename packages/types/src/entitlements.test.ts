@@ -23,7 +23,7 @@ const ALL_ENTITLEMENTS = [
   'portal_automation',
 ] as const satisfies readonly Entitlement[];
 
-/** Full canonical action-type list, hand-mirrored from @haru/types ActionType. */
+/** Full canonical action-type list, hand-mirrored from @hearth/types ActionType. */
 const ALL_ACTION_TYPES = [
   'send_email',
   'reply_to_email',

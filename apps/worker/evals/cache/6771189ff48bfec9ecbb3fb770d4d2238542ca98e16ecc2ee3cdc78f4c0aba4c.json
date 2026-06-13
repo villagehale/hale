@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "tax_credit_eligibility_change",
+    "confidence": 0.95,
+    "rationale": "CRA notification of a recalculated Canada Child Benefit amount effective July 2026 based on 2025 tax return assessment.",
+    "payload": {
+      "sender": "Canada Revenue Agency (CRA)",
+      "benefit_type": "Canada Child Benefit (CCB)",
+      "previous_amount": null,
+      "new_monthly_amount": 619.4,
+      "currency": "CAD",
+      "effective_date": "July 2026",
+      "trigger": "2025 tax return assessment",
+      "action_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2872,
+    "output": 250
+  }
+}

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ClassifierSuggestion, EventType, FamilyStage } from '@haru/types';
+import type { ClassifierSuggestion, EventType, FamilyStage } from '@hearth/types';
 import { anthropicClient, HAIKU_MODEL } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
@@ -23,11 +23,13 @@ const eventTypeSchema = z.enum([
   'delivery_update',
   'daycare_application_response',
   'daycare_communication',
+  'school_communication',
   'activity_signup_open',
   'milestone_photo_detected',
   'family_share_request',
   'calendar_conflict_detected',
   'family_event_invite',
+  'legal_milestone_due',
   'age_stage_milestone_due',
   'sleep_pattern_signal',
   'feeding_pattern_signal',
@@ -85,19 +87,23 @@ interface ClassifierRunInput {
   source: string;
   rawContent: string;
   /**
-   * Distinct family stages, used to inject stage-aware context packs.
-   * TODO(stage-wiring): the orchestrator does not yet look up the family's
-   * children + dateOfBirth and call deriveFamilyStages() to populate this.
-   * Until that lookup lands, callers default to ['newborn']. Wire it in the
-   * orchestrator's children query (apps/worker/src/orchestrator/index.ts).
+   * Distinct family stages, used to inject stage-aware context packs. The
+   * orchestrator derives these from the family's children + dateOfBirth
+   * (loadFamilyContext) and passes them in; callers default to ['newborn'].
    */
   stages?: FamilyStage[];
+  /**
+   * Disambiguation slice. childrenAgesMonths/province/timezone come from the
+   * family's rows; knownClinics/knownDaycares are optional — the schema has no
+   * source-of-truth for them yet, so the orchestrator omits them rather than
+   * fabricating, and fixtures may still supply them.
+   */
   familyContextSlice?: {
     childrenAgesMonths: number[];
     province: string;
     timezone: string;
-    knownClinics: string[];
-    knownDaycares: string[];
+    knownClinics?: string[];
+    knownDaycares?: string[];
   };
 }
 

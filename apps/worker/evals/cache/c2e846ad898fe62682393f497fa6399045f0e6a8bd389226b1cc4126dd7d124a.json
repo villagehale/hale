@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.88,
+    "rationale": "HR onboarding email flagging SIN application and first-job paperwork requirements with a clear start date — administrative milestones a parent must surface and track for a working teen.",
+    "payload": {
+      "sender": "hr@maplemart-grocery.ca",
+      "job_role": "part-time cashier",
+      "first_shift_date": "2024-06-20",
+      "required_documents": [
+        "valid Social Insurance Number (SIN)",
+        "signed TD1 form"
+      ],
+      "deadline": "2024-06-20",
+      "action_required_before_start": true,
+      "notes": "Teen does not yet have a SIN and may need to apply through Service Canada"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3435,
+    "output": 287
+  }
+}

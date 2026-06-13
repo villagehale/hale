@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "provincial_leave_correspondence",
+    "confidence": 0.95,
+    "rationale": "Email from rqap.gouv.qc.ca confirming acceptance of Quebec Parental Insurance Plan (RQAP/QPIP) benefits with first payment date specified.",
+    "payload": {
+      "sender": "rqap@rqap.gouv.qc.ca",
+      "program": "RQAP/QPIP",
+      "province": "QC",
+      "decision": "benefits_accepted",
+      "first_payment_date": "2024-06-20",
+      "action_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2886,
+    "output": 245
+  }
+}

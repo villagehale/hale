@@ -1,0 +1,20 @@
+{
+  "id": "35-teen-school-exam-schedule",
+  "note": "TEENAGER stage. A high school posting the final-exam schedule and a course-selection deadline — school_communication. Hand-derived from taxonomy: school comms (vs daycare) are school_communication; exam schedules/course-selection are routine academic notices → surface_only. This is logistics ABOUT the teen a parent manages, NOT teen-content, so it routes normally (not the redaction cap).",
+  "stage": "teenager",
+  "input": {
+    "source": "email",
+    "rawContent": "From: registrar@northgate-secondary.schoolboard.ca\nSubject: Final exam schedule + Grade 11 course selection\n\nFamilies of Grade 10 students: the June final exam schedule is now posted on the school site. Also a reminder that Grade 11 course selections are due by April 18 through the student portal. Please review the timetable with your student.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [186],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "school_communication",
+    "kind": "surface_only"
+  }
+}

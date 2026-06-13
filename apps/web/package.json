@@ -1,5 +1,5 @@
 {
-  "name": "@haru/web",
+  "name": "@hearth/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -13,9 +13,9 @@
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@haru/db": "workspace:*",
-    "@haru/tools-contracts": "workspace:*",
-    "@haru/types": "workspace:*",
+    "@hearth/db": "workspace:*",
+    "@hearth/tools-contracts": "workspace:*",
+    "@hearth/types": "workspace:*",
     "@clerk/nextjs": "^6.10.3",
     "drizzle-orm": "^0.38.3",
     "next": "^15.1.4",

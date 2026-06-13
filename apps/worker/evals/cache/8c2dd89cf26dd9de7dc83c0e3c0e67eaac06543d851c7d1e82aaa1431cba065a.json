@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "pediatric_office_message",
+    "confidence": 0.88,
+    "rationale": "Nurse follow-up post-consultation offering clinical guidance on feeding and spit-up management; one-way medical advice with no action required unless condition changes.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "sender_role": "Nurse (Amelia, RN)",
+      "subject": "Following up on our call",
+      "clinical_advice": "Continue smaller, more frequent feeds; monitor spit-up; seek care only if spit-up worsens",
+      "child_concern": "Feeding and spit-up",
+      "child_age_months": 2,
+      "action_trigger": "None unless condition escalates"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2883,
+    "output": 277
+  }
+}

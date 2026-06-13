@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "order_confirmation",
+    "confidence": 0.95,
+    "rationale": "Transactional confirmation of a completed supply order from an e-commerce retailer; no action required from the family.",
+    "payload": {
+      "order_id": "EB-88213",
+      "merchant": "everydaybaby.ca",
+      "items": [
+        "2x Size 2 diapers",
+        "1x wipes refill"
+      ],
+      "total": "$58.20",
+      "status": "confirmed",
+      "next_step": "shipping notification to follow"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2874,
+    "output": 224
+  }
+}

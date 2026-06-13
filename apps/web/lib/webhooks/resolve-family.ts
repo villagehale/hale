@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { type Database, schema } from '@haru/db';
+import { type Database, schema } from '@hearth/db';
 import { db as defaultDb } from '~/lib/db';
 
 /**

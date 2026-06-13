@@ -1,5 +1,5 @@
 import type PgBoss from 'pg-boss';
-import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@haru/tools-contracts';
+import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hearth/tools-contracts';
 import { logger } from '../logger.js';
 import { executeApprovedAction, runOrchestrator } from '../orchestrator/index.js';
 import { runMemoryInferencer } from '../agents/memory-inferencer.js';

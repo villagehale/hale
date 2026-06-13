@@ -1,0 +1,32 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.95,
+    "rationale": "Routine weekly newsletter from a known daycare (Maple Grove Childcare) with closure notice, activity updates, and supply reminders—one-way communication requiring no reply.",
+    "payload": {
+      "sender": "room2@maplegrove-childcare.ca",
+      "daycare_name": "Maple Grove Childcare",
+      "room": "Infant Room",
+      "closure_notice": true,
+      "closure_reason": "PD day",
+      "closure_date": "Friday",
+      "supplies_requested": [
+        "extra set of clothes",
+        "labelled water bottle"
+      ],
+      "supply_deadline": "next week",
+      "activities": [
+        "tummy time",
+        "music"
+      ],
+      "sender_name": "Ms. Priya"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2881,
+    "output": 287
+  }
+}

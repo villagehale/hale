@@ -4,12 +4,12 @@ import { startQueue, stopQueue } from './queue.js';
 import { registerConsumers } from './consumers/index.js';
 
 async function main(): Promise<void> {
-  logger.info({ env: config.NODE_ENV }, 'haru worker starting');
+  logger.info({ env: config.NODE_ENV }, 'Hearth worker starting');
 
   const boss = await startQueue();
   await registerConsumers(boss);
 
-  logger.info('haru worker ready');
+  logger.info('Hearth worker ready');
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');

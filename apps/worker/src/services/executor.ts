@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import type { ApprovedAction, ExecutionResult } from '@haru/types';
+import type { ApprovedAction, ExecutionResult } from '@hearth/types';
 import {
   claimOutboundSend as claimOutboundSendDb,
   confirmOutboundSend as confirmOutboundSendDb,
@@ -52,7 +52,7 @@ function defaultDeps(): ExecutorDeps {
  * require integrations (Google Calendar OAuth, Stripe + merchant
  * adapters, Computer Use for portal automation) that the worker
  * doesn't yet have credentials for. Those throw a clear
- * `HARU_NOT_CONFIGURED` error so the system fails LOUD rather than
+ * `HEARTH_NOT_CONFIGURED` error so the system fails LOUD rather than
  * pretending to succeed — which would silently degrade the
  * autonomous-trust promise.
  */
@@ -212,8 +212,8 @@ async function postmarkSend(payload: EmailPayload): Promise<SendResult> {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function notConfigured(reason: string): Error {
-  const err = new Error(`HARU_NOT_CONFIGURED: ${reason}`);
-  err.name = 'HaruNotConfiguredError';
+  const err = new Error(`HEARTH_NOT_CONFIGURED: ${reason}`);
+  err.name = 'HearthNotConfiguredError';
   return err;
 }
 

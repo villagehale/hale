@@ -39,12 +39,12 @@ const LADDER = [
   {
     shape: <Seed style={{ height: 64, width: 'auto' }} />,
     title: 'Connect',
-    body: 'Gmail or Outlook first. Your calendar second. Photos only when you trust haru with them.',
+    body: 'Gmail or Outlook first. Your calendar second. Photos only when you trust Hearth with them.',
   },
   {
     shape: <Sprout style={{ height: 80, width: 'auto' }} />,
     title: 'Observe for 7 days',
-    body: 'At first haru only watches. You see exactly what it sees — no drafts, no actions, no exceptions.',
+    body: 'At first Hearth only watches. You see exactly what it sees — no drafts, no actions, no exceptions.',
   },
   {
     shape: <Sapling style={{ height: 92, width: 'auto' }} />,
@@ -54,7 +54,7 @@ const LADDER = [
   {
     shape: <Tree style={{ height: 96, width: 'auto' }} />,
     title: 'Autonomy, earned',
-    body: 'After five clean approvals of one kind of task, haru may handle that kind on its own. Revoke any time, with one tap.',
+    body: 'After five clean approvals of one kind of task, Hearth may handle that kind on its own. Revoke any time, with one tap.',
   },
 ] as const;
 
@@ -62,17 +62,17 @@ const TIERS = [
   {
     name: 'Free',
     price: 'Always free',
-    line: 'haru observes and drafts — every stage, every child. It watches, it waits, it asks before it acts.',
+    line: 'Hearth observes and drafts — every stage, every child. It watches, it waits, it asks before it acts.',
     panel: 'panel-oat',
   },
   {
-    name: 'haru plus',
+    name: 'Hearth Plus',
     price: '$24/mo CAD',
-    line: 'Once it has earned your trust, haru acts on its own for the tasks you have approved. The same care, fewer taps.',
+    line: 'Once it has earned your trust, Hearth acts on its own for the tasks you have approved. The same care, fewer taps.',
     panel: 'panel-apricot-tint',
   },
   {
-    name: 'haru family',
+    name: 'Hearth Family',
     price: '$49/mo CAD',
     line: 'Everything in plus, with supply autopilot and the portal automation — daycare, pediatric, school forms — handled.',
     panel: 'panel-sky-tint',
@@ -96,7 +96,7 @@ export default function LandingPage() {
       {/* ── 1 · Hero — one calm day ─────────────────────────────────────── */}
       <header className="shell flex items-center justify-between pt-8 pb-2">
         <span className="font-display text-2xl" style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}>
-          haru
+          Hearth
         </span>
         <span className="pill pill-apricot">research preview</span>
       </header>
@@ -106,7 +106,7 @@ export default function LandingPage() {
           <div className="lg:col-span-7 rise rise-1">
             <HeroScene />
             <p className="meta mt-4 max-w-md">
-              The kitten by the door is haru. It is a cat — its life is about as
+              The kitten by the door is Hearth. It is a cat — its life is about as
               long as a childhood, and it grows up right alongside your kid:
               newborn, toddler, child, teenager.
             </p>
@@ -114,7 +114,7 @@ export default function LandingPage() {
 
           <div className="lg:col-span-5 rise rise-2">
             <h1>
-              haru <span className="wonk">holds</span> the small things, so you
+              Hearth <span className="wonk">holds</span> the small things, so you
               can hold the baby.
             </h1>
             <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
@@ -142,7 +142,7 @@ export default function LandingPage() {
               fontVariationSettings: '"opsz" 120, "SOFT" 50, "WONK" 0',
             }}
           >
-            haru watches the inbox, the calendar, the photos, and the small
+            Hearth watches the inbox, the calendar, the photos, and the small
             devices that already log your baby&rsquo;s life — the pediatric
             office, the daycare waitlist, the diaper subscription, the
             grandparent who keeps asking how she slept — and quietly does the
@@ -151,15 +151,15 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 3 · A day with haru — the four-stages story ─────────────────── */}
+      {/* ── 3 · A day with Hearth — the four-stages story ─────────────────── */}
       <section className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">A day with haru</span>
+          <span className="eyebrow">A day with Hearth</span>
           <h2 className="mt-3">
             One day, one childhood — the same gentle arc.
           </h2>
           <p className="mt-5 meta max-w-xl" style={{ fontSize: '1rem', color: 'var(--color-slate-green)' }}>
-            From dawn to night, and from newborn to teenager, haru handles one
+            From dawn to night, and from newborn to teenager, Hearth handles one
             small thing at a time. The thesis is the cat&rsquo;s: it grows up
             alongside your kid.
           </p>
@@ -217,11 +217,11 @@ export default function LandingPage() {
         <div className="max-w-2xl mb-12 lg:mb-16">
           <span className="eyebrow">Three sizes of help</span>
           <h2 className="mt-3">
-            Start free. Pay only when haru has earned it.
+            Start free. Pay only when Hearth has earned it.
           </h2>
           <p className="mt-5 meta max-w-xl" style={{ fontSize: '1rem', color: 'var(--color-slate-green)' }}>
             Every plan covers every stage and every child. The paid tiers simply
-            let haru do more of the work itself. Monthly, or a little less per
+            let Hearth do more of the work itself. Monthly, or a little less per
             month if you pay yearly.
           </p>
         </div>
@@ -249,7 +249,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 6 · haru will never — the inverted night section ────────────── */}
+      {/* ── 6 · Hearth will never — the inverted night section ────────────── */}
       <section
         className="py-24 lg:py-32"
         style={{ background: 'var(--color-spruce)', color: 'var(--color-on-spruce)' }}
@@ -260,7 +260,7 @@ export default function LandingPage() {
               The promises
             </span>
             <h2 className="mt-3" style={{ color: 'var(--color-on-spruce)' }}>
-              haru will never.
+              Hearth will never.
             </h2>
             <p className="mt-6" style={{ color: 'var(--color-on-spruce-soft)', lineHeight: 1.6, maxWidth: '24rem' }}>
               This is the compliance core. PIPEDA, Quebec Law 25, and Canadian
@@ -313,7 +313,7 @@ export default function LandingPage() {
         <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
             <div className="lg:col-span-6">
-              <h2>Hold the baby. haru holds the rest.</h2>
+              <h2>Hold the baby. Hearth holds the rest.</h2>
               <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
                 Free for one year in exchange for honest feedback. Canadian data
                 residency. PIPEDA + Quebec Law 25 + CASL compliant by default.
@@ -328,7 +328,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
-        <p className="meta">haru · Toronto · Canada · a research preview</p>
+        <p className="meta">Hearth · Toronto · Canada · a research preview</p>
         <p className="meta flex items-center gap-2">
           set in Fraunces &amp; Nunito
           <Sun style={{ width: 18, height: 18 }} />

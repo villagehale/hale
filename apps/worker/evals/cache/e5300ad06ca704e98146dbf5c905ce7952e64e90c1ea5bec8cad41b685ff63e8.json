@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "vaccine_schedule_update",
+    "confidence": 0.92,
+    "rationale": "Public Health Toronto is announcing a routine immunization schedule change affecting the 6-month dose; the family has a 5-month-old and this is informational with no direct action required.",
+    "payload": {
+      "source": "immunization@toronto.ca",
+      "jurisdiction": "Toronto",
+      "province": "ON",
+      "schedule_change": "6-month dose now includes an additional component",
+      "action_note": "Discuss at next provider visit"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2864,
+    "output": 220
+  }
+}

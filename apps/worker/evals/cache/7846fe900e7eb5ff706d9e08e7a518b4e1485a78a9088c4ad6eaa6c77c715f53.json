@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.92,
+    "rationale": "Clinic is directly asking the parent to pick a time slot and confirm a future appointment; parent action is required.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Baby Chen",
+      "visit_type": "6-month checkup",
+      "available_slots_description": "Mon-Thu mornings",
+      "time_window": "next two weeks",
+      "action_required": "pick a slot / call or use portal",
+      "province": "ON"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2876,
+    "output": 253
+  }
+}

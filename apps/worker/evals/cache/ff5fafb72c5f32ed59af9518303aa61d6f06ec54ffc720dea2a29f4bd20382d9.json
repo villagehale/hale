@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "pediatric_office_message",
+    "confidence": 0.92,
+    "rationale": "A pediatric nurse follows up on a prior conversation with clinical feeding advice for a 2-month-old, with a conditional monitoring instruction but no explicit request for a reply or action.",
+    "payload": {
+      "sender": "nurse.amelia@littlesprout-pediatrics.ca",
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_age_months": 2,
+      "topic": "feeding",
+      "clinical_advice": "smaller, more frequent feeds",
+      "monitoring_note": "watch for worsening spit-up",
+      "followup_condition": "only come in if spit-up gets worse"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2882,
+    "output": 266
+  }
+}

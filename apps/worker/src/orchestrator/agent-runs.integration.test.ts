@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDb, schema } from '@haru/db';
+import { createDb, schema } from '@hearth/db';
 
 /**
  * B8 INTEGRATION — proves real agent_runs rows + FK joins against a live
@@ -39,9 +39,21 @@ describe.skipIf(!hasDb)('B8 integration — real agent_runs rows + FK joins', ()
 
     const familyRows = await database
       .insert(schema.families)
-      .values({ displayName: 'B8 Integration Family' })
+      .values({ displayName: 'B8 Integration Family', provinceOrState: 'ON' })
       .returning({ id: schema.families.id });
     const familyId = familyRows[0]?.id as string;
+
+    // A real child row, so the now-wired stage lookup (loadFamilyContext) has
+    // children to derive from. ~6 months old → 'newborn', consistent with the
+    // clinic 6-month-checkup signal below; this keeps the classifier's pack the
+    // same while exercising the stage-aware path against real rows.
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    await database.insert(schema.children).values({
+      familyId,
+      name: 'Baby Chen',
+      dateOfBirth: sixMonthsAgo.toISOString().slice(0, 10),
+    });
 
     // This test's intent is DB/FK plumbing (≥3 agent_runs, draftedByAgentRunId
     // FK resolves), NOT classifier quality. The classifier must route to
@@ -84,6 +96,17 @@ describe.skipIf(!hasDb)('B8 integration — real agent_runs rows + FK joins', ()
       .where(sql`${schema.actions.familyId} = ${familyId}`);
 
     expect(joined.length).toBeGreaterThanOrEqual(1);
+
+    // Stage-aware path: the now-wired loadFamilyContext derives the child's stage
+    // and age from the real children row this test inserted. A 6-month-old →
+    // 'newborn', age in months in [5, 7] (calendar-month boundary tolerance).
+    const { loadFamilyContext } = await import('../services/memory-writer.js');
+    const context = await loadFamilyContext(familyId, database);
+    expect(context.stages).toEqual(['newborn']);
+    expect(context.contextSlice.province).toBe('ON');
+    expect(context.contextSlice.childrenAgesMonths).toHaveLength(1);
+    expect(context.contextSlice.childrenAgesMonths[0]).toBeGreaterThanOrEqual(5);
+    expect(context.contextSlice.childrenAgesMonths[0]).toBeLessThanOrEqual(7);
     // 60s: a full pass makes three REAL, sequential LLM calls (classifier +
     // drafter + reviewer — hard rule #8 forbids mocking the model), which
     // overruns vitest's 5s default. The work is network-bound, not slow code.
