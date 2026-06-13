@@ -1,0 +1,18 @@
+{
+  "id": "08-provincial-leave",
+  "note": "Quebec QPIP (provincial parental insurance) letter — distinct from federal EI. Government/legal.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: rqap@rqap.gouv.qc.ca\nSubject: Régime québécois d'assurance parentale — confirmation\n\nVotre demande de prestations parentales au RQAP a été acceptée. Le premier versement sera effectué le 20 juin. Conservez cet avis. This notice confirms your Quebec Parental Insurance Plan benefits.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [2],
+      "province": "QC",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "provincial_leave_correspondence"
+  }
+}

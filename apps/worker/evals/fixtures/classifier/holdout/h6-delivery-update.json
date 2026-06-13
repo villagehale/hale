@@ -1,0 +1,18 @@
+{
+  "id": "h6-delivery-update",
+  "note": "HOLDOUT. Carrier delivery-exception notice.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: notifications@purolator.com\nSubject: Delivery attempted — action needed\n\nWe attempted to deliver your parcel (PIN 329114007722) today but no one was available. We'll try again tomorrow, or you can redirect it to a pickup location online.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "AB",
+      "timezone": "America/Edmonton",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "delivery_update"
+  }
+}

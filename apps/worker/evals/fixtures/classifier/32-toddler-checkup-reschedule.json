@@ -1,0 +1,21 @@
+{
+  "id": "32-toddler-checkup-reschedule",
+  "note": "TODDLER stage. Clinic asks to move the 2-year checkup and requests a reply with availability — pediatric_appointment_request. Hand-derived from taxonomy: a clinic proposing a new time and asking the parent to reply requires the parent to act, so it is a _request, not a one-way _reminder. Reinforces the reschedule->reminder boundary at toddler age.",
+  "stage": "toddler",
+  "input": {
+    "source": "email",
+    "rawContent": "From: frontdesk@littlesprout-pediatrics.ca\nSubject: We need to move Mia's 2-year checkup\n\nDr. Okafor is unexpectedly away on July 9. Could we move Mia's 2-year checkup to July 11 at 3:30 PM, or would another afternoon suit you better? Please reply and let us know what works.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [24],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_appointment_request",
+    "kind": "autonomous_action",
+    "actionType": "reply_to_email"
+  }
+}

@@ -35,7 +35,7 @@ export default function SettingsPage() {
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              tune the <span className="text-madder">trust ladder.</span>
+              tune the <span className="text-apricot-deep">trust ladder.</span>
             </h1>
           </div>
         </div>
@@ -45,7 +45,7 @@ export default function SettingsPage() {
       <section className="rise rise-2 mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-y border-rule py-10">
           <div className="lg:col-span-3">
-            <span className="eyebrow text-iron">your family</span>
+            <span className="eyebrow text-spruce">your family</span>
             <p className="meta mt-2">two parents · one child · one almanac</p>
           </div>
           <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
@@ -78,11 +78,11 @@ export default function SettingsPage() {
       <section className="rise rise-3 mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
           <div className="lg:col-span-3 lg:sticky lg:top-12 lg:self-start">
-            <span className="eyebrow text-iron">trust ladder</span>
+            <span className="eyebrow text-spruce">trust ladder</span>
             <h2 className="mt-5 font-display">
-              what i can do <span className="text-madder">on my own.</span>
+              what i can do <span className="text-apricot-deep">on my own.</span>
             </h2>
-            <p className="mt-4 text-slate leading-relaxed">
+            <p className="mt-4 text-slate-green leading-relaxed">
               Every action class has its own ladder. L1 means I always ask. L2
               means I draft and you tap. L3 means I act on the routine cases.
               L4 means full autonomy within your caps and policies.
@@ -112,7 +112,7 @@ export default function SettingsPage() {
                     <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
                       <button type="button" className="btn-ghost">downgrade</button>
                       <button type="button" className="btn-ghost">freeze here</button>
-                      <button type="button" className="btn-ghost text-madder">always ask</button>
+                      <button type="button" className="btn-ghost text-apricot-deep">always ask</button>
                     </div>
                   </div>
                 </div>
@@ -126,9 +126,9 @@ export default function SettingsPage() {
       <section className="rise rise-5 mb-20 pt-10 border-t border-rule">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
           <div className="lg:col-span-3">
-            <span className="eyebrow text-iron">spending</span>
+            <span className="eyebrow text-spruce">spending</span>
             <h2 className="mt-5 font-display">caps & categories</h2>
-            <p className="mt-4 text-slate leading-relaxed">
+            <p className="mt-4 text-slate-green leading-relaxed">
               The numerical limits and category-level rules that overrule the
               trust ladder. Edits take effect immediately.
             </p>
@@ -140,7 +140,7 @@ export default function SettingsPage() {
                 { label: 'per day', value: '$200' },
                 { label: 'per month', value: '$1,000' },
               ].map((cap) => (
-                <div key={cap.label} className="bg-bone-soft p-6">
+                <div key={cap.label} className="bg-linen p-6">
                   <span className="eyebrow">{cap.label}</span>
                   <p className="font-display text-[2.5rem] mt-1 tabular leading-none">
                     {cap.value}
@@ -164,13 +164,13 @@ export default function SettingsPage() {
 
       {/* ── Kill switch ────────────────────────────────────────────────── */}
       <section className="rise rise-7 pt-10 border-t border-rule">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 fold-tint">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 panel-apricot-tint">
           <div className="lg:col-span-3">
-            <span className="eyebrow text-madder-deep">pause</span>
+            <span className="eyebrow text-apricot-deep">pause</span>
             <p className="meta mt-2">a single tap</p>
           </div>
           <div className="lg:col-span-9 flex flex-wrap items-center gap-x-8 gap-y-4">
-            <p className="text-lg text-iron leading-snug max-w-md">
+            <p className="text-lg text-spruce leading-snug max-w-md">
               Need me to step back for a while? One tap pauses everything for
               twenty-four hours. I'll still log signals but I won't draft or
               act.

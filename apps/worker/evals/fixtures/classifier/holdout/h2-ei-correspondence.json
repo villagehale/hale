@@ -1,0 +1,18 @@
+{
+  "id": "h2-ei-correspondence",
+  "note": "HOLDOUT. Service Canada requesting additional EI documentation.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: noreply@servicecanada.gc.ca\nSubject: Action may be required on your EI claim\n\nWe need additional information to continue processing your Employment Insurance parental benefits. Please sign in to your My Service Canada Account to view the request. Claim reference EI-2026-0051772.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [1],
+      "province": "BC",
+      "timezone": "America/Vancouver",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "ei_correspondence"
+  }
+}

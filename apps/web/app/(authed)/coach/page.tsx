@@ -44,19 +44,19 @@ export default function CoachPage() {
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              ask me <span className="text-madder">anything.</span>
+              ask me <span className="text-apricot-deep">anything.</span>
             </h1>
           </div>
         </div>
       </header>
 
       {/* ── How it works ───────────────────────────────────────────────── */}
-      <section className="rise rise-2 mb-16 fold">
+      <section className="rise rise-2 mb-16 panel">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-3 lg:gap-x-8">
           <div className="lg:col-span-3">
             <span className="eyebrow">how this works</span>
           </div>
-          <div className="lg:col-span-9 text-slate leading-relaxed text-lg">
+          <div className="lg:col-span-9 text-slate-green leading-relaxed text-lg">
             I answer in plain language and cite the framework or source. I will
             not give medical advice; if a question crosses that line, I will
             say so and point you to your pediatrician. Type, talk, or share a
@@ -78,7 +78,7 @@ export default function CoachPage() {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-y-4 md:gap-x-8">
                   <div className="md:col-span-2">
                     <Folio index={idx + 1} />
-                    <p className="eyebrow text-iron mt-2">you · 06:48</p>
+                    <p className="eyebrow text-spruce mt-2">you · 06:48</p>
                   </div>
                   <div className="md:col-span-10">
                     <p className="font-display text-[1.5rem] lg:text-[1.85rem] leading-snug">
@@ -97,14 +97,14 @@ export default function CoachPage() {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
                 <div className="md:col-span-2">
                   <Folio index={idx + 1} />
-                  <p className="eyebrow text-madder mt-2">haru · 06:48</p>
+                  <p className="eyebrow text-apricot-deep mt-2">haru · 06:48</p>
                   <p className="meta mt-1">confidence · 0.88</p>
                 </div>
                 <div className="md:col-span-10 space-y-6">
-                  <p className="text-lg text-iron leading-relaxed">{entry.body}</p>
+                  <p className="text-lg text-spruce leading-relaxed">{entry.body}</p>
                   {entry.citations ? (
-                    <div className="border-l-2 border-madder pl-5">
-                      <span className="eyebrow text-iron">grounded in</span>
+                    <div className="border-l-2 border-apricot-deep pl-5">
+                      <span className="eyebrow text-spruce">grounded in</span>
                       <ul className="mt-2 space-y-1.5">
                         {entry.citations.map((c) => (
                           <li key={c} className="meta italic">— {c}</li>
@@ -118,7 +118,7 @@ export default function CoachPage() {
                       <ul className="mt-3 space-y-2">
                         {entry.followUps.map((q) => (
                           <li key={q}>
-                            <button type="button" className="travel-underline text-lg text-iron">
+                            <button type="button" className="link text-lg text-spruce">
                               {q}
                             </button>
                           </li>
@@ -160,7 +160,7 @@ export default function CoachPage() {
                   aria-label="hold to talk"
                   title="hold-to-talk — type if you prefer"
                 >
-                  <span className="text-madder" aria-hidden>◉</span> hold to talk
+                  <span className="text-apricot-deep" aria-hidden>◉</span> hold to talk
                 </button>
                 <button type="button" className="btn-ghost" aria-label="attach a photo">
                   <span aria-hidden>+</span> photo

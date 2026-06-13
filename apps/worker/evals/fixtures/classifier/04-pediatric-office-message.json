@@ -1,0 +1,19 @@
+{
+  "id": "04-pediatric-office-message",
+  "note": "Personal note from clinic nurse — a general office message, not a reminder/request. Medical relationship: must NOT be autonomous.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: nurse.amelia@littlesprout-pediatrics.ca\nSubject: Following up on our call\n\nHi, just checking in after our chat yesterday about Baby Chen's feeding. Keep doing the smaller, more frequent feeds and let us know if the spit-up gets worse. No need to come in unless that changes. — Amelia, RN",
+    "familyContextSlice": {
+      "childrenAgesMonths": [2],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_office_message",
+    "kind": "surface_only"
+  }
+}

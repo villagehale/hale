@@ -1,0 +1,20 @@
+{
+  "id": "03-pediatric-reschedule",
+  "note": "Clinic proposes a new time — still a request to (re)book, taxonomy has no distinct reschedule type so it maps to appointment_request.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: frontdesk@littlesprout-pediatrics.ca\nSubject: We need to move your appointment\n\nUnfortunately Dr. Okafor is out on June 23. Can we move Baby Chen's visit to June 25 at 2:00 PM, or would you prefer another day? Please reply with what works.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [4],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_appointment_request",
+    "kind": "autonomous_action",
+    "actionType": "reply_to_email"
+  }
+}

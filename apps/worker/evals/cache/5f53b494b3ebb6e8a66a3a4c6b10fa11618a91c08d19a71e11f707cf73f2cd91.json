@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Clinic is proposing a reschedule due to provider absence and explicitly asking the parent to reply with availability, requiring a direct action response.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Mia",
+      "child_age_months": 24,
+      "appointment_type": "2-year checkup",
+      "reason_for_change": "Dr. Okafor unexpectedly away",
+      "original_date": "July 9",
+      "proposed_date": "July 11",
+      "proposed_time": "3:30 PM",
+      "timezone": "America/Toronto",
+      "requires_parent_confirmation": true,
+      "offer_flexibility": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2878,
+    "output": 301
+  }
+}

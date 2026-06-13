@@ -1,0 +1,21 @@
+{
+  "id": "04-calendar-event-checkup",
+  "note": "Create a calendar event for the confirmed checkup. Payload is structured (title/start), not an email body.",
+  "input": {
+    "actionType": "create_calendar_event",
+    "event": {
+      "eventId": "evt-04",
+      "eventType": "pediatric_appointment_reminder",
+      "payload": {
+        "title": "Baby Chen well-baby visit",
+        "startsAt": "2026-06-23T10:15:00-04:00",
+        "location": "Little Sprout Pediatrics",
+        "with": "Dr. Okafor"
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["title", "startsAt"],
+    "maxBodyChars": 600
+  }
+}

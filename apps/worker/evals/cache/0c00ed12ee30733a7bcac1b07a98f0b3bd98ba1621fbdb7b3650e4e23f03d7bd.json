@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "subscription_renewal_due",
+    "confidence": 0.95,
+    "rationale": "Automated billing notification from a diaper subscription service announcing an upcoming automatic renewal with a clear action window to modify or skip.",
+    "payload": {
+      "source": "billing@everydaybaby.ca",
+      "subscription_type": "diaper_subscription",
+      "product": "Size 2 diapers",
+      "renewal_amount": "$42.99",
+      "renewal_date": "2024-06-15",
+      "action_deadline": "before 2024-06-15",
+      "action_options": [
+        "skip delivery",
+        "change delivery"
+      ],
+      "child_age_months": 3
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 1936,
+    "output": 256
+  }
+}

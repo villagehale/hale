@@ -1,0 +1,18 @@
+{
+  "id": "15-daycare-application-response",
+  "note": "Daycare responds to a waitlist application with a spot offer — daycare_application_response.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: admin@maplegrove-childcare.ca\nSubject: A spot has opened for your application\n\nGood news — a spot has opened in our infant room for September. To accept, please confirm and submit the $200 deposit within 5 business days, or the spot goes to the next family on the waitlist.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [7],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": ["Maple Grove Childcare"]
+    }
+  },
+  "expect": {
+    "eventType": "daycare_application_response"
+  }
+}

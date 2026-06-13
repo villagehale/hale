@@ -11,6 +11,17 @@ import {
 import { families } from './families.js';
 import { eventStatusEnum } from './enums.js';
 
+/**
+ * Classifier's routing suggestion. Structurally mirrors @haru/types
+ * ClassifierSuggestion; defined locally because @haru/db is a leaf package and
+ * must not depend on @haru/types (would create a cycle).
+ */
+type ClassifierSuggestion =
+  | { kind: 'autonomous_action'; actionType: string }
+  | { kind: 'surface_only' }
+  | { kind: 'ignore' }
+  | { kind: 'needs_human' };
+
 export const events = pgTable(
   'events',
   {
@@ -23,6 +34,9 @@ export const events = pgTable(
     sourceExternalId: text('source_external_id'),
     eventType: text('event_type').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    /** Classifier's routing suggestion, persisted so a crash-resume can route
+     * without re-running the (billable) classifier — B10 re-entrancy. */
+    classifierSuggestion: jsonb('classifier_suggestion').$type<ClassifierSuggestion>(),
     /** Pointer to raw signal in object storage; we don't persist heavy blobs in Postgres. */
     rawSignalRef: text('raw_signal_ref'),
     classifiedAt: timestamp('classified_at', { withTimezone: true }),

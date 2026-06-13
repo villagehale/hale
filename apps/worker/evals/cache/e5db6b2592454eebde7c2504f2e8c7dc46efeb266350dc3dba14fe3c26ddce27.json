@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "scheduling@maplegrove-peds.ca",
+      "subject": "Re: Reschedule needed",
+      "body": "hi — thanks for the heads up. a few times that could work for us:\n\n- tuesday, july 1 — morning or early afternoon\n- wednesday, july 2 — anytime\n- monday, july 7 — morning preferred\n\nlet me know what you have available and we'll confirm. thanks!"
+    },
+    "confidence": 0.55,
+    "rationale": "No calendar data was available in the memory slice, so proposed times are plausible alternatives around the cancelled July 3 date but must be verified by the parent before sending.",
+    "recipient_visibility": "public"
+  }
+}

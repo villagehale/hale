@@ -1,0 +1,21 @@
+{
+  "id": "03-daycare-waitlist-reply",
+  "note": "Reply accepting a daycare spot. Warm, brief, first-person from the parent.",
+  "input": {
+    "actionType": "reply_to_email",
+    "event": {
+      "eventId": "evt-03",
+      "eventType": "daycare_application_response",
+      "payload": {
+        "from": "admissions@sunnydays-childcare.ca",
+        "subject": "Spot available for September",
+        "body": "Good news — a spot has opened for the September intake. Please let us know within 5 business days if you'd like to accept it."
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["to", "subject", "body"],
+    "recipientEchoOf": "from",
+    "maxBodyChars": 600
+  }
+}

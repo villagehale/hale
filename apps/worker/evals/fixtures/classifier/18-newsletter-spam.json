@@ -1,0 +1,19 @@
+{
+  "id": "18-newsletter-spam",
+  "note": "Generic marketing newsletter with no actionable family signal — should fall through to unclassified.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: deals@megababy-outlet.com\nSubject: 🔥 48-HOUR FLASH SALE — up to 70% off EVERYTHING!!!\n\nDon't miss our biggest sale of the season! Strollers, toys, nursery decor and MORE. Shop now before it's gone. Unsubscribe | View in browser | Manage preferences.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [4],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "unclassified",
+    "kind": "ignore"
+  }
+}

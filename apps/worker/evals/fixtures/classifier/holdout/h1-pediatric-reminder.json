@@ -1,0 +1,18 @@
+{
+  "id": "h1-pediatric-reminder",
+  "note": "HOLDOUT. Automated 2-month vaccination visit reminder from a known clinic.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: noreply@harbourfamilyhealth.ca\nSubject: Reminder: upcoming visit\n\nAutomated reminder: Baby Tran is booked for the 2-month immunization visit on Thursday June 26 at 9:00 AM with Dr. Singh at Harbour Family Health. Please arrive 10 minutes early.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [2],
+      "province": "BC",
+      "timezone": "America/Vancouver",
+      "knownClinics": ["Harbour Family Health"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_appointment_reminder"
+  }
+}

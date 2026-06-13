@@ -1,0 +1,20 @@
+{
+  "id": "07-ei-deadline-digest",
+  "note": "Digest note about an EI correspondence with a reporting deadline. Internal-only; concise; no advice beyond the event.",
+  "input": {
+    "actionType": "add_to_digest_only",
+    "event": {
+      "eventId": "evt-07",
+      "eventType": "ei_correspondence",
+      "payload": {
+        "from": "Service Canada",
+        "summary": "Your next EI parental benefit report is due July 7. Late reports may delay payment."
+      }
+    }
+  },
+  "expect": {
+    "requireNonEmptyText": true,
+    "judgeTone": false,
+    "maxBodyChars": 400
+  }
+}

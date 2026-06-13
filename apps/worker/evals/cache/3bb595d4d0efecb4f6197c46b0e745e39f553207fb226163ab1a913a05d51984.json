@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "admissions@sunnydays-childcare.ca",
+      "subject": "Re: Spot available for September",
+      "body": "hi — great news, thank you! yes, we'd like to accept the spot for september. please let me know what the next steps are."
+    },
+    "confidence": 0.72,
+    "rationale": "The daycare offered a September spot with a 5-business-day deadline; drafting an acceptance reply is the expected action, but confidence is moderate because no memory context confirms the parent still wants this spot or hasn't already enrolled elsewhere.",
+    "recipient_visibility": "public"
+  }
+}

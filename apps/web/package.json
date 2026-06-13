@@ -9,10 +9,12 @@
     "start": "next start --port 3000",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
     "@haru/db": "workspace:*",
+    "@haru/tools-contracts": "workspace:*",
     "@haru/types": "workspace:*",
     "@clerk/nextjs": "^6.10.3",
     "drizzle-orm": "^0.38.3",
@@ -29,6 +31,7 @@
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   }
 }

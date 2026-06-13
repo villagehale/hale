@@ -1,0 +1,18 @@
+{
+  "id": "12-subscription-renewal",
+  "note": "Recurring subscription about to auto-renew and charge — subscription_renewal_due (monetary).",
+  "input": {
+    "source": "email",
+    "rawContent": "From: billing@everydaybaby.ca\nSubject: Your diaper subscription renews in 3 days\n\nYour monthly Size 2 diaper subscription ($42.99) will automatically renew and ship on June 15. To skip or change this delivery, update your account before then.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "subscription_renewal_due"
+  }
+}

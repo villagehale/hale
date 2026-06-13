@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.95,
+    "rationale": "Routine daycare staff message about a centre closure (PD day) and a parent request for supplies (extra clothes, labelled water bottle) — no enrolment decision or formal admin response needed.",
+    "payload": {
+      "source": "email",
+      "sender": "toddlers@maplegrove-childcare.ca",
+      "daycare_name": "Maple Grove Childcare",
+      "message_type": "closure_and_supply_request",
+      "closure_date": "next Monday",
+      "closure_reason": "staff PD day",
+      "supply_requests": [
+        "extra set of weather-appropriate clothes",
+        "labelled water bottle"
+      ],
+      "child_name": "Mia",
+      "staff_name": "Ms. Dani"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2437,
+    "output": 299
+  }
+}

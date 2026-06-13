@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Refuse to commit secret-bearing files. Newborn-data product: default to most
+# restrictive (CLAUDE.md hard rule #1). Belt-and-suspenders over .gitignore,
+# which does not stop `git add -f` or files in non-ignored paths.
+#
+# Enabled repo-wide via `git config core.hooksPath .githooks` (wired by the
+# root package.json `prepare` script). Bypass with `--no-verify` (discouraged).
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=AM)
+[ -z "$staged" ] && exit 0
+
+blocked=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  base=$(basename "$f")
+  # Allow template/example files (they carry no real secrets).
+  case "$base" in
+    *.example | *.sample | *.template) continue ;;
+  esac
+  case "$base" in
+    .env | .env.* | *.pem | *.key | *.p12 | *.pfx | secrets.json | *.secrets.json | id_rsa | id_dsa)
+      blocked="$blocked\n  $f"
+      ;;
+  esac
+done <<< "$staged"
+
+if [ -n "$blocked" ]; then
+  {
+    echo "✖ pre-commit: refusing to commit secret-bearing file(s):"
+    printf "%b\n" "$blocked"
+    echo ""
+    echo "If this is a genuine false positive, rename the file or use --no-verify (discouraged)."
+  } >&2
+  exit 1
+fi
+exit 0

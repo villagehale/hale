@@ -1,0 +1,20 @@
+{
+  "id": "h8-ambiguous-lowconf",
+  "note": "HOLDOUT + CALIBRATION. Terse, contextless message from an unknown sender. Must stay below the 0.85 autonomy threshold. Gate is maxConfidence.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: noreply@unknown-sender.net\nSubject: (no subject)\n\nok sounds good, talk later",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "AB",
+      "timezone": "America/Edmonton",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventTypeOneOf": ["unclassified"],
+    "maxConfidence": 0.85,
+    "calibration": "low"
+  }
+}

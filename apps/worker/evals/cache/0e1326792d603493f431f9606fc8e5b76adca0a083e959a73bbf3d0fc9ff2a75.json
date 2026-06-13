@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "pediatric_office_message",
+    "confidence": 0.88,
+    "rationale": "A nurse from the known pediatric clinic is following up on a prior phone conversation with feeding advice and reassurance, requiring no action unless symptoms worsen.",
+    "payload": {
+      "sender": "nurse.amelia@littlesprout-pediatrics.ca",
+      "sender_name": "Amelia, RN",
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Baby Chen",
+      "message_type": "follow_up_advice",
+      "clinical_topic": "feeding",
+      "advice": "smaller, more frequent feeds",
+      "symptom_monitored": "spit-up",
+      "action_required_unless": "spit-up gets worse",
+      "visit_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 1957,
+    "output": 289
+  }
+}

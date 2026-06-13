@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { families } from './families.js';
 import { events } from './events.js';
 import { reviewerVerdictEnum, actionUserVisibleStateEnum } from './enums.js';
@@ -21,7 +21,7 @@ export const actions = pgTable(
     reviewerVerdict: reviewerVerdictEnum('reviewer_verdict').notNull().default('pending'),
     reviewerVerdictAt: timestamp('reviewer_verdict_at', { withTimezone: true }),
     reviewerToolResults: jsonb('reviewer_tool_results')
-      .$type<Array<{ tool: string; result: unknown }>>()
+      .$type<Array<{ tool: string; ok: boolean; result: unknown }>>()
       .notNull()
       .default([]),
     executedAt: timestamp('executed_at', { withTimezone: true }),
@@ -38,6 +38,9 @@ export const actions = pgTable(
       table.userVisibleState,
       table.draftedAt,
     ),
+    // One action per event — a crash between recordAction and the next
+    // checkpoint must not let a redelivery mint a phantom duplicate (FIX 2).
+    eventIdx: uniqueIndex('actions_event_idx').on(table.eventId),
   }),
 );
 

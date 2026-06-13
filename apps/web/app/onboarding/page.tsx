@@ -22,7 +22,7 @@ export default function OnboardingPage() {
   const meta = STEP_META[step];
 
   return (
-    <div className="min-h-screen bg-bone">
+    <div className="min-h-screen bg-linen">
       {/* Running head — book top edge */}
       <header className="shell flex items-baseline justify-between pt-6 pb-4 border-b border-rule">
         <Link href="/" className="font-display text-xl">haru</Link>
@@ -35,7 +35,7 @@ export default function OnboardingPage() {
                 key={s}
                 className="block h-px w-6"
                 style={{
-                  background: s <= step ? 'var(--color-iron)' : 'var(--color-rule-strong)',
+                  background: s <= step ? 'var(--color-spruce)' : 'var(--color-rule-strong)',
                 }}
               />
             ))}
@@ -57,22 +57,22 @@ export default function OnboardingPage() {
           <div className="lg:col-span-9 lg:col-start-4">
             {step === 1 ? (
               <section className="rise rise-1 space-y-8 max-w-2xl">
-                <p className="text-xl lg:text-[1.4rem] leading-snug text-slate">
+                <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
                   haru is a household almanac for the first year of your child's
                   life — and the next eighteen. I watch your inbox, your calendar,
                   your photos, and the small devices that already log your kid's
                   life, and I do the easy ninety percent of household admin so you
                   can hold your baby.
                 </p>
-                <p className="text-lg text-slate leading-relaxed">
+                <p className="text-lg text-slate-green leading-relaxed">
                   Set-up takes about four minutes. I will not do anything autonomously
                   for the first seven days, no matter what you tell me here. That
                   is what step three is about.
                 </p>
 
-                <div className="fold-tint">
-                  <span className="eyebrow text-madder-deep">a guarantee</span>
-                  <p className="mt-2 text-slate">
+                <div className="panel-apricot-tint">
+                  <span className="eyebrow text-apricot-deep">a guarantee</span>
+                  <p className="mt-2 text-slate-green">
                     Your child's name, date of birth, and medical details are
                     encrypted at rest with keys you can rotate. Canadian residency
                     is non-negotiable.
@@ -91,9 +91,9 @@ export default function OnboardingPage() {
 
             {step === 2 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
-                <p className="text-lg text-slate leading-relaxed">
+                <p className="text-lg text-slate-green leading-relaxed">
                   I need a few small things. You can type, or tap{' '}
-                  <button type="button" className="travel-underline">hold to talk</button>{' '}
+                  <button type="button" className="link">hold to talk</button>{' '}
                   if you are holding the baby.
                 </p>
 
@@ -140,8 +140,8 @@ export default function OnboardingPage() {
                             key={opt.id}
                             className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors block ${
                               selected
-                                ? 'bg-vellum border border-iron'
-                                : 'border border-rule-strong hover:border-iron'
+                                ? 'bg-oat border border-spruce'
+                                : 'border border-rule-strong hover:border-spruce'
                             }`}
                           >
                             <input
@@ -172,7 +172,7 @@ export default function OnboardingPage() {
 
             {step === 3 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
-                <p className="text-xl lg:text-[1.4rem] leading-snug text-slate">
+                <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
                   For the first seven days, haru drafts every action — but never
                   commits it. You see exactly what would have happened. Nothing
                   sends. Nothing books. Nothing orders.
@@ -194,7 +194,7 @@ export default function OnboardingPage() {
                   ))}
                 </div>
 
-                <p className="text-lg text-slate leading-relaxed">
+                <p className="text-lg text-slate-green leading-relaxed">
                   You can extend or restart trial mode at any time. You can revoke
                   autonomy for any action class with one tap. These aren't terms
                   buried in a tos — they are the architecture of the product.
@@ -211,7 +211,7 @@ export default function OnboardingPage() {
 
             {step === 4 ? (
               <section className="rise rise-1 space-y-8 max-w-2xl">
-                <p className="text-lg text-slate leading-relaxed">
+                <p className="text-lg text-slate-green leading-relaxed">
                   Connect one source first. Gmail is the highest-leverage entry —
                   the pediatric office, daycare, government, and family all reach
                   you there. You can connect calendar and photos next from the{' '}
@@ -227,13 +227,13 @@ export default function OnboardingPage() {
                     <button
                       key={opt.id}
                       type="button"
-                      className="w-full text-left p-5 rounded-[var(--r-md)] flex items-baseline justify-between border border-rule-strong hover:border-iron hover:bg-bone-soft transition-colors"
+                      className="w-full text-left p-5 rounded-[var(--r-md)] flex items-baseline justify-between border border-rule-strong hover:border-spruce hover:bg-linen transition-colors"
                     >
                       <div>
                         <span className="font-display text-[1.6rem] block leading-none">{opt.label}</span>
                         <span className="meta block mt-2">{opt.note}</span>
                       </div>
-                      <span className="eyebrow text-madder">connect →</span>
+                      <span className="eyebrow text-apricot-deep">connect →</span>
                     </button>
                   ))}
                 </div>
@@ -257,14 +257,14 @@ export default function OnboardingPage() {
 
             {step === 5 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
-                <p className="text-lg text-slate leading-relaxed">
+                <p className="text-lg text-slate-green leading-relaxed">
                   haru works best as a family unit. invite your co-parent and we
                   will share the digest, drafts, and trail across both of you.
                   Either of you can approve actions. Neither of you can be locked
                   out.
                 </p>
 
-                <div className="fold">
+                <div className="panel">
                   <span className="eyebrow">share this link</span>
                   <p className="font-display text-xl break-all mt-2">
                     haru.family/invite/87c2-d9f5-12a8

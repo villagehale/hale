@@ -1,0 +1,19 @@
+{
+  "id": "01-pediatric-reminder",
+  "note": "Routine automated appointment reminder from a known clinic — clearly routine, high confidence.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: reminders@littlesprout-pediatrics.ca\nSubject: Appointment Reminder\n\nThis is an automated reminder that Baby Chen has a well-baby visit scheduled for Tuesday, June 23 at 10:15 AM with Dr. Okafor at Little Sprout Pediatrics. Reply STOP to opt out of reminders.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [4],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_appointment_reminder",
+    "kind": "surface_only"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "05-lab-results-ready",
+  "note": "Lab portal notification that results are available. Medical — must NOT be autonomous.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: no-reply@lifelabs.com\nSubject: Your results are ready to view\n\nNew lab results for one of your dependents are now available in your LifeLabs online account. Sign in to view. Do not reply to this message.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "BC",
+      "timezone": "America/Vancouver",
+      "knownClinics": ["Harbour Family Health"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "lab_results_ready",
+    "kind": "surface_only"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "grandma.rivera@gmail.com",
+      "subject": "Re: Any new pictures?",
+      "body": "hi grandma! so good to hear from you. i'll pull together some recent photos and send them your way soon — there are some really cute ones. love you!"
+    },
+    "confidence": 0.72,
+    "rationale": "Grandma asked for recent baby photos; reply acknowledges warmly and commits only to sending photos \"soon\" — no specific date or details invented since no memory slice was provided.",
+    "recipient_visibility": "public"
+  }
+}

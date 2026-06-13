@@ -273,9 +273,11 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   },
 
   // ───────────────────────────────────────────────────────────────────
-  // PII leak — naive regex pass for things never sent outside the
-  // allowlist (SIN, full DOB, full address). Real version uses a
-  // proper PII detector. For v1 we do conservative regex.
+  // PII leak — conservative regex/heuristic pass over all six declared
+  // kinds (SIN, DOB, phone, address, medical_record, child_full_name)
+  // for content leaving the family to a recipient. A production system
+  // would layer an ML detector on top; these patterns are the structural
+  // floor so rule #1 does not lean on under-detection.
   // ───────────────────────────────────────────────────────────────────
   check_pii_leak: async (raw) => {
     const input = REVIEWER_TOOLS.check_pii_leak.input.parse(raw);
@@ -284,9 +286,10 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       excerpt: string;
       recommendation: string;
     }> = [];
+    const content = input.content;
 
-    // SIN: 9 digits, often with separators
-    const sinMatch = input.content.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{3}\b/);
+    // SIN: 9 digits, often with separators.
+    const sinMatch = content.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{3}\b/);
     if (sinMatch) {
       detections.push({
         kind: 'sin',
@@ -295,8 +298,8 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       });
     }
 
-    // Long-form DOB: "January 15, 2025" or "2025-01-15"
-    const dobMatch = input.content.match(/\b(19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/);
+    // Long-form DOB: "2025-01-15" or "2025/1/5".
+    const dobMatch = content.match(/\b(19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/);
     if (dobMatch) {
       detections.push({
         kind: 'child_dob',
@@ -305,10 +308,71 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       });
     }
 
+    // OHIP/health-card "#### ### ###" — matched before the generic phone
+    // pattern so a health-card group is not mislabelled as a phone number.
+    const ohipMatch = content.match(/\b\d{4}\s\d{3}\s\d{3}\b/);
+    const mrnMatch = content.match(/\b(?:MRN|HCN|health\s*card|chart)\s*#?:?\s*([A-Z]?\d{6,10})\b/i);
+    if (ohipMatch) {
+      detections.push({
+        kind: 'medical_record',
+        excerpt: ohipMatch[0],
+        recommendation: 'redact health-card / OHIP number from outgoing communication',
+      });
+    } else if (mrnMatch) {
+      detections.push({
+        kind: 'medical_record',
+        excerpt: mrnMatch[0],
+        recommendation: 'redact the medical record / health-card number',
+      });
+    }
+
+    // Phone: NANP formats — "416-555-0182", "(604) 555 0199", "604.555.0199".
+    // Skip any span already claimed as a health-card group above.
+    const phoneMatch = content.match(
+      /\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/,
+    );
+    if (phoneMatch && phoneMatch[0] !== ohipMatch?.[0]) {
+      detections.push({
+        kind: 'phone',
+        excerpt: phoneMatch[0],
+        recommendation: 'redact phone number from outgoing communication',
+      });
+    }
+
+    // Address: a CA postal code (A1A 1A1) or a street-number + street-word
+    // pattern ("123 Maple Street").
+    const postalMatch = content.match(/\b[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d\b/);
+    const streetMatch = content.match(
+      /\b\d{1,5}\s+[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\s(?:St(?:reet)?|Ave(?:nue)?|Rd|Road|Blvd|Boulevard|Dr(?:ive)?|Lane|Ln|Cres(?:cent)?|Way|Court|Ct|Place|Pl)\b/i,
+    );
+    if (postalMatch || streetMatch) {
+      const m = postalMatch ?? streetMatch;
+      detections.push({
+        kind: 'address',
+        excerpt: m?.[0] ?? '',
+        recommendation: 'redact street address / postal code from outgoing communication',
+      });
+    }
+
+    // child_full_name: whole-word, case-insensitive match against the family's
+    // known child names. Degraded (not silent) when names were not supplied.
+    const knownChildNames = input.knownChildNames ?? [];
+    const namesUnavailable = knownChildNames.length === 0;
+    for (const name of knownChildNames) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${escaped}\\b`, 'i').test(content)) {
+        detections.push({
+          kind: 'child_full_name',
+          excerpt: name,
+          recommendation: "redact the child's name from outgoing communication",
+        });
+      }
+    }
+
     return {
       tool: 'check_pii_leak',
       ok: detections.length === 0,
-      result: { leakDetected: detections.length > 0, detections },
+      result: { leakDetected: detections.length > 0, detections, namesUnavailable },
     };
   },
 

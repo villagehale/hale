@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
-import { onboardingStageEnum } from './enums.js';
+import { onboardingStageEnum, planTierEnum } from './enums.js';
 
 export const families = pgTable('families', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -8,6 +8,7 @@ export const families = pgTable('families', {
   provinceOrState: text('province_or_state'),
   primaryLanguage: text('primary_language').notNull().default('en'),
   onboardingStage: onboardingStageEnum('onboarding_stage').notNull().default('pending_invite'),
+  planTier: planTierEnum('plan_tier').notNull().default('free'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

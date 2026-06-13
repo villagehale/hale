@@ -1,0 +1,18 @@
+{
+  "id": "17-activity-signup",
+  "note": "Community-centre infant program registration opening — activity_signup_open.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: programs@cityrec.ca\nSubject: Fall registration opens June 18\n\nRegistration for Fall parent-and-baby programs (Aquatots, Baby Music, Infant Massage) opens Wednesday June 18 at 9 AM. Popular sessions fill within minutes. Have your account ready.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [5],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "activity_signup_open"
+  }
+}

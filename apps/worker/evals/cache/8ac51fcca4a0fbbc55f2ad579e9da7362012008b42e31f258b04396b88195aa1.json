@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "This is a generic marketing promotional email from a retailer with no family-specific signal, no request for action beyond browsing, and no relevance to the family's immediate care or logistics needs.",
+    "payload": {
+      "sender": "deals@megababy-outlet.com",
+      "subject": "48-HOUR FLASH SALE — up to 70% off EVERYTHING",
+      "category": "retail_marketing"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    }
+  },
+  "usage": {
+    "input": 2382,
+    "output": 209
+  }
+}

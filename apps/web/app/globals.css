@@ -1,219 +1,230 @@
 @import "tailwindcss";
 
 /*
- * Haru — "Almanac" design system.
+ * haru — "Meadow" design system (product app).
  *
- * The product reads like a private almanac for one household: a quietly
- * bound book of observations rather than a dashboard. Type is editorial
- * (Source Serif 4 + Geist), the palette is bone + iron + madder, and
- * every screen carries a running head and a colophon so the product
- * feels like a document, not an app.
+ * The calm of a nursery at 4pm light. The same world as the landing
+ * (apps/site): soft geometric shapes that never crowd, generous breathing
+ * air, a muted grown-up earth palette (spruce, linen, apricot, sage). The
+ * Almanac expressed restraint as austerity; Meadow expresses the same
+ * restraint as kindness. Warm serif display (Fraunces) over a rounded
+ * humanist body (Nunito); imagery is a hand-built flat color-block SVG kit.
  *
  * Hard rules baked in:
- *   - no italic by default on headlines (italics are only on real <em>
- *     spans in body copy or genuine quoted phrases)
- *   - no floating cards on cream; sections are bounded by hairlines + folios
- *   - 16px form inputs on mobile (iOS no-zoom)
- *   - prefers-reduced-motion respected for every animation
+ *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
+ *     text or thin icon strokes. Apricot-deep #a84e20 is the text-safe accent.
+ *   - all four tone meanings (done / awaiting / coach / needs-you) read by
+ *     label + shape, never by color alone.
+ *   - 16px form inputs on mobile (iOS no-zoom).
+ *   - motion is "breathing not bouncing"; every animation is disabled under
+ *     prefers-reduced-motion.
+ *   - no emoji, ever; product name is always lowercase "haru".
  */
 
 @theme {
-  /* ── Palette ─────────────────────────────────────────────────────────── */
-  --color-bone: #f4f0e8;            /* primary paper */
-  --color-bone-soft: #f8f5ee;       /* main-stage paper, slightly lighter */
-  --color-vellum: #eae3d2;          /* section fold / spine / quote */
-  --color-vellum-deep: #ddd5bf;     /* hairline-strong as warm tone */
-  --color-iron: #1f1b17;            /* primary ink */
-  --color-slate: #5d564d;           /* secondary ink */
-  --color-faded: #928879;           /* tertiary ink, meta */
-  --color-rule: rgb(31 27 23 / 0.10);
-  --color-rule-strong: rgb(31 27 23 / 0.22);
-  --color-rule-faint: rgb(31 27 23 / 0.05);
+  /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
+  --color-linen: #f6f1e7;       /* primary background — 11.96:1 with Spruce */
+  --color-oat: #efe7d6;         /* secondary surface, soft raised panels */
+  --color-spruce: #22322b;      /* primary ink / night-section fill — 11.96:1 */
+  --color-slate-green: #42564b; /* secondary text, captions — 7.00:1 */
+  --color-faded-sage: #6a6b5e;  /* tertiary / meta / disclaimers — 4.81:1 */
 
-  /* Signature: madder red. Warm dyed-cloth tone, distinctive, not copper. */
-  --color-madder: #b23a2b;
-  --color-madder-deep: #842516;
-  --color-madder-tint: #f4dcd4;
-  --color-madder-wash: #f9ece6;
+  --color-apricot: #c8622d;       /* FILL ONLY — 3.56:1, sun & large graphics */
+  --color-apricot-deep: #a84e20;  /* text-safe accent: links, CTA fill — 4.94:1 */
+  --color-apricot-tint: #f5dcc6;  /* warm wash panel / pill — Spruce ink 10.22:1 */
 
-  /* Supporting palette — kept in the warm dyed-cloth family. */
-  --color-moss: #586a3a;            /* done / nature */
-  --color-moss-tint: #e2e6d4;
-  --color-indigo: #4b4a6b;          /* coach / contemplative — warmer slate-purple, lives in the parchment temperature */
-  --color-indigo-tint: #ddd9e3;
-  --color-ochre: #c77439;           /* awaiting / needs your eye — rust-orange, not yellow-mustard */
-  --color-ochre-tint: #f1ddc5;
+  --color-sky: #7fb5c4;        /* calm secondary illustration — clouds, day fields */
+  --color-sky-deep: #2f6f86;   /* text-safe blue, coach tone — 4.99:1 */
+  --color-sky-tint: #cfe3e7;   /* color-block illustration wash — Spruce 10.13:1 */
 
-  /* Legacy token aliases — kept so existing components compile. */
-  --color-cream: var(--color-bone);
-  --color-cream-deep: var(--color-vellum);
-  --color-cream-soft: var(--color-bone-soft);
-  --color-surface: var(--color-bone-soft);
-  --color-ink: var(--color-iron);
-  --color-ink-soft: var(--color-slate);
-  --color-ink-mute: var(--color-faded);
-  --color-hairline: var(--color-rule);
-  --color-hairline-strong: var(--color-rule-strong);
-  --color-copper: var(--color-madder);
-  --color-copper-deep: var(--color-madder-deep);
-  --color-copper-soft: var(--color-madder-tint);
-  --color-copper-glow: var(--color-madder-wash);
-  --color-sage: var(--color-moss);
-  --color-sage-soft: var(--color-moss-tint);
-  --color-mist: var(--color-indigo);
-  --color-clay: var(--color-ochre);
-  --color-dust: var(--color-faded);
+  --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
+  --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
+
+  --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
+  --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
+
+  /* Hairlines: warm spruce at low alpha */
+  --color-rule: rgb(34 50 43 / 0.10);
+  --color-rule-strong: rgb(34 50 43 / 0.20);
+
+  /* On-dark (Spruce night section) text alphas, Linen-based */
+  --color-on-spruce: #f6f1e7;
+  --color-on-spruce-soft: rgb(246 241 231 / 0.74);
+  --color-on-spruce-faint: rgb(246 241 231 / 0.50);
 
   /* ── Type ────────────────────────────────────────────────────────────── */
-  --font-display: "Source Serif 4", "Iowan Old Style", "Charter", Cambria, ui-serif, Georgia, serif;
-  --font-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  --font-display: "Fraunces", "Iowan Old Style", "Charter", Georgia, serif;
+  --font-body: "Nunito", -apple-system, "Segoe UI", system-ui, sans-serif;
 
-  --tracking-display: -0.014em;
-  --tracking-headline: -0.008em;
-  --tracking-eyebrow: 0.18em;
-  --tracking-mono: 0.04em;
+  --tracking-display: -0.01em;
+  --tracking-eyebrow: 0.12em;
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
-  --shell-pad-x: clamp(1.25rem, 4vw, 5rem);
-  --rhythm-section: clamp(3rem, 6vw, 5rem);
+  --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
+  --shell-max: 1440px;
 
-  /* ── Radius (almanac is mostly flat; subtle rounding for inputs only) ── */
-  --r-sm: 2px;
-  --r-md: 3px;
-  --r-lg: 4px;
-  --r-xl: 6px;
+  /* ── Radius — geometry inherits the type's roundness (≥ 8px) ─────────── */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
   --r-full: 9999px;
 
-  /* ── Curves ──────────────────────────────────────────────────────────── */
-  --ease-quiet: cubic-bezier(0.22, 0.61, 0.36, 1);     /* default for everything */
-  --ease-press: cubic-bezier(0.32, 0.72, 0.24, 1);      /* button feedback */
+  /* ── Curves — the one slow "breathing" easing ────────────────────────── */
+  --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
 
-* { border-color: var(--color-rule); }
-
 html {
-  background: var(--color-bone);
-  color: var(--color-iron);
+  background: var(--color-linen);
+  color: var(--color-spruce);
   font-family: var(--font-body);
-  font-feature-settings: "kern", "liga", "calt", "ss01", "ss02";
+  font-feature-settings: "kern", "liga", "calt";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--color-bone);
-  color: var(--color-iron);
-  font-size: 15px;
-  line-height: 1.62;
+  background: var(--color-linen);
+  color: var(--color-spruce);
+  font-size: 16px;
+  line-height: 1.65;
   font-weight: 400;
   min-height: 100vh;
 }
 
 @media (min-width: 1024px) {
-  body { font-size: 16px; }
+  body { font-size: 17px; }
 }
 
-/* Headlines: Source Serif 4 — generous, characterful, not italic. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* Headlines: Fraunces, high optical size, book weight, soft terminals.
+ * Sentence-case, never all-caps. */
 h1, h2, h3, h4 {
   font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 128, "SOFT" 50, "WONK" 0;
   letter-spacing: var(--tracking-display);
-  font-weight: 400;          /* book weight, never bold display */
-  line-height: 1.02;
-  color: var(--color-iron);
-  font-style: normal;        /* HARD RULE: no italic display by default */
+  font-weight: 420;
+  line-height: 1.04;
+  color: var(--color-spruce);
+  font-style: normal;
+  text-wrap: balance;
 }
 
-h1 { font-size: clamp(2.5rem, 6vw, 5.25rem); }
-h2 { font-size: clamp(1.85rem, 3.6vw, 3rem); }
-h3 { font-size: clamp(1.25rem, 2vw, 1.75rem); line-height: 1.15; }
+h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
+h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
+h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
 
-/* Inside the authed main-stage the available width is smaller (the sidebar
- * eats ~22vw on desktop), so the page H1 needs a tighter ceiling or the
- * headline overflows the column. */
-.main-stage h1 { font-size: clamp(2.25rem, 4.4vw, 3.75rem); line-height: 1.04; }
-.main-stage h2 { font-size: clamp(1.5rem, 2.6vw, 2.25rem); }
+/* Inside the authed main-stage the column is narrower (sidebar eats ~22vw),
+ * so the page H1/H2 need a tighter ceiling or the headline overflows. */
+.main-stage h1 { font-size: clamp(2.3rem, 4.4vw, 3.75rem); }
+.main-stage h2 { font-size: clamp(1.65rem, 2.8vw, 2.4rem); }
 
-/* Body emphasis inside running prose — italics only on real <em>. */
-em { font-style: italic; color: var(--color-iron); }
-strong { font-weight: 500; color: var(--color-iron); }
+em { font-style: italic; }
+strong { font-weight: 700; }
 
 /* ── Type utilities ────────────────────────────────────────────────────── */
 
 .font-display { font-family: var(--font-display); }
 .font-body { font-family: var(--font-body); }
-.font-mono { font-family: var(--font-mono); }
+.tabular { font-variant-numeric: tabular-nums; }
 
+/* Gentle Title-case eyebrow label — Nunito 600, tracked, NOT uppercase mono */
 .eyebrow {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
   letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  font-weight: 500;
-  color: var(--color-faded);
+  font-weight: 600;
+  color: var(--color-slate-green);
 }
 
 .meta {
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  letter-spacing: var(--tracking-mono);
-  color: var(--color-faded);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-faded-sage);
 }
 
-.tabular { font-variant-numeric: tabular-nums; }
-
-/* Magazine folio — small caps numerics in the gutter. */
+/* Folio — soft roman numeral in the gutter; warm, not typewriter. */
 .folio {
-  font-family: var(--font-mono);
-  font-feature-settings: "tnum";
-  font-size: 0.72rem;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  color: var(--color-faded);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-apricot-deep);
   display: inline-block;
 }
 
-/* Drop cap, used sparingly on long-form openers. */
-.dropcap::first-letter {
-  font-family: var(--font-display);
-  float: left;
-  font-size: 3.6rem;
-  line-height: 0.92;
-  padding-right: 0.6rem;
-  padding-top: 0.32rem;
-  color: var(--color-madder);
-  font-weight: 400;
-}
-
-/* ── Shell + bound-book layout ─────────────────────────────────────────── */
+/* ── Shell + authed layout ─────────────────────────────────────────────── */
 
 .shell {
   width: 100%;
   padding-inline: var(--shell-pad-x);
   margin-inline: auto;
-  max-width: 1440px;
+  max-width: var(--shell-max);
+}
+
+/* Visually hidden until focused, then a Spruce pill in the top-left corner so
+ * keyboard users can jump straight to the main content. */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -100%;
+  z-index: 40;
+  padding: 0.6rem 1rem;
+  border-radius: var(--r-full);
+  background: var(--color-spruce);
+  color: var(--color-on-spruce);
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 0.75rem;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* Loud, unmissable Berry-tint notice that the route group is unprotected.
+ * Only renders when Clerk is not configured, so the auth gap can never ship
+ * invisibly. */
+.dev-preview-banner {
+  display: block;
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+  padding: 0.9rem 1.25rem;
+  border-radius: var(--r-md);
+  background: var(--color-berry-tint);
+  border: 1.5px solid var(--color-berry);
+  color: var(--color-spruce);
+  font-weight: 600;
 }
 
 .editorial-layout {
   display: grid;
   grid-template-columns: 1fr;
   min-height: 100vh;
-  background: var(--color-bone);
+  background: var(--color-linen);
 }
 
 @media (min-width: 1024px) {
   .editorial-layout {
-    /* minmax(0, 1fr) is intentional — without the `0` floor, a long word in
-     * any descendant H1 expands the column to its min-content width and
-     * blows the horizontal scroll. */
+    /* minmax(0, 1fr) floor keeps a long word in a descendant H1 from
+     * blowing out the column and triggering horizontal scroll. */
     grid-template-columns: clamp(260px, 22vw, 320px) minmax(0, 1fr);
   }
 }
 
-/* ── Sidebar = the book's "spine" ──────────────────────────────────────── */
+/* ── Sidebar — a soft Oat panel that stays out of the way ──────────────── */
 
 .sidebar {
   display: none;
@@ -227,12 +238,10 @@ strong { font-weight: 500; color: var(--color-iron); }
     top: 0;
     align-self: start;
     height: 100vh;
-    background: var(--color-vellum);
-    padding: 2.25rem 1.75rem 1.5rem 2rem;
+    background: var(--color-oat);
+    padding: 2.5rem 1.75rem 1.75rem 2rem;
     overflow-y: auto;
-    color: var(--color-iron);
-    /* the "stitch line" — a single right-edge rule that reads as binding */
-    box-shadow: inset -1px 0 0 var(--color-rule-strong);
+    color: var(--color-spruce);
   }
 }
 
@@ -242,8 +251,7 @@ strong { font-weight: 500; color: var(--color-iron); }
   align-items: center;
   justify-content: space-between;
   padding: 0.9rem var(--shell-pad-x);
-  background: var(--color-bone);
-  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-linen);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -255,7 +263,7 @@ strong { font-weight: 500; color: var(--color-iron); }
 
 .main-stage {
   padding: clamp(1.5rem, 3vw, 3rem) var(--shell-pad-x) clamp(3rem, 6vw, 6rem);
-  background: var(--color-bone-soft);
+  background: var(--color-linen);
   min-height: 100vh;
 }
 
@@ -266,7 +274,7 @@ strong { font-weight: 500; color: var(--color-iron); }
   }
 }
 
-/* ── Page-corner running head (desktop, top-right of main stage) ───────── */
+/* ── Page-corner running head (desktop, top of main stage) ─────────────── */
 
 .page-corner {
   display: none;
@@ -278,244 +286,221 @@ strong { font-weight: 500; color: var(--color-iron); }
     align-items: baseline;
     justify-content: space-between;
     gap: 1.5rem;
-    border-bottom: 1px solid var(--color-rule);
-    padding-bottom: 0.9rem;
+    padding-bottom: 1rem;
     margin-bottom: clamp(2.5rem, 4vw, 4rem);
-    color: var(--color-faded);
+    color: var(--color-faded-sage);
   }
 }
 
-/* ── The two structural patterns ───────────────────────────────────────── */
+/* ── Hairline rule ─────────────────────────────────────────────────────── */
 
-/* Hairline rule — the only divider used in the product */
-.rule {
-  border: 0;
-  border-top: 1px solid var(--color-rule);
-}
-.rule-strong {
-  border: 0;
-  border-top: 1px solid var(--color-rule-strong);
-}
-.rule-vellum {
-  border: 0;
-  border-top: 1px solid var(--color-vellum-deep);
-}
+.rule { border: 0; border-top: 1px solid var(--color-rule); }
+.rule-strong { border: 0; border-top: 1px solid var(--color-rule-strong); }
 
-/* A "fold" — used for elevated sections that need warmth but no card */
-.fold {
-  background: var(--color-vellum);
-  padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.25rem, 2.5vw, 2rem);
+/* ── Soft panels — read by tone, not by border (radius ≥ 8px) ──────────── */
+
+.panel {
+  background: var(--color-oat);
   border-radius: var(--r-xl);
+  padding: clamp(1.5rem, 2.4vw, 2.25rem) clamp(1.5rem, 3vw, 2.5rem);
 }
+.panel-oat { background: var(--color-oat); border-radius: var(--r-xl); }
+.panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
+.panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
 
-.fold-tint {
-  background: var(--color-madder-wash);
-  padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.25rem, 2.5vw, 2rem);
-  border-radius: var(--r-xl);
-}
-
-/* Margin note — small text aligned in the editorial gutter on desktop */
-.margin-note {
-  color: var(--color-faded);
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  letter-spacing: var(--tracking-mono);
-  line-height: 1.6;
-}
-
-/* ── Buttons (almanac-flat: thin rule, madder text, no shadow) ─────────── */
+/* ── Buttons — depress 1px + warm fill on press, no scale-bounce ───────── */
 
 .btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.7rem 1.25rem;
-  background: var(--color-iron);
-  color: var(--color-bone);
-  border: 1px solid var(--color-iron);
-  border-radius: var(--r-md);
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.5rem;
+  background: var(--color-spruce);
+  color: var(--color-linen);
+  border: 0;
+  border-radius: var(--r-full);
   font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: -0.005em;
+  font-size: 0.95rem;
+  font-weight: 700;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
-  transition: background 200ms var(--ease-press), color 200ms var(--ease-press), transform 160ms var(--ease-press);
+  transition: background 320ms var(--ease-breathe), transform 200ms var(--ease-breathe);
 }
 
-.btn-primary:hover {
-  background: var(--color-madder);
-  border-color: var(--color-madder);
-  color: var(--color-bone);
-}
-
+.btn-primary:hover { background: var(--color-apricot-deep); }
 .btn-primary:active { transform: translateY(1px); }
 
 .btn-primary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-bone), 0 0 0 5px var(--color-madder);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
 }
 
 .btn-secondary {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.7rem 1.25rem;
+  padding: 0.85rem 1.5rem;
   background: transparent;
-  color: var(--color-iron);
-  border: 1px solid var(--color-rule-strong);
-  border-radius: var(--r-md);
+  color: var(--color-spruce);
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: var(--r-full);
   font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.95rem;
+  font-weight: 700;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
-  transition: border-color 200ms var(--ease-press), background 200ms var(--ease-press);
+  transition: border-color 280ms var(--ease-breathe), background 280ms var(--ease-breathe);
 }
 
-.btn-secondary:hover {
-  border-color: var(--color-iron);
-  background: var(--color-bone-soft);
-}
+.btn-secondary:hover { border-color: var(--color-spruce); background: var(--color-oat); }
 
 .btn-secondary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-bone), 0 0 0 5px var(--color-madder);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
 }
 
+/* Ghost — text action with an Apricot-deep underline that draws on hover. */
 .btn-ghost {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem 0;
   background: transparent;
-  color: var(--color-iron);
+  color: var(--color-apricot-deep);
   border: 0;
   font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.95rem;
+  font-weight: 700;
   text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
-  letter-spacing: -0.005em;
-  transition: color 160ms var(--ease-quiet);
   position: relative;
-}
-
-.btn-ghost:focus-visible {
-  outline: none;
-  color: var(--color-madder-deep);
-}
-
-.btn-ghost:focus-visible::after {
-  background: var(--color-madder-deep);
-  transform: scaleX(1);
-  height: 2px;
 }
 
 .btn-ghost::after {
   content: "";
   position: absolute;
   left: 0; right: 0; bottom: 0;
-  height: 1px;
-  background: var(--color-iron);
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-apricot-deep);
   transform-origin: left;
   transform: scaleX(0);
-  transition: transform 280ms var(--ease-quiet);
+  transition: transform 360ms var(--ease-breathe);
 }
 
-.btn-ghost:hover { color: var(--color-madder); }
-.btn-ghost:hover::after { background: var(--color-madder); transform: scaleX(1); }
+.btn-ghost:hover::after { transform: scaleX(1); }
 
-/* ── Pills + tags ──────────────────────────────────────────────────────── */
+.btn-ghost:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-ghost::after { transition: none; }
+}
+
+/* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
+
+.link {
+  color: var(--color-apricot-deep);
+  text-decoration: none;
+  position: relative;
+  font-weight: 700;
+}
+
+.link::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-apricot-deep);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 360ms var(--ease-breathe);
+}
+
+.link:hover::after { transform: scaleX(1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .link::after { transition: none; }
+}
+
+/* ── Pills ─────────────────────────────────────────────────────────────── */
 
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.25rem 0.65rem;
-  background: var(--color-vellum);
-  color: var(--color-iron);
+  padding: 0.3rem 0.8rem;
+  background: var(--color-oat);
+  color: var(--color-spruce);
   border-radius: var(--r-full);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 500;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
-.pill-madder { background: var(--color-madder-tint); color: var(--color-madder-deep); }
-.pill-moss { background: var(--color-moss-tint); color: var(--color-moss); }
-.pill-indigo { background: var(--color-indigo-tint); color: var(--color-indigo); }
-.pill-ochre { background: var(--color-ochre-tint); color: var(--color-ochre); }
+.pill-apricot { background: var(--color-apricot-tint); color: var(--color-spruce); }
+.pill-sky { background: var(--color-sky-tint); color: var(--color-spruce); }
+.pill-sage { background: var(--color-sage-tint); color: var(--color-spruce); }
+.pill-berry { background: var(--color-berry-tint); color: var(--color-spruce); }
 
-/* Stamp — a postmark-style label for "trial mode", "draft only", etc. */
+/* Stamp — a soft status label for "trial mode", "draft only", etc. */
 .stamp {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.3rem 0.65rem;
-  border: 1px solid var(--color-madder);
-  color: var(--color-madder);
-  background: transparent;
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  font-weight: 500;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  border-radius: 1px;
+  padding: 0.3rem 0.8rem;
+  background: var(--color-apricot-tint);
+  color: var(--color-spruce);
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: var(--r-full);
 }
 
-/* ── Tone stripe ───────────────────────────────────────────────────────── */
+/* ── Tone marker — color + shape + label (never color alone) ───────────── *
+ * The shape glyph lives in components/haru/tone.tsx as an inline SVG; the
+ * text color here pairs with it. */
 
-.tone-stripe {
-  display: inline-block;
-  width: 28px;
-  height: 2px;
-  vertical-align: middle;
-  border-radius: 1px;
-}
+.tone-done { color: var(--color-sage); }
+.tone-awaiting { color: var(--color-apricot-deep); }
+.tone-coach { color: var(--color-sky-deep); }
+.tone-needs-you { color: var(--color-berry); }
 
-.tone-stripe[data-tone="done"] { background: var(--color-moss); }
-.tone-stripe[data-tone="awaiting"] { background: var(--color-ochre); }
-.tone-stripe[data-tone="coach"] { background: var(--color-indigo); }
-.tone-stripe[data-tone="needs-you"] { background: var(--color-madder); }
-
-/* ── Field (form inputs) — 16px on mobile to prevent iOS zoom ─────────── */
+/* ── Field — 16px to prevent iOS zoom ──────────────────────────────────── */
 
 .field {
   width: 100%;
-  background: var(--color-bone-soft);
-  border: 1px solid var(--color-rule-strong);
-  border-radius: var(--r-md);
-  padding: 0.75rem 0.95rem;
+  background: var(--color-linen);
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: var(--r-lg);
+  padding: 0.85rem 1.15rem;
   font-family: var(--font-body);
   font-size: 16px;
-  color: var(--color-iron);
-  transition: border-color 200ms var(--ease-quiet), box-shadow 200ms var(--ease-quiet), background 200ms var(--ease-quiet);
+  font-weight: 500;
+  color: var(--color-spruce);
+  transition: border-color 280ms var(--ease-breathe), box-shadow 280ms var(--ease-breathe);
 }
+
+.field::placeholder { color: var(--color-faded-sage); }
 
 .field:focus,
 .field:focus-visible {
   outline: none;
-  border-color: var(--color-iron);
-  box-shadow: 0 0 0 3px var(--color-madder-wash);
+  border-color: var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
 }
 
-.field:focus {
-  outline: none;
-  border-color: var(--color-iron);
-  background: var(--color-bone);
-  box-shadow: 0 0 0 3px var(--color-vellum);
-}
-
-.field::placeholder {
-  color: var(--color-faded);
-}
-
-textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
+textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
 
 /* ── Nav (sidebar + mobile) ────────────────────────────────────────────── */
 
@@ -523,165 +508,88 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; }
   display: flex;
   align-items: baseline;
   gap: 0.85rem;
-  padding: 0.45rem 0.25rem;
-  margin-inline: -0.25rem;
-  color: var(--color-slate);
+  padding: 0.5rem 0.6rem;
+  margin-inline: -0.6rem;
+  color: var(--color-slate-green);
   text-decoration: none;
-  border-radius: var(--r-sm);
-  transition: color 180ms var(--ease-quiet);
+  border-radius: var(--r-md);
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
   position: relative;
 }
 
+.nav-item:hover { color: var(--color-spruce); background: var(--color-linen); }
+
 .nav-item:focus-visible {
   outline: none;
-  color: var(--color-iron);
-  box-shadow: 0 0 0 2px var(--color-madder);
+  color: var(--color-spruce);
+  box-shadow: 0 0 0 3px var(--color-apricot-deep);
 }
 
 .nav-item .nav-folio {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--color-faded);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-faded-sage);
   width: 1.6rem;
   flex-shrink: 0;
 }
 
 .nav-item .nav-label {
   font-family: var(--font-display);
-  font-size: 1.4rem;
+  font-size: 1.45rem;
   line-height: 1;
   letter-spacing: var(--tracking-display);
-  position: relative;
+  font-variation-settings: "opsz" 96, "SOFT" 50, "WONK" 0;
 }
 
-.nav-item:hover { color: var(--color-iron); }
-.nav-item:hover .nav-folio { color: var(--color-madder); }
+.nav-item:hover .nav-folio { color: var(--color-apricot-deep); }
 
-.nav-item[aria-current="page"] { color: var(--color-iron); }
-.nav-item[aria-current="page"] .nav-folio { color: var(--color-madder); }
-.nav-item[aria-current="page"] .nav-label::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: -3px;
-  height: 1px;
-  background: var(--color-madder);
+.nav-item[aria-current="page"] {
+  color: var(--color-spruce);
+  background: var(--color-apricot-tint);
 }
+.nav-item[aria-current="page"] .nav-folio { color: var(--color-apricot-deep); }
 
-/* ── Quiet, paper-turning reveal ───────────────────────────────────────── */
+/* ── Breathing reveal — settle UP a few px and fade in, slowly ─────────── */
 
 @keyframes settle {
-  from { opacity: 0; transform: translateY(0.4rem); }
+  from { opacity: 0; transform: translateY(0.6rem); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.rise { opacity: 0; animation: settle 0.55s var(--ease-quiet) forwards; }
-.rise-1 { animation-delay: 40ms; }
-.rise-2 { animation-delay: 120ms; }
-.rise-3 { animation-delay: 220ms; }
-.rise-4 { animation-delay: 340ms; }
-.rise-5 { animation-delay: 480ms; }
+.rise {
+  opacity: 0;
+  animation: settle 600ms var(--ease-breathe) forwards;
+}
+.rise-1 { animation-delay: 60ms; }
+.rise-2 { animation-delay: 160ms; }
+.rise-3 { animation-delay: 270ms; }
+.rise-4 { animation-delay: 390ms; }
+.rise-5 { animation-delay: 520ms; }
 .rise-6 { animation-delay: 640ms; }
-.rise-7 { animation-delay: 820ms; }
+.rise-7 { animation-delay: 760ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .rise { animation: none; opacity: 1; }
+  .rise { animation: none; opacity: 1; transform: none; }
 }
 
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
 
 ::selection {
-  background: var(--color-madder);
-  color: var(--color-bone);
+  background: var(--color-apricot-deep);
+  color: var(--color-linen);
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--color-rule-strong);
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--color-faded); }
-
-/* ── Marquee (kept for landing) ────────────────────────────────────────── */
-
-@keyframes marquee-slide {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
-
-.marquee {
-  overflow: hidden;
-  background: var(--color-vellum);
-  border-block: 1px solid var(--color-rule);
-  padding-block: 0.85rem;
-}
-
-.marquee-track {
-  display: flex;
-  width: max-content;
-  gap: 3rem;
-  animation: marquee-slide 42s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
-
-.marquee-item {
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  color: var(--color-slate);
-  white-space: nowrap;
-}
-
-/* ── Quote block — pull-quote treatment, sparingly used ────────────────── */
-
-.pullquote {
-  font-family: var(--font-display);
-  font-size: clamp(1.5rem, 2.4vw, 2.25rem);
-  line-height: 1.18;
-  color: var(--color-iron);
-  font-style: italic;
-  letter-spacing: var(--tracking-display);
-  border-left: 2px solid var(--color-madder);
-  padding-left: 1.25rem;
-}
+::-webkit-scrollbar-thumb { background: var(--color-rule-strong); border-radius: var(--r-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-faded-sage); }
 
 /* ── Mobile safe-area helpers ──────────────────────────────────────────── */
 
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 1rem); }
 
 @media (max-width: 768px) {
-  /* prevent iOS zoom on focus */
   input, textarea, select { font-size: 16px !important; }
 }
-
-/* ── Travel-underline kept (used by some pages) ────────────────────────── */
-
-.travel-underline {
-  position: relative;
-  display: inline-block;
-  text-decoration: none;
-}
-
-.travel-underline::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: -2px;
-  height: 1px;
-  background: var(--color-iron);
-  transform-origin: left;
-  transform: scaleX(0);
-  transition: transform 280ms var(--ease-quiet);
-}
-
-.travel-underline:hover::after { transform: scaleX(1); }
-.travel-underline[aria-current="page"]::after {
-  transform: scaleX(1);
-  background: var(--color-madder);
-}
-
-/* hairline aliases (kept so existing components compile) */
-.hairline { border: 0; border-top: 1px solid var(--color-rule); }
-.hairline-strong { border: 0; border-top: 1px solid var(--color-rule-strong); }

@@ -1,0 +1,26 @@
+{
+  "id": "26-ambiguous-mixed-signal",
+  "note": "CALIBRATION CASE. Email mixes a daycare mention, a possible appointment, and a payment — multiple plausible types at once. The classifier must NOT be confidently autonomous: confidence MUST stay below the 0.85 autonomy threshold. Permissive on exact type; the gate is maxConfidence.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: contact@brightpath-family.ca\nSubject: A few things\n\nHi! Couple of items: the open house got moved, we still need that form back, and there may be a small fee depending on the option you pick. We'll sort the date once we hear from the other location. Talk soon.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [7],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventTypeOneOf": [
+      "daycare_communication",
+      "daycare_application_response",
+      "activity_signup_open",
+      "unclassified"
+    ],
+    "kindOneOf": ["needs_human", "surface_only"],
+    "maxConfidence": 0.85,
+    "calibration": "low"
+  }
+}

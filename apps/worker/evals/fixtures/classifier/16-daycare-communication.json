@@ -1,0 +1,18 @@
+{
+  "id": "16-daycare-communication",
+  "note": "Routine daycare newsletter/notice from an enrolled provider — daycare_communication. Personal human relationship → not autonomous.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: room2@maplegrove-childcare.ca\nSubject: This week in the Infant Room\n\nHi families! Reminder that Friday is a PD day so the centre is closed. Please send an extra set of clothes and a labelled water bottle next week. We had a lovely week of tummy time and music. — Ms. Priya",
+    "familyContextSlice": {
+      "childrenAgesMonths": [9],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": ["Maple Grove Childcare"]
+    }
+  },
+  "expect": {
+    "eventType": "daycare_communication"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "02-pediatric-reschedule-reply",
+  "note": "Reply asking to reschedule. Must not invent a new date the parent never gave — grounding check.",
+  "input": {
+    "actionType": "reply_to_email",
+    "event": {
+      "eventId": "evt-02",
+      "eventType": "pediatric_appointment_request",
+      "payload": {
+        "from": "scheduling@maplegrove-peds.ca",
+        "subject": "Reschedule needed",
+        "body": "Dr. Lee is out on Thursday, July 3. We need to move Noah's checkup. Reply with a couple of times that work for you."
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["to", "subject", "body"],
+    "recipientEchoOf": "from",
+    "maxBodyChars": 600
+  }
+}

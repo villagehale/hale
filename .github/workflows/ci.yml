@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck, build
+    name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -39,6 +39,18 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Prompt lockfile check
+        run: pnpm --filter @haru/worker prompts:check
+
+      - name: Classifier eval (cached-only)
+        run: pnpm --filter @haru/worker eval:classifier
+
+      - name: Drafter eval (cached-only)
+        run: pnpm --filter @haru/worker eval:drafter
 
       - name: Build
         run: pnpm build

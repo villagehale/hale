@@ -1,0 +1,18 @@
+{
+  "id": "h4-order-confirmation",
+  "note": "HOLDOUT. Receipt for a one-time supplier purchase.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: receipts@nestlingsupply.ca\nSubject: Receipt for order NS-50912\n\nThank you for your purchase. Order NS-50912: 1x bottle warmer ($64.99), 1x pack of bibs ($18.50). Total charged to card ending 4417: $94.21 incl. tax. This is your receipt.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [2],
+      "province": "AB",
+      "timezone": "America/Edmonton",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "order_confirmation"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "02-pediatric-confirm-request",
+  "note": "Clinic asks the family to confirm/book — an appointment request, not a passive reminder.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: frontdesk@littlesprout-pediatrics.ca\nSubject: Please confirm your 6-month visit\n\nHi, it's time to schedule Baby Chen's 6-month checkup. Please call us or use the portal to pick a slot in the next two weeks. We have openings Mon-Thu mornings.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [5],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_appointment_request",
+    "kind": "autonomous_action",
+    "actionType": "reply_to_email"
+  }
+}

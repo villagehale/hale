@@ -1,10 +1,11 @@
-import { createHash } from 'node:crypto';
-import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import type { ClassifierSuggestion, EventType } from '@haru/types';
-import { haikuModel } from '../mastra/model.js';
+import type { ClassifierSuggestion, EventType, FamilyStage } from '@haru/types';
+import { anthropicClient, HAIKU_MODEL } from '../anthropic/client.js';
+import { forceToolJson } from './structured.js';
+import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
+import { dedupHashFor } from './dedup.js';
 import { loadPrompt } from '../prompts/loader.js';
-import { logger } from '../logger.js';
+import { loadStagePacks, stagePackFor } from './stage-pack.js';
 
 const eventTypeSchema = z.enum([
   'pediatric_appointment_reminder',
@@ -46,12 +47,51 @@ const classifierOutputSchema = z.object({
   rationale: z.string(),
   payload: z.record(z.string(), z.unknown()),
   suggested_action: suggestionSchema,
+  /**
+   * True when the signal's raw content concerns a teen personally (teen-content,
+   * per the teenager pack's redaction rule). Additive + optional with a false
+   * default: existing cached eval responses lack it and read as false, so the
+   * cached-only eval is unaffected. The orchestrator HARD-CAPS routing on this
+   * flag when a teenager is in the family (rule #1 structural enforcement).
+   */
+  teen_content: z.boolean().optional().default(false),
 });
+
+const classifierOutputJsonSchema = {
+  type: 'object',
+  properties: {
+    event_type: { type: 'string', enum: eventTypeSchema.options },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    rationale: { type: 'string' },
+    payload: { type: 'object', additionalProperties: true },
+    suggested_action: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['autonomous_action', 'surface_only', 'ignore', 'needs_human'],
+        },
+        actionType: { type: 'string' },
+      },
+      required: ['kind'],
+    },
+    teen_content: { type: 'boolean' },
+  },
+  required: ['event_type', 'confidence', 'rationale', 'payload', 'suggested_action'],
+} as const;
 
 interface ClassifierRunInput {
   familyId: string;
   source: string;
   rawContent: string;
+  /**
+   * Distinct family stages, used to inject stage-aware context packs.
+   * TODO(stage-wiring): the orchestrator does not yet look up the family's
+   * children + dateOfBirth and call deriveFamilyStages() to populate this.
+   * Until that lookup lands, callers default to ['newborn']. Wire it in the
+   * orchestrator's children query (apps/worker/src/orchestrator/index.ts).
+   */
+  stages?: FamilyStage[];
   familyContextSlice?: {
     childrenAgesMonths: number[];
     province: string;
@@ -66,42 +106,45 @@ interface ClassifierRunOutput {
   payload: Record<string, unknown>;
   confidence: { score: number; rationale: string };
   suggestion: ClassifierSuggestion;
+  /** Teen-content flag (teenager pack redaction rule) — drives the orchestrator's
+   * structural teen-redaction cap. */
+  teenContent: boolean;
   dedupHash: string;
+  runMetrics: AgentRunMetrics;
 }
 
 export async function runClassifier(input: ClassifierRunInput): Promise<ClassifierRunOutput> {
-  const instructions = await loadPrompt('classifier');
-  const agent = new Agent({
-    id: 'haru-classifier',
-    name: 'haru-classifier',
-    instructions,
-    model: haikuModel(),
-  });
+  const basePrompt = await loadPrompt('classifier');
+  await loadStagePacks();
+  const pack = stagePackFor(input.stages ?? ['newborn']);
+  const instructions = pack ? `${basePrompt}\n\n${pack}` : basePrompt;
 
-  const dedupHash = createHash('sha256')
-    .update(`${input.familyId}|${input.source}|${input.rawContent}`)
-    .digest('hex');
+  const dedupHash = dedupHashFor(input.familyId, input.source, input.rawContent);
 
   const userMessage = JSON.stringify({
     signal: { source: input.source, raw_content: input.rawContent },
     family_context_slice: input.familyContextSlice ?? null,
   });
 
-  const result = await agent.generate(userMessage, {
-    structuredOutput: { schema: classifierOutputSchema },
+  const startedAt = Date.now();
+  const { value: parsed, usage } = await forceToolJson({
+    client: anthropicClient(),
+    model: HAIKU_MODEL,
+    system: instructions,
+    userMessage,
+    toolName: 'classification',
+    toolDescription: 'Return the structured classification of the inbound signal.',
+    inputJsonSchema: classifierOutputJsonSchema,
+    schema: classifierOutputSchema,
   });
-
-  const parsed = result.object;
-  if (!parsed) {
-    logger.error({ familyId: input.familyId }, 'classifier: agent returned no structured output');
-    throw new Error('Classifier produced no structured output');
-  }
 
   return {
     eventType: parsed.event_type,
     payload: parsed.payload,
     confidence: { score: parsed.confidence, rationale: parsed.rationale },
     suggestion: parsed.suggested_action,
+    teenContent: parsed.teen_content,
     dedupHash,
+    runMetrics: metricsFromUsage('classifier', HAIKU_MODEL, usage, Date.now() - startedAt),
   };
 }

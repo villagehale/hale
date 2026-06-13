@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.92,
+    "rationale": "Routine daycare notice combining a closure announcement and logistical supply reminders; no formal application response or enrollment decision.",
+    "payload": {
+      "from": "toddlers@maplegrove-childcare.ca",
+      "daycare_name": "Maple Grove Childcare",
+      "closure_date": "next Monday",
+      "closure_reason": "staff PD day",
+      "requests": [
+        "send extra set of weather-appropriate clothes",
+        "label water bottle"
+      ],
+      "child_name": "Mia",
+      "child_age_months": 28
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2864,
+    "output": 253
+  }
+}

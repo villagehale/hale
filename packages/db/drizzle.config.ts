@@ -6,7 +6,11 @@ if (!databaseUrl) {
 }
 
 export default defineConfig({
-  schema: './src/schema/index.ts',
+  // Point at the compiled output, not src: the schema uses ESM '.js' import
+  // specifiers (./users.js) that resolve against .ts only under a bundler;
+  // drizzle-kit's CJS loader can't map them, so it needs the emitted .js.
+  // Run `pnpm --filter @haru/db build` before generate/migrate/push.
+  schema: './dist/schema/index.js',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {

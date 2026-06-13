@@ -1,0 +1,21 @@
+{
+  "id": "25-ambiguous-vague-checkin",
+  "note": "CALIBRATION CASE. Vague one-liner from an unknown sender with no clear signal type. Genuinely ambiguous — the spec requires confidence < 0.7 and needs_human, so confidence MUST stay below the 0.85 autonomy threshold. eventTypeOneOf is permissive on type; the real gate is maxConfidence.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: j.reeve@outlook.com\nSubject: hey\n\nHi — just wanted to check in about the thing we talked about. Let me know. Thanks!",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventTypeOneOf": ["unclassified", "family_share_request", "family_event_invite"],
+    "kindOneOf": ["needs_human", "surface_only"],
+    "maxConfidence": 0.85,
+    "calibration": "low"
+  }
+}

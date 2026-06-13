@@ -1,0 +1,18 @@
+{
+  "id": "h7-tax-credit-change",
+  "note": "HOLDOUT. Provincial child-benefit top-up eligibility change.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: noreply@cra-arc.gc.ca\nSubject: Change to your child benefit payments\n\nFollowing an update to your file, your provincial child benefit top-up has changed. Your combined monthly child benefit will be $712.10 starting next month. See My Account for the detailed notice.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [4],
+      "province": "AB",
+      "timezone": "America/Edmonton",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "tax_credit_eligibility_change"
+  }
+}

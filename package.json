@@ -2,13 +2,14 @@
   "name": "haru",
   "version": "0.0.1",
   "private": true,
-  "description": "Passive multi-agent AI for newborn families",
+  "description": "Passive multi-agent household AI assistant for families, across every stage of childhood (0–18)",
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "biome lint .",

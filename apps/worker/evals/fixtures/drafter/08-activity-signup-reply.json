@@ -1,0 +1,21 @@
+{
+  "id": "08-activity-signup-reply",
+  "note": "Reply registering interest in a parent-and-baby swim class. Friendly, brief, asks one clarifying question if needed.",
+  "input": {
+    "actionType": "reply_to_email",
+    "event": {
+      "eventId": "evt-08",
+      "eventType": "activity_signup_open",
+      "payload": {
+        "from": "programs@riversidecommunity.ca",
+        "subject": "Parent & Baby Swim — Fall registration open",
+        "body": "Registration for our Fall Parent & Baby Swim is now open. Sessions run Saturdays at 9:30 AM. Reply to hold a spot."
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["to", "subject", "body"],
+    "recipientEchoOf": "from",
+    "maxBodyChars": 600
+  }
+}

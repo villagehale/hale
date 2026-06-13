@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "event_type": "calendar_conflict_detected",
+    "confidence": 0.95,
+    "rationale": "Calendar diff signals a newly added pediatric appointment (6-month checkup with Dr. Okafor at Little Sprout Pediatrics) that overlaps 15 minutes with an existing work standup on 2026-06-23.",
+    "payload": {
+      "appointment": {
+        "title": "6-month checkup — Dr. Okafor",
+        "start": "2026-06-23T10:15:00-04:00",
+        "end": "2026-06-23T11:00:00-04:00",
+        "clinic": "Little Sprout Pediatrics"
+      },
+      "conflicting_event": {
+        "title": "Team standup",
+        "start": "2026-06-23T10:00:00-04:00",
+        "end": "2026-06-23T10:30:00-04:00"
+      },
+      "conflict_duration_minutes": 15,
+      "child_age_months": 5
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2432,
+    "output": 354
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "This is a promotional marketing email from a baby product retailer, not a family event or parenting-related communication that haru should track.",
+    "payload": {
+      "sender": "deals@megababy-outlet.com",
+      "subject": "🔥 48-HOUR FLASH SALE — up to 70% off EVERYTHING!!!",
+      "type": "promotional_marketing"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    }
+  },
+  "usage": {
+    "input": 1955,
+    "output": 199
+  }
+}

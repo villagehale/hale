@@ -1,0 +1,21 @@
+{
+  "id": "09-calendar-conflict-digest",
+  "note": "Digest note flagging a detected calendar conflict between two events. Internal-only; names both events from the input.",
+  "input": {
+    "actionType": "add_to_digest_only",
+    "event": {
+      "eventId": "evt-09",
+      "eventType": "calendar_conflict_detected",
+      "payload": {
+        "eventA": "Noah's 6-month checkup, Tue Jun 23 10:15 AM",
+        "eventB": "Parent & Baby Swim, Sat — no conflict",
+        "conflictWith": "Noah's 6-month checkup overlaps a work meeting at 10:00 AM"
+      }
+    }
+  },
+  "expect": {
+    "requireNonEmptyText": true,
+    "judgeTone": false,
+    "maxBodyChars": 400
+  }
+}

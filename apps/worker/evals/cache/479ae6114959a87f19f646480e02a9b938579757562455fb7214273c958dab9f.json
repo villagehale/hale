@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "family_event_invite",
+    "confidence": 0.92,
+    "rationale": "A family member (cousin) is inviting the parents to a birthday celebration with a specific date, time, and location, requesting an RSVP.",
+    "payload": {
+      "sender": "cousin.mei@gmail.com",
+      "event_name": "Leo's 1st Birthday Party",
+      "date": "Saturday July 12",
+      "time": "2 PM",
+      "location": "cousin's place",
+      "description": "Birthday celebration with cake, bubbles, and splash pad",
+      "child_being_celebrated": "Leo (turning 1)",
+      "requires_rsvp": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2370,
+    "output": 272
+  }
+}

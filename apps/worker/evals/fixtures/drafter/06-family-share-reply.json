@@ -1,0 +1,21 @@
+{
+  "id": "06-family-share-reply",
+  "note": "Reply to a grandparent asking for recent photos. Warm; must not promise photos it can't attach or invent a visit.",
+  "input": {
+    "actionType": "reply_to_email",
+    "event": {
+      "eventId": "evt-06",
+      "eventType": "family_share_request",
+      "payload": {
+        "from": "grandma.rivera@gmail.com",
+        "subject": "Any new pictures?",
+        "body": "Hi sweetheart, it's been a little while — would love to see some recent photos of the baby when you get a chance. Love, Grandma."
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["to", "subject", "body"],
+    "recipientEchoOf": "from",
+    "maxBodyChars": 600
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "sleep_pattern_signal",
+    "confidence": 0.92,
+    "rationale": "Structured sleep tracker export showing a clear regression in night wakeups (4x increase from 2.1 to 4.6 over 7 days) in a 4-month-old, requiring parental awareness and potential follow-up with pediatrician.",
+    "payload": {
+      "metric": "sleep",
+      "window_days": 7,
+      "avg_night_wakeups": 4.6,
+      "avg_longest_stretch_min": 95,
+      "trend": "regressing",
+      "note": "night wakeups up from 2.1 last week",
+      "child_age_months": 4,
+      "regression_magnitude": "2x+"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2361,
+    "output": 277
+  }
+}

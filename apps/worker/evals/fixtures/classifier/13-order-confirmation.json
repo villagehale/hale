@@ -1,0 +1,19 @@
+{
+  "id": "13-order-confirmation",
+  "note": "Supplier order confirmation / receipt — order_confirmation.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: orders@everydaybaby.ca\nSubject: Order #EB-88213 confirmed\n\nThanks for your order! We've received order #EB-88213 (2x Size 2 diapers, 1x wipes refill) totalling $58.20. We'll email you again when it ships.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "order_confirmation",
+    "kind": "surface_only"
+  }
+}

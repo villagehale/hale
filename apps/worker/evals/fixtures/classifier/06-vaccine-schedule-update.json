@@ -1,0 +1,19 @@
+{
+  "id": "06-vaccine-schedule-update",
+  "note": "Public-health notice about an immunization schedule update — informational.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: immunization@toronto.ca\nSubject: Updated infant immunization schedule\n\nPublic Health Toronto has updated the routine infant immunization schedule. The 6-month dose now includes an additional component. Talk to your provider at your next visit. This is an informational notice only.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [5],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "vaccine_schedule_update",
+    "kind": "surface_only"
+  }
+}

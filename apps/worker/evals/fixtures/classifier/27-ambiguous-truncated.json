@@ -1,0 +1,21 @@
+{
+  "id": "27-ambiguous-truncated",
+  "note": "CALIBRATION CASE. Truncated/garbled forwarded fragment with almost no usable content. Spec: when nothing matches, return unclassified with LOW confidence. Confidence MUST stay below the 0.85 autonomy threshold. Gate is maxConfidence.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: (unknown)\nSubject: Fwd:\n\n---------- Forwarded message ---------\n> ... re: the\n> [content removed]\n>",
+    "familyContextSlice": {
+      "childrenAgesMonths": [2],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventTypeOneOf": ["unclassified"],
+    "kindOneOf": ["needs_human", "surface_only"],
+    "maxConfidence": 0.85,
+    "calibration": "low"
+  }
+}

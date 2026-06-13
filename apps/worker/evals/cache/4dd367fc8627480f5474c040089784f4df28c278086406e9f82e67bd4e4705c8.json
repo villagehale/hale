@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "family_event_invite",
+    "confidence": 0.92,
+    "rationale": "This is a casual birthday party invitation from a family member for a cousin's first birthday, requesting an RSVP.",
+    "payload": {
+      "from": "cousin.mei@gmail.com",
+      "event_name": "Leo's 1st Birthday",
+      "date": "2025-07-12",
+      "time": "14:00",
+      "timezone": "America/Toronto",
+      "location": "Cousin's place",
+      "details": "Cake, bubbles, and splash pad for babies",
+      "action_requested": "RSVP"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 1943,
+    "output": 251
+  }
+}

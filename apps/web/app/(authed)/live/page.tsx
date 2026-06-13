@@ -75,7 +75,7 @@ export default function LivePage() {
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              what i am <span className="text-madder">noticing</span>,
+              what i am <span className="text-apricot-deep">noticing</span>,
               <br />
               right now.
             </h1>
@@ -88,11 +88,11 @@ export default function LivePage() {
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 border-y border-rule py-5">
           <div className="flex items-center gap-3">
             <span
-              className="block h-2 w-2 rounded-full bg-moss animate-pulse"
+              className="block h-2 w-2 rounded-full bg-sage animate-pulse"
               aria-hidden
-              style={{ background: 'var(--color-moss)' }}
+              style={{ background: 'var(--color-sage)' }}
             />
-            <span className="eyebrow text-iron">listening</span>
+            <span className="eyebrow text-spruce">listening</span>
             <span className="meta">8 sources connected</span>
           </div>
           <span className="meta tabular">last signal · 06:18 am</span>
@@ -115,11 +115,11 @@ export default function LivePage() {
                 </div>
                 <div className="md:col-span-3">
                   <span className="eyebrow">source</span>
-                  <p className="meta text-iron mt-1">{e.source}</p>
+                  <p className="meta text-spruce mt-1">{e.source}</p>
                 </div>
                 <div className="md:col-span-7">
                   <ToneLabel tone={e.tone} />
-                  <p className="mt-3 text-lg text-iron leading-relaxed">{e.summary}</p>
+                  <p className="mt-3 text-lg text-spruce leading-relaxed">{e.summary}</p>
                   <p className="mt-3 meta italic">— {e.decision}</p>
                 </div>
               </div>
@@ -135,7 +135,7 @@ export default function LivePage() {
             <span className="eyebrow">privacy</span>
             <p className="meta mt-2">a standing promise</p>
           </div>
-          <div className="lg:col-span-9 text-slate text-lg leading-relaxed">
+          <div className="lg:col-span-9 text-slate-green text-lg leading-relaxed">
             Every signal above stays in haru's Canadian database. Nothing has
             been sent to a third party except where you connected one. Your
             child's name, date of birth, and medical details are encrypted at

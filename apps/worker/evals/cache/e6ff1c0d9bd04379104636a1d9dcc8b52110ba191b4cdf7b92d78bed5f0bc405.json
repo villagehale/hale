@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "employer_hr_correspondence",
+    "confidence": 0.92,
+    "rationale": "Employer HR department confirming parental leave dates and salary top-up, with a direct request for the employee to confirm return-to-work date by a deadline.",
+    "payload": {
+      "from": "hr@northwind-systems.com",
+      "leave_end_date": "2026-09-08",
+      "top_up_percentage": 85,
+      "top_up_duration_weeks": 12,
+      "confirmation_deadline": "2026-08-01",
+      "action_required": "confirm return-to-work date"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2387,
+    "output": 259
+  }
+}

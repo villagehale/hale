@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.05,
+    "rationale": "Email is extremely vague with no specific context, no identifiable subject matter, and no clear relationship to family management — cannot reliably classify.",
+    "payload": {
+      "raw_subject": "hey",
+      "sender": "j.reeve@outlook.com",
+      "note": "Vague check-in message with no discernible topic"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 1907,
+    "output": 177
+  }
+}

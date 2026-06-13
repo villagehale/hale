@@ -55,3 +55,9 @@ drizzle/meta/
 
 # Worktrees
 .worktrees/
+
+# Loop-engineering working state — local only, never committed (like .claude / .cursor)
+.loop/
+
+# Playwright MCP browser profile
+.playwright-mcp/

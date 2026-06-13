@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.92,
+    "rationale": "A 7-day feeding tracker export shows a declining intake trend (15% volume decrease, more frequent shorter feeds) in a 3-month-old, consistent with growth fluctuations or potential feeding changes warranting parent awareness.",
+    "payload": {
+      "metric": "feeding",
+      "window_days": 7,
+      "avg_feeds_per_day": 7.8,
+      "avg_volume_ml": 118,
+      "trend": "declining_intake",
+      "note": "daily volume down ~15% vs prior week; more frequent shorter feeds",
+      "child_age_months": 3
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 1934,
+    "output": 254
+  }
+}

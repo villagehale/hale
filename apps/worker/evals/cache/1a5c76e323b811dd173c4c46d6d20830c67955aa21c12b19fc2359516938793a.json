@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Signal is a forwarded email with almost all content removed and no sender/subject information to disambiguate; insufficient data to classify.",
+    "payload": {
+      "raw_content": "Forwarded message with content removed",
+      "source": "email",
+      "children_ages_months": [
+        2
+      ],
+      "province": "ON"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 2333,
+    "output": 188
+  }
+}

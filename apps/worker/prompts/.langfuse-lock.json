@@ -1,0 +1,47 @@
+{
+  "classifier": {
+    "name": "classifier",
+    "version": null,
+    "sha256": "da4d9a49d9e7303fdc601b73ef981db54c0a91351ff9e0b8bbd9d3037f2dd0d5"
+  },
+  "coach": {
+    "name": "coach",
+    "version": null,
+    "sha256": "df68f23ac68af0e22898cacee681d2d8f0409e20089d5704ce87cf87e2ba0c53"
+  },
+  "drafter": {
+    "name": "drafter",
+    "version": null,
+    "sha256": "72376b6b27119f9c533a6b7e53bccbf2c58bd6b24d09eaef87541ae039261df7"
+  },
+  "memory-inferencer": {
+    "name": "memory-inferencer",
+    "version": null,
+    "sha256": "27bc5302b37eb90ea9f08446b4077e08668d6d6624f7b94c1049f0455a081951"
+  },
+  "packs/child": {
+    "name": "packs/child",
+    "version": null,
+    "sha256": "cf810e05f35ceb4d56f76c2b952b1d48b3a87539a065abbcf44d313592e1d116"
+  },
+  "packs/newborn": {
+    "name": "packs/newborn",
+    "version": null,
+    "sha256": "3dd402fcfab7ec53f10e74f5db9ee41f50eecc4f7b5c15d0b360799a3f18d35d"
+  },
+  "packs/teenager": {
+    "name": "packs/teenager",
+    "version": null,
+    "sha256": "750fe628e8572379270258a7d15178b8b04d627af7f0691b01ee93ea0e7a3da9"
+  },
+  "packs/toddler": {
+    "name": "packs/toddler",
+    "version": null,
+    "sha256": "920979c33586a9a96a5e9b74a02eafe25ffb2548ace087fe0f1b8545935afbb3"
+  },
+  "reviewer": {
+    "name": "reviewer",
+    "version": null,
+    "sha256": "c6e95cc6cf88cadf790d9e635c90ff31d7861ea474e7a6e552870d467b7b208c"
+  }
+}

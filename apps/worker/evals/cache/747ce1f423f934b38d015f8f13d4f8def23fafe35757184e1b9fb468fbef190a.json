@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "age_stage_milestone_due",
+    "confidence": 0.92,
+    "rationale": "Internal scheduler triggered a 6-month developmental milestone window for the family's 6-month-old child, signaling timing for typical developmental reviews and feeding introduction milestones.",
+    "payload": {
+      "child_age_months": 6,
+      "stage": "6_month",
+      "trigger": "age_stage_milestone",
+      "note": "6-month developmental window opened; solids introduction and feeding milestones typically reviewed now"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2357,
+    "output": 220
+  }
+}

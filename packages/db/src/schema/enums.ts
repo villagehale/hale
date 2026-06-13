@@ -19,6 +19,12 @@ export const onboardingStageEnum = pgEnum('onboarding_stage', [
 export const eventStatusEnum = pgEnum('event_status', [
   'pending',
   'classified',
+  'drafted',
+  'reviewed',
+  // FIX 1: an approved, autonomy-qualified action checkpointed before the
+  // executor send. Distinct from 'reviewed' (terminal for non-execute outcomes)
+  // so a crash in the execute window is RESUMABLE, not silently dropped.
+  'approved_pending_execute',
   'routed',
   'actioned',
   'ignored',
@@ -95,3 +101,7 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'integration_specific',
   'autonomous_action_class',
 ]);
+
+// B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
+// is free for every stage and child. Values mirror @haru/types PlanTier.
+export const planTierEnum = pgEnum('plan_tier', ['free', 'plus', 'family']);

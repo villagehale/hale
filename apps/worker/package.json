@@ -10,12 +10,16 @@
     "start": "node dist/index.js",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+    "test": "vitest run",
+    "eval:classifier": "node evals/run-eval.mjs --cached-only",
+    "eval:drafter": "node evals/run-drafter-eval.mjs --cached-only",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "prompts:push": "node scripts/sync-prompts.mjs push",
+    "prompts:pull": "node scripts/sync-prompts.mjs pull",
+    "prompts:check": "node scripts/sync-prompts.mjs check"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.80",
     "@anthropic-ai/sdk": "^0.41.0",
-    "@mastra/core": "^1.37.1",
     "@haru/db": "workspace:*",
     "@haru/tools-contracts": "workspace:*",
     "@haru/types": "workspace:*",
@@ -28,7 +32,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "langfuse": "^3.38.20",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   }
 }

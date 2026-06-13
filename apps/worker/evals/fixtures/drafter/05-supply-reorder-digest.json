@@ -1,0 +1,21 @@
+{
+  "id": "05-supply-reorder-digest",
+  "note": "Internal digest entry for a low-supply signal — no outward recipient, just a short note for the daily digest.",
+  "input": {
+    "actionType": "add_to_digest_only",
+    "event": {
+      "eventId": "evt-05",
+      "eventType": "supply_low_signal",
+      "payload": {
+        "item": "size 2 diapers",
+        "estimatedDaysLeft": 4,
+        "source": "subscription usage estimate"
+      }
+    }
+  },
+  "expect": {
+    "requireNonEmptyText": true,
+    "judgeTone": false,
+    "maxBodyChars": 400
+  }
+}

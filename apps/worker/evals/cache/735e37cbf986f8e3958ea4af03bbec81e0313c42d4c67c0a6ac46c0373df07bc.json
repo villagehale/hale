@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "tax_credit_eligibility_change",
+    "confidence": 0.95,
+    "rationale": "Email from CRA notifying of Canada Child Benefit recalculation based on 2025 tax return with new monthly amount and effective date.",
+    "payload": {
+      "source": "CRA",
+      "credit_type": "Canada Child Benefit",
+      "previous_amount": null,
+      "new_monthly_amount": 619.4,
+      "effective_date": "2026-07",
+      "reason": "2025 tax return recalculation",
+      "raw_subject": "Your Canada Child Benefit has been recalculated"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 1946,
+    "output": 250
+  }
+}

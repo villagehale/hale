@@ -1,0 +1,18 @@
+{
+  "id": "h5-newsletter-spam",
+  "note": "HOLDOUT. Untargeted promotional blast with no family-specific signal.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: news@parentingweekly.com\nSubject: 10 things every new parent should buy (sponsored)\n\nWelcome to this week's roundup! Sponsored picks, affiliate links, and a giveaway inside. Forward to a friend! You're receiving this because you signed up at a baby expo. Unsubscribe anytime.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [5],
+      "province": "AB",
+      "timezone": "America/Edmonton",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "unclassified"
+  }
+}

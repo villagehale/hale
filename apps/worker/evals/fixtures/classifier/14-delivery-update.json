@@ -1,0 +1,18 @@
+{
+  "id": "14-delivery-update",
+  "note": "Carrier shipment/out-for-delivery notice — delivery_update.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: track@canadapost.ca\nSubject: Your package is out for delivery\n\nYour parcel (tracking 7023 1188 4421) from EverydayBaby is out for delivery and expected today before 8 PM. No signature required.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "delivery_update"
+  }
+}

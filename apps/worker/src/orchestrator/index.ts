@@ -2,14 +2,47 @@ import { logger } from '../logger.js';
 import { runClassifier } from '../agents/classifier.js';
 import { runDrafter } from '../agents/drafter.js';
 import { runReviewer } from '../agents/reviewer.js';
+import { dedupHashFor } from '../agents/dedup.js';
 import { runExecutor } from '../services/executor.js';
 import {
   recordEvent,
   recordAction,
   recordReviewerVerdict,
   recordExecution,
+  recordDrop,
+  recordReviewerRejection,
+  recordEntitlementGate,
+  recordActionGate,
+  loadResumePoint,
+  loadActionForEvent,
+  loadActionForApproval,
+  loadApprovedVerdictForAction,
+  loadFamilyPlanTier,
+  loadFamilyCreatedAt,
+  loadActionApprovalHistory,
+  loadCrossParentConsent,
+  loadChildStages,
+  markEventStage,
+  recordHumanApproval,
 } from '../services/memory-writer.js';
-import type { ActionType } from '@haru/types';
+import {
+  mintApprovedAction,
+  hasEntitlement,
+  entitlementRequiredFor,
+  type DraftedAction,
+  type ApprovedAction,
+  type ActionType,
+} from '@haru/types';
+import {
+  coverageSatisfiedWithResults,
+  isCrossParentActionType,
+  type IngestedEventPayload,
+} from '@haru/tools-contracts';
+import {
+  withinObservationWindow,
+  streakSatisfiesAutonomy,
+  teenRedactionCapApplies,
+} from './autonomy-gate.js';
 
 const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
 const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
@@ -33,46 +66,118 @@ const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
  * Deterministic workflow runner. Spec §1.3 — Orchestrator has no LLM
  * calls of its own; it routes jobs through the LLM agents and
  * deterministic services in sequence and records everything.
+ *
+ * The job shape is the shared `events.ingested` contract
+ * (`IngestedEventPayload`), validated by the consumer before this runs.
  */
-export interface OrchestratorJob {
-  family_id: string;
-  source: string;
+/** What the classify stage yields, whether fresh or replayed from a checkpoint. */
+interface ClassifiedState {
+  eventId: string;
+  eventType: import('@haru/types').EventType;
   payload: Record<string, unknown>;
-  received_at: string;
+  confidence: number;
+  suggestion: import('@haru/types').ClassifierSuggestion;
+  /** Teen-content flag from the classifier. Not persisted on the event, so a
+   * resume reads false — harmless, as the teen cap is dormant until stage
+   * wiring lands (same TODO as classifier stages). */
+  teenContent: boolean;
 }
 
-export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
+export async function runOrchestrator(job: IngestedEventPayload): Promise<void> {
   const familyId = job.family_id;
+  const rawContent = JSON.stringify(job.payload);
+  const dedupHash = dedupHashFor(familyId, job.source, rawContent);
   logger.debug({ familyId, source: job.source }, 'orchestrator: start');
 
-  // 1. Classify
-  const classified = await runClassifier({
-    familyId,
-    source: job.source,
-    rawContent: JSON.stringify(job.payload),
-  });
+  // B10 checkpoint/resume: probe by content hash BEFORE the billable classify
+  // call. A crash-and-retry reads the stored classification and skips ahead;
+  // the classifier never fires twice for the same signal.
+  const resume = await loadResumePoint(familyId, dedupHash);
 
-  // 2. Record event (idempotent on dedup_hash)
-  const { eventId, duplicate } = await recordEvent({
-    familyId,
-    source: job.source,
-    eventType: classified.eventType,
-    payload: classified.payload,
-    classifierConfidence: classified.confidence.score,
-    dedupHash: classified.dedupHash,
-  });
-
-  if (duplicate) {
-    logger.debug({ familyId, eventId }, 'orchestrator: duplicate event, skipping downstream');
+  // Terminal stages: a prior pass already finished routing this event. 'reviewed'
+  // is terminal here because it now marks ONLY non-execute outcomes (rejection,
+  // entitlement gate, below-autonomy-threshold) — an action that qualified for
+  // autonomous execution is checkpointed at 'approved_pending_execute' instead,
+  // which is RESUMABLE below (FIX 1).
+  if (resume && ['reviewed', 'routed', 'actioned', 'ignored', 'failed'].includes(resume.status)) {
+    logger.debug(
+      { familyId, eventId: resume.eventId, status: resume.status },
+      'orchestrator: event already terminal on a prior pass — nothing to resume',
+    );
     return;
   }
 
-  // 3. Route by confidence + suggestion
-  if (classified.confidence.score < CONFIDENCE_HUMAN_THRESHOLD) {
+  // FIX 1 resume: a prior pass approved + autonomy-qualified the action and
+  // checkpointed it, then crashed before (or during) the executor send. Re-drive
+  // the executor exactly once — the outbound_sends claim dedups a true
+  // double-send — and advance the event to its terminal outcome.
+  if (resume && resume.status === 'approved_pending_execute') {
+    await resumeIntoExecutor(familyId, resume.eventId);
+    return;
+  }
+
+  // 1. Classify — skipped on resume, loaded from the checkpointed event instead.
+  let classified: ClassifiedState;
+  if (resume) {
+    if (!resume.suggestion) {
+      throw new Error(
+        `orchestrator: event ${resume.eventId} checkpointed at '${resume.status}' without a stored suggestion — cannot resume routing`,
+      );
+    }
     logger.info(
-      { familyId, eventId, confidence: classified.confidence.score },
+      { familyId, eventId: resume.eventId, status: resume.status },
+      'orchestrator: resuming from stored classification (classifier NOT re-run)',
+    );
+    classified = {
+      eventId: resume.eventId,
+      eventType: resume.eventType,
+      payload: resume.payload,
+      confidence: resume.classifierConfidence,
+      suggestion: resume.suggestion,
+      teenContent: false,
+    };
+  } else {
+    const fresh = await runClassifier({ familyId, source: job.source, rawContent });
+    const { eventId, duplicate } = await recordEvent({
+      familyId,
+      source: job.source,
+      eventType: fresh.eventType,
+      payload: fresh.payload,
+      classifierConfidence: fresh.confidence.score,
+      dedupHash: fresh.dedupHash,
+      suggestion: fresh.suggestion,
+      classifierMetrics: fresh.runMetrics,
+    });
+
+    if (duplicate) {
+      logger.debug({ familyId, eventId }, 'orchestrator: duplicate event, skipping downstream');
+      return;
+    }
+    classified = {
+      eventId,
+      eventType: fresh.eventType,
+      payload: fresh.payload,
+      confidence: fresh.confidence.score,
+      suggestion: fresh.suggestion,
+      teenContent: fresh.teenContent,
+    };
+  }
+
+  const eventId = classified.eventId;
+  const resumingFromDraft = resume?.status === 'drafted';
+
+  // 3. Route by confidence + suggestion.
+  if (classified.confidence < CONFIDENCE_HUMAN_THRESHOLD) {
+    logger.info(
+      { familyId, eventId, confidence: classified.confidence },
       'orchestrator: low classifier confidence — routed to human queue',
     );
+    await recordDrop({
+      familyId,
+      eventId,
+      reason: 'low_confidence',
+      detail: { confidence: classified.confidence },
+    });
     return;
   }
 
@@ -86,6 +191,12 @@ export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
 
   if (classified.suggestion.kind === 'needs_human') {
     logger.info({ familyId, eventId }, 'orchestrator: classifier flagged needs_human');
+    await recordDrop({
+      familyId,
+      eventId,
+      reason: 'needs_human',
+      detail: { suggestion: classified.suggestion.kind },
+    });
     return;
   }
 
@@ -100,55 +211,396 @@ export async function runOrchestrator(job: OrchestratorJob): Promise<void> {
       { familyId, eventId, actionType },
       'orchestrator: classifier proposed unknown action_type — routed to human queue',
     );
+    await recordDrop({
+      familyId,
+      eventId,
+      reason: 'unknown_action_type',
+      detail: { actionType },
+    });
     return;
   }
 
-  // Draft + Review run for everything ≥ HUMAN_THRESHOLD. The autonomy
-  // threshold gates *execution*, not drafting. This is what populates
-  // /drafts for the mid-confidence band the classifier prompt produces.
-  const draft = await runDrafter({
-    familyId,
-    event: { eventId, eventType: classified.eventType, payload: classified.payload },
-    actionType,
-  });
+  // 4. Draft — skipped if a prior pass already drafted (resume from `drafted`).
+  // The autonomy threshold gates *execution*, not drafting; drafting runs for
+  // everything ≥ HUMAN_THRESHOLD to populate /drafts.
+  let draft: DraftedAction;
+  let actionId: string;
+  if (resumingFromDraft) {
+    const existing = await loadActionForEvent(eventId);
+    if (!existing) {
+      throw new Error(
+        `orchestrator: event ${eventId} at 'drafted' but no action row found — cannot resume`,
+      );
+    }
+    actionId = existing.actionId;
+    draft = {
+      id: existing.actionId,
+      eventId,
+      familyId,
+      actionType: existing.actionType,
+      payload: existing.payload,
+      draftConfidence: classified.confidence,
+      rationale: 'resumed from stored draft',
+      recipientVisibility: 'internal_only',
+      draftedAt: new Date().toISOString(),
+    };
+    logger.info({ familyId, eventId, actionId }, 'orchestrator: resuming from stored draft');
+  } else {
+    const drafted = await runDrafter({
+      familyId,
+      event: { eventId, eventType: classified.eventType, payload: classified.payload },
+      actionType,
+    });
+    draft = drafted.draft;
 
-  const actionId = await recordAction({
-    familyId,
-    eventId,
-    actionType: draft.actionType,
-    payload: draft.payload,
-    draftedByAgentRunId: draft.agentRunId,
-  });
+    // recordAction advances the event to 'drafted' inside its own transaction
+    // (FIX 2 atomic fold) — no separate markEventStage('drafted') needed.
+    const recorded = await recordAction({
+      familyId,
+      eventId,
+      actionType: draft.actionType,
+      payload: draft.payload,
+      drafterMetrics: drafted.runMetrics,
+    });
+    actionId = recorded.actionId;
+  }
 
-  const verdict = await runReviewer({ familyId, draft });
-  await recordReviewerVerdict({ actionId, verdict });
+  // 5. Review
+  const reviewed = await runReviewer({ familyId, draft });
+  const verdict = reviewed.verdict;
+  await recordReviewerVerdict({ actionId, verdict, reviewerMetrics: reviewed.runMetrics });
+
+  // FIX 1: 'reviewed' is marked ONLY for outcomes that do NOT execute (a
+  // rejection, an entitlement gate, or below-autonomy-threshold) — those are
+  // terminal on resume. The execute path checkpoints 'approved_pending_execute'
+  // instead, so a crash in the execute window is re-driven, not dropped.
 
   if (verdict.kind !== 'approve') {
+    await markEventStage(familyId, eventId, 'reviewed');
     logger.info(
       { familyId, actionId, verdict: verdict.kind, rationale: verdict.rationale },
       'orchestrator: reviewer did not approve — surfaced to user',
     );
+    await recordReviewerRejection({
+      familyId,
+      actionId,
+      verdictKind: verdict.kind,
+      rationale: verdict.rationale,
+    });
     return;
   }
 
-  if (classified.confidence.score < CONFIDENCE_AUTONOMY_THRESHOLD) {
+  // B18 entitlement gate — sits structurally in front of autonomous execution.
+  // An action whose tier requirements the family's plan does not cover NEVER
+  // goes autonomous; it stays at its drafted_for_approval default (drafting and
+  // review of paid features is allowed on every tier — only EXECUTION is gated).
+  const planTier = await loadFamilyPlanTier(familyId);
+  const requiredEntitlement = entitlementRequiredFor(draft.actionType);
+  const gated =
+    !hasEntitlement(planTier, 'autonomy_l3') ||
+    (requiredEntitlement !== null && !hasEntitlement(planTier, requiredEntitlement));
+  if (gated) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    const missing = !hasEntitlement(planTier, 'autonomy_l3')
+      ? ('autonomy_l3' as const)
+      : (requiredEntitlement as NonNullable<typeof requiredEntitlement>);
     logger.info(
-      { familyId, actionId, confidence: classified.confidence.score },
+      { familyId, actionId, planTier, actionType: draft.actionType, missing },
+      'orchestrator: plan tier lacks required entitlement — drafted for approval (not autonomous)',
+    );
+    await recordEntitlementGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      planTier,
+      requiredEntitlement: missing,
+    });
+    return;
+  }
+
+  if (classified.confidence < CONFIDENCE_AUTONOMY_THRESHOLD) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, confidence: classified.confidence },
       'orchestrator: reviewer approved but confidence below autonomy threshold — drafted for approval',
     );
     return;
   }
 
-  try {
-    const execution = await runExecutor({
+  // Rule #1 teen-redaction cap — a HARD structural cap that overrides the model:
+  // a family with a teenager + a teen-content event never auto-executes,
+  // regardless of suggestion. Dormant until stage wiring lands (loadChildStages
+  // returns [] → defaults to ['newborn'], so the cap can't fire yet) — the same
+  // known TODO as the classifier's stages input (B17).
+  const childStages = await loadChildStages(familyId);
+  const stages = childStages.length > 0 ? childStages : (['newborn'] as const).slice();
+  if (teenRedactionCapApplies(stages, classified.teenContent)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: teen-content event in a family with a teenager — hard-capped to drafted_for_approval',
+    );
+    await recordActionGate({
       familyId,
-      approved: { ...draft, verdict, approvedAt: new Date().toISOString() },
+      actionId,
+      actionType: draft.actionType,
+      reason: 'teen_redaction',
+      detail: { stages },
     });
+    return;
+  }
+
+  // Rule #4 — the 7-day observe window. A family younger than the window NEVER
+  // auto-executes; everything is drafted for approval.
+  const familyCreatedAt = await loadFamilyCreatedAt(familyId);
+  if (withinObservationWindow(familyCreatedAt)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, familyCreatedAt },
+      'orchestrator: family inside 7-day observe window — drafted for approval (not autonomous)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'observation_window',
+      detail: { familyCreatedAt: familyCreatedAt.toISOString() },
+    });
+    return;
+  }
+
+  // Rule #4 — the per-action-type 5-streak. Autonomy of an action type unlocks
+  // only after ≥5 consecutive most-recent human-approved completions of it.
+  const approvalHistory = await loadActionApprovalHistory(familyId);
+  if (!streakSatisfiesAutonomy(draft.actionType, approvalHistory)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: action type has not reached the 5-streak unlock — drafted for approval',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'streak',
+      detail: { required: 5 },
+    });
+    return;
+  }
+
+  // Rule #5 — cross-parent consent. For an action type that touches both
+  // parents' data, a co-parent's presence requires an active consent record;
+  // missing → never autonomous. No co-parent → single-parent household, proceeds.
+  if (isCrossParentActionType(draft.actionType)) {
+    const consent = await loadCrossParentConsent(familyId);
+    if (consent.hasCoParent && !consent.coParentConsentGranted) {
+      await markEventStage(familyId, eventId, 'reviewed');
+      logger.info(
+        { familyId, actionId, actionType: draft.actionType },
+        'orchestrator: cross-parent action without co-parent consent — drafted for approval',
+      );
+      await recordActionGate({
+        familyId,
+        actionId,
+        actionType: draft.actionType,
+        reason: 'cross_parent_consent',
+        detail: { hasCoParent: true, coParentConsentGranted: false },
+      });
+      return;
+    }
+  }
+
+  // Mint BEFORE the checkpoint: minting can throw (coverage/result gate, hard
+  // rules #3 + #7), and a throw here must NOT leave a phantom
+  // 'approved_pending_execute' that resume would re-drive.
+  const approved = mintApprovedAction(draft, verdict, coverageSatisfiedWithResults);
+
+  // FIX 1: the resumable pre-executor checkpoint. A crash after this and before
+  // recordExecution leaves the event here; the redelivery re-drives the executor.
+  await markEventStage(familyId, eventId, 'approved_pending_execute');
+  await executeAndRecord(familyId, eventId, actionId, approved);
+}
+
+/**
+ * Runs the executor for a minted, autonomy-qualified action and advances the
+ * event to its terminal outcome ('actioned' on success, 'failed' otherwise).
+ * Shared by the live path and the FIX 1 resume path so both record identically.
+ * The outbound_sends claim inside the executor is the true double-send guard;
+ * this advances the event status so resume sees a terminal state next time.
+ */
+async function executeAndRecord(
+  familyId: string,
+  eventId: string,
+  actionId: string,
+  approved: ApprovedAction,
+): Promise<void> {
+  try {
+    const execution = await runExecutor({ familyId, approved });
     await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
-    logger.info({ familyId, actionId }, 'orchestrator: action executed');
+    await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
+    logger.info({ familyId, actionId, ok: execution.ok }, 'orchestrator: action executed');
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown executor error';
     logger.error({ familyId, actionId, err }, 'orchestrator: executor failed');
     await recordExecution({ actionId, result: { error: message }, ok: false });
+    await markEventStage(familyId, eventId, 'failed');
   }
+}
+
+/**
+ * FIX 1 resume: re-drive a crashed-mid-execute action. Loads the persisted
+ * draft + approved verdict, re-mints the ApprovedAction (the stored tool-result
+ * `ok` flags re-gate it exactly as the original pass), and runs the executor.
+ * The outbound_sends claim guarantees the provider is hit at most once.
+ */
+async function resumeIntoExecutor(familyId: string, eventId: string): Promise<void> {
+  const existing = await loadActionForEvent(eventId);
+  if (!existing) {
+    throw new Error(
+      `orchestrator: event ${eventId} at 'approved_pending_execute' but no action row found`,
+    );
+  }
+  const verdict = await loadApprovedVerdictForAction(existing.actionId);
+  if (!verdict || verdict.kind !== 'approve') {
+    throw new Error(
+      `orchestrator: action ${existing.actionId} at 'approved_pending_execute' has no stored approve verdict`,
+    );
+  }
+  const draft: DraftedAction = {
+    id: existing.actionId,
+    eventId,
+    familyId,
+    actionType: existing.actionType,
+    payload: existing.payload,
+    draftConfidence: CONFIDENCE_AUTONOMY_THRESHOLD,
+    rationale: 'resumed from approved_pending_execute checkpoint',
+    recipientVisibility: 'internal_only',
+    draftedAt: new Date().toISOString(),
+  };
+  logger.info(
+    { familyId, eventId, actionId: existing.actionId },
+    'orchestrator: resuming approved_pending_execute into executor',
+  );
+  const approved = mintApprovedAction(draft, verdict, coverageSatisfiedWithResults);
+  await executeAndRecord(familyId, eventId, existing.actionId, approved);
+}
+
+/**
+ * Injectable seams for the human-approve execution path, so the control flow is
+ * unit-testable without a live DB/executor/queue. Defaults bind to the real
+ * memory-writer + the orchestrator's own mint+execute machinery.
+ */
+export interface ExecuteApprovedDeps {
+  loadAction: typeof loadActionForApproval;
+  loadConsent: typeof loadCrossParentConsent;
+  recordApproval: typeof recordHumanApproval;
+  recordGate: typeof recordActionGate;
+  execute: typeof executeAndRecord;
+  log: Pick<typeof logger, 'info' | 'warn'>;
+}
+
+function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
+  return {
+    loadAction: loadActionForApproval,
+    loadConsent: loadCrossParentConsent,
+    recordApproval: recordHumanApproval,
+    recordGate: recordActionGate,
+    execute: executeAndRecord,
+    log: logger,
+  };
+}
+
+/**
+ * Drives a HUMAN-approved drafted action into execution (definition-of-done
+ * box 3, worker half — the consumer of the actions.approved contract).
+ *
+ * Preconditions, both required (a non-approved or already-executed action must
+ * never execute here): the action is still 'drafted_for_approval' AND it carries
+ * a stored reviewer 'approve' verdict whose tool results re-gate the mint exactly
+ * as the autonomous path does (hard rules #3 + #7, via coverageSatisfiedWithResults
+ * inside mintApprovedAction). A failed precondition logs and drops — never throws,
+ * never executes (a queue throw would only spin pg-boss's retry on a payload that
+ * can't become valid).
+ *
+ * CONSENT BOUNDARY (hard rule #5): a human's approval IS the override for the
+ * AUTONOMY gates (streak / 7-day window / confidence / entitlement-for-autonomy) —
+ * that is the entire point of L2 "draft → human approves → execute". Those gates
+ * decide whether HARU may act on its own; once a parent says "yes, send it", they
+ * no longer apply. Cross-parent consent is NOT an autonomy gate — it is a separate
+ * legal requirement that BOTH parents authorize Haru to act on their jointly-held
+ * child's data. One parent's approval cannot waive the other parent's consent, so
+ * this gate is re-checked here and a missing co-parent consent REFUSES execution
+ * (audited action.gated.cross_parent_consent), even with a valid human approval.
+ */
+export async function executeApprovedAction(
+  input: { actionId: string; familyId: string; approvedBy: string },
+  deps: ExecuteApprovedDeps = defaultExecuteApprovedDeps(),
+): Promise<void> {
+  const { actionId, familyId, approvedBy } = input;
+
+  const action = await deps.loadAction(actionId);
+  if (!action) {
+    deps.log.warn({ familyId, actionId }, 'actions.approved: action not found — dropping');
+    return;
+  }
+  if (action.userVisibleState !== 'drafted_for_approval') {
+    deps.log.warn(
+      { familyId, actionId, userVisibleState: action.userVisibleState },
+      'actions.approved: action not in drafted_for_approval (already executed or held) — dropping',
+    );
+    return;
+  }
+  if (!action.verdict) {
+    deps.log.warn(
+      { familyId, actionId },
+      'actions.approved: action has no stored approve verdict — dropping',
+    );
+    return;
+  }
+
+  // Hard rule #5 — the one gate a human approval CANNOT override (see the
+  // CONSENT BOUNDARY note above). Re-checked at approval time, not just at draft
+  // time, because the co-parent may have signed up between draft and approval.
+  if (isCrossParentActionType(action.actionType)) {
+    const consent = await deps.loadConsent(familyId);
+    if (consent.hasCoParent && !consent.coParentConsentGranted) {
+      deps.log.warn(
+        { familyId, actionId, actionType: action.actionType },
+        'actions.approved: cross-parent action without co-parent consent — refused (human approval cannot waive two-parent consent)',
+      );
+      await deps.recordGate({
+        familyId,
+        actionId,
+        actionType: action.actionType,
+        reason: 'cross_parent_consent',
+        detail: { hasCoParent: true, coParentConsentGranted: false, approvedBy },
+      });
+      return;
+    }
+  }
+
+  const draft: DraftedAction = {
+    id: actionId,
+    eventId: action.eventId,
+    familyId,
+    actionType: action.actionType,
+    payload: action.payload,
+    draftConfidence: CONFIDENCE_HUMAN_THRESHOLD,
+    rationale: 'human-approved drafted action',
+    recipientVisibility: 'internal_only',
+    draftedAt: new Date().toISOString(),
+  };
+
+  // Re-mint BEFORE recording the approval/checkpoint: a coverage/result failure
+  // must throw before any 'approved_pending_execute' state is written.
+  const approved = mintApprovedAction(draft, action.verdict, coverageSatisfiedWithResults);
+
+  // Record WHO approved (PIPEDA right-to-access) and advance to the resumable
+  // pre-executor checkpoint atomically, then execute.
+  await deps.recordApproval({ familyId, eventId: action.eventId, actionId, approvedBy });
+  deps.log.info(
+    { familyId, actionId, approvedBy, actionType: action.actionType },
+    'actions.approved: human-approved action driving into execution',
+  );
+  await deps.execute(familyId, action.eventId, actionId, approved);
 }

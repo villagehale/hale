@@ -1,0 +1,20 @@
+{
+  "id": "20-family-share-request",
+  "note": "Grandparent explicitly asks to be sent recent photos — family_share_request. A direct, low-stakes inbound ask from family ('Could you send some recent photos?') that warrants action, so it routes to autonomous_action/share_photos_with_family. The prompt's human-relationship caution targets clinical/professional senders writing personally, not a benign family photo share.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: grandma.ruth@gmail.com\nSubject: more pics please!! 😍\n\nHi sweetheart, we miss the little one SO much. Could you send some recent photos when you get a chance? Grandpa wants to print one for the fridge. No rush. Love you xx",
+    "familyContextSlice": {
+      "childrenAgesMonths": [6],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "family_share_request",
+    "kind": "autonomous_action",
+    "actionType": "share_photos_with_family"
+  }
+}

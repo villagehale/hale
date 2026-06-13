@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.92,
+    "rationale": "Daycare is notifying family of an accepted application and requesting confirmation and deposit payment within a deadline.",
+    "payload": {
+      "daycare_name": "Maple Grove Childcare",
+      "room_type": "infant room",
+      "start_month": "September",
+      "action_required": "confirm and submit deposit",
+      "deposit_amount": 200,
+      "currency": "CAD",
+      "deadline_days": 5,
+      "source_email": "admin@maplegrove-childcare.ca"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2376,
+    "output": 256
+  }
+}

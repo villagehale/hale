@@ -41,9 +41,49 @@ export type ReviewerVerdict =
   | { kind: 'reject'; toolResults: ToolResult[]; rationale: string; remediation?: string }
   | { kind: 'flag_for_human'; toolResults: ToolResult[]; rationale: string };
 
-export interface ApprovedAction<TPayload = Record<string, unknown>> extends DraftedAction<TPayload> {
+/**
+ * Branded so it cannot be hand-spread into existence. The only way to obtain
+ * an ApprovedAction is `mintApprovedAction`, which enforces hard rules #3/#7 at
+ * the value level — a plain object literal lacks the unique-symbol brand and is
+ * rejected by the Executor's signature at compile time.
+ */
+declare const approvedActionBrand: unique symbol;
+
+export type ApprovedAction<TPayload = Record<string, unknown>> = DraftedAction<TPayload> & {
   verdict: Extract<ReviewerVerdict, { kind: 'approve' }>;
   approvedAt: string;
+  readonly [approvedActionBrand]: true;
+};
+
+/**
+ * The only constructor for ApprovedAction. Throws unless the verdict is an
+ * `approve` AND every REQUIRED_CHECK for the action type was invoked with an
+ * ok:true RESULT (hard rules #3 + #7 — a cap-exceeded check that ran but failed
+ * blocks minting, not just a missing check). The coverage predicate is injected
+ * (the worker passes `coverageSatisfiedWithResults` from @haru/tools-contracts)
+ * because tools-contracts already imports @haru/types — importing it back here
+ * would create a dependency cycle.
+ */
+export function mintApprovedAction<TPayload = Record<string, unknown>>(
+  draft: DraftedAction<TPayload>,
+  verdict: ReviewerVerdict,
+  coverageCheck: (actionType: ActionType, results: { tool: string; ok: boolean }[]) => boolean,
+): ApprovedAction<TPayload> {
+  if (verdict.kind !== 'approve') {
+    throw new Error(`mintApprovedAction: verdict is '${verdict.kind}', not 'approve'`);
+  }
+  const results = verdict.toolResults.map((r) => ({ tool: r.tool, ok: r.ok }));
+  if (!coverageCheck(draft.actionType, results)) {
+    const summary = results.map((r) => `${r.tool}:${r.ok ? 'ok' : 'FAIL'}`).join(', ') || 'none';
+    throw new Error(
+      `mintApprovedAction: COVERAGE_NOT_SATISFIED for '${draft.actionType}' (results: ${summary})`,
+    );
+  }
+  return {
+    ...draft,
+    verdict,
+    approvedAt: new Date().toISOString(),
+  } as ApprovedAction<TPayload>;
 }
 
 export interface ExecutionResult {

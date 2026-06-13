@@ -1,0 +1,21 @@
+{
+  "id": "01-pediatric-confirm-reply",
+  "note": "Reply confirming a well-baby visit the clinic proposed. Recipient is the clinic that wrote in; date is in the event.",
+  "input": {
+    "actionType": "reply_to_email",
+    "event": {
+      "eventId": "evt-01",
+      "eventType": "pediatric_appointment_request",
+      "payload": {
+        "from": "frontdesk@littlesprout-pediatrics.ca",
+        "subject": "Confirm well-baby visit",
+        "body": "Hi! We have an opening for Baby Chen's 6-month well-baby visit on Tuesday, June 23 at 10:15 AM with Dr. Okafor. Can you confirm?"
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["to", "subject", "body"],
+    "recipientEchoOf": "from",
+    "maxBodyChars": 600
+  }
+}

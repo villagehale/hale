@@ -1,0 +1,19 @@
+{
+  "id": "33-toddler-calendar-conflict",
+  "note": "TODDLER stage. Calendar diff: a newly added swim lesson overlaps an existing daycare-pickup block — calendar_conflict_detected. Hand-derived from taxonomy: an overlapping calendar diff is calendar_conflict_detected regardless of stage; toddler-stage conflicts arise from activities vs daycare hours.",
+  "stage": "toddler",
+  "input": {
+    "source": "calendar_diff",
+    "rawContent": "{\"added_event\":{\"title\":\"Toddler Swim — Mia\",\"start\":\"2026-09-10T16:30:00-04:00\",\"end\":\"2026-09-10T17:00:00-04:00\"},\"overlaps_with\":{\"title\":\"Daycare pickup\",\"start\":\"2026-09-10T16:00:00-04:00\",\"end\":\"2026-09-10T16:45:00-04:00\"}}",
+    "familyContextSlice": {
+      "childrenAgesMonths": [33],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": ["Maple Grove Childcare"]
+    }
+  },
+  "expect": {
+    "eventType": "calendar_conflict_detected"
+  }
+}

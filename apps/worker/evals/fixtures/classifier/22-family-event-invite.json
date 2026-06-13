@@ -1,0 +1,18 @@
+{
+  "id": "22-family-event-invite",
+  "note": "Invitation to a family social event (a baby's first birthday party) — family_event_invite.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: cousin.mei@gmail.com\nSubject: Leo's 1st birthday — July 12!\n\nYou're invited! We're celebrating Leo turning ONE on Saturday July 12 at 2 PM at our place. Cake, bubbles, and a splash pad for the babies. Let us know if you can make it!",
+    "familyContextSlice": {
+      "childrenAgesMonths": [8],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "family_event_invite"
+  }
+}

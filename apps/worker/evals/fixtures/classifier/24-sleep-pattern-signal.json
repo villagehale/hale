@@ -1,0 +1,18 @@
+{
+  "id": "24-sleep-pattern-signal",
+  "note": "Tracking-app derived sleep pattern signal — sleep_pattern_signal. Source is a tracker export.",
+  "input": {
+    "source": "tracker_export",
+    "rawContent": "{\"metric\":\"sleep\",\"window_days\":7,\"avg_night_wakeups\":4.6,\"avg_longest_stretch_min\":95,\"trend\":\"regressing\",\"note\":\"night wakeups up from 2.1 last week\"}",
+    "familyContextSlice": {
+      "childrenAgesMonths": [4],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "sleep_pattern_signal"
+  }
+}

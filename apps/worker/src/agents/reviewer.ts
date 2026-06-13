@@ -1,105 +1,190 @@
-import { Agent } from '@mastra/core/agent';
-import { z } from 'zod';
+import type Anthropic from '@anthropic-ai/sdk';
+import {
+  REVIEWER_TOOLS,
+  coverageSatisfiedWithResults,
+  firstUnsatisfiedCheck,
+  type ReviewerToolName,
+} from '@haru/tools-contracts';
 import type { DraftedAction, ReviewerVerdict, ToolResult } from '@haru/types';
-import { sonnetModel } from '../mastra/model.js';
+import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
+import { invokeReviewerTool } from '../tools/registry.js';
+import { loadChildNames } from '../services/memory-writer.js';
+import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { logger } from '../logger.js';
-import { buildReviewerTools } from '../mastra/reviewer-tools.js';
 
-const reviewerOutputSchema = z.object({
-  verdict: z.enum(['approve', 'reject', 'flag_for_human']),
-  rationale: z.string(),
-  if_rejected_remediation_suggestion: z.string().optional(),
-});
+const VERDICT_TOOL = 'submit_verdict';
+const MAX_TURNS = 8;
+
+export type ReviewerAnthropicClient = Pick<Anthropic, 'messages'>;
 
 interface ReviewerRunInput {
   familyId: string;
-  draft: DraftedAction & { agentRunId: string };
+  draft: DraftedAction;
 }
 
-/**
- * Reviewer agent — Mastra-managed tool-use loop.
- *
- * What Mastra owns now (was hand-rolled before):
- *   • multi-turn conversation between Claude and the verification tools
- *   • parallel tool dispatch when Claude requests multiple in one turn
- *   • turn/iteration limits + abort signals
- *   • final structured-output assembly
- *
- * What still lives in our code:
- *   • the tool implementations themselves (tools/registry.ts) —
- *     the actual DB queries / regex / policy checks
- *   • the run-scoped collector so the orchestrator gets a typed
- *     ToolResult[] alongside the verdict for the audit log
- *   • the system prompt (apps/worker/prompts/reviewer.md) which
- *     instructs Claude that tool use is REQUIRED before any verdict
- */
-export async function runReviewer(input: ReviewerRunInput): Promise<ReviewerVerdict> {
-  const instructions = await loadPrompt('reviewer');
-  const collected: ToolResult[] = [];
-  const tools = buildReviewerTools(collected);
+export interface ReviewerRunResult {
+  verdict: ReviewerVerdict;
+  runMetrics: AgentRunMetrics;
+}
 
-  const agent = new Agent({
-    id: 'haru-reviewer',
-    name: 'haru-reviewer',
-    instructions,
-    model: sonnetModel(),
-    tools,
-  });
+type InvokeTool = (name: ReviewerToolName, input: unknown) => Promise<ToolResult>;
 
-  const userMessage = JSON.stringify({
-    draft_action: {
-      id: input.draft.id,
-      action_type: input.draft.actionType,
-      payload: input.draft.payload,
-      recipient_visibility: input.draft.recipientVisibility,
-      family_id: input.familyId,
+interface ReviewerDeps {
+  client?: ReviewerAnthropicClient;
+  invokeTool?: InvokeTool;
+  /** Family children's names, injected into check_pii_leak so child_full_name
+   * leaks can be matched. Injectable for tests; defaults to the DB lookup. */
+  loadChildNames?: (familyId: string) => Promise<string[]>;
+}
+
+const verdictTool: Anthropic.Tool = {
+  name: VERDICT_TOOL,
+  description:
+    'Submit your final verdict. Call this ONLY after invoking the verification tools required for this action.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      verdict: { type: 'string', enum: ['approve', 'reject', 'flag_for_human'] },
+      rationale: { type: 'string' },
+      remediation: { type: 'string' },
     },
+    required: ['verdict', 'rationale'],
+  },
+};
+
+function checkTools(): Anthropic.Tool[] {
+  return (Object.keys(REVIEWER_TOOLS) as ReviewerToolName[]).map((name) => ({
+    name,
+    description: `Verification check: ${name}.`,
+    input_schema: { type: 'object', additionalProperties: true },
+  }));
+}
+
+export async function runReviewer(
+  input: ReviewerRunInput,
+  deps: ReviewerDeps = {},
+): Promise<ReviewerRunResult> {
+  const client = deps.client ?? anthropicClient();
+  const invokeTool = deps.invokeTool ?? invokeReviewerTool;
+  const getChildNames = deps.loadChildNames ?? loadChildNames;
+  const system = await loadPrompt('reviewer');
+  const collected: ToolResult[] = [];
+
+  // The model cannot know the family's child names; check_pii_leak needs them to
+  // detect child_full_name leaks. Fetched once, lazily, only if the model
+  // actually invokes the PII check. Empty → the tool reports names_unavailable.
+  let childNames: string[] | null = null;
+
+  // Reviewer is a multi-turn loop — one agent_runs row aggregates the whole
+  // review, summing usage across every messages.create call it made.
+  let promptTokens = 0;
+  let completionTokens = 0;
+  const startedAt = Date.now();
+  const finish = (verdict: ReviewerVerdict): ReviewerRunResult => ({
+    verdict,
+    runMetrics: metricsFromUsage(
+      'reviewer',
+      SONNET_MODEL,
+      {
+        input_tokens: promptTokens,
+        output_tokens: completionTokens,
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: null,
+        server_tool_use: null,
+      },
+      Date.now() - startedAt,
+    ),
   });
 
-  try {
-    const result = await agent.generate(userMessage, {
-      structuredOutput: { schema: reviewerOutputSchema },
-      maxSteps: 8,
+  const tools: Anthropic.Tool[] = [...checkTools(), verdictTool];
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: JSON.stringify({
+        draft_action: {
+          id: input.draft.id,
+          action_type: input.draft.actionType,
+          payload: input.draft.payload,
+          recipient_visibility: input.draft.recipientVisibility,
+          family_id: input.familyId,
+        },
+      }),
+    },
+  ];
+
+  for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    const response = await client.messages.create({
+      model: SONNET_MODEL,
+      max_tokens: 4096,
+      system,
+      tools,
+      messages,
     });
+    promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+    completionTokens += response.usage.output_tokens;
 
-    const parsed = result.object;
-    if (!parsed) {
-      logger.warn(
-        { familyId: input.familyId },
-        'reviewer: no structured verdict — defaulting to flag',
-      );
-      return {
-        kind: 'flag_for_human',
-        toolResults: collected,
-        rationale: 'reviewer produced no parseable verdict',
+    const toolUses = response.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+    messages.push({ role: 'assistant', content: response.content });
+
+    const verdictCall = toolUses.find((b) => b.name === VERDICT_TOOL);
+    if (verdictCall) {
+      const v = verdictCall.input as {
+        verdict: 'approve' | 'reject' | 'flag_for_human';
+        rationale: string;
+        remediation?: string;
       };
+      if (v.verdict === 'approve') {
+        const results = collected.map((r) => ({ tool: r.tool, ok: r.ok }));
+        if (!coverageSatisfiedWithResults(input.draft.actionType, results)) {
+          const failedCheck = firstUnsatisfiedCheck(input.draft.actionType, results);
+          logger.warn(
+            { familyId: input.familyId, actionType: input.draft.actionType, failedCheck, results },
+            'reviewer: approve downgraded — required verification coverage not satisfied',
+          );
+          return finish({
+            kind: 'flag_for_human',
+            toolResults: collected,
+            rationale: `COVERAGE_NOT_SATISFIED: model approved but ${failedCheck} for ${input.draft.actionType} was not invoked or returned ok:false`,
+          });
+        }
+        return finish({ kind: 'approve', toolResults: collected, rationale: v.rationale });
+      }
+      if (v.verdict === 'reject') {
+        return finish({
+          kind: 'reject',
+          toolResults: collected,
+          rationale: v.rationale,
+          ...(v.remediation && { remediation: v.remediation }),
+        });
+      }
+      return finish({ kind: 'flag_for_human', toolResults: collected, rationale: v.rationale });
     }
 
-    if (parsed.verdict === 'approve') {
-      return { kind: 'approve', toolResults: collected, rationale: parsed.rationale };
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of toolUses) {
+      let toolInput = block.input;
+      if (block.name === 'check_pii_leak') {
+        if (childNames === null) childNames = await getChildNames(input.familyId);
+        toolInput = { ...(block.input as object), knownChildNames: childNames };
+      }
+      const result = await invokeTool(block.name as ReviewerToolName, toolInput);
+      collected.push(result);
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: JSON.stringify(result.result),
+      });
     }
-    if (parsed.verdict === 'reject') {
-      return {
-        kind: 'reject',
-        toolResults: collected,
-        rationale: parsed.rationale,
-        ...(parsed.if_rejected_remediation_suggestion && {
-          remediation: parsed.if_rejected_remediation_suggestion,
-        }),
-      };
-    }
-    return {
-      kind: 'flag_for_human',
-      toolResults: collected,
-      rationale: parsed.rationale,
-    };
-  } catch (err) {
-    logger.error({ familyId: input.familyId, err }, 'reviewer: generate threw');
-    return {
-      kind: 'flag_for_human',
-      toolResults: collected,
-      rationale: err instanceof Error ? err.message : 'reviewer loop failed',
-    };
+    messages.push({ role: 'user', content: toolResults });
   }
+
+  logger.warn({ familyId: input.familyId }, 'reviewer: hit turn cap without a verdict');
+  return finish({
+    kind: 'flag_for_human',
+    toolResults: collected,
+    rationale: 'reviewer reached turn cap without producing a verdict',
+  });
 }

@@ -34,21 +34,21 @@ export function TopHeader() {
           haru
         </Link>
         {current ? (
-          <span className="eyebrow text-iron">{current.label}</span>
+          <span className="eyebrow text-spruce">{current.label}</span>
         ) : null}
       </div>
 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="eyebrow text-iron"
+        className="eyebrow text-spruce"
         aria-expanded={open}
       >
         {open ? 'close' : 'index'}
       </button>
 
       {open ? (
-        <nav className="absolute left-0 right-0 top-full border-b border-rule bg-bone">
+        <nav className="absolute left-0 right-0 top-full bg-oat">
           <ul className="px-[var(--shell-pad-x)] py-6 space-y-1">
             {NAV.map((item) => {
               const active = item === current;

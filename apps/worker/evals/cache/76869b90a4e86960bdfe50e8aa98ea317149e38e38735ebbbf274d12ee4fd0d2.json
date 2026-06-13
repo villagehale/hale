@@ -1,0 +1,30 @@
+{
+  "parsed": {
+    "event_type": "calendar_conflict_detected",
+    "confidence": 0.92,
+    "rationale": "A pediatric appointment (6-month checkup with Dr. Okafor) has been added to the calendar and overlaps with an existing work standup meeting by 15 minutes.",
+    "payload": {
+      "primary_event": {
+        "title": "6-month checkup — Dr. Okafor",
+        "start": "2026-06-23T10:15:00-04:00",
+        "end": "2026-06-23T11:00:00-04:00",
+        "type": "pediatric_appointment"
+      },
+      "conflicting_event": {
+        "title": "Team standup",
+        "start": "2026-06-23T10:00:00-04:00",
+        "end": "2026-06-23T10:30:00-04:00",
+        "type": "work"
+      },
+      "overlap_duration_minutes": 15,
+      "child_age_months": 5
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2005,
+    "output": 348
+  }
+}

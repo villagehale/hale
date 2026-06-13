@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.72,
+    "rationale": "Brightpath Family is likely a daycare or early childcare provider; the message references an open house (rescheduled), an outstanding form, and potential fees—typical daycare administrative correspondence.",
+    "payload": {
+      "sender": "contact@brightpath-family.ca",
+      "sender_name": "Brightpath Family",
+      "message_summary": "Open house rescheduled; form submission still pending; possible fee depending on option chosen; final date pending confirmation from other location.",
+      "action_items": [
+        "Return completed form",
+        "Await notification of new open house date"
+      ],
+      "mentions_fee": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 2366,
+    "output": 263
+  }
+}

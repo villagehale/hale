@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a calendar event payload (not an email), structured with clear, concise information: title, timestamp, location, provider, and visit type. It's appropriate for its context as a system-level calendar entry—no tone issues since it's not a message to a recipient. The format is practical and complete."
+  }
+}

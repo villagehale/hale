@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Email is too vague to classify—references \"the thing we talked about\" with no prior context, no signature clarity, and no domain signal to determine sender role or intent.",
+    "payload": {
+      "sender": "j.reeve@outlook.com",
+      "subject": "hey",
+      "reason_for_low_confidence": "vague_reference_to_prior_conversation"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    }
+  },
+  "usage": {
+    "input": 2334,
+    "output": 199
+  }
+}

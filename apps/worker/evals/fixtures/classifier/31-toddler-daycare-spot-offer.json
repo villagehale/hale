@@ -1,0 +1,19 @@
+{
+  "id": "31-toddler-daycare-spot-offer",
+  "note": "TODDLER stage. A waitlisted family is offered a toddler-room spot, with an accept-and-deposit deadline — daycare_application_response. Hand-derived from taxonomy: a formal reply to an application / an enrolment offer is daycare_application_response, NOT routine daycare_communication.",
+  "stage": "toddler",
+  "input": {
+    "source": "email",
+    "rawContent": "From: admin@sunnydays-daycare.ca\nSubject: Toddler room offer for your application\n\nWe're pleased to offer your family a spot in our toddler room starting September 2. To accept, please confirm and e-transfer the $300 deposit within 5 business days, otherwise the spot is released to the next family on our waitlist.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [25],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": ["Sunny Days Daycare"]
+    }
+  },
+  "expect": {
+    "eventType": "daycare_application_response"
+  }
+}

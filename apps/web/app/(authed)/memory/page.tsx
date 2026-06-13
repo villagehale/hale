@@ -113,12 +113,12 @@ const FACTS: Fact[] = [
 ];
 
 const TYPE_PILL: Record<Fact['type'], string> = {
-  preference: 'pill-madder',
-  routine: 'pill-moss',
-  medical: 'pill-madder',
+  preference: 'pill-apricot',
+  routine: 'pill-sage',
+  medical: 'pill-apricot',
   logistic: 'pill',
-  relationship: 'pill-moss',
-  voice: 'pill-indigo',
+  relationship: 'pill-sage',
+  voice: 'pill-sky',
 };
 
 const TYPE_GROUPS: Array<{
@@ -151,7 +151,7 @@ function ConfidenceBar({ value }: { value: number }) {
         <div
           aria-hidden
           className="h-full rounded-full"
-          style={{ width: `${percent}%`, background: 'var(--color-iron)' }}
+          style={{ width: `${percent}%`, background: 'var(--color-spruce)' }}
         />
       </div>
       <span className="meta tabular" aria-hidden>
@@ -174,7 +174,7 @@ export default function MemoryPage() {
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              what i <span className="text-madder">remember</span>
+              what i <span className="text-apricot-deep">remember</span>
               <br />
               about your household.
             </h1>
@@ -183,12 +183,12 @@ export default function MemoryPage() {
       </header>
 
       {/* ── The promise ────────────────────────────────────────────────── */}
-      <section className="rise rise-2 mb-16 lg:mb-20 fold">
+      <section className="rise rise-2 mb-16 lg:mb-20 panel">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-8">
           <div className="lg:col-span-3">
-            <span className="eyebrow text-iron">the promise</span>
+            <span className="eyebrow text-spruce">the promise</span>
           </div>
-          <div className="lg:col-span-9 text-iron text-lg leading-relaxed">
+          <div className="lg:col-span-9 text-spruce text-lg leading-relaxed">
             <p>
               Every fact below comes from a specific signal I observed. You can
               edit any of them, mark any of them wrong, or delete any of them —
@@ -230,7 +230,7 @@ export default function MemoryPage() {
           return (
             <article
               key={fact.id}
-              className={`rise ${delay} bg-bone-soft p-6 lg:p-7 space-y-4 flex flex-col`}
+              className={`rise ${delay} bg-linen p-6 lg:p-7 space-y-4 flex flex-col`}
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className={`pill ${TYPE_PILL[fact.type]}`}>{fact.type}</span>
@@ -241,10 +241,10 @@ export default function MemoryPage() {
                 {fact.key}
               </h3>
 
-              <p className="text-iron leading-relaxed flex-grow">{fact.value}</p>
+              <p className="text-spruce leading-relaxed flex-grow">{fact.value}</p>
 
               <div className="border-l-2 border-rule-strong pl-4">
-                <span className="eyebrow text-iron">source</span>
+                <span className="eyebrow text-spruce">source</span>
                 <p className="mt-1 meta italic">{fact.source}</p>
               </div>
 
@@ -276,7 +276,7 @@ export default function MemoryPage() {
             <span className="eyebrow">your rights</span>
             <p className="meta mt-2">non-negotiable</p>
           </div>
-          <div className="lg:col-span-9 text-slate leading-relaxed space-y-5">
+          <div className="lg:col-span-9 text-slate-green leading-relaxed space-y-5">
             <p>
               Request a full export of everything you see on this page in
               machine-readable form. Delete everything in one tap. The family

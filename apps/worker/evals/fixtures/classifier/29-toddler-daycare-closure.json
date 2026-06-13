@@ -1,0 +1,20 @@
+{
+  "id": "29-toddler-daycare-closure",
+  "note": "TODDLER stage. Routine daycare notice (PD-day closure + bring-extra-clothes) from an enrolled provider — daycare_communication, a human relationship, not autonomous. Hand-derived from taxonomy: routine attendance/notice comms from an enrolled daycare map to daycare_communication, distinct from an enrolment offer (daycare_application_response).",
+  "stage": "toddler",
+  "input": {
+    "source": "email",
+    "rawContent": "From: toddlers@maplegrove-childcare.ca\nSubject: Closed next Monday + reminders\n\nHi families! The centre is closed next Monday for a staff PD day. Please send Mia in with an extra set of weather-appropriate clothes now that we're heading outside more, and label her water bottle. Thanks! — Ms. Dani",
+    "familyContextSlice": {
+      "childrenAgesMonths": [28],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": ["Maple Grove Childcare"]
+    }
+  },
+  "expect": {
+    "eventType": "daycare_communication",
+    "kind": "surface_only"
+  }
+}

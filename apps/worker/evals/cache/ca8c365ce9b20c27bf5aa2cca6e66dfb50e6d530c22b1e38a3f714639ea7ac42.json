@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "This is a formal enrolment offer from a known daycare with explicit acceptance conditions and a deadline, triggering the parent to act on an outstanding application.",
+    "payload": {
+      "daycare_name": "Sunny Days Daycare",
+      "room_type": "toddler room",
+      "start_date": "2024-09-02",
+      "deposit_amount": 300,
+      "currency": "CAD",
+      "payment_method": "e-transfer",
+      "deadline_days": 5,
+      "action_required": "confirm_and_deposit",
+      "sender_email": "admin@sunnydays-daycare.ca"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    }
+  },
+  "usage": {
+    "input": 2865,
+    "output": 286
+  }
+}

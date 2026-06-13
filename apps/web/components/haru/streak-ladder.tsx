@@ -34,26 +34,26 @@ export function StreakLadder({ level, streak, compact = false }: StreakLadderPro
         {notches.map((n, i) => (
           <div key={n} className="flex items-center">
             <span
-              className="block h-3 w-px"
-              style={{ background: n <= level ? 'var(--color-iron)' : 'var(--color-rule-strong)' }}
+              className="block h-2.5 w-2.5 rounded-full"
+              style={{ background: n <= level ? 'var(--color-spruce)' : 'var(--color-rule-strong)' }}
               aria-hidden
             />
             {i < notches.length - 1 ? (
               <span
                 className="block h-px w-5"
-                style={{ background: n < level ? 'var(--color-iron)' : 'var(--color-rule)' }}
+                style={{ background: n < level ? 'var(--color-spruce)' : 'var(--color-rule)' }}
                 aria-hidden
               />
             ) : null}
           </div>
         ))}
-        <span className="meta tabular ml-1.5 text-iron">
+        <span className="meta tabular ml-2 text-spruce">
           {LEVEL_LABEL[level]}
         </span>
       </div>
 
       {!compact && streak !== undefined && level < 4 ? (
-        <div className="text-faded">
+        <div className="text-faded-sage">
           <span className="meta tabular">
             {Math.min(streak, 5)} of 5 approvals
             {streak < 5 ? <> · {5 - streak} to next</> : null}

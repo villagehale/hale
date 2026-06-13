@@ -1,0 +1,18 @@
+{
+  "id": "09-employer-hr",
+  "note": "Employer HR confirming return-to-work date / top-up. Employment correspondence.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: hr@northwind-systems.com\nSubject: Your parental leave top-up and return date\n\nHi Sam, confirming your parental leave runs through Sept 8, 2026, with the company top-up to 85% of salary for the first 12 weeks. Please confirm your planned return-to-work date by August 1 so we can plan coverage. — People Ops",
+    "familyContextSlice": {
+      "childrenAgesMonths": [1],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "employer_hr_correspondence"
+  }
+}

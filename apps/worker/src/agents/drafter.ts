@@ -1,9 +1,9 @@
-import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import type { ActionType, DraftedAction } from '@haru/types';
-import { sonnetModel } from '../mastra/model.js';
+import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
+import { forceToolJson } from './structured.js';
+import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
-import { logger } from '../logger.js';
 
 const drafterOutputSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
@@ -11,6 +11,17 @@ const drafterOutputSchema = z.object({
   rationale: z.string(),
   recipient_visibility: z.enum(['public', 'internal_only']),
 });
+
+const drafterOutputJsonSchema = {
+  type: 'object',
+  properties: {
+    payload: { type: 'object', additionalProperties: true },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    rationale: { type: 'string' },
+    recipient_visibility: { type: 'string', enum: ['public', 'internal_only'] },
+  },
+  required: ['payload', 'confidence', 'rationale', 'recipient_visibility'],
+} as const;
 
 interface DrafterRunInput {
   familyId: string;
@@ -28,18 +39,13 @@ interface DrafterRunInput {
   actionTemplateHint?: string;
 }
 
-interface DrafterRunOutput extends DraftedAction {
-  agentRunId: string;
+interface DrafterRunOutput {
+  draft: DraftedAction;
+  runMetrics: AgentRunMetrics;
 }
 
 export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutput> {
   const instructions = await loadPrompt('drafter');
-  const agent = new Agent({
-    id: 'haru-drafter',
-    name: 'haru-drafter',
-    instructions,
-    model: sonnetModel(),
-  });
 
   const userMessage = JSON.stringify({
     action_type: input.actionType,
@@ -49,26 +55,30 @@ export async function runDrafter(input: DrafterRunInput): Promise<DrafterRunOutp
     action_template_hint: input.actionTemplateHint ?? null,
   });
 
-  const result = await agent.generate(userMessage, {
-    structuredOutput: { schema: drafterOutputSchema },
+  const startedAt = Date.now();
+  const { value: parsed, usage } = await forceToolJson({
+    client: anthropicClient(),
+    model: SONNET_MODEL,
+    system: instructions,
+    userMessage,
+    toolName: 'draft_action',
+    toolDescription: 'Return the structured draft of the proposed action.',
+    inputJsonSchema: drafterOutputJsonSchema,
+    schema: drafterOutputSchema,
   });
 
-  const parsed = result.object;
-  if (!parsed) {
-    logger.error({ familyId: input.familyId }, 'drafter: agent returned no structured output');
-    throw new Error('Drafter produced no structured output');
-  }
-
   return {
-    id: crypto.randomUUID(),
-    eventId: input.event.eventId,
-    familyId: input.familyId,
-    actionType: input.actionType,
-    payload: parsed.payload,
-    draftConfidence: parsed.confidence,
-    rationale: parsed.rationale,
-    recipientVisibility: parsed.recipient_visibility,
-    draftedAt: new Date().toISOString(),
-    agentRunId: crypto.randomUUID(),
+    draft: {
+      id: crypto.randomUUID(),
+      eventId: input.event.eventId,
+      familyId: input.familyId,
+      actionType: input.actionType,
+      payload: parsed.payload,
+      draftConfidence: parsed.confidence,
+      rationale: parsed.rationale,
+      recipientVisibility: parsed.recipient_visibility,
+      draftedAt: new Date().toISOString(),
+    },
+    runMetrics: metricsFromUsage('drafter', SONNET_MODEL, usage, Date.now() - startedAt),
   };
 }

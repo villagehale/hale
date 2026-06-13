@@ -1,0 +1,18 @@
+{
+  "id": "23-age-stage-milestone",
+  "note": "Internal age-based trigger: child reaches an age where a developmental check is due — age_stage_milestone_due. Source is an internal scheduler tick.",
+  "input": {
+    "source": "internal_scheduler",
+    "rawContent": "{\"trigger\":\"age_stage_milestone\",\"child_age_months\":6,\"stage\":\"6_month\",\"note\":\"6-month developmental window opened; solids introduction and feeding milestones typically reviewed now\"}",
+    "familyContextSlice": {
+      "childrenAgesMonths": [6],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "age_stage_milestone_due"
+  }
+}

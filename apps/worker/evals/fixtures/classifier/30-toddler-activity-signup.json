@@ -1,0 +1,19 @@
+{
+  "id": "30-toddler-activity-signup",
+  "note": "TODDLER stage. Time-boxed registration window for toddler programs — activity_signup_open. Hand-derived from taxonomy: an OPENING registration window for a program is activity_signup_open, distinct from daycare_communication (which is comms from an already-enrolled provider).",
+  "stage": "toddler",
+  "input": {
+    "source": "email",
+    "rawContent": "From: register@cityrec.ca\nSubject: Toddler Fall session — registration opens Thursday 9 AM\n\nRegistration for Fall toddler programs (Tumble Tots, Toddler Swim, Music & Movement, ages 2-3) opens this Thursday at 9:00 AM. Spots are limited and popular sessions fill within minutes. Log in early.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [31],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "activity_signup_open"
+  }
+}

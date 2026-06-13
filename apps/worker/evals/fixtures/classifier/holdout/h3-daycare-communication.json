@@ -1,0 +1,18 @@
+{
+  "id": "h3-daycare-communication",
+  "note": "HOLDOUT. Routine note from an enrolled daycare educator.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: toddlers@sunnydays-daycare.ca\nSubject: Photos from today + a small reminder\n\nHi families, we had so much fun finger painting today! Quick reminder that sunscreen season is here — please bring a labelled bottle. Also the centre closes early (3 PM) this Friday for staff training. — Educator Dani",
+    "familyContextSlice": {
+      "childrenAgesMonths": [10],
+      "province": "AB",
+      "timezone": "America/Edmonton",
+      "knownClinics": [],
+      "knownDaycares": ["Sunny Days Daycare"]
+    }
+  },
+  "expect": {
+    "eventType": "daycare_communication"
+  }
+}

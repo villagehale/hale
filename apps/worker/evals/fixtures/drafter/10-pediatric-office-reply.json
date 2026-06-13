@@ -1,0 +1,21 @@
+{
+  "id": "10-pediatric-office-reply",
+  "note": "Reply to a pediatric office message asking the parent to bring the vaccine record. Acknowledge briefly; no invented details.",
+  "input": {
+    "actionType": "reply_to_email",
+    "event": {
+      "eventId": "evt-10",
+      "eventType": "pediatric_office_message",
+      "payload": {
+        "from": "nurse@littlesprout-pediatrics.ca",
+        "subject": "Before your visit",
+        "body": "A quick note ahead of Baby Chen's visit: please bring the yellow immunization record card so we can update it. Thanks!"
+      }
+    }
+  },
+  "expect": {
+    "requiredPayloadFields": ["to", "subject", "body"],
+    "recipientEchoOf": "from",
+    "maxBodyChars": 600
+  }
+}

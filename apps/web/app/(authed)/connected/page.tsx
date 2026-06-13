@@ -165,19 +165,19 @@ export default function ConnectedPage() {
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              three tiers <span className="text-madder">of trust.</span>
+              three tiers <span className="text-apricot-deep">of trust.</span>
             </h1>
           </div>
         </div>
       </header>
 
       {/* ── Read this first ────────────────────────────────────────────── */}
-      <section className="rise rise-2 mb-20 fold">
+      <section className="rise rise-2 mb-20 panel">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-8">
           <div className="lg:col-span-3">
-            <span className="eyebrow text-iron">read this first</span>
+            <span className="eyebrow text-spruce">read this first</span>
           </div>
-          <div className="lg:col-span-9 text-iron text-lg leading-relaxed">
+          <div className="lg:col-span-9 text-spruce text-lg leading-relaxed">
             For every source you connect, I show you exactly what I read and
             exactly what I do with it. Nothing is shared with a third party
             except where you connect one. You can disconnect any source at any
@@ -197,10 +197,10 @@ export default function ConnectedPage() {
             <div className="lg:col-span-3 lg:sticky lg:top-12 lg:self-start">
               <div className="flex items-baseline gap-3">
                 <span className="folio">{tier.folio}</span>
-                <span className="eyebrow text-iron">{tier.eyebrow}</span>
+                <span className="eyebrow text-spruce">{tier.eyebrow}</span>
               </div>
               <h2 className="mt-5 font-display">{tier.title}</h2>
-              <p className="mt-4 text-slate leading-relaxed">{tier.description}</p>
+              <p className="mt-4 text-slate-green leading-relaxed">{tier.description}</p>
             </div>
 
             <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-px bg-rule">
@@ -209,12 +209,12 @@ export default function ConnectedPage() {
                 return (
                   <article
                     key={src.id}
-                    className="bg-bone-soft p-6 lg:p-7 space-y-5"
+                    className="bg-linen p-6 lg:p-7 space-y-5"
                   >
                     <div className="flex items-baseline justify-between gap-3">
                       <Folio index={idx + 1} />
                       <span
-                        className={connected ? 'pill pill-moss' : 'pill'}
+                        className={connected ? 'pill pill-sage' : 'pill'}
                       >
                         {connected ? '● connected' : '○ not yet'}
                       </span>
@@ -224,11 +224,11 @@ export default function ConnectedPage() {
                       {src.name}
                     </h3>
 
-                    <p className="text-slate leading-relaxed">{src.why}</p>
+                    <p className="text-slate-green leading-relaxed">{src.why}</p>
 
                     <div className="space-y-3 border-l-2 border-rule-strong pl-4">
                       <div>
-                        <span className="eyebrow text-iron">i read</span>
+                        <span className="eyebrow text-spruce">i read</span>
                         <ul className="mt-1 space-y-0.5">
                           {src.reads.map((r) => (
                             <li key={r} className="meta">— {r}</li>
@@ -236,7 +236,7 @@ export default function ConnectedPage() {
                         </ul>
                       </div>
                       <div>
-                        <span className="eyebrow text-iron">i act on</span>
+                        <span className="eyebrow text-spruce">i act on</span>
                         <ul className="mt-1 space-y-0.5">
                           {src.acts.map((a) => (
                             <li key={a} className="meta">— {a}</li>
@@ -262,7 +262,7 @@ export default function ConnectedPage() {
         </section>
       ))}
 
-      <section className="rise rise-7 mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded">
+      <section className="rise rise-7 mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
         <p className="meta">12 sources catalogued · 2 currently connected</p>
         <p className="meta">request a new source · email hello@haru.family</p>
       </section>

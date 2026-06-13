@@ -1,0 +1,19 @@
+{
+  "id": "07-ei-correspondence",
+  "note": "Service Canada EI parental-benefits letter. Government/legal — must NOT be autonomous.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: noreply@servicecanada.gc.ca\nSubject: Your Employment Insurance maternity and parental benefits\n\nThis notice confirms your EI parental benefits claim has been processed. Your first payment of $668 will be deposited on June 19. Keep this notice for your records. Reference: EI-2026-0042189.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [1],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "ei_correspondence",
+    "kind": "surface_only"
+  }
+}

@@ -17,8 +17,8 @@ export function PageCorner({ folio, section }: PageCornerProps) {
   return (
     <div className="page-corner">
       <div className="flex items-baseline gap-3">
-        <span className="folio text-iron">{folio}</span>
-        <span className="eyebrow text-iron">{section}</span>
+        <span className="folio">{folio}</span>
+        <span className="eyebrow text-spruce">{section}</span>
       </div>
       <LongDate />
     </div>

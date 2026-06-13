@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Cat } from '~/components/illos';
 
 const NAV = [
   { href: '/digest', label: 'digest', folio: 'i' },
@@ -19,14 +20,18 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Title slab — title + the slogan, treated like a book's title page */}
       <div>
         <Link href="/digest" className="block">
-          <span className="font-display text-[2.4rem] leading-none">haru</span>
-          <span className="meta block mt-2">an almanac for the family</span>
+          <span
+            className="font-display text-[2.4rem] leading-none"
+            style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}
+          >
+            haru
+          </span>
+          <span className="meta block mt-2">holds the small things</span>
         </Link>
 
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-4">
           <span className="stamp">trial · day 3 of 7</span>
         </div>
       </div>
@@ -48,11 +53,11 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* "Today" — a small block of running data, like a date stamp on a journal entry */}
-      <div className="mt-auto pt-10 space-y-2">
-        <div className="rule-vellum" />
-        <p className="eyebrow text-iron pt-2">today</p>
-        <dl className="meta text-iron space-y-1">
+      {/* "Today" — a small block of running data */}
+      <div className="mt-auto pt-10 space-y-3">
+        <div className="rule" />
+        <p className="eyebrow text-spruce pt-1">today</p>
+        <dl className="meta text-spruce space-y-1">
           <div className="flex items-baseline justify-between gap-2">
             <dt>passes</dt>
             <dd className="tabular">14</dd>
@@ -66,6 +71,12 @@ export function Sidebar() {
             <dd className="tabular">1</dd>
           </div>
         </dl>
+
+        {/* The one tasteful cat — haru, curled asleep at the foot. */}
+        <div className="pt-4 flex items-end gap-3" aria-hidden>
+          <Cat age="kitten" style={{ height: 44, width: 'auto' }} />
+          <span className="meta">resting · listening</span>
+        </div>
       </div>
     </aside>
   );

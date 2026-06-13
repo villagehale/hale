@@ -1,0 +1,13 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "nurse@littlesprout-pediatrics.ca",
+      "subject": "Re: Before your visit",
+      "body": "thanks for the heads up — we'll make sure to bring the yellow immunization record card to the visit. see you soon!"
+    },
+    "confidence": 0.9,
+    "rationale": "The nurse sent a simple reminder to bring the yellow immunization card; reply confirms receipt and intent to bring it, matching the default friendly lowercase voice.",
+    "recipient_visibility": "public"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "id": "11-supply-low",
+  "note": "Subscribe-and-save 'running low' nudge for diapers — a supply-low signal. The supplier directly asks the family to act ('Want us to ship your next box early?') against a subscription on file, so it routes to autonomous_action/place_supply_order (a reorder), not a passive FYI.",
+  "input": {
+    "source": "email",
+    "rawContent": "From: subscriptions@everydaybaby.ca\nSubject: You're running low on diapers\n\nBased on your delivery history, you'll likely run out of Size 2 diapers in about 5 days. Want us to ship your next box early? You have a subscription on file.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "supply_low_signal",
+    "kind": "autonomous_action",
+    "actionType": "place_supply_order"
+  }
+}

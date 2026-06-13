@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "family_share_request",
+    "confidence": 0.92,
+    "rationale": "Grandparent explicitly requests recent photos of the child for personal use with a warm, familial tone and no urgency.",
+    "payload": {
+      "sender": "grandma.ruth@gmail.com",
+      "sender_relationship": "grandparent",
+      "request_type": "photos",
+      "context": "Grandpa wants to print one for the fridge",
+      "urgency": "low",
+      "tone": "affectionate"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "share_photos_with_family"
+    }
+  },
+  "usage": {
+    "input": 2363,
+    "output": 237
+  }
+}

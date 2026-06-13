@@ -1,0 +1,18 @@
+{
+  "id": "28-feeding-pattern-signal",
+  "note": "Tracking-app derived feeding pattern signal — feeding_pattern_signal. Source is a tracker export. Completes taxonomy coverage alongside 24-sleep-pattern-signal.",
+  "input": {
+    "source": "tracker_export",
+    "rawContent": "{\"metric\":\"feeding\",\"window_days\":7,\"avg_feeds_per_day\":7.8,\"avg_volume_ml\":118,\"trend\":\"declining_intake\",\"note\":\"daily volume down ~15% vs prior week; more frequent shorter feeds\"}",
+    "familyContextSlice": {
+      "childrenAgesMonths": [3],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": []
+    }
+  },
+  "expect": {
+    "eventType": "feeding_pattern_signal"
+  }
+}

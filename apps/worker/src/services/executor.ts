@@ -1,10 +1,48 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import type { ApprovedAction, ExecutionResult } from '@haru/types';
+import {
+  claimOutboundSend as claimOutboundSendDb,
+  confirmOutboundSend as confirmOutboundSendDb,
+  recordSendSkippedDuplicate,
+} from './memory-writer.js';
 
 interface ExecutorRunInput {
   familyId: string;
-  approved: ApprovedAction & { agentRunId: string };
+  /** Branded — only `mintApprovedAction` can produce this; a hand-spread literal won't typecheck. */
+  approved: ApprovedAction;
+}
+
+interface SendResult {
+  messageId?: string;
+  submittedAt?: string;
+}
+
+/**
+ * Injectable seams for the Executor's outbound side. Defaults hit Postgres +
+ * Postmark; tests pass stubs to prove the B9 idempotency invariant without a
+ * live DB or live provider.
+ */
+export interface ExecutorDeps {
+  /** Inserts the outbound_sends claim; false ⇒ already claimed ⇒ do NOT send. */
+  claimOutboundSend: (actionId: string) => Promise<boolean>;
+  /** Records sent_at + provider id after the provider confirms. */
+  confirmOutboundSend: (actionId: string, providerMessageId: string) => Promise<void>;
+  /** Audits a suppressed redelivery (action.send_skipped_duplicate). */
+  recordSkippedDuplicate: (familyId: string, actionId: string) => Promise<void>;
+  /** The actual email transport. */
+  sendEmail: (payload: EmailPayload) => Promise<SendResult>;
+}
+
+function defaultDeps(): ExecutorDeps {
+  return {
+    claimOutboundSend: (actionId) => claimOutboundSendDb(actionId),
+    confirmOutboundSend: (actionId, providerMessageId) =>
+      confirmOutboundSendDb(actionId, providerMessageId),
+    recordSkippedDuplicate: (familyId, actionId) =>
+      recordSendSkippedDuplicate(familyId, actionId),
+    sendEmail: postmarkSend,
+  };
 }
 
 /**
@@ -18,7 +56,10 @@ interface ExecutorRunInput {
  * pretending to succeed — which would silently degrade the
  * autonomous-trust promise.
  */
-export async function runExecutor(input: ExecutorRunInput): Promise<ExecutionResult> {
+export async function runExecutor(
+  input: ExecutorRunInput,
+  deps: ExecutorDeps = defaultDeps(),
+): Promise<ExecutionResult> {
   logger.info(
     {
       familyId: input.familyId,
@@ -31,7 +72,7 @@ export async function runExecutor(input: ExecutorRunInput): Promise<ExecutionRes
   switch (input.approved.actionType) {
     case 'send_email':
     case 'reply_to_email':
-      return sendEmail(input);
+      return sendEmail(input, deps);
 
     case 'create_calendar_event':
     case 'update_calendar_event':
@@ -71,9 +112,9 @@ export async function runExecutor(input: ExecutorRunInput): Promise<ExecutionRes
   }
 }
 
-// ─── send_email via Postmark ────────────────────────────────────────────
+// ─── send_email ──────────────────────────────────────────────────────────
 
-interface EmailPayload {
+export interface EmailPayload {
   to?: string;
   from?: string;
   subject?: string;
@@ -82,18 +123,64 @@ interface EmailPayload {
   reply_to_message_id?: string;
 }
 
-async function sendEmail(input: ExecutorRunInput): Promise<ExecutionResult> {
-  if (!process.env.POSTMARK_API_KEY) {
-    throw notConfigured('POSTMARK_API_KEY is not set; cannot send email.');
-  }
-  const from = process.env.POSTMARK_FROM_ADDRESS;
-  if (!from) {
-    throw notConfigured('POSTMARK_FROM_ADDRESS is not set.');
-  }
-
+/**
+ * Claim-then-send. The claim insert is the idempotency gate: on a pg-boss
+ * redelivery (e.g. a worker that sent successfully but crashed before the
+ * orchestrator committed) the claim conflicts, so the provider is never
+ * called twice. sent_at is written only after the provider confirms.
+ */
+async function sendEmail(input: ExecutorRunInput, deps: ExecutorDeps): Promise<ExecutionResult> {
+  const actionId = input.approved.id;
   const payload = input.approved.payload as EmailPayload;
   if (!payload.to || !payload.subject || !payload.body) {
     throw new Error('send_email payload missing required fields (to, subject, body)');
+  }
+
+  const claimed = await deps.claimOutboundSend(actionId);
+  if (!claimed) {
+    logger.warn(
+      { familyId: input.familyId, actionId },
+      'executor: outbound send already claimed — skipping duplicate send',
+    );
+    await deps.recordSkippedDuplicate(input.familyId, actionId);
+    return {
+      ok: true,
+      executedAt: new Date().toISOString(),
+      detail: { kind: 'send_skipped_duplicate', actionId },
+      reversible: false,
+    };
+  }
+
+  const result = await deps.sendEmail(payload);
+  const messageId = result.messageId;
+  if (!messageId) {
+    throw new Error('email provider returned no message id');
+  }
+  await deps.confirmOutboundSend(actionId, messageId);
+
+  return {
+    ok: true,
+    executedAt: new Date().toISOString(),
+    detail: {
+      kind: 'email_sent',
+      messageId,
+      submittedAt: result.submittedAt,
+      recipient: payload.to,
+    },
+    reversible: false,
+    reversalHandle: messageId,
+  };
+}
+
+// ─── Postmark transport ──────────────────────────────────────────────────
+
+async function postmarkSend(payload: EmailPayload): Promise<SendResult> {
+  if (!process.env.POSTMARK_API_KEY) {
+    throw notConfigured('POSTMARK_API_KEY is not set; cannot send email.');
+  }
+  const from = payload.from ?? process.env.POSTMARK_FROM_ADDRESS;
+  if (!from) {
+    throw notConfigured('POSTMARK_FROM_ADDRESS is not set.');
   }
 
   const response = await fetch('https://api.postmarkapp.com/email', {
@@ -119,18 +206,7 @@ async function sendEmail(input: ExecutorRunInput): Promise<ExecutionResult> {
   }
 
   const result = (await response.json()) as { MessageID?: string; SubmittedAt?: string };
-  return {
-    ok: true,
-    executedAt: new Date().toISOString(),
-    detail: {
-      kind: 'email_sent',
-      messageId: result.MessageID,
-      submittedAt: result.SubmittedAt,
-      recipient: payload.to,
-    },
-    reversible: false,
-    reversalHandle: result.MessageID,
-  };
+  return { messageId: result.MessageID, submittedAt: result.SubmittedAt };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────

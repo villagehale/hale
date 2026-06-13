@@ -6,6 +6,28 @@
 
 ---
 
+## 2026-06-12 Rebuild addendum — ratified deviations
+
+The body of this spec is preserved as the locked product/UX/pricing ideation. The rebuild loop (Phase A→B) ratified the deviations below; where they conflict with the body, **the addendum wins**. Rationale and provenance live in `.loop/BRIEF.md` (and `.loop/STATE.md` for the gate decisions).
+
+**Architecture/stack reversals (R1–R5, BRIEF "reversals to ratify"):**
+
+- **R1.** No `@anthropic-ai/claude-agent-sdk` for now (reverses §8.1) — revisit at portal-automation / Computer-Use features.
+- **R2.** Langfuse is the authoring/versioning source synced to disk at build/deploy, not a hot-path fetch (adjusts hard rule #2's letter; inline prompts still forbidden).
+- **R3.** One checkpointed pg-boss queue (`events.ingested` + `events.status` transitions) now; the §2.4 multi-queue state machine is deferred until a second consumer exists.
+- **R4.** The vertical slice executes via Postmark outbound; true Gmail reply-threading is not built yet.
+- **R5.** Mastra + Vercel AI SDK removed (reverses the PR-#2 migration) — structured output is now raw `@anthropic-ai/sdk` tool-forced JSON, so the raw `tool_use` blocks hard rule #3 counts stay visible.
+
+**Four-stage scope expansion** (the body locks newborn 0–12mo only): the product spans the ~18-year childhood. Stage is derived per-child from `dateOfBirth` (no migration — already in schema) via `deriveStage` in `@haru/types`, with boundaries `[12, 48, 156]` months → `newborn | toddler | child | teenager`.
+
+**Pricing as ratified** (user gate; supersedes any pricing in the body): one family-level plan on an autonomy-tier axis — **Free** (L1–L2 observe/draft, all stages, all children) / **Plus $24/mo CAD** (L3 autonomy) / **Family $49/mo CAD** (L3 + commerce + portal automation). Per-stage plans were **rejected** because stages coexist within one family (a household can hold a newborn and a teen at once). Per-child fairness is a bundled event allowance metered off `agent_runs.cost`.
+
+**Teen privacy** (children 13+): raw content is redacted from parents by default (category/summary only); raw-content access needs an explicit, logged, time-limited grant; safety escalation is a named exception with teen notification. Read-only self-view at 13, own-account opt-in at 16. Teen-facing code is deferred past this loop. See hard rules #1 and #5.
+
+For full rationale on every item above, see `.loop/BRIEF.md`.
+
+---
+
 ## Executive Summary
 
 **Haru** is a passive, event-driven, multi-agent autonomous AI system for new parents in Canada. It ingests a family's data streams (email, calendar, photos, integrations), classifies events, drafts actions in the family's voice, verifies them through an independent reviewer agent, and executes routine work autonomously. Parents receive a daily digest of work done on their behalf.
