@@ -117,6 +117,10 @@ interface RecordEventInput {
   /** Teen-content flag, persisted so a crash-resume re-applies the rule-#1
    * teen-redaction cap with the same value the fresh pass saw (FIX 1). */
   teenContent: boolean;
+  /** Which child this event concerns — already validated by the orchestrator
+   * against the family's known children (a hallucinated id arrives here as null).
+   * Null when undeterminable or family-wide. */
+  childId: string | null;
   /** Classifier run metrics — its agent_runs row is written for every event. */
   classifierMetrics: AgentRunMetrics;
 }
@@ -189,6 +193,7 @@ export async function recordEvent(
       classifierConfidence: input.classifierConfidence,
       classifierSuggestion: input.suggestion,
       teenContent: input.teenContent,
+      childId: input.childId,
       classifiedAt: new Date(),
       dedupHash: input.dedupHash,
       status: 'classified',
@@ -550,7 +555,8 @@ export type ActionGateReason =
   | 'observation_window'
   | 'streak'
   | 'cross_parent_consent'
-  | 'teen_redaction';
+  | 'teen_redaction'
+  | 'over_allowance';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -830,6 +836,31 @@ export async function loadFamilyPlanTier(
 }
 
 /**
+ * Sums a family's month-to-date LLM spend (USD) — drives the per-child fairness
+ * valve (over-allowance autonomy gate). Sums `agent_runs.cost_usd` for runs
+ * STARTED on/after the first of the current month; the `agent_runs_family_cost_idx`
+ * (family_id, started_at, cost_usd) serves this scan. `cost_usd` is a numeric
+ * column that Postgres SUMs as text, and is null for runs that recorded no cost,
+ * so COALESCE(SUM(...), 0) and a Number() parse give a plain USD float. The month
+ * boundary is computed in the DB's clock (now()) to match `started_at`.
+ */
+export async function loadFamilyMonthToDateCostUsd(
+  familyId: string,
+  database: Database = db(),
+): Promise<number> {
+  const rows = await database
+    .select({
+      total: sql<string>`COALESCE(SUM(${schema.agentRuns.costUsd}), 0)`,
+    })
+    .from(schema.agentRuns)
+    .where(
+      sql`${schema.agentRuns.familyId} = ${familyId} AND ${schema.agentRuns.startedAt} >= date_trunc('month', now())`,
+    );
+
+  return Number(rows[0]?.total ?? 0);
+}
+
+/**
  * Loads a family's creation timestamp — drives the rule #4 7-day observe window.
  * A family younger than the window NEVER auto-executes.
  */
@@ -878,10 +909,18 @@ export async function loadChildNames(
  */
 export interface FamilyContext {
   stages: FamilyStage[];
+  /** The family's known children, for child attribution. Empty when the family
+   * has no children rows. The orchestrator validates the classifier's
+   * concerns_child_id against these ids before persisting events.child_id. */
+  children: Array<{ id: string; name: string; ageInMonths: number }>;
   contextSlice: {
     childrenAgesMonths: number[];
     province: string;
     timezone: string;
+    /** Carried into the classifier so it can attribute a signal to a child by
+     * name or age/stage cue. Omitted (undefined) when the family has no children
+     * so the serialized slice for single-child/childless families is unchanged. */
+    children?: Array<{ id: string; name: string; ageInMonths: number }>;
   };
 }
 
@@ -897,7 +936,11 @@ export async function loadFamilyContext(
   database: Database = db(),
 ): Promise<FamilyContext> {
   const childRows = await database
-    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
 
@@ -923,12 +966,24 @@ export async function loadFamilyContext(
     )
     .limit(1);
 
+  const children = childRows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    ageInMonths: ageInMonths(r.dateOfBirth),
+  }));
+
   return {
     stages: childRows.map((r) => deriveStage(r.dateOfBirth)),
+    children,
     contextSlice: {
-      childrenAgesMonths: childRows.map((r) => ageInMonths(r.dateOfBirth)),
+      childrenAgesMonths: children.map((c) => c.ageInMonths),
       province: family.province ?? '',
       timezone: parentRows[0]?.timezone ?? 'America/Toronto',
+      // Only surfaced to the classifier when a family has more than one child —
+      // attribution only matters with siblings, and omitting it for single-child
+      // / childless families keeps their serialized context slice byte-identical
+      // (the cached classifier eval is unaffected).
+      ...(children.length > 1 ? { children } : {}),
     },
   };
 }

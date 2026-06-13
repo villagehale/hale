@@ -102,11 +102,13 @@ vi.mock('../services/memory-writer.js', () => ({
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
   loadFamilyPlanTier: vi.fn(async () => 'family' as const),
+  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   loadActionApprovalHistory: vi.fn(async () => approvalHistory),
   loadCrossParentConsent: vi.fn(async () => crossParent),
   loadFamilyContext: vi.fn(async () => ({
     stages: childStages,
+    children: [],
     contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
   })),
 }));

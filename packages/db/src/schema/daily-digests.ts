@@ -1,5 +1,40 @@
-import { pgTable, uuid, date, integer, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, date, integer, jsonb, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { families } from './families.js';
+
+/**
+ * Per-child activity breakdown carried alongside the family-level totals. One
+ * section per child the day's actions could be attributed to, plus an
+ * `unattributed` bucket for actions whose event had no child_id (family-wide or
+ * undeterminable). The family-level *_count columns stay the source of truth for
+ * the existing reader; this is purely additive — a newborn+teenager family can
+ * see each child's activity distinctly. coordinationFlags surface sibling
+ * calendar-overlap coordination signals (a flag, never a block).
+ */
+export interface DigestPerChildBreakdown {
+  children: Array<{
+    childId: string;
+    name: string;
+    handledCount: number;
+    awaitingCount: number;
+    needsYouCount: number;
+    revertedCount: number;
+    totalCount: number;
+  }>;
+  unattributed: {
+    handledCount: number;
+    awaitingCount: number;
+    needsYouCount: number;
+    revertedCount: number;
+    totalCount: number;
+  };
+  coordinationFlags: Array<{
+    kind: 'sibling_calendar_overlap';
+    actionId: string;
+    childId: string | null;
+    siblingChildId: string;
+    detail: string;
+  }>;
+}
 
 /**
  * One per-family-per-day digest summary the web app renders. The worker's
@@ -26,6 +61,11 @@ export const dailyDigests = pgTable(
     needsYouCount: integer('needs_you_count').notNull().default(0),
     revertedCount: integer('reverted_count').notNull().default(0),
     totalCount: integer('total_count').notNull().default(0),
+    /** Per-child sections + an unattributed bucket + sibling coordination flags.
+     * Additive: the family-level *_count columns remain the reader's contract;
+     * this enriches a multi-child family's digest. Null on rows written before
+     * this column existed (additive migration 0004). */
+    perChildBreakdown: jsonb('per_child_breakdown').$type<DigestPerChildBreakdown>(),
     generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

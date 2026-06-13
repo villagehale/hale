@@ -1,0 +1,49 @@
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+/**
+ * The coach model id lives in ONE place: `apps/worker/src/anthropic/client.ts`
+ * (`SONNET_MODEL`), the same constant the worker's agents and the drafter eval
+ * use. apps/web cannot import the worker's internal module, and there's no shared
+ * package that re-exports it, so — exactly as `run-drafter-eval.mjs` does — we
+ * read the constant out of that file at request time rather than mint a second
+ * copy that could drift. Same repo-root anchoring as the prompt loader.
+ */
+
+const CLIENT_REL = join('apps', 'worker', 'src', 'anthropic', 'client.ts');
+
+let cached: string | undefined;
+
+function repoRootFrom(start: string): string | undefined {
+  const marker = join('apps', 'web');
+  const idx = start.lastIndexOf(marker);
+  if (idx === -1) return undefined;
+  return start.slice(0, idx);
+}
+
+function resolveClientPath(): string {
+  const candidates = [
+    repoRootFrom(process.cwd()),
+    repoRootFrom(dirname(fileURLToPath(import.meta.url))),
+  ];
+  for (const root of candidates) {
+    if (!root) continue;
+    const path = join(root, CLIENT_REL);
+    if (existsSync(path)) return path;
+  }
+  throw new Error(`coach model source not found: could not locate ${CLIENT_REL}`);
+}
+
+export async function loadCoachModel(): Promise<string> {
+  if (cached) return cached;
+  const src = await readFile(resolveClientPath(), 'utf8');
+  const match = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
+  const model = match?.[1];
+  if (!model) {
+    throw new Error(`could not parse SONNET_MODEL from ${CLIENT_REL}`);
+  }
+  cached = model;
+  return cached;
+}

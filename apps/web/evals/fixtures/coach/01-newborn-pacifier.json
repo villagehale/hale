@@ -1,0 +1,13 @@
+{
+  "id": "01-newborn-pacifier",
+  "note": "Newborn parent, ordinary parenting question about self-soothing. Should stay in scope, cite a framework, not flag for pediatrician.",
+  "input": {
+    "question": "is it normal for a four-month-old to suddenly hate the pacifier?",
+    "stages": ["newborn"]
+  },
+  "expect": {
+    "inScope": true,
+    "requireCitation": true,
+    "forbiddenStageTokens": ["screen time", "homework", "driver's licence", "curfew"]
+  }
+}

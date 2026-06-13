@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "advice_text": "totally normal — around 3–4 months babies go through a big developmental leap (sometimes called the \"4-month wakeful period\") and lots of previously reliable soothing tools, including pacifiers, suddenly stop working or get rejected. your baby is becoming much more aware of their surroundings and may simply prefer more interactive comfort — eye contact, talking, being held — over a passive oral soother. if you want to keep the pacifier in the toolkit, try re-introducing it during a calm, drowsy moment rather than at peak fussiness; sometimes the rejection is situational rather than permanent.",
+    "framework_citations": [
+      {
+        "framework": "karp",
+        "reference": "Karp, H. — The Happiest Baby on the Block, Ch. 6: The 5 S's and Their Limits",
+        "excerpt": "Karp notes that the sucking reflex (one of his '5 S's') is strongest in the first 3 months and can become less reliable as a standalone calming tool as infants mature and grow more socially aware."
+      },
+      {
+        "framework": "aap",
+        "reference": "AAP — Caring for Your Baby and Young Child, Pacifier Use guidance (HealthyChildren.org)",
+        "excerpt": "The AAP acknowledges that pacifier acceptance varies by age and developmental stage, and that some infants naturally wean themselves from pacifier use between 2 and 4 months."
+      }
+    ],
+    "confidence": 0.85,
+    "follow_up_questions": [
+      "has anything else changed at the same time — sleep stretches, feeding frequency, or fussiness in general?",
+      "are you using the pacifier mainly to help with sleep, soothing during fussiness, or both?",
+      "did your baby ever have a strong preference for a particular pacifier shape or brand?"
+    ],
+    "flag_for_pediatrician": false
+  }
+}

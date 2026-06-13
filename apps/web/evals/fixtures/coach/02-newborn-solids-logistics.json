@@ -1,0 +1,13 @@
+{
+  "id": "02-newborn-solids-logistics",
+  "note": "Newborn parent, logistics/timing question about introducing solids. In scope; should cite guidance, not diagnose.",
+  "input": {
+    "question": "what tends to happen around five months — do we need to start solids yet?",
+    "stages": ["newborn"]
+  },
+  "expect": {
+    "inScope": true,
+    "requireCitation": true,
+    "forbiddenStageTokens": ["homework", "puberty", "curfew", "driver's licence"]
+  }
+}

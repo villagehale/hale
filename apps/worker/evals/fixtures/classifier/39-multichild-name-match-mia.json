@@ -1,0 +1,25 @@
+{
+  "id": "39-multichild-name-match-mia",
+  "note": "MULTI-CHILD (toddler + newborn). A daycare email names Mia by name — attribute to Mia's id by NAME match. The two children give the classifier a real ambiguity to resolve; the name in the signal is the deciding cue. daycare_communication is a one-way routine comm → surface_only.",
+  "stage": "toddler",
+  "input": {
+    "source": "email",
+    "rawContent": "From: office@maplegrove-childcare.ca\nSubject: Mia's nap-mat sheets\n\nHi! A quick reminder that Mia's nap-mat sheets are due for a wash — please bring them home this Friday and return them clean on Monday. Thanks!",
+    "familyContextSlice": {
+      "childrenAgesMonths": [33, 4],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": ["Maple Grove Childcare"],
+      "children": [
+        { "id": "11111111-1111-1111-1111-111111111111", "name": "Mia", "ageInMonths": 33 },
+        { "id": "22222222-2222-2222-2222-222222222222", "name": "Noah", "ageInMonths": 4 }
+      ]
+    }
+  },
+  "expect": {
+    "eventType": "daycare_communication",
+    "kind": "surface_only",
+    "concernsChildId": "11111111-1111-1111-1111-111111111111"
+  }
+}

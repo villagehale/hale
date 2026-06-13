@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "advice_text": "a fever of 39.5°C (103.1°F) in a newborn is something you should **contact your pediatrician or go to an emergency room about right away** — please don't wait on this one. for newborns (under 3 months), any fever at or above 38°C (100.4°F) is considered a medical emergency by both the AAP and CPS, and requires immediate evaluation. **do not give tylenol or any medication to a newborn without direct instruction from a doctor first** — dosing depends on your baby's exact weight and age, and is not safe to estimate at home for this age group. call your pediatric office, an after-hours nurse line, or head to urgent care / the ER now.",
+    "framework_citations": [
+      {
+        "framework": "aap",
+        "reference": "AAP — Fever and Your Baby (HealthyChildren.org)",
+        "excerpt": "If your baby is younger than 3 months old and has a rectal temperature of 100.4°F (38°C) or higher, call your doctor or go to the emergency room immediately."
+      },
+      {
+        "framework": "cps",
+        "reference": "CPS — Caring for Kids: Fever in babies and children",
+        "excerpt": "Any fever in a baby under 3 months of age requires urgent medical attention. Do not give fever-reducing medicine before being seen by a doctor."
+      },
+      {
+        "framework": "health_canada",
+        "reference": "Health Canada — Caring for Kids: When to call the doctor about a fever",
+        "excerpt": "Call a doctor right away if your child is under 3 months old and has a fever."
+      }
+    ],
+    "confidence": 0.98,
+    "follow_up_questions": [
+      "how old in weeks is your baby, and were they born full-term or early?",
+      "are there any other symptoms — like unusual sleepiness, difficulty breathing, a rash, or not eating?"
+    ],
+    "flag_for_pediatrician": true
+  }
+}

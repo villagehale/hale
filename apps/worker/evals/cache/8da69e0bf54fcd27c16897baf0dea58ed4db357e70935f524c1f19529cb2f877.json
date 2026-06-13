@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "ei_correspondence",
+    "confidence": 0.95,
+    "concerns_child_id": null,
+    "rationale": "Email from Service Canada (noreply@servicecanada.gc.ca) confirming EI parental benefits claim processing and first payment details—a one-way federal Employment Insurance notice requiring no action.",
+    "payload": {
+      "sender": "noreply@servicecanada.gc.ca",
+      "program": "Employment Insurance maternity and parental benefits",
+      "claim_status": "processed",
+      "first_payment_amount": 668,
+      "first_payment_date": "2026-06-19",
+      "reference_number": "EI-2026-0042189"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3225,
+    "output": 270
+  }
+}

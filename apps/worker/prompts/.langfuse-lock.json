@@ -2,7 +2,7 @@
   "classifier": {
     "name": "classifier",
     "version": null,
-    "sha256": "6ecd16ca1711bd245e7b075ba4e80bf3acfd59e5a2be789a0d676cd9b1cdb92d"
+    "sha256": "f12b06d3d50833bf7cfdc2e671945bad50355dd260d7d950d61a3b5c2dff0294"
   },
   "coach": {
     "name": "coach",

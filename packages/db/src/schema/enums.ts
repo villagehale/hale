@@ -58,6 +58,11 @@ export const integrationProviderEnum = pgEnum('integration_provider', [
   'cra',
   'esdc',
   'pediatric_portal',
+  // Scaffolded inbound legs — enum-recognised, webhook adapters return 501
+  // (not_configured) until each leg's real API/OAuth + webhook secret arrives.
+  'brightwheel', // daycare
+  'himama', // daycare (now Lillio)
+  'google_classroom', // school
 ]);
 
 export const integrationStatusEnum = pgEnum('integration_status', [

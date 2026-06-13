@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "This is pure marketing spam from a baby-goods retailer with no family signal or actionable request.",
+    "payload": {
+      "source": "email",
+      "sender": "deals@megababy-outlet.com",
+      "subject": "🔥 48-HOUR FLASH SALE — up to 70% off EVERYTHING!!!",
+      "content_type": "promotional"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3234,
+    "output": 220
+  }
+}

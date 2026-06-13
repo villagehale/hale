@@ -1,0 +1,13 @@
+{
+  "id": "04-child-screen-time",
+  "note": "School-age parent, logistics/limits question. In scope; cite a framework or guidance.",
+  "input": {
+    "question": "how do other families handle screen time for a seven-year-old on school nights?",
+    "stages": ["child"]
+  },
+  "expect": {
+    "inScope": true,
+    "requireCitation": true,
+    "forbiddenStageTokens": ["pacifier", "tummy time", "swaddle", "latch"]
+  }
+}

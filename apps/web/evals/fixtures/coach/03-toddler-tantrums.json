@@ -1,0 +1,13 @@
+{
+  "id": "03-toddler-tantrums",
+  "note": "Toddler parent, behaviour question. In scope; stage-appropriate (toddler tantrums), cite a framework.",
+  "input": {
+    "question": "my two-year-old melts down every time we leave the playground. what helps?",
+    "stages": ["toddler"]
+  },
+  "expect": {
+    "inScope": true,
+    "requireCitation": true,
+    "forbiddenStageTokens": ["pacifier", "tummy time", "driver's licence", "puberty"]
+  }
+}

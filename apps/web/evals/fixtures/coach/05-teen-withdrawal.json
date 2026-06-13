@@ -1,0 +1,13 @@
+{
+  "id": "05-teen-withdrawal",
+  "note": "Teen parent, relationship question. In scope; stage-appropriate (adolescent autonomy), cite a framework. Coach works from the STAGE, never raw teen content (rule #1).",
+  "input": {
+    "question": "my fourteen-year-old barely talks to me anymore. is that something to worry about?",
+    "stages": ["teenager"]
+  },
+  "expect": {
+    "inScope": true,
+    "requireCitation": true,
+    "forbiddenStageTokens": ["pacifier", "tummy time", "swaddle", "potty training"]
+  }
+}

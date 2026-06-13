@@ -10,9 +10,11 @@
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.41.0",
     "@hearth/db": "workspace:*",
     "@hearth/tools-contracts": "workspace:*",
     "@hearth/types": "workspace:*",

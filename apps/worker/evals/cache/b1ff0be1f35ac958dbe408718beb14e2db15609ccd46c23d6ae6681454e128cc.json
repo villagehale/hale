@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Email is too vague to classify—it references \"the thing we talked about\" with no context, no institutional sender, and no family-relevant signal in the raw content.",
+    "payload": {
+      "sender_email": "j.reeve@outlook.com",
+      "subject": "hey",
+      "raw_content": "Hi — just wanted to check in about the thing we talked about. Let me know. Thanks!"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3186,
+    "output": 231
+  }
+}

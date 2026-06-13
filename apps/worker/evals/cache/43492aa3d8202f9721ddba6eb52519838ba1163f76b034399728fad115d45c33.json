@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "vaccine_schedule_update",
+    "confidence": 0.9,
+    "rationale": "Official public health notice announcing a routine immunization schedule change for infants, with no action required from the family beyond awareness at their next clinical visit.",
+    "payload": {
+      "source": "immunization@toronto.ca",
+      "issuer": "Public Health Toronto",
+      "subject": "Updated infant immunization schedule",
+      "update_detail": "6-month dose now includes an additional component",
+      "action_required": false,
+      "next_step": "Discuss at next provider visit"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3217,
+    "output": 251
+  }
+}

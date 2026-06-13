@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "advice_text": "leaving the playground is genuinely hard for toddlers — their brains aren't wired yet to shift away from something exciting, so the meltdown isn't defiance, it's neurology. one thing that helps a lot is a **transition warning**: give a \"5 more minutes\" heads-up, then a \"2 more minutes,\" then a \"last turn on the slide.\" this gives their brain a chance to start adjusting before the change hits. why it helps: toddlers have almost no internal sense of time, so the warning builds a tiny bridge between \"playing\" and \"leaving\" instead of a sudden cliff. as an optional next step, you can add a **\"goodbye ritual\"** — wave goodbye to the slide, the swings, the sandbox — which gives the transition a shape and a clear endpoint their brain can grab onto.",
+    "framework_citations": [
+      {
+        "framework": "siegel",
+        "reference": "Siegel & Bryson, The Whole-Brain Child, Chapter 3",
+        "excerpt": "The downstairs brain (limbic/emotional) is dominant in toddlers; transitions without preparation overwhelm its limited capacity for regulation."
+      },
+      {
+        "framework": "markham",
+        "reference": "Markham, Aha! Parenting — Toddler Transitions",
+        "excerpt": "Giving advance notice and naming feelings ('I know it's hard to leave when you're having so much fun') helps children feel understood rather than controlled, reducing the intensity of meltdowns."
+      },
+      {
+        "framework": "lansbury",
+        "reference": "Janet Lansbury, No Bad Kids, Chapter on Transitions",
+        "excerpt": "Acknowledge the child's disappointment matter-of-factly and follow through calmly — the predictability itself becomes reassuring over time."
+      }
+    ],
+    "confidence": 0.88,
+    "follow_up_questions": [
+      "does the meltdown usually happen at the moment you say it's time to go, or once you're already walking away?",
+      "does your child respond better to countdowns, physical cues (like a timer), or something else?",
+      "is leaving the playground a daily routine, or does it happen less predictably?"
+    ],
+    "flag_for_pediatrician": false
+  }
+}

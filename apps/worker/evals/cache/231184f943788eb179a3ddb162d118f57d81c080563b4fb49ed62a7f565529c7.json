@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "Daycare is formally offering an enrollment spot and requesting explicit parent action (confirm and deposit) within a deadline.",
+    "payload": {
+      "source": "admin@sunnydays-daycare.ca",
+      "daycare_name": "Sunny Days Daycare",
+      "room_type": "toddler room",
+      "start_date": "2024-09-02",
+      "action_required": "confirm enrollment and send deposit",
+      "deposit_amount": 300,
+      "deposit_method": "e-transfer",
+      "deadline_days": 5,
+      "consequence": "spot released to next family on waitlist"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3717,
+    "output": 302
+  }
+}

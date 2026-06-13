@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.92,
+    "rationale": "Routine daycare message from known provider (Maple Grove) about a closure notice (Monday PD day) and equipment reminders for a toddler in the typical stage for this volume of daycare comm.",
+    "payload": {
+      "sender": "toddlers@maplegrove-childcare.ca",
+      "sender_name": "Ms. Dani",
+      "daycare_name": "Maple Grove Childcare",
+      "closure_date": "next Monday",
+      "closure_reason": "staff PD day",
+      "requests": [
+        "send extra set of weather-appropriate clothes",
+        "label water bottle"
+      ],
+      "context": "centre heading outside more"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3716,
+    "output": 295
+  }
+}

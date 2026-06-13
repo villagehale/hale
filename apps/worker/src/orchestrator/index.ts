@@ -19,6 +19,7 @@ import {
   loadApprovedVerdictForAction,
   loadFamilyPlanTier,
   loadFamilyCreatedAt,
+  loadFamilyMonthToDateCostUsd,
   loadActionApprovalHistory,
   loadCrossParentConsent,
   loadFamilyContext,
@@ -29,6 +30,8 @@ import {
   mintApprovedAction,
   hasEntitlement,
   entitlementRequiredFor,
+  isOverAllowance,
+  monthlyAllowanceUsd,
   type DraftedAction,
   type ApprovedAction,
   type ActionType,
@@ -156,6 +159,15 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       stages,
       familyContextSlice: familyContext.contextSlice,
     });
+    // Child attribution: trust the classifier's concerns_child_id ONLY if it
+    // names a real child of this family — a hallucinated or stale id is dropped
+    // to null rather than written as a dangling reference. events.child_id is
+    // additive + nullable, so null (undeterminable or family-wide) is fine.
+    const knownChildIds = new Set(familyContext.children.map((c) => c.id));
+    const childId =
+      fresh.concernsChildId && knownChildIds.has(fresh.concernsChildId)
+        ? fresh.concernsChildId
+        : null;
     const { eventId, duplicate } = await recordEvent({
       familyId,
       source: job.source,
@@ -165,6 +177,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       dedupHash: fresh.dedupHash,
       suggestion: fresh.suggestion,
       teenContent: fresh.teenContent,
+      childId,
       classifierMetrics: fresh.runMetrics,
     });
 
@@ -333,6 +346,41 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       actionType: draft.actionType,
       planTier,
       requiredEntitlement: missing,
+    });
+    return;
+  }
+
+  // Per-child fairness valve — sits AFTER the entitlement gate, throttling
+  // AUTONOMY only. A family that has blown past its month-to-date LLM-cost
+  // allowance (scaled by child count so big families aren't unfairly cut off)
+  // does NOT auto-execute; the action stays at its drafted_for_approval default
+  // and a distinct action.gated.over_allowance audit carries an upgrade nudge.
+  // childCount is the raw children-row count (one stage per child); reuses the
+  // familyContext loaded once above rather than a second query.
+  const childCount = familyContext.stages.length;
+  const monthToDateCostUsd = await loadFamilyMonthToDateCostUsd(familyId);
+  if (isOverAllowance(monthToDateCostUsd, planTier, childCount)) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    const allowanceUsd = monthlyAllowanceUsd(planTier, childCount);
+    logger.info(
+      { familyId, actionId, planTier, childCount, monthToDateCostUsd, allowanceUsd },
+      'orchestrator: family over monthly LLM-cost allowance — drafted for approval (autonomy paused)',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'over_allowance',
+      detail: {
+        planTier,
+        childCount,
+        monthToDateCostUsd,
+        allowanceUsd,
+        nudge:
+          planTier === 'free'
+            ? 'Upgrade to Plus to raise your monthly automation allowance.'
+            : 'You have reached this month’s automation allowance; Hearth will keep drafting for your approval and resume acting on its own next month.',
+      },
     });
     return;
   }

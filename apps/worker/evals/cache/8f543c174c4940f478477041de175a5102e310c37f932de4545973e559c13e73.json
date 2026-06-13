@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "school_communication",
+    "confidence": 0.95,
+    "rationale": "Routine one-way notification from a school about report card availability and optional parent-teacher conference booking; no parent action required unless they choose to meet.",
+    "payload": {
+      "sender": "Elmwood Public School (schoolboard)",
+      "subject": "Term 2 report cards now available",
+      "grade": "Grade 3",
+      "content_type": "report_card_notification",
+      "ptc_window": "week of March 10",
+      "action_required": false,
+      "optional_action": "book_parent_teacher_conference",
+      "portal_required": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3725,
+    "output": 270
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "family_share_request",
+    "confidence": 0.95,
+    "rationale": "A grandparent is explicitly requesting recent photos of the infant to share, with a casual tone but clear ask for action.",
+    "payload": {
+      "from": "grandma.ruth@gmail.com",
+      "request_type": "photos",
+      "context": "Grandparent wants to print a photo for the fridge",
+      "tone": "casual, low-pressure"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "share_photos_with_family"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3215,
+    "output": 240
+  }
+}

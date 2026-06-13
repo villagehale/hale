@@ -10,6 +10,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { families } from './families.js';
+import { children } from './children.js';
 import { eventStatusEnum } from './enums.js';
 
 /**
@@ -34,6 +35,12 @@ export const events = pgTable(
     /** Provider-side id used for additional dedup (Gmail message id, etc). */
     sourceExternalId: text('source_external_id'),
     eventType: text('event_type').notNull(),
+    /** Which child this event concerns, when the classifier could determine it
+     * (name match against the family's children, or age/stage cues). Null when
+     * undeterminable or family-wide — makes per-child digest grouping possible
+     * without forcing every event to belong to a child. ON DELETE SET NULL: a
+     * removed child must not cascade-delete the family's event history. */
+    childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     /** Classifier's routing suggestion, persisted so a crash-resume can route
      * without re-running the (billable) classifier — B10 re-entrancy. */

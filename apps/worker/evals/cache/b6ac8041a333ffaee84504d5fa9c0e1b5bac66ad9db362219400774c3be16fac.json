@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.95,
+    "concerns_child_id": "11111111-1111-1111-1111-111111111111",
+    "rationale": "Routine daycare request to send home and return clean nap-mat sheets, named specifically to Mia.",
+    "payload": {
+      "sender": "Maple Grove Childcare",
+      "message_type": "supply_care_request",
+      "child_name": "Mia",
+      "request": "Wash and return nap-mat sheets",
+      "due_date": "Friday (bring home) / Monday (return clean)",
+      "urgency": "routine"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "usage": {
+    "input": 3774,
+    "output": 265
+  }
+}

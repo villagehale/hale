@@ -123,6 +123,7 @@ vi.mock('../services/memory-writer.js', () => ({
     rationale: 'all green',
   })),
   loadFamilyPlanTier: vi.fn(async () => 'family' as const),
+  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   recordActionGate: vi.fn(async () => {}),
   // Fix-wave B gates all cleared so the FIX 1 resume path still executes:
   // old family, full send_email streak, single-parent, newborn stage.
@@ -136,6 +137,7 @@ vi.mock('../services/memory-writer.js', () => ({
   })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],
+    children: [],
     contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
   })),
 }));

@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "advice_text": "screen time on school nights is one of those things families land in very different places on — and that's okay. the research-backed consensus is to keep it bounded and intentional rather than zero-or-unlimited. a common pattern for 7-year-olds is **no screens within 1 hour of bedtime**, a daily cap somewhere in the **1–2 hour range** (not counting schoolwork), and a clear, consistent off-switch signal (a timer, a family phrase, a visual chart) so the end of screen time doesn't become a nightly battle. the *why* is pretty well established: the blue light and stimulation from screens push back melatonin release and wind-up the nervous system right when you need it to wind down. the optional next step is to involve your 7-year-old in setting the rule together — kids this age are much more likely to respect a limit they helped create, and it builds real self-regulation skills over time.",
+    "framework_citations": [
+      {
+        "framework": "aap",
+        "reference": "AAP Family Media Plan — HealthyChildren.org (2023)",
+        "excerpt": "For children 6 and older, place consistent limits on time spent and make sure screen time does not take the place of adequate sleep, physical activity, and other behaviors essential to health."
+      },
+      {
+        "framework": "siegel",
+        "reference": "Siegel & Bryson, 'The Whole-Brain Child' (2011), Chapter 4",
+        "excerpt": "Involving children in family decisions about rules engages the upstairs brain and builds the capacity for self-regulation."
+      },
+      {
+        "framework": "markham",
+        "reference": "Markham, 'Peaceful Parent, Happy Kids' (2012)",
+        "excerpt": "When children help create family agreements, cooperation replaces power struggles because they feel respected and heard."
+      }
+    ],
+    "confidence": 0.88,
+    "follow_up_questions": [
+      "what does your child's current school-night routine look like — is screen time happening before or after homework/dinner?",
+      "is the main challenge getting started with limits, or enforcing them once they're set?",
+      "does your child use screens for creative stuff (drawing apps, coding games) or mostly passive watching — that might shape what kind of limit feels right?"
+    ],
+    "flag_for_pediatrician": false
+  }
+}

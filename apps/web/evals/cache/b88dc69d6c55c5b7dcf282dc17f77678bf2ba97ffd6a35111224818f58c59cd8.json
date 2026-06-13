@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "advice_text": "pulling back from parents is one of the most normal things a 14-year-old can do — it's actually a sign their brain is doing exactly what it's supposed to. adolescents are wired to start transferring trust and closeness toward peers as they build their own identity. that said, \"normal quietness\" and \"worrying withdrawal\" do look different, and it's worth knowing the distinction.\n\n**the one thing that tends to help most:** keep low-stakes, side-by-side time going — a car ride, cooking together, watching a show they like. siegel's research calls this \"presence without agenda,\" and it keeps the connection warm without putting them on the spot. teens are much more likely to open up when they're not being directly asked to open up.\n\n**why it helps:** direct eye contact and direct questions can feel interrogating to an adolescent brain. parallel activity lowers the social pressure and lets conversation happen on their terms, which markham describes as \"sportscaster\" connection — you're just *there*, narrating or sharing, not interviewing.\n\n**one optional next step:** notice the texture of the quiet. is it moody-but-still-eating-sleeping-seeing-friends? probably typical. is it accompanied by dropping grades, loss of interest in everything they used to enjoy, or changes in sleep and appetite? that's worth a chat with your pediatrician or a counselor. you know your kid — trust that instinct.",
+    "framework_citations": [
+      {
+        "framework": "siegel",
+        "reference": "Siegel, D. & Bryson, T. — The Whole-Brain Child (2011), Ch. 6",
+        "excerpt": "Staying present and connected without an agenda keeps the attachment channel open during adolescence."
+      },
+      {
+        "framework": "markham",
+        "reference": "Markham, L. — Peaceful Parent, Happy Kids (2012), Part III: Coaching, Not Controlling",
+        "excerpt": "Low-pressure, side-by-side presence — 'sportscasting' — invites teens to share on their own terms rather than feeling interrogated."
+      },
+      {
+        "framework": "aap",
+        "reference": "AAP — Caring for Your Teenager (healthychildren.org, 2023)",
+        "excerpt": "Increased privacy-seeking and peer orientation in early-to-mid adolescence is developmentally expected; persistent withdrawal paired with mood changes or functional decline warrants professional evaluation."
+      }
+    ],
+    "confidence": 0.82,
+    "follow_up_questions": [
+      "has anything changed recently at school or with their friend group?",
+      "are they still sleeping and eating roughly normally?",
+      "is there a particular topic or moment where the quietness feels different — more shut-down than just private?"
+    ],
+    "flag_for_pediatrician": false
+  }
+}

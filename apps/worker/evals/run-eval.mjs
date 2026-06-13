@@ -50,6 +50,7 @@ const PRICE_PER_MTOK = { input: 1.0, output: 5.0 };
 
 const ACCURACY_BAR = 0.85;
 const ROUTING_BAR = 0.85;
+const ATTRIBUTION_BAR = 0.85;
 
 // --- read the single sources of truth from worker source -------------------
 
@@ -117,6 +118,7 @@ const OUTPUT_JSON_SCHEMA = {
       },
       required: ['kind'],
     },
+    concerns_child_id: { type: ['string', 'null'] },
   },
   required: ['event_type', 'confidence', 'rationale', 'payload', 'suggested_action'],
 };
@@ -291,6 +293,23 @@ function expectedRoutingLabel(fixture) {
   return e.kindOneOf.join('|');
 }
 
+// A fixture opts INTO child-attribution scoring by declaring `concernsChildId`
+// (a child id the signal should be attributed to, or null for family-wide /
+// undeterminable). Multi-child families are the only case where attribution
+// matters, so these fixtures carry a `children` list in their context slice.
+function isAttributionScored(fixture) {
+  return Object.prototype.hasOwnProperty.call(fixture.expect, 'concernsChildId');
+}
+
+// Attribution is correct iff the returned id matches (null === null, or the
+// exact child id). A returned id that is not in the fixture's `children` list is
+// always a miss — the orchestrator would drop it to null, so the model should too.
+function attributionMatches(fixture, returned) {
+  const expected = fixture.expect.concernsChildId;
+  const value = returned ?? null;
+  return value === expected;
+}
+
 async function main() {
   const arg = process.argv.find((a) => a.startsWith('--classifier='));
   const mode = arg ? arg.split('=')[1] : 'real';
@@ -319,11 +338,14 @@ async function main() {
   let typeScoredCount = 0;
   let routingCorrect = 0;
   let routingScoredCount = 0;
+  let attributionCorrect = 0;
+  let attributionScoredCount = 0;
   let liveCalls = 0;
   let totalIn = 0;
   let totalOut = 0;
   const typeMisses = [];
   const routingMisses = [];
+  const attributionMisses = [];
   const calibrationFails = [];
 
   for (const fixture of fixtures) {
@@ -355,6 +377,17 @@ async function main() {
       }
     }
 
+    if (isAttributionScored(fixture)) {
+      attributionScoredCount += 1;
+      if (attributionMatches(fixture, result.concerns_child_id)) attributionCorrect += 1;
+      else
+        attributionMisses.push({
+          id: fixture.id,
+          expected: fixture.expect.concernsChildId ?? 'null',
+          got: result.concerns_child_id ?? 'null',
+        });
+    }
+
     if (isCalibrationCase(fixture)) {
       const cap = fixture.expect.maxConfidence;
       if (!(result.confidence < cap)) {
@@ -369,6 +402,8 @@ async function main() {
 
   const accuracy = correct / typeScoredCount;
   const routingAccuracy = routingScoredCount > 0 ? routingCorrect / routingScoredCount : 1;
+  const attributionAccuracy =
+    attributionScoredCount > 0 ? attributionCorrect / attributionScoredCount : 1;
 
   console.log('');
   console.log('--- results ---');
@@ -388,6 +423,18 @@ async function main() {
     for (const m of routingMisses) console.log(`  - ${m.id}: expected ${m.expected}, got ${m.got}`);
   } else {
     console.log('routing misses: none');
+  }
+
+  console.log(
+    `child-attribution accuracy: ${(attributionAccuracy * 100).toFixed(1)}% (${attributionCorrect}/${attributionScoredCount})`,
+  );
+  if (attributionMisses.length) {
+    console.log(`attribution misses (${attributionMisses.length}):`);
+    for (const m of attributionMisses) {
+      console.log(`  - ${m.id}: expected ${m.expected}, got ${m.got}`);
+    }
+  } else {
+    console.log('attribution misses: none');
   }
 
   const calibrationCases = fixtures.filter(isCalibrationCase).length;
@@ -410,13 +457,17 @@ async function main() {
 
   const accuracyPass = accuracy >= ACCURACY_BAR;
   const routingPass = routingAccuracy >= ROUTING_BAR;
+  const attributionPass = attributionAccuracy >= ATTRIBUTION_BAR;
   const calibrationPass = calibrationFails.length === 0;
-  const pass = accuracyPass && routingPass && calibrationPass;
+  const pass = accuracyPass && routingPass && attributionPass && calibrationPass;
 
   console.log('');
   console.log('--- gate ---');
   console.log(`event_type accuracy >= ${ACCURACY_BAR * 100}%: ${accuracyPass ? 'PASS' : 'FAIL'}`);
   console.log(`routing-kind accuracy >= ${ROUTING_BAR * 100}%: ${routingPass ? 'PASS' : 'FAIL'}`);
+  console.log(
+    `child-attribution accuracy >= ${ATTRIBUTION_BAR * 100}%: ${attributionPass ? 'PASS' : 'FAIL'}`,
+  );
   console.log(`all calibration cases below threshold: ${calibrationPass ? 'PASS' : 'FAIL'}`);
   console.log(`overall: ${pass ? 'PASS (exit 0)' : 'FAIL (exit 1)'}`);
 

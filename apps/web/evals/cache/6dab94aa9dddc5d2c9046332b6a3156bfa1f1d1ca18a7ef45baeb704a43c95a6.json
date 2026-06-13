@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "advice_text": "around five months, a lot of parents notice their baby suddenly seems hungrier, wakes more at night, and starts eyeing food with serious curiosity — this is often called a **growth spurt or developmental leap**, and it can feel like a signal to start solids. the good news: you don't need to rush. both the AAP and Health Canada recommend waiting until **around 6 months** (and not before 4 months) before introducing solid foods. the key readiness signs to watch for are: baby can sit with minimal support and hold their head steady, they've lost the tongue-thrust reflex (they don't automatically push food out), and they show genuine interest in food. hitting the calendar date of 5 months doesn't check those boxes on its own. if your baby is going through a growth spurt right now, offering more frequent nursing or bottle feeds is the right move — extra milk genuinely satisfies it. when you do get closer to 6 months, starting with iron-rich foods (pureed meats, fortified single-grain cereal, or mashed legumes) is the recommended first step.",
+    "framework_citations": [
+      {
+        "framework": "aap",
+        "reference": "AAP Policy Statement: Introducing Solid Foods (2012, reaffirmed 2021)",
+        "excerpt": "The AAP recommends exclusive breastfeeding for about 6 months, and introduction of complementary foods no earlier than 4 months, with most babies ready around 6 months."
+      },
+      {
+        "framework": "health_canada",
+        "reference": "Health Canada — Infant Feeding Joint Statement (2012)",
+        "excerpt": "Solid foods should be introduced at around 6 months of age. Do not start before 4 months. Iron-rich foods should be among the first foods introduced."
+      },
+      {
+        "framework": "cps",
+        "reference": "CPS Position Statement: Nutrition for Healthy Term Infants (2013, updated 2023)",
+        "excerpt": "Developmental readiness signs — sitting with support, head control, and loss of the extrusion reflex — should guide timing alongside age."
+      }
+    ],
+    "confidence": 0.92,
+    "follow_up_questions": [
+      "is your baby showing any of the readiness signs — sitting with support, good head control, or reaching for your food?",
+      "are you breastfeeding, formula-feeding, or a mix? that can affect how we think about iron needs when solids do start.",
+      "has your pediatrician weighed in on timing at your last well-baby visit?"
+    ],
+    "flag_for_pediatrician": false
+  }
+}

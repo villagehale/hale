@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.92,
+    "rationale": "Feeding tracker export from an infant (3 months old) showing a 7-day trend of declining intake and shift toward more frequent shorter feeds—a clear feeding pattern signal warranting family awareness.",
+    "payload": {
+      "metric": "feeding",
+      "window_days": 7,
+      "avg_feeds_per_day": 7.8,
+      "avg_volume_ml": 118,
+      "trend": "declining_intake",
+      "note": "daily volume down ~15% vs prior week; more frequent shorter feeds"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3213,
+    "output": 257
+  }
+}

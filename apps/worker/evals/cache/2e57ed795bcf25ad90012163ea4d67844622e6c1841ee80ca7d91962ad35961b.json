@@ -1,0 +1,32 @@
+{
+  "parsed": {
+    "event_type": "calendar_conflict_detected",
+    "confidence": 0.95,
+    "rationale": "A toddler swim lesson (16:30–17:00) overlaps with daycare pickup (16:00–16:45), creating a hard scheduling conflict that needs surfacing and resolution.",
+    "payload": {
+      "added_event": {
+        "title": "Toddler Swim — Mia",
+        "start": "2026-09-10T16:30:00-04:00",
+        "end": "2026-09-10T17:00:00-04:00"
+      },
+      "conflicting_event": {
+        "title": "Daycare pickup",
+        "start": "2026-09-10T16:00:00-04:00",
+        "end": "2026-09-10T16:45:00-04:00"
+      },
+      "overlap_window": {
+        "start": "2026-09-10T16:30:00-04:00",
+        "end": "2026-09-10T16:45:00-04:00",
+        "duration_minutes": 15
+      }
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3761,
+    "output": 394
+  }
+}

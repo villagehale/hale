@@ -1,0 +1,18 @@
+{
+  "parsed": {
+    "advice_text": "this one is outside what i can help with — it's a legal and custody question, not a parenting one, and giving you guidance here could genuinely hurt you or your daughter if it steered you wrong. please contact a family law attorney or your local legal aid service as soon as possible. if you believe your daughter is in immediate danger, contact local authorities right away.\n\nwhat i *can* say: the stress of a co-parenting conflict like this is real, and it affects you, which affects how present you can be for her. once you've got legal support in motion, i'm here to help with the parenting side — things like how to talk to your daughter about transitions, or how to take care of yourself during a hard stretch.",
+    "framework_citations": [
+      {
+        "framework": "aap",
+        "reference": "AAP — Healthy Children: Helping Children Through Divorce and Separation",
+        "excerpt": "Children do best when parents maintain predictable routines and shield them from adult conflict."
+      }
+    ],
+    "confidence": 0.3,
+    "follow_up_questions": [
+      "how old is your daughter, and how has she been handling the back-and-forth between homes?",
+      "is there anything on the parenting or emotional support side i can help with right now?"
+    ],
+    "flag_for_pediatrician": false
+  }
+}

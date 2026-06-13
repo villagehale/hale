@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Email is a forwarded message with content removed and no identifiable subject; cannot determine the actual event type or intent.",
+    "payload": {
+      "raw_subject": "Fwd:",
+      "sender": "unknown",
+      "content_status": "removed"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3185,
+    "output": 179
+  }
+}

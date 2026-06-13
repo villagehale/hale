@@ -92,6 +92,7 @@ vi.mock('../services/memory-writer.js', () => ({
   markEventStage: vi.fn(async () => {}),
   loadActionForEvent: vi.fn(async () => null),
   loadFamilyPlanTier: vi.fn(async () => familyTier),
+  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   // Fix-wave B gates: clear them all so the entitlement gate is the only brake
   // under test — old family, full streak, single-parent, newborn stage.
   loadFamilyCreatedAt: vi.fn(async () => new Date('2020-01-01T00:00:00.000Z')),
@@ -104,6 +105,7 @@ vi.mock('../services/memory-writer.js', () => ({
   })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],
+    children: [],
     contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
   })),
 }));

@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Sleep pattern signals are reserved for infants/newborns; this child is 9 years old (school-age), and the observation lacks clinical relevance or family action required.",
+    "payload": {
+      "trigger": "sleep_observation",
+      "child_age_months": 108,
+      "note": "logged shorter overnight sleep and later bedtimes across the past two weeks for the 9-year-old",
+      "reason_unclassified": "sleep_pattern_signal not applicable to school-age child; no actionable family concern or clinical signal"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3677,
+    "output": 258
+  }
+}

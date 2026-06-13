@@ -73,6 +73,7 @@ let crashAfterClassify = false;
 vi.mock('../services/memory-writer.js', () => ({
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],
+    children: [],
     contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
   })),
   loadResumePoint: vi.fn(async (_fam: string, hash: string) => store.get(hash) ?? null),

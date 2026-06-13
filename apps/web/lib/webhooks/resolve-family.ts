@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hearth/db';
 import { db as defaultDb } from '~/lib/db';
+import { getAdapter } from '~/lib/webhooks/registry';
 
 /**
  * Maps an inbound webhook payload to a family_id by extracting the
@@ -36,39 +37,15 @@ export async function resolveFamilyFromWebhook(
 }
 
 /**
- * Pulls the stable external identifier each provider carries in its webhook
- * body — the same value stored on the integration at connect time. Returns
- * null for unknown providers or payloads missing the identifier.
+ * Pulls the stable external identifier a provider carries in its webhook body by
+ * dispatching to the provider's registry adapter — the per-provider logic lives
+ * in one place (the registry), not a switch here. Returns null for unknown
+ * providers or payloads missing the identifier.
  */
 function extractExternalId(provider: string, payload: unknown): string | null {
-  if (!isRecord(payload)) {
+  const adapter = getAdapter(provider);
+  if (!adapter) {
     return null;
   }
-
-  switch (provider) {
-    case 'gmail':
-      // Gmail push delivers the mailbox address inside the Pub/Sub message.
-      return readString(payload.emailAddress);
-    case 'gcal':
-      // Google Calendar push echoes the watch channel id.
-      return readString(payload.channelId) ?? readString(payload.resourceId);
-    case 'outlook':
-      // Microsoft Graph change notifications carry the subscription id.
-      return readString(payload.subscriptionId);
-    case 'stripe':
-      // Stripe Connect events name the connected account.
-      return readString(payload.account);
-    case 'twilio':
-      return readString(payload.AccountSid);
-    default:
-      return null;
-  }
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return adapter.extractExternalId(payload);
 }

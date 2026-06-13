@@ -48,14 +48,20 @@ vi.mock('../services/executor.js', () => ({ runExecutor: vi.fn() }));
 // the classifier context slice from these; the orchestrator must consult it.
 const families: Record<
   string,
-  { stages: FamilyStage[]; contextSlice: { childrenAgesMonths: number[]; province: string; timezone: string } }
+  {
+    stages: FamilyStage[];
+    children: Array<{ id: string; name: string; ageInMonths: number }>;
+    contextSlice: { childrenAgesMonths: number[]; province: string; timezone: string };
+  }
 > = {
   'teen-fam': {
     stages: ['teenager'],
+    children: [{ id: 'c-teen', name: 'Ava', ageInMonths: 170 }],
     contextSlice: { childrenAgesMonths: [170], province: 'ON', timezone: 'America/Toronto' },
   },
   'no-children-fam': {
     stages: [],
+    children: [],
     contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
   },
 };

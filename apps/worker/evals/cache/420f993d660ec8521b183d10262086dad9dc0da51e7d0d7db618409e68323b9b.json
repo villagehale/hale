@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "employer_hr_correspondence",
+    "confidence": 0.92,
+    "rationale": "Direct HR communication about parental leave benefits and return-to-work logistics from the employer; requires parental confirmation of return date by a specific deadline.",
+    "payload": {
+      "sender": "hr@northwind-systems.com",
+      "subject": "Your parental leave top-up and return date",
+      "leave_end_date": "2026-09-08",
+      "benefit_details": "Company top-up to 85% of salary for the first 12 weeks",
+      "action_required": "Confirm planned return-to-work date",
+      "deadline": "2026-08-01"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3239,
+    "output": 293
+  }
+}

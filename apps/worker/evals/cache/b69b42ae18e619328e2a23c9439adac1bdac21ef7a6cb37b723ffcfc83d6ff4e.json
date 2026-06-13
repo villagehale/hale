@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "delivery_update",
+    "confidence": 0.95,
+    "rationale": "A one-way package delivery notification from Canada Post indicating parcel status and expected delivery window.",
+    "payload": {
+      "carrier": "Canada Post",
+      "tracking_number": "7023 1188 4421",
+      "sender": "EverydayBaby",
+      "status": "out_for_delivery",
+      "expected_delivery": "today before 8 PM",
+      "signature_required": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3209,
+    "output": 230
+  }
+}

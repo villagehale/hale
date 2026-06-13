@@ -1,0 +1,25 @@
+{
+  "id": "40-multichild-stage-cue-newborn",
+  "note": "MULTI-CHILD (teenager + newborn). A clinic reminder for a WELL-BABY / 2-month visit names no child, but only one child is an infant — attribute to the newborn by an unambiguous age/stage cue. A reminder is a one-way notice → surface_only.",
+  "stage": "newborn",
+  "input": {
+    "source": "email",
+    "rawContent": "From: reminders@littlesprout-pediatrics.ca\nSubject: Upcoming well-baby visit\n\nThis is a reminder of an upcoming 2-month well-baby visit on Thursday at 9:30 AM with Dr. Okafor. The visit includes the 2-month immunizations. Reply STOP to opt out.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [170, 2],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": ["Little Sprout Pediatrics"],
+      "knownDaycares": [],
+      "children": [
+        { "id": "33333333-3333-3333-3333-333333333333", "name": "Ava", "ageInMonths": 170 },
+        { "id": "44444444-4444-4444-4444-444444444444", "name": "Leo", "ageInMonths": 2 }
+      ]
+    }
+  },
+  "expect": {
+    "eventType": "pediatric_appointment_reminder",
+    "kind": "surface_only",
+    "concernsChildId": "44444444-4444-4444-4444-444444444444"
+  }
+}

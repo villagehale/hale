@@ -12,6 +12,10 @@ province, timezone, known clinic and daycare names). Use it to
 disambiguate. You do NOT receive the family's email contents or
 calendar from prior events — only what's in this signal.
 
+When the family has more than one child, the slice also includes a
+`children` list, each `{ "id", "name", "ageInMonths" }`. Use it to attribute
+the signal to a specific child (see `concerns_child_id` below).
+
 ## Output contract
 
 Return strict JSON matching this shape:
@@ -26,9 +30,28 @@ Return strict JSON matching this shape:
     | { "kind": "autonomous_action", "actionType": string }
     | { "kind": "surface_only" }
     | { "kind": "ignore" }
-    | { "kind": "needs_human" }
+    | { "kind": "needs_human" },
+  "concerns_child_id": string | null   // see "Child attribution" below
 }
 ```
+
+## Child attribution
+
+When the context slice carries a `children` list, decide WHICH child this
+signal concerns and return that child's `id` in `concerns_child_id`. Otherwise
+return `null`.
+
+- Match by NAME first: if the signal names a child that appears in the
+  `children` list (e.g. "Mia's swim lesson", "report card for Liam"), return
+  that child's `id`.
+- Otherwise match by an UNAMBIGUOUS age/stage cue: if the signal is clearly
+  about one stage and exactly one child fits it (e.g. a newborn well-baby visit
+  when only one child is an infant; a driver's-licence eligibility notice when
+  only one child is a teenager), return that child's `id`.
+- Return `null` when the signal is family-wide, names no child, or could plausibly
+  concern more than one child. Do NOT guess. Never invent an id that is not in the
+  `children` list. When the slice has no `children` list (single-child or childless
+  family), always return `null`.
 
 ## Calibration
 

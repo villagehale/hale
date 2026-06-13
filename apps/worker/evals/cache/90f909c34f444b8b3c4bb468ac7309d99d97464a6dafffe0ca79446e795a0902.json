@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "subscription_renewal_due",
+    "confidence": 0.95,
+    "rationale": "A subscription renewal notice from a diaper supplier with a specific renewal date and action window (skip or change by June 15).",
+    "payload": {
+      "sender": "billing@everydaybaby.ca",
+      "product": "Size 2 diapers",
+      "amount": 42.99,
+      "currency": "CAD",
+      "renewal_date": "2024-06-15",
+      "actions_available": [
+        "skip",
+        "change_delivery"
+      ]
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3215,
+    "output": 249
+  }
+}

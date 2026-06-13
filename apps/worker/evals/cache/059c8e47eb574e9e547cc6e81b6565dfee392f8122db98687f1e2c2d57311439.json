@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "activity_signup_open",
+    "confidence": 0.9,
+    "rationale": "City recreation program announcing imminent registration opening for infant parent-and-baby activities (Aquatots, Baby Music, Infant Massage) with a clear date/time and actionable signup window.",
+    "payload": {
+      "sender": "programs@cityrec.ca",
+      "program_type": "parent-and-baby activities",
+      "activities": [
+        "Aquatots",
+        "Baby Music",
+        "Infant Massage"
+      ],
+      "registration_opens": "2024-06-18T09:00:00",
+      "timezone": "America/Toronto",
+      "note": "Popular sessions fill quickly"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3216,
+    "output": 273
+  }
+}

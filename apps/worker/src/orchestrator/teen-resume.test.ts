@@ -125,6 +125,7 @@ vi.mock('../services/memory-writer.js', () => ({
     rationale: 'all green',
   })),
   loadFamilyPlanTier: vi.fn(async () => 'family' as const),
+  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
   recordActionGate: () => recordActionGate(),
   // Every non-teen brake cleared so the ONLY thing that can cap the resume is
   // the teen-redaction cap: old family, full streak, single-parent, AND a
@@ -139,6 +140,7 @@ vi.mock('../services/memory-writer.js', () => ({
   })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn', 'teenager'],
+    children: [],
     contextSlice: { childrenAgesMonths: [], province: 'ON', timezone: 'America/Toronto' },
   })),
 }));

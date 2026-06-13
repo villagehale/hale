@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "activity_signup_open",
+    "confidence": 0.92,
+    "rationale": "A municipal recreation centre announces time-boxed registration opening for toddler-stage activity programs (Tumble Tots, swim, music) with explicit urgency (\"limited spots, fill within minutes\"), matching the family's 31-month-old child's age range (2–3).",
+    "payload": {
+      "sender": "City Recreation (register@cityrec.ca)",
+      "programs": [
+        "Tumble Tots",
+        "Toddler Swim",
+        "Music & Movement"
+      ],
+      "ageRange": "2-3 years",
+      "registrationOpens": "Thursday 9:00 AM",
+      "availability": "limited, first-come basis",
+      "province": "ON"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3714,
+    "output": 299
+  }
+}

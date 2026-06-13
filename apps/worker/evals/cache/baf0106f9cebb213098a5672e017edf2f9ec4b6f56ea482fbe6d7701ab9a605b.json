@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "family_event_invite",
+    "confidence": 0.92,
+    "rationale": "Family member (cousin) inviting the family to a milestone celebration (first birthday party) with a clear date, time, and location, and an explicit request for confirmation.",
+    "payload": {
+      "sender": "cousin.mei@gmail.com",
+      "celebrant_name": "Leo",
+      "milestone": "1st birthday",
+      "event_date": "July 12",
+      "event_time": "2 PM",
+      "event_location": "cousin's place",
+      "description": "Birthday celebration with cake, bubbles, and splash pad",
+      "requires_confirmation": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3222,
+    "output": 282
+  }
+}

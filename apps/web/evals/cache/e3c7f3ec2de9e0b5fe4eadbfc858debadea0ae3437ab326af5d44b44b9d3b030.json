@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "advice_text": "**please call 911 or go to your nearest emergency room right now.**\n\nfast breathing combined with bluish lips (called cyanosis) can be a sign that your toddler isn't getting enough oxygen — that's an emergency that needs immediate medical evaluation, not something to wait on. don't drive yourself if you're too panicked; calling 911 means trained help starts on the way immediately. while you wait, keep your toddler calm and upright if possible, and stay on the line with the dispatcher — they'll guide you through what to do next.",
+    "framework_citations": [
+      {
+        "framework": "aap",
+        "reference": "AAP — When to Call 911 / Pediatric Emergency Warning Signs",
+        "excerpt": "Bluish color of the lips or fingernails (cyanosis) and rapid or labored breathing are listed as emergency warning signs requiring immediate medical attention."
+      },
+      {
+        "framework": "cps",
+        "reference": "CPS — Caring for Kids: When to Go to the Emergency Department",
+        "excerpt": "Blue or purple lips or fingertips and breathing faster than normal are signs to seek emergency care immediately."
+      }
+    ],
+    "confidence": 0.98,
+    "follow_up_questions": [
+      "Has he been sick recently with a cough, fever, or cold symptoms?",
+      "Did he put anything in his mouth just before this started?",
+      "Is he making any unusual sounds while breathing, like wheezing or a high-pitched noise?"
+    ],
+    "flag_for_pediatrician": true
+  }
+}

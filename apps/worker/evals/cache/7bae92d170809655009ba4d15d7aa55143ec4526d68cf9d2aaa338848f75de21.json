@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Clinic is asking parent to actively reply with confirmation or alternative availability after a rescheduling request — a clear actionable ask requiring parent response.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "child_name": "Baby Chen",
+      "original_date": "June 23",
+      "proposed_date": "June 25",
+      "proposed_time": "2:00 PM",
+      "doctor_name": "Dr. Okafor",
+      "reason_for_change": "Doctor out of office",
+      "requires_reply": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3232,
+    "output": 290
+  }
+}

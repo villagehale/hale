@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.92,
+    "rationale": "Daycare (Maple Grove Childcare) confirms a spot has opened and asks parent to confirm acceptance and submit deposit within 5 business days — a direct actionable response to an earlier application.",
+    "payload": {
+      "daycare_name": "Maple Grove Childcare",
+      "room_type": "infant room",
+      "start_date": "September",
+      "deposit_amount": 200,
+      "deposit_currency": "CAD",
+      "action_required": "confirm_and_submit_deposit",
+      "deadline_days": 5,
+      "deadline_from_now": "5 business days"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3228,
+    "output": 298
+  }
+}

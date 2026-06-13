@@ -57,6 +57,15 @@ const classifierOutputSchema = z.object({
    * flag when a teenager is in the family (rule #1 structural enforcement).
    */
   teen_content: z.boolean().optional().default(false),
+  /**
+   * Which of the family's known children this signal concerns, identified by the
+   * child id passed in the context slice — a name match against the family's
+   * children, or an unambiguous age/stage cue. Null when undeterminable or
+   * family-wide. Additive + optional: existing cached eval responses lack it and
+   * read as null, so the cached-only eval is unaffected. The orchestrator
+   * VALIDATES the returned id against the known children before persisting
+   * events.child_id, so a hallucinated id is dropped to null, not trusted. */
+  concerns_child_id: z.string().nullable().optional().default(null),
 });
 
 const classifierOutputJsonSchema = {
@@ -78,6 +87,7 @@ const classifierOutputJsonSchema = {
       required: ['kind'],
     },
     teen_content: { type: 'boolean' },
+    concerns_child_id: { type: ['string', 'null'] },
   },
   required: ['event_type', 'confidence', 'rationale', 'payload', 'suggested_action'],
 } as const;
@@ -97,6 +107,12 @@ interface ClassifierRunInput {
    * family's rows; knownClinics/knownDaycares are optional — the schema has no
    * source-of-truth for them yet, so the orchestrator omits them rather than
    * fabricating, and fixtures may still supply them.
+   *
+   * `children` carries the family's known children {id, name, ageInMonths} so the
+   * classifier can attribute a signal to a specific child (name match or age/stage
+   * cue) and return its id in `concerns_child_id`. Optional: omitted for single-
+   * unknown-child contexts and absent from the existing eval fixtures, so their
+   * serialized slice is byte-identical and the cached eval is unaffected.
    */
   familyContextSlice?: {
     childrenAgesMonths: number[];
@@ -104,6 +120,7 @@ interface ClassifierRunInput {
     timezone: string;
     knownClinics?: string[];
     knownDaycares?: string[];
+    children?: Array<{ id: string; name: string; ageInMonths: number }>;
   };
 }
 
@@ -115,6 +132,9 @@ interface ClassifierRunOutput {
   /** Teen-content flag (teenager pack redaction rule) — drives the orchestrator's
    * structural teen-redaction cap. */
   teenContent: boolean;
+  /** Raw child-attribution id the model returned, or null. The orchestrator
+   * validates this against the family's known children before persisting. */
+  concernsChildId: string | null;
   dedupHash: string;
   runMetrics: AgentRunMetrics;
 }
@@ -150,6 +170,7 @@ export async function runClassifier(input: ClassifierRunInput): Promise<Classifi
     confidence: { score: parsed.confidence, rationale: parsed.rationale },
     suggestion: parsed.suggested_action,
     teenContent: parsed.teen_content,
+    concernsChildId: parsed.concerns_child_id,
     dedupHash,
     runMetrics: metricsFromUsage('classifier', HAIKU_MODEL, usage, Date.now() - startedAt),
   };

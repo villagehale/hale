@@ -1,0 +1,25 @@
+{
+  "id": "41-multichild-familywide-null",
+  "note": "MULTI-CHILD (child + toddler). A delivery update for a household diaper/supply order names no child and concerns the family broadly — concerns_child_id must be null (do NOT guess between siblings). delivery_update is a one-way notice → surface_only.",
+  "stage": "toddler",
+  "input": {
+    "source": "email",
+    "rawContent": "From: shipping@everydaybasics.ca\nSubject: Your order is out for delivery\n\nGood news — your monthly household order (paper towels, diapers, wipes) is out for delivery and should arrive today between 2 and 6 PM. No action needed.",
+    "familyContextSlice": {
+      "childrenAgesMonths": [90, 30],
+      "province": "ON",
+      "timezone": "America/Toronto",
+      "knownClinics": [],
+      "knownDaycares": [],
+      "children": [
+        { "id": "55555555-5555-5555-5555-555555555555", "name": "Sophie", "ageInMonths": 90 },
+        { "id": "66666666-6666-6666-6666-666666666666", "name": "Ethan", "ageInMonths": 30 }
+      ]
+    }
+  },
+  "expect": {
+    "eventType": "delivery_update",
+    "kind": "surface_only",
+    "concernsChildId": null
+  }
+}
