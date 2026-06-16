@@ -1,8 +1,8 @@
-import { PageCorner } from '~/components/hearth/page-corner';
-import { Folio } from '~/components/hearth/folio';
-import { ToneLabel } from '~/components/hearth/tone';
-import { StreakLadder } from '~/components/hearth/streak-ladder';
-import { ApproveButton } from '~/components/hearth/approve-button';
+import { PageCorner } from '~/components/hale/page-corner';
+import { Folio } from '~/components/hale/folio';
+import { ToneLabel } from '~/components/hale/tone';
+import { StreakLadder } from '~/components/hale/streak-ladder';
+import { ApproveButton } from '~/components/hale/approve-button';
 import { loadDrafts } from '~/lib/dashboard/queries';
 import { DRAFT_LEVEL } from '~/lib/dashboard/mappers';
 
@@ -11,7 +11,7 @@ export default async function DraftsPage() {
 
   return (
     <div>
-      <PageCorner folio="iii" section="drafts · awaiting your eye" />
+      <PageCorner folio="03" section="drafts · awaiting your eye" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">

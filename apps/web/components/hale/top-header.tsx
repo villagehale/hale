@@ -5,14 +5,14 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 const NAV = [
-  { href: '/digest', label: 'digest', folio: 'i' },
-  { href: '/live', label: 'live', folio: 'ii' },
-  { href: '/drafts', label: 'drafts', folio: 'iii' },
-  { href: '/coach', label: 'coach', folio: 'iv' },
-  { href: '/memory', label: 'memory', folio: 'v' },
-  { href: '/trail', label: 'trail', folio: 'vi' },
-  { href: '/connected', label: 'connected', folio: 'vii' },
-  { href: '/settings', label: 'settings', folio: 'viii' },
+  { href: '/digest', label: 'digest', folio: '01' },
+  { href: '/live', label: 'live', folio: '02' },
+  { href: '/drafts', label: 'drafts', folio: '03' },
+  { href: '/coach', label: 'coach', folio: '04' },
+  { href: '/memory', label: 'memory', folio: '05' },
+  { href: '/trail', label: 'trail', folio: '06' },
+  { href: '/connected', label: 'connected', folio: '07' },
+  { href: '/settings', label: 'settings', folio: '08' },
 ] as const;
 
 /**
@@ -31,7 +31,7 @@ export function TopHeader() {
     <header className="runninghead">
       <div className="flex items-baseline gap-3">
         <Link href="/digest" className="font-display text-2xl leading-none">
-          Hearth
+          Hale
         </Link>
         {current ? (
           <span className="eyebrow text-spruce">{current.label}</span>

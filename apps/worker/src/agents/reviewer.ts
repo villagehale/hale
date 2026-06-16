@@ -4,8 +4,8 @@ import {
   coverageSatisfiedWithResults,
   firstUnsatisfiedCheck,
   type ReviewerToolName,
-} from '@hearth/tools-contracts';
-import type { DraftedAction, ReviewerVerdict, ToolResult } from '@hearth/types';
+} from '@hale/tools-contracts';
+import type { DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
 import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
 import { invokeReviewerTool } from '../tools/registry.js';
 import { loadChildNames } from '../services/memory-writer.js';

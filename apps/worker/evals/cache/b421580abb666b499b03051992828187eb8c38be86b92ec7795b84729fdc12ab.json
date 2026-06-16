@@ -1,0 +1,16 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.05,
+    "rationale": "Pure marketing flash sale with no family signal, request, or actionable content.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3234,
+    "output": 151
+  }
+}

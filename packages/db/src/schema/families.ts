@@ -9,6 +9,10 @@ export const families = pgTable('families', {
   primaryLanguage: text('primary_language').notNull().default('en'),
   onboardingStage: onboardingStageEnum('onboarding_stage').notNull().default('pending_invite'),
   planTier: planTierEnum('plan_tier').notNull().default('free'),
+  /** Coarse area for village discovery (FSA / neighborhood) — never a precise
+   * address or child location (rule #1). Nullable: set only when a family opts
+   * in to local discovery. */
+  areaCoarse: text('area_coarse'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

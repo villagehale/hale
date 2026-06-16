@@ -1,7 +1,7 @@
 /*
  * The hero's "one calm day" scene: a low Spruce hill, a small Oat house,
  * an Apricot sun on a slow 30s ambient arc, a Sky cloud drifting, and a
- * sleeping kitten (the youngest Hearth) curled beside the house. The sun's
+ * small sea turtle (the youngest Hale) resting beside the house. The sun's
  * arc is the only continuous motion — the brand's heartbeat — and it is
  * fully suppressed under prefers-reduced-motion (resolving to a static
  * mid-day frame, handled in globals.css).
@@ -10,13 +10,13 @@
  * parts are aria-hidden.
  */
 
-import { Cat, Cloud, Hill, House, Sun } from '~/components/illos';
+import { Cloud, Hill, House, SeaTurtle, Sun } from '~/components/illos';
 
 export function HeroScene() {
   return (
     <div
       role="img"
-      aria-label="A calm illustrated day: an apricot sun arcing slowly over a small house on a low green hill, with a single cloud drifting and a kitten asleep beside the door."
+      aria-label="A calm illustrated day: an apricot sun arcing slowly over a small house on a low green hill, with a single cloud drifting and a small sea turtle resting beside the door."
       className="relative w-full overflow-hidden rounded-[var(--r-xl)] panel-sky-tint"
       style={{ aspectRatio: '4 / 3', minHeight: '20rem' }}
     >
@@ -48,9 +48,9 @@ export function HeroScene() {
         style={{ bottom: '20%', left: '18%', width: 'clamp(88px, 16vw, 136px)', height: 'auto' }}
       />
 
-      {/* the youngest Hearth, asleep by the door */}
-      <Cat
-        age="kitten"
+      {/* the youngest Hale, resting by the door */}
+      <SeaTurtle
+        age="hatchling"
         className="absolute"
         style={{ bottom: '17%', left: '40%', width: 'clamp(84px, 15vw, 132px)', height: 'auto' }}
       />

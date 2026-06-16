@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ApprovedAction } from '@hearth/types';
-import { mintApprovedAction } from '@hearth/types';
+import type { ApprovedAction } from '@hale/types';
+import { mintApprovedAction } from '@hale/types';
 import { runExecutor, type ExecutorDeps } from './executor.js';
 
 /**

@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import type { ApprovedAction, ExecutionResult } from '@hearth/types';
+import type { ApprovedAction, ExecutionResult } from '@hale/types';
 import {
   claimOutboundSend as claimOutboundSendDb,
   confirmOutboundSend as confirmOutboundSendDb,
@@ -52,7 +52,7 @@ function defaultDeps(): ExecutorDeps {
  * require integrations (Google Calendar OAuth, Stripe + merchant
  * adapters, Computer Use for portal automation) that the worker
  * doesn't yet have credentials for. Those throw a clear
- * `HEARTH_NOT_CONFIGURED` error so the system fails LOUD rather than
+ * `HALE_NOT_CONFIGURED` error so the system fails LOUD rather than
  * pretending to succeed — which would silently degrade the
  * autonomous-trust promise.
  */
@@ -101,6 +101,17 @@ export async function runExecutor(
         ok: true,
         executedAt: new Date().toISOString(),
         detail: { kind: 'digest_only' },
+        reversible: true,
+      };
+    }
+
+    case 'add_to_routine': {
+      // Internal routine pin — no external dispatch and NO calendar write
+      // (that infra is not wired yet). State tracking only, like digest_only.
+      return {
+        ok: true,
+        executedAt: new Date().toISOString(),
+        detail: { kind: 'routine_pin' },
         reversible: true,
       };
     }
@@ -212,8 +223,8 @@ async function postmarkSend(payload: EmailPayload): Promise<SendResult> {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function notConfigured(reason: string): Error {
-  const err = new Error(`HEARTH_NOT_CONFIGURED: ${reason}`);
-  err.name = 'HearthNotConfiguredError';
+  const err = new Error(`HALE_NOT_CONFIGURED: ${reason}`);
+  err.name = 'HaleNotConfiguredError';
   return err;
 }
 

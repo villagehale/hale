@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ActionType } from '@hearth/types';
+import type { ActionType } from '@hale/types';
 import {
   CROSS_PARENT_ACTION_TYPES,
   REQUIRED_CHECKS,
@@ -10,7 +10,7 @@ import {
 
 /**
  * Expectations are hand-derived from the Zod schemas in index.ts and the
- * Hearth hard rules (CLAUDE.md #3 + #7) — never copied from runtime output.
+ * Hale hard rules (CLAUDE.md #3 + #7) — never copied from runtime output.
  */
 
 /** Action types that move money — must be gated by check_spending_cap (hard rule #7). */
@@ -21,7 +21,7 @@ const MONETARY_ACTION_TYPES = [
   'submit_government_form',
 ] as const satisfies readonly ActionType[];
 
-/** The full canonical action-type list, hand-mirrored from @hearth/types ActionType. */
+/** The full canonical action-type list, hand-mirrored from @hale/types ActionType. */
 const ALL_ACTION_TYPES = [
   'send_email',
   'reply_to_email',
@@ -35,6 +35,7 @@ const ALL_ACTION_TYPES = [
   'cancel_clinic_appointment',
   'share_photos_with_family',
   'add_to_digest_only',
+  'add_to_routine',
 ] as const satisfies readonly ActionType[];
 
 describe('REQUIRED_CHECKS policy matrix', () => {

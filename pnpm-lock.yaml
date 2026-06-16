@@ -63,13 +63,13 @@ importers:
       '@clerk/nextjs':
         specifier: ^6.10.3
         version: 6.39.4(next@15.5.18(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@hearth/db':
+      '@hale/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@hearth/tools-contracts':
+      '@hale/tools-contracts':
         specifier: workspace:*
         version: link:../../packages/tools-contracts
-      '@hearth/types':
+      '@hale/types':
         specifier: workspace:*
         version: link:../../packages/types
       drizzle-orm:
@@ -121,13 +121,13 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.41.0
         version: 0.41.0
-      '@hearth/db':
+      '@hale/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@hearth/tools-contracts':
+      '@hale/tools-contracts':
         specifier: workspace:*
         version: link:../../packages/tools-contracts
-      '@hearth/types':
+      '@hale/types':
         specifier: workspace:*
         version: link:../../packages/types
       drizzle-orm:
@@ -186,7 +186,7 @@ importers:
 
   packages/tools-contracts:
     dependencies:
-      '@hearth/types':
+      '@hale/types':
         specifier: workspace:*
         version: link:../types
       zod:

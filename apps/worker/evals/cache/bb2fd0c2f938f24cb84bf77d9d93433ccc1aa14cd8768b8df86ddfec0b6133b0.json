@@ -1,0 +1,28 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.92,
+    "rationale": "Daycare acceptance offer requiring explicit confirmation and deposit submission by deadline; standard enrolment response workflow.",
+    "payload": {
+      "sender": "admin@maplegrove-childcare.ca",
+      "daycare_name": "Maple Grove Childcare",
+      "offer_status": "spot_available",
+      "room_type": "infant_room",
+      "start_date": "September",
+      "required_action": "confirm_and_deposit",
+      "deposit_amount": 200,
+      "currency": "CAD",
+      "deadline_days": 5,
+      "consequence": "spot_goes_to_next_family_on_waitlist"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3228,
+    "output": 310
+  }
+}

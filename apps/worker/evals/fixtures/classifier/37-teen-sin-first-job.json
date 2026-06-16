@@ -1,6 +1,6 @@
 {
   "id": "37-teen-sin-first-job",
-  "note": "TEENAGER stage. A first-part-time-job offer requiring the teen to provide a SIN before the start date — legal_milestone_due. Hand-derived from taxonomy: SIN / first-job paperwork is an administrative milestone with a deadline → legal_milestone_due, surface_only (Hearth never submits identity paperwork on its own). Distinguished from tax_credit_eligibility_change (a benefits change, not an identity milestone).",
+  "note": "TEENAGER stage. A first-part-time-job offer requiring the teen to provide a SIN before the start date — legal_milestone_due. Hand-derived from taxonomy: SIN / first-job paperwork is an administrative milestone with a deadline → legal_milestone_due, surface_only (Hale never submits identity paperwork on its own). Distinguished from tax_credit_eligibility_change (a benefits change, not an identity milestone).",
   "stage": "teenager",
   "input": {
     "source": "email",

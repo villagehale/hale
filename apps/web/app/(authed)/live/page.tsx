@@ -1,6 +1,6 @@
-import { PageCorner } from '~/components/hearth/page-corner';
-import { Folio } from '~/components/hearth/folio';
-import { ToneLabel, type EntryTone } from '~/components/hearth/tone';
+import { PageCorner } from '~/components/hale/page-corner';
+import { Folio } from '~/components/hale/folio';
+import { ToneLabel, type EntryTone } from '~/components/hale/tone';
 
 interface LiveEvent {
   id: string;
@@ -65,7 +65,7 @@ const STREAM: LiveEvent[] = [
 export default function LivePage() {
   return (
     <div>
-      <PageCorner folio="ii" section="live · listening" />
+      <PageCorner folio="02" section="live · listening" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
@@ -136,7 +136,7 @@ export default function LivePage() {
             <p className="meta mt-2">a standing promise</p>
           </div>
           <div className="lg:col-span-9 text-slate-green text-lg leading-relaxed">
-            Every signal above stays in Hearth's Canadian database. Nothing has
+            Every signal above stays in Hale's Canadian database. Nothing has
             been sent to a third party except where you connected one. Your
             child's name, date of birth, and medical details are encrypted at
             rest with keys you can rotate. You can export or delete everything

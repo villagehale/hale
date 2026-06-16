@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@hearth/tools-contracts';
+import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion, FamilyStage } from '@hearth/types';
+import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
 
 /**
  * Fix-wave B structural gates wired into the orchestrator AFTER the entitlement

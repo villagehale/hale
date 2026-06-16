@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import type { CoachingFramework, FamilyStage, FrameworkCitation } from '@hearth/types';
+import type { CoachingFramework, FamilyStage, FrameworkCitation } from '@hale/types';
 import { loadCoachPrompt } from './prompt';
 import { loadCoachModel } from './model';
 

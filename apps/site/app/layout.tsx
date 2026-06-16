@@ -17,9 +17,9 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: 'Hearth · holds the small things',
+  title: 'Hale · the village your family lost',
   description:
-    'Hearth is a calm, careful companion for newborn families in Canada. It watches the inbox, the calendar, the photos — and quietly handles the small admin so you can hold the baby. A research preview.',
+    "Hale is the village your family lost, rebuilt through AI — across every stage of childhood. It finds the genuinely good local things to do, matched to your child, and makes them happen: registering, calendar, reminders, gear. Your family's data stays in Canada. A research preview.",
 };
 
 export const viewport: Viewport = {

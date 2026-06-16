@@ -23,7 +23,7 @@ const ALL_ENTITLEMENTS = [
   'portal_automation',
 ] as const satisfies readonly Entitlement[];
 
-/** Full canonical action-type list, hand-mirrored from @hearth/types ActionType. */
+/** Full canonical action-type list, hand-mirrored from @hale/types ActionType. */
 const ALL_ACTION_TYPES = [
   'send_email',
   'reply_to_email',
@@ -37,6 +37,7 @@ const ALL_ACTION_TYPES = [
   'cancel_clinic_appointment',
   'share_photos_with_family',
   'add_to_digest_only',
+  'add_to_routine',
 ] as const satisfies readonly ActionType[];
 
 describe('PLAN_ENTITLEMENTS map', () => {
@@ -115,6 +116,7 @@ describe('entitlementRequiredFor', () => {
       'submit_government_form',
       'share_photos_with_family',
       'add_to_digest_only',
+      'add_to_routine',
     ] as const satisfies readonly ActionType[];
     for (const actionType of baseL3Only) {
       expect(entitlementRequiredFor(actionType)).toBeNull();

@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.95,
+    "rationale": "Routine daycare notice from a known centre announcing a closure and supply requests, typical for a toddler-stage family.",
+    "payload": {
+      "sender": "Maple Grove Childcare (toddlers@maplegrove-childcare.ca)",
+      "message_type": "closure_and_supply_notice",
+      "closure_date": "next Monday",
+      "closure_reason": "staff PD day",
+      "supply_requests": [
+        "extra set of weather-appropriate clothes",
+        "labelled water bottle"
+      ],
+      "context": "centre transitioning to more outdoor activities"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3716,
+    "output": 275
+  }
+}

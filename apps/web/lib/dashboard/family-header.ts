@@ -1,5 +1,5 @@
-import type { schema } from '@hearth/db';
-import { type FamilyStage, deriveFamilyStages } from '@hearth/types';
+import type { schema } from '@hale/db';
+import { type FamilyStage, deriveFamilyStages } from '@hale/types';
 
 export type ChildRow = typeof schema.children.$inferSelect;
 

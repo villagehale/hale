@@ -1,7 +1,7 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
-import { schema } from '@hearth/db';
-import { REVIEWER_TOOLS, type ReviewerToolName } from '@hearth/tools-contracts';
-import type { ToolResult } from '@hearth/types';
+import { schema } from '@hale/db';
+import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
+import type { ToolResult } from '@hale/types';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 
@@ -120,7 +120,7 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // ───────────────────────────────────────────────────────────────────
   // Spending cap — checks against the family's safety_policy field
   // (stored as JSON on the families row in production; for now the
-  // policy is fetched per-call from a sane default in @hearth/types).
+  // policy is fetched per-call from a sane default in @hale/types).
   // ───────────────────────────────────────────────────────────────────
   check_spending_cap: async (raw) => {
     const input = REVIEWER_TOOLS.check_spending_cap.input.parse(raw);
@@ -430,12 +430,12 @@ export async function invokeReviewerTool<TName extends ReviewerToolName>(
 // Family safety policy loader.
 //
 // Production version reads `families.safety_policy` JSONB. For now we return
-// the DEFAULT_SAFETY_POLICY from @hearth/types so the verification path is
+// the DEFAULT_SAFETY_POLICY from @hale/types so the verification path is
 // fully wired even before families have customized their policy.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function loadFamilySafetyPolicy(familyId: string) {
-  const { DEFAULT_SAFETY_POLICY } = await import('@hearth/types');
+  const { DEFAULT_SAFETY_POLICY } = await import('@hale/types');
   void familyId;
   return DEFAULT_SAFETY_POLICY;
 }

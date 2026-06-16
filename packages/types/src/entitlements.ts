@@ -20,7 +20,7 @@ export type Entitlement = 'autonomy_l3' | 'commerce' | 'portal_automation';
  *   family — L3 + commerce action types + portal automation ($49/mo CAD).
  *
  * `satisfies Record<PlanTier, ...>` is load-bearing (mirrors REQUIRED_CHECKS in
- * @hearth/tools-contracts): adding a PlanTier without an entry is a COMPILE error,
+ * @hale/tools-contracts): adding a PlanTier without an entry is a COMPILE error,
  * so no tier can ship without an explicit entitlement set.
  */
 export const PLAN_ENTITLEMENTS = {
@@ -59,6 +59,7 @@ const ACTION_ENTITLEMENT = {
   cancel_clinic_appointment: 'portal_automation',
   share_photos_with_family: null,
   add_to_digest_only: null,
+  add_to_routine: null,
 } as const satisfies Record<ActionType, Entitlement | null>;
 
 /** The entitlement `actionType` needs beyond base L3, or null. Pure — no I/O. */

@@ -44,13 +44,13 @@ jobs:
         run: pnpm test
 
       - name: Prompt lockfile check
-        run: pnpm --filter @hearth/worker prompts:check
+        run: pnpm --filter @hale/worker prompts:check
 
       - name: Classifier eval (cached-only)
-        run: pnpm --filter @hearth/worker eval:classifier
+        run: pnpm --filter @hale/worker eval:classifier
 
       - name: Drafter eval (cached-only)
-        run: pnpm --filter @hearth/worker eval:drafter
+        run: pnpm --filter @hale/worker eval:drafter
 
       - name: Build
         run: pnpm build

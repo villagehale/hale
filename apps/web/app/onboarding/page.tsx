@@ -14,11 +14,11 @@ import {
 type Step = 1 | 2 | 3 | 4 | 5;
 
 const STEP_META: Record<Step, { folio: string; section: string; title: string }> = {
-  1: { folio: 'i', section: 'step one of five', title: 'welcome' },
-  2: { folio: 'ii', section: 'step two of five', title: 'tell me about your children' },
-  3: { folio: 'iii', section: 'step three of five', title: 'how trial mode works' },
-  4: { folio: 'iv', section: 'step four of five', title: 'connect one source' },
-  5: { folio: 'v', section: 'step five of five', title: 'invite your co-parent' },
+  1: { folio: '01', section: 'step one of five', title: 'welcome' },
+  2: { folio: '02', section: 'step two of five', title: 'tell me about your children' },
+  3: { folio: '03', section: 'step three of five', title: 'how trial mode works' },
+  4: { folio: '04', section: 'step four of five', title: 'connect one source' },
+  5: { folio: '05', section: 'step five of five', title: 'invite your co-parent' },
 };
 
 interface ChildRow extends ChildInput {
@@ -87,7 +87,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-linen">
       {/* Running head — book top edge */}
       <header className="shell flex items-baseline justify-between pt-6 pb-4 border-b border-rule">
-        <Link href="/" className="font-display text-xl">Hearth</Link>
+        <Link href="/" className="font-display text-xl">Hale</Link>
 
         <div className="flex items-baseline gap-3">
           <span className="eyebrow">enrolment</span>
@@ -120,11 +120,12 @@ export default function OnboardingPage() {
             {step === 1 ? (
               <section className="rise rise-1 space-y-8 max-w-2xl">
                 <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
-                  Hearth is a household almanac for childhood — from the first
-                  newborn weeks through the teenage years. I watch your inbox,
-                  your calendar, your photos, and the small devices that already
-                  log your family's life, and I do the easy ninety percent of
-                  household admin so you can be present.
+                  Hale is the village your family lost — across every stage of
+                  childhood, from the newborn weeks through the teenage years. I
+                  find the genuinely good local things to do, matched to where
+                  each child actually is, and then make them happen — the
+                  registering, the calendar, the reminders, the gear. I carry
+                  the small things so you can be present.
                 </p>
                 <p className="text-lg text-slate-green leading-relaxed">
                   Set-up takes about four minutes. I will not do anything autonomously
@@ -136,8 +137,8 @@ export default function OnboardingPage() {
                   <span className="eyebrow text-apricot-deep">a guarantee</span>
                   <p className="mt-2 text-slate-green">
                     Your children's names, dates of birth, and medical details are
-                    encrypted at rest with keys you can rotate. Canadian residency
-                    is non-negotiable.
+                    encrypted at rest with keys you can rotate. Your family's data
+                    stays in Canada — that part is non-negotiable.
                   </p>
                 </div>
 
@@ -310,13 +311,13 @@ export default function OnboardingPage() {
                     <p className="mt-2 text-slate-green">
                       You're in a development preview — sign-in isn't configured yet,
                       so nothing you entered was saved. The stages above are derived
-                      live from the birthdates so you can see how Hearth would tailor.
+                      live from the birthdates so you can see how Hale would tailor.
                     </p>
                   </output>
                 ) : null}
 
                 <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
-                  For the first seven days, Hearth drafts every action — but never
+                  For the first seven days, Hale drafts every action — but never
                   commits it. You see exactly what would have happened. Nothing
                   sends. Nothing books. Nothing orders.
                 </p>
@@ -401,7 +402,7 @@ export default function OnboardingPage() {
             {step === 5 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  Hearth works best as a family unit. invite your co-parent and we
+                  Hale works best as a family unit. invite your co-parent and we
                   will share the digest, drafts, and trail across both of you.
                   Either of you can approve actions. Neither of you can be locked
                   out.
@@ -410,7 +411,7 @@ export default function OnboardingPage() {
                 <div className="panel">
                   <span className="eyebrow">share this link</span>
                   <p className="font-display text-xl break-all mt-2">
-                    hearth.family/invite/87c2-d9f5-12a8
+                    hale.family/invite/87c2-d9f5-12a8
                   </p>
                   <div className="flex flex-wrap items-center gap-5 mt-5">
                     <button type="button" className="btn-ghost">copy link</button>
@@ -445,7 +446,7 @@ function describeError(error: string): string {
     case 'dob_future':
       return "that's in the future — check the year";
     case 'dob_too_old':
-      return 'Hearth is for children under eighteen';
+      return 'Hale is for children under eighteen';
     case 'dob_invalid':
       return "that date doesn't look right";
     default:

@@ -11,4 +11,5 @@ export * from './audit.js';
 export * from './agent-runs.js';
 export * from './outbound-sends.js';
 export * from './daily-digests.js';
+export * from './village.js';
 export * from './enums.js';

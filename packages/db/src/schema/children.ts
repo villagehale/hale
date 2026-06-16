@@ -19,6 +19,8 @@ export const children = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    /** Free-text interest tags driving village discovery (e.g. ["swimming", "music"]). */
+    interests: jsonb('interests').$type<string[]>().notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

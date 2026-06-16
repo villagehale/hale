@@ -1,9 +1,9 @@
 import {
-  Cat,
   Crescent,
   GrainOverlay,
   ParentAndHouse,
   Sapling,
+  SeaTurtle,
   Seed,
   Sprout,
   Sun,
@@ -12,26 +12,26 @@ import {
 import { HeroScene } from '~/components/hero-scene';
 import { WaitlistForm } from '~/components/waitlist-form';
 
-const DAY = [
+const WEEK = [
   {
-    arc: 'Dawn',
-    stage: 'Newborn',
-    task: 'Noticed the diaper box was three days from empty and drafted a reorder — you tapped approve before the kettle boiled.',
+    arc: 'Newborn',
+    stage: 'the first months',
+    task: 'A water-babies class two streets over, a quiet drop-in for new parents on Thursday — found, held on your calendar, and the gentle reminder that this is normal, you are doing fine.',
   },
   {
-    arc: 'Midday',
-    stage: 'Toddler',
-    task: 'Read the daycare email about the closure day, found the gap in your calendar, and drafted the reply asking grandma to cover.',
+    arc: 'Toddler',
+    stage: 'finding the world',
+    task: 'Library story-time, the good Montessori with a spot opening, the park festival on Saturday — surfaced for their age, with the registration started and the bag-list ready.',
   },
   {
-    arc: 'Dusk',
-    stage: 'Child',
-    task: 'Saw the soccer-registration deadline buried in a newsletter and surfaced it with the form half-filled from what it already knew.',
+    arc: 'Child',
+    stage: 'growing into it',
+    task: 'The soccer season that fits your week, the art class they would actually love, the field-trip form due Friday — signed, paid within your cap, and on the calendar before it slips.',
   },
   {
-    arc: 'Night',
-    stage: 'Teenager',
-    task: 'Kept the family calendar honest and the permission forms signed — and gave your teen their own privacy: you see summaries, never their messages.',
+    arc: 'Teenager',
+    stage: 'almost grown',
+    task: 'The maker-space, the volunteer hours, the permission slips kept honest — and their own privacy held: you see what kind of thing, never their messages.',
   },
 ] as const;
 
@@ -39,12 +39,12 @@ const LADDER = [
   {
     shape: <Seed style={{ height: 64, width: 'auto' }} />,
     title: 'Connect',
-    body: 'Gmail or Outlook first. Your calendar second. Photos only when you trust Hearth with them.',
+    body: 'Your inbox first. Your calendar second. Photos only when you trust Hale with them.',
   },
   {
     shape: <Sprout style={{ height: 80, width: 'auto' }} />,
     title: 'Observe for 7 days',
-    body: 'At first Hearth only watches. You see exactly what it sees — no drafts, no actions, no exceptions.',
+    body: 'At first Hale only watches and learns your family — the ages, the rhythm, the village you already have. No drafts, no actions, no exceptions.',
   },
   {
     shape: <Sapling style={{ height: 92, width: 'auto' }} />,
@@ -54,7 +54,7 @@ const LADDER = [
   {
     shape: <Tree style={{ height: 96, width: 'auto' }} />,
     title: 'Autonomy, earned',
-    body: 'After five clean approvals of one kind of task, Hearth may handle that kind on its own. Revoke any time, with one tap.',
+    body: 'After five clean approvals of one kind of task, Hale may handle that kind on its own. Revoke any time, with one tap.',
   },
 ] as const;
 
@@ -62,19 +62,19 @@ const TIERS = [
   {
     name: 'Free',
     price: 'Always free',
-    line: 'Hearth observes and drafts — every stage, every child. It watches, it waits, it asks before it acts.',
+    line: 'Hale finds your kid’s good local week and drafts the rest — every stage, every child. It watches, it waits, it asks before it acts.',
     panel: 'panel-oat',
   },
   {
-    name: 'Hearth Plus',
+    name: 'Hale Plus',
     price: '$24/mo CAD',
-    line: 'Once it has earned your trust, Hearth acts on its own for the tasks you have approved. The same care, fewer taps.',
+    line: 'Once it has earned your trust, Hale makes it happen on its own — registers you, holds the date, reorders the gear. The same care, fewer taps.',
     panel: 'panel-apricot-tint',
   },
   {
-    name: 'Hearth Family',
+    name: 'Hale Family',
     price: '$49/mo CAD',
-    line: 'Everything in plus, with supply autopilot and the portal automation — daycare, pediatric, school forms — handled.',
+    line: 'Everything in plus, with the portals on autopilot — daycare, pediatric, school, the registration forms — handled before they slip.',
     panel: 'panel-sky-tint',
   },
 ] as const;
@@ -85,7 +85,7 @@ const NEVER = [
   'spend more than your per-action cap without asking',
   'share your child with a recipient you have not approved',
   'store your family’s data outside Canada',
-  'sell your family graph to anyone, for any price',
+  'sell your family’s data to anyone, for any price',
 ] as const;
 
 export default function LandingPage() {
@@ -96,7 +96,7 @@ export default function LandingPage() {
       {/* ── 1 · Hero — one calm day ─────────────────────────────────────── */}
       <header className="shell flex items-center justify-between pt-8 pb-2">
         <span className="font-display text-2xl" style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}>
-          Hearth
+          Hale
         </span>
         <span className="pill pill-apricot">research preview</span>
       </header>
@@ -106,21 +106,22 @@ export default function LandingPage() {
           <div className="lg:col-span-7 rise rise-1">
             <HeroScene />
             <p className="meta mt-4 max-w-md">
-              The kitten by the door is Hearth. It is a cat — its life is about as
-              long as a childhood, and it grows up right alongside your kid:
+              The small companion by the door is Hale. It is built to live about
+              as long as a childhood, and it grows up right alongside your kid:
               newborn, toddler, child, teenager.
             </p>
           </div>
 
           <div className="lg:col-span-5 rise rise-2">
             <h1>
-              Hearth <span className="wonk">holds</span> the small things, so you
-              can hold the baby.
+              Hale is the <span className="wonk">village</span> your family
+              lost.
             </h1>
             <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
-              A calm, careful companion for newborn families in Canada. It tends
-              the daily admin in the background — and never acts until you have
-              said it may.
+              It finds the genuinely good local things to do — the class, the
+              story-time, the festival — matched to your kid’s age and stage,
+              and then makes it happen. A calm companion that knows the way, and
+              never acts until you have said it may.
             </p>
             <div className="mt-8">
               <a href="#waitlist" className="btn-primary">
@@ -142,37 +143,38 @@ export default function LandingPage() {
               fontVariationSettings: '"opsz" 120, "SOFT" 50, "WONK" 0',
             }}
           >
-            Hearth watches the inbox, the calendar, the photos, and the small
-            devices that already log your baby&rsquo;s life — the pediatric
-            office, the daycare waitlist, the diaper subscription, the
-            grandparent who keeps asking how she slept — and quietly does the
-            easy ninety percent.
+            Once, a family had a village — elders who knew which class was worth
+            it, neighbors who carried the small things, a grandmother who
+            said this is normal, you are doing fine. Hale rebuilds that village:
+            it discovers the good local week for your kid, and then registers
+            you, books it, reminds you, reorders the gear &mdash; quietly, the way
+            the village used to.
           </p>
         </div>
       </section>
 
-      {/* ── 3 · A day with Hearth — the four-stages story ─────────────────── */}
+      {/* ── 3 · The good local week — the four-stages story ─────────────── */}
       <section className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">A day with Hearth</span>
+          <span className="eyebrow">The good local week</span>
           <h2 className="mt-3">
-            One day, one childhood — the same gentle arc.
+            One childhood, every stage — the same gentle arc.
           </h2>
           <p className="mt-5 meta max-w-xl" style={{ fontSize: '1rem', color: 'var(--color-slate-green)' }}>
-            From dawn to night, and from newborn to teenager, Hearth handles one
-            small thing at a time. The thesis is the cat&rsquo;s: it grows up
-            alongside your kid.
+            From the first months to almost grown, Hale finds the genuinely good
+            things near you and brings them within reach — one at a time. It
+            grows up alongside your kid, and the week grows with them.
           </p>
         </div>
 
         <ol className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-14">
-          {DAY.map((moment, i) => (
+          {WEEK.map((moment, i) => (
             <li key={moment.arc} className={`rise rise-${i + 1}`}>
               <div className="flex items-end gap-3 h-[120px]" aria-hidden>
                 {i === 0 && <Sun style={{ height: 72, width: 'auto' }} />}
-                {i === 1 && <Cat age="young" style={{ height: 110, width: 'auto' }} />}
-                {i === 2 && <Cat age="adult" style={{ height: 118, width: 'auto' }} />}
-                {i === 3 && <Cat age="senior" style={{ height: 122, width: 'auto' }} />}
+                {i === 1 && <SeaTurtle age="young" style={{ height: 110, width: 'auto' }} />}
+                {i === 2 && <SeaTurtle age="adult" style={{ height: 118, width: 'auto' }} />}
+                {i === 3 && <SeaTurtle age="elder" style={{ height: 122, width: 'auto' }} />}
               </div>
               <div className="mt-5 flex items-baseline gap-3">
                 <span className="font-display text-xl" style={{ color: 'var(--color-apricot-deep)' }}>
@@ -217,11 +219,11 @@ export default function LandingPage() {
         <div className="max-w-2xl mb-12 lg:mb-16">
           <span className="eyebrow">Three sizes of help</span>
           <h2 className="mt-3">
-            Start free. Pay only when Hearth has earned it.
+            Start free. Pay only when Hale has earned it.
           </h2>
           <p className="mt-5 meta max-w-xl" style={{ fontSize: '1rem', color: 'var(--color-slate-green)' }}>
             Every plan covers every stage and every child. The paid tiers simply
-            let Hearth do more of the work itself. Monthly, or a little less per
+            let Hale do more of the work itself. Monthly, or a little less per
             month if you pay yearly.
           </p>
         </div>
@@ -249,7 +251,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 6 · Hearth will never — the inverted night section ────────────── */}
+      {/* ── 6 · Hale will never — the inverted night section ────────────── */}
       <section
         className="py-24 lg:py-32"
         style={{ background: 'var(--color-spruce)', color: 'var(--color-on-spruce)' }}
@@ -260,7 +262,7 @@ export default function LandingPage() {
               The promises
             </span>
             <h2 className="mt-3" style={{ color: 'var(--color-on-spruce)' }}>
-              Hearth will never.
+              Hale will never.
             </h2>
             <p className="mt-6" style={{ color: 'var(--color-on-spruce-soft)', lineHeight: 1.6, maxWidth: '24rem' }}>
               This is the compliance core. PIPEDA, Quebec Law 25, and Canadian
@@ -297,11 +299,12 @@ export default function LandingPage() {
                 fontVariationSettings: '"opsz" 110, "SOFT" 50, "WONK" 0',
               }}
             >
-              My partner and I were drowning in admin while trying to be present
-              for our newborn. The job was too small for a nanny, too tedious for
-              love, too important to fumble. So I built a careful companion that
-              tidies the small things while the family sleeps — and grows up with
-              the kid, the way a good cat does.
+              My partner and I were raising a kid far from the village our own
+              parents had — no elders down the street, no one who just knew which
+              class was worth it or that this hard week was normal. The job was
+              too big to carry alone, too tender to outsource. So I built a quiet
+              companion to be that village again — finding the good things,
+              making them happen, and growing up right alongside the kid.
             </p>
             <p className="mt-6 meta">— Barton, Toronto</p>
           </div>
@@ -313,11 +316,11 @@ export default function LandingPage() {
         <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
             <div className="lg:col-span-6">
-              <h2>Hold the baby. Hearth holds the rest.</h2>
+              <h2>Find your family’s village.</h2>
               <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
-                Free for one year in exchange for honest feedback. Canadian data
-                residency. PIPEDA + Quebec Law 25 + CASL compliant by default.
-                Leave any time and take your family graph with you.
+                Free for one year in exchange for honest feedback. Your family’s
+                data stays in Canada. PIPEDA + Quebec Law 25 + CASL compliant by
+                default. Leave any time and take your family graph with you.
               </p>
             </div>
             <div className="lg:col-span-6">
@@ -328,7 +331,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
-        <p className="meta">Hearth · Toronto · Canada · a research preview</p>
+        <p className="meta">Hale · Toronto · Canada · a research preview</p>
         <p className="meta flex items-center gap-2">
           set in Fraunces &amp; Nunito
           <Sun style={{ width: 18, height: 18 }} />

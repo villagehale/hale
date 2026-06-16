@@ -4,12 +4,12 @@ export interface WaitlistStore {
   add(email: string): Promise<{ created: boolean }>;
 }
 
-const SET_KEY = 'hearth:waitlist';
-const META_KEY = 'hearth:waitlist:joined_at';
+const SET_KEY = 'hale:waitlist';
+const META_KEY = 'hale:waitlist:joined_at';
 
 const RATE_LIMIT_MAX_PER_WINDOW = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
-const RATE_LIMIT_KEY_PREFIX = 'hearth:waitlist:rl:';
+const RATE_LIMIT_KEY_PREFIX = 'hale:waitlist:rl:';
 
 // The minimal redis surface the rate limiter needs. Injected so the decision
 // logic is testable without a live Upstash connection.

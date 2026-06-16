@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "tuesday",
+        "title": "Parent-and-tot swim",
+        "category": "water",
+        "stage_fit_rationale": "Water comfort at the toddler stage is best built through short, caregiver-supported sessions — the parent-in-water format matches exactly what this age needs to feel safe and begin splashing confidently. It also directly feeds this child's stated interest in water.",
+        "candidate_confidence": 0.65
+      },
+      {
+        "day": "thursday",
+        "title": "Neighbourhood park and playground",
+        "category": "outdoor play",
+        "stage_fit_rationale": "Toddlers build gross-motor skills and spatial confidence through unstructured outdoor movement — no fixed schedule means this can flex around nap windows, which is essential at this stage. It also channels this child's love of movement in the most open-ended way possible.",
+        "candidate_confidence": 0.8
+      }
+    ],
+    "rationale": "Two well-spaced anchor points — a structured water session mid-week and a flexible outdoor outing later in the week — give enough rhythm for a toddler to anticipate while leaving plenty of room for rest and spontaneity.",
+    "notes": "Toddler music-and-movement was left out not because it's a poor fit (it's well-pitched for the stage) but because three items risks over-scheduling a toddler week. If the park outing ever needs to be skipped, music-and-movement is a ready swap-in for Thursday — same movement interest, indoors, short format."
+  }
+}

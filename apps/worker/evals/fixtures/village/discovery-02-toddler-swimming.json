@@ -1,0 +1,16 @@
+{
+  "id": "discovery-02-toddler-swimming",
+  "kind": "discovery",
+  "note": "Toddler + swimming: only the swim seed has a 'swimming' interest tag, so it surfaces. The music-only toddler seed and the park (tags outdoor/nature/movement) share no tag with 'swimming' and are non-empty, so both are filtered out by matchesInterest() — neither universally-eligible nor a hit. Derived from the fake.ts SEED tags + interest-filter logic.",
+  "input": {
+    "areaCoarse": "Plateau",
+    "stage": "toddler",
+    "interests": ["swimming"],
+    "limit": 8
+  },
+  "expect": {
+    "stage": "toddler",
+    "expectedTitles": ["Parent-and-tot swim"],
+    "forbiddenTitles": ["Toddler music-and-movement class", "Neighbourhood park and playground"]
+  }
+}

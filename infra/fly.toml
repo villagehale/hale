@@ -1,4 +1,4 @@
-# Fly.io configuration for the Hearth Agent Worker.
+# Fly.io configuration for the Hale Agent Worker.
 # Region: YYZ (Toronto) for Canadian data residency (CLAUDE.md hard rule #1).
 # Deploys from apps/worker/Dockerfile via `fly deploy --config infra/fly.toml`.
 #
@@ -10,7 +10,7 @@
 # would fail (nothing answers on a port). Liveness is enforced by the Fly
 # machine restart policy: if the Node process exits, Fly restarts it.
 
-app = "hearth-worker"
+app = "hale-worker"
 primary_region = "yyz"
 
 [build]

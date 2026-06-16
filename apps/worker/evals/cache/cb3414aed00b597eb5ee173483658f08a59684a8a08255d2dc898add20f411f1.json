@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a calendar event payload, not a message to a recipient. The structure is appropriate and natural for its intended purpose—it contains clear, direct information (title, date/time, location, provider, and visit type) formatted for a calendar system. There's no robotic language, unnecessary corporate tone, or AI self-reference. It's exactly what a parent would need to organize their child's appointment."
+  }
+}

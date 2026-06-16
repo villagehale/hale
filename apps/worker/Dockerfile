@@ -23,7 +23,7 @@ COPY packages/types packages/types/
 COPY packages/tools-contracts packages/tools-contracts/
 
 # Build the worker (also builds its workspace dependencies via turbo)
-RUN pnpm turbo build --filter=@hearth/worker
+RUN pnpm turbo build --filter=@hale/worker
 
 # Prune devDependencies for the production image
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts

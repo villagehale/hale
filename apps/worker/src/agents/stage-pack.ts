@@ -1,4 +1,4 @@
-import type { FamilyStage } from '@hearth/types';
+import type { FamilyStage } from '@hale/types';
 import { loadPrompt } from '../prompts/loader.js';
 
 /**

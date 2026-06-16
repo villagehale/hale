@@ -1,6 +1,6 @@
 {
   "id": "36-teen-drivers-licence-eligible",
-  "note": "TEENAGER stage. A provincial notice that the teen is now eligible to apply for a G1 learner's permit — legal_milestone_due. Hand-derived from taxonomy: a milestone with legal/administrative weight (driver's licence) that the family must act on by a date. Route surface_only — Hearth never files identity paperwork autonomously. This is the required teen-legal case; logistics ABOUT the teen, NOT teen-content.",
+  "note": "TEENAGER stage. A provincial notice that the teen is now eligible to apply for a G1 learner's permit — legal_milestone_due. Hand-derived from taxonomy: a milestone with legal/administrative weight (driver's licence) that the family must act on by a date. Route surface_only — Hale never files identity paperwork autonomously. This is the required teen-legal case; logistics ABOUT the teen, NOT teen-content.",
   "stage": "teenager",
   "input": {
     "source": "email",

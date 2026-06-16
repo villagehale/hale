@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { PageCorner } from '~/components/hearth/page-corner';
-import { Folio } from '~/components/hearth/folio';
-import { ToneLabel } from '~/components/hearth/tone';
+import { PageCorner } from '~/components/hale/page-corner';
+import { Folio } from '~/components/hale/folio';
+import { ToneLabel } from '~/components/hale/tone';
 import { loadDigest } from '~/lib/dashboard/queries';
 
 export default async function DigestPage() {
@@ -17,7 +17,7 @@ export default async function DigestPage() {
 
   return (
     <div>
-      <PageCorner folio="i" section="digest · today" />
+      <PageCorner folio="01" section="digest · today" />
 
       {/* ── Headline ────────────────────────────────────────────────────── */}
       <header className="rise rise-1 mb-16 lg:mb-24">
@@ -120,7 +120,7 @@ export default async function DigestPage() {
         <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
           {[
             'no autonomous medical actions ever',
-            'pipeda · canadian data residency',
+            "your family's data stays in canada · pipeda",
           ].map((note) => (
             <span key={note} className="meta">{note}</span>
           ))}
@@ -128,7 +128,7 @@ export default async function DigestPage() {
 
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
           <p className="meta">today's digest</p>
-          <p className="meta">tended by Hearth</p>
+          <p className="meta">tended by Hale</p>
         </div>
       </section>
     </div>

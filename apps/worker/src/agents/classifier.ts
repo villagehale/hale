@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ClassifierSuggestion, EventType, FamilyStage } from '@hearth/types';
+import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
 import { anthropicClient, HAIKU_MODEL } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';

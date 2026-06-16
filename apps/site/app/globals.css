@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 /*
- * Hearth — "Meadow" design system.
+ * Hale — "Meadow" design system.
  *
  * The calm of a nursery at 4pm light. Soft geometric shapes that never
  * crowd, generous breathing air, a muted grown-up earth palette (spruce,
  * linen, apricot, sage). Restraint expressed as kindness, not austerity.
  * Type is warm on both sides (Fraunces display + Nunito body); imagery is
  * a hand-built flat color-block SVG kit. The motif is the daily arc — the
- * rhythm a newborn lives by and the rhythm Hearth quietly tends.
+ * rhythm a newborn lives by and the rhythm Hale quietly tends.
  *
  * Hard rules baked in:
  *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
@@ -17,7 +17,7 @@
  *   - 16px form inputs on mobile (iOS no-zoom).
  *   - motion is "breathing not bouncing"; every animation — including the
  *     ambient hero sun-arc — is disabled under prefers-reduced-motion.
- *   - no emoji, ever; product name is always "Hearth".
+ *   - no emoji, ever; product name is always "Hale".
  */
 
 @theme {
@@ -35,6 +35,8 @@
   --color-sky: #7fb5c4;        /* calm secondary illustration — clouds, day fields */
   --color-sky-deep: #2f6f86;   /* text-safe blue, coach tone — 4.99:1 */
   --color-sky-tint: #cfe3e7;   /* color-block illustration wash — Spruce 10.13:1 */
+
+  --color-sea: #2f6e5e;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
 
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
@@ -59,11 +61,11 @@
   --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
   --shell-max: 1280px;
 
-  /* ── Radius — geometry inherits the type's roundness (≥ 8px) ─────────── */
+  /* ── Radius — a calm card ladder, not blobs (panels read as cards) ───── */
   --r-sm: 8px;
   --r-md: 14px;
-  --r-lg: 22px;
-  --r-xl: 32px;
+  --r-lg: 16px;
+  --r-xl: 18px;
   --r-full: 9999px;
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */

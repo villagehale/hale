@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_reminder",
+    "confidence": 0.95,
+    "rationale": "One-way reminder from a known pediatric clinic (Little Sprout Pediatrics) confirming an already-scheduled 2-month well-baby visit with immunizations; no reply or action requested beyond opt-out, which is standard boilerplate.",
+    "payload": {
+      "clinic_name": "Little Sprout Pediatrics",
+      "appointment_type": "well-baby visit",
+      "age_milestone": "2-month",
+      "scheduled_date": "Thursday",
+      "scheduled_time": "9:30 AM",
+      "provider": "Dr. Okafor",
+      "includes_immunizations": true,
+      "timezone": "America/Toronto"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "44444444-4444-4444-4444-444444444444"
+  },
+  "usage": {
+    "input": 3748,
+    "output": 312
+  }
+}

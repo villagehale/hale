@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "sleep_pattern_signal",
+    "confidence": 0.92,
+    "rationale": "Sleep tracker export for a 4-month-old infant showing regressing night-wakeup pattern (4.6 vs 2.1 prior week) — a clear newborn/infant sleep signal within age scope.",
+    "payload": {
+      "metric": "sleep",
+      "window_days": 7,
+      "avg_night_wakeups": 4.6,
+      "avg_longest_stretch_min": 95,
+      "trend": "regressing",
+      "note": "night wakeups up from 2.1 last week",
+      "child_age_months": 4
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3213,
+    "output": 275
+  }
+}

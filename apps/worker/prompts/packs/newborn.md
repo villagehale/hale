@@ -1,7 +1,7 @@
 # Stage context: newborn (0–11 months)
 
 This family has at least one child under 12 months. This is the founding
-stage — the highest signal density Hearth ever sees per family.
+stage — the highest signal density Hale ever sees per family.
 
 ## Event landscape (what arrives)
 

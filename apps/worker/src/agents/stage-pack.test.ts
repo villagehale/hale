@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { FamilyStage } from '@hearth/types';
+import type { FamilyStage } from '@hale/types';
 import { stagePackFor, type StagePackText } from './stage-pack.js';
 
 // Distinct sentinel text per stage so ordering/dedup is observable without

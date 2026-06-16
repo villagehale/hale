@@ -9,6 +9,9 @@ const envSchema = z.object({
   LANGFUSE_HOST: z.string().url().optional(),
   PORT: z.coerce.number().int().positive().default(4000),
   INTERNAL_API_SHARED_SECRET: z.string().min(16).optional(),
+  /** Off by default: the Fake curated floor is the always-available provider.
+   * When true, discovery uses the live web-grounded provider instead. */
+  VILLAGE_WEB_GROUNDING: z.coerce.boolean().default(false),
 });
 
 export const config = envSchema.parse(process.env);

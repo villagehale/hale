@@ -1,5 +1,5 @@
 {
-  "name": "hearth",
+  "name": "hale",
   "version": "0.0.1",
   "private": true,
   "description": "Passive multi-agent household AI assistant for families, across every stage of childhood (0–18)",
@@ -18,9 +18,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "db:generate": "pnpm --filter @hearth/db generate",
-    "db:migrate": "pnpm --filter @hearth/db migrate",
-    "db:studio": "pnpm --filter @hearth/db studio"
+    "db:generate": "pnpm --filter @hale/db generate",
+    "db:migrate": "pnpm --filter @hale/db migrate",
+    "db:studio": "pnpm --filter @hale/db studio"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

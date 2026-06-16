@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "family_share_request",
+    "confidence": 0.92,
+    "rationale": "A family member (grandmother) requesting recent photos of the infant to be shared; a direct, actionable ask with no urgency.",
+    "payload": {
+      "from": "grandma.ruth@gmail.com",
+      "request_type": "photos",
+      "purpose": "print for fridge / general sharing",
+      "tone": "affectionate, low-pressure",
+      "subject": "more pics please!!"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "share_photos_with_family"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3215,
+    "output": 249
+  }
+}

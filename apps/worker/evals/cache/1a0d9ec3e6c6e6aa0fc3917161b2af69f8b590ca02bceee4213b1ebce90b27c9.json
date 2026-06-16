@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "wednesday",
+        "title": "Teen volunteer or maker program",
+        "category": "maker/coding",
+        "stage_fit_rationale": "Teenagers thrive with self-directed, interest-led activities they can own — this program's optional, drop-in style respects that autonomy while directly matching Hale's interest in coding. A mid-week slot gives it a natural anchor without crowding the weekend.",
+        "candidate_confidence": 0.55
+      },
+      {
+        "day": "saturday",
+        "title": "Community pool lap or open swim",
+        "category": "swimming",
+        "stage_fit_rationale": "A teen can attend and manage a pool session independently, which supports growing self-sufficiency. Saturday lane time fits a teenager's later-rising weekend rhythm and aligns directly with Hale's stated interest in swimming.",
+        "candidate_confidence": 0.6
+      }
+    ],
+    "rationale": "Two items, two interests, two different parts of the week — a mid-week maker/coding session and a weekend swim. The load is light enough for a teenager to own without feeling managed, with clear days off on either side of each activity.",
+    "notes": "Both candidates were included; the field was small and each maps cleanly to one of Hale's stated interests. Confidence on the maker program (0.55) is modest — if it turns out not to run consistently, it can be dropped without disrupting the rest of the week. No items were excluded on stage-fit grounds."
+  }
+}

@@ -7,3 +7,4 @@ export * from './memory.js';
 export * from './agent.js';
 export * from './entitlements.js';
 export * from './allowance.js';
+export * from './village.js';

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
-import { type Database, schema } from '@hearth/db';
-import { type FamilyStage, deriveFamilyStages } from '@hearth/types';
+import { type Database, schema } from '@hale/db';
+import { type FamilyStage, deriveFamilyStages } from '@hale/types';
 
 const STAGE_ORDER: readonly FamilyStage[] = ['newborn', 'toddler', 'child', 'teenager'];
 

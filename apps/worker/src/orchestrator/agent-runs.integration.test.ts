@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDb, schema } from '@hearth/db';
+import { createDb, schema } from '@hale/db';
 
 /**
  * B8 INTEGRATION — proves real agent_runs rows + FK joins against a live

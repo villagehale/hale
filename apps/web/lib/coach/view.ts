@@ -1,4 +1,4 @@
-import type { CoachingFramework, FrameworkCitation } from '@hearth/types';
+import type { CoachingFramework, FrameworkCitation } from '@hale/types';
 
 /**
  * Display labels for each cited framework — the human-readable left side of the

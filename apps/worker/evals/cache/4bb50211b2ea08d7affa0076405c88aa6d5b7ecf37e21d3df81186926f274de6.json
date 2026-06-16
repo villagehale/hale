@@ -1,0 +1,15 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "create_calendar_event",
+      "title": "Baby Chen well-baby visit",
+      "startsAt": "2026-06-23T10:15:00-04:00",
+      "location": "Little Sprout Pediatrics",
+      "with": "Dr. Okafor",
+      "notes": "well-baby visit with Dr. Okafor at Little Sprout Pediatrics"
+    },
+    "confidence": 0.91,
+    "rationale": "All required fields are present in the event payload; creating a straightforward calendar entry for the well-baby visit with no ambiguity.",
+    "recipient_visibility": "internal_only"
+  }
+}

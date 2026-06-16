@@ -1,0 +1,16 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Forwarded email with content removed; insufficient information to classify the actual subject matter or intended recipient.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3185,
+    "output": 157
+  }
+}

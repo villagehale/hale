@@ -1,0 +1,33 @@
+{
+  "id": "routine-01-newborn",
+  "kind": "routine",
+  "note": "Newborn week from a clean stage-matched candidate set. The prompt calls for a light, low-key, parent-led week (typically 2-4 items), all candidates stage_fit=newborn, confidences carried through unchanged.",
+  "input": {
+    "stage": "newborn",
+    "interests": ["music", "books"],
+    "candidates": [
+      {
+        "title": "Public library baby storytime",
+        "description": "A free, low-key lap-sit storytime most public libraries run for infants and caregivers.",
+        "areaCoarse": "M5V",
+        "stage": "newborn",
+        "confidence": 0.7,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Parent-and-baby drop-in group",
+        "description": "A community-centre drop-in where caregivers and newborns gather; no registration, come-as-you-are.",
+        "areaCoarse": "M5V",
+        "stage": "newborn",
+        "confidence": 0.6,
+        "source": "curated_seed"
+      }
+    ]
+  },
+  "expect": {
+    "stage": "newborn",
+    "allowedTitles": ["Public library baby storytime", "Parent-and-baby drop-in group"],
+    "maxItems": 4,
+    "minItems": 1
+  }
+}

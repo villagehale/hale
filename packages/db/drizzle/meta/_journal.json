@@ -36,6 +36,20 @@
       "when": 1781373426256,
       "tag": "0004_child_attribution_and_digest_breakdown",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781460000000,
+      "tag": "0005_family_area",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781460060000,
+      "tag": "0006_village",
+      "breakpoints": true
     }
   ]
 }

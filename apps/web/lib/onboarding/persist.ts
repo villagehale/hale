@@ -1,8 +1,8 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { type Database, schema } from '@hearth/db';
-import type { FamilyStage } from '@hearth/types';
+import { type Database, schema } from '@hale/db';
+import type { FamilyStage } from '@hale/types';
 import { db as defaultDb } from '~/lib/db';
 import { clerkConfigured } from '~/lib/auth-config';
 import { resolveFamilyForClerkUser } from '~/lib/family';

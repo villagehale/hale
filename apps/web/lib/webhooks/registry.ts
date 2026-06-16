@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { IngestedEventPayload } from '@hearth/tools-contracts';
+import type { IngestedEventPayload } from '@hale/tools-contracts';
 
 /**
  * Inbound integration provider adapter pattern.

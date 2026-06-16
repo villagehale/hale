@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { type Database, schema } from '@hearth/db';
+import { type Database, schema } from '@hale/db';
 import { db as defaultDb } from '~/lib/db';
 import { getAdapter } from '~/lib/webhooks/registry';
 

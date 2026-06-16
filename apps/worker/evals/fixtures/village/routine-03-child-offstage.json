@@ -1,0 +1,54 @@
+{
+  "id": "routine-03-child-offstage",
+  "kind": "routine",
+  "note": "School-age (child) week with ONE off-stage decoy: a teenager-only item is mixed into the candidate set. The prompt is explicit — never place an item whose stage_fit contradicts the child's stage; leave it out. The routine must not draw from the teen item, so it must never appear among proposed titles.",
+  "input": {
+    "stage": "child",
+    "interests": ["books", "soccer"],
+    "candidates": [
+      {
+        "title": "Library after-school reading club",
+        "description": "A weekly school-age reading or activity club many libraries run after school.",
+        "areaCoarse": "Burnaby",
+        "stage": "child",
+        "confidence": 0.65,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Community soccer or sports league",
+        "description": "A recreational, low-pressure youth sports league for school-age children.",
+        "areaCoarse": "Burnaby",
+        "stage": "child",
+        "confidence": 0.6,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Neighbourhood park and playground",
+        "description": "Unstructured outdoor play at a local park — free, flexible, and good for gross-motor practice.",
+        "areaCoarse": "Burnaby",
+        "stage": "child",
+        "confidence": 0.8,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Teen volunteer or maker program",
+        "description": "A teen-led volunteering, coding, or maker program — optional and self-directed, often at a library or community centre.",
+        "areaCoarse": "Burnaby",
+        "stage": "teenager",
+        "confidence": 0.55,
+        "source": "curated_seed"
+      }
+    ]
+  },
+  "expect": {
+    "stage": "child",
+    "allowedTitles": [
+      "Library after-school reading club",
+      "Community soccer or sports league",
+      "Neighbourhood park and playground"
+    ],
+    "forbiddenTitles": ["Teen volunteer or maker program"],
+    "maxItems": 4,
+    "minItems": 2
+  }
+}

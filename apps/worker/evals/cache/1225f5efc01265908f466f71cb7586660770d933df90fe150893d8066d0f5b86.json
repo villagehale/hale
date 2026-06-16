@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "The clinic is proposing a new appointment time and explicitly asking the parent to reply with confirmation or alternative availability — a direct request requiring action, not a reminder of an existing booking.",
+    "payload": {
+      "clinic": "Little Sprout Pediatrics",
+      "child_name": "Mia",
+      "visit_type": "2-year checkup",
+      "original_date": "July 9",
+      "proposed_date": "July 11",
+      "proposed_time": "3:30 PM",
+      "reason_for_change": "Dr. Okafor unexpectedly away",
+      "flexibility": "open to other afternoon times"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3730,
+    "output": 304
+  }
+}

@@ -40,7 +40,7 @@ describe('createRateLimiter', () => {
     await limiter.check('1.2.3.4');
 
     expect(expire).toHaveBeenCalledTimes(1);
-    expect(expire).toHaveBeenCalledWith('hearth:waitlist:rl:1.2.3.4', 3600);
+    expect(expire).toHaveBeenCalledWith('hale:waitlist:rl:1.2.3.4', 3600);
   });
 
   it('tracks each IP in its own bucket', async () => {

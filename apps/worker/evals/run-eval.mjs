@@ -7,7 +7,7 @@
 // every subsequent run (cache hit = zero API calls = free).
 //
 // IMPORT vs REPLICATE: src/agents/classifier.ts is TypeScript and depends on
-// workspace packages (@hearth/types, config, ../anthropic/client). The committed
+// workspace packages (@hale/types, config, ../anthropic/client). The committed
 // apps/worker/dist/ is STALE (it still references the removed Mastra layer:
 // ../mastra/model.js and a date-suffixed model id), so importing the compiled
 // path would test dead code. We therefore REPLICATE the exact request shape:

@@ -1,0 +1,33 @@
+{
+  "id": "routine-04-teenager",
+  "kind": "routine",
+  "note": "Teenager week. The prompt calls for a light, optional, self-directed routine the teen owns — never over-scheduled. Candidates are teen stage-typical; judge scores whether the framing respects teen autonomy and stage.",
+  "input": {
+    "stage": "teenager",
+    "interests": ["coding", "swimming"],
+    "candidates": [
+      {
+        "title": "Teen volunteer or maker program",
+        "description": "A teen-led volunteering, coding, or maker program — optional and self-directed, often at a library or community centre.",
+        "areaCoarse": "M5V",
+        "stage": "teenager",
+        "confidence": 0.55,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Community pool lap or open swim",
+        "description": "Open-swim or lane time a teenager can use independently at a municipal pool.",
+        "areaCoarse": "M5V",
+        "stage": "teenager",
+        "confidence": 0.6,
+        "source": "curated_seed"
+      }
+    ]
+  },
+  "expect": {
+    "stage": "teenager",
+    "allowedTitles": ["Teen volunteer or maker program", "Community pool lap or open swim"],
+    "maxItems": 4,
+    "minItems": 1
+  }
+}

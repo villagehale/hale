@@ -13,7 +13,8 @@ export type ActionType =
   | 'book_clinic_portal'
   | 'cancel_clinic_appointment'
   | 'share_photos_with_family'
-  | 'add_to_digest_only';
+  | 'add_to_digest_only'
+  | 'add_to_routine';
 
 /** Visibility of the action's outward effect — drives Reviewer policy strictness. */
 export type RecipientVisibility = 'public' | 'internal_only';
@@ -60,8 +61,8 @@ export type ApprovedAction<TPayload = Record<string, unknown>> = DraftedAction<T
  * `approve` AND every REQUIRED_CHECK for the action type was invoked with an
  * ok:true RESULT (hard rules #3 + #7 — a cap-exceeded check that ran but failed
  * blocks minting, not just a missing check). The coverage predicate is injected
- * (the worker passes `coverageSatisfiedWithResults` from @hearth/tools-contracts)
- * because tools-contracts already imports @hearth/types — importing it back here
+ * (the worker passes `coverageSatisfiedWithResults` from @hale/tools-contracts)
+ * because tools-contracts already imports @hale/types — importing it back here
  * would create a dependency cycle.
  */
 export function mintApprovedAction<TPayload = Record<string, unknown>>(

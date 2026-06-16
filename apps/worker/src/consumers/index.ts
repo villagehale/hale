@@ -1,9 +1,10 @@
 import type PgBoss from 'pg-boss';
-import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hearth/tools-contracts';
+import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hale/tools-contracts';
 import { logger } from '../logger.js';
 import { executeApprovedAction, runOrchestrator } from '../orchestrator/index.js';
 import { runMemoryInferencer } from '../agents/memory-inferencer.js';
 import { runDailyDigest } from '../services/daily-digest.js';
+import { runVillageDiscovery } from '../services/village-discovery.js';
 
 interface IngestedEventDeps {
   run: typeof runOrchestrator;
@@ -96,7 +97,13 @@ export async function registerConsumers(boss: PgBoss): Promise<void> {
     await runDailyDigest(job.data as Parameters<typeof runDailyDigest>[0]);
   });
 
+  // Scheduled village discovery: per-family local-activity discovery + routine.
+  await boss.work('village.discovery.due', async ([job]) => {
+    if (!job) return;
+    await runVillageDiscovery(job.data as Parameters<typeof runVillageDiscovery>[0]);
+  });
+
   logger.info(
-    'consumers registered: events.ingested, actions.approved, memory.inference.due, digest.daily.due',
+    'consumers registered: events.ingested, actions.approved, memory.inference.due, digest.daily.due, village.discovery.due',
   );
 }

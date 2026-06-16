@@ -38,3 +38,32 @@ CHECKABLE properties, not exact strings:
 Calibrated BOTH directions: the real cached model passes 10/10; the `--drafter=broken` stand-in (placeholder-laden,
 oversized, recipient-dropping, ungrounded) is rejected on every fixture by the deterministic checks alone (no API
 call). Gate: real mode exits 0 iff every fixture passes; broken mode exits 0 iff at least one fixture is rejected.
+
+# Village eval harness (discovery + routine)
+
+The village feature has two agents with very different testability, so the harness scores them differently.
+Run from the worker package dir (`apps/worker`):
+
+```
+node --env-file=../../.env evals/run-village-eval.mjs                 # live pass, then caches
+node --env-file=../../.env evals/run-village-eval.mjs --routine=broken # calibration: must FAIL
+node evals/run-village-eval.mjs --cached-only                         # CI: replay only, never calls the API
+```
+
+- ROUTINE (the novel reasoning): REPLICATES the `runRoutine` request shape — same prompt (`prompts/routine.md`),
+  same model (`SONNET_MODEL` read live from `src/anthropic/client.ts`), same `submit_routine` tool-forced schema
+  and serialization. Per fixture (a family stage + a candidate set), deterministic checks gate that every proposed
+  item references a PROVIDED candidate, is not drawn from an off-stage candidate, carries the candidate's confidence
+  through unchanged, and keeps the week light (item-count bound); a cached Haiku judge then scores stage-fit 1–5
+  (must be >= 4). Cache + replicate-not-import design identical to the classifier/drafter (the stale `dist/` still
+  references the removed Mastra layer).
+- DISCOVERY (the Fake floor): the REAL `FakeDiscoveryProvider` is the subject, imported live from
+  `src/agents/discovery-providers/fake.ts` via the tsx loader (never the stale dist; copying its SEED table would be
+  a second source of truth). A reference-recall check confirms the curated items a stage/interest query should
+  surface do surface, the ranking holds, and `source`/`confidence`/`coverageNote`/`areaCoarse` are honest (rule #1:
+  no `sourceUrl` finer than the coarse area). Zero spend — no model, no key needed for this half.
+
+Calibrated BOTH directions: the real cached model must pass every fixture; the `--routine=broken` stand-in (an
+invented, off-stage, confidence-inflated item) is rejected on every routine fixture by the deterministic checks alone
+(no API call), while the deterministic discovery fixtures still pass. Gate: real mode exits 0 iff every fixture
+passes; broken mode exits 0 iff at least one is rejected. Token usage per keyed call is logged as the budget instrument.

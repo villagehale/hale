@@ -1,0 +1,16 @@
+{
+  "id": "discovery-03-teenager",
+  "kind": "discovery",
+  "note": "Teenager, no stated interests: lean on stage-typical seeds. Both teen seeds must surface and every returned candidate must be stage_fit=teenager (no younger-stage seed leaks across the stage filter). Derived from the SEED table's stage assignments.",
+  "input": {
+    "areaCoarse": "Burnaby",
+    "stage": "teenager",
+    "interests": [],
+    "limit": 8
+  },
+  "expect": {
+    "stage": "teenager",
+    "expectedTitles": ["Teen volunteer or maker program", "Community pool lap or open swim"],
+    "allStageFit": "teenager"
+  }
+}

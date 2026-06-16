@@ -3,6 +3,7 @@ import { runClassifier } from '../agents/classifier.js';
 import { runDrafter } from '../agents/drafter.js';
 import { runReviewer } from '../agents/reviewer.js';
 import { dedupHashFor } from '../agents/dedup.js';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { runExecutor } from '../services/executor.js';
 import {
   recordEvent,
@@ -36,12 +37,12 @@ import {
   type ApprovedAction,
   type ActionType,
   type FamilyStage,
-} from '@hearth/types';
+} from '@hale/types';
 import {
   coverageSatisfiedWithResults,
   isCrossParentActionType,
   type IngestedEventPayload,
-} from '@hearth/tools-contracts';
+} from '@hale/tools-contracts';
 import {
   withinObservationWindow,
   streakSatisfiesAutonomy,
@@ -50,6 +51,16 @@ import {
 
 const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
 const CONFIDENCE_HUMAN_THRESHOLD = 0.7;
+
+// An accepted village item is a KNOWN, user-initiated intent — the parent tapped
+// "accept" on a surfaced activity. It must NOT be re-derived by the probabilistic
+// classifier (which has no add_to_routine instruction and routes activity notices
+// to surface_only → dropped). source='village' + this marker short-circuits the
+// classify stage with a deterministic add_to_routine suggestion, then runs the
+// rest of the spine (draft → reviewer → autonomy gates → drafted_for_approval)
+// unchanged. Mirrors the accept-flow contract in apps/web/lib/village/accept.ts.
+const VILLAGE_SOURCE = 'village';
+const VILLAGE_ACCEPT_EVENT_TYPE = 'activity_signup_open' as const;
 
 const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
   'send_email',
@@ -64,6 +75,7 @@ const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
   'cancel_clinic_appointment',
   'share_photos_with_family',
   'add_to_digest_only',
+  'add_to_routine',
 ]);
 
 /**
@@ -77,14 +89,47 @@ const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
 /** What the classify stage yields, whether fresh or replayed from a checkpoint. */
 interface ClassifiedState {
   eventId: string;
-  eventType: import('@hearth/types').EventType;
+  eventType: import('@hale/types').EventType;
   payload: Record<string, unknown>;
   confidence: number;
-  suggestion: import('@hearth/types').ClassifierSuggestion;
+  suggestion: import('@hale/types').ClassifierSuggestion;
   /** Teen-content flag from the classifier, persisted on the event (FIX 1) so a
    * crash-resume re-applies the rule-#1 teen-redaction cap with the same value
    * the fresh pass saw. The cap is live on both the fresh and resume paths. */
   teenContent: boolean;
+}
+
+/** The classify-stage output the fresh path consumes — produced by the LLM
+ * classifier OR, for an accepted village item, deterministically. */
+type FreshClassification = Awaited<ReturnType<typeof runClassifier>>;
+
+/**
+ * Deterministic classify for an accepted village item (hard-known intent). No
+ * LLM call: the suggestion is fixed to add_to_routine at full confidence and the
+ * dedupHash matches the live classifier's so a re-accept of the same candidate
+ * still dedups. The event payload is the accepted candidate's already-coarse
+ * fields (rule #1 — no precise location ever reaches here). teen_content is false
+ * (an activity signup is not teen-personal content) and child attribution is null
+ * (the accept payload carries no child id).
+ */
+function classifyAcceptedVillageItem(job: IngestedEventPayload): FreshClassification {
+  return {
+    eventType: VILLAGE_ACCEPT_EVENT_TYPE,
+    payload: job.payload,
+    confidence: { score: 1, rationale: 'accepted village item — deterministic add_to_routine' },
+    suggestion: { kind: 'autonomous_action', actionType: 'add_to_routine' },
+    teenContent: false,
+    concernsChildId: null,
+    dedupHash: dedupHashFor(job.family_id, job.source, JSON.stringify(job.payload)),
+    runMetrics: {
+      agentName: 'classifier',
+      modelUsed: 'deterministic',
+      promptTokens: 0,
+      completionTokens: 0,
+      costUsd: 0,
+      latencyMs: 0,
+    },
+  };
 }
 
 export async function runOrchestrator(job: IngestedEventPayload): Promise<void> {
@@ -152,13 +197,17 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       teenContent: resume.teenContent,
     };
   } else {
-    const fresh = await runClassifier({
-      familyId,
-      source: job.source,
-      rawContent,
-      stages,
-      familyContextSlice: familyContext.contextSlice,
-    });
+    const isAcceptedVillageItem =
+      job.source === VILLAGE_SOURCE && job.payload.event_type === VILLAGE_ACCEPT_EVENT_TYPE;
+    const fresh = isAcceptedVillageItem
+      ? classifyAcceptedVillageItem(job)
+      : await runClassifier({
+          familyId,
+          source: job.source,
+          rawContent,
+          stages,
+          familyContextSlice: familyContext.contextSlice,
+        });
     // Child attribution: trust the classifier's concerns_child_id ONLY if it
     // names a real child of this family — a hallucinated or stale id is dropped
     // to null rather than written as a dangling reference. events.child_id is
@@ -278,12 +327,42 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
     };
     logger.info({ familyId, eventId, actionId }, 'orchestrator: resuming from stored draft');
   } else {
-    const drafted = await runDrafter({
-      familyId,
-      event: { eventId, eventType: classified.eventType, payload: classified.payload },
-      actionType,
-    });
-    draft = drafted.draft;
+    // add_to_routine is a deterministic, internal-only routine pin built from the
+    // already-known accepted-candidate payload (title/kind/summary) — there is
+    // nothing for the drafter to compose, so we skip its LLM call rather than
+    // prompt for content we already have. Every other action type drafts via the
+    // LLM as before. Both feed the same recordAction (and therefore the same
+    // reviewer → autonomy-gate spine).
+    let drafterMetrics: AgentRunMetrics;
+    if (actionType === 'add_to_routine') {
+      draft = {
+        id: crypto.randomUUID(),
+        eventId,
+        familyId,
+        actionType,
+        payload: classified.payload,
+        draftConfidence: classified.confidence,
+        rationale: 'accepted village item pinned to routine',
+        recipientVisibility: 'internal_only',
+        draftedAt: new Date().toISOString(),
+      };
+      drafterMetrics = {
+        agentName: 'drafter',
+        modelUsed: 'deterministic',
+        promptTokens: 0,
+        completionTokens: 0,
+        costUsd: 0,
+        latencyMs: 0,
+      };
+    } else {
+      const drafted = await runDrafter({
+        familyId,
+        event: { eventId, eventType: classified.eventType, payload: classified.payload },
+        actionType,
+      });
+      draft = drafted.draft;
+      drafterMetrics = drafted.runMetrics;
+    }
 
     // recordAction advances the event to 'drafted' inside its own transaction
     // (FIX 2 atomic fold) — no separate markEventStage('drafted') needed.
@@ -292,7 +371,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       eventId,
       actionType: draft.actionType,
       payload: draft.payload,
-      drafterMetrics: drafted.runMetrics,
+      drafterMetrics,
     });
     actionId = recorded.actionId;
   }
@@ -379,7 +458,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
         nudge:
           planTier === 'free'
             ? 'Upgrade to Plus to raise your monthly automation allowance.'
-            : 'You have reached this month’s automation allowance; Hearth will keep drafting for your approval and resume acting on its own next month.',
+            : 'You have reached this month’s automation allowance; Hale will keep drafting for your approval and resume acting on its own next month.',
       },
     });
     return;
@@ -619,9 +698,9 @@ function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
  * CONSENT BOUNDARY (hard rule #5): a human's approval IS the override for the
  * AUTONOMY gates (streak / 7-day window / confidence / entitlement-for-autonomy) —
  * that is the entire point of L2 "draft → human approves → execute". Those gates
- * decide whether HEARTH may act on its own; once a parent says "yes, send it", they
+ * decide whether HALE may act on its own; once a parent says "yes, send it", they
  * no longer apply. Cross-parent consent is NOT an autonomy gate — it is a separate
- * legal requirement that BOTH parents authorize Hearth to act on their jointly-held
+ * legal requirement that BOTH parents authorize Hale to act on their jointly-held
  * child's data. One parent's approval cannot waive the other parent's consent, so
  * this gate is re-checked here and a missing co-parent consent REFUSES execution
  * (audited action.gated.cross_parent_consent), even with a valid human approval.

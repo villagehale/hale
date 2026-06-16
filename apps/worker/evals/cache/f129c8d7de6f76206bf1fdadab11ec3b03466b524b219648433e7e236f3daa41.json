@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "Sleep observation for a 9-year-old school-age child does not map to sleep_pattern_signal, which is exclusively an infant/newborn proactive signal; this is a child-stage sleep note that requires human judgment about whether to surface, contextualize, or ignore.",
+    "payload": {
+      "source": "internal_scheduler",
+      "trigger": "sleep_observation",
+      "child_age_months": 108,
+      "note": "logged shorter overnight sleep and later bedtimes across the past two weeks for the 9-year-old"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3677,
+    "output": 263
+  }
+}

@@ -130,10 +130,10 @@ function auditEntry(overrides: Partial<AuditLogEntry>): AuditLogEntry {
 }
 
 describe('toTrailView', () => {
-  it('renders a system actor as hearth with a Toronto-time stamp', () => {
+  it('renders a system actor as hale with a Toronto-time stamp', () => {
     // 14:05 UTC is 10:05 in America/Toronto (EDT, UTC-4) on 2026-06-11.
     const view = toTrailView(auditEntry({ actor: 'system' }), false);
-    expect(view.actor).toBe('hearth');
+    expect(view.actor).toBe('hale');
     expect(view.time).toBe('10:05');
     expect(view.summary).toBe('sent rsvp to library');
     expect(view.detail).toBe('actions · act-9');
@@ -152,7 +152,7 @@ describe('toTrailView', () => {
 });
 
 // ── Rule #1: teen content (children 13+) is redacted at the mapper layer ──────
-// The parent sees CATEGORY + Hearth's own rationale + a "kept private" placeholder,
+// The parent sees CATEGORY + Hale's own rationale + a "kept private" placeholder,
 // NEVER the teen's raw body/subject/quoted text. teenContent is an EXPLICIT mapper
 // input so the redaction is structural — a future caller that forgets to JOIN
 // events still cannot leak raw teen text once the flag is set.
@@ -181,7 +181,7 @@ describe('teen-content redaction', () => {
       expect(serialized).not.toContain(TEEN_BODY);
       expect(serialized).not.toContain(TEEN_SUBJECT);
 
-      // Category + non-sensitive recipient + Hearth's rationale survive; body/subject
+      // Category + non-sensitive recipient + Hale's rationale survive; body/subject
       // become the placeholder so the parent can authorize on category alone (L2).
       expect(view.category).toBe('reply_to_email');
       expect(view.recipient).toBe('Riverdale Secondary School');
@@ -243,7 +243,7 @@ describe('teen-content redaction', () => {
         true,
       );
       expect(JSON.stringify(view)).not.toContain(TEEN_BODY);
-      expect(view.actor).toBe('hearth');
+      expect(view.actor).toBe('hale');
       expect(view.category).toBe('actions');
       expect(view.time).toBe('10:05');
       expect(view.summary).toBe(TEEN_REDACTED_PLACEHOLDER);

@@ -17,8 +17,8 @@
 #
 # ROLLBACK (manual — see docs/deploy/README.md for full procedure):
 #   - Vercel : `vercel promote <previous-prod-url> --token=$VERCEL_TOKEN`
-#   - Fly    : `fly releases --app hearth-worker` then `fly deploy --image <prev>`
-#              or `fly releases rollback <version> --app hearth-worker`
+#   - Fly    : `fly releases --app hale-worker` then `fly deploy --image <prev>`
+#              or `fly releases rollback <version> --app hale-worker`
 #   - DB     : migrations are additive (CLAUDE.md #9) — no auto down-migration;
 #              restore from Supabase PITR if a migration is bad.
 
@@ -91,8 +91,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # drizzle.config.ts reads ./dist/schema/index.js — must build @hearth/db first.
-      - run: pnpm --filter @hearth/db build
+      # drizzle.config.ts reads ./dist/schema/index.js — must build @hale/db first.
+      - run: pnpm --filter @hale/db build
       - name: Apply migrations
         env:
           # Use the DIRECT (non-pooled) URL for migrations — drizzle-kit runs DDL
@@ -103,7 +103,7 @@ jobs:
           if [ -z "${DATABASE_DIRECT_URL:-}" ]; then
             echo "::error::migrate leg ran without DATABASE_DIRECT_URL — refusing to proceed."; exit 1
           fi
-          pnpm --filter @hearth/db migrate
+          pnpm --filter @hale/db migrate
 
   # ── Web + Site → Vercel (Toronto-pinned functions) ────────────────────────
   vercel:
@@ -153,7 +153,7 @@ jobs:
 
   # ── Worker → Fly.io Toronto (yyz) ─────────────────────────────────────────
   fly:
-    name: Fly deploy (hearth-worker yyz)
+    name: Fly deploy (hale-worker yyz)
     needs: [preflight, migrate]
     if: |
       always() &&

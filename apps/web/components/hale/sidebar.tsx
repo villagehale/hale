@@ -2,17 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Cat } from '~/components/illos';
+import { SeaTurtle } from '~/components/illos';
 
 const NAV = [
-  { href: '/digest', label: 'digest', folio: 'i' },
-  { href: '/live', label: 'live', folio: 'ii' },
-  { href: '/drafts', label: 'drafts', folio: 'iii' },
-  { href: '/coach', label: 'coach', folio: 'iv' },
-  { href: '/memory', label: 'memory', folio: 'v' },
-  { href: '/trail', label: 'trail', folio: 'vi' },
-  { href: '/connected', label: 'connected', folio: 'vii' },
-  { href: '/settings', label: 'settings', folio: 'viii' },
+  { href: '/digest', label: 'digest', folio: '01' },
+  { href: '/live', label: 'live', folio: '02' },
+  { href: '/drafts', label: 'drafts', folio: '03' },
+  { href: '/coach', label: 'coach', folio: '04' },
+  { href: '/memory', label: 'memory', folio: '05' },
+  { href: '/trail', label: 'trail', folio: '06' },
+  { href: '/connected', label: 'connected', folio: '07' },
+  { href: '/settings', label: 'settings', folio: '08' },
+  { href: '/village', label: 'village', folio: '09' },
 ] as const;
 
 export function Sidebar() {
@@ -26,7 +27,7 @@ export function Sidebar() {
             className="font-display text-[2.4rem] leading-none"
             style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}
           >
-            Hearth
+            Hale
           </span>
           <span className="meta block mt-2">holds the small things</span>
         </Link>
@@ -72,9 +73,9 @@ export function Sidebar() {
           </div>
         </dl>
 
-        {/* The one tasteful cat — Hearth, curled asleep at the foot. */}
+        {/* The one tasteful sea turtle — Hale, resting at the foot. */}
         <div className="pt-4 flex items-end gap-3" aria-hidden>
-          <Cat age="kitten" style={{ height: 44, width: 'auto' }} />
+          <SeaTurtle age="hatchling" style={{ height: 44, width: 'auto' }} />
           <span className="meta">resting · listening</span>
         </div>
       </div>

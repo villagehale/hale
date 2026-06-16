@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.72,
+    "rationale": "Sender appears to be a daycare or early childhood centre (brightpath-family.ca domain suggests a childcare provider); message references an open house, pending form submission, and fee information typical of daycare enrolment logistics.",
+    "payload": {
+      "sender": "contact@brightpath-family.ca",
+      "subject": "A few things",
+      "items": [
+        "open house date rescheduled, pending confirmation from other location",
+        "form submission still required from family",
+        "fee structure depends on option selected"
+      ],
+      "pending_action": "form return + awaiting new open house date"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3218,
+    "output": 275
+  }
+}

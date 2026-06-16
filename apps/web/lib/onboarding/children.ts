@@ -2,11 +2,11 @@ import {
   type FamilyStage,
   deriveStage,
   isBeyondProductAge,
-} from '@hearth/types';
+} from '@hale/types';
 
 /**
  * Onboarding's pure core. The wizard collects, per child, a name and a
- * date of birth; everything downstream (which stage Hearth tailors to, the
+ * date of birth; everything downstream (which stage Hale tailors to, the
  * family header labels) is a live function of that birthdate via deriveStage.
  * No stage is ever stored — date_of_birth is the only source of truth.
  *

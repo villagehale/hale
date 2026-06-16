@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Folio } from '~/components/hearth/folio';
+import { Folio } from '~/components/hale/folio';
 import type { CoachAnswerView } from '~/lib/coach/view';
 
 type Status = 'idle' | 'pending' | 'error';
@@ -70,7 +70,7 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
               <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
                 <div className="md:col-span-2">
                   <Folio index={idx * 2 + 2} />
-                  <p className="eyebrow text-apricot-deep mt-2">Hearth</p>
+                  <p className="eyebrow text-apricot-deep mt-2">Hale</p>
                   <p className="meta mt-1">
                     confidence · {entry.answer.confidence.toFixed(2)}
                   </p>
@@ -126,7 +126,7 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
           <article className="py-10 border-t border-rule">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-y-4 md:gap-x-8">
               <div className="md:col-span-2">
-                <p className="eyebrow text-apricot-deep">Hearth</p>
+                <p className="eyebrow text-apricot-deep">Hale</p>
               </div>
               <div className="md:col-span-10">
                 <p className="meta italic" aria-live="polite">
@@ -177,7 +177,7 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
                   </p>
                 ) : null}
                 <p className="meta">
-                  your question stays inside Hearth. coach never sees your inbox or
+                  your question stays inside Hale. coach never sees your inbox or
                   calendar — only your family&rsquo;s stage.
                 </p>
               </>

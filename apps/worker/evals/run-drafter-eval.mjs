@@ -174,7 +174,7 @@ function makeRealDrafter(model, prompt, cachedOnly, cost) {
 // API call and reads no cache, so it can never accidentally pass.
 function makeBrokenDrafter() {
   const filler =
-    "As Hearth's AI assistant, I am pleased to inform you that {{appointment_date}} is confirmed. ".repeat(
+    "As Hale's AI assistant, I am pleased to inform you that {{appointment_date}} is confirmed. ".repeat(
       12,
     );
   const garbage = `Dear [NAME], TODO write the actual reply here. ${filler}`;

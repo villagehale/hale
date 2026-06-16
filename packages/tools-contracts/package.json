@@ -1,5 +1,5 @@
 {
-  "name": "@hearth/tools-contracts",
+  "name": "@hale/tools-contracts",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@hearth/types": "workspace:*",
+    "@hale/types": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
-# Hearth — Deployment Runbook
+# Hale — Deployment Runbook
 
-How Hearth ships to production: **Vercel** (web + marketing site) + **Fly.io
+How Hale ships to production: **Vercel** (web + marketing site) + **Fly.io
 Toronto/yyz** (the agent worker) + **Supabase Toronto** (Postgres). All
 residency-sensitive compute and data stay in Canada (CLAUDE.md hard rule #1:
 PIPEDA + Quebec Law 25 + CASL).
@@ -20,8 +20,8 @@ PIPEDA + Quebec Law 25 + CASL).
                       ┌──────────────────────────────────────────────┐
         parent's      │  VERCEL  (global edge; functions pinned yyz1) │
         browser ─────▶│                                              │
-                      │  apps/web   (@hearth/web)   — app, API routes   │
-                      │  apps/site  (@hearth/site)  — marketing site    │
+                      │  apps/web   (@hale/web)   — app, API routes   │
+                      │  apps/site  (@hale/site)  — marketing site    │
                       └───────────────┬──────────────────────────────┘
                                       │  enqueue: queue.send('events.ingested'),
                                       │           queue.send('actions.approved')
@@ -35,7 +35,7 @@ PIPEDA + Quebec Law 25 + CASL).
                                       ▼
                       ┌──────────────────────────────────────────────┐
                       │  FLY.IO  primary_region = yyz (Toronto)       │
-                      │  apps/worker (@hearth/worker) — pg-boss consumer │
+                      │  apps/worker (@hale/worker) — pg-boss consumer │
                       │  consumes: events.ingested, actions.approved,  │
                       │            memory.inference.due, digest.daily  │
                       │  calls: Anthropic, Langfuse, Postmark          │
@@ -117,8 +117,8 @@ required secret fails loud.**
 3. Provision the schema — **see [Release blockers](#release-blockers) first**.
    - **Interim / dev path (verified working):**
      ```bash
-     pnpm --filter @hearth/db build           # drizzle.config reads dist/schema
-     DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hearth/db push   # drizzle-kit push
+     pnpm --filter @hale/db build           # drizzle.config reads dist/schema
+     DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db push   # drizzle-kit push
      ```
    - The intended CI path (`drizzle-kit migrate`) is **blocked** until the
      baseline migration exists (blocker B1).
@@ -137,21 +137,21 @@ vercel link            # → choose/create the web project
 cat .vercel/project.json   # → orgId, projectId  → VERCEL_ORG_ID, VERCEL_PROJECT_ID_*
 ```
 
-- Web project uses `infra/vercel.json` (`--filter=@hearth/web`, output `apps/web/.next`).
-- Site project uses `infra/vercel.site.json` (`--filter=@hearth/site`, output `apps/site/.next`).
+- Web project uses `infra/vercel.json` (`--filter=@hale/web`, output `apps/web/.next`).
+- Site project uses `infra/vercel.site.json` (`--filter=@hale/site`, output `apps/site/.next`).
 - Both pin functions to `yyz1`.
 
 ### 3. Fly.io worker (Toronto)
 
 ```bash
-fly launch --config infra/fly.toml --no-deploy   # creates the hearth-worker app, region yyz
+fly launch --config infra/fly.toml --no-deploy   # creates the hale-worker app, region yyz
 fly secrets set \
   DATABASE_URL=... ANTHROPIC_API_KEY=... \
   LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=... LANGFUSE_HOST=... \
   POSTMARK_API_KEY=... POSTMARK_FROM_ADDRESS=... \
-  --app hearth-worker
+  --app hale-worker
 fly deploy --config infra/fly.toml --remote-only
-fly logs --app hearth-worker     # expect: "pg-boss started" → "consumers registered" → "Hearth worker ready"
+fly logs --app hale-worker     # expect: "pg-boss started" → "consumers registered" → "Hale worker ready"
 ```
 
 The worker is a **non-HTTP** process (a pure pg-boss poller). `infra/fly.toml`
@@ -188,9 +188,9 @@ vercel promote <previous-prod-url> --token=$VERCEL_TOKEN
 
 ### Fly (worker)
 ```bash
-fly releases --app hearth-worker                     # list versions
-fly releases rollback <version> --app hearth-worker  # roll to a prior release image
-# or: fly deploy --image <previous-image-ref> --app hearth-worker
+fly releases --app hale-worker                     # list versions
+fly releases rollback <version> --app hale-worker  # roll to a prior release image
+# or: fly deploy --image <previous-image-ref> --app hale-worker
 ```
 The worker is stateless (state lives in Postgres), so rollback is just swapping
 the image; in-flight jobs are retried by pg-boss.
@@ -227,10 +227,10 @@ baseline snapshot/migration was ever emitted; only hand-written additive deltas
 exist.
 
 **Fix (tested, owned by `packages/db`):** `drizzle.config.ts` now points at
-`dist/schema/index.js`, and `generate` **works** once `@hearth/db` is built. The
+`dist/schema/index.js`, and `generate` **works** once `@hale/db` is built. The
 fix is to regenerate a baseline-first migration set:
 
-1. `pnpm --filter @hearth/db build`
+1. `pnpm --filter @hale/db build`
 2. Add a `0000_baseline` migration that `CREATE`s all 14 tables + 12 enums
    (`drizzle-kit generate` against an empty DB produces exactly this), and
    renumber the existing additive deltas after it.
@@ -259,7 +259,7 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module
 '/app/packages/types/src/event.js' imported from /app/packages/types/src/index.ts
 ```
 
-**Root cause:** `@hearth/types`, `@hearth/db`, and `@hearth/tools-contracts` declare
+**Root cause:** `@hale/types`, `@hale/db`, and `@hale/tools-contracts` declare
 `"main"`/`"exports"` → `./src/index.ts`. At runtime Node resolves the workspace
 import to **TypeScript source** (which it can't execute, and whose `./event.js`
 ESM specifier has no emitted JS on that path). The packages **are** built
@@ -268,7 +268,7 @@ mis-pointed.
 
 **Fix (one line per package, owned by `packages/**`):** repoint `main`/`types`/
 `exports` to `./dist/index.js` / `./dist/index.d.ts` (and the `./schema`,
-`./client` subpath exports for `@hearth/db`). The worker Docker image already
+`./client` subpath exports for `@hale/db`). The worker Docker image already
 ships `dist/` for all three, so this alone makes the worker run.
 
 This edit lives in `packages/**` and is owned by the packages maker — it was

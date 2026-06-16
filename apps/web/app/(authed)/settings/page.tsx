@@ -1,6 +1,6 @@
-import { PageCorner } from '~/components/hearth/page-corner';
-import { Folio } from '~/components/hearth/folio';
-import { StreakLadder, type AutonomyLevel } from '~/components/hearth/streak-ladder';
+import { PageCorner } from '~/components/hale/page-corner';
+import { Folio } from '~/components/hale/folio';
+import { StreakLadder, type AutonomyLevel } from '~/components/hale/streak-ladder';
 
 interface AutonomyRow {
   action: string;
@@ -25,7 +25,7 @@ const AUTONOMY: AutonomyRow[] = [
 export default function SettingsPage() {
   return (
     <div>
-      <PageCorner folio="viii" section="settings · tune the trust ladder" />
+      <PageCorner folio="08" section="settings · tune the trust ladder" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">

@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "milestone_photo_detected",
+    "confidence": 0.92,
+    "rationale": "Photo metadata shows an infant (6 months old) demonstrating sitting unassisted, a key developmental milestone for this age.",
+    "payload": {
+      "asset_id": "IMG_4471",
+      "captured_at": "2026-06-10T15:22:00-04:00",
+      "detected_labels": [
+        "infant",
+        "sitting_unassisted",
+        "smiling"
+      ],
+      "scene": "living_room",
+      "milestone_type": "sitting_unassisted",
+      "child_age_months": 6
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3221,
+    "output": 263
+  }
+}

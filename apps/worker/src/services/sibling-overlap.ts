@@ -1,4 +1,4 @@
-import type { DigestPerChildBreakdown } from '@hearth/db';
+import type { DigestPerChildBreakdown } from '@hale/db';
 
 /**
  * Sibling calendar-overlap detection — a pure function over the day's calendar
@@ -7,13 +7,13 @@ import type { DigestPerChildBreakdown } from '@hearth/db';
  * a block): a parent with a newborn and a teenager who each have something booked
  * at the same time needs to see the clash.
  *
- * HONEST LIMITATION: Hearth has no canonical calendar-events store — Google
+ * HONEST LIMITATION: Hale has no canonical calendar-events store — Google
  * Calendar execution is `not_configured` (no OAuth wired), so no provider-side
  * event windows exist to diff against. The only time-windowed calendar data
  * available is in the day's own calendar ACTION payloads. This detector therefore
  * compares the day's calendar actions against each other, attributed by
  * events.child_id. It cannot see a sibling's PRE-EXISTING calendar event that
- * Hearth never touched. Once a real calendar integration lands, the same pure
+ * Hale never touched. Once a real calendar integration lands, the same pure
  * function can take those windows as additional inputs — the wiring point (the
  * daily digest) and the flag shape stay the same.
  */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { invokeReviewerTool } from './registry.js';
-import type { PiiLeakOutput } from '@hearth/tools-contracts';
+import type { PiiLeakOutput } from '@hale/tools-contracts';
 
 /**
  * Rule #1 — check_pii_leak must detect all six declared kinds, not just SIN +

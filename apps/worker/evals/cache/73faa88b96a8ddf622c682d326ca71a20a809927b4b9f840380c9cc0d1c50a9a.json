@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "wednesday",
+        "title": "Public library baby storytime",
+        "category": "books",
+        "stage_fit_rationale": "Newborns respond to the rhythm and cadence of a parent's voice reading aloud, and a short lap-sit format matches their very limited wake windows without overstimulation. It also aligns directly with the family's interest in books and music through song-along elements typical of baby storytimes.",
+        "candidate_confidence": 0.7
+      },
+      {
+        "day": "saturday",
+        "title": "Parent-and-baby drop-in group",
+        "category": "social",
+        "stage_fit_rationale": "A come-as-you-are drop-in is ideal for the newborn stage because there is no commitment pressure — the family can leave early if the baby is tired or fussy. It provides low-key caregiver social support, which is critical in the early weeks.",
+        "candidate_confidence": 0.6
+      }
+    ],
+    "rationale": "Two gentle outings anchor the week — a mid-week library visit tied to Hale's book and music interests, and a weekend drop-in for caregiver connection — leaving the rest of the week wide open for feeding, sleeping, and recovery.",
+    "notes": "Only two candidates were available, and both are a strong fit for the newborn stage, so no items were left out. Treat both as fully skippable on any given week — newborn schedules shift daily, and missing a session carries zero cost."
+  }
+}

@@ -43,7 +43,7 @@ export interface DigestPerChildBreakdown {
  * rather than duplicate it (digests are recomputed idempotently per day).
  *
  * Counts mirror the action user-visible states runDailyDigest buckets:
- *   handled    — actions Hearth executed autonomously
+ *   handled    — actions Hale executed autonomously
  *   awaiting   — actions drafted, waiting on a parent's approval
  *   needsYou   — actions that need a human (reviewer flagged / failed)
  *   reverted   — actions a parent rolled back

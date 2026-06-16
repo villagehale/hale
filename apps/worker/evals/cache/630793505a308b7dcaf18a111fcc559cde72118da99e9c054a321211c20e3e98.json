@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.95,
+    "rationale": "Ontario government notification that the teen is now eligible to apply for a G1 learner's permit—a legal/administrative milestone requiring parental awareness and action by a deadline.",
+    "payload": {
+      "sender": "Ontario government (noreply@ontario.ca)",
+      "milestone_type": "driver_licence_eligibility",
+      "licence_class": "G1",
+      "requirements": [
+        "Pass vision test at DriveTest centre",
+        "Pass knowledge test at DriveTest centre",
+        "Bring two pieces of identification"
+      ],
+      "note": "No appointment required for knowledge test"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3783,
+    "output": 278
+  }
+}

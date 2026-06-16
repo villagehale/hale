@@ -1,6 +1,6 @@
-import type { schema } from '@hearth/db';
-import type { AutonomyLevel } from '~/components/hearth/streak-ladder';
-import type { EntryTone } from '~/components/hearth/tone';
+import type { schema } from '@hale/db';
+import type { AutonomyLevel } from '~/components/hale/streak-ladder';
+import type { EntryTone } from '~/components/hale/tone';
 
 export type Action = typeof schema.actions.$inferSelect;
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
@@ -39,14 +39,14 @@ export interface TrailView {
   time: string;
   category: string;
   tone: EntryTone;
-  actor: 'hearth' | 'you' | 'co-parent';
+  actor: 'hale' | 'you' | 'co-parent';
   summary: string;
   detail: string;
 }
 
 /**
  * Hard rule #1 (teen privacy): for children 13+, a parent sees category +
- * Hearth's own rationale-summary + this placeholder — never the teen's raw
+ * Hale's own rationale-summary + this placeholder — never the teen's raw
  * subject/body/quoted text. The parent still approves on category + summary (the
  * L2 model: authorize "reply to the school about X" without reading the teen's
  * message). `teenContent` is an EXPLICIT mapper input so the redaction is
@@ -125,11 +125,11 @@ export function toDigestEntry(action: Action, teenContent: boolean): DigestEntry
 }
 
 /** audit_log.actor is 'system' | agent_run uuid | user uuid; the timeline only
- * distinguishes Hearth vs. a parent. A non-system actor is a human ("you"); the
+ * distinguishes Hale vs. a parent. A non-system actor is a human ("you"); the
  * co-parent distinction needs the acting user's role, which the audit row alone
  * doesn't carry — so human actors read as "you" until that join is wired. */
 function actorOf(entry: AuditLogEntry): TrailView['actor'] {
-  return entry.actor === 'system' ? 'hearth' : 'you';
+  return entry.actor === 'system' ? 'hale' : 'you';
 }
 
 const HH_MM = new Intl.DateTimeFormat('en-CA', {
@@ -142,7 +142,7 @@ const HH_MM = new Intl.DateTimeFormat('en-CA', {
 /**
  * Teen-content trail rows (rule #1) keep the non-sensitive frame — time, category
  * (target_table), actor, and the id-only detail — but `actionTaken` is redacted to
- * the placeholder. `actionTaken` is Hearth's own phrasing, but it can quote the
+ * the placeholder. `actionTaken` is Hale's own phrasing, but it can quote the
  * teen (e.g. an email subject), so it is redacted conservatively whenever the row
  * resolves to teen_content. Rows the query layer cannot tie to teen_content (e.g.
  * non-`actions` targets) keep their summary — see loadTrail for that join.

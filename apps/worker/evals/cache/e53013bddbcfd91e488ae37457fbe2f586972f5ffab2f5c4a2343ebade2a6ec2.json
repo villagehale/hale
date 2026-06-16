@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "subscription_renewal_due",
+    "confidence": 0.95,
+    "rationale": "Routine subscription renewal notice from a diaper supplier with a clear deadline and action window; family can skip or modify if desired.",
+    "payload": {
+      "sender": "billing@everydaybaby.ca",
+      "subscription_name": "Monthly Size 2 diaper subscription",
+      "renewal_date": "2024-06-15",
+      "amount": "$42.99",
+      "product_type": "diapers",
+      "action_window": "3 days",
+      "actions_available": [
+        "skip",
+        "change_delivery"
+      ]
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3215,
+    "output": 266
+  }
+}

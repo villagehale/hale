@@ -39,5 +39,5 @@ cites nothing) is rejected on every fixture by the deterministic checks alone (n
 real mode exits 0 iff every fixture passes; broken mode exits 0 iff at least one fixture is
 rejected.
 
-Live cost to populate the cache: ~$0.13 USD (16 coach+judge calls). `pnpm --filter @hearth/web
+Live cost to populate the cache: ~$0.13 USD (16 coach+judge calls). `pnpm --filter @hale/web
 eval:coach` runs the `--cached-only` form for CI — free, never calls the API.

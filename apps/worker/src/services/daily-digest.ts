@@ -1,5 +1,5 @@
 import { and, eq, gte, lt } from 'drizzle-orm';
-import { schema, type Database, type DigestPerChildBreakdown } from '@hearth/db';
+import { schema, type Database, type DigestPerChildBreakdown } from '@hale/db';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 import { detectSiblingCalendarOverlaps } from './sibling-overlap.js';

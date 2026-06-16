@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "add_to_digest_only",
+      "digest_entry": {
+        "category": "calendar_conflict",
+        "summary": "Noah's 6-month checkup (Tue Jun 23, 10:15 AM) overlaps a work meeting starting at 10:00 AM.",
+        "suggested_actions": [
+          "Reschedule the work meeting",
+          "Reschedule the checkup to a later slot"
+        ],
+        "events_involved": [
+          "Noah's 6-month checkup — Tue Jun 23, 10:15 AM",
+          "Work meeting — Tue Jun 23, 10:00 AM"
+        ]
+      }
+    },
+    "confidence": 0.93,
+    "rationale": "Conflict is internal scheduling information only — no outbound action is needed, so it's surfaced in the parent's digest for awareness and resolution.",
+    "recipient_visibility": "internal_only"
+  }
+}

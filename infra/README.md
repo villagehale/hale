@@ -1,6 +1,6 @@
 # Infra
 
-Deployment configuration for Hearth.
+Deployment configuration for Hale.
 
 ## Production targets
 
@@ -47,7 +47,7 @@ fly deploy --config infra/fly.toml
 Verify the worker is consuming the queue:
 
 ```bash
-fly logs --app hearth-worker
+fly logs --app hale-worker
 ```
 
 ### 4. Doppler secrets
@@ -59,8 +59,8 @@ doppler secrets upload .env.local
 
 ## Health checks
 
-- Web: `GET https://hearth.family/api/health`
-- Worker: `GET https://hearth-worker.fly.dev/health` (via Fly's internal health check)
+- Web: `GET https://hale.family/api/health`
+- Worker: `GET https://hale-worker.fly.dev/health` (via Fly's internal health check)
 
 ## Disaster recovery
 

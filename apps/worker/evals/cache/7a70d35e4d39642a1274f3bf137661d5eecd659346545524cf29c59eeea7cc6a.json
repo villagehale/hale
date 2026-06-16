@@ -1,0 +1,18 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "add_to_digest_only",
+      "digest_entry": {
+        "category": "supply_low_signal",
+        "summary": "size 2 diapers are running low — estimated 4 days left based on subscription usage.",
+        "suggested_action": "reorder size 2 diapers soon to avoid running out.",
+        "source": "subscription usage estimate",
+        "item": "size 2 diapers",
+        "estimatedDaysLeft": 4
+      }
+    },
+    "confidence": 0.92,
+    "rationale": "No immediate action is needed yet, so this is correctly routed to digest-only — surfacing the low-supply signal to the parent at their next review rather than triggering an outbound message.",
+    "recipient_visibility": "internal_only"
+  }
+}

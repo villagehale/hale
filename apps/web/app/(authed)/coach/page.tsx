@@ -1,5 +1,5 @@
-import { PageCorner } from '~/components/hearth/page-corner';
-import { CoachConversation } from '~/components/hearth/coach-conversation';
+import { PageCorner } from '~/components/hale/page-corner';
+import { CoachConversation } from '~/components/hale/coach-conversation';
 import { clerkConfigured } from '~/lib/auth-config';
 
 export default function CoachPage() {
@@ -7,7 +7,7 @@ export default function CoachPage() {
 
   return (
     <div>
-      <PageCorner folio="iv" section="coach · ask anything" />
+      <PageCorner folio="04" section="coach · ask anything" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">

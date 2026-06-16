@@ -1,5 +1,5 @@
-import { PageCorner } from '~/components/hearth/page-corner';
-import { Folio } from '~/components/hearth/folio';
+import { PageCorner } from '~/components/hale/page-corner';
+import { Folio } from '~/components/hale/folio';
 
 interface Source {
   id: string;
@@ -24,7 +24,7 @@ const TIERS: Array<{
     eyebrow: 'tier one',
     title: 'the universal sources',
     description:
-      'The four things every family already has. Hearth begins with these — connecting one is enough to see value in the first hour.',
+      'The four things every family already has. Hale begins with these — connecting one is enough to see value in the first hour.',
     sources: [
       {
         id: 'gmail',
@@ -108,7 +108,7 @@ const TIERS: Array<{
     eyebrow: 'tier three',
     title: 'the optional sources',
     description:
-      'The integrations that make Hearth indispensable over time. You can connect any of these at any pace — i save you time per connection, not all at once.',
+      'The integrations that make Hale indispensable over time. You can connect any of these at any pace — i save you time per connection, not all at once.',
     sources: [
       {
         id: 'cra',
@@ -137,7 +137,7 @@ const TIERS: Array<{
       {
         id: 'pediatric-portal',
         name: 'pediatric clinic portal',
-        why: 'where your pediatrician offers a portal, Hearth can book + retrieve.',
+        why: 'where your pediatrician offers a portal, Hale can book + retrieve.',
         reads: ['appointment slots', 'visit summaries'],
         acts: ['book routine appointments (with browser automation)'],
         status: 'optional',
@@ -155,7 +155,7 @@ const STATUS_LABEL: Record<Source['status'], string> = {
 export default function ConnectedPage() {
   return (
     <div>
-      <PageCorner folio="vii" section="connected · three tiers" />
+      <PageCorner folio="07" section="connected · three tiers" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
@@ -264,7 +264,7 @@ export default function ConnectedPage() {
 
       <section className="rise rise-7 mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
         <p className="meta">12 sources catalogued · 2 currently connected</p>
-        <p className="meta">request a new source · email hello@hearth.family</p>
+        <p className="meta">request a new source · email hello@hale.family</p>
       </section>
     </div>
   );

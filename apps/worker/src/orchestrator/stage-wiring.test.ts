@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@hearth/tools-contracts';
+import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion, FamilyStage } from '@hearth/types';
+import type { ClassifierSuggestion, FamilyStage } from '@hale/types';
 
 /**
  * F1 stage-wiring. The invariant: the orchestrator must look up the family's

@@ -1,4 +1,4 @@
-import { type Database, schema } from '@hearth/db';
+import { type Database, schema } from '@hale/db';
 import type { CoachRunMetrics } from './coach';
 
 /**

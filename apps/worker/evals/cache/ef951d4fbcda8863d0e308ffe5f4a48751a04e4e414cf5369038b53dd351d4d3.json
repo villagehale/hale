@@ -1,0 +1,32 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.92,
+    "rationale": "Employer onboarding email for teen's first part-time job, explicitly naming SIN application and TD1 form — both legal/administrative milestones a parent must help manage before the June 20 start date.",
+    "payload": {
+      "sender": "hr@maplemart-grocery.ca",
+      "employer": "Maple Mart Grocery",
+      "role": "part-time cashier",
+      "first_shift_date": "2024-06-20",
+      "required_documents": [
+        {
+          "document": "Social Insurance Number (SIN)",
+          "status": "may need to apply",
+          "application_url": "Service Canada"
+        },
+        {
+          "document": "TD1 form",
+          "status": "must be signed on first day"
+        }
+      ]
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3789,
+    "output": 330
+  }
+}

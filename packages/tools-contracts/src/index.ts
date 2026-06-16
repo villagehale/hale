@@ -5,7 +5,7 @@
  * MUST validate inputs/outputs against these schemas. This prevents
  * hallucinated tool args from triggering real-world actions.
  */
-import type { ActionType } from '@hearth/types';
+import type { ActionType } from '@hale/types';
 import { z } from 'zod';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ export type ReviewerToolName = keyof typeof REVIEWER_TOOLS;
 // via `coverageSatisfiedWithResults`).
 //
 // `satisfies Record<ActionType, ...>` is load-bearing: it makes adding a new
-// ActionType in @hearth/types without a matrix entry a COMPILE ERROR. As the
+// ActionType in @hale/types without a matrix entry a COMPILE ERROR. As the
 // product fans action types out across the four family stages, no new outward
 // action can ship un-gated by accident.
 //
@@ -330,6 +330,12 @@ export const REQUIRED_CHECKS = {
   // Internal-only digest entry: no outward effect, but still must be idempotent
   // so retries don't double-post. Non-empty per policy.
   add_to_digest_only: ['check_action_idempotency'],
+
+  // Pinning a discovered activity to the family's routine: internal-only at
+  // launch (no calendar write), so the only gate is dedup — pinning the same
+  // activity twice must be a no-op. Deliberately NOT check_calendar_conflict /
+  // check_vaccine_schedule (permanent not_configured stubs → un-approvable).
+  add_to_routine: ['check_action_idempotency'],
 } as const satisfies Record<ActionType, readonly ReviewerToolName[]>;
 
 // ─────────────────────────────────────────────────────────────────────────────

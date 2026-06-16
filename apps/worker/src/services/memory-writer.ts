@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { schema, type Database } from '@hearth/db';
+import { schema, type Database } from '@hale/db';
 import type {
   EventType,
   ActionType,
@@ -8,8 +8,8 @@ import type {
   PlanTier,
   Entitlement,
   FamilyStage,
-} from '@hearth/types';
-import { ageInMonths, deriveStage } from '@hearth/types';
+} from '@hale/types';
+import { ageInMonths, deriveStage } from '@hale/types';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
@@ -537,8 +537,8 @@ export async function recordEntitlementGate(
           requiredEntitlement: input.requiredEntitlement,
           upgradeHint:
             input.requiredEntitlement === 'autonomy_l3'
-              ? 'Upgrade to Plus to let Hearth act autonomously.'
-              : 'Upgrade to Family to let Hearth act autonomously on commerce and portal actions.',
+              ? 'Upgrade to Plus to let Hale act autonomously.'
+              : 'Upgrade to Family to let Hale act autonomously on commerce and portal actions.',
         },
       },
     };
@@ -996,7 +996,7 @@ export async function loadFamilyContext(
  *     (the rule's own carve-out).
  *   coParentConsentGranted — is there an active (granted, not revoked)
  *     consent_records row of type 'autonomous_action_class' for that co-parent?
- *     That is the consent that authorizes Hearth to act autonomously on the shared
+ *     That is the consent that authorizes Hale to act autonomously on the shared
  *     family data the co-parent's account contributes.
  */
 export async function loadCrossParentConsent(
@@ -1042,10 +1042,10 @@ export async function loadCrossParentConsent(
  * that was approved at review (reviewer_verdict = 'approved'), then EXECUTED
  * (executed_at IS NOT NULL), and whose final user_visible_state is NOT
  * 'autonomous'. recordExecution stamps user_visible_state='autonomous' for
- * actions Hearth ran on its own; the human-approval path (a parent approving a
+ * actions Hale ran on its own; the human-approval path (a parent approving a
  * drafted_for_approval action in the product UI) executes the same action
  * WITHOUT that autonomous marker. Excluding 'autonomous' is what makes a streak
- * count consecutive HUMAN approvals, not Hearth's own prior auto-executions —
+ * count consecutive HUMAN approvals, not Hale's own prior auto-executions —
  * otherwise autonomy would bootstrap itself. With no human-approval write path
  * shipped yet, this returns zero qualifying rows, so every streak is 0 and L3
  * stays dark by default (correct per rule #4).
@@ -1135,6 +1135,119 @@ export async function markEventStage(
         targetTable: 'events',
         targetId: eventId,
         after: { status: stage },
+      },
+    };
+  }, database);
+}
+
+// ─── Village: discovery + routine persistence ────────────────────────────
+
+/** One discovered candidate to persist. The `kind` is supplied by the caller
+ * (the discovery scheduler), since a provider's `DiscoveredCandidate` models an
+ * activity without a category column. */
+export interface DiscoveryCandidateWrite {
+  title: string;
+  kind: string;
+  summary: string;
+  sourceUrl?: string;
+  source: string;
+  confidence: number;
+  coverageNote?: string;
+  /** Null = family-wide; otherwise the attributed child (already validated). */
+  childId: string | null;
+}
+
+/**
+ * Persists a discovery run's candidates and ONE audit row in a single
+ * transaction (hard rule #6: no village_candidates row without its audit trail).
+ * A run with no candidates writes nothing — there is no transition to audit.
+ *
+ * Privacy (rule #1): the audit `after` carries only the coarse area, provider,
+ * and a count — never a child name, DOB, or any candidate's raw text.
+ */
+export async function recordDiscovery(
+  input: {
+    familyId: string;
+    areaCoarse: string;
+    provider: string;
+    candidates: DiscoveryCandidateWrite[];
+  },
+  database: Database = db(),
+): Promise<{ insertedCount: number }> {
+  if (input.candidates.length === 0) {
+    return { insertedCount: 0 };
+  }
+  return recordTransition<{ insertedCount: number }>(async (tx) => {
+    await tx.insert(schema.villageCandidates).values(
+      input.candidates.map((c) => ({
+        familyId: input.familyId,
+        childId: c.childId,
+        title: c.title,
+        kind: c.kind,
+        summary: c.summary,
+        sourceUrl: c.sourceUrl,
+        source: c.source,
+        confidence: c.confidence,
+        coverageNote: c.coverageNote,
+      })),
+    );
+    return {
+      value: { insertedCount: input.candidates.length },
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'village.discovery.recorded',
+        targetTable: 'village_candidates',
+        after: {
+          areaCoarse: input.areaCoarse,
+          provider: input.provider,
+          count: input.candidates.length,
+        },
+      },
+    };
+  }, database);
+}
+
+/**
+ * Upserts a family's weekly routine proposal and ONE audit row in a single
+ * transaction (hard rule #6). The unique (family_id, week_of) index folds a
+ * re-run into the same week's row rather than duplicating it, so a redelivered
+ * discovery job recomputes the same proposal.
+ *
+ * Privacy (rule #1): the audit `after` carries only the week and item count —
+ * never a child name, DOB, or item text.
+ */
+export async function recordRoutineProposal(
+  input: {
+    familyId: string;
+    weekOf: string;
+    items: Array<{ title: string; kind: string; childId: string | null; stageNote: string }>;
+  },
+  database: Database = db(),
+): Promise<{ proposalId: string }> {
+  return recordTransition<{ proposalId: string }>(async (tx) => {
+    const upserted = await tx
+      .insert(schema.routineProposals)
+      .values({ familyId: input.familyId, weekOf: input.weekOf, items: input.items })
+      .onConflictDoUpdate({
+        target: [schema.routineProposals.familyId, schema.routineProposals.weekOf],
+        set: { items: input.items },
+      })
+      .returning({ id: schema.routineProposals.id });
+
+    const proposalId = upserted[0]?.id;
+    if (!proposalId) {
+      throw new Error('routine_proposals upsert returned no row');
+    }
+    return {
+      value: { proposalId },
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'village.routine.recorded',
+        targetTable: 'routine_proposals',
+        targetId: proposalId,
+        after: { weekOf: input.weekOf, itemCount: input.items.length },
       },
     };
   }, database);

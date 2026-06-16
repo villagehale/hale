@@ -1,5 +1,5 @@
 /*
- * Hearth — "Meadow" illustration kit.
+ * Hale — "Meadow" illustration kit.
  *
  * A small bespoke set of flat, geometric, color-blocked shapes drawn from
  * circles, arcs, and soft-cornered rectangles only (corner radii ≥ 8px).
@@ -7,7 +7,7 @@
  * drop-shadows, no strokes thinner than 2px. The vocabulary is the daily
  * arc — sun, moon, cloud, hill, house, tree, a sleeping curve — plus the
  * trust-ladder's growing shapes (seed → sprout → sapling → tree) and the
- * Hearth cat in four ages.
+ * Hale sea turtle in four ages.
  *
  * All shapes are ambient/compositional and decorative: each carries
  * aria-hidden so screen readers skip them; meaning lives in the copy.
@@ -151,87 +151,127 @@ export function Sapling({ className, style }: IlloProps) {
 
 /* Tree (full-grown) reuses <Tree /> at the top of the ladder. */
 
-/* ── The Hearth cat — one primitive, four ages ───────────────────────────── *
- * Hearth is a cat: its lifespan is roughly a childhood, which is the brand
- * thesis — it grows up alongside your kid. Drawn in the same circles/arcs/
- * soft-rect language as the rest of the kit.
+/* ── The Hale sea turtle — one primitive, four ages ────────────────────── *
+ * Hale is a sea turtle: it grows slowly and steadily across a long life,
+ * which is the brand thesis — it grows up alongside your kid, newborn to
+ * teenager. Drawn in the same circles/arcs/soft-rect language as the rest
+ * of the kit, but in PROFILE so the silhouette reads unmistakably as a
+ * turtle: a domed shell (arc + base rect) with two or three rounded scute
+ * divisions, a head on a short neck reaching FORWARD out of the shell, a
+ * front flipper and a hint of a back flipper along the ground, and a small
+ * tail — all resting on a soft ground line. Calm sea-green built from the
+ * sky/spruce palette, with apricot used only as a tiny eye accent.
  *
- * age: 'kitten' (curled asleep) | 'young' (small, sitting) |
- *      'adult' (sitting, settled) | 'senior' (poised, watchful) */
+ * The turtle faces right; the profile is identical across ages, growing
+ * from small to large.
+ *
+ * age: 'hatchling' (tiny, just-emerged) | 'young' (small, walking) |
+ *      'adult' (settled, broad shell)  | 'elder' (largest, serene) */
 
-type CatAge = 'kitten' | 'young' | 'adult' | 'senior';
+type TurtleAge = 'hatchling' | 'young' | 'adult' | 'elder';
 
-const CAT_BODY = C.spruce;
-const CAT_EAR = C.spruce;
-const CAT_NOSE = C.apricot;
-const CAT_EYE = C.apricotTint;
+const TURTLE_SHELL = C.skyDeep;
+const TURTLE_LIMB = C.sky;
+const TURTLE_SCUTE = C.skyTint;
+const TURTLE_HEAD = C.spruce;
+const TURTLE_EYE = C.apricot;
+const TURTLE_GROUND = C.oat;
 
-export function Cat({ age, className, style }: IlloProps & { age: CatAge }) {
-  if (age === 'kitten') {
-    // a sleeping kitten: a curled-up soft mound, eyes closed (arc), tail wrapped
+export function SeaTurtle({ age, className, style }: IlloProps & { age: TurtleAge }) {
+  if (age === 'hatchling') {
+    // a tiny hatchling in profile: small domed shell, head reaching forward
     return (
-      <svg viewBox="0 0 120 88" width="120" height="88" style={style} className={className} aria-hidden="true" focusable="false">
-        <path d="M16 78 Q16 36 60 36 Q104 36 104 78 Z" fill={CAT_BODY} />
-        <rect x="14" y="70" width="92" height="14" rx="7" fill={CAT_BODY} />
-        {/* tail curling round the front */}
-        <path d="M104 74 Q118 70 112 56 Q108 48 98 52" fill="none" stroke={CAT_BODY} strokeWidth="11" strokeLinecap="round" />
-        {/* ears */}
-        <path d="M34 44 L30 26 L48 38 Z" fill={CAT_EAR} />
-        <path d="M70 40 L78 24 L84 42 Z" fill={CAT_EAR} />
-        {/* closed eye — a calm arc */}
-        <path d="M44 58 Q52 64 60 58" fill="none" stroke={C.apricotTint} strokeWidth="3" strokeLinecap="round" />
-        <circle cx="66" cy="60" r="2.6" fill={CAT_NOSE} />
+      <svg viewBox="0 0 104 76" width="104" height="76" style={style} className={className} aria-hidden="true" focusable="false">
+        {/* ground line */}
+        <rect x="8" y="62" width="76" height="8" rx="4" fill={TURTLE_GROUND} />
+        {/* tail at the back, flippers along the ground */}
+        <rect x="16" y="50" width="11" height="8" rx="4" fill={TURTLE_LIMB} />
+        <rect x="28" y="54" width="15" height="10" rx="5" fill={TURTLE_LIMB} />
+        <rect x="54" y="54" width="17" height="10" rx="5" fill={TURTLE_LIMB} />
+        {/* domed shell — half-disc arc plus a soft base */}
+        <path d="M24 56 Q24 30 50 30 Q76 30 76 56 Z" fill={TURTLE_SHELL} />
+        <rect x="24" y="50" width="52" height="9" rx="4.5" fill={TURTLE_SHELL} />
+        {/* two soft scute divisions */}
+        <rect x="38" y="36" width="13" height="18" rx="6" fill={TURTLE_SCUTE} />
+        <rect x="55" y="40" width="13" height="14" rx="6" fill={TURTLE_SCUTE} />
+        {/* neck + head reaching forward */}
+        <rect x="72" y="40" width="16" height="11" rx="5.5" fill={TURTLE_HEAD} />
+        <circle cx="88" cy="42" r="9" fill={TURTLE_HEAD} />
+        <circle cx="91" cy="40" r="2.2" fill={TURTLE_EYE} />
       </svg>
     );
   }
 
   if (age === 'young') {
-    // a young cat sitting upright, small and alert
+    // a young turtle in profile, walking: a rounder shell, a longer neck
     return (
-      <svg viewBox="0 0 96 120" width="96" height="120" style={style} className={className} aria-hidden="true" focusable="false">
-        <rect x="26" y="58" width="44" height="52" rx="22" fill={CAT_BODY} />
-        <circle cx="48" cy="40" r="22" fill={CAT_BODY} />
-        <path d="M30 28 L24 6 L46 22 Z" fill={CAT_EAR} />
-        <path d="M66 28 L72 6 L50 22 Z" fill={CAT_EAR} />
-        {/* tail flicked up */}
-        <path d="M70 100 Q92 96 86 70" fill="none" stroke={CAT_BODY} strokeWidth="12" strokeLinecap="round" />
-        <circle cx="40" cy="40" r="3.4" fill={CAT_EYE} />
-        <circle cx="56" cy="40" r="3.4" fill={CAT_EYE} />
-        <circle cx="48" cy="48" r="3" fill={CAT_NOSE} />
+      <svg viewBox="0 0 128 92" width="128" height="92" style={style} className={className} aria-hidden="true" focusable="false">
+        {/* ground line */}
+        <rect x="10" y="76" width="92" height="9" rx="4.5" fill={TURTLE_GROUND} />
+        {/* tail at the back, flippers along the ground */}
+        <rect x="20" y="60" width="13" height="10" rx="5" fill={TURTLE_LIMB} />
+        <rect x="34" y="64" width="19" height="13" rx="6.5" fill={TURTLE_LIMB} transform="rotate(-12 43.5 70.5)" />
+        <rect x="66" y="64" width="21" height="13" rx="6.5" fill={TURTLE_LIMB} transform="rotate(10 76.5 70.5)" />
+        {/* domed shell */}
+        <path d="M28 66 Q28 32 60 32 Q92 32 92 66 Z" fill={TURTLE_SHELL} />
+        <rect x="28" y="58" width="64" height="11" rx="5.5" fill={TURTLE_SHELL} />
+        {/* three soft scute divisions following the dome */}
+        <rect x="42" y="38" width="14" height="22" rx="6.5" fill={TURTLE_SCUTE} />
+        <rect x="58" y="40" width="14" height="20" rx="6.5" fill={TURTLE_SCUTE} />
+        <rect x="74" y="46" width="13" height="14" rx="6" fill={TURTLE_SCUTE} />
+        {/* neck + head reaching forward */}
+        <rect x="88" y="44" width="19" height="13" rx="6.5" fill={TURTLE_HEAD} />
+        <circle cx="107" cy="46" r="11" fill={TURTLE_HEAD} />
+        <circle cx="111" cy="43" r="2.6" fill={TURTLE_EYE} />
       </svg>
     );
   }
 
   if (age === 'adult') {
-    // an adult cat sitting, settled, paws tucked
+    // an adult turtle in profile, settled: a broad domed shell, full scutes
     return (
-      <svg viewBox="0 0 120 128" width="120" height="128" style={style} className={className} aria-hidden="true" focusable="false">
-        <rect x="30" y="58" width="60" height="62" rx="28" fill={CAT_BODY} />
-        <rect x="32" y="106" width="56" height="16" rx="8" fill={CAT_BODY} />
-        <circle cx="60" cy="42" r="28" fill={CAT_BODY} />
-        <path d="M38 26 L30 0 L58 20 Z" fill={CAT_EAR} />
-        <path d="M82 26 L90 0 L62 20 Z" fill={CAT_EAR} />
-        <path d="M90 116 Q116 110 108 80" fill="none" stroke={CAT_BODY} strokeWidth="14" strokeLinecap="round" />
-        <circle cx="50" cy="42" r="4" fill={CAT_EYE} />
-        <circle cx="70" cy="42" r="4" fill={CAT_EYE} />
-        <circle cx="60" cy="52" r="3.4" fill={CAT_NOSE} />
+      <svg viewBox="0 0 152 104" width="152" height="104" style={style} className={className} aria-hidden="true" focusable="false">
+        {/* ground line */}
+        <rect x="12" y="86" width="110" height="10" rx="5" fill={TURTLE_GROUND} />
+        {/* tail at the back, flippers along the ground */}
+        <rect x="22" y="68" width="15" height="12" rx="6" fill={TURTLE_LIMB} />
+        <rect x="38" y="72" width="23" height="15" rx="7.5" fill={TURTLE_LIMB} transform="rotate(-12 49.5 79.5)" />
+        <rect x="78" y="72" width="25" height="15" rx="7.5" fill={TURTLE_LIMB} transform="rotate(10 90.5 79.5)" />
+        {/* domed shell */}
+        <path d="M32 74 Q32 34 70 34 Q108 34 108 74 Z" fill={TURTLE_SHELL} />
+        <rect x="32" y="64" width="76" height="13" rx="6.5" fill={TURTLE_SHELL} />
+        {/* three soft scute divisions following the dome */}
+        <rect x="48" y="40" width="16" height="26" rx="7.5" fill={TURTLE_SCUTE} />
+        <rect x="66" y="42" width="16" height="24" rx="7.5" fill={TURTLE_SCUTE} />
+        <rect x="84" y="50" width="15" height="16" rx="7" fill={TURTLE_SCUTE} />
+        {/* neck + head reaching forward */}
+        <rect x="104" y="48" width="22" height="15" rx="7.5" fill={TURTLE_HEAD} />
+        <circle cx="126" cy="50" r="13" fill={TURTLE_HEAD} />
+        <circle cx="131" cy="47" r="3" fill={TURTLE_EYE} />
       </svg>
     );
   }
 
-  // senior: poised, watchful — taller posture, tail wrapped neatly to the front
+  // elder: the largest, most serene — a tall, broad shell in the same profile
   return (
-    <svg viewBox="0 0 120 132" width="120" height="132" style={style} className={className} aria-hidden="true" focusable="false">
-      <rect x="34" y="52" width="52" height="68" rx="26" fill={CAT_BODY} />
-      <rect x="30" y="108" width="64" height="16" rx="8" fill={CAT_BODY} />
-      <circle cx="60" cy="38" r="26" fill={CAT_BODY} />
-      <path d="M40 24 L33 0 L58 18 Z" fill={CAT_EAR} />
-      <path d="M80 24 L87 0 L62 18 Z" fill={CAT_EAR} />
-      {/* tail wrapped neatly across the front paws */}
-      <path d="M34 118 Q60 130 86 118" fill="none" stroke={CAT_BODY} strokeWidth="13" strokeLinecap="round" />
-      <circle cx="51" cy="38" r="3.6" fill={CAT_EYE} />
-      <circle cx="69" cy="38" r="3.6" fill={CAT_EYE} />
-      <circle cx="60" cy="47" r="3.2" fill={CAT_NOSE} />
+    <svg viewBox="0 0 168 112" width="168" height="112" style={style} className={className} aria-hidden="true" focusable="false">
+      {/* ground line */}
+      <rect x="12" y="94" width="124" height="11" rx="5.5" fill={TURTLE_GROUND} />
+      {/* tail at the back, flippers along the ground */}
+      <rect x="24" y="74" width="16" height="13" rx="6.5" fill={TURTLE_LIMB} />
+      <rect x="42" y="78" width="25" height="16" rx="8" fill={TURTLE_LIMB} transform="rotate(-12 54.5 86)" />
+      <rect x="86" y="78" width="27" height="16" rx="8" fill={TURTLE_LIMB} transform="rotate(10 99.5 86)" />
+      {/* domed shell — tallest of the four */}
+      <path d="M34 80 Q34 36 76 36 Q118 36 118 80 Z" fill={TURTLE_SHELL} />
+      <rect x="34" y="70" width="84" height="14" rx="7" fill={TURTLE_SHELL} />
+      {/* three soft scute divisions following the dome */}
+      <rect x="52" y="42" width="17" height="28" rx="8" fill={TURTLE_SCUTE} />
+      <rect x="71" y="44" width="17" height="26" rx="8" fill={TURTLE_SCUTE} />
+      <rect x="90" y="52" width="16" height="18" rx="7.5" fill={TURTLE_SCUTE} />
+      {/* neck + head reaching forward */}
+      <rect x="114" y="50" width="24" height="16" rx="8" fill={TURTLE_HEAD} />
+      <circle cx="138" cy="52" r="14" fill={TURTLE_HEAD} />
+      <circle cx="143" cy="49" r="3.2" fill={TURTLE_EYE} />
     </svg>
   );
 }

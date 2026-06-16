@@ -12,7 +12,7 @@ high-stakes deadlines, and a hard privacy boundary takes effect at 13.
 - Milestones with legal weight: driver's-licence / learner's-permit
   eligibility and renewal, SIN and first part-time-job paperwork, health-card
   renewal. These are `legal_milestone_due` — a deadline to surface, never
-  autonomous (Hearth does not file identity paperwork on its own). They are
+  autonomous (Hale does not file identity paperwork on its own). They are
   logistics ABOUT the teen a parent manages, NOT teen-content.
 - Activities: self-directed — sports tryouts, clubs, volunteer-hour
   deadlines. Lowest commerce volume of any stage.

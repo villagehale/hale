@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { schema, type Database } from '@hearth/db';
-import type { ReviewerVerdict } from '@hearth/types';
+import { schema, type Database } from '@hale/db';
+import type { ReviewerVerdict } from '@hale/types';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import {
   recordDrop,
   recordReviewerRejection,
   recordReviewerVerdict,
   recordExecution,
+  recordDiscovery,
+  recordRoutineProposal,
 } from './memory-writer.js';
 
 const familyId = '11111111-1111-4111-8111-111111111111';
@@ -30,7 +32,16 @@ const reviewerMetrics: AgentRunMetrics = {
  */
 function builder(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  for (const m of ['set', 'where', 'from', 'values', 'onConflictDoNothing', 'returning', 'limit']) {
+  for (const m of [
+    'set',
+    'where',
+    'from',
+    'values',
+    'onConflictDoNothing',
+    'onConflictDoUpdate',
+    'returning',
+    'limit',
+  ]) {
     chain[m] = vi.fn(() => chain);
   }
   // Make the chain awaitable (drizzle builders are thenable) and resolve to rows.
@@ -129,5 +140,59 @@ describe('recordTransition single-writer — exactly one audit row per transitio
       recordExecution({ actionId, result: {}, ok: false }, s.database),
     ).rejects.toThrow(/not found/);
     expect(s.auditInserts()).toBe(0);
+  });
+
+  it('recordDiscovery with candidates writes exactly one audit row in one transaction', async () => {
+    const s = stubDb();
+    await recordDiscovery(
+      {
+        familyId,
+        areaCoarse: 'Toronto',
+        provider: 'eventbrite',
+        candidates: [
+          {
+            title: 'Storytime',
+            kind: 'library',
+            summary: 'Weekly toddler storytime',
+            source: 'eventbrite',
+            confidence: 0.9,
+            childId: null,
+          },
+        ],
+      },
+      s.database,
+    );
+
+    expect(s.database.transaction as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+    expect(s.auditInserts()).toBe(1);
+  });
+
+  it('recordDiscovery with no candidates writes zero candidate rows and zero audit rows', async () => {
+    const s = stubDb();
+    const result = await recordDiscovery(
+      { familyId, areaCoarse: 'Toronto', provider: 'eventbrite', candidates: [] },
+      s.database,
+    );
+
+    expect(result.insertedCount).toBe(0);
+    expect(s.database.transaction as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+    expect(s.insertedTables()).toEqual([]);
+    expect(s.auditInserts()).toBe(0);
+  });
+
+  it('recordRoutineProposal writes exactly one audit row and returns the proposal id', async () => {
+    const s = stubDb();
+    const result = await recordRoutineProposal(
+      {
+        familyId,
+        weekOf: '2026-06-15',
+        items: [{ title: 'Storytime', kind: 'library', childId: null, stageNote: 'toddler' }],
+      },
+      s.database,
+    );
+
+    expect(s.database.transaction as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+    expect(s.auditInserts()).toBe(1);
+    expect(result.proposalId).toBe(actionId);
   });
 });

@@ -1,12 +1,12 @@
-# CLAUDE.md — Hearth project guidelines
+# CLAUDE.md — Hale project guidelines
 
-Behavioral guidelines for AI collaborators working on this codebase. Inherits the user's global CLAUDE.md; this file adds Hearth-specific rules.
+Behavioral guidelines for AI collaborators working on this codebase. Inherits the user's global CLAUDE.md; this file adds Hale-specific rules.
 
 ## Project context
 
-Hearth is a passive, event-driven, multi-agent household AI assistant for families, across every stage of childhood (0–18). It began newborn-focused; the four-stage scope (newborn → toddler → child → teenager) is recorded in the rebuild addendum atop `docs/superpowers/specs/2026-05-26-haru-newborn-platform-design.md` — see that spec for the full design. (Compliance baseline is Canada — PIPEDA/Law 25 + data residency per hard rule #1; broadening to other regions is a deliberate multi-region decision, not an assumption.)
+Hale is a passive, event-driven, multi-agent household AI assistant for families, across every stage of childhood (0–18). It began newborn-focused; the four-stage scope (newborn → toddler → child → teenager) is recorded in the rebuild addendum atop `docs/superpowers/specs/2026-05-26-haru-newborn-platform-design.md` — see that spec for the full design. (Compliance baseline is Canada — PIPEDA/Law 25 + data residency per hard rule #1; broadening to other regions is a deliberate multi-region decision, not an assumption.)
 
-## Hard rules (Hearth-specific)
+## Hard rules (Hale-specific)
 
 1. **Privacy first.** This product handles newborn data — among the most sensitive data possible. Default to most restrictive. PIPEDA + Quebec Law 25 + CASL compliance is non-negotiable. **Teen privacy (children 13+):** raw content is redacted from parents by default — only category/summary is surfaced. Raw-content access requires an explicit, logged, time-limited grant. Named exception: safety escalation, where the teen is notified.
 
@@ -40,7 +40,7 @@ Hearth is a passive, event-driven, multi-agent household AI assistant for famili
 - Prompts: Langfuse (authoring source) → disk sync, drift-checked (see rule #2)
 - Linting: Biome
 - Testing: Vitest (runner) + Playwright
-- Domain primitives in `@hearth/types`: family-stage (`deriveStage`, boundaries `[12,48,156]` months) and entitlement tiers (`PlanTier` free/plus/family)
+- Domain primitives in `@hale/types`: family-stage (`deriveStage`, boundaries `[12,48,156]` months) and entitlement tiers (`PlanTier` free/plus/family)
 
 ## Development workflow
 

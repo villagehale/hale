@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "routine": [
+      {
+        "day": "tuesday",
+        "title": "Library after-school reading club",
+        "category": "education",
+        "stage_fit_rationale": "School-age children can sustain focus in a structured group setting after school, and a weekly reading club directly feeds Hale's love of books while building literacy and social skills with peers.",
+        "candidate_confidence": 0.65
+      },
+      {
+        "day": "saturday",
+        "title": "Community soccer or sports league",
+        "category": "sports",
+        "stage_fit_rationale": "A recreational league is perfectly paced for a school-age child — structured enough to teach teamwork and rules, but low-pressure enough not to overwhelm. Placing it on Saturday keeps weekday evenings free for school recovery.",
+        "candidate_confidence": 0.6
+      },
+      {
+        "day": "sunday",
+        "title": "Neighbourhood park and playground",
+        "category": "outdoor play",
+        "stage_fit_rationale": "Unstructured outdoor time on Sunday gives a school-age child a genuine wind-down before the school week, supporting gross-motor development and self-directed play without any parent-managed commitment.",
+        "candidate_confidence": 0.8
+      }
+    ],
+    "rationale": "The week pairs Hale's two core interests — books on Tuesday, soccer on Saturday — and leaves Sunday open for free outdoor play as a low-key reset before the school week begins. Three items across five days keeps the rhythm light and sustainable.",
+    "notes": "The \"Teen volunteer or maker program\" was left out entirely: its stage_fit is listed as 'teenager', which does not match Hale's current 'child' stage. It may be worth revisiting in a few years. The Neighbourhood park slot is flexible — it can move to any free afternoon if Saturday soccer runs long or Sunday plans change."
+  }
+}

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IngestedEventPayload } from '@hearth/tools-contracts';
+import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import type { ClassifierSuggestion, PlanTier } from '@hearth/types';
+import type { ClassifierSuggestion, PlanTier } from '@hale/types';
 
 /**
  * B18 — the entitlement gate. Invariant: an approved, high-confidence action

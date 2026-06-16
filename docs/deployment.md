@@ -1,6 +1,6 @@
 # Deployment
 
-This document describes how Hearth deploys to production.
+This document describes how Hale deploys to production.
 
 ## Topology
 
@@ -30,19 +30,19 @@ All three services are in Canadian regions for PIPEDA / Quebec Law 25 data resid
 | Env | Web | Worker | DB | Branch |
 |---|---|---|---|---|
 | local | `localhost:3000` | `localhost:4000` | Supabase local | feature |
-| preview | `hearth-<sha>.vercel.app` | shared dev worker | dev Supabase | feature PRs |
-| production | `hearth.family` | `hearth-worker.fly.dev` | prod Supabase | `production` |
+| preview | `hale-<sha>.vercel.app` | shared dev worker | dev Supabase | feature PRs |
+| production | `hale.family` | `hale-worker.fly.dev` | prod Supabase | `production` |
 
 ## First-time deploy (in order)
 
 1. **Supabase project (Toronto region)** — create in dashboard, capture `DATABASE_URL` + `DATABASE_DIRECT_URL`.
 2. **Run migrations** — `pnpm db:migrate` from local with the production DB URLs.
 3. **Clerk** — create production application, get keys.
-4. **Doppler** — set up `hearth-prod` config with all `.env.example` keys filled.
+4. **Doppler** — set up `hale-prod` config with all `.env.example` keys filled.
 5. **Vercel** — `vercel link`, set env vars via Doppler integration, deploy.
 6. **Fly.io worker** — `fly launch --config infra/fly.toml --no-deploy`, then `fly secrets set ...` for each env var, then `fly deploy`.
-7. **DNS** — point `hearth.family` at Vercel; `worker.hearth.family` at Fly (internal only — not exposed publicly).
-8. **Webhooks** — register Gmail watch, Calendar watch, Stripe webhooks against `https://hearth.family/api/webhooks/<provider>`.
+7. **DNS** — point `hale.family` at Vercel; `worker.hale.family` at Fly (internal only — not exposed publicly).
+8. **Webhooks** — register Gmail watch, Calendar watch, Stripe webhooks against `https://hale.family/api/webhooks/<provider>`.
 
 ## CI/CD
 
@@ -60,7 +60,7 @@ GitHub Actions (`.github/workflows/ci.yml`):
 
 ## Health checks
 
-- Web: `https://hearth.family/api/health`
+- Web: `https://hale.family/api/health`
 - Worker: Fly internal health check on `:4000/health`
 
 ## Cost expectations (initial)

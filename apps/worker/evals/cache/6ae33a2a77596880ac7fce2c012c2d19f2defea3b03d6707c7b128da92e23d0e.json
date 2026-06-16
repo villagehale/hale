@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.92,
+    "rationale": "A 3-month-old infant shows declining feeding intake (7-day average: 7.8 feeds/day, 118 mL/feed, down 15% in volume) with a shift to more frequent shorter feeds—a classic pattern signal warranting parental awareness and potential clinical consultation.",
+    "payload": {
+      "metric": "feeding",
+      "window_days": 7,
+      "avg_feeds_per_day": 7.8,
+      "avg_volume_ml": 118,
+      "trend": "declining_intake",
+      "note": "daily volume down ~15% vs prior week; more frequent shorter feeds",
+      "child_age_months": 3
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3213,
+    "output": 292
+  }
+}

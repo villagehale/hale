@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.92,
+    "rationale": "Subscription supplier proactively alerting parent to low diaper stock and offering early shipment against existing subscription.",
+    "payload": {
+      "sender": "subscriptions@everydaybaby.ca",
+      "product": "diapers",
+      "size": "Size 2",
+      "days_until_empty": 5,
+      "has_subscription": true,
+      "offer": "early shipment"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 3217,
+    "output": 234
+  }
+}

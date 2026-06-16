@@ -14,9 +14,9 @@ import { children } from './children.js';
 import { eventStatusEnum } from './enums.js';
 
 /**
- * Classifier's routing suggestion. Structurally mirrors @hearth/types
- * ClassifierSuggestion; defined locally because @hearth/db is a leaf package and
- * must not depend on @hearth/types (would create a cycle).
+ * Classifier's routing suggestion. Structurally mirrors @hale/types
+ * ClassifierSuggestion; defined locally because @hale/db is a leaf package and
+ * must not depend on @hale/types (would create a cycle).
  */
 type ClassifierSuggestion =
   | { kind: 'autonomous_action'; actionType: string }

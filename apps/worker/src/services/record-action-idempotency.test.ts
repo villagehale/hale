@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { schema, type Database } from '@hearth/db';
+import { schema, type Database } from '@hale/db';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { recordAction } from './memory-writer.js';
 

@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { createDb, schema } from '@hearth/db';
+import { createDb, schema } from '@hale/db';
 
 /**
  * FIX 2 INTEGRATION — runDailyDigest must WRITE a daily_digests summary row, not

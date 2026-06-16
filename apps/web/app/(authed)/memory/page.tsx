@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { PageCorner } from '~/components/hearth/page-corner';
-import { Folio } from '~/components/hearth/folio';
+import { PageCorner } from '~/components/hale/page-corner';
+import { Folio } from '~/components/hale/folio';
 
 function DestructiveButton({
   label,
@@ -164,7 +164,7 @@ function ConfidenceBar({ value }: { value: number }) {
 export default function MemoryPage() {
   return (
     <div>
-      <PageCorner folio="v" section="memory · the family graph" />
+      <PageCorner folio="05" section="memory · the family graph" />
 
       <header className="rise rise-1 mb-12 lg:mb-16">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">

@@ -1,0 +1,16 @@
+{
+  "id": "discovery-01-newborn-music",
+  "kind": "discovery",
+  "note": "Newborn + music: the music-tagged storytime is an interest hit, the untagged drop-in is a stage-typical survivor. Both must surface (interest-agnostic seeds stay eligible), and the hit must rank ahead of the generic survivor (fake.ts score()). Expected titles derive from the SEED table, not model output.",
+  "input": {
+    "areaCoarse": "M5V",
+    "stage": "newborn",
+    "interests": ["music"],
+    "limit": 8
+  },
+  "expect": {
+    "stage": "newborn",
+    "expectedTitles": ["Public library baby storytime", "Parent-and-baby drop-in group"],
+    "rankedBefore": [["Public library baby storytime", "Parent-and-baby drop-in group"]]
+  }
+}

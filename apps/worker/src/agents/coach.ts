@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { FrameworkCitation, CoachingFramework, FamilyStage } from '@hearth/types';
-import { stageFromAgeInMonths } from '@hearth/types';
+import type { FrameworkCitation, CoachingFramework, FamilyStage } from '@hale/types';
+import { stageFromAgeInMonths } from '@hale/types';
 import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { loadPrompt } from '../prompts/loader.js';

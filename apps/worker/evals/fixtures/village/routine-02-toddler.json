@@ -1,0 +1,45 @@
+{
+  "id": "routine-02-toddler",
+  "kind": "routine",
+  "note": "Toddler week, interests bias toward water/movement. Candidates are all toddler/child stage-typical. Tests tie-break reasoning (swim should feature) plus the carry-through invariants; judge scores stage fit.",
+  "input": {
+    "stage": "toddler",
+    "interests": ["water", "movement"],
+    "candidates": [
+      {
+        "title": "Parent-and-tot swim",
+        "description": "An introductory water-comfort class for toddlers with a caregiver in the water, common at municipal pools.",
+        "areaCoarse": "Plateau",
+        "stage": "toddler",
+        "confidence": 0.65,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Toddler music-and-movement class",
+        "description": "A short, repeated, song-and-shaker class pitched at toddler attention spans.",
+        "areaCoarse": "Plateau",
+        "stage": "toddler",
+        "confidence": 0.6,
+        "source": "curated_seed"
+      },
+      {
+        "title": "Neighbourhood park and playground",
+        "description": "Unstructured outdoor play at a local park — free, flexible, and good for gross-motor practice.",
+        "areaCoarse": "Plateau",
+        "stage": "toddler",
+        "confidence": 0.8,
+        "source": "curated_seed"
+      }
+    ]
+  },
+  "expect": {
+    "stage": "toddler",
+    "allowedTitles": [
+      "Parent-and-tot swim",
+      "Toddler music-and-movement class",
+      "Neighbourhood park and playground"
+    ],
+    "maxItems": 4,
+    "minItems": 2
+  }
+}

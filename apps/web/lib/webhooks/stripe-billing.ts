@@ -1,4 +1,4 @@
-import type { PlanTier } from '@hearth/types';
+import type { PlanTier } from '@hale/types';
 
 /**
  * Stripe billing webhook contract (B18).

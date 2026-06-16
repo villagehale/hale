@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "payload": {
+      "action_type": "add_to_digest_only",
+      "digest_entry": {
+        "source": "Service Canada",
+        "summary": "Your next EI parental benefit report is due July 7. Late reports may delay payment.",
+        "priority": "high",
+        "tags": [
+          "ei",
+          "deadline",
+          "benefits"
+        ]
+      }
+    },
+    "confidence": 0.95,
+    "rationale": "This is a time-sensitive government deadline that requires no outbound action — it belongs in the digest as a high-priority heads-up so the parent doesn't miss the July 7 report submission.",
+    "recipient_visibility": "internal_only"
+  }
+}
