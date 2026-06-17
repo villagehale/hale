@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import {
-  createRedisRateLimiter,
-  createWaitlistStore,
-  extractClientIp,
-} from '~/lib/waitlist-store';
+import { createWaitlistStore } from '~/lib/waitlist-store';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,15 +13,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ip = extractClientIp(request.headers);
-    const { allowed } = await createRedisRateLimiter().check(ip);
-    if (!allowed) {
-      return NextResponse.json(
-        { error: 'too many requests — please try again later' },
-        { status: 429 },
-      );
-    }
-
+    // Per-IP rate limiting deferred: the unique-email dedup is the primary abuse
+    // guard and the prior throttle depended on the now-removed Redis store.
     // Membership is never revealed: a new and an existing email get the same
     // body. We intentionally drop `created` from the response.
     await createWaitlistStore().add(email);
