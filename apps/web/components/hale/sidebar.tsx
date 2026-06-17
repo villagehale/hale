@@ -1,5 +1,6 @@
 'use client';
 
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SeaTurtle } from '~/components/illos';
@@ -16,7 +17,7 @@ const NAV = [
   { href: '/village', label: 'village', folio: '09' },
 ] as const;
 
-export function Sidebar() {
+export function Sidebar({ authControls = false }: { authControls?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -35,6 +36,26 @@ export function Sidebar() {
         <div className="mt-4">
           <span className="stamp">trial · day 3 of 7</span>
         </div>
+
+        {authControls ? (
+          <div className="mt-6 flex items-center gap-4">
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button type="button" className="btn-ghost">
+                  sign in
+                </button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button type="button" className="btn-primary">
+                  sign up
+                </button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+          </div>
+        ) : null}
       </div>
 
       <nav className="mt-10 space-y-0.5">

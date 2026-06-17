@@ -17,7 +17,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <Sidebar />
+      <Sidebar authControls={authEnabled} />
       <div>
         <TopHeader />
         <main id="main-content" className="main-stage">

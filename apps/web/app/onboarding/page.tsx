@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { clerkPubliclyConfigured } from '~/lib/auth-config';
 import { saveOnboardingChildren } from '~/lib/onboarding/persist';
 import {
   type ChildInput,
@@ -41,6 +42,7 @@ export default function OnboardingPage() {
   >({ kind: 'idle' });
 
   const meta = STEP_META[step];
+  const authReady = clerkPubliclyConfigured();
 
   // Live derivation as birthdates are typed — never stored, always a function
   // of date_of_birth. A complete-and-valid child contributes its stage to the
@@ -143,11 +145,27 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
-                  <button type="button" className="btn-primary" onClick={() => setStep(2)}>
-                    sign in with passkey →
-                  </button>
-                  <button type="button" className="btn-ghost">use an email link instead</button>
+                  {authReady ? (
+                    <>
+                      <Link href="/sign-up" className="btn-primary">
+                        create your account →
+                      </Link>
+                      <Link href="/sign-in" className="btn-ghost">
+                        already have one? sign in
+                      </Link>
+                    </>
+                  ) : (
+                    <button type="button" className="btn-primary" onClick={() => setStep(2)}>
+                      continue →
+                    </button>
+                  )}
                 </div>
+                {authReady ? null : (
+                  <p className="meta">
+                    development preview — sign-in isn&rsquo;t configured yet, so nothing you
+                    enter is saved. continue to see how Hale tailors to each child.
+                  </p>
+                )}
                 <p className="meta">pipeda · law 25 · casl compliant by default</p>
               </section>
             ) : null}
