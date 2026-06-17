@@ -17,7 +17,7 @@ Agent runtime is **Claude Agent SDK** with 5 specialized agents (Classifier, Dra
 ## Repository layout
 
 ```
-haru/
+hale/
 ├── apps/
 │   ├── web/                      Next.js app
 │   └── worker/                   Agent Worker service

@@ -4,7 +4,7 @@ Behavioral guidelines for AI collaborators working on this codebase. Inherits th
 
 ## Project context
 
-Hale is a passive, event-driven, multi-agent household AI assistant for families, across every stage of childhood (0–18). It began newborn-focused; the four-stage scope (newborn → toddler → child → teenager) is recorded in the rebuild addendum atop `docs/superpowers/specs/2026-05-26-haru-newborn-platform-design.md` — see that spec for the full design. (Compliance baseline is Canada — PIPEDA/Law 25 + data residency per hard rule #1; broadening to other regions is a deliberate multi-region decision, not an assumption.)
+Hale is a passive, event-driven, multi-agent household AI assistant for families, across every stage of childhood (0–18). It began newborn-focused; the four-stage scope (newborn → toddler → child → teenager) is recorded in the rebuild addendum atop `docs/superpowers/specs/2026-05-26-hale-newborn-platform-design.md` — see that spec for the full design. (Compliance baseline is Canada — PIPEDA/Law 25 + data residency per hard rule #1; broadening to other regions is a deliberate multi-region decision, not an assumption.)
 
 ## Hard rules (Hale-specific)
 
@@ -52,7 +52,7 @@ Use the chain that **already exists** — do not spin up bespoke "factory" agent
 4. **Verify** — the `verifier` agent (no write access, adversarial) checks impl-vs-spec, then `security-reviewer` for secrets/PII.
 5. **Review** — `superpowers:requesting-code-review`. → **Human gate: approve the PR.**
 
-Reuse the locked spec (`docs/superpowers/specs/2026-05-26-haru-newborn-platform-design.md`) as the upstream product/UX/pricing ideation — never regenerate it.
+Reuse the locked spec (`docs/superpowers/specs/2026-05-26-hale-newborn-platform-design.md`) as the upstream product/UX/pricing ideation — never regenerate it.
 
 **Work the real seams, not a frontend/backend folder split** (App Router colocates server + client per-file):
 
