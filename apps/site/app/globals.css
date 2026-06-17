@@ -24,9 +24,9 @@
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
   --color-linen: #f6f1e7;       /* primary background — 11.96:1 with Spruce */
   --color-oat: #efe7d6;         /* secondary surface, soft raised panels */
-  --color-spruce: #22322b;      /* primary ink / night-section fill — 11.96:1 */
-  --color-slate-green: #42564b; /* secondary text, captions — 7.00:1 */
-  --color-faded-sage: #6a6b5e;  /* tertiary / meta / disclaimers — 4.81:1 */
+  --color-spruce: #01204F;      /* primary ink / night-section fill — 11.96:1 */
+  --color-slate-green: #33486b; /* secondary text, captions — 7.00:1 */
+  --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 4.81:1 */
 
   --color-apricot: #c8622d;       /* FILL ONLY — 3.56:1, sun & large graphics */
   --color-apricot-deep: #a84e20;  /* text-safe accent: links, CTA fill — 4.94:1 */
@@ -36,17 +36,17 @@
   --color-sky-deep: #2f6f86;   /* text-safe blue, coach tone — 4.99:1 */
   --color-sky-tint: #cfe3e7;   /* color-block illustration wash — Spruce 10.13:1 */
 
-  --color-sea: #2f6e5e;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
+  --color-sea: #0a3d62;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
 
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
   /* Hairlines: warm spruce at low alpha — used by tone, rarely as border */
-  --color-rule: rgb(34 50 43 / 0.10);
-  --color-rule-strong: rgb(34 50 43 / 0.20);
+  --color-rule: rgb(1 32 79 / 0.10);
+  --color-rule-strong: rgb(1 32 79 / 0.20);
 
   /* On-dark (Spruce night section) text alphas, Linen-based */
-  --color-on-spruce: #f6f1e7;
+  --color-on-spruce: #FEFEFE;
   --color-on-spruce-soft: rgb(246 241 231 / 0.74);
   --color-on-spruce-faint: rgb(246 241 231 / 0.50);
 

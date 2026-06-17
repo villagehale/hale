@@ -5,12 +5,12 @@
 // object is validated against the <SignIn>/<SignUp> `appearance` prop at its use site.
 export const meadowAppearance = {
   variables: {
-    colorPrimary: '#22322b',
-    colorText: '#22322b',
-    colorTextSecondary: '#42564b',
+    colorPrimary: '#01204F',
+    colorText: '#01204F',
+    colorTextSecondary: '#33486b',
     colorBackground: '#f6f1e7',
     colorInputBackground: '#f6f1e7',
-    colorInputText: '#22322b',
+    colorInputText: '#01204F',
     colorDanger: '#9c3b54',
     fontFamily: '"Nunito", -apple-system, "Segoe UI", system-ui, sans-serif',
     borderRadius: '14px',
@@ -19,15 +19,15 @@ export const meadowAppearance = {
     card: {
       backgroundColor: '#efe7d6',
       boxShadow: 'none',
-      border: '1px solid rgb(34 50 43 / 0.10)',
+      border: '1px solid rgb(1 32 79 / 0.10)',
     },
     headerTitle: {
       fontFamily: '"Fraunces", "Iowan Old Style", "Charter", Georgia, serif',
       fontWeight: 420,
     },
     formButtonPrimary: {
-      backgroundColor: '#22322b',
-      color: '#f6f1e7',
+      backgroundColor: '#01204F',
+      color: '#FEFEFE',
       fontWeight: 700,
       textTransform: 'none',
     },

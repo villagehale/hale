@@ -170,8 +170,8 @@ export function Sapling({ className, style }: IlloProps) {
 
 type TurtleAge = 'hatchling' | 'young' | 'adult' | 'elder';
 
-const TURTLE_SHELL = C.skyDeep;
-const TURTLE_LIMB = C.sky;
+const TURTLE_SHELL = C.spruce;
+const TURTLE_LIMB = C.skyDeep;
 const TURTLE_SCUTE = C.skyTint;
 const TURTLE_HEAD = C.spruce;
 const TURTLE_EYE = C.apricot;
