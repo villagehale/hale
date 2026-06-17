@@ -764,7 +764,7 @@ Monorepo tool:  Turborepo with pnpm workspaces
 ### 8.2 Repository layout (Turborepo monorepo)
 
 ```
-haru/
+hale/
 ├── apps/
 │   ├── web/                      # Next.js app (UI + thin API + webhooks)
 │   │   ├── app/
