@@ -50,6 +50,13 @@
       "when": 1781460060000,
       "tag": "0006_village",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781460120000,
+      "tag": "0007_waitlist",
+      "breakpoints": true
     }
   ]
 }

@@ -1,81 +1,53 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createRateLimiter,
-  extractClientIp,
-  type RateLimitCounter,
-} from './waitlist-store.js';
+import { POST } from '../app/api/waitlist/route.js';
+import { createWaitlistStore, type WaitlistDb } from './waitlist-store.js';
 
-// A fake counter backed by an in-memory map, mirroring redis INCR semantics
-// (returns the value AFTER incrementing). expire is recorded but not enforced.
-function fakeCounter() {
-  const counts = new Map<string, number>();
-  const expire = vi.fn().mockResolvedValue(1);
-  const incr = vi.fn(async (key: string) => {
-    const next = (counts.get(key) ?? 0) + 1;
-    counts.set(key, next);
-    return next;
+// An injected fake db so the store is tested without a live Postgres connection.
+// `seen` mirrors the unique-email constraint: a second insert of the same email
+// dedupes (created: false), matching `on conflict (email) do nothing`.
+function fakeDb() {
+  const seen = new Set<string>();
+  const insertEmail = vi.fn(async (email: string) => {
+    const created = !seen.has(email);
+    seen.add(email);
+    return { created };
   });
-  return { counter: { incr, expire } satisfies RateLimitCounter, incr, expire };
+  return { db: { insertEmail } satisfies WaitlistDb, insertEmail };
 }
 
-describe('createRateLimiter', () => {
-  it('allows the first five hits and blocks the sixth within a window', async () => {
-    const { counter } = fakeCounter();
-    const limiter = createRateLimiter(counter);
+describe('createWaitlistStore', () => {
+  it('inserts the email it is given', async () => {
+    const { db, insertEmail } = fakeDb();
 
-    const verdicts = [];
-    for (let i = 0; i < 6; i += 1) {
-      verdicts.push((await limiter.check('1.2.3.4')).allowed);
-    }
+    const result = await createWaitlistStore(db).add('alice@example.com');
 
-    expect(verdicts).toEqual([true, true, true, true, true, false]);
+    expect(insertEmail).toHaveBeenCalledWith('alice@example.com');
+    expect(result).toEqual({ created: true });
   });
 
-  it('sets the window TTL only on the first hit', async () => {
-    const { counter, expire } = fakeCounter();
-    const limiter = createRateLimiter(counter);
+  it('reports created: false for a duplicate email (dedup path)', async () => {
+    const { db } = fakeDb();
+    const store = createWaitlistStore(db);
 
-    await limiter.check('1.2.3.4');
-    await limiter.check('1.2.3.4');
-    await limiter.check('1.2.3.4');
+    await store.add('dup@example.com');
+    const second = await store.add('dup@example.com');
 
-    expect(expire).toHaveBeenCalledTimes(1);
-    expect(expire).toHaveBeenCalledWith('hale:waitlist:rl:1.2.3.4', 3600);
-  });
-
-  it('tracks each IP in its own bucket', async () => {
-    const { counter } = fakeCounter();
-    const limiter = createRateLimiter(counter);
-
-    for (let i = 0; i < 5; i += 1) await limiter.check('1.1.1.1');
-
-    expect((await limiter.check('1.1.1.1')).allowed).toBe(false);
-    expect((await limiter.check('2.2.2.2')).allowed).toBe(true);
+    expect(second).toEqual({ created: false });
   });
 });
 
-describe('extractClientIp', () => {
-  it('takes the RIGHTMOST x-forwarded-for entry (the trusted-proxy hop), not the spoofable leftmost', () => {
-    // A client can prepend forged entries; only the rightmost (203.0.113.7,
-    // appended by our proxy) is trustworthy. The leftmost (1.1.1.1) is attacker-set.
-    const headers = new Headers({ 'x-forwarded-for': '1.1.1.1, 70.41.3.18, 203.0.113.7' });
-    expect(extractClientIp(headers)).toBe('203.0.113.7');
+function postWith(body: unknown): Request {
+  return new Request('http://localhost/api/waitlist', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
   });
+}
 
-  it('prefers the platform header x-vercel-forwarded-for over x-forwarded-for', () => {
-    const headers = new Headers({
-      'x-vercel-forwarded-for': '203.0.113.7',
-      'x-forwarded-for': '1.1.1.1, 203.0.113.7',
-    });
-    expect(extractClientIp(headers)).toBe('203.0.113.7');
-  });
+describe('POST /api/waitlist', () => {
+  it('rejects an invalid email with 400 before touching the store', async () => {
+    const res = await POST(postWith({ email: 'not-an-email' }));
 
-  it('falls back to x-real-ip when no x-forwarded-for is present', () => {
-    const headers = new Headers({ 'x-real-ip': '198.51.100.9' });
-    expect(extractClientIp(headers)).toBe('198.51.100.9');
-  });
-
-  it('returns "unknown" when no IP header is present', () => {
-    expect(extractClientIp(new Headers())).toBe('unknown');
+    expect(res.status).toBe(400);
   });
 });
