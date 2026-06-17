@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs';
 import { House, SeaTurtle, Sun } from '~/components/illos';
+import { clerkConfigured } from '~/lib/auth-config';
 
 export default function LandingPage() {
   return (
@@ -12,9 +14,30 @@ export default function LandingPage() {
         >
           Hale
         </span>
-        <Link href="/digest" className="btn-ghost">
-          read this week&rsquo;s digest →
-        </Link>
+        <div className="flex items-center gap-5">
+          <Link href="/digest" className="btn-ghost">
+            read this week&rsquo;s digest →
+          </Link>
+          {clerkConfigured() ? (
+            <>
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <button type="button" className="btn-ghost">
+                    sign in
+                  </button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <button type="button" className="btn-primary">
+                    sign up
+                  </button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <UserButton />
+              </SignedIn>
+            </>
+          ) : null}
+        </div>
       </header>
 
       {/* ── Village hero — the app front door ───────────────────────────── */}
