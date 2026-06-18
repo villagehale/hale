@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { LogoMark } from '~/components/hale/logo-mark';
+import { ThemeToggle } from '~/components/hale/theme-toggle';
 
 const NAV = [
   { href: '/digest', label: 'digest', folio: '01' },
@@ -29,23 +31,27 @@ export function TopHeader() {
 
   return (
     <header className="runninghead">
-      <div className="flex items-baseline gap-3">
-        <Link href="/digest" className="font-display text-2xl leading-none">
-          Hale
+      <div className="flex items-center gap-3">
+        <Link href="/digest" className="flex items-center gap-2">
+          <LogoMark size={28} />
+          <span className="font-display text-2xl leading-none font-semibold">Hale</span>
         </Link>
         {current ? (
           <span className="eyebrow text-spruce">{current.label}</span>
         ) : null}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="eyebrow text-spruce"
-        aria-expanded={open}
-      >
-        {open ? 'close' : 'index'}
-      </button>
+      <div className="flex items-center gap-3">
+        <ThemeToggle />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="eyebrow text-spruce"
+          aria-expanded={open}
+        >
+          {open ? 'close' : 'index'}
+        </button>
+      </div>
 
       {open ? (
         <nav className="absolute left-0 right-0 top-full bg-oat">

@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind v4 class-strategy dark mode: `.dark` on <html> (or any ancestor)
+ * flips the dark: variant. The class is set pre-paint by the inline script in
+ * layout.tsx, so there is no flash. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * Hale — "Meadow" design system (product app).
  *
@@ -7,8 +12,13 @@
  * (apps/site): soft geometric shapes that never crowd, generous breathing
  * air, a muted grown-up earth palette (spruce, linen, apricot, sage). The
  * Almanac expressed restraint as austerity; Meadow expresses the same
- * restraint as kindness. Warm serif display (Fraunces) over a rounded
- * humanist body (Nunito); imagery is a hand-built flat color-block SVG kit.
+ * restraint as kindness. Type is Inter throughout (display + body) with
+ * JetBrains Mono for dates, data, and numeric chips; imagery is a hand-built
+ * flat color-block SVG kit.
+ *
+ * Dark mode is the logo's own palette: a Prussian (#01204F) night with cream
+ * ink, surfaces a shade deeper, and the white turtle glowing on it. Both modes
+ * hold WCAG-AA contrast.
  *
  * Hard rules baked in:
  *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
@@ -54,11 +64,14 @@
   --color-on-spruce-soft: rgb(246 241 231 / 0.74);
   --color-on-spruce-faint: rgb(246 241 231 / 0.50);
 
-  /* ── Type ────────────────────────────────────────────────────────────── */
-  --font-display: "Fraunces", "Iowan Old Style", "Charter", Georgia, serif;
-  --font-body: "Nunito", -apple-system, "Segoe UI", system-ui, sans-serif;
+  /* ── Type — Inter for display + body, JetBrains Mono for data ─────────── *
+   * --font-sans / --font-mono are injected by next/font in layout.tsx. */
+  --font-sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
+  --font-body: var(--font-sans);
 
-  --tracking-display: -0.01em;
+  --tracking-display: -0.02em;
   --tracking-eyebrow: 0.12em;
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
@@ -74,6 +87,46 @@
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Dark mode = the logo's palette ──────────────────────────────────────── *
+ * Prussian night, cream ink, the white turtle glowing. We re-point the same
+ * token *roles* so every existing component flips for free: --color-spruce is
+ * "ink" (now cream) and --color-linen is "page" (now Prussian), so e.g.
+ * .btn-primary (spruce fill / linen text) becomes cream fill / Prussian text,
+ * and focus rings (inner ring = linen) stay matched to the page. Accents are
+ * lightened to hold AA on the dark ground (all pairs verified ≥ 4.5:1). */
+.dark {
+  --color-linen: #01204F;        /* page background — Prussian night */
+  --color-oat: #0a2d63;          /* raised surface — a shade up from the page */
+  --color-spruce: #f6f1e7;       /* primary ink — cream — 14.12:1 on page */
+  --color-slate-green: #c7d3e6;  /* secondary text — 10.52:1 */
+  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 7.20:1 */
+
+  --color-apricot: #e8915c;          /* large-graphic fill */
+  --color-apricot-deep: #e8915c;     /* text-safe accent on dark — 6.54:1 */
+  --color-apricot-tint: #2a2238;     /* warm-wash panel ground (cream ink rides it) */
+
+  --color-sky: #7fb5c4;
+  --color-sky-deep: #8fc1d1;     /* text-safe blue on dark — 8.11:1 */
+  --color-sky-tint: #122c4a;     /* illustration / pill wash */
+
+  --color-sea: #6fb3c9;          /* turtle accent on dark */
+
+  --color-sage: #a9c49a;         /* "done" tone — 8.37:1 */
+  --color-sage-tint: #16331f;
+
+  --color-berry: #e09aaa;        /* "needs your eye" — 7.10:1 */
+  --color-berry-tint: #3a1c26;
+
+  --color-rule: rgb(246 241 231 / 0.12);
+  --color-rule-strong: rgb(246 241 231 / 0.24);
+
+  --color-on-spruce: #01204F;        /* "on ink" inverts to Prussian */
+  --color-on-spruce-soft: rgb(1 32 79 / 0.74);
+  --color-on-spruce-faint: rgb(1 32 79 / 0.50);
+
+  color-scheme: dark;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
@@ -106,14 +159,13 @@ body {
   html { scroll-behavior: auto; }
 }
 
-/* Headlines: Fraunces, high optical size, book weight, soft terminals.
+/* Headlines: Inter, tight tracking, semibold display weight.
  * Sentence-case, never all-caps. */
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   font-optical-sizing: auto;
-  font-variation-settings: "opsz" 128, "SOFT" 50, "WONK" 0;
   letter-spacing: var(--tracking-display);
-  font-weight: 420;
+  font-weight: 600;
   line-height: 1.04;
   color: var(--color-spruce);
   font-style: normal;
@@ -136,7 +188,8 @@ strong { font-weight: 700; }
 
 .font-display { font-family: var(--font-display); }
 .font-body { font-family: var(--font-body); }
-.tabular { font-variant-numeric: tabular-nums; }
+.font-mono { font-family: var(--font-mono); }
+.tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* Gentle Title-case eyebrow label — Nunito 600, tracked, NOT uppercase mono */
 .eyebrow {
@@ -567,10 +620,10 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 
 .nav-item .nav-label {
   font-family: var(--font-display);
-  font-size: 1.45rem;
+  font-size: 1.35rem;
   line-height: 1;
   letter-spacing: var(--tracking-display);
-  font-variation-settings: "opsz" 96, "SOFT" 50, "WONK" 0;
+  font-weight: 600;
 }
 
 .nav-item:hover .nav-folio { color: var(--color-apricot-deep); }
@@ -622,4 +675,116 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 
 @media (max-width: 768px) {
   input, textarea, select { font-size: 16px !important; }
+}
+
+/* ── Theme switch — ease the color change, never the layout ─────────────── */
+
+html, body, .sidebar, .panel, .card, .field {
+  transition: background-color 280ms var(--ease-breathe), color 280ms var(--ease-breathe),
+    border-color 280ms var(--ease-breathe);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html, body, .sidebar, .panel, .card, .field { transition: none; }
+}
+
+/* ── Theme toggle — a small segmented Light / Dark / System control ─────── */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0.2rem;
+  border: 0;
+  min-inline-size: 0;
+  background: var(--color-oat);
+  border-radius: var(--r-full);
+}
+
+.theme-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-faded-sage);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.theme-toggle-option:hover { color: var(--color-spruce); }
+
+.theme-toggle-option[aria-pressed="true"] {
+  background: var(--color-linen);
+  color: var(--color-spruce);
+}
+
+.theme-toggle-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* ── Field group — label + control + hint/error (UI <Field>) ───────────── */
+
+.field-group { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.field-label {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+}
+
+.field-hint { font-size: 0.82rem; color: var(--color-faded-sage); }
+
+.field-error {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-berry);
+}
+
+.field-invalid {
+  border-color: var(--color-berry);
+}
+
+.field-invalid:focus,
+.field-invalid:focus-visible {
+  border-color: var(--color-berry);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-berry);
+}
+
+/* ── Card — a surface; interactive variant lifts and rings on focus ─────── */
+
+.card {
+  display: block;
+  background: var(--color-oat);
+  border-radius: var(--r-xl);
+  padding: clamp(1.25rem, 2vw, 1.75rem);
+  color: inherit;
+}
+
+.card-interactive {
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 220ms var(--ease-breathe), box-shadow 220ms var(--ease-breathe),
+    background 220ms var(--ease-breathe);
+}
+
+.card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgb(1 32 79 / 0.12);
+}
+
+.card-interactive:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-interactive:hover { transform: none; }
 }
