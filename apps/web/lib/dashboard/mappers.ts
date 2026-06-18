@@ -4,6 +4,8 @@ import type { EntryTone } from '~/components/hale/tone';
 
 export type Action = typeof schema.actions.$inferSelect;
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
+export type Event = typeof schema.events.$inferSelect;
+export type MemoryFact = typeof schema.familyMemoryFacts.$inferSelect;
 
 /**
  * Pure row → view-shape mappers for the three read-only dashboard pages. Kept
@@ -61,7 +63,11 @@ function recipientFromPayload(payload: Record<string, unknown>): string {
   return typeof to === 'string' && to.length > 0 ? to : 'unspecified recipient';
 }
 
-function stringFromPayload(payload: Record<string, unknown>, key: string, fallback: string): string {
+function stringFromPayload(
+  payload: Record<string, unknown>,
+  key: string,
+  fallback: string,
+): string {
   const value = payload[key];
   return typeof value === 'string' && value.length > 0 ? value : fallback;
 }
@@ -72,7 +78,9 @@ export function toDraftView(action: Action, teenContent: boolean): DraftView {
     id: action.id,
     recipient: recipientFromPayload(payload),
     category: action.actionType,
-    subject: teenContent ? TEEN_REDACTED_PLACEHOLDER : stringFromPayload(payload, 'subject', action.actionType),
+    subject: teenContent
+      ? TEEN_REDACTED_PLACEHOLDER
+      : stringFromPayload(payload, 'subject', action.actionType),
     body: teenContent ? TEEN_REDACTED_PLACEHOLDER : stringFromPayload(payload, 'body', ''),
     rationale: stringFromPayload(payload, 'rationale', ''),
   };
@@ -160,3 +168,84 @@ export function toTrailView(entry: AuditLogEntry, teenContent: boolean): TrailVi
 }
 
 export const DRAFT_LEVEL: AutonomyLevel = 2;
+
+export interface LiveSignalView {
+  id: string;
+  at: string;
+  source: string;
+  tone: EntryTone;
+  summary: string;
+  decision: string;
+}
+
+const STATE_DECISION: Record<Action['userVisibleState'], string> = {
+  autonomous: 'handled on your behalf',
+  drafted_for_approval: 'draft ready · awaiting your tap',
+  needs_human: "surfaced for you — I can't act on this",
+  reverted: 'reverted',
+};
+
+/**
+ * Maps a noticed signal — an event and its drafted action, if any — to the live
+ * stream row. The signal's tone follows the action's user-visible state; an event
+ * Hale only observed (no action) reads as a quiet "coach" note. Teen-content rows
+ * (rule #1) keep the source + time + tone but redact the summary and decision —
+ * the raw event text never reaches the view shape.
+ */
+export function toLiveSignal(event: Event, action: Action | null): LiveSignalView {
+  const tone: EntryTone = action ? (STATE_TONE[action.userVisibleState] ?? 'coach') : 'coach';
+  if (event.teenContent) {
+    return {
+      id: event.id,
+      at: HH_MM.format(event.receivedAt),
+      source: event.source,
+      tone,
+      summary: TEEN_REDACTED_PLACEHOLDER,
+      decision: TEEN_REDACTED_PLACEHOLDER,
+    };
+  }
+  const summary = stringFromPayload(event.payload, 'summary', '');
+  const subject = stringFromPayload(event.payload, 'subject', '');
+  return {
+    id: event.id,
+    at: HH_MM.format(event.receivedAt),
+    source: event.source,
+    tone,
+    summary: summary || subject || event.eventType,
+    decision: action ? STATE_DECISION[action.userVisibleState] : 'observed · no action taken',
+  };
+}
+
+export interface MemoryFactView {
+  id: string;
+  type: MemoryFact['factType'];
+  key: string;
+  value: string;
+  source: string;
+  confidence: number;
+}
+
+/** Renders a memory fact's jsonb value as a single human line. Strings pass
+ * through; structured values serialize so the family still sees what Hale stored. */
+function factValueText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return JSON.stringify(value);
+}
+
+/**
+ * Maps a currently-valid memory fact to its card view. `inferredBy` is Hale's own
+ * provenance note (which agent observed it); it carries no raw family content, so
+ * it is not teen-gated here — facts about a teen are governed by what the inferencer
+ * is allowed to write, upstream.
+ */
+export function toMemoryFactView(fact: MemoryFact): MemoryFactView {
+  return {
+    id: fact.id,
+    type: fact.factType,
+    key: fact.factKey,
+    value: factValueText(fact.factValue),
+    source: fact.inferredBy ?? 'observed by Hale',
+    confidence: fact.confidence,
+  };
+}
