@@ -1,0 +1,14 @@
+{
+  "parsed": {
+    "fact_updates": [],
+    "episode_summaries": [
+      {
+        "episode_type": "calendar_event_created",
+        "summary": "A library visit was scheduled for 2026-06-14 at 10:00.",
+        "occurred_at": "2026-06-14T10:00:00Z"
+      }
+    ],
+    "pattern_detections": [],
+    "retire_facts": []
+  }
+}

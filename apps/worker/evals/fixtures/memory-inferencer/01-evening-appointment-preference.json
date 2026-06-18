@@ -1,0 +1,31 @@
+{
+  "id": "01-evening-appointment-preference",
+  "note": "Three separate pediatric appointments were all confirmed for after-5pm slots. A routine/preference fact for the evening window is grounded (3 consistent observations). Any fact must reference the evening window the events actually carry.",
+  "input": {
+    "recentEvents": [
+      {
+        "eventType": "pediatric_appointment_request",
+        "payload": { "from": "frontdesk@littlesprout-pediatrics.ca", "proposed_time": "2026-05-12 17:30", "accepted": true }
+      },
+      {
+        "eventType": "pediatric_appointment_request",
+        "payload": { "from": "frontdesk@littlesprout-pediatrics.ca", "proposed_time": "2026-05-26 18:00", "accepted": true }
+      },
+      {
+        "eventType": "pediatric_appointment_request",
+        "payload": { "from": "frontdesk@littlesprout-pediatrics.ca", "proposed_time": "2026-06-09 17:45", "accepted": true }
+      }
+    ],
+    "recentActions": [
+      { "actionType": "reply_to_email", "outcome": "approved" },
+      { "actionType": "reply_to_email", "outcome": "approved" },
+      { "actionType": "reply_to_email", "outcome": "approved" }
+    ],
+    "currentMemorySnapshot": { "facts": [], "episodes": [] }
+  },
+  "expect": {
+    "requireAtLeastOneFact": true,
+    "factTypeAllowlist": ["preference", "routine", "logistic"],
+    "groundingTerms": ["evening", "17:", "18:", "5", "6", "appointment", "pm", "after"]
+  }
+}

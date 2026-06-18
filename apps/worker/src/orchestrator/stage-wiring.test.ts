@@ -70,6 +70,7 @@ const loadFamilyContext = vi.fn(async (familyId: string) => families[familyId]);
 
 vi.mock('../services/memory-writer.js', () => ({
   loadResumePoint: vi.fn(async () => null),
+  getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: (familyId: string) => loadFamilyContext(familyId),
   recordEvent: vi.fn(async () => ({ eventId: 'evt-1', duplicate: false })),
   recordDrop: vi.fn(async () => {}),

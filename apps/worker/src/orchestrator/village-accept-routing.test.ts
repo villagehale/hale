@@ -84,6 +84,7 @@ vi.mock('../services/memory-writer.js', () => ({
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   loadActionApprovalHistory: vi.fn(async () => []),
   loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
+  getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],
     children: [],

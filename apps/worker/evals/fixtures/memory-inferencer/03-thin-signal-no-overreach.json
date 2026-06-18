@@ -1,0 +1,21 @@
+{
+  "id": "03-thin-signal-no-overreach",
+  "note": "A SINGLE one-off event with no repetition. The high-precision rule forbids inventing a sweeping fact from one observation. A well-behaved inferencer records at most a single low-key episode and NO confident personality/preference fact. This fixture catches over-reach: any sweeping family-trait fact fails.",
+  "input": {
+    "recentEvents": [
+      {
+        "eventType": "calendar_event_created",
+        "payload": { "title": "Library visit", "when": "2026-06-14 10:00" }
+      }
+    ],
+    "recentActions": [],
+    "currentMemorySnapshot": { "facts": [], "episodes": [] }
+  },
+  "expect": {
+    "requireAtLeastOneFact": false,
+    "factTypeAllowlist": ["preference", "routine", "logistic", "relationship", "medical", "voice"],
+    "maxFacts": 1,
+    "forbidSweeping": true,
+    "groundingTerms": ["library", "10:00", "2026-06-14", "visit"]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "02-diaper-consumption-rate",
+  "note": "Two supply reorders show a consistent ~9/day diaper burn rate, stated in the order payloads. A logistic fact for the consumption rate is grounded in the order quantities and intervals. The rate must be derivable from the input numbers, not invented.",
+  "input": {
+    "recentEvents": [
+      {
+        "eventType": "supply_low",
+        "payload": { "item": "size 2 diapers", "reorder_qty": 128, "days_since_last_order": 14 }
+      },
+      {
+        "eventType": "supply_low",
+        "payload": { "item": "size 2 diapers", "reorder_qty": 128, "days_since_last_order": 15 }
+      }
+    ],
+    "recentActions": [
+      { "actionType": "place_supply_order", "outcome": "approved" },
+      { "actionType": "place_supply_order", "outcome": "approved" }
+    ],
+    "currentMemorySnapshot": { "facts": [], "episodes": [] }
+  },
+  "expect": {
+    "requireAtLeastOneFact": true,
+    "factTypeAllowlist": ["logistic", "routine", "preference"],
+    "groundingTerms": ["diaper", "size 2", "128", "9", "8", "10", "day", "order"]
+  }
+}

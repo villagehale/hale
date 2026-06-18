@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "fact_updates": [
+      {
+        "fact_type": "logistic",
+        "fact_key": "diaper_consumption_rate",
+        "fact_value": {
+          "item": "size 2 diapers",
+          "per_order": 128,
+          "interval_days": 14,
+          "approx_per_day": 9
+        },
+        "confidence": 0.7,
+        "rationale": "Two reorders of 128 size 2 diapers roughly every 14 days implies about 9 per day."
+      }
+    ],
+    "episode_summaries": [],
+    "pattern_detections": [],
+    "retire_facts": []
+  }
+}

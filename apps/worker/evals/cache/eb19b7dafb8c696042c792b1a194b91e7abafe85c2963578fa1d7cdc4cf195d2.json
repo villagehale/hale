@@ -1,0 +1,29 @@
+{
+  "parsed": {
+    "fact_updates": [
+      {
+        "fact_type": "preference",
+        "fact_key": "preferred_appointment_window",
+        "fact_value": {
+          "window": "evening",
+          "observed_times": [
+            "17:30",
+            "18:00",
+            "17:45"
+          ]
+        },
+        "confidence": 0.7,
+        "rationale": "Three consecutive pediatric appointments all accepted in the after-5pm window (17:30, 18:00, 17:45) with no counter-examples."
+      }
+    ],
+    "episode_summaries": [],
+    "pattern_detections": [
+      {
+        "pattern": "evening pediatric appointment preference",
+        "support": "3 accepted appointments at 17:30, 18:00, 17:45",
+        "confidence": 0.7
+      }
+    ],
+    "retire_facts": []
+  }
+}
