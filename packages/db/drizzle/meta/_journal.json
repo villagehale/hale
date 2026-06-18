@@ -57,6 +57,13 @@
       "when": 1781460120000,
       "tag": "0007_waitlist",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781460180000,
+      "tag": "0008_viral_share",
+      "breakpoints": true
     }
   ]
 }

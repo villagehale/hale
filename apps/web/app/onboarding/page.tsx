@@ -85,6 +85,36 @@ export default function OnboardingPage() {
 
   const canContinue = validChildren.length > 0 && validChildren.length === children.filter((c) => c.name.trim() || c.dateOfBirth).length;
 
+  const [inviteState, setInviteState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'generating' }
+    | { kind: 'ready'; link: string; copied: boolean }
+    | { kind: 'unavailable' }
+    | { kind: 'error' }
+  >({ kind: 'idle' });
+
+  async function generateInviteLink() {
+    setInviteState({ kind: 'generating' });
+    try {
+      const res = await fetch('/api/invite', { method: 'POST' });
+      if (res.status === 201) {
+        const { link } = (await res.json()) as { link: string };
+        setInviteState({ kind: 'ready', link, copied: false });
+        return;
+      }
+      // 501 (no auth in preview) / 403 (no family yet): a link can't be minted
+      // until the family exists — say so honestly rather than show a fake link.
+      setInviteState(res.status === 501 || res.status === 403 ? { kind: 'unavailable' } : { kind: 'error' });
+    } catch {
+      setInviteState({ kind: 'error' });
+    }
+  }
+
+  async function copyInviteLink(link: string) {
+    await navigator.clipboard.writeText(link);
+    setInviteState({ kind: 'ready', link, copied: true });
+  }
+
   return (
     <div className="min-h-screen bg-linen">
       {/* Running head — book top edge */}
@@ -428,14 +458,40 @@ export default function OnboardingPage() {
 
                 <div className="panel">
                   <span className="eyebrow">share this link</span>
-                  <p className="font-display text-xl break-all mt-2">
-                    hale.family/invite/87c2-d9f5-12a8
-                  </p>
-                  <div className="flex flex-wrap items-center gap-5 mt-5">
-                    <button type="button" className="btn-ghost">copy link</button>
-                    <button type="button" className="btn-ghost">show qr</button>
-                    <button type="button" className="btn-ghost">send by email</button>
-                  </div>
+                  {inviteState.kind === 'ready' ? (
+                    <>
+                      <p className="font-display text-xl break-all mt-2">{inviteState.link}</p>
+                      <div className="flex flex-wrap items-center gap-5 mt-5">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => copyInviteLink(inviteState.link)}
+                        >
+                          {inviteState.copied ? 'copied ✓' : 'copy link'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="meta mt-2">
+                        {inviteState.kind === 'unavailable'
+                          ? "I'll have your invite link ready once your family is set up — invite your co-parent from settings."
+                          : inviteState.kind === 'error'
+                            ? "couldn't generate a link just now — try again."
+                            : 'generate a one-time link to invite your co-parent into your village.'}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-5 mt-5">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={generateInviteLink}
+                          disabled={inviteState.kind === 'generating'}
+                        >
+                          {inviteState.kind === 'generating' ? 'generating…' : 'generate invite link'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <p className="meta">

@@ -1,6 +1,7 @@
 export * from './users.js';
 export * from './families.js';
 export * from './family-members.js';
+export * from './family-invites.js';
 export * from './children.js';
 export * from './integrations.js';
 export * from './consent.js';

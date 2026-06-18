@@ -1,8 +1,8 @@
 import { auth } from '@clerk/nextjs/server';
-import { eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import { db as defaultDb } from '~/lib/db';
+import { eq } from 'drizzle-orm';
 import { clerkConfigured } from '~/lib/auth-config';
+import { db as defaultDb } from '~/lib/db';
 
 /**
  * Resolves the current request's family from Clerk auth.
@@ -76,4 +76,69 @@ export async function resolveFamilyForClerkUser(
     .limit(1);
 
   return rows[0]?.familyId ?? null;
+}
+
+/**
+ * Clerk user id → internal users.id. The accept flow needs the uuid (to write a
+ * family_members row and stamp the invite), but Clerk only hands us the external
+ * id. Returns null when the user has no mirrored `users` row yet — the caller
+ * fails closed rather than fabricating a user id (rule #1).
+ */
+export async function resolveUserIdForClerkUser(
+  clerkUserId: string,
+  database: Database,
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.externalAuthId, clerkUserId))
+    .limit(1);
+
+  return rows[0]?.id ?? null;
+}
+
+/** The identity Clerk hands us for a signed-in parent, mirrored into `users`. */
+export interface ClerkIdentity {
+  clerkUserId: string;
+  email: string;
+  /** Null when the Clerk profile carries no name yet. */
+  name: string | null;
+}
+
+/**
+ * Resolve-or-create the internal `users` row mirroring a Clerk user, returning
+ * its uuid. Idempotent: a Clerk user that already has a mirrored row is returned
+ * unchanged (no write). Onboarding's family provisioning and invite acceptance
+ * both call this so a brand-new Clerk parent gets a `users` row before anything
+ * is linked to it.
+ *
+ * Race-safe: the insert is `onConflictDoNothing` on the unique external_auth_id
+ * index, so two concurrent first-requests can't both create a row; whichever
+ * loses the insert still resolves the winner's id on the re-select. We never
+ * fabricate an id (rule #1) — if the row is somehow absent after the upsert, that
+ * is a real invariant violation and we throw rather than mask it (CLAUDE.md #8).
+ */
+export async function ensureUserRow(
+  identity: ClerkIdentity,
+  database: Database = defaultDb(),
+): Promise<string> {
+  const existing = await resolveUserIdForClerkUser(identity.clerkUserId, database);
+  if (existing) {
+    return existing;
+  }
+
+  await database
+    .insert(schema.users)
+    .values({
+      externalAuthId: identity.clerkUserId,
+      email: identity.email,
+      name: identity.name,
+    })
+    .onConflictDoNothing({ target: schema.users.externalAuthId });
+
+  const id = await resolveUserIdForClerkUser(identity.clerkUserId, database);
+  if (!id) {
+    throw new Error(`ensureUserRow: no users row after upsert for ${identity.clerkUserId}`);
+  }
+  return id;
 }

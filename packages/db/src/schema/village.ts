@@ -71,6 +71,10 @@ export const routineProposals = pgTable(
       .references(() => families.id, { onDelete: 'cascade' }),
     weekOf: date('week_of').notNull(),
     items: jsonb('items').$type<RoutineProposalItem[]>().notNull().default([]),
+    /** Opaque token for a public, read-only share of this routine (viral leg).
+     * Nullable: only set when a parent opts to share. UNIQUE so the token alone
+     * resolves the row. */
+    shareToken: text('share_token').unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
