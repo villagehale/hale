@@ -2,12 +2,14 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { startQueue, stopQueue } from './queue.js';
 import { registerConsumers } from './consumers/index.js';
+import { registerRetentionSchedules } from './consumers/retention-fanout.js';
 
 async function main(): Promise<void> {
   logger.info({ env: config.NODE_ENV }, 'Hale worker starting');
 
   const boss = await startQueue();
   await registerConsumers(boss);
+  await registerRetentionSchedules(boss);
 
   logger.info('Hale worker ready');
 
