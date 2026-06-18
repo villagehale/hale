@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
+import { auth } from '~/auth';
 import { db } from '~/lib/db';
-import { clerkConfigured } from '~/lib/auth-config';
-import { resolveFamilyForClerkUser, resolveUserIdForClerkUser } from '~/lib/family';
+import { authConfigured } from '~/lib/auth-config';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { createFamilyInvite } from '~/lib/invites/create';
 
 const bodySchema = z.object({ email: z.string().email().optional() });
@@ -12,20 +12,21 @@ const bodySchema = z.object({ email: z.string().email().optional() });
  * POST /api/invite — an existing family member mints a co-parent invite link.
  *
  * Auth is the consent surface for rule #5: only an existing member may invite.
- * Clerk unconfigured (dev preview) → 501; configured but not signed in → 401;
+ * Auth unconfigured (dev preview) → 501; configured but not signed in → 401;
  * signed in but not a member of any family → 403. The caller's resolved family
  * IS the membership proof — a member can only ever invite into their own family.
  */
 export async function POST(req: Request) {
-  if (!clerkConfigured()) {
+  if (!authConfigured()) {
     return NextResponse.json(
       { error: 'auth_required', detail: 'auth required to create invites' },
       { status: 501 },
     );
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
@@ -39,11 +40,11 @@ export async function POST(req: Request) {
   }
 
   const database = db();
-  const familyId = await resolveFamilyForClerkUser(userId, database);
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
-  const creatorUserId = await resolveUserIdForClerkUser(userId, database);
+  const creatorUserId = await resolveUserIdForUser(externalAuthId, database);
   if (!creatorUserId) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }

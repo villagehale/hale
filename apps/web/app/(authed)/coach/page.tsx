@@ -1,9 +1,9 @@
 import { PageCorner } from '~/components/hale/page-corner';
 import { CoachConversation } from '~/components/hale/coach-conversation';
-import { clerkConfigured } from '~/lib/auth-config';
+import { authConfigured } from '~/lib/auth-config';
 
 export default function CoachPage() {
-  const canAsk = clerkConfigured();
+  const canAsk = authConfigured();
 
   return (
     <div>

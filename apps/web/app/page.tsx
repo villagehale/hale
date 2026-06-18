@@ -1,9 +1,11 @@
 import Link from 'next/link';
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs';
+import { auth, signOut } from '~/auth';
 import { House, SeaTurtle, Sun } from '~/components/illos';
-import { clerkConfigured } from '~/lib/auth-config';
+import { authConfigured } from '~/lib/auth-config';
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const session = authConfigured() ? await auth() : null;
+
   return (
     <main className="relative">
       {/* ── Running head ────────────────────────────────────────────────── */}
@@ -18,24 +20,23 @@ export default function LandingPage() {
           <Link href="/digest" className="btn-ghost">
             read this week&rsquo;s digest →
           </Link>
-          {clerkConfigured() ? (
-            <>
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button type="button" className="btn-ghost">
-                    sign in
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button type="button" className="btn-primary">
-                    sign up
-                  </button>
-                </SignUpButton>
-              </SignedOut>
-              <SignedIn>
-                <UserButton />
-              </SignedIn>
-            </>
+          {authConfigured() ? (
+            session ? (
+              <form
+                action={async () => {
+                  'use server';
+                  await signOut({ redirectTo: '/' });
+                }}
+              >
+                <button type="submit" className="btn-ghost">
+                  sign out
+                </button>
+              </form>
+            ) : (
+              <Link href="/sign-in" className="btn-primary">
+                sign in
+              </Link>
+            )
           ) : null}
         </div>
       </header>

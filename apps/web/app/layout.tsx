@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { ClerkProvider } from '@clerk/nextjs';
 import { Fraunces, Nunito } from 'next/font/google';
-import { clerkConfigured } from '~/lib/auth-config';
 import './globals.css';
 
 const fraunces = Fraunces({
@@ -31,7 +29,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${fraunces.variable} ${nunito.variable}`}>
-      <body>{clerkConfigured() ? <ClerkProvider>{children}</ClerkProvider> : children}</body>
+      <body>{children}</body>
     </html>
   );
 }

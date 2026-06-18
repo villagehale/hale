@@ -1,34 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The routes read Clerk auth + db at request time. We stub those edges so the
-// tests exercise the auth/consent gating (rule #5: only members invite), not the
-// real infra. The pure store + service logic is covered in invite-store.test.
+// The routes read the Auth.js session + db at request time. We stub those edges
+// so the tests exercise the auth/consent gating (rule #5: only members invite),
+// not the real infra. The pure store + service logic is covered in
+// invite-store.test.
 const authMock = vi.fn();
-const currentUserMock = vi.fn();
-vi.mock('@clerk/nextjs/server', () => ({
-  auth: () => authMock(),
-  currentUser: () => currentUserMock(),
-}));
+vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/family', () => ({
-  resolveFamilyForClerkUser: vi.fn(),
-  resolveUserIdForClerkUser: vi.fn(),
+  resolveFamilyForUser: vi.fn(),
+  resolveUserIdForUser: vi.fn(),
   ensureUserRow: vi.fn(),
 }));
 
-/** A Clerk currentUser() stub carrying a verified primary email + full name. */
-function clerkUser(email: string | null, name: string | null = 'Avery') {
-  return {
-    primaryEmailAddress: email ? { emailAddress: email } : null,
-    fullName: name,
-  };
+/**
+ * An Auth.js session stub carrying the Google account id + email + name. A null
+ * email models a profile with no email; a null id models a signed-out caller.
+ */
+function session(
+  externalAuthId: string | null,
+  email: string | null = 'avery@example.com',
+  name: string | null = 'Avery',
+) {
+  return externalAuthId ? { user: { id: externalAuthId, email, name } } : null;
 }
 vi.mock('~/lib/invites/create', () => ({ createFamilyInvite: vi.fn() }));
 vi.mock('~/lib/invites/accept', () => ({ acceptFamilyInvite: vi.fn() }));
 
-function configureClerk(on: boolean) {
-  vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', on ? 'pk_test' : '');
-  vi.stubEnv('CLERK_SECRET_KEY', on ? 'sk_test' : '');
+function configureAuth(on: boolean) {
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
 }
 
 function postInvite() {
@@ -56,8 +57,8 @@ describe('POST /api/invite — auth + membership gating', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns 501 when Clerk is unconfigured — never invites unauthenticated', async () => {
-    configureClerk(false);
+  it('returns 501 when auth is unconfigured — never invites unauthenticated', async () => {
+    configureAuth(false);
 
     const res = await callCreate();
 
@@ -66,8 +67,8 @@ describe('POST /api/invite — auth + membership gating', () => {
   });
 
   it('returns 401 when configured but the caller is not signed in', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: null });
+    configureAuth(true);
+    authMock.mockResolvedValue(session(null));
 
     const res = await callCreate();
 
@@ -75,10 +76,10 @@ describe('POST /api/invite — auth + membership gating', () => {
   });
 
   it('returns 403 when the signed-in caller is not a member of any family', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    const { resolveFamilyForClerkUser } = await import('~/lib/family');
-    vi.mocked(resolveFamilyForClerkUser).mockResolvedValue(null);
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_1'));
+    const { resolveFamilyForUser } = await import('~/lib/family');
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
 
     const res = await callCreate();
 
@@ -86,12 +87,12 @@ describe('POST /api/invite — auth + membership gating', () => {
   });
 
   it('returns 201 with a link built from APP_URL for a member', async () => {
-    configureClerk(true);
+    configureAuth(true);
     vi.stubEnv('APP_URL', 'https://hale.example');
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    const { resolveFamilyForClerkUser, resolveUserIdForClerkUser } = await import('~/lib/family');
-    vi.mocked(resolveFamilyForClerkUser).mockResolvedValue('fam_1');
-    vi.mocked(resolveUserIdForClerkUser).mockResolvedValue('user_1');
+    authMock.mockResolvedValue(session('google_1'));
+    const { resolveFamilyForUser, resolveUserIdForUser } = await import('~/lib/family');
+    vi.mocked(resolveFamilyForUser).mockResolvedValue('fam_1');
+    vi.mocked(resolveUserIdForUser).mockResolvedValue('user_1');
     const { createFamilyInvite } = await import('~/lib/invites/create');
     vi.mocked(createFamilyInvite).mockResolvedValue({ token: 'tok123' });
 
@@ -106,14 +107,13 @@ describe('POST /api/invite/:token/accept — auth gating + result mapping', () =
   beforeEach(() => {
     vi.resetModules();
     authMock.mockReset();
-    currentUserMock.mockReset();
   });
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it('returns 501 when Clerk is unconfigured', async () => {
-    configureClerk(false);
+  it('returns 501 when auth is unconfigured', async () => {
+    configureAuth(false);
 
     const res = await callAccept('tok');
 
@@ -122,8 +122,8 @@ describe('POST /api/invite/:token/accept — auth gating + result mapping', () =
   });
 
   it('returns 401 when configured but not signed in', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: null });
+    configureAuth(true);
+    authMock.mockResolvedValue(session(null));
 
     const res = await callAccept('tok');
 
@@ -131,9 +131,8 @@ describe('POST /api/invite/:token/accept — auth gating + result mapping', () =
   });
 
   it('provisions a users row for a first-time invitee and joins them as co_parent', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'clerk_new' });
-    currentUserMock.mockResolvedValue(clerkUser('invitee@example.com', 'Sam'));
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_new', 'invitee@example.com', 'Sam'));
     const { ensureUserRow } = await import('~/lib/family');
     // ensureUserRow creates (or resolves) the internal users row for the caller.
     vi.mocked(ensureUserRow).mockResolvedValue('user_new');
@@ -149,13 +148,13 @@ describe('POST /api/invite/:token/accept — auth gating + result mapping', () =
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'accepted', familyId: 'fam_inviter' });
     expect(ensureUserRow).toHaveBeenCalledWith(
-      { clerkUserId: 'clerk_new', email: 'invitee@example.com', name: 'Sam' },
+      { externalAuthId: 'google_new', email: 'invitee@example.com', name: 'Sam' },
       expect.anything(),
     );
     // Acceptance redeems against the inviter's existing family — the route never
     // creates a family; the membership role is the invite's (co_parent) default.
-    // The caller's primary email is threaded so the store can gate a targeted
-    // invite to its intended recipient.
+    // The caller's email is threaded so the store can gate a targeted invite to
+    // its intended recipient.
     expect(vi.mocked(acceptFamilyInvite).mock.calls[0]?.[1]).toEqual({
       token: 'tok',
       userId: 'user_new',
@@ -163,10 +162,9 @@ describe('POST /api/invite/:token/accept — auth gating + result mapping', () =
     });
   });
 
-  it('returns 403 when the signed-in caller has no primary email', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    currentUserMock.mockResolvedValue(clerkUser(null));
+  it('returns 403 when the signed-in caller has no email', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_1', null));
 
     const res = await callAccept('tok');
 
@@ -174,9 +172,8 @@ describe('POST /api/invite/:token/accept — auth gating + result mapping', () =
   });
 
   it('maps expired → 410, not_found → 404, already_accepted → 409, accepted → 200', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    currentUserMock.mockResolvedValue(clerkUser('parent@example.com'));
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_1', 'parent@example.com'));
     const { ensureUserRow } = await import('~/lib/family');
     vi.mocked(ensureUserRow).mockResolvedValue('user_1');
     const { acceptFamilyInvite } = await import('~/lib/invites/accept');

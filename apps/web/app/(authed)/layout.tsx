@@ -1,15 +1,15 @@
 import { redirect } from 'next/navigation';
-import { auth } from '@clerk/nextjs/server';
+import { auth } from '~/auth';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
 import { FamilyHeader } from '~/components/hale/family-header';
-import { clerkConfigured } from '~/lib/auth-config';
+import { authConfigured } from '~/lib/auth-config';
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
-  const authEnabled = clerkConfigured();
-  if (authEnabled) {
-    const { userId } = await auth();
-    if (!userId) redirect('/onboarding');
+  const authEnabled = authConfigured();
+  const session = authEnabled ? await auth() : null;
+  if (authEnabled && !session?.user?.id) {
+    redirect('/sign-in');
   }
 
   return (
@@ -17,14 +17,14 @@ export default async function AuthedLayout({ children }: { children: React.React
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <Sidebar authControls={authEnabled} />
+      <Sidebar authControls={authEnabled} signedIn={Boolean(session?.user?.id)} />
       <div>
         <TopHeader />
         <main id="main-content" className="main-stage">
           {!authEnabled && (
             <output className="dev-preview-banner">
               Auth disabled — development preview. This route group is unprotected
-              because Clerk is not configured.
+              because Google OAuth is not configured.
             </output>
           )}
           <FamilyHeader />

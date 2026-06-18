@@ -1,11 +1,12 @@
 'use server';
 
-import { auth, currentUser } from '@clerk/nextjs/server';
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { clerkConfigured } from '~/lib/auth-config';
+import type { Session } from 'next-auth';
+import { auth } from '~/auth';
+import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
-import { type ClerkIdentity, ensureUserRow, resolveFamilyForClerkUser } from '~/lib/family';
+import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { type ChildInput, buildChildInserts, unionStages, validateChild } from './children';
 
 /**
@@ -15,10 +16,10 @@ import { type ChildInput, buildChildInserts, unionStages, validateChild } from '
  * row per child with its date_of_birth — the only source of truth. No stage is
  * stored; the dashboard derives it live.
  *
- * Degradation (mirrors the dashboard read path and the approve route): when
- * Clerk is unconfigured (dev preview) OR there is no DATABASE_URL, the wizard
- * still validates and previews the derived stages, but NOTHING is written and
- * we return `preview` — never a fabricated family id, never a crash.
+ * Degradation (mirrors the dashboard read path and the approve route): when auth
+ * is unconfigured (dev preview) OR there is no DATABASE_URL, the wizard still
+ * validates and previews the derived stages, but NOTHING is written and we return
+ * `preview` — never a fabricated family id, never a crash.
  *
  * For a signed-in parent whose family does NOT yet resolve, this is their first
  * onboarding: we provision their `users` row, a `families` row, and their
@@ -51,43 +52,44 @@ export async function saveOnboardingChildren(
   if (!process.env.DATABASE_URL) {
     return { status: 'preview', reason: 'no_database', stages };
   }
-  if (!clerkConfigured()) {
+  if (!authConfigured()) {
     return { status: 'preview', reason: 'no_auth', stages };
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  const session = await auth();
+  if (!session?.user?.id) {
     return { status: 'preview', reason: 'no_auth', stages };
   }
 
   const database = defaultDb();
-  const existingFamilyId = await resolveFamilyForClerkUser(userId, database);
+  const existingFamilyId = await resolveFamilyForUser(session.user.id, database);
   if (existingFamilyId) {
     await writeChildren(database, existingFamilyId, validated);
     return { status: 'saved', familyId: existingFamilyId, childCount: validated.length, stages };
   }
 
-  const identity = await clerkIdentity(userId);
+  const identity = authIdentity(session);
   const { familyId } = await provisionAndWriteChildren(database, identity, validated);
   return { status: 'saved', familyId, childCount: validated.length, stages };
 }
 
 /**
- * Reads the signed-in parent's email + name from Clerk, the source of truth for
- * the mirrored `users` row. Throws if Clerk has no current user or no primary
- * email — provisioning a family with a fabricated or missing identity would
- * violate rule #1, so we fail loudly rather than mask it (CLAUDE.md #8).
+ * Reads the signed-in parent's external id + email + name from the Auth.js
+ * session (the Google profile), the source of truth for the mirrored `users` row.
+ * Throws if the session carries no id or no email — provisioning a family with a
+ * fabricated or missing identity would violate rule #1, so we fail loudly rather
+ * than mask it (CLAUDE.md #8).
  */
-async function clerkIdentity(clerkUserId: string): Promise<ClerkIdentity> {
-  const user = await currentUser();
-  if (!user) {
-    throw new Error('clerkIdentity: auth() returned a userId but currentUser() is null');
+function authIdentity(session: Session): AuthIdentity {
+  const externalAuthId = session.user?.id;
+  const email = session.user?.email;
+  if (!externalAuthId) {
+    throw new Error('authIdentity: session has no user id');
   }
-  const email = user.primaryEmailAddress?.emailAddress;
   if (!email) {
-    throw new Error(`clerkIdentity: Clerk user ${clerkUserId} has no primary email address`);
+    throw new Error(`authIdentity: session user ${externalAuthId} has no email address`);
   }
-  return { clerkUserId, email, name: user.fullName };
+  return { externalAuthId, email, name: session.user?.name ?? null };
 }
 
 /**
@@ -104,7 +106,7 @@ async function clerkIdentity(clerkUserId: string): Promise<ClerkIdentity> {
  */
 export async function provisionAndWriteChildren(
   database: Database,
-  identity: ClerkIdentity,
+  identity: AuthIdentity,
   children: ReadonlyArray<{ name: string; dateOfBirth: string }>,
 ): Promise<{ familyId: string }> {
   return database.transaction(async (tx) => {
@@ -141,8 +143,8 @@ export async function provisionAndWriteChildren(
 
 /**
  * The family's display name from the parent's name: `${firstName}'s family`,
- * falling back to a neutral default when Clerk carries no name. firstName is the
- * leading whitespace-delimited token of the full name.
+ * falling back to a neutral default when the profile carries no name. firstName is
+ * the leading whitespace-delimited token of the full name.
  */
 function familyDisplayName(name: string | null): string {
   const firstName = name?.trim().split(/\s+/)[0];

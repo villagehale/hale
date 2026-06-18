@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
+import { auth } from '~/auth';
 import { db } from '~/lib/db';
-import { clerkConfigured } from '~/lib/auth-config';
-import { resolveFamilyForClerkUser } from '~/lib/family';
+import { authConfigured } from '~/lib/auth-config';
+import { resolveFamilyForUser } from '~/lib/family';
 import { askCoach } from '~/lib/coach/coach';
 import { loadFamilyStages } from '~/lib/coach/family-stages';
 import { recordCoachRun } from '~/lib/coach/record-run';
@@ -18,22 +18,23 @@ const bodySchema = z.object({ question: z.string().trim().min(1).max(2000) });
 /**
  * POST /api/coach — a signed-in parent asking the interactive coach a question.
  *
- * Auth is the spend gate. When Clerk is unconfigured (dev preview) we refuse with
+ * Auth is the spend gate. When auth is unconfigured (dev preview) we refuse with
  * 501 and NEVER call the model — no spend, no guessing a family (mirrors the
  * approve route). Signed-out → 401. The coach is family-scoped: it only ever sees
  * the CALLER's family's derived stages (rule #1 — no other family's data, and no
  * raw child content; stage is the only child-derived signal).
  */
 export async function POST(req: Request) {
-  if (!clerkConfigured()) {
+  if (!authConfigured()) {
     return NextResponse.json(
       { error: 'auth_required', detail: 'sign in to ask the coach' },
       { status: 501 },
     );
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
   }
 
   const database = db();
-  const familyId = await resolveFamilyForClerkUser(userId, database);
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }

@@ -1,6 +1,6 @@
-import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { clerkConfigured } from '~/lib/auth-config';
+import { auth } from '~/auth';
+import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { ensureUserRow } from '~/lib/family';
 import { acceptFamilyInvite } from '~/lib/invites/accept';
@@ -11,7 +11,7 @@ interface RouteContext {
 
 /**
  * POST /api/invite/:token/accept — a signed-in invitee redeems an invite to join
- * the inviter's family as a co_parent. Clerk unconfigured (dev preview) → 501;
+ * the inviter's family as a co_parent. Auth unconfigured (dev preview) → 501;
  * configured but not signed in → 401. A first-time invitee has no mirrored
  * `users` row yet, so we provision one (ensureUserRow) before redeeming — the
  * invitee joins the EXISTING family, never a new one. A genuine new membership
@@ -23,27 +23,27 @@ interface RouteContext {
 export async function POST(_req: Request, context: RouteContext) {
   const { token } = await context.params;
 
-  if (!clerkConfigured()) {
+  if (!authConfigured()) {
     return NextResponse.json(
       { error: 'auth_required', detail: 'auth required to accept invites' },
       { status: 501 },
     );
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
-  const user = await currentUser();
-  const email = user?.primaryEmailAddress?.emailAddress;
-  if (!user || !email) {
+  const email = session.user?.email;
+  if (!email) {
     return NextResponse.json({ error: 'no_email_for_caller' }, { status: 403 });
   }
 
   const database = db();
   const internalUserId = await ensureUserRow(
-    { clerkUserId: userId, email, name: user.fullName },
+    { externalAuthId, email, name: session.user?.name ?? null },
     database,
   );
 

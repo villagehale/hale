@@ -1,21 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The route reads Clerk auth + db at request time. We stub those edges so the
-// test exercises the route's auth gating (mirrors the accept route, hard rule
-// #4) and link building, not the real infra. The token + audit logic is covered
-// in share.test.
+// The route reads the Auth.js session + db at request time. We stub those edges
+// so the test exercises the route's auth gating (mirrors the accept route, hard
+// rule #4) and link building, not the real infra. The token + audit logic is
+// covered in share.test.
 const authMock = vi.fn();
-vi.mock('@clerk/nextjs/server', () => ({ auth: () => authMock() }));
+vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/family', () => ({
-  resolveFamilyForClerkUser: vi.fn(),
-  resolveUserIdForClerkUser: vi.fn(),
+  resolveFamilyForUser: vi.fn(),
+  resolveUserIdForUser: vi.fn(),
 }));
 vi.mock('~/lib/village/share', () => ({ ensureShareToken: vi.fn() }));
 
-function configureClerk(on: boolean) {
-  vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', on ? 'pk_test' : '');
-  vi.stubEnv('CLERK_SECRET_KEY', on ? 'sk_test' : '');
+function configureAuth(on: boolean) {
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
+}
+
+function session(externalAuthId: string | null) {
+  return externalAuthId ? { user: { id: externalAuthId } } : null;
 }
 
 async function callShare() {
@@ -32,8 +36,8 @@ describe('POST /api/village/share — auth gating + link building', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns 501 when Clerk is unconfigured — never shares unauthenticated', async () => {
-    configureClerk(false);
+  it('returns 501 when auth is unconfigured — never shares unauthenticated', async () => {
+    configureAuth(false);
 
     const res = await callShare();
 
@@ -42,8 +46,8 @@ describe('POST /api/village/share — auth gating + link building', () => {
   });
 
   it('returns 401 when configured but the caller is not signed in', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: null });
+    configureAuth(true);
+    authMock.mockResolvedValue(session(null));
 
     const res = await callShare();
 
@@ -51,10 +55,10 @@ describe('POST /api/village/share — auth gating + link building', () => {
   });
 
   it('returns 403 when the signed-in caller is not a member of any family', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    const { resolveFamilyForClerkUser } = await import('~/lib/family');
-    vi.mocked(resolveFamilyForClerkUser).mockResolvedValue(null);
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_1'));
+    const { resolveFamilyForUser } = await import('~/lib/family');
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
 
     const res = await callShare();
 
@@ -62,11 +66,11 @@ describe('POST /api/village/share — auth gating + link building', () => {
   });
 
   it('returns 404 when the family has no week plan to share', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    const { resolveFamilyForClerkUser, resolveUserIdForClerkUser } = await import('~/lib/family');
-    vi.mocked(resolveFamilyForClerkUser).mockResolvedValue('fam_1');
-    vi.mocked(resolveUserIdForClerkUser).mockResolvedValue('user_1');
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google_1'));
+    const { resolveFamilyForUser, resolveUserIdForUser } = await import('~/lib/family');
+    vi.mocked(resolveFamilyForUser).mockResolvedValue('fam_1');
+    vi.mocked(resolveUserIdForUser).mockResolvedValue('user_1');
     const { ensureShareToken } = await import('~/lib/village/share');
     vi.mocked(ensureShareToken).mockResolvedValue(null);
 
@@ -76,12 +80,12 @@ describe('POST /api/village/share — auth gating + link building', () => {
   });
 
   it('returns 200 with a /w/:token link built from APP_URL', async () => {
-    configureClerk(true);
+    configureAuth(true);
     vi.stubEnv('APP_URL', 'https://villagehale.com');
-    authMock.mockResolvedValue({ userId: 'clerk_1' });
-    const { resolveFamilyForClerkUser, resolveUserIdForClerkUser } = await import('~/lib/family');
-    vi.mocked(resolveFamilyForClerkUser).mockResolvedValue('fam_1');
-    vi.mocked(resolveUserIdForClerkUser).mockResolvedValue('user_1');
+    authMock.mockResolvedValue(session('google_1'));
+    const { resolveFamilyForUser, resolveUserIdForUser } = await import('~/lib/family');
+    vi.mocked(resolveFamilyForUser).mockResolvedValue('fam_1');
+    vi.mocked(resolveUserIdForUser).mockResolvedValue('user_1');
     const { ensureShareToken } = await import('~/lib/village/share');
     vi.mocked(ensureShareToken).mockResolvedValue({ shareToken: 'tok123' });
 

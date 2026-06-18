@@ -2,29 +2,25 @@ import { type Database, schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { provisionAndWriteChildren } from './persist.js';
 
-// saveOnboardingChildren reads Clerk auth + the current user + the db at request
-// time. We stub those edges so the test exercises the provision-vs-reuse
-// decision (a resolved family must NOT spawn a second one), not the real infra.
+// saveOnboardingChildren reads the Auth.js session + the db at request time. We
+// stub those edges so the test exercises the provision-vs-reuse decision (a
+// resolved family must NOT spawn a second one), not the real infra.
 const authMock = vi.fn();
-const currentUserMock = vi.fn();
-vi.mock('@clerk/nextjs/server', () => ({
-  auth: () => authMock(),
-  currentUser: () => currentUserMock(),
-}));
+vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => fakeDbHandle }));
 vi.mock('~/lib/family', async () => {
   const actual = await vi.importActual<typeof import('~/lib/family')>('~/lib/family');
-  return { ...actual, resolveFamilyForClerkUser: vi.fn() };
+  return { ...actual, resolveFamilyForUser: vi.fn() };
 });
 
 let fakeDbHandle: unknown = {};
 
-function configureClerk(on: boolean) {
-  vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', on ? 'pk_test' : '');
-  vi.stubEnv('CLERK_SECRET_KEY', on ? 'sk_test' : '');
+function configureAuth(on: boolean) {
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
 }
 
-const CLERK_ID = 'user_clerk_abc';
+const GOOGLE_ID = 'google_user_abc';
 const NEW_USER_ID = '22222222-2222-4222-8222-222222222222';
 const NEW_FAMILY_ID = '33333333-3333-4333-8333-333333333333';
 
@@ -91,7 +87,7 @@ describe('provisionAndWriteChildren', () => {
 
     const result = await provisionAndWriteChildren(
       s.database,
-      { clerkUserId: CLERK_ID, email: 'avery@example.com', name: 'Avery' },
+      { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       CHILDREN,
     );
 
@@ -124,7 +120,7 @@ describe('provisionAndWriteChildren', () => {
 
     await provisionAndWriteChildren(
       s.database,
-      { clerkUserId: CLERK_ID, email: 'avery@example.com', name: 'Avery Stone' },
+      { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery Stone' },
       CHILDREN,
     );
 
@@ -139,7 +135,7 @@ describe('provisionAndWriteChildren', () => {
 
     await provisionAndWriteChildren(
       s.database,
-      { clerkUserId: CLERK_ID, email: 'avery@example.com', name: null },
+      { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: null },
       CHILDREN,
     );
 
@@ -153,17 +149,16 @@ describe('saveOnboardingChildren — provision vs reuse', () => {
   beforeEach(() => {
     vi.resetModules();
     authMock.mockReset();
-    currentUserMock.mockReset();
   });
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
   it('writes children to the existing family without creating a second one', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: CLERK_ID });
-    const { resolveFamilyForClerkUser } = await import('~/lib/family');
-    vi.mocked(resolveFamilyForClerkUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    const { resolveFamilyForUser } = await import('~/lib/family');
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
 
     const insert = vi.fn(() => builder([]));
     fakeDbHandle = { insert, transaction: vi.fn() };
@@ -186,8 +181,6 @@ describe('saveOnboardingChildren — provision vs reuse', () => {
     expect(chain.values.mock.calls[0]?.[0]).toEqual([
       expect.objectContaining({ name: 'Robin', dateOfBirth: '2024-01-01' }),
     ]);
-    // currentUser() is never consulted when the family already resolves.
-    expect(currentUserMock).not.toHaveBeenCalled();
   });
 });
 

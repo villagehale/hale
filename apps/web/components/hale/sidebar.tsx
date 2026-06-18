@@ -1,9 +1,9 @@
 'use client';
 
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SeaTurtle } from '~/components/illos';
+import { signOutAction } from '~/lib/auth-actions';
 
 const NAV = [
   { href: '/digest', label: 'digest', folio: '01' },
@@ -18,7 +18,13 @@ const NAV = [
   { href: '/companion', label: 'companion', folio: '10' },
 ] as const;
 
-export function Sidebar({ authControls = false }: { authControls?: boolean }) {
+export function Sidebar({
+  authControls = false,
+  signedIn = false,
+}: {
+  authControls?: boolean;
+  signedIn?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -40,21 +46,17 @@ export function Sidebar({ authControls = false }: { authControls?: boolean }) {
 
         {authControls ? (
           <div className="mt-6 flex items-center gap-4">
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button type="button" className="btn-ghost">
-                  sign in
+            {signedIn ? (
+              <form action={signOutAction}>
+                <button type="submit" className="btn-ghost">
+                  sign out
                 </button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <button type="button" className="btn-primary">
-                  sign up
-                </button>
-              </SignUpButton>
-            </SignedOut>
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
+              </form>
+            ) : (
+              <Link href="/sign-in" className="btn-primary">
+                sign in
+              </Link>
+            )}
           </div>
         ) : null}
       </div>
