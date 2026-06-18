@@ -29,19 +29,19 @@ export default async function TrailPage() {
 
   return (
     <div>
-      <PageCorner folio="06" section="trail · the audit log" />
+      <PageCorner folio="history" section="history · the record" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
           <div className="lg:col-span-3">
-            <span className="eyebrow">audit trail</span>
+            <span className="eyebrow">history</span>
             <p className="meta mt-2">everything done, by whom, when</p>
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              <span className="text-apricot-deep">everything</span> done
+              the full <span className="text-apricot-deep">record</span>
               <br />
-              on your behalf.
+              for your family.
             </h1>
           </div>
         </div>
