@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { PageCorner } from '~/components/hale/page-corner';
 import { Folio } from '~/components/hale/folio';
+import { QuickLog } from '~/components/hale/quick-log';
+import { RecentLogs } from '~/components/hale/recent-logs';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
+import { loadRecentLogs } from '~/lib/companion/recent-logs';
 
 const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
   newborn: 'newborn',
@@ -31,7 +34,7 @@ function duePhrase(dueInWeeks: number): string {
 }
 
 export default async function CompanionPage() {
-  const children = await loadCompanion();
+  const [children, recentLogs] = await Promise.all([loadCompanion(), loadRecentLogs()]);
 
   return (
     <div>
@@ -67,9 +70,9 @@ export default async function CompanionPage() {
             no children added yet.
           </p>
           <p className="meta mt-4 text-slate-green">
-            once a child’s birthday is on file, this page gathers their stage, the next
-            routine checkups and immunizations, and the milestones worth watching for —
-            all confirmed with your own provider.
+            once a child’s birthday is on file, this page gathers their stage, the next routine
+            checkups and immunizations, and the milestones worth watching for — all confirmed with
+            your own provider.
           </p>
         </section>
       ) : (
@@ -120,8 +123,8 @@ export default async function CompanionPage() {
                       </ul>
                     )}
                     <p className="meta mt-4 text-slate-green">
-                      timing is the standard Canadian schedule — confirm with your provider or
-                      local public health.
+                      timing is the standard Canadian schedule — confirm with your provider or local
+                      public health.
                     </p>
                   </div>
                 </div>
@@ -184,6 +187,22 @@ export default async function CompanionPage() {
           })}
         </section>
       )}
+
+      {/* ── Recent logs + quick log ─────────────────────────────────────── */}
+      {children.length > 0 ? (
+        <section className="rise rise-7 mt-16 lg:mt-24">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
+            <div className="lg:col-span-3">
+              <span className="eyebrow">recent logs</span>
+              <p className="meta mt-2 text-slate-green">feeds · naps · milestones</p>
+            </div>
+            <div className="lg:col-span-9 space-y-8">
+              <RecentLogs logs={recentLogs} />
+              <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name }))} />
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
