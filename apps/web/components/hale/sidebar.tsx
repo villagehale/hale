@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SeaTurtle } from '~/components/illos';
+import { LogoMark } from '~/components/hale/logo-mark';
+import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { signOutAction } from '~/lib/auth-actions';
 
 const NAV = [
@@ -30,18 +32,15 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div>
-        <Link href="/digest" className="block">
-          <span
-            className="font-display text-[2.4rem] leading-none"
-            style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}
-          >
-            Hale
-          </span>
-          <span className="meta block mt-2">holds the small things</span>
+        <Link href="/digest" className="flex items-center gap-3">
+          <LogoMark size={34} />
+          <span className="font-display text-[2.1rem] leading-none font-semibold">Hale</span>
         </Link>
+        <span className="meta block mt-2">holds the small things</span>
 
-        <div className="mt-4">
+        <div className="mt-4 flex items-center justify-between gap-3">
           <span className="stamp">trial · day 3 of 7</span>
+          <ThemeToggle />
         </div>
 
         {authControls ? (

@@ -1,5 +1,6 @@
 import { DEFAULT_SAFETY_POLICY } from '@hale/types';
 import { PageCorner } from '~/components/hale/page-corner';
+import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { loadFamilyHeader, loadFamilyMembers } from '~/lib/dashboard/queries';
 
 const USD = new Intl.NumberFormat('en-CA', {
@@ -90,6 +91,23 @@ export default async function SettingsPage() {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Appearance ─────────────────────────────────────────────────── */}
+      <section className="rise rise-3 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-spruce">appearance</span>
+            <p className="meta mt-2">light · dark · match your device</p>
+          </div>
+          <div className="lg:col-span-9 flex flex-wrap items-center gap-x-6 gap-y-4">
+            <p className="text-spruce leading-relaxed max-w-md">
+              Choose a theme, or let Hale follow your device. Dark mode is the brand&rsquo;s own
+              Prussian night.
+            </p>
+            <ThemeToggle />
           </div>
         </div>
       </section>

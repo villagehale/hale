@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { auth, signOut } from '~/auth';
 import { House, SeaTurtle, Sun } from '~/components/illos';
+import { LogoMark } from '~/components/hale/logo-mark';
+import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { authConfigured } from '~/lib/auth-config';
 
 export default async function LandingPage() {
@@ -10,13 +12,12 @@ export default async function LandingPage() {
     <main className="relative">
       {/* ── Running head ────────────────────────────────────────────────── */}
       <header className="shell flex items-center justify-between pt-8 pb-2">
-        <span
-          className="font-display text-2xl"
-          style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}
-        >
-          Hale
-        </span>
+        <Link href="/" className="flex items-center gap-3">
+          <LogoMark size={32} />
+          <span className="font-display text-2xl font-semibold">Hale</span>
+        </Link>
         <div className="flex items-center gap-5">
+          <ThemeToggle />
           <Link href="/digest" className="btn-ghost">
             read this week&rsquo;s digest →
           </Link>
@@ -83,7 +84,7 @@ export default async function LandingPage() {
       <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
         <p className="meta">Hale · your family&rsquo;s data stays in Canada · a research preview</p>
         <p className="meta flex items-center gap-2">
-          set in Fraunces &amp; Nunito
+          set in Inter &amp; JetBrains Mono
           <Sun style={{ width: 18, height: 18 }} />
         </p>
       </footer>
