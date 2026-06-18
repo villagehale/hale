@@ -26,6 +26,7 @@ const C = {
   sky: 'var(--color-sky)',
   skyDeep: 'var(--color-sky-deep)',
   skyTint: 'var(--color-sky-tint)',
+  sea: 'var(--color-sea)',
   berry: 'var(--color-berry)',
 } as const;
 
@@ -47,15 +48,6 @@ export function Moon({ className, style }: IlloProps) {
     <svg viewBox="0 0 80 80" width="80" height="80" style={style} className={className} aria-hidden="true" focusable="false">
       <circle cx="40" cy="40" r="22" fill={C.oat} />
       <circle cx="50" cy="36" r="18" fill={C.spruce} />
-    </svg>
-  );
-}
-
-export function Crescent({ className, style }: IlloProps) {
-  return (
-    <svg viewBox="0 0 32 32" width="32" height="32" style={style} className={className} aria-hidden="true" focusable="false">
-      <circle cx="16" cy="16" r="11" fill={C.sky} />
-      <circle cx="21" cy="13" r="9" fill={C.spruce} />
     </svg>
   );
 }
@@ -98,8 +90,8 @@ export function House({ className, style }: IlloProps) {
       <rect x="20" y="44" width="56" height="44" rx="10" fill={C.oat} />
       <path d="M14 48 Q48 14 82 48 Z" fill={C.apricot} />
       <rect x="42" y="60" width="14" height="28" rx="7" fill={C.apricotDeep} />
-      <rect x="28" y="56" width="12" height="12" rx="6" fill={C.skyTint} />
-      <rect x="58" y="56" width="12" height="12" rx="6" fill={C.skyTint} />
+      <rect x="28" y="56" width="12" height="12" rx="6" fill={C.sky} />
+      <rect x="58" y="56" width="12" height="12" rx="6" fill={C.sky} />
     </svg>
   );
 }
@@ -285,23 +277,9 @@ export function ParentAndHouse({ className, style }: IlloProps) {
       <path d="M4 74 Q50 28 96 74 Z" fill={C.apricot} />
       <rect x="38" y="92" width="18" height="38" rx="9" fill={C.apricotDeep} />
       {/* a parent figure (head + soft body), holding a small bundle */}
-      <circle cx="120" cy="56" r="18" fill={C.spruce} />
-      <rect x="98" y="76" width="44" height="56" rx="22" fill={C.spruce} />
-      <circle cx="112" cy="98" r="11" fill={C.skyTint} />
-    </svg>
-  );
-}
-
-/* ── Paper-grain overlay — single tileable turbulence at low opacity ────── */
-
-export function GrainOverlay() {
-  return (
-    <svg className="grain" aria-hidden="true" focusable="false" preserveAspectRatio="none">
-      <filter id="meadow-grain">
-        <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="2" stitchTiles="stitch" />
-        <feColorMatrix type="saturate" values="0" />
-      </filter>
-      <rect width="100%" height="100%" filter="url(#meadow-grain)" />
+      <circle cx="120" cy="56" r="18" fill={C.sea} />
+      <rect x="98" y="76" width="44" height="56" rx="22" fill={C.sea} />
+      <circle cx="112" cy="98" r="11" fill={C.apricotTint} />
     </svg>
   );
 }
