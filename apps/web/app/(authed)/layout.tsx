@@ -5,6 +5,10 @@ import { TopHeader } from '~/components/hale/top-header';
 import { FamilyHeader } from '~/components/hale/family-header';
 import { authConfigured } from '~/lib/auth-config';
 
+// authConfigured()/auth() read runtime secrets and the live session — never bake
+// them at build time, or every authed page freezes to the build-time auth state.
+export const dynamic = 'force-dynamic';
+
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
   const authEnabled = authConfigured();
   const session = authEnabled ? await auth() : null;

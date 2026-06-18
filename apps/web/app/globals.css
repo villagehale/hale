@@ -375,6 +375,20 @@ strong { font-weight: 700; }
   }
 }
 
+/* ── Onboarding hero column ────────────────────────────────────────────── *
+ * The enrolment hero word sits in the narrow left gutter beside the content
+ * column. The global h1 scales on viewport width (6vw), which outgrows that
+ * gutter on desktop and bleeds across the gap onto the body copy. From the
+ * two-column breakpoint up, size the hero off its own column width and let
+ * long step titles wrap, so it can never overrun the content column. Stacked
+ * (mobile/tablet) it keeps the global h1 scale. */
+.onboarding-hero h1 { overflow-wrap: break-word; }
+
+@media (min-width: 1024px) {
+  .onboarding-hero { container-type: inline-size; }
+  .onboarding-hero h1 { font-size: clamp(2rem, 18cqi, 3.25rem); }
+}
+
 /* ── Hairline rule ─────────────────────────────────────────────────────── */
 
 .rule { border: 0; border-top: 1px solid var(--color-rule); }

@@ -6,6 +6,10 @@ import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { authConfigured } from '~/lib/auth-config';
 
+// authConfigured()/auth() read runtime secrets and the live session — never bake
+// them at build time.
+export const dynamic = 'force-dynamic';
+
 export default async function LandingPage() {
   // A signed-in parent lands on their home, not the marketing front door.
   if (authConfigured()) {
