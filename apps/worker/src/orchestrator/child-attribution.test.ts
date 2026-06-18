@@ -53,6 +53,7 @@ const recordedChildIds: Array<string | null> = [];
 
 vi.mock('../services/memory-writer.js', () => ({
   loadResumePoint: vi.fn(async () => null),
+  getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['toddler', 'newborn'] as FamilyStage[],
     children: [

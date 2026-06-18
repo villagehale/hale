@@ -71,6 +71,7 @@ vi.mock('../services/executor.js', () => ({ runExecutor: vi.fn() }));
 let crashAfterClassify = false;
 
 vi.mock('../services/memory-writer.js', () => ({
+  getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],
     children: [],

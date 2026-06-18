@@ -24,6 +24,7 @@ import {
   loadActionApprovalHistory,
   loadCrossParentConsent,
   loadFamilyContext,
+  getMemorySlice,
   markEventStage,
   recordHumanApproval,
 } from '../services/memory-writer.js';
@@ -355,10 +356,16 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
         latencyMs: 0,
       };
     } else {
+      // The drafter consults the family's longitudinal memory for context
+      // (voice, routines, preferences). An empty slice {facts:[],episodes:[]}
+      // is passed through as-is so a memory-less family drafts gracefully —
+      // never null-masked.
+      const slice = await getMemorySlice(familyId);
       const drafted = await runDrafter({
         familyId,
         event: { eventId, eventType: classified.eventType, payload: classified.payload },
         actionType,
+        memorySlice: { relevantFacts: slice.facts, relevantEpisodes: slice.episodes },
       });
       draft = drafted.draft;
       drafterMetrics = drafted.runMetrics;

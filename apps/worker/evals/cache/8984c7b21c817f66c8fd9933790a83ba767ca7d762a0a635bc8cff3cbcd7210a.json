@@ -1,0 +1,68 @@
+{
+  "parsed": {
+    "fact_updates": [
+      {
+        "fact_type": "routine",
+        "fact_key": "diaper_reorder_frequency_days",
+        "fact_value": 14,
+        "confidence": 0.75,
+        "rationale": "Two consecutive supply_low events occurred at 14 and 15 days since last order, both for 128-unit reorders of size 2 diapers. This suggests a consistent ~14-day reorder cycle."
+      },
+      {
+        "fact_type": "logistic",
+        "fact_key": "diaper_size_current",
+        "fact_value": "size 2",
+        "confidence": 0.95,
+        "rationale": "Both supply_low events explicitly reference 'size 2 diapers' as the item being reordered."
+      },
+      {
+        "fact_type": "logistic",
+        "fact_key": "diaper_reorder_quantity",
+        "fact_value": 128,
+        "confidence": 0.9,
+        "rationale": "Both reorder events used the same quantity of 128 units, and both were approved, indicating this is the established reorder quantity."
+      },
+      {
+        "fact_type": "routine",
+        "fact_key": "diaper_daily_consumption_estimate",
+        "fact_value": 9,
+        "confidence": 0.75,
+        "rationale": "128 units over ~14 days yields approximately 9.1 diapers per day, consistent with typical infant consumption and supported by the observed reorder cycle."
+      },
+      {
+        "fact_type": "preference",
+        "fact_key": "supply_order_auto_approval",
+        "fact_value": true,
+        "confidence": 0.85,
+        "rationale": "Both place_supply_order actions were approved without rejection, suggesting the family consistently approves supply reorders."
+      }
+    ],
+    "episode_summaries": [
+      {
+        "episode_type": "supply_reorder",
+        "summary": "Size 2 diaper supply ran low after approximately 14 days. A reorder of 128 units was placed and approved.",
+        "occurred_at": "2025-07-13",
+        "sentiment_score": 0.1
+      },
+      {
+        "episode_type": "supply_reorder",
+        "summary": "Size 2 diaper supply ran low again after approximately 15 days. A second reorder of 128 units was placed and approved, confirming a consistent ~14-day replenishment cycle.",
+        "occurred_at": "2025-07-14",
+        "sentiment_score": 0.1
+      }
+    ],
+    "pattern_detections": [
+      {
+        "pattern": "Diaper supply runs low on a consistent ~14-day cycle, triggering a 128-unit reorder of size 2 diapers.",
+        "support": "Two consecutive supply_low events at 14 and 15 days since last order, both with identical reorder quantity, both approved.",
+        "confidence": 0.75
+      },
+      {
+        "pattern": "Family reliably approves diaper supply reorders without rejection.",
+        "support": "Both place_supply_order actions in the observation window resulted in 'approved' outcomes.",
+        "confidence": 0.85
+      }
+    ],
+    "retire_facts": []
+  }
+}

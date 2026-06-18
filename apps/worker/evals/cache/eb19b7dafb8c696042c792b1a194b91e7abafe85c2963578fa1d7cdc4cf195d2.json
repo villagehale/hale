@@ -1,0 +1,60 @@
+{
+  "parsed": {
+    "fact_updates": [
+      {
+        "fact_type": "preference",
+        "fact_key": "pediatric_appointment_preferred_time_of_day",
+        "fact_value": "evening (17:30–18:00)",
+        "confidence": 0.7,
+        "rationale": "Three consecutive pediatric appointment requests with times between 17:30 and 18:00 were all accepted and approved. No counter-examples observed."
+      },
+      {
+        "fact_type": "logistic",
+        "fact_key": "pediatric_clinic",
+        "fact_value": "Little Sprout Pediatrics (frontdesk@littlesprout-pediatrics.ca)",
+        "confidence": 0.95,
+        "rationale": "All three appointment requests originated from the same clinic email address, and all were accepted — confirming this is the family's active pediatric provider."
+      },
+      {
+        "fact_type": "routine",
+        "fact_key": "pediatric_appointment_interval",
+        "fact_value": "approximately every 2 weeks",
+        "confidence": 0.7,
+        "rationale": "Three appointments were accepted on 2026-05-12, 2026-05-26, and 2026-06-09 — each spaced exactly 14 days apart."
+      }
+    ],
+    "episode_summaries": [
+      {
+        "episode_type": "pediatric_appointment_scheduled",
+        "summary": "Pediatric appointment accepted at Little Sprout Pediatrics for 2026-05-12 at 17:30. Reply email approved by parent.",
+        "occurred_at": "2026-05-12T17:30:00",
+        "sentiment_score": 0.3
+      },
+      {
+        "episode_type": "pediatric_appointment_scheduled",
+        "summary": "Pediatric appointment accepted at Little Sprout Pediatrics for 2026-05-26 at 18:00. Reply email approved by parent.",
+        "occurred_at": "2026-05-26T18:00:00",
+        "sentiment_score": 0.3
+      },
+      {
+        "episode_type": "pediatric_appointment_scheduled",
+        "summary": "Pediatric appointment accepted at Little Sprout Pediatrics for 2026-06-09 at 17:45. Reply email approved by parent.",
+        "occurred_at": "2026-06-09T17:45:00",
+        "sentiment_score": 0.3
+      }
+    ],
+    "pattern_detections": [
+      {
+        "pattern": "Family consistently accepts evening pediatric appointments (17:30–18:00)",
+        "support": "3 out of 3 proposed evening appointment times accepted across 2026-05-12, 2026-05-26, and 2026-06-09 — all approved by a parent with no rejections or reschedule requests.",
+        "confidence": 0.7
+      },
+      {
+        "pattern": "Pediatric appointments are scheduled on a bi-weekly cadence",
+        "support": "Accepted appointment dates are exactly 14 days apart (May 12 → May 26 → Jun 9), suggesting a recurring bi-weekly check-in schedule.",
+        "confidence": 0.7
+      }
+    ],
+    "retire_facts": []
+  }
+}

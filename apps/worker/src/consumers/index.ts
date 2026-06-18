@@ -3,6 +3,7 @@ import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hale/t
 import { logger } from '../logger.js';
 import { executeApprovedAction, runOrchestrator } from '../orchestrator/index.js';
 import { runMemoryInferencer } from '../agents/memory-inferencer.js';
+import { loadInferencerJob } from '../services/memory-writer.js';
 import { runDailyDigest } from '../services/daily-digest.js';
 import { runVillageDiscovery } from '../services/village-discovery.js';
 
@@ -85,10 +86,14 @@ export async function registerConsumers(boss: PgBoss): Promise<void> {
     await handleApprovedAction(job.id, job.data);
   });
 
-  // Nightly inference batch.
+  // Nightly inference batch. The scheduled job carries only {familyId, windowDays};
+  // the loader assembles the real input (recent events + actions + memory snapshot)
+  // at this boundary before the inferencer derives + writes facts/episodes.
   await boss.work('memory.inference.due', async ([job]) => {
     if (!job) return;
-    await runMemoryInferencer(job.data as Parameters<typeof runMemoryInferencer>[0]);
+    const { familyId, windowDays } = job.data as { familyId: string; windowDays: number };
+    const input = await loadInferencerJob({ familyId, windowDays });
+    await runMemoryInferencer(input);
   });
 
   // Daily digest generator.

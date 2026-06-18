@@ -13,6 +13,7 @@
     "test": "vitest run",
     "eval:classifier": "node evals/run-eval.mjs --cached-only",
     "eval:drafter": "node evals/run-drafter-eval.mjs --cached-only",
+    "eval:memory": "node evals/run-memory-eval.mjs --cached-only",
     "clean": "rm -rf dist .turbo *.tsbuildinfo",
     "prompts:push": "node scripts/sync-prompts.mjs push",
     "prompts:pull": "node scripts/sync-prompts.mjs pull",
