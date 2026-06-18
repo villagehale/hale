@@ -3,9 +3,9 @@
     "fact_updates": [],
     "episode_summaries": [
       {
-        "episode_type": "calendar_event_created",
-        "summary": "A library visit was scheduled for 2026-06-14 at 10:00.",
-        "occurred_at": "2026-06-14T10:00:00Z"
+        "episode_type": "calendar_event",
+        "summary": "A library visit was scheduled for June 14, 2026 at 10:00 AM.",
+        "occurred_at": "2026-06-14T10:00:00"
       }
     ],
     "pattern_detections": [],
