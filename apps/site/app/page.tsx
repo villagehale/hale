@@ -324,10 +324,6 @@ export default function LandingPage() {
 
       <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
         <p className="meta">Hale · Toronto · Canada · a research preview</p>
-        <p className="meta flex items-center gap-2">
-          set in Inter &amp; JetBrains Mono
-          <Sun style={{ width: 18, height: 18 }} />
-        </p>
       </footer>
     </main>
   );
