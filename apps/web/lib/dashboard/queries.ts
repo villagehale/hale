@@ -1,18 +1,24 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
+import { type ConnectedSourceMap, toConnectedSourceMap } from './connected';
+import { type FamilyHeaderView, toFamilyHeader } from './family-header';
+import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import {
   type DigestEntryView,
   type DigestTally,
   type DraftView,
+  type LiveSignalView,
+  type MemoryFactView,
   type TrailView,
   toDigestEntry,
   toDigestTally,
   toDraftView,
+  toLiveSignal,
+  toMemoryFactView,
   toTrailView,
 } from './mappers';
-import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 
 /**
  * The dashboard pages run in a credential-less preview (no DATABASE_URL, no
@@ -69,12 +75,7 @@ export function loadDigest(): Promise<DigestData> {
       .select({ action: schema.actions, teenContent: schema.events.teenContent })
       .from(schema.actions)
       .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
-      .where(
-        and(
-          eq(schema.actions.familyId, familyId),
-          gte(schema.actions.draftedAt, startOfDay),
-        ),
-      )
+      .where(and(eq(schema.actions.familyId, familyId), gte(schema.actions.draftedAt, startOfDay)))
       .orderBy(desc(schema.actions.draftedAt));
     const entries = rows
       .map((row) => toDigestEntry(row.action, row.teenContent))
@@ -105,6 +106,28 @@ export function loadFamilyHeader(): Promise<FamilyHeaderView> {
   }, EMPTY_FAMILY_HEADER);
 }
 
+const EMPTY_FAMILY_MEMBERS: FamilyMembersView = { primary: null, coParent: null };
+
+/**
+ * The family's parents (primary + co-parent), joined to their user identity, for
+ * the settings "your family" block. Same empty-state degradation as the other
+ * reads: no DB or no resolved family → both slots null.
+ */
+export function loadFamilyMembers(): Promise<FamilyMembersView> {
+  return readForFamily(async (database, familyId) => {
+    const rows = await database
+      .select({
+        name: schema.users.name,
+        email: schema.users.email,
+        role: schema.familyMembers.role,
+      })
+      .from(schema.familyMembers)
+      .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+      .where(eq(schema.familyMembers.familyId, familyId));
+    return toFamilyMembersView(rows);
+  }, EMPTY_FAMILY_MEMBERS);
+}
+
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
     // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
@@ -132,4 +155,63 @@ export function loadTrail(): Promise<TrailView[]> {
       .limit(50);
     return rows.map((row) => toTrailView(row.entry, row.teenContent ?? false));
   }, []);
+}
+
+/**
+ * The recent signal stream: events Hale noticed, each with its drafted action (if
+ * one exists), newest first. A LEFT JOIN keeps observe-only events that never
+ * produced an action — those render as quiet notes. teen_content lives on the
+ * event itself, so the mapper redacts directly from the event row (rule #1).
+ */
+export function loadLiveSignals(): Promise<LiveSignalView[]> {
+  return readForFamily(async (database, familyId) => {
+    const rows = await database
+      .select({ event: schema.events, action: schema.actions })
+      .from(schema.events)
+      .leftJoin(schema.actions, eq(schema.actions.eventId, schema.events.id))
+      .where(eq(schema.events.familyId, familyId))
+      .orderBy(desc(schema.events.receivedAt))
+      .limit(50);
+    return rows.map((row) => toLiveSignal(row.event, row.action));
+  }, []);
+}
+
+/**
+ * The family's currently-valid memory facts (valid_until IS NULL — superseded
+ * facts are tombstoned, not deleted), newest first. No teen gate here: a fact's
+ * teen-sensitivity is governed upstream by what the inferencer is permitted to
+ * write, not at read time.
+ */
+export function loadMemoryFacts(): Promise<MemoryFactView[]> {
+  return readForFamily(async (database, familyId) => {
+    const rows = await database
+      .select()
+      .from(schema.familyMemoryFacts)
+      .where(
+        and(
+          eq(schema.familyMemoryFacts.familyId, familyId),
+          isNull(schema.familyMemoryFacts.validUntil),
+        ),
+      )
+      .orderBy(desc(schema.familyMemoryFacts.createdAt));
+    return rows.map(toMemoryFactView);
+  }, []);
+}
+
+/**
+ * The family's integration rows, keyed by provider, so the connected page can
+ * show each catalogued source's real status instead of a hardcoded "connected".
+ * Providers with no row are absent from the map and read as not-yet-connected.
+ */
+export function loadConnectedSources(): Promise<ConnectedSourceMap> {
+  return readForFamily(async (database, familyId) => {
+    const rows = await database
+      .select({
+        provider: schema.integrations.provider,
+        status: schema.integrations.status,
+      })
+      .from(schema.integrations)
+      .where(eq(schema.integrations.familyId, familyId));
+    return toConnectedSourceMap(rows);
+  }, {});
 }

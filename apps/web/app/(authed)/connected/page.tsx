@@ -1,5 +1,7 @@
-import { PageCorner } from '~/components/hale/page-corner';
 import { Folio } from '~/components/hale/folio';
+import { PageCorner } from '~/components/hale/page-corner';
+import { type IntegrationProvider, isSourceConnected } from '~/lib/dashboard/connected';
+import { loadConnectedSources } from '~/lib/dashboard/queries';
 
 interface Source {
   id: string;
@@ -7,7 +9,9 @@ interface Source {
   why: string;
   reads: string[];
   acts: string[];
-  status: 'connected' | 'available' | 'optional';
+  /** The integration_provider this source maps to, or null when no inbound leg
+   * exists yet (the source is catalogued but never connectable today). */
+  provider: IntegrationProvider | null;
 }
 
 const TIERS: Array<{
@@ -32,7 +36,7 @@ const TIERS: Array<{
         why: 'so i can read the pediatric office, daycare, family, and government messages.',
         reads: ['inbox subjects + bodies', 'attachment metadata', 'thread context'],
         acts: ['draft replies (after seven days)', 'send replies (after autonomy unlock)'],
-        status: 'connected',
+        provider: 'gmail',
       },
       {
         id: 'gcal',
@@ -40,7 +44,7 @@ const TIERS: Array<{
         why: 'so i can confirm appointments on the right day without conflicts.',
         reads: ['events', 'attendees', 'free/busy windows'],
         acts: ['create events', 'update or cancel events'],
-        status: 'connected',
+        provider: 'gcal',
       },
       {
         id: 'photos',
@@ -48,7 +52,7 @@ const TIERS: Array<{
         why: 'so i can notice milestones and curate weekly shares for grandparents — read only.',
         reads: ['photo metadata + ml tags', 'date + location (if you share it)'],
         acts: ['curate shares to your approved recipients'],
-        status: 'available',
+        provider: 'google_photos',
       },
       {
         id: 'stripe',
@@ -56,7 +60,7 @@ const TIERS: Array<{
         why: 'so i can reorder diapers, formula, and supplies on your card.',
         reads: ['payment methods', 'subscription state'],
         acts: ['place orders within your spending caps'],
-        status: 'available',
+        provider: 'stripe',
       },
     ],
   },
@@ -66,15 +70,15 @@ const TIERS: Array<{
     eyebrow: 'tier two',
     title: 'the family devices',
     description:
-      "The things that make this product different from every parenting app. Real-time signals from the devices already in your home — a baby monitor, a sleep tracker, a watch — matched to where each child is.",
+      'The things that make this product different from every parenting app. Real-time signals from the devices already in your home — a baby monitor, a sleep tracker, a watch — matched to where each child is.',
     sources: [
       {
         id: 'apple-health',
         name: 'apple health',
-        why: 'for maya, your own sleep, and stress signals during hard weeks.',
-        reads: ['baby + parent sleep duration', 'parent hrv (for crisis-quiet mode)'],
+        why: 'for your children, your own sleep, and stress signals during hard weeks.',
+        reads: ['child + parent sleep duration', 'parent hrv (for crisis-quiet mode)'],
         acts: ['surface coaching context', 'auto-quiet during low-sleep weeks'],
-        status: 'available',
+        provider: null,
       },
       {
         id: 'owlet',
@@ -82,7 +86,7 @@ const TIERS: Array<{
         why: 'so i can flag unusual movement and log overnight context.',
         reads: ['heart rate + spo2 events', 'motion windows'],
         acts: ['log episodes', "never send alerts on owlet's behalf"],
-        status: 'optional',
+        provider: null,
       },
       {
         id: 'hatch',
@@ -90,7 +94,7 @@ const TIERS: Array<{
         why: 'to log routine and detect patterns — not to start ferber on you.',
         reads: ['sleep/wake events', 'sound + light routine state'],
         acts: ['log routine consistency', 'suggest tweaks via coach only'],
-        status: 'optional',
+        provider: null,
       },
       {
         id: 'snoo',
@@ -98,7 +102,7 @@ const TIERS: Array<{
         why: 'logs the night so coach can speak in specifics.',
         reads: ['session state', 'level transitions'],
         acts: ['log only · no remote bassinet control ever'],
-        status: 'optional',
+        provider: null,
       },
     ],
   },
@@ -116,7 +120,7 @@ const TIERS: Array<{
         why: 'for the child benefit, climate action incentive, and tax credit paperwork.',
         reads: ['notice of assessment summaries (you upload)', 'benefit statements'],
         acts: ['draft forms · never file without your tap'],
-        status: 'optional',
+        provider: 'cra',
       },
       {
         id: 'esdc',
@@ -124,7 +128,7 @@ const TIERS: Array<{
         why: 'parental leave benefits, top-up applications, status checks.',
         reads: ['benefit status', 'pay-stub summaries (you upload)'],
         acts: ['draft applications + renewals'],
-        status: 'optional',
+        provider: 'esdc',
       },
       {
         id: 'pharmacy',
@@ -132,7 +136,7 @@ const TIERS: Array<{
         why: 'medication reminders, refill cadence, vaccine records.',
         reads: ['prescription records', 'refill schedule'],
         acts: ['request refills with your tap'],
-        status: 'optional',
+        provider: null,
       },
       {
         id: 'pediatric-portal',
@@ -140,19 +144,21 @@ const TIERS: Array<{
         why: 'where your pediatrician offers a portal, Hale can book + retrieve.',
         reads: ['appointment slots', 'visit summaries'],
         acts: ['book routine appointments (with browser automation)'],
-        status: 'optional',
+        provider: 'pediatric_portal',
       },
     ],
   },
 ];
 
-const STATUS_LABEL: Record<Source['status'], string> = {
-  connected: 'connected',
-  available: 'connect',
-  optional: 'connect later',
-};
+const TOTAL_SOURCES = TIERS.reduce((n, tier) => n + tier.sources.length, 0);
 
-export default function ConnectedPage() {
+export default async function ConnectedPage() {
+  const connectedMap = await loadConnectedSources();
+  const connectedCount = TIERS.reduce(
+    (n, tier) => n + tier.sources.filter((s) => isSourceConnected(connectedMap, s.provider)).length,
+    0,
+  );
+
   return (
     <div>
       <PageCorner folio="07" section="connected · three tiers" />
@@ -178,11 +184,10 @@ export default function ConnectedPage() {
             <span className="eyebrow text-spruce">read this first</span>
           </div>
           <div className="lg:col-span-9 text-spruce text-lg leading-relaxed">
-            For every source you connect, I show you exactly what I read and
-            exactly what I do with it. Nothing is shared with a third party
-            except where you connect one. You can disconnect any source at any
-            time and I will forget anything that source contributed within
-            twenty-four hours.
+            For every source you connect, I show you exactly what I read and exactly what I do with
+            it. Nothing is shared with a third party except where you connect one. You can
+            disconnect any source at any time and I will forget anything that source contributed
+            within twenty-four hours.
           </div>
         </div>
       </section>
@@ -205,24 +210,17 @@ export default function ConnectedPage() {
 
             <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-px bg-rule">
               {tier.sources.map((src, idx) => {
-                const connected = src.status === 'connected';
+                const connected = isSourceConnected(connectedMap, src.provider);
                 return (
-                  <article
-                    key={src.id}
-                    className="bg-linen p-6 lg:p-7 space-y-5"
-                  >
+                  <article key={src.id} className="bg-linen p-6 lg:p-7 space-y-5">
                     <div className="flex items-baseline justify-between gap-3">
                       <Folio index={idx + 1} />
-                      <span
-                        className={connected ? 'pill pill-sage' : 'pill'}
-                      >
+                      <span className={connected ? 'pill pill-sage' : 'pill'}>
                         {connected ? '● connected' : '○ not yet'}
                       </span>
                     </div>
 
-                    <h3 className="font-display text-[1.75rem] leading-tight">
-                      {src.name}
-                    </h3>
+                    <h3 className="font-display text-[1.75rem] leading-tight">{src.name}</h3>
 
                     <p className="text-slate-green leading-relaxed">{src.why}</p>
 
@@ -231,7 +229,9 @@ export default function ConnectedPage() {
                         <span className="eyebrow text-spruce">i read</span>
                         <ul className="mt-1 space-y-0.5">
                           {src.reads.map((r) => (
-                            <li key={r} className="meta">— {r}</li>
+                            <li key={r} className="meta">
+                              — {r}
+                            </li>
                           ))}
                         </ul>
                       </div>
@@ -239,7 +239,9 @@ export default function ConnectedPage() {
                         <span className="eyebrow text-spruce">i act on</span>
                         <ul className="mt-1 space-y-0.5">
                           {src.acts.map((a) => (
-                            <li key={a} className="meta">— {a}</li>
+                            <li key={a} className="meta">
+                              — {a}
+                            </li>
                           ))}
                         </ul>
                       </div>
@@ -247,10 +249,12 @@ export default function ConnectedPage() {
 
                     <div className="pt-2">
                       {connected ? (
-                        <button type="button" className="btn-ghost">manage →</button>
+                        <button type="button" className="btn-ghost">
+                          manage →
+                        </button>
                       ) : (
                         <button type="button" className="btn-secondary">
-                          {STATUS_LABEL[src.status]} →
+                          connect →
                         </button>
                       )}
                     </div>
@@ -263,7 +267,9 @@ export default function ConnectedPage() {
       ))}
 
       <section className="rise rise-7 mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
-        <p className="meta">12 sources catalogued · 2 currently connected</p>
+        <p className="meta">
+          {TOTAL_SOURCES} sources catalogued · {connectedCount} currently connected
+        </p>
         <p className="meta">request a new source · email hello@hale.family</p>
       </section>
     </div>

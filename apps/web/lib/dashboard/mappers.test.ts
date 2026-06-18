@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   type Action,
   type AuditLogEntry,
+  type Event,
+  type MemoryFact,
   TEEN_REDACTED_PLACEHOLDER,
   toDigestEntry,
   toDigestTally,
   toDraftView,
+  toLiveSignal,
+  toMemoryFactView,
   toTrailView,
 } from './mappers.js';
 
@@ -57,7 +61,10 @@ describe('toDraftView', () => {
   });
 
   it('falls back to placeholders when payload fields are missing', () => {
-    const view = toDraftView(action({ id: 'draft-2', actionType: 'place_supply_order', payload: {} }), false);
+    const view = toDraftView(
+      action({ id: 'draft-2', actionType: 'place_supply_order', payload: {} }),
+      false,
+    );
 
     expect(view.recipient).toBe('unspecified recipient');
     expect(view.subject).toBe('place_supply_order');
@@ -90,12 +97,22 @@ describe('toDigestEntry', () => {
       action({ id: 'd1', userVisibleState: 'autonomous', payload: { body: 'reordered diapers.' } }),
       false,
     );
-    expect(entry).toEqual({ id: 'd1', tone: 'done', category: 'send_email', body: 'reordered diapers.' });
+    expect(entry).toEqual({
+      id: 'd1',
+      tone: 'done',
+      category: 'send_email',
+      body: 'reordered diapers.',
+    });
   });
 
   it('maps needs_human → needs-you tone, synthesizing a body when none', () => {
     const entry = toDigestEntry(
-      action({ id: 'd2', actionType: 'fill_pdf_form', userVisibleState: 'needs_human', payload: {} }),
+      action({
+        id: 'd2',
+        actionType: 'fill_pdf_form',
+        userVisibleState: 'needs_human',
+        payload: {},
+      }),
       false,
     );
     expect(entry).toEqual({
@@ -229,7 +246,11 @@ describe('teen-content redaction', () => {
 
     it('renders the full body as today when NOT teen-content', () => {
       const entry = toDigestEntry(
-        action({ id: 'd1', userVisibleState: 'autonomous', payload: { body: 'reordered diapers.' } }),
+        action({
+          id: 'd1',
+          userVisibleState: 'autonomous',
+          payload: { body: 'reordered diapers.' },
+        }),
         false,
       );
       expect(entry?.body).toBe('reordered diapers.');
@@ -239,7 +260,12 @@ describe('teen-content redaction', () => {
   describe('toTrailView', () => {
     it('drops the raw summary and keeps category/actor/time when teen-content', () => {
       const view = toTrailView(
-        auditEntry({ actor: 'system', actionTaken: TEEN_BODY, targetTable: 'actions', targetId: 'act-teen' }),
+        auditEntry({
+          actor: 'system',
+          actionTaken: TEEN_BODY,
+          targetTable: 'actions',
+          targetId: 'act-teen',
+        }),
         true,
       );
       expect(JSON.stringify(view)).not.toContain(TEEN_BODY);
@@ -253,5 +279,122 @@ describe('teen-content redaction', () => {
       const view = toTrailView(auditEntry({ actor: 'system' }), false);
       expect(view.summary).toBe('sent rsvp to library');
     });
+  });
+});
+
+function event(overrides: Partial<Event>): Event {
+  return {
+    id: 'ev1',
+    familyId: 'f1',
+    source: 'gmail',
+    sourceExternalId: null,
+    eventType: 'email_received',
+    childId: null,
+    payload: {},
+    classifierSuggestion: null,
+    teenContent: false,
+    rawSignalRef: null,
+    classifiedAt: null,
+    classifierConfidence: null,
+    dedupHash: 'h1',
+    status: 'classified',
+    receivedAt: new Date('2026-06-11T14:05:00Z'),
+    updatedAt: new Date('2026-06-11T14:05:00Z'),
+    ...overrides,
+  } as Event;
+}
+
+describe('toLiveSignal', () => {
+  it('takes its tone + decision from the drafted action', () => {
+    const view = toLiveSignal(
+      event({ source: 'stripe', payload: { summary: 'diaper subscription renewed.' } }),
+      action({ userVisibleState: 'autonomous' }),
+    );
+    // 14:05 UTC is 10:05 in America/Toronto on 2026-06-11.
+    expect(view).toEqual({
+      id: 'ev1',
+      at: '10:05',
+      source: 'stripe',
+      tone: 'done',
+      summary: 'diaper subscription renewed.',
+      decision: 'handled on your behalf',
+    });
+  });
+
+  it('reads an observe-only event (no action) as a quiet note', () => {
+    const view = toLiveSignal(
+      event({ payload: { summary: 'longest sleep stretch logged.' } }),
+      null,
+    );
+    expect(view.tone).toBe('coach');
+    expect(view.decision).toBe('observed · no action taken');
+    expect(view.summary).toBe('longest sleep stretch logged.');
+  });
+
+  it('falls back to subject, then event type, when no summary', () => {
+    expect(toLiveSignal(event({ payload: { subject: 'lab results' } }), null).summary).toBe(
+      'lab results',
+    );
+    expect(toLiveSignal(event({ eventType: 'photo_added', payload: {} }), null).summary).toBe(
+      'photo_added',
+    );
+  });
+
+  it('redacts summary and decision for teen-content, keeping source + tone + time', () => {
+    const TEEN = 'mom please do not tell dad I am failing math';
+    const view = toLiveSignal(
+      event({ teenContent: true, source: 'gmail', payload: { summary: TEEN } }),
+      action({ userVisibleState: 'drafted_for_approval' }),
+    );
+    expect(JSON.stringify(view)).not.toContain(TEEN);
+    expect(view.source).toBe('gmail');
+    expect(view.tone).toBe('awaiting');
+    expect(view.at).toBe('10:05');
+    expect(view.summary).toBe(TEEN_REDACTED_PLACEHOLDER);
+    expect(view.decision).toBe(TEEN_REDACTED_PLACEHOLDER);
+  });
+});
+
+function memoryFact(overrides: Partial<MemoryFact>): MemoryFact {
+  return {
+    id: 'm1',
+    familyId: 'f1',
+    childId: null,
+    factType: 'preference',
+    factKey: 'pediatric appointments',
+    factValue: 'family prefers Thursday mornings',
+    confidence: 0.92,
+    sourceEventId: null,
+    inferredBy: 'memory_inferencer',
+    validFrom: new Date('2026-06-01T00:00:00Z'),
+    validUntil: null,
+    supersededBy: null,
+    createdAt: new Date('2026-06-01T00:00:00Z'),
+    ...overrides,
+  } as MemoryFact;
+}
+
+describe('toMemoryFactView', () => {
+  it('maps a string fact value straight through with its type/key/source/confidence', () => {
+    const view = toMemoryFactView(memoryFact({}));
+    expect(view).toEqual({
+      id: 'm1',
+      type: 'preference',
+      key: 'pediatric appointments',
+      value: 'family prefers Thursday mornings',
+      source: 'memory_inferencer',
+      confidence: 0.92,
+    });
+  });
+
+  it('serializes a structured fact value so the family still sees what was stored', () => {
+    const view = toMemoryFactView(
+      memoryFact({ factValue: { tuesday: 'parent A', other: 'parent B' } }),
+    );
+    expect(view.value).toBe('{"tuesday":"parent A","other":"parent B"}');
+  });
+
+  it('labels provenance generically when inferredBy is absent', () => {
+    expect(toMemoryFactView(memoryFact({ inferredBy: null })).source).toBe('observed by Hale');
   });
 });
