@@ -1,5 +1,6 @@
 import { and, eq, gte, lt } from 'drizzle-orm';
 import { schema, type Database, type DigestPerChildBreakdown } from '@hale/db';
+import { companionForChild } from '@hale/types';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 import { detectSiblingCalendarOverlaps } from './sibling-overlap.js';
@@ -7,6 +8,50 @@ import { detectSiblingCalendarOverlaps } from './sibling-overlap.js';
 interface DailyDigestJob {
   familyId: string;
   digestDate: string; // YYYY-MM-DD
+}
+
+type CompanionHighlights = NonNullable<DigestPerChildBreakdown['companionHighlights']>;
+
+/** A health item this coarse window counts as "soon" for a daily-brief nudge. */
+const HEALTH_SOON_WEEKS = 6;
+
+/**
+ * Personalized child-development nudges for the daily brief, derived per child
+ * from date_of_birth via the deterministic companion (no LLM). Each child gets
+ * up to one soon-due routine health item and one milestone worth watching this
+ * stage. Supportive, never diagnostic (rule #1); a child with nothing soon is
+ * omitted rather than padded. `now` is injectable for deterministic tests.
+ */
+export function companionHighlightsForChildren(
+  children: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>,
+  now: Date = new Date(),
+): CompanionHighlights {
+  const highlights: CompanionHighlights = [];
+
+  for (const child of children) {
+    const view = companionForChild({ dateOfBirth: child.dateOfBirth, name: child.name }, now);
+    const notes: string[] = [];
+
+    const soon = view.nextHealth.find((item) => item.dueInWeeks <= HEALTH_SOON_WEEKS);
+    if (soon) {
+      const when =
+        soon.dueInWeeks <= 0
+          ? 'due now'
+          : `due in ${soon.dueInWeeks} ${soon.dueInWeeks === 1 ? 'week' : 'weeks'}`;
+      notes.push(`${child.name}'s ${soon.what} are ${when}`);
+    }
+
+    const watch = view.milestones.find((m) => m.timing === 'in_window');
+    if (watch) {
+      notes.push(`watch for "${watch.what.toLowerCase()}" around this stage`);
+    }
+
+    if (notes.length > 0) {
+      highlights.push({ childId: child.id, name: child.name, notes });
+    }
+  }
+
+  return highlights;
 }
 
 interface StateCounts {
@@ -92,15 +137,23 @@ export async function runDailyDigest(
     }
   }
 
-  // Per-child sections need each attributed child's name; one scoped query.
-  const childRows =
-    perChild.size > 0
-      ? await database
-          .select({ id: schema.children.id, name: schema.children.name })
-          .from(schema.children)
-          .where(eq(schema.children.familyId, job.familyId))
-      : [];
+  // Per-child sections need each attributed child's name, and the companion
+  // highlights need every child's date_of_birth (whether or not they had an
+  // action today) — one scoped query serves both.
+  const childRows = await database
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, job.familyId));
   const nameById = new Map(childRows.map((c) => [c.id, c.name]));
+
+  const companionHighlights = companionHighlightsForChildren(
+    childRows,
+    new Date(`${job.digestDate}T00:00:00.000Z`),
+  );
 
   const coordinationFlags = detectSiblingCalendarOverlaps(
     todayActions.map((a) => ({
@@ -119,6 +172,7 @@ export async function runDailyDigest(
     })),
     unattributed,
     coordinationFlags,
+    companionHighlights,
   };
 
   const row = {

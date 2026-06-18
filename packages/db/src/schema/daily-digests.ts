@@ -34,6 +34,18 @@ export interface DigestPerChildBreakdown {
     siblingChildId: string;
     detail: string;
   }>;
+  /**
+   * Personalized child-development nudges (F1 companion) — a retention touch
+   * derived per child from date_of_birth: a soon-due routine health item and a
+   * milestone worth watching this stage. Supportive, never diagnostic (rule #1).
+   * Additive: existing readers ignore this; absent on rows written before it.
+   */
+  companionHighlights?: Array<{
+    childId: string;
+    name: string;
+    /** Short, parent-facing nudges, e.g. "Maya's 4-month immunizations are due in 1 week". */
+    notes: string[];
+  }>;
 }
 
 /**
