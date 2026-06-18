@@ -1,7 +1,6 @@
-import { AcceptButton } from '~/components/hale/accept-button';
-import { Folio } from '~/components/hale/folio';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
+import { VillageSearch } from '~/components/hale/village-search';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function VillagePage() {
@@ -78,49 +77,7 @@ export default async function VillagePage() {
           </p>
         </section>
       ) : (
-        <section>
-          {candidates.map((candidate, idx) => {
-            const delay = `rise-${Math.min(idx + 3, 7)}`;
-            return (
-              <article
-                key={candidate.id}
-                className={`rise ${delay} py-12 lg:py-14 border-t border-rule first:border-t-0`}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
-                  <div className="md:col-span-2">
-                    <Folio index={idx + 1} />
-                    <p className="mt-3 eyebrow text-spruce">{candidate.kind}</p>
-                  </div>
-
-                  <div className="md:col-span-7 space-y-5">
-                    <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
-                      {candidate.title}
-                    </h2>
-                    <p className="text-lg text-spruce leading-relaxed">{candidate.summary}</p>
-
-                    {candidate.coverageNote ? (
-                      <p className="meta text-slate-green">{candidate.coverageNote}</p>
-                    ) : null}
-
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
-                      <AcceptButton href={candidate.acceptHref} />
-                      {candidate.sourceUrl ? (
-                        <a
-                          href={candidate.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-ghost"
-                        >
-                          see the listing →
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+        <VillageSearch candidates={candidates} />
       )}
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}

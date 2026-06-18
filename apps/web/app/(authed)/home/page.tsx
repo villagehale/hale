@@ -1,7 +1,10 @@
 import Link from 'next/link';
-import { Baby, CalendarPlus, Moon, Sparkles, Utensils } from 'lucide-react';
+import { Baby, CalendarPlus, Sparkles } from 'lucide-react';
+import { AcceptActivityCard } from '~/components/hale/accept-activity-card';
 import { AskBox } from '~/components/hale/ask-box';
+import { BookButton } from '~/components/hale/book-button';
 import { PageCorner } from '~/components/hale/page-corner';
+import { QuickLog } from '~/components/hale/quick-log';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { authConfigured } from '~/lib/auth-config';
@@ -20,12 +23,6 @@ function duePhrase(dueInWeeks: number): string {
 function milestoneInWindow(child: ChildCompanionView) {
   return child.milestones.find((m) => m.timing === 'in_window') ?? child.milestones[0] ?? null;
 }
-
-const QUICK_LOG = [
-  { label: 'log a feed', icon: Utensils },
-  { label: 'log a nap', icon: Moon },
-  { label: 'note a milestone', icon: Sparkles },
-] as const;
 
 export default async function HomePage() {
   const canAsk = authConfigured();
@@ -53,8 +50,8 @@ export default async function HomePage() {
           </p>
           <p className="meta text-slate-green max-w-xl mx-auto">
             add your child&rsquo;s birthday and your area, and this page fills with what&rsquo;s
-            next for them — the upcoming checkups, the milestones around now, and the good
-            things near you this week.
+            next for them — the upcoming checkups, the milestones around now, and the good things
+            near you this week.
           </p>
           <div className="pt-2">
             <Link href="/onboarding" className="btn-primary">
@@ -92,22 +89,32 @@ export default async function HomePage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {nextHealth ? (
-                  <Card href="/companion">
-                    <span className="eyebrow text-apricot-deep">{duePhrase(nextHealth.dueInWeeks)}</span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug">{nextHealth.what}</p>
+                  <Card>
+                    <span className="eyebrow text-apricot-deep">
+                      {duePhrase(nextHealth.dueInWeeks)}
+                    </span>
+                    <p className="font-display text-[1.25rem] mt-2 leading-snug">
+                      {nextHealth.what}
+                    </p>
                     <p className="meta mt-3 text-slate-green">{nextHealth.note}</p>
-                    <span className="link mt-4 inline-block">book →</span>
+                    <div className="mt-4">
+                      <BookButton what={nextHealth.what} childId={child.id} />
+                    </div>
                   </Card>
                 ) : null}
 
                 {milestone ? (
                   <Card href="/companion">
                     <span className="eyebrow">around this age</span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug">{milestone.what}</p>
+                    <p className="font-display text-[1.25rem] mt-2 leading-snug">
+                      {milestone.what}
+                    </p>
                     <p className="meta mt-3 text-slate-green">
                       most kids, around this stage — never a verdict.
                     </p>
-                    <span className="link mt-4 inline-block">see {child.name ?? 'your child'} →</span>
+                    <span className="link mt-4 inline-block">
+                      see {child.name ?? 'your child'} →
+                    </span>
                   </Card>
                 ) : null}
               </div>
@@ -127,32 +134,19 @@ export default async function HomePage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {topActivities.map((activity) => (
-              <Card key={activity.id} href="/village">
-                <span className="eyebrow text-spruce">{activity.kind}</span>
-                <p className="font-display text-[1.25rem] mt-2 leading-snug">{activity.title}</p>
-                <p className="meta mt-3 text-slate-green">{activity.summary}</p>
-                <span className="link mt-4 inline-block">see options →</span>
-              </Card>
+              <AcceptActivityCard key={activity.id} activity={activity} />
             ))}
           </div>
         </section>
       ) : null}
 
       {/* ── Quick-log ───────────────────────────────────────────────────── */}
-      <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <span className="eyebrow text-spruce mr-2">quick log</span>
-          {QUICK_LOG.map((item) => (
-            <Link key={item.label} href="/companion" className="btn-secondary">
-              <Icon as={item.icon} size={18} />
-              {item.label}
-            </Link>
-          ))}
-          <span className="meta ml-auto flex items-center gap-2">
-            <Icon as={CalendarPlus} size={16} />
-            kept in {children[0]?.name ?? 'your child'}&rsquo;s companion
-          </span>
-        </div>
+      <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule space-y-4">
+        <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name }))} />
+        <span className="meta flex items-center gap-2 text-slate-green">
+          <Icon as={CalendarPlus} size={16} />
+          kept in {children[0]?.name ?? 'your child'}&rsquo;s companion
+        </span>
       </section>
     </div>
   );
