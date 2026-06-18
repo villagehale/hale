@@ -1,10 +1,12 @@
-import Link from 'next/link';
 import { PageCorner } from '~/components/hale/page-corner';
+import { FamilyArea } from '~/components/hale/family-area';
+import { FamilyChildren } from '~/components/hale/family-children';
+import { InviteCoParent } from '~/components/hale/invite-coparent';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
-import { loadFamilyHeader, loadFamilyMembers } from '~/lib/dashboard/queries';
+import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 
 export default async function FamilyPage() {
-  const [members, header] = await Promise.all([loadFamilyMembers(), loadFamilyHeader()]);
+  const [members, basics] = await Promise.all([loadFamilyMembers(), loadFamilyBasics()]);
 
   return (
     <div>
@@ -18,84 +20,57 @@ export default async function FamilyPage() {
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              your <span className="text-apricot-deep">household.</span>
+              your <span className="text-apricot-deep">Family.</span>
             </h1>
           </div>
         </div>
       </header>
 
-      {/* ── Parents ────────────────────────────────────────────────────── */}
+      {/* ── Kids ───────────────────────────────────────────────────────── */}
       <section className="rise rise-2 mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-y border-rule py-10">
-          <div className="lg:col-span-3">
-            <span className="eyebrow text-spruce">the grown-ups</span>
-            <p className="meta mt-2">you · and a co-parent, if you have one</p>
-          </div>
-          <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
-            <div>
-              <p className="meta">you</p>
-              {members.primary ? (
-                <>
-                  <p className="font-display text-[1.5rem] mt-1">
-                    {members.primary.name ?? members.primary.email}
-                  </p>
-                  <p className="meta mt-1">{members.primary.email}</p>
-                </>
-              ) : (
-                <p className="font-display text-[1.5rem] mt-1">not set up yet</p>
-              )}
-            </div>
-            <div>
-              <p className="meta">co-parent</p>
-              {members.coParent ? (
-                <>
-                  <p className="font-display text-[1.5rem] mt-1">
-                    {members.coParent.name ?? members.coParent.email}
-                  </p>
-                  <p className="meta mt-1">{members.coParent.email}</p>
-                </>
-              ) : (
-                <>
-                  <p className="font-display text-[1.5rem] mt-1">no co-parent yet</p>
-                  <p className="meta mt-1">
-                    — invite them so you can share the load. Until they join, anything that
-                    touches their data waits for your tap.
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Kids ───────────────────────────────────────────────────────── */}
-      <section className="rise rise-3 mb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
           <div className="lg:col-span-3">
             <span className="eyebrow text-spruce">your kids</span>
             <p className="meta mt-2">birthday sets the stage Hale tailors to</p>
           </div>
           <div className="lg:col-span-9">
-            {header.children.length === 0 ? (
+            <FamilyChildren kids={basics.children} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Co-parent ──────────────────────────────────────────────────── */}
+      <section className="rise rise-3 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-spruce">your co-parent</span>
+            <p className="meta mt-2">share the load · either of you can approve</p>
+          </div>
+          <div className="lg:col-span-9">
+            {members.coParent ? (
               <div>
-                <p className="font-display text-[1.5rem]">no kids added yet</p>
-                <p className="meta mt-1">
-                  — add a child&rsquo;s birthday and Hale tailors every stage to them.
+                <p className="meta">co-parent</p>
+                <p className="font-display text-[1.5rem] mt-1">
+                  {members.coParent.name ?? members.coParent.email}
                 </p>
-                <Link href="/onboarding" className="btn-primary mt-4 inline-flex">
-                  add your kid →
-                </Link>
+                <p className="meta mt-1">{members.coParent.email}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
-                {header.children.map((child) => (
-                  <div key={child.id}>
-                    <p className="font-display text-[1.5rem]">{child.name}</p>
-                    <p className="meta mt-1">{child.stageLabel}</p>
-                  </div>
-                ))}
-              </div>
+              <InviteCoParent />
             )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Area ───────────────────────────────────────────────────────── */}
+      <section className="rise rise-4 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-spruce">your area</span>
+            <p className="meta mt-2">coarse only — drives local discovery</p>
+          </div>
+          <div className="lg:col-span-9">
+            <FamilyArea area={basics.areaCoarse} />
           </div>
         </div>
       </section>

@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
+import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import { type TrailView, toTrailView } from './mappers';
@@ -69,6 +70,36 @@ export function loadFamilyMembers(): Promise<FamilyMembersView> {
       .where(eq(schema.familyMembers.familyId, familyId));
     return toFamilyMembersView(rows);
   }, EMPTY_FAMILY_MEMBERS);
+}
+
+const EMPTY_FAMILY_BASICS: FamilyBasicsView = { areaCoarse: null, children: [] };
+
+/**
+ * The Family page's editable basics: the family's coarse area and its children
+ * (with date_of_birth so an edit form prefills, and the live-derived stage).
+ * Same empty-state degradation as the other reads: no DB or no resolved family →
+ * empty basics.
+ */
+export function loadFamilyBasics(): Promise<FamilyBasicsView> {
+  return readForFamily(async (database, familyId) => {
+    const [family] = await database
+      .select({ areaCoarse: schema.families.areaCoarse })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+
+    const children = await database
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(schema.children.dateOfBirth);
+
+    return toFamilyBasics(family?.areaCoarse ?? null, children);
+  }, EMPTY_FAMILY_BASICS);
 }
 
 export function loadTrail(): Promise<TrailView[]> {

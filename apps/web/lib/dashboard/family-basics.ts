@@ -1,0 +1,46 @@
+import type { schema } from '@hale/db';
+import { type FamilyStage, deriveStage } from '@hale/types';
+
+/**
+ * The Family page's editable basics: each child's name, current derived stage,
+ * and date_of_birth (needed so an edit form prefills), plus the family's coarse
+ * area. Stage is derived live from date_of_birth (never stored); `now` is
+ * injectable so the mapping is deterministic in tests.
+ */
+
+export type ChildRow = typeof schema.children.$inferSelect;
+
+const STAGE_LABEL: Record<FamilyStage, string> = {
+  newborn: 'newborn',
+  toddler: 'toddler',
+  child: 'child',
+  teenager: 'teenager',
+};
+
+export interface FamilyChildBasics {
+  id: string;
+  name: string;
+  dateOfBirth: string;
+  stageLabel: string;
+}
+
+export interface FamilyBasicsView {
+  areaCoarse: string | null;
+  children: FamilyChildBasics[];
+}
+
+export function toFamilyBasics(
+  areaCoarse: string | null,
+  children: ReadonlyArray<Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'>>,
+  now: Date = new Date(),
+): FamilyBasicsView {
+  return {
+    areaCoarse,
+    children: children.map((child) => ({
+      id: child.id,
+      name: child.name,
+      dateOfBirth: child.dateOfBirth,
+      stageLabel: STAGE_LABEL[deriveStage(child.dateOfBirth, now)],
+    })),
+  };
+}
