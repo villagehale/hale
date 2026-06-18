@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
+import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { getQueue } from '~/lib/queue';
-import { clerkConfigured } from '~/lib/auth-config';
-import { resolveFamilyForClerkUser } from '~/lib/family';
+import { authConfigured } from '~/lib/auth-config';
+import { resolveFamilyForUser } from '~/lib/family';
 import { acceptVillageCandidate } from '~/lib/village/accept';
 
 interface RouteContext {
@@ -22,7 +22,7 @@ const idSchema = z.string().uuid();
  * (reviewer tool coverage, spending caps, teen-redaction cap) still applies.
  *
  * Auth mirrors the approve route (hard rule #4): an unauthenticated caller may
- * never enqueue a family's signal. Clerk unconfigured (dev preview) → 501;
+ * never enqueue a family's signal. Auth unconfigured (dev preview) → 501;
  * configured but not signed in → 401; signed in but no family → 403. Only a
  * signed-in parent whose family owns the candidate gets it enqueued (202).
  */
@@ -33,20 +33,21 @@ export async function POST(_req: Request, context: RouteContext) {
     return NextResponse.json({ error: 'invalid_candidate_id' }, { status: 400 });
   }
 
-  if (!clerkConfigured()) {
+  if (!authConfigured()) {
     return NextResponse.json(
       { error: 'auth_required', detail: 'auth required to accept village candidates' },
       { status: 501 },
     );
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
   const database = db();
-  const familyId = await resolveFamilyForClerkUser(userId, database);
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }

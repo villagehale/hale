@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The route reads Clerk auth + db + the coach LLM call at request time. We stub
-// those edges so the test exercises the route's auth/spend gating (hard rule #4 /
-// #1) and the answer wiring — NOT the real model. Hard rule #8 forbids mocking the
-// LLM for AGENT-BEHAVIOUR tests; that contract is covered by the coach eval
-// (run-coach-eval.mjs, real cached Claude). This route test asserts orchestration:
-// who is allowed to spend, and that a successful call is recorded + shaped.
+// The route reads the Auth.js session + db + the coach LLM call at request time.
+// We stub those edges so the test exercises the route's auth/spend gating (hard
+// rule #4 / #1) and the answer wiring — NOT the real model. Hard rule #8 forbids
+// mocking the LLM for AGENT-BEHAVIOUR tests; that contract is covered by the coach
+// eval (run-coach-eval.mjs, real cached Claude). This route test asserts
+// orchestration: who is allowed to spend, and that a successful call is recorded.
 const authMock = vi.fn();
 const askCoachMock = vi.fn();
 const loadFamilyStagesMock = vi.fn();
 const recordCoachRunMock = vi.fn();
 
-vi.mock('@clerk/nextjs/server', () => ({ auth: () => authMock() }));
+vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/family', () => ({
-  resolveFamilyForClerkUser: vi.fn(async () => 'fam-1'),
+  resolveFamilyForUser: vi.fn(async () => 'fam-1'),
 }));
 vi.mock('~/lib/coach/coach', () => ({ askCoach: (...a: unknown[]) => askCoachMock(...a) }));
 vi.mock('~/lib/coach/family-stages', () => ({
@@ -24,9 +24,13 @@ vi.mock('~/lib/coach/record-run', () => ({
   recordCoachRun: (...a: unknown[]) => recordCoachRunMock(...a),
 }));
 
-function configureClerk(on: boolean) {
-  vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', on ? 'pk_test' : '');
-  vi.stubEnv('CLERK_SECRET_KEY', on ? 'sk_test' : '');
+function configureAuth(on: boolean) {
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
+}
+
+function session(externalAuthId: string | null) {
+  return externalAuthId ? { user: { id: externalAuthId } } : null;
 }
 
 async function callPost(body: unknown) {
@@ -53,8 +57,8 @@ describe('POST /api/coach — auth + spend gating', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns 501 and NEVER calls the model when Clerk is unconfigured (no spend)', async () => {
-    configureClerk(false);
+  it('returns 501 and NEVER calls the model when auth is unconfigured (no spend)', async () => {
+    configureAuth(false);
 
     const res = await callPost({ question: 'how much should a newborn sleep?' });
 
@@ -64,8 +68,8 @@ describe('POST /api/coach — auth + spend gating', () => {
   });
 
   it('returns 401 when configured but the caller is not signed in', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: null });
+    configureAuth(true);
+    authMock.mockResolvedValue(session(null));
 
     const res = await callPost({ question: 'is this normal?' });
 
@@ -74,8 +78,8 @@ describe('POST /api/coach — auth + spend gating', () => {
   });
 
   it('returns 400 on an empty question before any model call', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'user-1' });
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
 
     const res = await callPost({ question: '   ' });
 
@@ -84,8 +88,8 @@ describe('POST /api/coach — auth + spend gating', () => {
   });
 
   it('asks the coach with ONLY the caller-family stages, records the run, and shapes the answer', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: 'user-1' });
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
     loadFamilyStagesMock.mockResolvedValue(['teenager']);
     askCoachMock.mockResolvedValue({
       answer: {

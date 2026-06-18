@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { SignedIn, SignedOut, SignInButton } from '@clerk/nextjs';
-import { clerkConfigured } from '~/lib/auth-config';
+import { auth } from '~/auth';
+import { authConfigured } from '~/lib/auth-config';
 import { InviteAcceptButton } from '~/components/hale/invite-accept-button';
 import { loadInvite } from '~/lib/invites/queries';
 
@@ -18,6 +18,7 @@ interface PageProps {
 export default async function InvitePage({ params }: PageProps) {
   const { token } = await params;
   const invite = await loadInvite(token);
+  const session = authConfigured() ? await auth() : null;
 
   const invalidReason = !invite
     ? 'this invite link is no longer valid.'
@@ -51,23 +52,21 @@ export default async function InvitePage({ params }: PageProps) {
             <p className="meta">{invite.inviterFirstName} invited you to share the load.</p>
           ) : null}
 
-          {clerkConfigured() ? (
-            <>
-              <SignedIn>
-                <InviteAcceptButton token={invite.token} />
-              </SignedIn>
-              <SignedOut>
-                <SignInButton mode="modal" forceRedirectUrl={`/invite/${invite.token}`}>
-                  <button type="button" className="btn-primary">
-                    sign in to accept
-                  </button>
-                </SignInButton>
-              </SignedOut>
-            </>
+          {authConfigured() ? (
+            session?.user?.id ? (
+              <InviteAcceptButton token={invite.token} />
+            ) : (
+              <Link
+                href={`/sign-in?callbackUrl=/invite/${invite.token}`}
+                className="btn-primary"
+              >
+                sign in to accept
+              </Link>
+            )
           ) : (
             <p className="meta">
-              accepting an invite isn&rsquo;t available in this preview — Clerk isn&rsquo;t
-              configured here.
+              accepting an invite isn&rsquo;t available in this preview — Google OAuth
+              isn&rsquo;t configured here.
             </p>
           )}
         </div>

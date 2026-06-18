@@ -1,8 +1,14 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
+
+// family.ts statically imports the Auth.js session reader for currentFamilyId().
+// ensureUserRow (the unit under test here) never touches it, but the static import
+// would otherwise drag the next-auth runtime into this Node test. Stub the edge.
+vi.mock('~/auth', () => ({ auth: vi.fn() }));
+
 import { ensureUserRow } from './family.js';
 
-const CLERK_ID = 'user_clerk_abc';
+const GOOGLE_ID = 'google_user_abc';
 const EXISTING_USER_ID = '11111111-1111-4111-8111-111111111111';
 const NEW_USER_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -31,7 +37,7 @@ function fakeDb(seed: Array<{ id: string; externalAuthId: string }> = []) {
     from: () => ({
       where: () => ({
         limit: async () => {
-          const found = rows.find((r) => r.externalAuthId === CLERK_ID);
+          const found = rows.find((r) => r.externalAuthId === GOOGLE_ID);
           return found ? [{ id: found.id }] : [];
         },
       }),
@@ -44,10 +50,10 @@ function fakeDb(seed: Array<{ id: string; externalAuthId: string }> = []) {
 
 describe('ensureUserRow', () => {
   it('returns the existing id without inserting when a row already exists', async () => {
-    const { db, insert } = fakeDb([{ id: EXISTING_USER_ID, externalAuthId: CLERK_ID }]);
+    const { db, insert } = fakeDb([{ id: EXISTING_USER_ID, externalAuthId: GOOGLE_ID }]);
 
     const id = await ensureUserRow(
-      { clerkUserId: CLERK_ID, email: 'parent@example.com', name: 'Avery' },
+      { externalAuthId: GOOGLE_ID, email: 'parent@example.com', name: 'Avery' },
       db,
     );
 
@@ -59,7 +65,7 @@ describe('ensureUserRow', () => {
     const { db, insert } = fakeDb();
 
     const id = await ensureUserRow(
-      { clerkUserId: CLERK_ID, email: 'parent@example.com', name: 'Avery' },
+      { externalAuthId: GOOGLE_ID, email: 'parent@example.com', name: 'Avery' },
       db,
     );
 
@@ -71,11 +77,11 @@ describe('ensureUserRow', () => {
     const { db, insert } = fakeDb();
 
     const first = await ensureUserRow(
-      { clerkUserId: CLERK_ID, email: 'parent@example.com', name: 'Avery' },
+      { externalAuthId: GOOGLE_ID, email: 'parent@example.com', name: 'Avery' },
       db,
     );
     const second = await ensureUserRow(
-      { clerkUserId: CLERK_ID, email: 'parent@example.com', name: 'Avery' },
+      { externalAuthId: GOOGLE_ID, email: 'parent@example.com', name: 'Avery' },
       db,
     );
 

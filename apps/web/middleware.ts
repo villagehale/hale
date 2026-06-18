@@ -1,12 +1,52 @@
 import { NextResponse } from 'next/server';
-import { clerkMiddleware } from '@clerk/nextjs/server';
-import { clerkConfigured } from '~/lib/auth-config';
+import { auth } from '~/auth';
+import { authConfigured } from '~/lib/auth-config';
 
-// clerkMiddleware() must run for the layout's server-side auth() to work, but
-// it requires keys to initialize. Without Clerk env we pass every request
-// through untouched so the development-preview mode stays usable; the layout
-// renders its "auth disabled" banner in that case.
-export default clerkConfigured() ? clerkMiddleware() : () => NextResponse.next();
+// Paths rendered by the (authed) route group. The group name isn't part of the
+// URL, so the matcher can't target it directly — we gate these prefixes by hand.
+const PROTECTED_PREFIXES = [
+  '/coach',
+  '/companion',
+  '/connected',
+  '/digest',
+  '/drafts',
+  '/live',
+  '/memory',
+  '/settings',
+  '/trail',
+  '/village',
+];
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+// auth() wraps the middleware so req.auth carries the Auth.js session. An
+// unauthenticated request to a protected route is redirected to /sign-in.
+//
+// Dev-preview parity with the old clerkConfigured()===false path: when Google
+// isn't configured we leave the route group UNPROTECTED so local screenshots
+// work — but ONLY outside production. In production an unconfigured provider
+// fails CLOSED (redirect to /sign-in) so a misconfiguration can never expose a
+// protected route to an unauthenticated request (rule #1).
+export default auth((req) => {
+  if (!isProtected(req.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  if (!authConfigured()) {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
+    }
+    return NextResponse.next();
+  }
+
+  if (!req.auth) {
+    return NextResponse.redirect(new URL('/sign-in', req.nextUrl));
+  }
+
+  return NextResponse.next();
+});
 
 export const config = {
   matcher: ['/((?!_next|.*\\..*).*)'],

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The route reads Clerk auth + db + queue at request time. We stub those edges
-// so the test exercises the route's auth/consent gating (hard rule #4), not the
-// real infra. The pure precondition logic is covered separately in approve.test.
+// The route reads the Auth.js session + db + queue at request time. We stub those
+// edges so the test exercises the route's auth/consent gating (hard rule #4), not
+// the real infra. The pure precondition logic is covered separately in approve.test.
 const authMock = vi.fn();
-vi.mock('@clerk/nextjs/server', () => ({ auth: () => authMock() }));
+vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/queue', () => ({ getQueue: async () => ({ send: vi.fn() }) }));
 
@@ -19,10 +19,10 @@ async function callPost(id: string) {
   return POST(new Request('http://localhost/api/actions/x/approve', { method: 'POST' }), ctx(id));
 }
 
-function configureClerk(on: boolean) {
-  // clerkConfigured() reads truthiness; '' is falsy → unconfigured.
-  vi.stubEnv('NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', on ? 'pk_test' : '');
-  vi.stubEnv('CLERK_SECRET_KEY', on ? 'sk_test' : '');
+function configureAuth(on: boolean) {
+  // authConfigured() reads truthiness; '' is falsy → unconfigured.
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
+  vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', on ? 'gsecret_test' : '');
 }
 
 describe('POST /api/actions/:id/approve — auth gating', () => {
@@ -35,8 +35,8 @@ describe('POST /api/actions/:id/approve — auth gating', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns 501 when Clerk is unconfigured — never approves unauthenticated', async () => {
-    configureClerk(false);
+  it('returns 501 when auth is unconfigured — never approves unauthenticated', async () => {
+    configureAuth(false);
 
     const res = await callPost(VALID_ID);
 
@@ -45,7 +45,7 @@ describe('POST /api/actions/:id/approve — auth gating', () => {
   });
 
   it('returns 400 for a non-uuid action id before any auth work', async () => {
-    configureClerk(true);
+    configureAuth(true);
 
     const res = await callPost('not-a-uuid');
 
@@ -53,9 +53,9 @@ describe('POST /api/actions/:id/approve — auth gating', () => {
     expect(authMock).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when Clerk is configured but the caller is not signed in', async () => {
-    configureClerk(true);
-    authMock.mockResolvedValue({ userId: null });
+  it('returns 401 when auth is configured but the caller is not signed in', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(null);
 
     const res = await callPost(VALID_ID);
 
