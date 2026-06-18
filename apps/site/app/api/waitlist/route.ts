@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { createEmailSender } from '~/lib/email';
 import { createWaitlistStore } from '~/lib/waitlist-store';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,7 +19,6 @@ export async function POST(request: Request) {
     // Membership is never revealed: a new and an existing email get the same
     // body. We intentionally drop `created` from the response.
     await createWaitlistStore().add(email);
-    return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('waitlist store failed', err);
     return NextResponse.json(
@@ -26,4 +26,11 @@ export async function POST(request: Request) {
       { status: 503 },
     );
   }
+
+  // Confirmation email is best-effort: joining is the primary action, so a failed
+  // or unconfigured send must never fail the signup. createEmailSender swallows +
+  // logs its own errors at that boundary.
+  await createEmailSender().sendWaitlistWelcome(email);
+
+  return NextResponse.json({ ok: true });
 }

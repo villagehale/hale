@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApprovedAction } from '@hale/types';
 import { mintApprovedAction } from '@hale/types';
-import { runExecutor, type ExecutorDeps } from './executor.js';
+import { resendSend, runExecutor, type ExecutorDeps } from './executor.js';
+
+const resendSendMock = vi.fn();
+vi.mock('resend', () => ({
+  Resend: vi.fn(() => ({ emails: { send: resendSendMock } })),
+}));
 
 /**
  * B9 — outbound idempotency. These tests script the claim table + email
@@ -102,5 +107,56 @@ describe('runExecutor — B9 outbound idempotency claim', () => {
 
     expect(deps.confirmOutboundSend).toHaveBeenCalledTimes(1);
     expect(deps.confirmOutboundSend).toHaveBeenCalledWith(actionId, 'pm-9');
+  });
+});
+
+describe('resendSend — Resend transport', () => {
+  beforeEach(() => {
+    resendSendMock.mockReset();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('throws HALE_NOT_CONFIGURED when RESEND_API_KEY is absent (fail loud)', async () => {
+    vi.stubEnv('RESEND_API_KEY', '');
+    await expect(resendSend({ to: 'a@b.com', subject: 's', body: 'b' })).rejects.toThrow(
+      'HALE_NOT_CONFIGURED',
+    );
+    expect(resendSendMock).not.toHaveBeenCalled();
+  });
+
+  it('sends via Resend and returns the provider message id', async () => {
+    vi.stubEnv('RESEND_API_KEY', 're_test');
+    vi.stubEnv('RESEND_FROM', 'hello@villagehale.com');
+    resendSendMock.mockResolvedValue({ data: { id: 'resend-abc' }, error: null });
+
+    const result = await resendSend({
+      to: 'clinic@example.com',
+      cc: ['cc@example.com'],
+      subject: 'hi',
+      body: 'hello',
+    });
+
+    expect(result).toEqual({ messageId: 'resend-abc' });
+    expect(resendSendMock).toHaveBeenCalledWith({
+      from: 'hello@villagehale.com',
+      to: 'clinic@example.com',
+      cc: ['cc@example.com'],
+      subject: 'hi',
+      text: 'hello',
+    });
+  });
+
+  it('throws when Resend returns an error (never silently no-ops)', async () => {
+    vi.stubEnv('RESEND_API_KEY', 're_test');
+    resendSendMock.mockResolvedValue({
+      data: null,
+      error: { name: 'validation_error', message: 'bad sender' },
+    });
+
+    await expect(resendSend({ to: 'a@b.com', subject: 's', body: 'b' })).rejects.toThrow(
+      'Resend send failed (validation_error): bad sender',
+    );
   });
 });

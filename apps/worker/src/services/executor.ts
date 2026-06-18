@@ -1,3 +1,4 @@
+import { Resend } from 'resend';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import type { ApprovedAction, ExecutionResult } from '@hale/types';
@@ -20,7 +21,7 @@ interface SendResult {
 
 /**
  * Injectable seams for the Executor's outbound side. Defaults hit Postgres +
- * Postmark; tests pass stubs to prove the B9 idempotency invariant without a
+ * Resend; tests pass stubs to prove the B9 idempotency invariant without a
  * live DB or live provider.
  */
 export interface ExecutorDeps {
@@ -41,14 +42,14 @@ function defaultDeps(): ExecutorDeps {
       confirmOutboundSendDb(actionId, providerMessageId),
     recordSkippedDuplicate: (familyId, actionId) =>
       recordSendSkippedDuplicate(familyId, actionId),
-    sendEmail: postmarkSend,
+    sendEmail: resendSend,
   };
 }
 
 /**
  * Executor — dispatches approved actions to real-world tools.
  *
- * Email send is implemented via Postmark REST. Other action types
+ * Email send is implemented via the Resend SDK. Other action types
  * require integrations (Google Calendar OAuth, Stripe + merchant
  * adapters, Computer Use for portal automation) that the worker
  * doesn't yet have credentials for. Those throw a clear
@@ -183,41 +184,30 @@ async function sendEmail(input: ExecutorRunInput, deps: ExecutorDeps): Promise<E
   };
 }
 
-// ─── Postmark transport ──────────────────────────────────────────────────
+// ─── Resend transport ─────────────────────────────────────────────────────
 
-async function postmarkSend(payload: EmailPayload): Promise<SendResult> {
-  if (!process.env.POSTMARK_API_KEY) {
-    throw notConfigured('POSTMARK_API_KEY is not set; cannot send email.');
-  }
-  const from = payload.from ?? process.env.POSTMARK_FROM_ADDRESS;
-  if (!from) {
-    throw notConfigured('POSTMARK_FROM_ADDRESS is not set.');
-  }
+const DEFAULT_FROM = 'hello@villagehale.com';
 
-  const response = await fetch('https://api.postmarkapp.com/email', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'X-Postmark-Server-Token': process.env.POSTMARK_API_KEY,
-    },
-    body: JSON.stringify({
-      From: from,
-      To: payload.to,
-      Cc: payload.cc?.join(', '),
-      Subject: payload.subject,
-      TextBody: payload.body,
-      MessageStream: 'outbound',
-    }),
+export async function resendSend(payload: EmailPayload): Promise<SendResult> {
+  if (!process.env.RESEND_API_KEY) {
+    throw notConfigured('RESEND_API_KEY is not set; cannot send email.');
+  }
+  const from = payload.from ?? process.env.RESEND_FROM ?? DEFAULT_FROM;
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { data, error } = await resend.emails.send({
+    from,
+    // `to` is required upstream (sendEmail validates the payload), so it is set.
+    to: payload.to as string,
+    cc: payload.cc,
+    subject: payload.subject as string,
+    text: payload.body as string,
   });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Postmark send failed (${response.status}): ${detail}`);
+  if (error) {
+    throw new Error(`Resend send failed (${error.name}): ${error.message}`);
   }
-
-  const result = (await response.json()) as { MessageID?: string; SubmittedAt?: string };
-  return { messageId: result.MessageID, submittedAt: result.SubmittedAt };
+  return { messageId: data?.id };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
