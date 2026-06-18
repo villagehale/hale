@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { LogoMark } from '~/components/hale/logo-mark';
+import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { saveOnboardingChildren } from '~/lib/onboarding/persist';
 import {
   type ChildInput,
@@ -116,10 +118,13 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
   return (
     <div className="min-h-screen bg-linen">
       {/* Running head — book top edge */}
-      <header className="shell flex items-baseline justify-between pt-6 pb-4 border-b border-rule">
-        <Link href="/" className="font-display text-xl">Hale</Link>
+      <header className="shell flex items-center justify-between pt-6 pb-4 border-b border-rule">
+        <Link href="/" className="flex items-center gap-3">
+          <LogoMark size={32} />
+          <span className="font-display text-2xl font-semibold leading-none">Hale</span>
+        </Link>
 
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-center gap-3">
           <span className="eyebrow">enrolment</span>
           <div className="flex items-center gap-1.5" aria-hidden>
             {[1, 2, 3, 4, 5].map((s) => (
@@ -135,12 +140,13 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
           <span className="meta tabular" aria-live="polite" aria-atomic="true">
             step {step} of 5
           </span>
+          <ThemeToggle />
         </div>
       </header>
 
       <main className="shell pt-16 lg:pt-24 pb-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-12">
-          <div className="lg:col-span-3">
+          <div className="onboarding-hero lg:col-span-3">
             <span className="folio">{meta.folio}</span>
             <p className="meta mt-2">{meta.section}</p>
             <h1 className="mt-6 font-display">{meta.title}</h1>
@@ -163,7 +169,7 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
                   is what step three is about.
                 </p>
 
-                <div className="panel-apricot-tint">
+                <div className="panel-apricot-tint px-6 py-5">
                   <span className="eyebrow text-apricot-deep">a guarantee</span>
                   <p className="mt-2 text-slate-green">
                     Your children's names, dates of birth, and medical details are
@@ -284,7 +290,7 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
                 </div>
 
                 {previewStages.length > 0 ? (
-                  <div className="panel-oat">
+                  <div className="panel-oat px-6 py-5">
                     <span className="eyebrow text-spruce">i'll tailor to</span>
                     <p className="font-display text-xl mt-2">
                       {previewStages.join(' + ')}
@@ -352,7 +358,7 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
             {step === 3 ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 {saveState.kind === 'preview' ? (
-                  <output className="panel-apricot-tint block">
+                  <output className="panel-apricot-tint block px-6 py-5">
                     <span className="eyebrow text-apricot-deep">preview only</span>
                     <p className="mt-2 text-slate-green">
                       You're in a development preview — sign-in isn't configured yet,

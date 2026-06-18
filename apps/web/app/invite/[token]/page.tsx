@@ -8,6 +8,10 @@ interface PageProps {
   params: Promise<{ token: string }>;
 }
 
+// authConfigured()/auth() read runtime secrets and the live session — never bake
+// them at build time.
+export const dynamic = 'force-dynamic';
+
 /**
  * Public invite landing — lives OUTSIDE the (authed) group so a logged-out
  * invitee can read it. Surfaces only the family name and the inviter's first
