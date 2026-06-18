@@ -175,6 +175,6 @@ jobs:
             echo "::error::Fly leg ran without FLY_API_TOKEN — refusing to proceed."; exit 1
           fi
           # --remote-only builds on Fly's builders (no local Docker in CI).
-          # App secrets (DATABASE_URL, ANTHROPIC_API_KEY, LANGFUSE_*, POSTMARK_*)
+          # App secrets (DATABASE_URL, ANTHROPIC_API_KEY, LANGFUSE_*, RESEND_*)
           # are set out-of-band via `fly secrets set` — see docs/deploy/README.md.
           flyctl deploy --config infra/fly.toml --remote-only

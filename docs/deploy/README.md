@@ -38,7 +38,7 @@ PIPEDA + Quebec Law 25 + CASL).
                       │  apps/worker (@hale/worker) — pg-boss consumer │
                       │  consumes: events.ingested, actions.approved,  │
                       │            memory.inference.due, digest.daily  │
-                      │  calls: Anthropic, Langfuse, Postmark          │
+                      │  calls: Anthropic, Langfuse, Resend            │
                       └──────────────────────────────────────────────┘
 ```
 
@@ -72,8 +72,8 @@ full app env; the table below is the **deploy-time** subset per platform.
 | `LANGFUSE_PUBLIC_KEY` | Prompt fetch + tracing (prompts live in Langfuse — rule #2) | Yes (prod). |
 | `LANGFUSE_SECRET_KEY` | Langfuse server auth | Yes (prod). |
 | `LANGFUSE_HOST` | Langfuse instance URL | Yes (prod). |
-| `POSTMARK_API_KEY` | Outbound email sends (executor) | Yes (any email action). |
-| `POSTMARK_FROM_ADDRESS` | Verified sender | Yes (any email action). |
+| `RESEND_API_KEY` | Outbound email sends (executor) | Yes (any email action). |
+| `RESEND_FROM` | Verified sender (default `hello@villagehale.com`) | Yes (any email action). |
 | `INTERNAL_API_SHARED_SECRET` | web↔worker internal auth | If used. |
 
 ### Vercel — web + site (Project → Settings → Environment Variables, Production)
@@ -148,7 +148,7 @@ fly launch --config infra/fly.toml --no-deploy   # creates the hale-worker app, 
 fly secrets set \
   DATABASE_URL=... ANTHROPIC_API_KEY=... \
   LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=... LANGFUSE_HOST=... \
-  POSTMARK_API_KEY=... POSTMARK_FROM_ADDRESS=... \
+  RESEND_API_KEY=... RESEND_FROM=... \
   --app hale-worker
 fly deploy --config infra/fly.toml --remote-only
 fly logs --app hale-worker     # expect: "pg-boss started" → "consumers registered" → "Hale worker ready"
