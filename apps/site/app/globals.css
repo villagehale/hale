@@ -1,22 +1,26 @@
 @import "tailwindcss";
 
+/* Tailwind v4 class-strategy dark mode: `.dark` on <html> (or any ancestor)
+ * flips the dark: variant. The class is set pre-paint by the inline script in
+ * layout.tsx, so there is no flash. Mirrors apps/web. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
- * Hale — "Meadow" design system.
+ * Hale — marketing site design system. Shares the language of the product app
+ * (apps/web): Inter throughout (display + body) with JetBrains Mono for data,
+ * a Prussian-forward palette with a warm-coral accent, gently rounded clean
+ * cards, Lucide icons, and a hand-built flat color-block SVG illustration kit.
  *
- * The calm of a nursery at 4pm light. Soft geometric shapes that never
- * crowd, generous breathing air, a muted grown-up earth palette (spruce,
- * linen, apricot, sage). Restraint expressed as kindness, not austerity.
- * Type is warm on both sides (Fraunces display + Nunito body); imagery is
- * a hand-built flat color-block SVG kit. The motif is the daily arc — the
- * rhythm a newborn lives by and the rhythm Hale quietly tends.
+ * Dark mode is the logo's own palette: a Prussian (#01204F) night with cream
+ * ink, surfaces a shade deeper, and the white turtle glowing on it. Both modes
+ * hold WCAG-AA contrast.
  *
  * Hard rules baked in:
  *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
  *     text or thin icon strokes. Apricot-deep #a84e20 is the text-safe accent.
- *   - all contrast pairings computed against Linen (see a11y table in spec).
  *   - 16px form inputs on mobile (iOS no-zoom).
- *   - motion is "breathing not bouncing"; every animation — including the
- *     ambient hero sun-arc — is disabled under prefers-reduced-motion.
+ *   - motion is "breathing not bouncing"; every animation is disabled under
+ *     prefers-reduced-motion.
  *   - no emoji, ever; product name is always "Hale".
  */
 
@@ -38,10 +42,13 @@
 
   --color-sea: #0a3d62;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
 
+  --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
+  --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
+
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
-  /* Hairlines: warm spruce at low alpha — used by tone, rarely as border */
+  /* Hairlines: warm spruce at low alpha */
   --color-rule: rgb(1 32 79 / 0.10);
   --color-rule-strong: rgb(1 32 79 / 0.20);
 
@@ -50,11 +57,14 @@
   --color-on-spruce-soft: rgb(246 241 231 / 0.74);
   --color-on-spruce-faint: rgb(246 241 231 / 0.50);
 
-  /* ── Type ────────────────────────────────────────────────────────────── */
-  --font-display: "Fraunces", "Iowan Old Style", "Charter", Georgia, serif;
-  --font-body: "Nunito", -apple-system, "Segoe UI", system-ui, sans-serif;
+  /* ── Type — Inter for display + body, JetBrains Mono for data ─────────── *
+   * --font-sans / --font-mono are injected by next/font in layout.tsx. */
+  --font-sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
+  --font-body: var(--font-sans);
 
-  --tracking-display: -0.01em;
+  --tracking-display: -0.02em;
   --tracking-eyebrow: 0.12em;
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
@@ -70,6 +80,65 @@
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Dark mode = the logo's palette ──────────────────────────────────────── *
+ * Prussian night, cream ink, the white turtle glowing. We re-point the same
+ * token *roles* so every existing component flips for free: --color-spruce is
+ * "ink" (now cream) and --color-linen is "page" (now Prussian), so e.g.
+ * .btn-primary (spruce fill / linen text) becomes cream fill / Prussian text,
+ * and focus rings (inner ring = linen) stay matched to the page. Accents are
+ * lightened to hold AA on the dark ground (all pairs verified ≥ 4.5:1). */
+.dark {
+  --color-linen: #01204F;        /* page background — Prussian night */
+  --color-oat: #0a2d63;          /* raised surface — a shade up from the page */
+  --color-spruce: #f6f1e7;       /* primary ink — cream — 14.12:1 on page */
+  --color-slate-green: #c7d3e6;  /* secondary text — 10.52:1 */
+  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 7.20:1 */
+
+  --color-apricot: #e8915c;          /* large-graphic fill */
+  --color-apricot-deep: #e8915c;     /* text-safe accent on dark — 6.54:1 */
+  --color-apricot-tint: #122c4a;     /* warm-wash panel ground (cream ink rides it) */
+
+  --color-sky: #7fb5c4;
+  --color-sky-deep: #8fc1d1;     /* text-safe blue on dark — 8.11:1 */
+  --color-sky-tint: #122c4a;     /* illustration / pill wash */
+
+  --color-sea: #6fb3c9;          /* turtle accent on dark */
+
+  --color-sage: #a9c49a;         /* "done" tone — 8.37:1 */
+  --color-sage-tint: #16331f;
+
+  --color-berry: #e09aaa;        /* "needs your eye" — 7.10:1 */
+  --color-berry-tint: #3a1c26;
+
+  --color-rule: rgb(246 241 231 / 0.12);
+  --color-rule-strong: rgb(246 241 231 / 0.24);
+
+  --color-on-spruce: #01204F;        /* "on ink" inverts to Prussian */
+  --color-on-spruce-soft: rgb(1 32 79 / 0.74);
+  --color-on-spruce-faint: rgb(1 32 79 / 0.50);
+
+  color-scheme: dark;
+}
+
+/* The night section is a dark band in BOTH modes — Spruce ground in light, the
+ * raised Oat surface in dark (so it separates from the already-Prussian page).
+ * Its text therefore always wants cream-on-dark. In light that is what
+ * --color-on-spruce already is; in dark --color-on-spruce has inverted to
+ * Prussian, so we re-point the band's on-ground tokens back to cream here. The
+ * Check-bullet stroke (var(--color-spruce)) likewise needs to stay Prussian-dark
+ * against its apricot chip, so it is pinned too. */
+.night {
+  background: var(--color-spruce);
+  color: var(--color-on-spruce);
+}
+.dark .night {
+  background: var(--color-oat);
+  --color-on-spruce: #f6f1e7;
+  --color-on-spruce-soft: rgb(246 241 231 / 0.74);
+  --color-on-spruce-faint: rgb(246 241 231 / 0.50);
+  --color-spruce: #01204F;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
@@ -102,22 +171,20 @@ body {
   html { scroll-behavior: auto; }
 }
 
-/* Headlines: Fraunces, high optical size, book weight, soft terminals.
- * opsz/SOFT/WONK axes are exercised inline per-element where they vary;
- * the base sets the calm, generous default. Sentence-case, never all-caps. */
+/* Headlines: Inter, tight tracking, semibold display weight.
+ * Sentence-case, never all-caps. */
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   font-optical-sizing: auto;
-  font-variation-settings: "opsz" 128, "SOFT" 50, "WONK" 0;
   letter-spacing: var(--tracking-display);
-  font-weight: 420;
+  font-weight: 600;
   line-height: 1.04;
   color: var(--color-spruce);
   font-style: normal;
   text-wrap: balance;
 }
 
-h1 { font-size: clamp(2.6rem, 6.2vw, 4.75rem); }
+h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
 h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
 h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
 
@@ -128,9 +195,10 @@ strong { font-weight: 700; }
 
 .font-display { font-family: var(--font-display); }
 .font-body { font-family: var(--font-body); }
-.tabular { font-variant-numeric: tabular-nums; }
+.font-mono { font-family: var(--font-mono); }
+.tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* Gentle Title-case eyebrow label — Nunito 600, tracked, NOT uppercase mono */
+/* Gentle Title-case eyebrow label — Inter 600, tracked, NOT uppercase mono */
 .eyebrow {
   font-family: var(--font-body);
   font-size: 0.8rem;
@@ -146,11 +214,8 @@ strong { font-weight: 700; }
   color: var(--color-faded-sage);
 }
 
-/* The single hero word carries WONK 1 + Apricot-deep for a touch of warmth */
-.wonk {
-  font-variation-settings: "opsz" 144, "SOFT" 60, "WONK" 1;
-  color: var(--color-apricot-deep);
-}
+/* The single hero accent word — text-safe warm coral. */
+.accent { color: var(--color-apricot-deep); }
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
@@ -169,6 +234,16 @@ strong { font-weight: 700; }
 }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
+
+/* ── Card — a clean raised surface ─────────────────────────────────────── */
+
+.card {
+  display: block;
+  background: var(--color-oat);
+  border-radius: var(--r-xl);
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+  color: inherit;
+}
 
 /* ── Pills ─────────────────────────────────────────────────────────────── */
 
@@ -219,6 +294,31 @@ strong { font-weight: 700; }
 
 .btn-primary[disabled] { opacity: 0.6; cursor: progress; }
 
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.6rem;
+  background: transparent;
+  color: var(--color-spruce);
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: var(--r-full);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 280ms var(--ease-breathe), background 280ms var(--ease-breathe);
+}
+
+.btn-secondary:hover { border-color: var(--color-spruce); background: var(--color-oat); }
+
+.btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
 /* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
 
 .link {
@@ -268,17 +368,6 @@ strong { font-weight: 700; }
   outline: none;
   border-color: var(--color-apricot-deep);
   box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
-}
-
-/* ── Paper-grain overlay — single tileable turbulence at ~4% ───────────── */
-
-.grain {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  opacity: 0.04;
-  mix-blend-mode: multiply;
 }
 
 /* ── Breathing reveal — settle UP a few px and fade in, slowly ─────────── */
@@ -336,4 +425,58 @@ strong { font-weight: 700; }
 
 @media (max-width: 768px) {
   input, textarea, select { font-size: 16px !important; }
+}
+
+/* ── Theme switch — ease the color change, never the layout ─────────────── */
+
+html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .card, .field, .night {
+  transition: background-color 280ms var(--ease-breathe), color 280ms var(--ease-breathe),
+    border-color 280ms var(--ease-breathe);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .card, .field, .night {
+    transition: none;
+  }
+}
+
+/* ── Theme toggle — a small segmented Light / Dark / System control ─────── */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0.2rem;
+  border: 0;
+  min-inline-size: 0;
+  background: var(--color-oat);
+  border-radius: var(--r-full);
+}
+
+.theme-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-faded-sage);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.theme-toggle-option:hover { color: var(--color-spruce); }
+
+.theme-toggle-option[aria-pressed="true"] {
+  background: var(--color-linen);
+  color: var(--color-spruce);
+}
+
+.theme-toggle-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
 }

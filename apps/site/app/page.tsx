@@ -1,6 +1,5 @@
+import { Check } from 'lucide-react';
 import {
-  Crescent,
-  GrainOverlay,
   ParentAndHouse,
   Sapling,
   SeaTurtle,
@@ -10,6 +9,7 @@ import {
   Tree,
 } from '~/components/illos';
 import { HeroScene } from '~/components/hero-scene';
+import { SiteHeader } from '~/components/site-header';
 import { WaitlistForm } from '~/components/waitlist-form';
 
 const WEEK = [
@@ -90,16 +90,9 @@ const NEVER = [
 
 export default function LandingPage() {
   return (
-    <main className="relative">
-      <GrainOverlay />
-
+    <main id="top" className="relative">
       {/* ── 1 · Hero — one calm day ─────────────────────────────────────── */}
-      <header className="shell flex items-center justify-between pt-8 pb-2">
-        <span className="font-display text-2xl" style={{ fontVariationSettings: '"opsz" 96, "SOFT" 50, "WONK" 0' }}>
-          Hale
-        </span>
-        <span className="pill pill-apricot">research preview</span>
-      </header>
+      <SiteHeader />
 
       <section className="shell pt-10 sm:pt-16 lg:pt-20 pb-20 lg:pb-28">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
@@ -114,7 +107,7 @@ export default function LandingPage() {
 
           <div className="lg:col-span-5 rise rise-2">
             <h1>
-              Hale is the <span className="wonk">village</span> your family
+              Hale is the <span className="accent">village</span> your family
               lost.
             </h1>
             <p className="mt-6 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
@@ -123,9 +116,12 @@ export default function LandingPage() {
               and then makes it happen. A calm companion that knows the way, and
               never acts until you have said it may.
             </p>
-            <div className="mt-8">
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <a href="#waitlist" className="btn-primary">
                 Request early access
+              </a>
+              <a href="#how" className="btn-secondary">
+                How it works
               </a>
             </div>
           </div>
@@ -140,7 +136,8 @@ export default function LandingPage() {
             style={{
               fontSize: 'clamp(1.65rem, 3.4vw, 2.75rem)',
               lineHeight: 1.2,
-              fontVariationSettings: '"opsz" 120, "SOFT" 50, "WONK" 0',
+              letterSpacing: 'var(--tracking-display)',
+              fontWeight: 600,
             }}
           >
             Once, a family had a village — elders who knew which class was worth
@@ -160,7 +157,7 @@ export default function LandingPage() {
           <h2 className="mt-3">
             One childhood, every stage — the same gentle arc.
           </h2>
-          <p className="mt-5 meta max-w-xl" style={{ fontSize: '1rem', color: 'var(--color-slate-green)' }}>
+          <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
             From the first months to almost grown, Hale finds the genuinely good
             things near you and brings them within reach — one at a time. It
             grows up alongside your kid, and the week grows with them.
@@ -177,7 +174,7 @@ export default function LandingPage() {
                 {i === 3 && <SeaTurtle age="elder" style={{ height: 122, width: 'auto' }} />}
               </div>
               <div className="mt-5 flex items-baseline gap-3">
-                <span className="font-display text-xl" style={{ color: 'var(--color-apricot-deep)' }}>
+                <span className="font-display text-xl font-semibold accent">
                   {moment.arc}
                 </span>
                 <span className="eyebrow">{moment.stage}</span>
@@ -191,7 +188,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── 4 · Trust, earned slowly ────────────────────────────────────── */}
-      <section className="shell pb-20 lg:pb-28">
+      <section id="how" className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
           <span className="eyebrow">Trust, earned slowly</span>
           <h2 className="mt-3">
@@ -221,7 +218,7 @@ export default function LandingPage() {
           <h2 className="mt-3">
             Start free. Pay only when Hale has earned it.
           </h2>
-          <p className="mt-5 meta max-w-xl" style={{ fontSize: '1rem', color: 'var(--color-slate-green)' }}>
+          <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
             Every plan covers every stage and every child. The paid tiers simply
             let Hale do more of the work itself. Monthly, or a little less per
             month if you pay yearly.
@@ -234,15 +231,8 @@ export default function LandingPage() {
               key={tier.name}
               className={`${tier.panel} px-8 py-10 flex flex-col rise rise-${i + 1}`}
             >
-              <h3 className="font-display" style={{ fontSize: '1.65rem' }}>
-                {tier.name}
-              </h3>
-              <p
-                className="mt-2 font-display"
-                style={{ fontSize: '1.25rem', color: 'var(--color-apricot-deep)' }}
-              >
-                {tier.price}
-              </p>
+              <h3>{tier.name}</h3>
+              <p className="mt-2 font-mono text-xl font-semibold accent">{tier.price}</p>
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
                 {tier.line}
               </p>
@@ -252,10 +242,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── 6 · Hale will never — the inverted night section ────────────── */}
-      <section
-        className="py-24 lg:py-32"
-        style={{ background: 'var(--color-spruce)', color: 'var(--color-on-spruce)' }}
-      >
+      <section className="night py-24 lg:py-32">
         <div className="shell grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16">
           <div className="lg:col-span-4">
             <span className="eyebrow" style={{ color: 'var(--color-on-spruce-soft)' }}>
@@ -273,10 +260,14 @@ export default function LandingPage() {
           <ul className="lg:col-span-8 flex flex-col gap-7">
             {NEVER.map((promise) => (
               <li key={promise} className="flex gap-4 items-start text-lg lg:text-xl">
-                <span className="shrink-0 mt-1">
-                  <Crescent style={{ width: 26, height: 26 }} />
+                <span
+                  className="shrink-0 mt-1 inline-flex h-7 w-7 items-center justify-center rounded-full"
+                  style={{ background: 'var(--color-apricot)' }}
+                  aria-hidden
+                >
+                  <Check size={18} strokeWidth={2.5} style={{ color: 'var(--color-spruce)' }} />
                 </span>
-                <span style={{ lineHeight: 1.4 }}>{promise}</span>
+                <span style={{ lineHeight: 1.4, color: 'var(--color-on-spruce)' }}>{promise}</span>
               </li>
             ))}
           </ul>
@@ -296,7 +287,8 @@ export default function LandingPage() {
               style={{
                 fontSize: 'clamp(1.4rem, 2.6vw, 2rem)',
                 lineHeight: 1.32,
-                fontVariationSettings: '"opsz" 110, "SOFT" 50, "WONK" 0',
+                letterSpacing: 'var(--tracking-display)',
+                fontWeight: 600,
               }}
             >
               My partner and I were raising a kid far from the village our own
@@ -333,7 +325,7 @@ export default function LandingPage() {
       <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
         <p className="meta">Hale · Toronto · Canada · a research preview</p>
         <p className="meta flex items-center gap-2">
-          set in Fraunces &amp; Nunito
+          set in Inter &amp; JetBrains Mono
           <Sun style={{ width: 18, height: 18 }} />
         </p>
       </footer>
