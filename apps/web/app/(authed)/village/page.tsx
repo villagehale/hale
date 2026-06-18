@@ -1,6 +1,7 @@
 import { AcceptButton } from '~/components/hale/accept-button';
 import { Folio } from '~/components/hale/folio';
 import { PageCorner } from '~/components/hale/page-corner';
+import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function VillagePage() {
@@ -41,6 +42,9 @@ export default async function VillagePage() {
             <div className="lg:col-span-3">
               <span className="eyebrow">a gentle routine</span>
               <p className="meta mt-2">week of {routine.weekOf}</p>
+              <div className="mt-5">
+                <ShareWeekButton />
+              </div>
             </div>
             <div className="lg:col-span-9 space-y-5">
               {routine.items.map((item, idx) => (

@@ -26,7 +26,28 @@ const CANDIDATE_KIND = 'activity';
  * `areaCoarse` is skipped — discovery needs a coarse area to run at all.
  * Candidates are persisted family-wide (childId null): the providers return
  * stage-typical activity types, not child-pinpointed listings.
+ *
+ * Teen exclusion (rule #1): these candidates feed a PUBLIC share page, so a
+ * teenager's stage is never queried and their interests never enter the pool —
+ * teens are dropped at the source. A teen-only family yields no discovery inputs
+ * and is skipped entirely (nothing written).
  */
+
+/**
+ * The discovery inputs for a family, derived from NON-TEEN children only
+ * (rule #1). Empty `stages` means there is nothing to discover for the public
+ * pool — the caller skips discovery and routine generation.
+ */
+export function selectDiscoveryInputs(
+  children: ReadonlyArray<{ dateOfBirth: string | Date; interests: string[] }>,
+  now: Date = new Date(),
+): { stages: FamilyStage[]; interests: string[] } {
+  const nonTeen = children.filter((c) => deriveStage(c.dateOfBirth, now) !== 'teenager');
+  const stages = [...new Set<FamilyStage>(nonTeen.map((c) => deriveStage(c.dateOfBirth, now)))];
+  const interests = [...new Set(nonTeen.flatMap((c) => c.interests))];
+  return { stages, interests };
+}
+
 export async function runVillageDiscovery(
   job: VillageDiscoveryJob,
   database: Database = db(),
@@ -55,11 +76,15 @@ export async function runVillageDiscovery(
     .from(schema.children)
     .where(eq(schema.children.familyId, job.familyId));
 
-  const stages: FamilyStage[] = childRows.map((c) => deriveStage(c.dateOfBirth));
-  const distinctStages = [...new Set<FamilyStage>(stages)];
-  const primaryStage: FamilyStage = distinctStages[0] ?? 'newborn';
-  const discoveryStages = distinctStages.length > 0 ? distinctStages : [primaryStage];
-  const interests = [...new Set(childRows.flatMap((c) => c.interests))];
+  const { stages: discoveryStages, interests } = selectDiscoveryInputs(childRows);
+  if (discoveryStages.length === 0) {
+    logger.info(
+      { familyId: job.familyId },
+      'village discovery skipped: no non-teen children to discover for',
+    );
+    return;
+  }
+  const primaryStage = discoveryStages[0] as FamilyStage;
 
   logger.info(
     {

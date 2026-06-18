@@ -35,6 +35,7 @@ function proposal(overrides: Partial<RoutineProposal> = {}): RoutineProposal {
     familyId: 'fam-1',
     weekOf: '2026-06-15',
     items: [],
+    shareToken: null,
     createdAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
   };
