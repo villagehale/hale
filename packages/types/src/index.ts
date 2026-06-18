@@ -3,6 +3,7 @@ export * from './action.js';
 export * from './safety.js';
 export * from './parenting.js';
 export * from './stage.js';
+export * from './companion.js';
 export * from './memory.js';
 export * from './agent.js';
 export * from './entitlements.js';

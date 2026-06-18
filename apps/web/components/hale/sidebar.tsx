@@ -15,6 +15,7 @@ const NAV = [
   { href: '/connected', label: 'connected', folio: '07' },
   { href: '/settings', label: 'settings', folio: '08' },
   { href: '/village', label: 'village', folio: '09' },
+  { href: '/companion', label: 'companion', folio: '10' },
 ] as const;
 
 export function Sidebar({ authControls = false }: { authControls?: boolean }) {
