@@ -1,21 +1,31 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import {
+  CalendarRange,
+  History,
+  House,
+  Home as HomeIcon,
+  MessageCircleHeart,
+  Sparkles,
+  Users,
+} from 'lucide-react';
+import { Icon } from '~/components/ui/icon';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 
 const NAV = [
-  { href: '/digest', label: 'digest', folio: '01' },
-  { href: '/live', label: 'live', folio: '02' },
-  { href: '/drafts', label: 'drafts', folio: '03' },
-  { href: '/coach', label: 'coach', folio: '04' },
-  { href: '/memory', label: 'memory', folio: '05' },
-  { href: '/trail', label: 'trail', folio: '06' },
-  { href: '/connected', label: 'connected', folio: '07' },
-  { href: '/settings', label: 'settings', folio: '08' },
-] as const;
+  { href: '/home', label: 'home', icon: HomeIcon },
+  { href: '/coach', label: 'ask Hale', icon: MessageCircleHeart },
+  { href: '/companion', label: 'companion', icon: Sparkles },
+  { href: '/village', label: 'village', icon: Users },
+  { href: '/plan', label: 'plan', icon: CalendarRange },
+  { href: '/settings', label: 'family', icon: House },
+  { href: '/trail', label: 'history', icon: History },
+] as const satisfies ReadonlyArray<{ href: Route; label: string; icon: typeof HomeIcon }>;
 
 /**
  * Mobile running head — the top edge of an open book. Tap the title
@@ -32,7 +42,7 @@ export function TopHeader() {
   return (
     <header className="runninghead">
       <div className="flex items-center gap-3">
-        <Link href="/digest" className="flex items-center gap-2">
+        <Link href="/home" className="flex items-center gap-2">
           <LogoMark size={28} />
           <span className="font-display text-2xl leading-none font-semibold">Hale</span>
         </Link>
@@ -49,7 +59,7 @@ export function TopHeader() {
           className="eyebrow text-spruce"
           aria-expanded={open}
         >
-          {open ? 'close' : 'index'}
+          {open ? 'close' : 'menu'}
         </button>
       </div>
 
@@ -66,7 +76,9 @@ export function TopHeader() {
                     className="nav-item"
                     onClick={() => setOpen(false)}
                   >
-                    <span className="nav-folio">{item.folio}</span>
+                    <span className="nav-folio">
+                      <Icon as={item.icon} size={18} />
+                    </span>
                     <span className="nav-label">{item.label}</span>
                   </Link>
                 </li>

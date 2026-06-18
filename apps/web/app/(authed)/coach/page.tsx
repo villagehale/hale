@@ -7,17 +7,17 @@ export default function CoachPage() {
 
   return (
     <div>
-      <PageCorner folio="04" section="coach · ask anything" />
+      <PageCorner folio="ask" section="ask Hale · anything" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
           <div className="lg:col-span-3">
-            <span className="eyebrow">coach</span>
+            <span className="eyebrow">ask Hale</span>
             <p className="meta mt-2">grounded in named frameworks</p>
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              ask me <span className="text-apricot-deep">anything.</span>
+              ask Hale <span className="text-apricot-deep">anything.</span>
             </h1>
           </div>
         </div>

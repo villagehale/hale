@@ -7,11 +7,8 @@ import { authConfigured } from '~/lib/auth-config';
 const PROTECTED_PREFIXES = [
   '/coach',
   '/companion',
-  '/connected',
-  '/digest',
-  '/drafts',
-  '/live',
-  '/memory',
+  '/home',
+  '/plan',
   '/settings',
   '/trail',
   '/village',

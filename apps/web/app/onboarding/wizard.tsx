@@ -500,8 +500,8 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
                   <button type="button" className="btn-ghost" onClick={() => setStep(4)}>← back</button>
-                  <Link href="/digest" className="btn-primary ml-auto">
-                    finish · open my digest →
+                  <Link href="/home" className="btn-primary ml-auto">
+                    finish · open my home →
                   </Link>
                 </div>
               </section>

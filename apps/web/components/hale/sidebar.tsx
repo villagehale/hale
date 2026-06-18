@@ -1,24 +1,31 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import {
+  CalendarRange,
+  History,
+  House,
+  Home as HomeIcon,
+  MessageCircleHeart,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { SeaTurtle } from '~/components/illos';
+import { Icon } from '~/components/ui/icon';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { signOutAction } from '~/lib/auth-actions';
 
 const NAV = [
-  { href: '/digest', label: 'digest', folio: '01' },
-  { href: '/live', label: 'live', folio: '02' },
-  { href: '/drafts', label: 'drafts', folio: '03' },
-  { href: '/coach', label: 'coach', folio: '04' },
-  { href: '/memory', label: 'memory', folio: '05' },
-  { href: '/trail', label: 'trail', folio: '06' },
-  { href: '/connected', label: 'connected', folio: '07' },
-  { href: '/settings', label: 'settings', folio: '08' },
-  { href: '/village', label: 'village', folio: '09' },
-  { href: '/companion', label: 'companion', folio: '10' },
-] as const;
+  { href: '/home', label: 'home', icon: HomeIcon },
+  { href: '/coach', label: 'ask Hale', icon: MessageCircleHeart },
+  { href: '/companion', label: 'companion', icon: Sparkles },
+  { href: '/village', label: 'village', icon: Users },
+  { href: '/plan', label: 'plan', icon: CalendarRange },
+  { href: '/settings', label: 'family', icon: House },
+] as const satisfies ReadonlyArray<{ href: Route; label: string; icon: typeof HomeIcon }>;
 
 export function Sidebar({
   authControls = false,
@@ -32,14 +39,13 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div>
-        <Link href="/digest" className="flex items-center gap-3">
+        <Link href="/home" className="flex items-center gap-3">
           <LogoMark size={34} />
           <span className="font-display text-[2.1rem] leading-none font-semibold">Hale</span>
         </Link>
-        <span className="meta block mt-2">holds the small things</span>
+        <span className="meta block mt-2">the village your family lost</span>
 
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="stamp">trial · day 3 of 7</span>
+        <div className="mt-4 flex items-center justify-end gap-3">
           <ThemeToggle />
         </div>
 
@@ -70,36 +76,29 @@ export function Sidebar({
               aria-current={active ? 'page' : undefined}
               className="nav-item"
             >
-              <span className="nav-folio">{item.folio}</span>
+              <span className="nav-folio">
+                <Icon as={item.icon} size={18} />
+              </span>
               <span className="nav-label">{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* "Today" — a small block of running data */}
-      <div className="mt-auto pt-10 space-y-3">
+      {/* History — the audit trail, kept quiet at the foot, not a primary stop. */}
+      <div className="mt-auto pt-10 space-y-4">
         <div className="rule" />
-        <p className="eyebrow text-spruce pt-1">today</p>
-        <dl className="meta text-spruce space-y-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <dt>passes</dt>
-            <dd className="tabular">14</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-2">
-            <dt>cost</dt>
-            <dd className="tabular">$0.31</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-2">
-            <dt>awaiting</dt>
-            <dd className="tabular">1</dd>
-          </div>
-        </dl>
+        <Link href="/trail" className="nav-item">
+          <span className="nav-folio">
+            <Icon as={History} size={18} />
+          </span>
+          <span className="nav-label">history</span>
+        </Link>
 
         {/* The one tasteful sea turtle — Hale, resting at the foot. */}
-        <div className="pt-4 flex items-end gap-3" aria-hidden>
+        <div className="pt-2 flex items-end gap-3" aria-hidden>
           <SeaTurtle age="hatchling" style={{ height: 44, width: 'auto' }} />
-          <span className="meta">resting · listening</span>
+          <span className="meta">here for your family</span>
         </div>
       </div>
     </aside>

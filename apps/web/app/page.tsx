@@ -1,12 +1,19 @@
 import Link from 'next/link';
-import { auth, signOut } from '~/auth';
+import { redirect } from 'next/navigation';
+import { auth } from '~/auth';
 import { House, SeaTurtle, Sun } from '~/components/illos';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { authConfigured } from '~/lib/auth-config';
 
 export default async function LandingPage() {
-  const session = authConfigured() ? await auth() : null;
+  // A signed-in parent lands on their home, not the marketing front door.
+  if (authConfigured()) {
+    const session = await auth();
+    if (session?.user?.id) {
+      redirect('/home');
+    }
+  }
 
   return (
     <main className="relative">
@@ -18,26 +25,10 @@ export default async function LandingPage() {
         </Link>
         <div className="flex items-center gap-5">
           <ThemeToggle />
-          <Link href="/digest" className="btn-ghost">
-            read this week&rsquo;s digest →
-          </Link>
           {authConfigured() ? (
-            session ? (
-              <form
-                action={async () => {
-                  'use server';
-                  await signOut({ redirectTo: '/' });
-                }}
-              >
-                <button type="submit" className="btn-ghost">
-                  sign out
-                </button>
-              </form>
-            ) : (
-              <Link href="/sign-in" className="btn-primary">
-                sign in
-              </Link>
-            )
+            <Link href="/sign-in" className="btn-primary">
+              sign in
+            </Link>
           ) : null}
         </div>
       </header>
@@ -73,8 +64,8 @@ export default async function LandingPage() {
               <Link href="/onboarding" className="btn-primary">
                 set up your family
               </Link>
-              <Link href="/digest" className="btn-ghost">
-                see this week&rsquo;s plan
+              <Link href="/sign-in" className="btn-ghost">
+                sign in
               </Link>
             </div>
           </div>

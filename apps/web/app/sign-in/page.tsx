@@ -11,7 +11,7 @@ interface PageProps {
 export default async function SignInPage({ searchParams }: PageProps) {
   const { callbackUrl } = await searchParams;
   // Only honor app-internal redirect targets — never an off-site URL.
-  const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/digest';
+  const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/home';
 
   return (
     <main className="min-h-screen bg-linen flex flex-col items-center justify-center gap-8 px-6 py-16">
