@@ -4,6 +4,8 @@ import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
 import { FamilyHeader } from '~/components/hale/family-header';
 import { authConfigured } from '~/lib/auth-config';
+import { db } from '~/lib/db';
+import { resolveFamilyForUser } from '~/lib/family';
 
 // authConfigured()/auth() read runtime secrets and the live session — never bake
 // them at build time, or every authed page freezes to the build-time auth state.
@@ -14,6 +16,16 @@ export default async function AuthedLayout({ children }: { children: React.React
   const session = authEnabled ? await auth() : null;
   if (authEnabled && !session?.user?.id) {
     redirect('/sign-in');
+  }
+
+  // A signed-in user with no family hasn't finished onboarding (provisioning
+  // creates the users/families rows). Route them there instead of an empty app —
+  // a bare Google sign-in alone never writes a DB row.
+  if (authEnabled && session?.user?.id) {
+    const familyId = await resolveFamilyForUser(session.user.id, db());
+    if (!familyId) {
+      redirect('/onboarding');
+    }
   }
 
   return (
