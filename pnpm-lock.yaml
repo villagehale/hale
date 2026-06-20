@@ -72,6 +72,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.41.0
         version: 0.41.0
+      '@hale/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@hale/db':
         specifier: workspace:*
         version: link:../../packages/db

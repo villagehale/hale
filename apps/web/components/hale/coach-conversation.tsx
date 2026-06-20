@@ -2,25 +2,32 @@
 
 import { useState } from 'react';
 import { Folio } from '~/components/hale/folio';
-import type { CoachAnswerView } from '~/lib/coach/view';
 
 type Status = 'idle' | 'pending' | 'error';
 
-interface Exchange {
+interface Turn {
   id: string;
-  question: string;
-  answer: CoachAnswerView;
+  role: 'user' | 'assistant';
+  body: string;
+}
+
+interface CoachResponse {
+  body: string;
+  conversationId: string;
 }
 
 /**
- * The interactive coach. POSTs the parent's question to /api/coach and renders
- * the grounded answer in the Meadow editorial style. Honest UX: a pending row
- * while the model is thinking, the error surfaced in place (never a silent
- * success). In dev preview (Clerk unconfigured) the input is replaced with a
- * "sign in to ask" notice and no request is ever sent — so no spend.
+ * The interactive Ask Hale thread — now multi-turn. Each question POSTs to
+ * /api/coach carrying the running conversationId, so the agent keeps context
+ * across turns; the response's conversationId is held and re-sent. The full
+ * thread (your questions + Hale's answers) renders in the Meadow editorial style.
+ * Honest UX: a pending row while the agent works, the error surfaced in place. In
+ * dev preview (auth unconfigured) the input is replaced with a "sign in" notice
+ * and no request is ever sent — so no spend.
  */
 export function CoachConversation({ canAsk }: { canAsk: boolean }) {
-  const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [status, setStatus] = useState<Status>('idle');
 
@@ -28,19 +35,24 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
     const question = draft.trim();
     if (!question || status === 'pending') return;
     setStatus('pending');
+    setTurns((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', body: question }]);
+    setDraft('');
     try {
       const res = await fetch('/api/coach', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify(conversationId ? { question, conversationId } : { question }),
       });
       if (!res.ok) {
         setStatus('error');
         return;
       }
-      const answer = (await res.json()) as CoachAnswerView;
-      setExchanges((prev) => [...prev, { id: crypto.randomUUID(), question, answer }]);
-      setDraft('');
+      const answer = (await res.json()) as CoachResponse;
+      setConversationId(answer.conversationId);
+      setTurns((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: 'assistant', body: answer.body },
+      ]);
       setStatus('idle');
     } catch {
       setStatus('error');
@@ -50,77 +62,35 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
   return (
     <>
       <section>
-        {exchanges.map((entry, idx) => (
-          <div key={entry.id}>
-            <article className="py-10 border-t border-rule first:border-t-0">
+        {turns.map((turn, idx) =>
+          turn.role === 'user' ? (
+            <article key={turn.id} className="py-10 border-t border-rule first:border-t-0">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-y-4 md:gap-x-8">
                 <div className="md:col-span-2">
-                  <Folio index={idx * 2 + 1} />
+                  <Folio index={idx + 1} />
                   <p className="eyebrow text-spruce mt-2">you</p>
                 </div>
                 <div className="md:col-span-10">
                   <p className="font-display text-[1.5rem] lg:text-[1.85rem] leading-snug">
-                    &ldquo;{entry.question}&rdquo;
+                    &ldquo;{turn.body}&rdquo;
                   </p>
                 </div>
               </div>
             </article>
-
-            <article className="py-10 border-t border-rule">
+          ) : (
+            <article key={turn.id} className="py-10 border-t border-rule">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
                 <div className="md:col-span-2">
-                  <Folio index={idx * 2 + 2} />
+                  <Folio index={idx + 1} />
                   <p className="eyebrow text-apricot-deep mt-2">Hale</p>
-                  <p className="meta mt-1">
-                    confidence · {entry.answer.confidence.toFixed(2)}
-                  </p>
                 </div>
                 <div className="md:col-span-10 space-y-6">
-                  <p className="text-lg text-spruce leading-relaxed">{entry.answer.body}</p>
-
-                  {entry.answer.flagForPediatrician ? (
-                    <p className="meta italic text-apricot-deep">
-                      this touches on something medical — please check with your
-                      pediatric office.
-                    </p>
-                  ) : null}
-
-                  {entry.answer.citations.length > 0 ? (
-                    <div className="border-l-2 border-apricot-deep pl-5">
-                      <span className="eyebrow text-spruce">grounded in</span>
-                      <ul className="mt-2 space-y-1.5">
-                        {entry.answer.citations.map((c) => (
-                          <li key={c} className="meta italic">
-                            — {c}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {entry.answer.followUps.length > 0 ? (
-                    <div>
-                      <span className="eyebrow">i might also ask</span>
-                      <ul className="mt-3 space-y-2">
-                        {entry.answer.followUps.map((q) => (
-                          <li key={q}>
-                            <button
-                              type="button"
-                              className="link text-lg text-spruce text-left"
-                              onClick={() => setDraft(q)}
-                            >
-                              {q}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
+                  <p className="text-lg text-spruce leading-relaxed">{turn.body}</p>
                 </div>
               </div>
             </article>
-          </div>
-        ))}
+          ),
+        )}
 
         {status === 'pending' ? (
           <article className="py-10 border-t border-rule">
@@ -141,14 +111,14 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
       <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
           <div className="lg:col-span-3">
-            <span className="eyebrow">ask coach</span>
+            <span className="eyebrow">ask Hale</span>
             <p className="meta mt-2">type your question</p>
           </div>
           <div className="lg:col-span-9 space-y-6">
             {canAsk ? (
               <>
                 <label htmlFor="coach-input" className="sr-only">
-                  ask coach
+                  ask Hale
                 </label>
                 <textarea
                   id="coach-input"
@@ -173,19 +143,19 @@ export function CoachConversation({ canAsk }: { canAsk: boolean }) {
                 </div>
                 {status === 'error' ? (
                   <p className="meta italic text-apricot-deep" role="alert">
-                    something went wrong reaching the coach — please try again.
+                    something went wrong reaching Hale — please try again.
                   </p>
                 ) : null}
                 <p className="meta">
-                  your question stays inside Hale. coach never sees your inbox or
-                  calendar — only your family&rsquo;s stage.
+                  your conversation stays inside Hale. Hale never sees your inbox or
+                  calendar — and never another family&rsquo;s data.
                 </p>
               </>
             ) : (
               <output className="dev-preview-banner">
-                Sign in to ask the coach. In development preview (Clerk not
-                configured) the coach is read-only — no question is sent and no
-                model is called.
+                Sign in to ask Hale. In development preview (auth not configured)
+                the thread is read-only — no question is sent and no model is
+                called.
               </output>
             )}
           </div>

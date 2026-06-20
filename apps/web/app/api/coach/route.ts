@@ -3,31 +3,35 @@ import { z } from 'zod';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { authConfigured } from '~/lib/auth-config';
-import { resolveFamilyForUser } from '~/lib/family';
-import { askCoach } from '~/lib/coach/coach';
-import { loadFamilyStages } from '~/lib/coach/family-stages';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { askHale } from '~/lib/coach/agent';
 import { recordCoachRun } from '~/lib/coach/record-run';
-import { toCoachAnswerView } from '~/lib/coach/view';
 
-// Node runtime: the coach reads the worker's prompt file off disk and calls the
-// Anthropic SDK — neither works on the edge runtime.
+// Node runtime: the agent reads the skill file off disk and calls the Anthropic
+// SDK — neither works on the edge runtime.
 export const runtime = 'nodejs';
 
-const bodySchema = z.object({ question: z.string().trim().min(1).max(2000) });
+const bodySchema = z.object({
+  question: z.string().trim().min(1).max(2000),
+  /** Continue an existing thread; omitted/null starts a fresh one. */
+  conversationId: z.string().uuid().optional(),
+  /** The intent chip the parent tapped, if any. */
+  intent: z.string().trim().min(1).max(200).optional(),
+});
 
 /**
- * POST /api/coach — a signed-in parent asking the interactive coach a question.
+ * POST /api/coach — a signed-in parent asking Ask Hale, now a stateful agent.
  *
  * Auth is the spend gate. When auth is unconfigured (dev preview) we refuse with
- * 501 and NEVER call the model — no spend, no guessing a family (mirrors the
- * approve route). Signed-out → 401. The coach is family-scoped: it only ever sees
- * the CALLER's family's derived stages (rule #1 — no other family's data, and no
- * raw child content; stage is the only child-derived signal).
+ * 501 and NEVER run the agent — no spend, no guessing a family. Signed-out → 401.
+ * Family-scoped (rule #1): the agent only ever sees the CALLER's family — its
+ * children (teen detail redacted), memory, and conversation thread. The acting
+ * parent's user id is the audit actor (rule #6 / PIPEDA right-to-access).
  */
 export async function POST(req: Request) {
   if (!authConfigured()) {
     return NextResponse.json(
-      { error: 'auth_required', detail: 'sign in to ask the coach' },
+      { error: 'auth_required', detail: 'sign in to ask Hale' },
       { status: 501 },
     );
   }
@@ -48,15 +52,22 @@ export async function POST(req: Request) {
   if (!familyId) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
+  const actorUserId = await resolveUserIdForUser(externalAuthId, database);
+  if (!actorUserId) {
+    return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
+  }
 
-  const stages = await loadFamilyStages(familyId, database);
-  const { answer, metrics } = await askCoach({
-    question: parsed.data.question,
-    // No children rows yet → no stage signal; the coach prompt handles an empty
-    // stage list (it asks for what it's missing rather than guessing).
-    stages,
-  });
+  const { answer, conversationId, metrics } = await askHale(
+    {
+      familyId,
+      question: parsed.data.question,
+      intent: parsed.data.intent ?? null,
+      conversationId: parsed.data.conversationId ?? null,
+      actor: actorUserId,
+    },
+    database,
+  );
   await recordCoachRun(familyId, metrics, database);
 
-  return NextResponse.json(toCoachAnswerView(answer), { status: 200 });
+  return NextResponse.json({ body: answer, conversationId }, { status: 200 });
 }

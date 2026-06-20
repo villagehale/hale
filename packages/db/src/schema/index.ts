@@ -14,4 +14,5 @@ export * from './outbound-sends.js';
 export * from './daily-digests.js';
 export * from './village.js';
 export * from './waitlist.js';
+export * from './conversations.js';
 export * from './enums.js';
