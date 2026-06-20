@@ -1,123 +1,141 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { PlanTier } from '@hale/types';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
-import { saveOnboardingChildren } from '~/lib/onboarding/persist';
+import { validateChild } from '~/lib/onboarding/children';
+import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
 import {
-  type ChildInput,
-  type ValidateChildResult,
-  type ValidatedChild,
-  unionStages,
-  validateChild,
-} from '~/lib/onboarding/children';
+  type IntakeDraft,
+  clearIntakeDraft,
+  readIntakeDraft,
+  writeIntakeDraft,
+} from '~/lib/onboarding/intake-storage';
+import { startGoogleSignIn } from '~/lib/onboarding/sign-in-action';
 
-type Step = 1 | 2 | 3 | 4 | 5;
+type Phase = 'A' | 'B' | 'C';
 
-const STEP_META: Record<Step, { folio: string; section: string; title: string }> = {
-  1: { folio: '01', section: 'step one of five', title: 'welcome' },
-  2: { folio: '02', section: 'step two of five', title: 'tell me about your children' },
-  3: { folio: '03', section: 'step three of five', title: 'how trial mode works' },
-  4: { folio: '04', section: 'step four of five', title: 'connect one source' },
-  5: { folio: '05', section: 'step five of five', title: 'invite your co-parent' },
+const PHASE_META: Record<Phase, { folio: string; section: string; title: string }> = {
+  A: { folio: '01', section: 'step one of three', title: 'tell me about your child' },
+  B: { folio: '02', section: 'step two of three', title: 'create your account' },
+  C: { folio: '03', section: 'step three of three', title: 'finish setting up' },
 };
 
-interface ChildRow extends ChildInput {
-  key: number;
-}
+const PLAN_OPTIONS: { tier: PlanTier; label: string; note: string }[] = [
+  { tier: 'free', label: 'free', note: 'observe + draft · no autonomous action' },
+  { tier: 'plus', label: 'plus', note: 'hale acts on your approval · $24/mo' },
+  { tier: 'family', label: 'family', note: 'autonomy + commerce + portals · $49/mo' },
+];
 
-const STAGE_BLURB: Record<string, string> = {
-  newborn: 'the newborn months — feeds, sleep, the pediatric office',
-  toddler: 'the toddler years — daycare, milestones, the small logistics',
-  child: 'the school years — classroom, activities, forms',
-  teenager: 'the teenage years — independence, scheduling, lighter touch',
-};
+export function OnboardingWizard({
+  authReady,
+  signedIn,
+  startAtSetup,
+}: {
+  authReady: boolean;
+  signedIn: boolean;
+  startAtSetup: boolean;
+}) {
+  const router = useRouter();
 
-export function OnboardingWizard({ authReady }: { authReady: boolean }) {
-  const [step, setStep] = useState<Step>(1);
-  const [children, setChildren] = useState<ChildRow[]>([{ key: 0, name: '', dateOfBirth: '' }]);
-  const [parentingStyle, setParentingStyle] = useState<string>('gentle');
-  const [saveState, setSaveState] = useState<
-    { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'preview' } | { kind: 'error'; message: string }
-  >({ kind: 'idle' });
+  // Returning from the OAuth round-trip with ?step=setup AND a real session lands
+  // straight in Phase C; otherwise intake starts at Phase A.
+  const initialPhase: Phase = startAtSetup && signedIn ? 'C' : 'A';
+  const [phase, setPhase] = useState<Phase>(initialPhase);
 
-  const meta = STEP_META[step];
+  const [childName, setChildName] = useState('');
+  const [approxMonth, setApproxMonth] = useState('');
+  const [goal, setGoal] = useState('');
+  const [planTier, setPlanTier] = useState<PlanTier>('free');
+  const [tosAccepted, setTosAccepted] = useState(false);
 
-  // Live derivation as birthdates are typed — never stored, always a function
-  // of date_of_birth. A complete-and-valid child contributes its stage to the
-  // preview; partial rows are simply ignored until they're valid.
-  const validChildren = useMemo<ValidatedChild[]>(
-    () =>
-      children
-        .map((c) => validateChild(c))
-        .filter((r): r is Extract<ValidateChildResult, { ok: true }> => r.ok)
-        .map((r) => r.child),
-    [children],
-  );
-  const previewStages = useMemo(() => unionStages(validChildren), [validChildren]);
+  // Phase C inputs — the first point sensitive data is collected (rule #1).
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [areaCoarse, setAreaCoarse] = useState('');
 
-  function updateChild(key: number, patch: Partial<ChildInput>) {
-    setChildren((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  }
-
-  function addChild() {
-    setChildren((rows) => [...rows, { key: (rows.at(-1)?.key ?? 0) + 1, name: '', dateOfBirth: '' }]);
-  }
-
-  function removeChild(key: number) {
-    setChildren((rows) => (rows.length === 1 ? rows : rows.filter((r) => r.key !== key)));
-  }
-
-  async function handleContinue() {
-    setSaveState({ kind: 'saving' });
-    const result = await saveOnboardingChildren(children.map(({ name, dateOfBirth }) => ({ name, dateOfBirth })));
-    if (result.status === 'saved') {
-      setSaveState({ kind: 'saved' });
-    } else if (result.status === 'preview') {
-      setSaveState({ kind: 'preview' });
-    } else {
-      setSaveState({ kind: 'error', message: `child ${result.index + 1}: ${result.error.replace(/_/g, ' ')}` });
+  // On mount, hydrate from the sessionStorage draft so Phase A survives the OAuth
+  // redirect and prefills Phase C's child name.
+  useEffect(() => {
+    const draft = readIntakeDraft();
+    if (!draft) {
       return;
     }
-    setStep(3);
+    setChildName(draft.childName);
+    setApproxMonth(draft.approxMonth);
+    setGoal(draft.goal);
+    setPlanTier(isPlanTier(draft.planTier) ? draft.planTier : 'free');
+    setTosAccepted(draft.tosAccepted);
+  }, []);
+
+  const meta = PHASE_META[phase];
+  const phaseIndex = phase === 'A' ? 1 : phase === 'B' ? 2 : 3;
+
+  const phaseAComplete = childName.trim().length > 0 && /^\d{4}-\d{2}$/.test(approxMonth);
+
+  function persistDraft(patch: Partial<IntakeDraft>) {
+    const next: IntakeDraft = {
+      childName,
+      approxMonth,
+      goal,
+      planTier,
+      tosAccepted,
+      ...patch,
+    };
+    writeIntakeDraft(next);
   }
 
-  const canContinue = validChildren.length > 0 && validChildren.length === children.filter((c) => c.name.trim() || c.dateOfBirth).length;
+  function goToPhaseB() {
+    persistDraft({});
+    setPhase('B');
+  }
 
-  const [inviteState, setInviteState] = useState<
-    | { kind: 'idle' }
-    | { kind: 'generating' }
-    | { kind: 'ready'; link: string; copied: boolean }
-    | { kind: 'unavailable' }
-    | { kind: 'error' }
+  const dobValidation = useMemo(() => (dateOfBirth ? validateChild({ name: childName || 'x', dateOfBirth }) : null), [dateOfBirth, childName]);
+  const dobError = dobValidation && !dobValidation.ok ? describeError(dobValidation.error) : null;
+
+  const [setupState, setSetupState] = useState<
+    { kind: 'idle' } | { kind: 'saving' } | { kind: 'error'; message: string }
   >({ kind: 'idle' });
 
-  async function generateInviteLink() {
-    setInviteState({ kind: 'generating' });
-    try {
-      const res = await fetch('/api/invite', { method: 'POST' });
-      if (res.status === 201) {
-        const { link } = (await res.json()) as { link: string };
-        setInviteState({ kind: 'ready', link, copied: false });
-        return;
-      }
-      // 501 (no auth in preview) / 403 (no family yet): a link can't be minted
-      // until the family exists — say so honestly rather than show a fake link.
-      setInviteState(res.status === 501 || res.status === 403 ? { kind: 'unavailable' } : { kind: 'error' });
-    } catch {
-      setInviteState({ kind: 'error' });
-    }
-  }
+  const canFinish =
+    childName.trim().length > 0 &&
+    /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) &&
+    !dobError &&
+    tosAccepted;
 
-  async function copyInviteLink(link: string) {
-    await navigator.clipboard.writeText(link);
-    setInviteState({ kind: 'ready', link, copied: true });
+  async function handleFinish() {
+    setSetupState({ kind: 'saving' });
+    const result = await completeOnboarding({
+      child: { name: childName.trim(), dateOfBirth },
+      planTier,
+      tosAccepted,
+      areaCoarse,
+    });
+    if (result.status === 'completed') {
+      clearIntakeDraft();
+      router.push('/home');
+      return;
+    }
+    if (result.status === 'preview') {
+      // Dev preview (auth/db unconfigured): nothing was written. Don't pretend a
+      // family exists — say so and keep the user where they are.
+      setSetupState({
+        kind: 'error',
+        message:
+          "development preview — sign-in isn't configured here, so nothing was saved.",
+      });
+      return;
+    }
+    setSetupState({
+      kind: 'error',
+      message: `couldn't finish: ${result.error.replace(/_/g, ' ')}`,
+    });
   }
 
   return (
     <div className="min-h-screen bg-linen">
-      {/* Running head — book top edge */}
       <header className="shell flex items-center justify-between pt-6 pb-4 border-b border-rule">
         <Link href="/" className="flex items-center gap-3">
           <LogoMark size={32} />
@@ -127,18 +145,18 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
         <div className="flex items-center gap-3">
           <span className="eyebrow">enrolment</span>
           <div className="flex items-center gap-1.5" aria-hidden>
-            {[1, 2, 3, 4, 5].map((s) => (
+            {[1, 2, 3].map((s) => (
               <span
                 key={s}
                 className="block h-px w-6"
                 style={{
-                  background: s <= step ? 'var(--color-spruce)' : 'var(--color-rule-strong)',
+                  background: s <= phaseIndex ? 'var(--color-spruce)' : 'var(--color-rule-strong)',
                 }}
               />
             ))}
           </div>
           <span className="meta tabular" aria-live="polite" aria-atomic="true">
-            step {step} of 5
+            step {phaseIndex} of 3
           </span>
           <ThemeToggle />
         </div>
@@ -153,362 +171,252 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
           </div>
 
           <div className="lg:col-span-9 lg:col-start-4">
-            {step === 1 ? (
-              <section className="rise rise-1 space-y-8 max-w-2xl">
-                <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
-                  Hale is the village your family lost — across every stage of
-                  childhood, from the newborn weeks through the teenage years. I
-                  find the genuinely good local things to do, matched to where
-                  each child actually is, and then make them happen — the
-                  registering, the calendar, the reminders, the gear. I carry
-                  the small things so you can be present.
-                </p>
+            {phase === 'A' ? (
+              <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  Set-up takes about four minutes. I will not do anything autonomously
-                  for the first seven days, no matter what you tell me here. That
-                  is what step three is about.
+                  Start with the basics — just enough for me to show you how Hale
+                  tailors to your child. Nothing here is saved until you create your
+                  account, and I never ask for a full birthday or anything sensitive
+                  yet.
                 </p>
 
-                <div className="panel-apricot-tint px-6 py-5">
-                  <span className="eyebrow text-apricot-deep">a guarantee</span>
-                  <p className="mt-2 text-slate-green">
-                    Your children's names, dates of birth, and medical details are
-                    encrypted at rest with keys you can rotate. Your family's data
-                    stays in Canada — that part is non-negotiable.
-                  </p>
+                <div className="space-y-6">
+                  <div>
+                    <label htmlFor="intake-name" className="eyebrow">
+                      your child&rsquo;s first name
+                    </label>
+                    <input
+                      id="intake-name"
+                      type="text"
+                      className="field mt-2"
+                      value={childName}
+                      onChange={(e) => setChildName(e.currentTarget.value)}
+                      placeholder="maya"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="intake-month" className="eyebrow">
+                      roughly when were they born?
+                    </label>
+                    <input
+                      id="intake-month"
+                      type="month"
+                      className="field mt-2"
+                      value={approxMonth}
+                      max={new Date().toISOString().slice(0, 7)}
+                      onChange={(e) => setApproxMonth(e.currentTarget.value)}
+                    />
+                    <p className="meta mt-2">just the month for now — the exact date comes later, after you sign in.</p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="intake-goal" className="eyebrow">
+                      what are you hoping Hale can help with?
+                    </label>
+                    <textarea
+                      id="intake-goal"
+                      className="field mt-2"
+                      value={goal}
+                      onChange={(e) => setGoal(e.currentTarget.value)}
+                      placeholder="finding good local classes, keeping the calendar straight…"
+                      rows={3}
+                    />
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
-                  {authReady ? (
-                    <>
-                      <Link href="/sign-up" className="btn-primary">
-                        create your account →
-                      </Link>
-                      <Link href="/sign-in" className="btn-ghost">
-                        already have one? sign in
-                      </Link>
-                    </>
-                  ) : (
-                    <button type="button" className="btn-primary" onClick={() => setStep(2)}>
-                      continue →
-                    </button>
-                  )}
+                  <Link href="/" className="btn-ghost">
+                    ← back
+                  </Link>
+                  <button
+                    type="button"
+                    className="btn-primary ml-auto"
+                    onClick={goToPhaseB}
+                    disabled={!phaseAComplete}
+                  >
+                    continue →
+                  </button>
                 </div>
-                {authReady ? null : (
-                  <p className="meta">
-                    development preview — sign-in isn&rsquo;t configured yet, so nothing you
-                    enter is saved. continue to see how Hale tailors to each child.
-                  </p>
-                )}
                 <p className="meta">pipeda · law 25 · casl compliant by default</p>
               </section>
             ) : null}
 
-            {step === 2 ? (
+            {phase === 'B' ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  Add each of your children — a name (or nickname) and a date of
-                  birth. I tailor everything to where each child actually is, so a
-                  newborn and a teenager in the same family both get the right care.
+                  Create your account to save your setup. Pick a plan — you can change
+                  it any time and nothing is charged today.
                 </p>
 
-                <div className="space-y-6">
-                  {children.map((child, idx) => {
-                    const validated = validateChild(child);
-                    const stage = validated.ok ? validated.child.stage : null;
-                    return (
-                      <div
-                        key={child.key}
-                        className="p-5 rounded-[var(--r-md)] border border-rule-strong space-y-5"
-                      >
-                        <div className="flex items-baseline justify-between">
-                          <span className="eyebrow">child {idx + 1}</span>
-                          {children.length > 1 ? (
-                            <button
-                              type="button"
-                              className="link meta"
-                              onClick={() => removeChild(child.key)}
-                            >
-                              remove
-                            </button>
-                          ) : null}
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                          <div>
-                            <label htmlFor={`child-name-${child.key}`} className="eyebrow">
-                              name or nickname
-                            </label>
-                            <input
-                              id={`child-name-${child.key}`}
-                              type="text"
-                              className="field mt-2"
-                              value={child.name}
-                              onChange={(e) => updateChild(child.key, { name: e.currentTarget.value })}
-                              placeholder="maya"
-                              autoComplete="off"
-                              spellCheck={false}
-                            />
-                          </div>
-
-                          <div>
-                            <label htmlFor={`child-dob-${child.key}`} className="eyebrow">
-                              date of birth
-                            </label>
-                            <input
-                              id={`child-dob-${child.key}`}
-                              type="date"
-                              className="field mt-2"
-                              value={child.dateOfBirth}
-                              max={new Date().toISOString().slice(0, 10)}
-                              onChange={(e) => updateChild(child.key, { dateOfBirth: e.currentTarget.value })}
-                              autoComplete="bday"
-                            />
-                          </div>
-                        </div>
-
-                        {child.dateOfBirth ? (
-                          <p className="meta" aria-live="polite">
-                            {stage ? (
-                              <>
-                                <span className="text-spruce">{stage}</span> · {STAGE_BLURB[stage]}
-                              </>
-                            ) : (
-                              <span className="text-apricot-deep">
-                                {validated.ok ? '' : describeError(validated.error)}
-                              </span>
-                            )}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-
-                  <button type="button" className="btn-ghost" onClick={addChild}>
-                    + add another child
-                  </button>
-                </div>
-
-                {previewStages.length > 0 ? (
-                  <div className="panel-oat px-6 py-5">
-                    <span className="eyebrow text-spruce">i'll tailor to</span>
-                    <p className="font-display text-xl mt-2">
-                      {previewStages.join(' + ')}
-                    </p>
-                    <p className="meta mt-1">
-                      derived live from each birthday — it shifts on its own as they grow.
-                    </p>
-                  </div>
-                ) : null}
-
                 <fieldset>
-                  <legend className="eyebrow">how do you want to parent?</legend>
-                  <p className="meta mt-1">affects coach voice + which frameworks i lean on. you can change this any time.</p>
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      { id: 'gentle', label: 'gentle', note: 'lansbury · markham' },
-                      { id: 'attachment', label: 'attachment', note: 'sears · siegel' },
-                      { id: 'structured', label: 'structured', note: 'karp · ferber' },
-                      { id: 'undecided', label: 'still figuring it out', note: "I'll be neutral" },
-                    ].map((opt) => {
-                      const selected = parentingStyle === opt.id;
+                  <legend className="eyebrow">choose a plan</legend>
+                  <div className="mt-4 space-y-3">
+                    {PLAN_OPTIONS.map((opt) => {
+                      const selected = planTier === opt.tier;
                       return (
                         <label
-                          key={opt.id}
-                          className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors block ${
-                            selected
-                              ? 'bg-oat border border-spruce'
-                              : 'border border-rule-strong hover:border-spruce'
+                          key={opt.tier}
+                          className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between ${
+                            selected ? 'bg-oat border border-spruce' : 'border border-rule-strong hover:border-spruce'
                           }`}
                         >
+                          <span>
+                            <span className="font-display text-xl block">{opt.label}</span>
+                            <span className="meta block mt-1">{opt.note}</span>
+                          </span>
                           <input
                             type="radio"
-                            name="parenting-style"
-                            value={opt.id}
+                            name="plan-tier"
+                            value={opt.tier}
                             checked={selected}
-                            onChange={() => setParentingStyle(opt.id)}
+                            onChange={() => {
+                              setPlanTier(opt.tier);
+                              persistDraft({ planTier: opt.tier });
+                            }}
                             className="sr-only"
                           />
-                          <span className="font-display text-xl block">{opt.label}</span>
-                          <span className="meta block mt-1">{opt.note}</span>
+                          {selected ? <span className="eyebrow text-spruce">selected</span> : null}
                         </label>
                       );
                     })}
                   </div>
                 </fieldset>
 
-                {saveState.kind === 'error' ? (
-                  <p className="meta text-apricot-deep" role="alert">{saveState.message}</p>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={tosAccepted}
+                    onChange={(e) => {
+                      setTosAccepted(e.currentTarget.checked);
+                      persistDraft({ tosAccepted: e.currentTarget.checked });
+                    }}
+                    className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
+                  />
+                  <span className="text-slate-green leading-relaxed">
+                    I agree to the{' '}
+                    <Link href="/terms" className="link" target="_blank" rel="noopener noreferrer">
+                      Terms of Service
+                    </Link>{' '}
+                    &amp;{' '}
+                    <Link href="/privacy" className="link" target="_blank" rel="noopener noreferrer">
+                      Privacy Policy
+                    </Link>
+                    .
+                  </span>
+                </label>
+
+                {authReady ? (
+                  <form action={startGoogleSignIn}>
+                    <div className="flex flex-wrap items-center gap-5 pt-2">
+                      <button type="button" className="btn-ghost" onClick={() => setPhase('A')}>
+                        ← back
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn-primary ml-auto"
+                        disabled={!tosAccepted}
+                        onClick={() => persistDraft({})}
+                      >
+                        continue with Google →
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center gap-5 pt-2">
+                      <button type="button" className="btn-ghost" onClick={() => setPhase('A')}>
+                        ← back
+                      </button>
+                    </div>
+                    <p className="meta">
+                      development preview — Google sign-in isn&rsquo;t configured here, so an account
+                      can&rsquo;t be created and nothing you enter is saved.
+                    </p>
+                  </>
+                )}
+              </section>
+            ) : null}
+
+            {phase === 'C' ? (
+              <section className="rise rise-1 space-y-10 max-w-2xl">
+                <p className="text-lg text-slate-green leading-relaxed">
+                  You&rsquo;re signed in. Now the exact date of birth so I can tailor
+                  precisely{childName ? <> for <span className="text-spruce">{childName}</span></> : null} —
+                  this is the first thing that gets saved, encrypted, to your family.
+                </p>
+
+                <div className="space-y-6">
+                  <div>
+                    <label htmlFor="setup-name" className="eyebrow">
+                      child&rsquo;s first name
+                    </label>
+                    <input
+                      id="setup-name"
+                      type="text"
+                      className="field mt-2"
+                      value={childName}
+                      onChange={(e) => setChildName(e.currentTarget.value)}
+                      placeholder="maya"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="setup-dob" className="eyebrow">
+                      date of birth
+                    </label>
+                    <input
+                      id="setup-dob"
+                      type="date"
+                      className="field mt-2"
+                      value={dateOfBirth}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setDateOfBirth(e.currentTarget.value)}
+                      autoComplete="bday"
+                    />
+                    {dobError ? (
+                      <p className="meta text-apricot-deep mt-2" role="alert">
+                        {dobError}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <label htmlFor="setup-area" className="eyebrow">
+                      your area <span className="lowercase">(optional)</span>
+                    </label>
+                    <input
+                      id="setup-area"
+                      type="text"
+                      className="field mt-2"
+                      value={areaCoarse}
+                      onChange={(e) => setAreaCoarse(e.currentTarget.value)}
+                      placeholder="postal area or neighbourhood — e.g. M5V"
+                      autoComplete="off"
+                    />
+                    <p className="meta mt-2">coarse only — for finding local things. never a precise address.</p>
+                  </div>
+                </div>
+
+                {setupState.kind === 'error' ? (
+                  <p className="meta text-apricot-deep" role="alert">
+                    {setupState.message}
+                  </p>
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
-                  <button type="button" className="btn-ghost" onClick={() => setStep(1)}>← back</button>
                   <button
                     type="button"
                     className="btn-primary ml-auto"
-                    onClick={handleContinue}
-                    disabled={!canContinue || saveState.kind === 'saving'}
+                    onClick={handleFinish}
+                    disabled={!canFinish || setupState.kind === 'saving'}
                   >
-                    {saveState.kind === 'saving' ? 'saving…' : 'continue →'}
+                    {setupState.kind === 'saving' ? 'finishing…' : 'finish · open my home →'}
                   </button>
-                </div>
-              </section>
-            ) : null}
-
-            {step === 3 ? (
-              <section className="rise rise-1 space-y-10 max-w-2xl">
-                {saveState.kind === 'preview' ? (
-                  <output className="panel-apricot-tint block px-6 py-5">
-                    <span className="eyebrow text-apricot-deep">preview only</span>
-                    <p className="mt-2 text-slate-green">
-                      You're in a development preview — sign-in isn't configured yet,
-                      so nothing you entered was saved. The stages above are derived
-                      live from the birthdates so you can see how Hale would tailor.
-                    </p>
-                  </output>
-                ) : null}
-
-                <p className="text-xl lg:text-[1.4rem] leading-snug text-slate-green">
-                  For the first seven days, Hale drafts every action — but never
-                  commits it. You see exactly what would have happened. Nothing
-                  sends. Nothing books. Nothing orders.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-6 border-y border-rule py-8">
-                  {[
-                    { eyebrow: 'days 1–7', body: 'i draft. nothing sends.' },
-                    { eyebrow: 'days 8–30', body: 'you tap approve on each.' },
-                    { eyebrow: 'day 31 onward', body: 'i act on routine. ask on the rest.' },
-                  ].map((phase, idx) => (
-                    <div key={phase.eyebrow} className="space-y-2">
-                      <div className="flex items-baseline gap-2">
-                        <span className="folio">{['i', 'ii', 'iii'][idx]}</span>
-                        <span className="eyebrow">{phase.eyebrow}</span>
-                      </div>
-                      <p className="font-display text-xl leading-snug">{phase.body}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-lg text-slate-green leading-relaxed">
-                  You can extend or restart trial mode at any time. You can revoke
-                  autonomy for any action class with one tap. These aren't terms
-                  buried in a tos — they are the architecture of the product.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-5 pt-2">
-                  <button type="button" className="btn-ghost" onClick={() => setStep(2)}>← back</button>
-                  <button type="button" className="btn-primary ml-auto" onClick={() => setStep(4)}>
-                    i understand · continue →
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
-            {step === 4 ? (
-              <section className="rise rise-1 space-y-8 max-w-2xl">
-                <p className="text-lg text-slate-green leading-relaxed">
-                  Connect one source first. Gmail is the highest-leverage entry —
-                  the pediatric office, daycare, school, government, and family all
-                  reach you there. You can connect calendar and photos next from the{' '}
-                  <span className="font-display italic">connected</span> page.
-                </p>
-
-                <div className="space-y-3">
-                  {[
-                    { id: 'gmail', label: 'gmail', note: 'recommended · highest leverage' },
-                    { id: 'outlook', label: 'outlook', note: "if you'd rather use microsoft" },
-                    { id: 'icloud', label: 'apple mail', note: 'beta · slower sync' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className="w-full text-left p-5 rounded-[var(--r-md)] flex items-baseline justify-between border border-rule-strong hover:border-spruce hover:bg-linen transition-colors"
-                    >
-                      <div>
-                        <span className="font-display text-[1.6rem] block leading-none">{opt.label}</span>
-                        <span className="meta block mt-2">{opt.note}</span>
-                      </div>
-                      <span className="eyebrow text-apricot-deep">connect →</span>
-                    </button>
-                  ))}
-                </div>
-
-                <p className="meta">
-                  you approve every scope. I can't read attachments from senders
-                  not in your allowlist. you can revoke access in two taps.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-5 pt-2">
-                  <button type="button" className="btn-ghost" onClick={() => setStep(3)}>← back</button>
-                  <button type="button" className="btn-ghost ml-auto" onClick={() => setStep(5)}>
-                    skip for now
-                  </button>
-                  <button type="button" className="btn-primary" onClick={() => setStep(5)}>
-                    continue →
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
-            {step === 5 ? (
-              <section className="rise rise-1 space-y-10 max-w-2xl">
-                <p className="text-lg text-slate-green leading-relaxed">
-                  Hale works best as a family unit. invite your co-parent and we
-                  will share the digest, drafts, and trail across both of you.
-                  Either of you can approve actions. Neither of you can be locked
-                  out.
-                </p>
-
-                <div className="panel">
-                  <span className="eyebrow">share this link</span>
-                  {inviteState.kind === 'ready' ? (
-                    <>
-                      <p className="font-display text-xl break-all mt-2">{inviteState.link}</p>
-                      <div className="flex flex-wrap items-center gap-5 mt-5">
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={() => copyInviteLink(inviteState.link)}
-                        >
-                          {inviteState.copied ? 'copied ✓' : 'copy link'}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="meta mt-2">
-                        {inviteState.kind === 'unavailable'
-                          ? "I'll have your invite link ready once your family is set up — invite your co-parent from settings."
-                          : inviteState.kind === 'error'
-                            ? "couldn't generate a link just now — try again."
-                            : 'generate a one-time link to invite your co-parent into your village.'}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-5 mt-5">
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={generateInviteLink}
-                          disabled={inviteState.kind === 'generating'}
-                        >
-                          {inviteState.kind === 'generating' ? 'generating…' : 'generate invite link'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <p className="meta">
-                  no co-parent? skip this — actions affecting another person's
-                  data will simply require your explicit tap. you can invite
-                  later from settings.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-5 pt-2">
-                  <button type="button" className="btn-ghost" onClick={() => setStep(4)}>← back</button>
-                  <Link href="/home" className="btn-primary ml-auto">
-                    finish · open my home →
-                  </Link>
                 </div>
               </section>
             ) : null}
@@ -519,6 +427,10 @@ export function OnboardingWizard({ authReady }: { authReady: boolean }) {
   );
 }
 
+function isPlanTier(value: string): value is PlanTier {
+  return value === 'free' || value === 'plus' || value === 'family';
+}
+
 function describeError(error: string): string {
   switch (error) {
     case 'dob_future':
@@ -527,6 +439,8 @@ function describeError(error: string): string {
       return 'Hale is for children under eighteen';
     case 'dob_invalid':
       return "that date doesn't look right";
+    case 'dob_required':
+      return 'add a date of birth';
     default:
       return '';
   }
