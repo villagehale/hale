@@ -292,10 +292,20 @@ strong { font-weight: 700; }
   gap: 0.5rem;
 }
 
+/*
+ * The app shell is a fixed-height frame, not a scrolling page. The sidebar and
+ * the main stage each own their scroll, so the sticky header never drifts and
+ * there is no whole-page scroll jank. Width tokens drive the rail collapse, so
+ * one transition animates the grid.
+ */
 .editorial-layout {
+  --sidebar-full: clamp(260px, 22vw, 320px);
+  --sidebar-rail: 5.25rem;
+  --sidebar-w: var(--sidebar-full);
   display: grid;
   grid-template-columns: 1fr;
-  min-height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--color-linen);
 }
 
@@ -303,51 +313,278 @@ strong { font-weight: 700; }
   .editorial-layout {
     /* minmax(0, 1fr) floor keeps a long word in a descendant H1 from
      * blowing out the column and triggering horizontal scroll. */
-    grid-template-columns: clamp(260px, 22vw, 320px) minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    transition: grid-template-columns 260ms var(--ease-breathe);
+  }
+  [data-shell-collapsed="1"] .editorial-layout { --sidebar-w: var(--sidebar-rail); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editorial-layout { transition: none; }
+}
+
+/* The scrolling column: header pinned, main stage scrolls beneath it. */
+.shell-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Sidebar dock — the grid cell on desktop, an off-canvas drawer below ── */
+
+.sidebar-dock {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .sidebar-dock {
+    display: block;
+    min-height: 0;
+    overflow: hidden;
   }
 }
 
 /* ── Sidebar — a soft Oat panel that stays out of the way ──────────────── */
 
 .sidebar {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-oat);
+  padding: 2.25rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: var(--color-spruce);
 }
+
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: var(--color-spruce);
+  min-width: 0;
+}
+
+.sidebar-wordmark {
+  font-size: 2.1rem;
+  line-height: 1;
+}
+
+.sidebar-top-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse,
+.sidebar-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-faded-sage);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.sidebar-collapse:hover,
+.sidebar-drawer-close:hover { color: var(--color-spruce); background: var(--color-linen); }
+
+.sidebar-collapse:focus-visible,
+.sidebar-drawer-close:focus-visible {
+  outline: none;
+  color: var(--color-spruce);
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* The collapse toggle is desktop-only; the close (X) is drawer-only. */
+.sidebar-drawer-close { display: none; }
+
+@media (max-width: 1023.98px) {
+  .sidebar-collapse { display: none; }
+  .sidebar-drawer-close { display: inline-flex; }
+}
+
+.sidebar-tagline { margin-top: 0.5rem; }
+
+.sidebar-nav {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sidebar-foot-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sidebar-turtle {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+/* ── Collapsed rail — icons only, labels + chrome fold away, tips on hover ─ */
 
 @media (min-width: 1024px) {
-  .sidebar {
-    display: flex;
-    flex-direction: column;
-    position: sticky;
-    top: 0;
-    align-self: start;
-    height: 100vh;
-    background: var(--color-oat);
-    padding: 2.5rem 1.75rem 1.75rem 2rem;
-    overflow-y: auto;
-    color: var(--color-spruce);
+  /* The rail is short (a handful of icons), so it can drop its own scroll and
+   * let tooltips escape the panel edge instead of being clipped. */
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-dock { overflow: visible; }
+  [data-shell-collapsed="1"] .editorial-layout .sidebar {
+    padding-inline: 1rem;
+    align-items: stretch;
+    overflow: visible;
   }
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-wordmark,
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-tagline,
+  [data-shell-collapsed="1"] .editorial-layout .nav-label,
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-turtle,
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls .btn-ghost,
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls .btn-primary {
+    display: none;
+  }
+  /* Stack the brand over the collapse toggle so the toggle stays reachable in
+   * the rail — without it, a collapsed sidebar could never be re-expanded. */
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-top {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-brand { gap: 0; }
+  [data-shell-collapsed="1"] .editorial-layout .nav-item { justify-content: center; padding-inline: 0; }
+  [data-shell-collapsed="1"] .editorial-layout .nav-item .nav-folio { width: auto; }
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls { justify-content: center; }
+  [data-shell-collapsed="1"] .editorial-layout .nav-tip { display: block; }
 }
 
-/* The mobile-only running head */
+/* ── Off-canvas drawer (below the desktop breakpoint) ──────────────────── */
+
+.drawer-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  border: 0;
+  padding: 0;
+  background: rgb(1 32 79 / 0.45);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 240ms var(--ease-breathe);
+}
+
+@media (max-width: 1023.98px) {
+  .sidebar-dock {
+    display: block;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: min(20rem, 86vw);
+    transform: translateX(-100%);
+    transition: transform 260ms var(--ease-breathe);
+  }
+  .sidebar-dock[data-open] { transform: translateX(0); box-shadow: 0 0 48px rgb(1 32 79 / 0.28); }
+  .drawer-scrim[data-open] { display: block; opacity: 1; }
+}
+
+@media (max-width: 1023.98px) and (prefers-reduced-motion: reduce) {
+  .sidebar-dock, .drawer-scrim { transition: none; }
+}
+
+/* ── Running head — the sticky header frame above the scrolling stage ───── */
+
 .runninghead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.9rem var(--shell-pad-x);
+  gap: 1rem;
+  flex-shrink: 0;
+  padding: 0.85rem var(--shell-pad-x);
   background: var(--color-linen);
+  border-bottom: 1px solid var(--color-rule);
   position: sticky;
   top: 0;
   z-index: 20;
 }
 
+.runninghead-lead {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.runninghead-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--color-spruce);
+}
+
+.runninghead-trail { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+
+.runninghead-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-spruce);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 220ms var(--ease-breathe);
+}
+
+.runninghead-menu:hover { background: var(--color-oat); }
+
+.runninghead-menu:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* On desktop the sidebar carries the brand + nav, so the running head keeps
+ * only the current-page eyebrow and the theme toggle; the hamburger hides. */
 @media (min-width: 1024px) {
-  .runninghead { display: none; }
+  .runninghead-menu, .runninghead-brand { display: none; }
 }
 
 .main-stage {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: clamp(1.5rem, 3vw, 3rem) var(--shell-pad-x) clamp(3rem, 6vw, 6rem);
   background: var(--color-linen);
-  min-height: 100vh;
 }
 
 @media (min-width: 1024px) {
@@ -603,10 +840,9 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 
 .nav-item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.85rem;
   padding: 0.5rem 0.6rem;
-  margin-inline: -0.6rem;
   color: var(--color-slate-green);
   text-decoration: none;
   border-radius: var(--r-md);
@@ -623,10 +859,9 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 }
 
 .nav-item .nav-folio {
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--color-faded-sage);
   width: 1.6rem;
   flex-shrink: 0;
@@ -638,6 +873,7 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   line-height: 1;
   letter-spacing: var(--tracking-display);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .nav-item:hover .nav-folio { color: var(--color-apricot-deep); }
@@ -647,6 +883,37 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   background: var(--color-apricot-tint);
 }
 .nav-item[aria-current="page"] .nav-folio { color: var(--color-apricot-deep); }
+
+/* Tooltip shown only in the collapsed rail (toggled on by the rail rule). It
+ * sits to the right of the icon and appears on hover/focus. */
+.nav-tip {
+  display: none;
+  position: absolute;
+  left: calc(100% + 0.5rem);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 50;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--r-sm);
+  background: var(--color-spruce);
+  color: var(--color-on-spruce);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms var(--ease-breathe);
+}
+
+[data-shell-collapsed="1"] .editorial-layout .nav-item:hover .nav-tip,
+[data-shell-collapsed="1"] .editorial-layout .nav-item:focus-visible .nav-tip {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-tip { transition: none; }
+}
 
 /* ── Breathing reveal — settle UP a few px and fade in, slowly ─────────── */
 
