@@ -143,8 +143,8 @@ export function OnboardingWizard({
         </Link>
 
         <div className="flex items-center gap-3">
-          <span className="eyebrow">enrolment</span>
-          <div className="flex items-center gap-1.5" aria-hidden>
+          <span className="eyebrow hidden sm:inline">enrolment</span>
+          <div className="hidden sm:flex items-center gap-1.5" aria-hidden>
             {[1, 2, 3].map((s) => (
               <span
                 key={s}
