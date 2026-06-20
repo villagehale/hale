@@ -97,8 +97,8 @@
  * and focus rings (inner ring = linen) stay matched to the page. Accents are
  * lightened to hold AA on the dark ground (all pairs verified ≥ 4.5:1). */
 .dark {
-  --color-linen: #01204F;        /* page background — Prussian night */
-  --color-oat: #0a2d63;          /* raised surface — a shade up from the page */
+  --color-linen: #021E4E;        /* page background — exact logo Prussian */
+  --color-oat: #082a5e;          /* raised surface — restrained lift, keeps the logo depth */
   --color-spruce: #f6f1e7;       /* primary ink — cream — 14.12:1 on page */
   --color-slate-green: #c7d3e6;  /* secondary text — 10.52:1 */
   --color-faded-sage: #9bb0d0;   /* tertiary / meta — 7.20:1 */
