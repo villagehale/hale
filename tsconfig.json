@@ -4,6 +4,7 @@
   "references": [
     { "path": "./packages/db" },
     { "path": "./packages/types" },
-    { "path": "./packages/tools-contracts" }
+    { "path": "./packages/tools-contracts" },
+    { "path": "./packages/agent" }
   ]
 }
