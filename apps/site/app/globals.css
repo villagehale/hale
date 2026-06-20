@@ -11,9 +11,12 @@
  * a Prussian-forward palette with a warm-coral accent, gently rounded clean
  * cards, Lucide icons, and a hand-built flat color-block SVG illustration kit.
  *
- * Dark mode is the logo's own palette: a Prussian (#01204F) night with cream
- * ink, surfaces a shade deeper, and the white turtle glowing on it. Both modes
- * hold WCAG-AA contrast.
+ * Dark mode is BRAND-ANCHORED, not brand-flooded: the page canvas is a calm,
+ * slightly-desaturated deep Prussian-charcoal (comfortable for long/night
+ * reading), surfaces step up a clear ladder (canvas → card → the logo-Prussian
+ * "night" band), and the saturated logo Prussian is that band's accent rather
+ * than flooding the whole page. Cream ink throughout; the white turtle glows on
+ * it. Both modes hold WCAG-AA contrast. Mirrors apps/web's dark tokens.
  *
  * Hard rules baked in:
  *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
@@ -26,8 +29,8 @@
 
 @theme {
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #f6f1e7;       /* primary background — 11.96:1 with Spruce */
-  --color-oat: #efe7d6;         /* secondary surface, soft raised panels */
+  --color-linen: #f6f1e7;       /* canvas — primary background, 11.96:1 with Spruce */
+  --color-oat: #efe7d6;         /* card surface — secondary surface, soft panels */
   --color-spruce: #01204F;      /* primary ink / night-section fill — 11.96:1 */
   --color-slate-green: #33486b; /* secondary text, captions — 7.00:1 */
   --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 4.81:1 */
@@ -82,35 +85,42 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Dark mode = the logo's palette ──────────────────────────────────────── *
- * Prussian night, cream ink, the white turtle glowing. We re-point the same
- * token *roles* so every existing component flips for free: --color-spruce is
- * "ink" (now cream) and --color-linen is "page" (now Prussian), so e.g.
- * .btn-primary (spruce fill / linen text) becomes cream fill / Prussian text,
- * and focus rings (inner ring = linen) stay matched to the page. Accents are
- * lightened to hold AA on the dark ground (all pairs verified ≥ 4.5:1). */
+/* ── Dark mode = brand-ANCHORED, not brand-flooded ───────────────────────── *
+ * A logo colour is an accent, not a canvas. The page canvas is a CALM,
+ * slightly-desaturated deep Prussian-charcoal (comfortable for long/night
+ * reading) and surfaces step up a clear ladder — canvas #0b1626 → card #13233a
+ * → the logo-Prussian "night" band — so the hierarchy is obvious and photos /
+ * illustration blocks aren't blue-washed. The saturated logo Prussian lives in
+ * the dark "night" band (see .dark .night below), not flooding the whole page.
+ *
+ * We re-point the same token *roles* so every existing component flips for free:
+ * --color-spruce is "ink" (now cream) and --color-linen is "canvas" (now the
+ * calm charcoal-Prussian), so e.g. .btn-primary (spruce fill / linen text)
+ * becomes cream fill / canvas text and focus rings (inner ring = linen) stay
+ * matched to the surface. Accents are lightened to hold AA on the dark ground
+ * (all text pairs verified ≥ 4.5:1 against canvas, card and the night band). */
 .dark {
-  --color-linen: #021E4E;        /* page background — exact logo Prussian */
-  --color-oat: #082a5e;          /* raised surface — restrained lift, keeps the logo depth */
-  --color-spruce: #f6f1e7;       /* primary ink — cream — 14.12:1 on page */
-  --color-slate-green: #c7d3e6;  /* secondary text — 10.52:1 */
-  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 7.20:1 */
+  --color-linen: #0b1626;        /* CANVAS — calm desaturated deep Prussian-charcoal */
+  --color-oat: #13233a;          /* CARD surface — one clear notch above canvas */
+  --color-spruce: #f6f1e7;       /* primary ink — cream — 16.12:1 on canvas */
+  --color-slate-green: #c7d3e6;  /* secondary text — 12.00:1 on canvas */
+  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 8.22:1 on canvas */
 
   --color-apricot: #e8915c;          /* large-graphic fill */
-  --color-apricot-deep: #e8915c;     /* text-safe accent on dark — 6.54:1 */
-  --color-apricot-tint: #122c4a;     /* warm-wash panel ground (cream ink rides it) */
+  --color-apricot-deep: #e8915c;     /* text-safe accent — 7.46:1 on canvas, 5.37:1 on raised */
+  --color-apricot-tint: #2e2331;     /* warm-wash panel ground (cream ink rides it) */
 
   --color-sky: #7fb5c4;
-  --color-sky-deep: #8fc1d1;     /* text-safe blue on dark — 8.11:1 */
-  --color-sky-tint: #122c4a;     /* illustration / pill wash */
+  --color-sky-deep: #8fc1d1;     /* text-safe blue — 9.26:1 on canvas */
+  --color-sky-tint: #142b48;     /* illustration / pill wash */
 
   --color-sea: #6fb3c9;          /* turtle accent on dark */
 
-  --color-sage: #a9c49a;         /* "done" tone — 8.37:1 */
-  --color-sage-tint: #16331f;
+  --color-sage: #a9c49a;         /* "done" tone — 9.55:1 on canvas */
+  --color-sage-tint: #18301f;
 
-  --color-berry: #e09aaa;        /* "needs your eye" — 7.10:1 */
-  --color-berry-tint: #3a1c26;
+  --color-berry: #e09aaa;        /* "needs your eye" — 8.10:1 on canvas */
+  --color-berry-tint: #3a1f29;
 
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.24);
@@ -123,18 +133,20 @@
 }
 
 /* The night section is a dark band in BOTH modes — Spruce ground in light, the
- * raised Oat surface in dark (so it separates from the already-Prussian page).
- * Its text therefore always wants cream-on-dark. In light that is what
- * --color-on-spruce already is; in dark --color-on-spruce has inverted to
- * Prussian, so we re-point the band's on-ground tokens back to cream here. The
- * Check-bullet stroke (var(--color-spruce)) likewise needs to stay Prussian-dark
- * against its apricot chip, so it is pinned too. */
+ * exact logo Prussian in dark. With the calm charcoal-Prussian canvas, the
+ * saturated logo Prussian here reads as the BRAND ANCHOR (the dark-mode analogue
+ * of the product app's chrome) — distinct from the calm canvas and the card
+ * ladder, and unmistakably the logo colour. Its text always wants cream-on-dark:
+ * in light --color-on-spruce already is cream; in dark --color-on-spruce has
+ * inverted to Prussian, so we re-point the band's on-ground tokens back to cream
+ * here. The Check-bullet stroke (var(--color-spruce)) likewise needs to stay
+ * Prussian-dark against its apricot chip, so it is pinned too. */
 .night {
   background: var(--color-spruce);
   color: var(--color-on-spruce);
 }
 .dark .night {
-  background: var(--color-oat);
+  background: #021E4E;
   --color-on-spruce: #f6f1e7;
   --color-on-spruce-soft: rgb(246 241 231 / 0.74);
   --color-on-spruce-faint: rgb(246 241 231 / 0.50);

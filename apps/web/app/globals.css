@@ -16,9 +16,12 @@
  * JetBrains Mono for dates, data, and numeric chips; imagery is a hand-built
  * flat color-block SVG kit.
  *
- * Dark mode is the logo's own palette: a Prussian (#01204F) night with cream
- * ink, surfaces a shade deeper, and the white turtle glowing on it. Both modes
- * hold WCAG-AA contrast.
+ * Dark mode is BRAND-ANCHORED, not brand-flooded: the content canvas is a calm,
+ * slightly-desaturated deep Prussian-charcoal (comfortable for long/night
+ * reading), the app frame (sidebar + top header) wears the exact logo Prussian
+ * as the chrome anchor, and surfaces climb a clear elevation ladder
+ * (canvas → card → raised). Cream ink throughout; the white turtle glows on it.
+ * Both modes hold WCAG-AA contrast.
  *
  * Hard rules baked in:
  *   - Apricot #c8622d is FILL / large-graphic only (3.56:1) — never small
@@ -33,8 +36,8 @@
 
 @theme {
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #f6f1e7;       /* primary background — 11.96:1 with Spruce */
-  --color-oat: #efe7d6;         /* secondary surface, soft raised panels */
+  --color-linen: #f6f1e7;       /* canvas — primary background, 11.96:1 with Spruce */
+  --color-oat: #efe7d6;         /* card surface — secondary surface, soft panels */
   --color-spruce: #01204F;      /* primary ink / night-section fill — 11.96:1 */
   --color-slate-green: #33486b; /* secondary text, captions — 7.00:1 */
   --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 4.81:1 */
@@ -89,35 +92,46 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Dark mode = the logo's palette ──────────────────────────────────────── *
- * Prussian night, cream ink, the white turtle glowing. We re-point the same
- * token *roles* so every existing component flips for free: --color-spruce is
- * "ink" (now cream) and --color-linen is "page" (now Prussian), so e.g.
- * .btn-primary (spruce fill / linen text) becomes cream fill / Prussian text,
- * and focus rings (inner ring = linen) stay matched to the page. Accents are
- * lightened to hold AA on the dark ground (all pairs verified ≥ 4.5:1). */
+/* ── Dark mode = brand-ANCHORED, not brand-flooded ───────────────────────── *
+ * A logo colour is an accent, not a canvas. The content area is a CALM,
+ * slightly-desaturated deep Prussian-charcoal (easy on the eyes for long/night
+ * reading); the saturated logo Prussian is reserved for the app FRAME (sidebar +
+ * top header, see --color-chrome and the .dark .sidebar/.runninghead rules
+ * below) so the brand is unmistakable while content stays neutral and photos /
+ * activity cards aren't blue-washed.
+ *
+ * We re-point the same token *roles* so every existing component flips for free:
+ * --color-spruce is "ink" (now cream) and --color-linen is "canvas" (now the
+ * calm charcoal-Prussian), so e.g. .btn-primary (spruce fill / linen text)
+ * becomes cream fill / canvas text and focus rings (inner ring = linen) stay
+ * matched to the surface. The elevation ladder is explicit and perceptible —
+ * canvas #0b1626 → card #13233a → raised #1d3150, each a clear notch lighter.
+ * Accents are lightened to hold AA on the dark ground (all text pairs verified
+ * ≥ 4.5:1 against canvas, card, raised AND the Prussian chrome). */
 .dark {
-  --color-linen: #021E4E;        /* page background — exact logo Prussian */
-  --color-oat: #082a5e;          /* raised surface — restrained lift, keeps the logo depth */
-  --color-spruce: #f6f1e7;       /* primary ink — cream — 14.12:1 on page */
-  --color-slate-green: #c7d3e6;  /* secondary text — 10.52:1 */
-  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 7.20:1 */
+  --color-linen: #0b1626;        /* CANVAS — calm desaturated deep Prussian-charcoal */
+  --color-oat: #13233a;          /* CARD surface — one clear notch above canvas */
+  --color-raised: #1d3150;       /* RAISED — two notches up (interactive-card lift) */
+  --color-chrome: #021E4E;       /* CHROME ANCHOR — exact logo Prussian, app frame only */
+  --color-spruce: #f6f1e7;       /* primary ink — cream — 16.12:1 on canvas */
+  --color-slate-green: #c7d3e6;  /* secondary text — 12.00:1 on canvas */
+  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 8.22:1 on canvas */
 
   --color-apricot: #e8915c;          /* large-graphic fill */
-  --color-apricot-deep: #e8915c;     /* text-safe accent on dark — 6.54:1 */
-  --color-apricot-tint: #2a2238;     /* warm-wash panel ground (cream ink rides it) */
+  --color-apricot-deep: #e8915c;     /* text-safe accent — 7.46:1 on canvas, 5.37:1 on raised */
+  --color-apricot-tint: #2e2331;     /* warm-wash panel / active-nav ground (cream rides it) */
 
   --color-sky: #7fb5c4;
-  --color-sky-deep: #8fc1d1;     /* text-safe blue on dark — 8.11:1 */
-  --color-sky-tint: #122c4a;     /* illustration / pill wash */
+  --color-sky-deep: #8fc1d1;     /* text-safe blue — 9.26:1 on canvas */
+  --color-sky-tint: #142b48;     /* illustration / pill wash */
 
   --color-sea: #6fb3c9;          /* turtle accent on dark */
 
-  --color-sage: #a9c49a;         /* "done" tone — 8.37:1 */
-  --color-sage-tint: #16331f;
+  --color-sage: #a9c49a;         /* "done" tone — 9.55:1 on canvas */
+  --color-sage-tint: #18301f;
 
-  --color-berry: #e09aaa;        /* "needs your eye" — 7.10:1 */
-  --color-berry-tint: #3a1c26;
+  --color-berry: #e09aaa;        /* "needs your eye" — 8.10:1 on canvas */
+  --color-berry-tint: #3a1f29;
 
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.24);
@@ -129,7 +143,22 @@
   color-scheme: dark;
 }
 
-/* ── Base ──────────────────────────────────────────────────────────────── */
+/* ── Chrome anchor (dark only) ───────────────────────────────────────────── *
+ * The app frame — sidebar + sticky top header + the off-canvas drawer — wears
+ * the exact logo Prussian so the brand identity is unmistakable while the
+ * content canvas stays calm. We paint the frame with --color-chrome and locally
+ * re-point the "surface" tokens that nested controls lift onto (--color-linen /
+ * --color-oat), so a nav hover or theme-toggle thumb steps UP from the Prussian
+ * frame instead of dropping back to the calm canvas — keeping the frame's
+ * elevation self-consistent. Light mode is untouched: --color-chrome is Oat
+ * there, exactly what the sidebar already used. */
+.dark .sidebar,
+.dark .runninghead {
+  background: var(--color-chrome);
+  /* Lift surfaces, relative to the Prussian frame, for nested hover/active states */
+  --color-linen: #0c2b62;   /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
+  --color-oat: #0a2a5e;     /* theme-toggle track / menu hover — subtle on-chrome panel */
+}
 
 html {
   background: var(--color-linen);
@@ -1059,6 +1088,13 @@ html, body, .sidebar, .panel, .card, .field {
 .card-interactive:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgb(1 32 79 / 0.12);
+}
+
+/* On the dark canvas a drop-shadow barely registers, so an interactive card
+ * "lifts" by climbing the elevation ladder (card → raised) — the tangible
+ * dark-mode equivalent of the light-mode shadow lift. */
+.dark .card-interactive:hover {
+  background: var(--color-raised);
 }
 
 .card-interactive:focus-visible {
