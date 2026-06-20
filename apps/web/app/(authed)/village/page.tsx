@@ -1,3 +1,4 @@
+import { FindActivitiesButton } from '~/components/hale/find-activities-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { VillageSearch } from '~/components/hale/village-search';
@@ -75,6 +76,9 @@ export default async function VillagePage() {
             no data yet — tell me your area and what your kids love, and I'll gather the classes,
             groups, and drop-ins near you worth a look.
           </p>
+          <div className="mt-8">
+            <FindActivitiesButton />
+          </div>
         </section>
       ) : (
         <VillageSearch candidates={candidates} />
