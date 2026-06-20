@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 
 /**
@@ -11,6 +11,11 @@ import { type Database, schema } from '@hale/db';
 export interface TranscriptMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface RehydratedThread {
+  conversationId: string;
+  messages: TranscriptMessage[];
 }
 
 /** Creates a fresh conversation for a family and returns its id. */
@@ -53,6 +58,44 @@ export async function resolveConversationForFamily(
     .limit(1);
 
   return rows[0]?.id ?? null;
+}
+
+/**
+ * Resolves the family's MOST RECENT conversation id, or null when the family has
+ * no thread yet. Family-scoped (rule #1): only the requesting family's own
+ * threads are ever considered. This is the rehydration anchor — the thread Ask
+ * Hale replays on page load so visible history survives a refresh.
+ */
+export async function resolveLatestConversationForFamily(
+  familyId: string,
+  database: Database,
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.conversations.id })
+    .from(schema.conversations)
+    .where(eq(schema.conversations.familyId, familyId))
+    .orderBy(desc(schema.conversations.createdAt))
+    .limit(1);
+
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Loads the family's latest thread with its persisted messages, or null when
+ * there is nothing to rehydrate. The single read path Ask Hale uses on load so
+ * the same conversation the agent persisted re-appears after a refresh.
+ */
+export async function loadLatestThread(
+  familyId: string,
+  database: Database,
+): Promise<RehydratedThread | null> {
+  const conversationId = await resolveLatestConversationForFamily(familyId, database);
+  if (!conversationId) {
+    return null;
+  }
+
+  const messages = await loadTranscript(conversationId, database);
+  return { conversationId, messages };
 }
 
 /** Loads a conversation's transcript in chronological order. */
