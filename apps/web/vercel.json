@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd ../.. && rm -rf packages/*/dist packages/*/*.tsbuildinfo packages/*/tsconfig.tsbuildinfo && pnpm turbo build --filter=@hale/web --force",
   "crons": [
     { "path": "/api/cron/digest", "schedule": "0 12 * * *" },
     { "path": "/api/cron/inference", "schedule": "0 6 * * *" },
