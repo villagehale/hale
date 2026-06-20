@@ -178,6 +178,7 @@ describe('completeOnboarding', () => {
 
     expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
     // Postal code is normalized (upper-cased, trimmed) and mirrored into areaCoarse.
+    // No intents supplied → stored as null (column is nullable).
     expect(s.updateFor(schema.families)).toEqual({
       planTier: 'plus',
       country: 'Canada',
@@ -185,7 +186,49 @@ describe('completeOnboarding', () => {
       city: 'Toronto',
       postalCode: 'M5V 2T6',
       areaCoarse: 'M5V 2T6',
+      intents: null,
     });
+  });
+
+  it('persists the chosen intents (validated + ordered) on the family', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+
+    const result = await completeOnboarding({
+      children: PHASE_C_CHILDREN,
+      planTier: 'plus',
+      tosAccepted: true,
+      // out of canonical order, with a duplicate + an unknown value mixed in
+      intents: ['health', 'activities', 'health', 'groceries'],
+    });
+
+    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    // Unknown 'groceries' dropped, duplicate collapsed, canonical order restored.
+    expect(s.updateFor(schema.families)).toMatchObject({ intents: ['activities', 'health'] });
+  });
+
+  it('stores intents as null when none are chosen (optional, defaults to none)', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+
+    await completeOnboarding({
+      children: PHASE_C_CHILDREN,
+      planTier: 'plus',
+      tosAccepted: true,
+      intents: [],
+    });
+
+    expect(s.updateFor(schema.families)).toMatchObject({ intents: null });
   });
 
   it('updates the parent name when supplied (confirmed Google name) and audits with that actor', async () => {

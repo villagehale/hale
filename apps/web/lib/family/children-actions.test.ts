@@ -6,6 +6,7 @@ import {
   addChildAction,
   editChildAction,
   removeChildAction,
+  setIntentsAction,
   setLocationAction,
   setParentNameAction,
   setPlanAction,
@@ -319,6 +320,49 @@ describe('setPlanAction', () => {
     const result = await setPlanAction('enterprise');
     expect(result).toEqual({ status: 'invalid' });
     expect(resolveFamilyForUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('setIntentsAction', () => {
+  it('writes validated intents (unknown dropped, canonical order) and audits before/after', async () => {
+    const { tx, inserts, updates } = makeTx([{ intents: ['planning'] }]);
+    fakeDbHandle = txDb(tx);
+
+    // out of order + an unknown value the action must drop
+    const result = await setIntentsAction(['health', 'activities', 'groceries']);
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(valuesFor(updates, schema.families)).toEqual({ intents: ['activities', 'health'] });
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: USER_ID,
+      actionTaken: 'family_intents_updated',
+      targetTable: 'families',
+      targetId: FAMILY_ID,
+      before: { intents: ['planning'] },
+      after: { intents: ['activities', 'health'] },
+    });
+  });
+
+  it('clears intents to null on an empty selection (optional, defaults to none)', async () => {
+    const { tx, updates } = makeTx([{ intents: ['planning'] }]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await setIntentsAction([]);
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(valuesFor(updates, schema.families)).toEqual({ intents: null });
+  });
+
+  it('returns preview (no write) when auth is unconfigured', async () => {
+    configureAuth(false);
+    const transaction = vi.fn();
+    fakeDbHandle = { transaction };
+
+    const result = await setIntentsAction(['activities']);
+
+    expect(result).toEqual({ status: 'preview' });
+    expect(transaction).not.toHaveBeenCalled();
   });
 });
 

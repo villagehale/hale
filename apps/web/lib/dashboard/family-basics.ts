@@ -1,6 +1,6 @@
 import type { schema } from '@hale/db';
-import type { PlanTier } from '@hale/types';
-import { type FamilyStage, deriveStage } from '@hale/types';
+import type { OnboardingIntent, PlanTier } from '@hale/types';
+import { type FamilyStage, deriveStage, parseIntents } from '@hale/types';
 
 /**
  * The Family page's editable basics: each child's name, current derived stage,
@@ -36,11 +36,13 @@ export interface FamilyLocationView {
 export interface FamilyBasicsView {
   location: FamilyLocationView;
   planTier: PlanTier;
+  intents: OnboardingIntent[];
   children: FamilyChildBasics[];
 }
 
 export interface FamilyRowBasics extends FamilyLocationView {
   planTier: PlanTier;
+  intents: string[] | null;
 }
 
 export function toFamilyBasics(
@@ -56,6 +58,7 @@ export function toFamilyBasics(
       postalCode: family?.postalCode ?? null,
     },
     planTier: family?.planTier ?? 'free',
+    intents: parseIntents(family?.intents ?? []),
     children: children.map((child) => ({
       id: child.id,
       name: child.name,

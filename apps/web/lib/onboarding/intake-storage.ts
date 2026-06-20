@@ -17,7 +17,8 @@ export interface IntakeDraft {
   childNames: string[];
   /** Coarse city (non-sensitive) for early local-discovery framing. */
   city: string;
-  goal: string;
+  /** Chosen onboarding intents (OnboardingIntent values) — optional, may be empty. */
+  intents: string[];
   planTier: string;
   tosAccepted: boolean;
 }
