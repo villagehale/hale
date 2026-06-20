@@ -1,11 +1,13 @@
 import type { schema } from '@hale/db';
+import type { PlanTier } from '@hale/types';
 import { type FamilyStage, deriveStage } from '@hale/types';
 
 /**
  * The Family page's editable basics: each child's name, current derived stage,
- * and date_of_birth (needed so an edit form prefills), plus the family's coarse
- * area. Stage is derived live from date_of_birth (never stored); `now` is
- * injectable so the mapping is deterministic in tests.
+ * and date_of_birth (needed so an edit form prefills), plus the family's
+ * structured (coarse) location and plan tier. Stage is derived live from
+ * date_of_birth (never stored); `now` is injectable so the mapping is
+ * deterministic in tests.
  */
 
 export type ChildRow = typeof schema.children.$inferSelect;
@@ -24,18 +26,36 @@ export interface FamilyChildBasics {
   stageLabel: string;
 }
 
+export interface FamilyLocationView {
+  country: string | null;
+  province: string | null;
+  city: string | null;
+  postalCode: string | null;
+}
+
 export interface FamilyBasicsView {
-  areaCoarse: string | null;
+  location: FamilyLocationView;
+  planTier: PlanTier;
   children: FamilyChildBasics[];
 }
 
+export interface FamilyRowBasics extends FamilyLocationView {
+  planTier: PlanTier;
+}
+
 export function toFamilyBasics(
-  areaCoarse: string | null,
+  family: FamilyRowBasics | null,
   children: ReadonlyArray<Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'>>,
   now: Date = new Date(),
 ): FamilyBasicsView {
   return {
-    areaCoarse,
+    location: {
+      country: family?.country ?? null,
+      province: family?.province ?? null,
+      city: family?.city ?? null,
+      postalCode: family?.postalCode ?? null,
+    },
+    planTier: family?.planTier ?? 'free',
     children: children.map((child) => ({
       id: child.id,
       name: child.name,

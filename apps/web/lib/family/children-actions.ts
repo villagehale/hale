@@ -8,20 +8,22 @@ import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
+import type { PlanTier } from '@hale/types';
 import {
   type ChildError,
   type ChildInput,
-  normalizeArea,
   parseInterests,
   validateChild,
 } from './children-input';
+import { type LocationInput, normalizeLocation } from './location-input';
 
 /**
- * The family-management mutations behind the Family page: add a child, edit an
- * existing child, set the family's coarse area. Each one validates, resolves the
- * caller's family from the Auth.js session (never a fabricated id — rule #1), and
- * writes an immutable audit_log row alongside the mutation (rule #6). Edits and
- * adds revalidate /settings so the page re-reads after a write.
+ * The family-management mutations behind the Family page: add / edit / remove a
+ * child, set the family's structured (coarse) location, set the plan tier, and
+ * update the parent's display name. Each one validates, resolves the caller's
+ * family from the Auth.js session (never a fabricated id — rule #1), and writes an
+ * immutable audit_log row alongside the mutation (rule #6). Each mutation
+ * revalidates /settings so the page re-reads after a write.
  *
  * Degradation mirrors saveOnboardingChildren: no DATABASE_URL or auth-unconfigured
  * (dev preview) returns `preview` — nothing is written, never a crash. A signed-in
@@ -149,10 +151,66 @@ export async function editChildAction(
   return { status: 'updated' };
 }
 
-export type SetAreaResult = { status: 'updated' } | { status: 'preview' } | { status: 'not_found' };
+export type RemoveChildResult =
+  | { status: 'removed' }
+  | { status: 'preview' }
+  | { status: 'not_found' };
 
-export async function setAreaAction(rawArea: string): Promise<SetAreaResult> {
-  const area = normalizeArea(rawArea);
+export async function removeChildAction(childId: string): Promise<RemoveChildResult> {
+  const ctx = await mutationContext();
+  if (ctx.status === 'preview') {
+    return { status: 'preview' };
+  }
+
+  const { database, identity } = ctx;
+  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  if (!familyId) {
+    return { status: 'not_found' };
+  }
+  const userId = await ensureUserRow(identity, database);
+
+  const removed = await database.transaction(async (tx) => {
+    // Scope the delete to the caller's family (rule #1): a childId from another
+    // family must not be removable. The where(familyId) makes that structural.
+    const existing = await tx
+      .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
+      .from(schema.children)
+      .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)))
+      .limit(1);
+    const before = existing[0];
+    if (!before) {
+      return false;
+    }
+
+    await tx
+      .delete(schema.children)
+      .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)));
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'child_removed',
+      targetTable: 'children',
+      targetId: childId,
+      before,
+    });
+    return true;
+  });
+
+  if (!removed) {
+    return { status: 'not_found' };
+  }
+  revalidatePath('/settings');
+  return { status: 'removed' };
+}
+
+export type SetLocationResult =
+  | { status: 'updated' }
+  | { status: 'preview' }
+  | { status: 'not_found' };
+
+export async function setLocationAction(input: LocationInput): Promise<SetLocationResult> {
+  const location = normalizeLocation(input);
 
   const ctx = await mutationContext();
   if (ctx.status === 'preview') {
@@ -168,24 +226,146 @@ export async function setAreaAction(rawArea: string): Promise<SetAreaResult> {
 
   await database.transaction(async (tx) => {
     const existing = await tx
-      .select({ areaCoarse: schema.families.areaCoarse })
+      .select({
+        country: schema.families.country,
+        province: schema.families.province,
+        city: schema.families.city,
+        postalCode: schema.families.postalCode,
+        areaCoarse: schema.families.areaCoarse,
+      })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))
       .limit(1);
 
     await tx
       .update(schema.families)
-      .set({ areaCoarse: area })
+      .set({
+        country: location.country,
+        province: location.province,
+        city: location.city,
+        postalCode: location.postalCode,
+        areaCoarse: location.areaCoarse,
+      })
       .where(eq(schema.families.id, familyId));
 
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: userId,
-      actionTaken: 'family_area_updated',
+      actionTaken: 'family_location_updated',
       targetTable: 'families',
       targetId: familyId,
-      before: { areaCoarse: existing[0]?.areaCoarse ?? null },
-      after: { areaCoarse: area },
+      before: existing[0] ?? null,
+      after: {
+        country: location.country,
+        province: location.province,
+        city: location.city,
+        postalCode: location.postalCode,
+        areaCoarse: location.areaCoarse,
+      },
+    });
+  });
+
+  revalidatePath('/settings');
+  return { status: 'updated' };
+}
+
+const PLAN_TIERS: readonly PlanTier[] = ['free', 'plus', 'family'];
+
+function isPlanTier(value: string): value is PlanTier {
+  return (PLAN_TIERS as readonly string[]).includes(value);
+}
+
+export type SetPlanResult =
+  | { status: 'updated' }
+  | { status: 'preview' }
+  | { status: 'not_found' }
+  | { status: 'invalid' };
+
+export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
+  if (!isPlanTier(planTier)) {
+    return { status: 'invalid' };
+  }
+
+  const ctx = await mutationContext();
+  if (ctx.status === 'preview') {
+    return { status: 'preview' };
+  }
+
+  const { database, identity } = ctx;
+  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  if (!familyId) {
+    return { status: 'not_found' };
+  }
+  const userId = await ensureUserRow(identity, database);
+
+  await database.transaction(async (tx) => {
+    const existing = await tx
+      .select({ planTier: schema.families.planTier })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+
+    await tx
+      .update(schema.families)
+      .set({ planTier })
+      .where(eq(schema.families.id, familyId));
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'family_plan_updated',
+      targetTable: 'families',
+      targetId: familyId,
+      before: { planTier: existing[0]?.planTier ?? null },
+      after: { planTier },
+    });
+  });
+
+  revalidatePath('/settings');
+  return { status: 'updated' };
+}
+
+export type SetParentNameResult =
+  | { status: 'updated' }
+  | { status: 'preview' }
+  | { status: 'not_found' }
+  | { status: 'invalid' };
+
+export async function setParentNameAction(rawName: string): Promise<SetParentNameResult> {
+  const name = rawName.trim();
+  if (name.length === 0) {
+    return { status: 'invalid' };
+  }
+
+  const ctx = await mutationContext();
+  if (ctx.status === 'preview') {
+    return { status: 'preview' };
+  }
+
+  const { database, identity } = ctx;
+  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  if (!familyId) {
+    return { status: 'not_found' };
+  }
+  const userId = await ensureUserRow(identity, database);
+
+  await database.transaction(async (tx) => {
+    const existing = await tx
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    await tx.update(schema.users).set({ name }).where(eq(schema.users.id, userId));
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'parent_name_updated',
+      targetTable: 'users',
+      targetId: userId,
+      before: { name: existing[0]?.name ?? null },
+      after: { name },
     });
   });
 

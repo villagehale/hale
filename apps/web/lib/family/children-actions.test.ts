@@ -2,7 +2,14 @@ import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
-import { addChildAction, editChildAction, setAreaAction } from './children-actions.js';
+import {
+  addChildAction,
+  editChildAction,
+  removeChildAction,
+  setLocationAction,
+  setParentNameAction,
+  setPlanAction,
+} from './children-actions.js';
 
 // The Family-page mutations read the Auth.js session + the db at request time, and
 // reuse onboarding's audited provisioning path. We stub those edges so each test
@@ -49,12 +56,14 @@ function builder(rows: unknown[]) {
 }
 
 /**
- * Fake tx whose .insert/.update/.select record their payloads and resolve as the
- * action expects. selectRows seeds the pre-mutation read (existing child / family).
+ * Fake tx whose .insert/.update/.delete/.select record their payloads and resolve
+ * as the action expects. selectRows seeds the pre-mutation read (existing child /
+ * family).
  */
 function makeTx(selectRows: unknown[]) {
   const inserts: Array<{ table: unknown; values: unknown }> = [];
   const updates: Array<{ table: unknown; values: unknown }> = [];
+  const deletes: Array<{ table: unknown }> = [];
 
   const tx = {
     insert: vi.fn((table: unknown) => {
@@ -73,10 +82,14 @@ function makeTx(selectRows: unknown[]) {
       });
       return chain;
     }),
+    delete: vi.fn((table: unknown) => {
+      deletes.push({ table });
+      return builder([]);
+    }),
     select: vi.fn(() => builder(selectRows)),
   };
 
-  return { tx, inserts, updates };
+  return { tx, inserts, updates, deletes };
 }
 
 function valuesFor(rows: Array<{ table: unknown; values: unknown }>, table: unknown) {
@@ -195,33 +208,144 @@ describe('editChildAction', () => {
   });
 });
 
-describe('setAreaAction', () => {
-  it('updates the area and audits family_area_updated with before/after', async () => {
-    const { tx, inserts, updates } = makeTx([{ areaCoarse: 'M4L' }]);
+describe('removeChildAction', () => {
+  it('deletes a child scoped to the family and audits child_removed with the before snapshot', async () => {
+    const before = { name: 'Robin', dateOfBirth: '2024-01-01' };
+    const { tx, inserts, deletes } = makeTx([before]);
     fakeDbHandle = txDb(tx);
 
-    const result = await setAreaAction('  M6K ');
+    const result = await removeChildAction(CHILD_ID);
 
-    expect(result).toEqual({ status: 'updated' });
-    expect(valuesFor(updates, schema.families)).toEqual({ areaCoarse: 'M6K' });
+    expect(result).toEqual({ status: 'removed' });
+    expect(deletes).toEqual([{ table: schema.children }]);
     expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
       familyId: FAMILY_ID,
       actor: USER_ID,
-      actionTaken: 'family_area_updated',
-      targetTable: 'families',
-      targetId: FAMILY_ID,
-      before: { areaCoarse: 'M4L' },
-      after: { areaCoarse: 'M6K' },
+      actionTaken: 'child_removed',
+      targetTable: 'children',
+      targetId: CHILD_ID,
+      before,
     });
   });
 
-  it('clears the area to null on empty input', async () => {
-    const { tx, updates } = makeTx([{ areaCoarse: 'M4L' }]);
+  it('returns not_found and deletes nothing when the child is not in the caller family (rule #1)', async () => {
+    const { tx, inserts, deletes } = makeTx([]); // scoped select finds nothing
     fakeDbHandle = txDb(tx);
 
-    const result = await setAreaAction('   ');
+    const result = await removeChildAction(CHILD_ID);
+
+    expect(result).toEqual({ status: 'not_found' });
+    expect(deletes).toHaveLength(0);
+    expect(inserts).toHaveLength(0);
+  });
+});
+
+describe('setLocationAction', () => {
+  it('writes the structured location, mirrors postal into area_coarse, and audits before/after', async () => {
+    const existing = {
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: 'M4L 1A1',
+      areaCoarse: 'M4L 1A1',
+    };
+    const { tx, inserts, updates } = makeTx([existing]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await setLocationAction({
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: ' m6k 3p6 ',
+    });
 
     expect(result).toEqual({ status: 'updated' });
-    expect(valuesFor(updates, schema.families)).toEqual({ areaCoarse: null });
+    expect(valuesFor(updates, schema.families)).toEqual({
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: 'M6K 3P6',
+      areaCoarse: 'M6K 3P6',
+    });
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: USER_ID,
+      actionTaken: 'family_location_updated',
+      targetTable: 'families',
+      targetId: FAMILY_ID,
+      before: existing,
+    });
+  });
+
+  it('clears every field to null on empty input (opt-out of local discovery)', async () => {
+    const { tx, updates } = makeTx([{ country: 'Canada', province: null, city: null, postalCode: 'M4L', areaCoarse: 'M4L' }]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await setLocationAction({});
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(valuesFor(updates, schema.families)).toEqual({
+      country: null,
+      province: null,
+      city: null,
+      postalCode: null,
+      areaCoarse: null,
+    });
+  });
+});
+
+describe('setPlanAction', () => {
+  it('updates the plan tier and audits family_plan_updated with before/after', async () => {
+    const { tx, inserts, updates } = makeTx([{ planTier: 'free' }]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await setPlanAction('plus');
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(valuesFor(updates, schema.families)).toEqual({ planTier: 'plus' });
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: USER_ID,
+      actionTaken: 'family_plan_updated',
+      targetTable: 'families',
+      targetId: FAMILY_ID,
+      before: { planTier: 'free' },
+      after: { planTier: 'plus' },
+    });
+  });
+
+  it('rejects an unknown plan tier without touching the db', async () => {
+    fakeDbHandle = {};
+    const result = await setPlanAction('enterprise');
+    expect(result).toEqual({ status: 'invalid' });
+    expect(resolveFamilyForUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('setParentNameAction', () => {
+  it('updates the users name (trimmed) and audits parent_name_updated with before/after', async () => {
+    const { tx, inserts, updates } = makeTx([{ name: 'Avery' }]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await setParentNameAction('  Avery Q  ');
+
+    expect(result).toEqual({ status: 'updated' });
+    expect(valuesFor(updates, schema.users)).toEqual({ name: 'Avery Q' });
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: USER_ID,
+      actionTaken: 'parent_name_updated',
+      targetTable: 'users',
+      targetId: USER_ID,
+      before: { name: 'Avery' },
+      after: { name: 'Avery Q' },
+    });
+  });
+
+  it('rejects an empty name without touching the db', async () => {
+    fakeDbHandle = {};
+    const result = await setParentNameAction('   ');
+    expect(result).toEqual({ status: 'invalid' });
+    expect(resolveFamilyForUser).not.toHaveBeenCalled();
   });
 });

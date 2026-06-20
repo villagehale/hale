@@ -23,6 +23,7 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
       authReady={authReady}
       signedIn={Boolean(session?.user?.id)}
       startAtSetup={step === 'setup'}
+      sessionName={session?.user?.name ?? null}
     />
   );
 }
