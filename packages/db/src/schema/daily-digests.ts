@@ -46,6 +46,13 @@ export interface DigestPerChildBreakdown {
     /** Short, parent-facing nudges, e.g. "Maya's 4-month immunizations are due in 1 week". */
     notes: string[];
   }>;
+  /**
+   * The composed daily-brief prose the scheduled brief agent wrote and emailed —
+   * the same warm note the parent received, stored so the brief is auditable and
+   * re-readable without re-running the model. Additive: existing readers ignore
+   * it; absent on rows written by the worker's count-only digest. Already a
+   * scoped, parent-facing slice (no raw teen content — rule #1). */
+  briefText?: string;
 }
 
 /**

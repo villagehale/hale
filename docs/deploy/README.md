@@ -82,7 +82,9 @@ full app env; the table below is the **deploy-time** subset per platform.
 |---|:--:|:--:|---|
 | `DATABASE_URL` | ✓ | — | Reads + enqueue |
 | `DATABASE_DIRECT_URL` | ✓ | — | Build-time / non-pooled |
-| `ANTHROPIC_API_KEY` | ✓ | — | If web does any inline LLM |
+| `ANTHROPIC_API_KEY` | ✓ | — | Web agent pipeline + scheduled cron agents (digest / inference) |
+| `RESEND_API_KEY` | ✓ | — | Daily-digest email send (from `hello@villagehale.com`; `RESEND_FROM` optional override) |
+| `CRON_SECRET` | ✓ | — | **Required for the scheduled agents.** Vercel sends it as `Authorization: Bearer <CRON_SECRET>`; the cron routes 401 (do no work, no spend) without a match. See [Scheduled agents (cron)](#scheduled-agents-cron). |
 | `CLERK_SECRET_KEY` | ✓ | — | Auth |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✓ | — | Auth (public) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | ✓ | — | Tracing |
@@ -140,6 +142,38 @@ cat .vercel/project.json   # → orgId, projectId  → VERCEL_ORG_ID, VERCEL_PRO
 - Web project uses `infra/vercel.json` (`--filter=@hale/web`, output `apps/web/.next`).
 - Site project uses `infra/vercel.site.json` (`--filter=@hale/site`, output `apps/site/.next`).
 - Both pin functions to `yyz1`.
+
+#### Scheduled agents (cron)
+
+The passive agentic engine runs in production as **Vercel Cron → API routes** on
+the `@hale/agent` harness — no separate worker needed in prod (the pg-boss worker
+stays for local/durable). The schedule lives in `infra/vercel.json` under
+`crons`; the handlers are Node-runtime routes under `apps/web/app/api/cron/*`.
+
+| Route | Schedule (UTC) | Toronto local | Cadence | Does |
+|---|---|---|---|---|
+| `/api/cron/digest` | `0 12 * * *` | ~07:00 EST / 08:00 EDT | daily, morning | Composes each family's daily brief on the harness (companion health/milestones + this-week village), stores it in `daily_digests`, and emails it via Resend from `hello@villagehale.com`. |
+| `/api/cron/inference` | `0 6 * * *` | ~01:00 EST / 02:00 EDT | daily, overnight | Memory inference over each family's recent activity; saves ≥0.7-confidence facts through the guarded `save_memory` tool. |
+| `/api/cron/discovery` | `0 13 * * 1` | ~08:00 EST / 09:00 EDT, Mondays | weekly | Village discovery for families whose candidates are stale/empty (reuses `discoverForFamily`). |
+
+**Timezone note:** Vercel cron expressions are **UTC** (no per-cron timezone).
+The UTC times above are chosen to land in the Toronto morning/overnight
+year-round (the one-hour EST↔EDT drift is acceptable for these cadences). If a
+precise local time ever matters, schedule hourly and gate inside the handler on
+the Toronto-local hour.
+
+**`CRON_SECRET` is mandatory.** Set it in the web project's Production env
+(Vercel auto-injects it as `Authorization: Bearer <CRON_SECRET>` on cron
+invocations). Each route verifies it **before any work** — a missing or wrong
+bearer (or an unset `CRON_SECRET`) returns 401 and the engine does nothing: no DB
+read, no model call, no email, no spend. Generate one with `openssl rand -hex 32`.
+
+**Bounded by construction:** each run processes at most a capped number of
+families per invocation (`MAX_FAMILIES_PER_RUN` in `apps/web/lib/cron/families.ts`:
+digest 100 / discovery 50 / inference 100), and each per-family agent run is
+hard-stopped by the harness (`maxSteps × maxTokens` token ceiling) with every
+monetary tool gated by the spending-cap guard (rule #7). So one cron tick can
+never fan out across the whole table or blow the budget.
 
 ### 3. Fly.io worker (Toronto)
 
