@@ -8,6 +8,7 @@ import { QuickLog } from '~/components/hale/quick-log';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { authConfigured } from '~/lib/auth-config';
+import { loadLatestThreadForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -26,7 +27,11 @@ function milestoneInWindow(child: ChildCompanionView) {
 
 export default async function HomePage() {
   const canAsk = authConfigured();
-  const [children, village] = await Promise.all([loadCompanion(), loadVillage()]);
+  const [children, village, askSeed] = await Promise.all([
+    loadCompanion(),
+    loadVillage(),
+    loadLatestThreadForRequest(),
+  ]);
   const topActivities = village.candidates.slice(0, 2);
 
   if (children.length === 0) {
@@ -41,7 +46,7 @@ export default async function HomePage() {
         </header>
 
         <section className="rise rise-2 mb-12">
-          <AskBox canAsk={canAsk} />
+          <AskBox canAsk={canAsk} seed={askSeed} />
         </section>
 
         <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
@@ -69,7 +74,7 @@ export default async function HomePage() {
 
       {/* ── Ask Hale — the hero ─────────────────────────────────────────── */}
       <section className="rise rise-1 mb-16 lg:mb-20">
-        <AskBox canAsk={canAsk} />
+        <AskBox canAsk={canAsk} seed={askSeed} />
       </section>
 
       {/* ── Today, per child ────────────────────────────────────────────── */}

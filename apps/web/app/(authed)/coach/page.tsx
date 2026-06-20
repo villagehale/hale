@@ -1,9 +1,11 @@
 import { PageCorner } from '~/components/hale/page-corner';
 import { CoachConversation } from '~/components/hale/coach-conversation';
 import { authConfigured } from '~/lib/auth-config';
+import { loadLatestThreadForRequest } from '~/lib/coach/thread';
 
-export default function CoachPage() {
+export default async function CoachPage() {
   const canAsk = authConfigured();
+  const askSeed = await loadLatestThreadForRequest();
 
   return (
     <div>
@@ -37,7 +39,7 @@ export default function CoachPage() {
         </div>
       </section>
 
-      <CoachConversation canAsk={canAsk} />
+      <CoachConversation canAsk={canAsk} seed={askSeed} />
     </div>
   );
 }
