@@ -1,11 +1,15 @@
 'use client';
 
-import { Pencil, Plus, X } from 'lucide-react';
+import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
 import { Field } from '~/components/ui/field';
-import { addChildAction, editChildAction } from '~/lib/family/children-actions';
+import {
+  addChildAction,
+  editChildAction,
+  removeChildAction,
+} from '~/lib/family/children-actions';
 import type { ChildError } from '~/lib/family/children-input';
 
 /** One child as the Family page already renders it, plus the DOB so edits prefill. */
@@ -108,6 +112,7 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
   const [dob, setDob] = useState(child?.dateOfBirth ?? '');
   const [interests, setInterests] = useState('');
   const [state, setState] = useState<FormState>({ kind: 'idle' });
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   async function submit() {
     setState({ kind: 'saving' });
@@ -130,6 +135,23 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
       return;
     }
     setState({ kind: 'error', message: ERROR_COPY[result.error] });
+  }
+
+  async function remove() {
+    if (mode !== 'edit') {
+      return;
+    }
+    setState({ kind: 'saving' });
+    const result = await removeChildAction(child.id);
+    if (result.status === 'removed') {
+      onDone();
+      return;
+    }
+    if (result.status === 'preview') {
+      setState({ kind: 'preview' });
+      return;
+    }
+    setState({ kind: 'error', message: 'that child is no longer in your family.' });
   }
 
   return (
@@ -207,6 +229,38 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
                 ? 'add child'
                 : 'save changes'}
           </Button>
+          {mode === 'edit' ? (
+            confirmingRemove ? (
+              <span className="flex flex-wrap items-center gap-3">
+                <span className="meta">remove {child.name}?</span>
+                <button
+                  type="button"
+                  className="link meta text-apricot-deep inline-flex items-center gap-1.5"
+                  onClick={remove}
+                  disabled={state.kind === 'saving'}
+                >
+                  <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+                  yes, remove
+                </button>
+                <button
+                  type="button"
+                  className="link meta"
+                  onClick={() => setConfirmingRemove(false)}
+                >
+                  keep
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="link meta inline-flex items-center gap-1.5 ml-auto"
+                onClick={() => setConfirmingRemove(true)}
+              >
+                <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+                remove
+              </button>
+            )
+          ) : null}
         </div>
       </form>
     </Card>

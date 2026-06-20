@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeArea, parseInterests } from './children-input.js';
+import { parseInterests } from './children-input.js';
 
 describe('parseInterests', () => {
   it('splits, trims, and drops empty segments', () => {
@@ -14,16 +14,5 @@ describe('parseInterests', () => {
     expect(parseInterests(undefined)).toEqual([]);
     expect(parseInterests('   ')).toEqual([]);
     expect(parseInterests(',, ,')).toEqual([]);
-  });
-});
-
-describe('normalizeArea', () => {
-  it('trims a real area', () => {
-    expect(normalizeArea('  M4L ')).toBe('M4L');
-  });
-
-  it('clears to null on empty / whitespace (opt-out of local discovery)', () => {
-    expect(normalizeArea('')).toBeNull();
-    expect(normalizeArea('   ')).toBeNull();
   });
 });

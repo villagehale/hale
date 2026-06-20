@@ -72,18 +72,28 @@ export function loadFamilyMembers(): Promise<FamilyMembersView> {
   }, EMPTY_FAMILY_MEMBERS);
 }
 
-const EMPTY_FAMILY_BASICS: FamilyBasicsView = { areaCoarse: null, children: [] };
+const EMPTY_FAMILY_BASICS: FamilyBasicsView = {
+  location: { country: null, province: null, city: null, postalCode: null },
+  planTier: 'free',
+  children: [],
+};
 
 /**
- * The Family page's editable basics: the family's coarse area and its children
- * (with date_of_birth so an edit form prefills, and the live-derived stage).
- * Same empty-state degradation as the other reads: no DB or no resolved family →
- * empty basics.
+ * The Family page's editable basics: the family's structured (coarse) location +
+ * plan tier and its children (with date_of_birth so an edit form prefills, and the
+ * live-derived stage). Same empty-state degradation as the other reads: no DB or no
+ * resolved family → empty basics.
  */
 export function loadFamilyBasics(): Promise<FamilyBasicsView> {
   return readForFamily(async (database, familyId) => {
     const [family] = await database
-      .select({ areaCoarse: schema.families.areaCoarse })
+      .select({
+        country: schema.families.country,
+        province: schema.families.province,
+        city: schema.families.city,
+        postalCode: schema.families.postalCode,
+        planTier: schema.families.planTier,
+      })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))
       .limit(1);
@@ -98,7 +108,7 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
       .where(eq(schema.children.familyId, familyId))
       .orderBy(schema.children.dateOfBirth);
 
-    return toFamilyBasics(family?.areaCoarse ?? null, children);
+    return toFamilyBasics(family ?? null, children);
   }, EMPTY_FAMILY_BASICS);
 }
 

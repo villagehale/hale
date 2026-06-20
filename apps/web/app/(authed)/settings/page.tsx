@@ -1,6 +1,8 @@
 import { PageCorner } from '~/components/hale/page-corner';
-import { FamilyArea } from '~/components/hale/family-area';
 import { FamilyChildren } from '~/components/hale/family-children';
+import { FamilyLocation } from '~/components/hale/family-location';
+import { FamilyParent } from '~/components/hale/family-parent';
+import { FamilyPlan } from '~/components/hale/family-plan';
 import { InviteCoParent } from '~/components/hale/invite-coparent';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
@@ -26,9 +28,24 @@ export default async function FamilyPage() {
         </div>
       </header>
 
+      {/* ── You ────────────────────────────────────────────────────────── */}
+      {members.primary ? (
+        <section className="rise rise-2 mb-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-y border-rule py-10">
+            <div className="lg:col-span-3">
+              <span className="eyebrow text-spruce">you</span>
+              <p className="meta mt-2">your name comes from Google — edit it any time</p>
+            </div>
+            <div className="lg:col-span-9">
+              <FamilyParent name={members.primary.name} email={members.primary.email} />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* ── Kids ───────────────────────────────────────────────────────── */}
-      <section className="rise rise-2 mb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-y border-rule py-10">
+      <section className="rise rise-3 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
           <div className="lg:col-span-3">
             <span className="eyebrow text-spruce">your kids</span>
             <p className="meta mt-2">birthday sets the stage Hale tailors to</p>
@@ -40,7 +57,7 @@ export default async function FamilyPage() {
       </section>
 
       {/* ── Co-parent ──────────────────────────────────────────────────── */}
-      <section className="rise rise-3 mb-20">
+      <section className="rise rise-4 mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
           <div className="lg:col-span-3">
             <span className="eyebrow text-spruce">your co-parent</span>
@@ -62,21 +79,34 @@ export default async function FamilyPage() {
         </div>
       </section>
 
-      {/* ── Area ───────────────────────────────────────────────────────── */}
-      <section className="rise rise-4 mb-20">
+      {/* ── Location ───────────────────────────────────────────────────── */}
+      <section className="rise rise-5 mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
           <div className="lg:col-span-3">
-            <span className="eyebrow text-spruce">your area</span>
-            <p className="meta mt-2">coarse only — drives local discovery</p>
+            <span className="eyebrow text-spruce">your location</span>
+            <p className="meta mt-2">coarse only — postal code drives local discovery</p>
           </div>
           <div className="lg:col-span-9">
-            <FamilyArea area={basics.areaCoarse} />
+            <FamilyLocation location={basics.location} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Plan ───────────────────────────────────────────────────────── */}
+      <section className="rise rise-6 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-spruce">your plan</span>
+            <p className="meta mt-2">change any time · nothing charged today</p>
+          </div>
+          <div className="lg:col-span-9">
+            <FamilyPlan planTier={basics.planTier} />
           </div>
         </div>
       </section>
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
-      <section className="rise rise-5 mb-20">
+      <section className="rise rise-7 mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
           <div className="lg:col-span-3">
             <span className="eyebrow text-spruce">appearance</span>

@@ -33,13 +33,3 @@ export function parseInterests(raw: string | undefined): string[] {
   }
   return [...seen];
 }
-
-/**
- * The coarse area is a free-text neighbourhood / FSA the parent types — never a
- * precise address (rule #1). Trimmed; an empty string clears it (opt-out of local
- * discovery, the schema's nullable default).
- */
-export function normalizeArea(rawArea: string): string | null {
-  const trimmed = rawArea.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}

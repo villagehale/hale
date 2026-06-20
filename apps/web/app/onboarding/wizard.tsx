@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Plus, X } from 'lucide-react';
 import type { PlanTier } from '@hale/types';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
@@ -19,7 +20,7 @@ import { startGoogleSignIn } from '~/lib/onboarding/sign-in-action';
 type Phase = 'A' | 'B' | 'C';
 
 const PHASE_META: Record<Phase, { folio: string; section: string; title: string }> = {
-  A: { folio: '01', section: 'step one of three', title: 'tell me about your child' },
+  A: { folio: '01', section: 'step one of three', title: 'tell me about your kids' },
   B: { folio: '02', section: 'step two of three', title: 'create your account' },
   C: { folio: '03', section: 'step three of three', title: 'finish setting up' },
 };
@@ -30,14 +31,40 @@ const PLAN_OPTIONS: { tier: PlanTier; label: string; note: string }[] = [
   { tier: 'family', label: 'family', note: 'autonomy + commerce + portals · $49/mo' },
 ];
 
+/** A Phase-A name row, keyed by a stable id so add/remove keeps React state aligned. */
+interface NameRow {
+  id: string;
+  name: string;
+}
+
+/** A child as the setup phase collects it: a name plus the full DOB, asked once. */
+interface SetupChild {
+  id: string;
+  name: string;
+  dateOfBirth: string;
+}
+
+let rowSeq = 0;
+function nextRowId(): string {
+  rowSeq += 1;
+  return `row-${rowSeq}`;
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function OnboardingWizard({
   authReady,
   signedIn,
   startAtSetup,
+  sessionName,
 }: {
   authReady: boolean;
   signedIn: boolean;
   startAtSetup: boolean;
+  /** The Google profile name — prefilled into the parent-name confirm field. */
+  sessionName: string | null;
 }) {
   const router = useRouter();
 
@@ -46,39 +73,64 @@ export function OnboardingWizard({
   const initialPhase: Phase = startAtSetup && signedIn ? 'C' : 'A';
   const [phase, setPhase] = useState<Phase>(initialPhase);
 
-  const [childName, setChildName] = useState('');
-  const [approxMonth, setApproxMonth] = useState('');
+  // Phase A — non-sensitive: first names only (no dates of birth), a coarse city,
+  // and the parent's goal. These survive the OAuth redirect via sessionStorage.
+  const [nameRows, setNameRows] = useState<NameRow[]>([{ id: nextRowId(), name: '' }]);
+  const [city, setCity] = useState('');
   const [goal, setGoal] = useState('');
   const [planTier, setPlanTier] = useState<PlanTier>('free');
   const [tosAccepted, setTosAccepted] = useState(false);
 
-  // Phase C inputs — the first point sensitive data is collected (rule #1).
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [areaCoarse, setAreaCoarse] = useState('');
+  // Phase C inputs — the first point sensitive data is collected (rule #1): the
+  // parent's confirmed name, each child's full DOB (asked once), and the full
+  // structured location.
+  const [parentName, setParentName] = useState('');
+  const [setupChildren, setSetupChildren] = useState<SetupChild[]>([
+    { id: nextRowId(), name: '', dateOfBirth: '' },
+  ]);
+  const [country, setCountry] = useState('Canada');
+  const [province, setProvince] = useState('');
+  const [setupCity, setSetupCity] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [inviteCoParent, setInviteCoParent] = useState(false);
 
   // On mount, hydrate from the sessionStorage draft so Phase A survives the OAuth
-  // redirect and prefills Phase C's child name.
+  // redirect and seeds Phase C's child names + city. The parent name prefills from
+  // the live Google session, never from the (non-sensitive) draft.
   useEffect(() => {
+    if (sessionName) {
+      setParentName(sessionName);
+    }
     const draft = readIntakeDraft();
     if (!draft) {
       return;
     }
-    setChildName(draft.childName);
-    setApproxMonth(draft.approxMonth);
+    const names = draft.childNames.length > 0 ? draft.childNames : [''];
+    setNameRows(names.map((name) => ({ id: nextRowId(), name })));
+    setCity(draft.city);
+    setSetupCity(draft.city);
     setGoal(draft.goal);
     setPlanTier(isPlanTier(draft.planTier) ? draft.planTier : 'free');
     setTosAccepted(draft.tosAccepted);
-  }, []);
+    const seeded = names
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0)
+      .map((name) => ({ id: nextRowId(), name, dateOfBirth: '' }));
+    if (seeded.length > 0) {
+      setSetupChildren(seeded);
+    }
+  }, [sessionName]);
 
   const meta = PHASE_META[phase];
   const phaseIndex = phase === 'A' ? 1 : phase === 'B' ? 2 : 3;
 
-  const phaseAComplete = childName.trim().length > 0 && /^\d{4}-\d{2}$/.test(approxMonth);
+  const namedChildren = nameRows.map((r) => r.name.trim()).filter((n) => n.length > 0);
+  const phaseAComplete = namedChildren.length > 0;
 
   function persistDraft(patch: Partial<IntakeDraft>) {
     const next: IntakeDraft = {
-      childName,
-      approxMonth,
+      childNames: nameRows.map((r) => r.name),
+      city,
       goal,
       planTier,
       tosAccepted,
@@ -92,30 +144,39 @@ export function OnboardingWizard({
     setPhase('B');
   }
 
-  const dobValidation = useMemo(() => (dateOfBirth ? validateChild({ name: childName || 'x', dateOfBirth }) : null), [dateOfBirth, childName]);
-  const dobError = dobValidation && !dobValidation.ok ? describeError(dobValidation.error) : null;
-
   const [setupState, setSetupState] = useState<
     { kind: 'idle' } | { kind: 'saving' } | { kind: 'error'; message: string }
   >({ kind: 'idle' });
 
-  const canFinish =
-    childName.trim().length > 0 &&
-    /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) &&
-    !dobError &&
-    tosAccepted;
+  const childValidations = setupChildren.map((child) =>
+    child.dateOfBirth ? validateChild({ name: child.name || 'x', dateOfBirth: child.dateOfBirth }) : null,
+  );
+
+  const everyChildValid = setupChildren.every(
+    (child, i) =>
+      child.name.trim().length > 0 &&
+      /^\d{4}-\d{2}-\d{2}$/.test(child.dateOfBirth) &&
+      childValidations[i]?.ok === true,
+  );
+
+  const canFinish = setupChildren.length > 0 && everyChildValid && tosAccepted;
+
+  function updateSetupChild(id: string, patch: Partial<SetupChild>) {
+    setSetupChildren((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }
 
   async function handleFinish() {
     setSetupState({ kind: 'saving' });
     const result = await completeOnboarding({
-      child: { name: childName.trim(), dateOfBirth },
+      children: setupChildren.map((c) => ({ name: c.name.trim(), dateOfBirth: c.dateOfBirth })),
       planTier,
       tosAccepted,
-      areaCoarse,
+      parentName: parentName.trim(),
+      location: { country, province, city: setupCity, postalCode },
     });
     if (result.status === 'completed') {
       clearIntakeDraft();
-      router.push('/home');
+      router.push(inviteCoParent ? '/settings' : '/home');
       return;
     }
     if (result.status === 'preview') {
@@ -175,41 +236,82 @@ export function OnboardingWizard({
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
                   Start with the basics — just enough for me to show you how Hale
-                  tailors to your child. Nothing here is saved until you create your
-                  account, and I never ask for a full birthday or anything sensitive
-                  yet.
+                  tailors to your family. Nothing here is saved until you create your
+                  account, and I never ask for a birthday or anything sensitive yet.
                 </p>
 
                 <div className="space-y-6">
-                  <div>
-                    <label htmlFor="intake-name" className="eyebrow">
-                      your child&rsquo;s first name
-                    </label>
-                    <input
-                      id="intake-name"
-                      type="text"
-                      className="field mt-2"
-                      value={childName}
-                      onChange={(e) => setChildName(e.currentTarget.value)}
-                      placeholder="maya"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </div>
+                  <fieldset className="space-y-3">
+                    <legend className="eyebrow">your kids&rsquo; first names</legend>
+                    {nameRows.map((row, index) => (
+                      <div key={row.id} className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          className="field"
+                          value={row.name}
+                          onChange={(e) => {
+                            const next = nameRows.map((r) =>
+                              r.id === row.id ? { ...r, name: e.currentTarget.value } : r,
+                            );
+                            setNameRows(next);
+                            persistDraft({ childNames: next.map((r) => r.name) });
+                          }}
+                          placeholder="maya"
+                          aria-label={`child ${index + 1} first name`}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        {nameRows.length > 1 ? (
+                          <button
+                            type="button"
+                            className="link meta inline-flex items-center gap-1.5 shrink-0"
+                            onClick={() => {
+                              const next = nameRows.filter((r) => r.id !== row.id);
+                              setNameRows(next);
+                              persistDraft({ childNames: next.map((r) => r.name) });
+                            }}
+                          >
+                            <X size={14} strokeWidth={2} aria-hidden="true" />
+                            <span className="sr-only">remove child {index + 1}</span>
+                            remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="link meta inline-flex items-center gap-1.5"
+                      onClick={() => {
+                        const next = [...nameRows, { id: nextRowId(), name: '' }];
+                        setNameRows(next);
+                        persistDraft({ childNames: next.map((r) => r.name) });
+                      }}
+                    >
+                      <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                      add another child
+                    </button>
+                  </fieldset>
 
                   <div>
-                    <label htmlFor="intake-month" className="eyebrow">
-                      roughly when were they born?
+                    <label htmlFor="intake-city" className="eyebrow">
+                      your city
                     </label>
                     <input
-                      id="intake-month"
-                      type="month"
+                      id="intake-city"
+                      type="text"
                       className="field mt-2"
-                      value={approxMonth}
-                      max={new Date().toISOString().slice(0, 7)}
-                      onChange={(e) => setApproxMonth(e.currentTarget.value)}
+                      value={city}
+                      onChange={(e) => {
+                        setCity(e.currentTarget.value);
+                        persistDraft({ city: e.currentTarget.value });
+                      }}
+                      placeholder="Toronto"
+                      autoComplete="off"
                     />
-                    <p className="meta mt-2">just the month for now — the exact date comes later, after you sign in.</p>
+                    <p className="meta mt-2">
+                      just the city for now — it helps me find local things. the rest of
+                      your location comes later, after you sign in.
+                    </p>
                   </div>
 
                   <div>
@@ -220,7 +322,10 @@ export function OnboardingWizard({
                       id="intake-goal"
                       className="field mt-2"
                       value={goal}
-                      onChange={(e) => setGoal(e.currentTarget.value)}
+                      onChange={(e) => {
+                        setGoal(e.currentTarget.value);
+                        persistDraft({ goal: e.currentTarget.value });
+                      }}
                       placeholder="finding good local classes, keeping the calendar straight…"
                       rows={3}
                     />
@@ -247,8 +352,9 @@ export function OnboardingWizard({
             {phase === 'B' ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  Create your account to save your setup. Pick a plan — you can change
-                  it any time and nothing is charged today.
+                  Create your account with Google to save your setup — I&rsquo;ll use
+                  your Google name and email, so there&rsquo;s nothing to re-type. Pick a
+                  plan; you can change it any time and nothing is charged today.
                 </p>
 
                 <fieldset>
@@ -343,64 +449,194 @@ export function OnboardingWizard({
             {phase === 'C' ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
-                  You&rsquo;re signed in. Now the exact date of birth so I can tailor
-                  precisely{childName ? <> for <span className="text-spruce">{childName}</span></> : null} —
-                  this is the first thing that gets saved, encrypted, to your family.
+                  You&rsquo;re signed in
+                  {parentName ? (
+                    <>
+                      , <span className="text-spruce">{parentName.split(/\s+/)[0]}</span>
+                    </>
+                  ) : null}
+                  . Now each child&rsquo;s exact date of birth and your location, so I can
+                  tailor precisely — this is the first thing that gets saved, encrypted,
+                  to your family.
                 </p>
 
                 <div className="space-y-6">
                   <div>
-                    <label htmlFor="setup-name" className="eyebrow">
-                      child&rsquo;s first name
+                    <label htmlFor="setup-parent-name" className="eyebrow">
+                      your name
                     </label>
                     <input
-                      id="setup-name"
+                      id="setup-parent-name"
                       type="text"
                       className="field mt-2"
-                      value={childName}
-                      onChange={(e) => setChildName(e.currentTarget.value)}
-                      placeholder="maya"
-                      autoComplete="off"
-                      spellCheck={false}
+                      value={parentName}
+                      onChange={(e) => setParentName(e.currentTarget.value)}
+                      placeholder="your name"
+                      autoComplete="name"
                     />
-                  </div>
-
-                  <div>
-                    <label htmlFor="setup-dob" className="eyebrow">
-                      date of birth
-                    </label>
-                    <input
-                      id="setup-dob"
-                      type="date"
-                      className="field mt-2"
-                      value={dateOfBirth}
-                      max={new Date().toISOString().slice(0, 10)}
-                      onChange={(e) => setDateOfBirth(e.currentTarget.value)}
-                      autoComplete="bday"
-                    />
-                    {dobError ? (
-                      <p className="meta text-apricot-deep mt-2" role="alert">
-                        {dobError}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <label htmlFor="setup-area" className="eyebrow">
-                      your area <span className="lowercase">(optional)</span>
-                    </label>
-                    <input
-                      id="setup-area"
-                      type="text"
-                      className="field mt-2"
-                      value={areaCoarse}
-                      onChange={(e) => setAreaCoarse(e.currentTarget.value)}
-                      placeholder="postal area or neighbourhood — e.g. M5V"
-                      autoComplete="off"
-                    />
-                    <p className="meta mt-2">coarse only — for finding local things. never a precise address.</p>
+                    <p className="meta mt-2">from your Google account — edit it if you&rsquo;d like.</p>
                   </div>
                 </div>
+
+                <fieldset className="space-y-6">
+                  <legend className="eyebrow text-spruce">your kids</legend>
+                  {setupChildren.map((child, index) => {
+                    const validation = childValidations[index];
+                    const dobError =
+                      validation && !validation.ok ? describeError(validation.error) : null;
+                    return (
+                      <div key={child.id} className="space-y-4 border-l border-rule-strong pl-5">
+                        <div className="flex items-baseline justify-between">
+                          <span className="meta">child {index + 1}</span>
+                          {setupChildren.length > 1 ? (
+                            <button
+                              type="button"
+                              className="link meta inline-flex items-center gap-1.5"
+                              onClick={() =>
+                                setSetupChildren((prev) => prev.filter((c) => c.id !== child.id))
+                              }
+                            >
+                              <X size={14} strokeWidth={2} aria-hidden="true" />
+                              remove
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                          <div>
+                            <label htmlFor={`setup-name-${child.id}`} className="eyebrow">
+                              first name
+                            </label>
+                            <input
+                              id={`setup-name-${child.id}`}
+                              type="text"
+                              className="field mt-2"
+                              value={child.name}
+                              onChange={(e) =>
+                                updateSetupChild(child.id, { name: e.currentTarget.value })
+                              }
+                              placeholder="maya"
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor={`setup-dob-${child.id}`} className="eyebrow">
+                              date of birth
+                            </label>
+                            <input
+                              id={`setup-dob-${child.id}`}
+                              type="date"
+                              className="field mt-2"
+                              value={child.dateOfBirth}
+                              max={today()}
+                              onChange={(e) =>
+                                updateSetupChild(child.id, { dateOfBirth: e.currentTarget.value })
+                              }
+                              autoComplete="bday"
+                            />
+                          </div>
+                        </div>
+                        {dobError ? (
+                          <p className="meta text-apricot-deep" role="alert">
+                            {dobError}
+                          </p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="link meta inline-flex items-center gap-1.5"
+                    onClick={() =>
+                      setSetupChildren((prev) => [
+                        ...prev,
+                        { id: nextRowId(), name: '', dateOfBirth: '' },
+                      ])
+                    }
+                  >
+                    <Plus size={14} strokeWidth={2} aria-hidden="true" />
+                    add another child
+                  </button>
+                </fieldset>
+
+                <fieldset className="space-y-5">
+                  <legend className="eyebrow text-spruce">your location</legend>
+                  <p className="meta">
+                    coarse only — for finding local things. the postal code helps me find
+                    your neighbourhood; I never store or surface a precise address.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label htmlFor="setup-country" className="eyebrow">
+                        country
+                      </label>
+                      <input
+                        id="setup-country"
+                        type="text"
+                        className="field mt-2"
+                        value={country}
+                        onChange={(e) => setCountry(e.currentTarget.value)}
+                        placeholder="Canada"
+                        autoComplete="country-name"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="setup-province" className="eyebrow">
+                        province / state
+                      </label>
+                      <input
+                        id="setup-province"
+                        type="text"
+                        className="field mt-2"
+                        value={province}
+                        onChange={(e) => setProvince(e.currentTarget.value)}
+                        placeholder="Ontario"
+                        autoComplete="address-level1"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="setup-city" className="eyebrow">
+                        city
+                      </label>
+                      <input
+                        id="setup-city"
+                        type="text"
+                        className="field mt-2"
+                        value={setupCity}
+                        onChange={(e) => setSetupCity(e.currentTarget.value)}
+                        placeholder="Toronto"
+                        autoComplete="address-level2"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="setup-postal" className="eyebrow">
+                        postal code
+                      </label>
+                      <input
+                        id="setup-postal"
+                        type="text"
+                        className="field mt-2"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.currentTarget.value)}
+                        placeholder="M5V 2T6"
+                        autoComplete="postal-code"
+                      />
+                    </div>
+                  </div>
+                </fieldset>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inviteCoParent}
+                    onChange={(e) => setInviteCoParent(e.currentTarget.checked)}
+                    className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
+                  />
+                  <span className="text-slate-green leading-relaxed">
+                    I&rsquo;d like to invite my co-parent — take me to my family settings to
+                    send the link after I finish.
+                  </span>
+                </label>
 
                 {setupState.kind === 'error' ? (
                   <p className="meta text-apricot-deep" role="alert">
@@ -415,7 +651,11 @@ export function OnboardingWizard({
                     onClick={handleFinish}
                     disabled={!canFinish || setupState.kind === 'saving'}
                   >
-                    {setupState.kind === 'saving' ? 'finishing…' : 'finish · open my home →'}
+                    {setupState.kind === 'saving'
+                      ? 'finishing…'
+                      : inviteCoParent
+                        ? 'finish · invite co-parent →'
+                        : 'finish · open my home →'}
                   </button>
                 </div>
               </section>
