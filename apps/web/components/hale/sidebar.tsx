@@ -4,32 +4,20 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  CalendarRange,
-  History,
-  House,
-  Home as HomeIcon,
-  MessageCircleHeart,
+  LogIn,
+  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
-  Sparkles,
-  Users,
   X,
+  type Home as HomeIcon,
 } from 'lucide-react';
 import { SeaTurtle } from '~/components/illos';
 import { Icon } from '~/components/ui/icon';
 import { useShell } from '~/components/hale/app-shell';
 import { LogoMark } from '~/components/hale/logo-mark';
+import { HISTORY_NAV, PRIMARY_NAV } from '~/components/hale/nav';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { signOutAction } from '~/lib/auth-actions';
-
-const NAV = [
-  { href: '/home', label: 'home', icon: HomeIcon },
-  { href: '/coach', label: 'ask Hale', icon: MessageCircleHeart },
-  { href: '/companion', label: 'companion', icon: Sparkles },
-  { href: '/village', label: 'village', icon: Users },
-  { href: '/plan', label: 'plan', icon: CalendarRange },
-  { href: '/settings', label: 'family', icon: House },
-] as const satisfies ReadonlyArray<{ href: Route; label: string; icon: typeof HomeIcon }>;
 
 function NavLink({
   href,
@@ -105,7 +93,7 @@ export function Sidebar({
       <span className="sidebar-tagline meta">the village your family lost</span>
 
       <nav className="sidebar-nav" aria-label="primary">
-        {NAV.map((item) => (
+        {PRIMARY_NAV.map((item) => (
           <NavLink
             key={item.href}
             href={item.href}
@@ -121,10 +109,13 @@ export function Sidebar({
       <div className="sidebar-foot">
         <div className="rule" />
         <NavLink
-          href={'/trail' as Route}
-          label="history"
-          icon={History}
-          active={pathname === '/trail' || Boolean(pathname?.startsWith('/trail/'))}
+          href={HISTORY_NAV.href}
+          label={HISTORY_NAV.label}
+          icon={HISTORY_NAV.icon}
+          active={
+            pathname === HISTORY_NAV.href ||
+            Boolean(pathname?.startsWith(`${HISTORY_NAV.href}/`))
+          }
           onNavigate={closeDrawer}
         />
 
@@ -133,13 +124,20 @@ export function Sidebar({
           {authControls ? (
             signedIn ? (
               <form action={signOutAction}>
-                <button type="submit" className="btn-ghost">
-                  sign out
+                <button type="submit" className="btn-ghost auth-control" title="sign out">
+                  <Icon as={LogOut} size={18} className="auth-control-icon" />
+                  <span className="nav-label">sign out</span>
                 </button>
               </form>
             ) : (
-              <Link href="/sign-in" className="btn-primary" onClick={closeDrawer}>
-                sign in
+              <Link
+                href="/sign-in"
+                className="btn-primary auth-control"
+                onClick={closeDrawer}
+                title="sign in"
+              >
+                <Icon as={LogIn} size={18} className="auth-control-icon" />
+                <span className="nav-label">sign in</span>
               </Link>
             )
           ) : null}

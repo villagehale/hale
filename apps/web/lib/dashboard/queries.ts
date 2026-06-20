@@ -9,7 +9,7 @@ import { type TrailView, toTrailView } from './mappers';
 
 /**
  * The remaining family-scoped reads (the family band, the Family page, and the
- * History trail) run in a credential-less preview (no DATABASE_URL, no Clerk) for
+ * History trail) run in a credential-less preview (no DATABASE_URL, no Auth.js session) for
  * screenshots, AND in a real authed session. `readForFamily` lands both worlds on
  * the same calm empty state — but only for the two EXPECTED boundaries: no
  * DATABASE_URL (preview), or no resolved family (unauthed / onboarding

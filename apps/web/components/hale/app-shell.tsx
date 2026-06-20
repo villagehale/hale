@@ -101,14 +101,20 @@ export function AppShell({
       value={{ collapsed, toggleCollapsed, drawerOpen, openDrawer, closeDrawer }}
     >
       <div className="editorial-layout">
-        <button
-          type="button"
-          className="drawer-scrim"
-          data-open={drawerOpen ? '' : undefined}
-          onClick={closeDrawer}
-          tabIndex={-1}
-          aria-label="Close menu"
-        />
+        {/* Click-to-dismiss overlay. Decorative (aria-hidden) and out of the tab
+         * order: keyboard users dismiss via Escape (handled above) and the X
+         * inside the drawer — the scrim is a pointer convenience, not the
+         * accessible affordance, so it must not be a focusable button covering
+         * the whole viewport. */}
+        {drawerOpen ? (
+          // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard dismissal is Escape + the drawer's X; this overlay is aria-hidden and not focusable
+          <div
+            className="drawer-scrim"
+            data-open=""
+            onClick={closeDrawer}
+            aria-hidden="true"
+          />
+        ) : null}
         <div ref={drawerRef} className="sidebar-dock" data-open={drawerOpen ? '' : undefined}>
           {sidebar}
         </div>

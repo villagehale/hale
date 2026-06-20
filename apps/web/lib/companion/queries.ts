@@ -11,7 +11,7 @@ export interface ChildCompanionView extends CompanionView {
 
 /**
  * The companion page runs in a credential-less preview (no DATABASE_URL, no
- * Clerk) and in a real authed session, landing both on the same calm empty
+ * Auth.js session) and in a real authed session, landing both on the same calm empty
  * state for the two EXPECTED boundaries only — no DATABASE_URL (preview) or no
  * resolved family (unauthed / onboarding incomplete). A genuine query failure
  * once a DB exists must surface (rule #8), so it is deliberately NOT caught.

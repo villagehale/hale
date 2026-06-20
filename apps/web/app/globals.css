@@ -474,6 +474,10 @@ strong { font-weight: 700; }
   flex-wrap: wrap;
 }
 
+/* The sign-in/out glyph is the collapsed-rail fallback only; the expanded
+ * sidebar and the mobile drawer show the text label instead. */
+.auth-control-icon { display: none; }
+
 .sidebar-turtle {
   display: flex;
   align-items: flex-end;
@@ -495,11 +499,19 @@ strong { font-weight: 700; }
   [data-shell-collapsed="1"] .editorial-layout .sidebar-wordmark,
   [data-shell-collapsed="1"] .editorial-layout .sidebar-tagline,
   [data-shell-collapsed="1"] .editorial-layout .nav-label,
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-turtle,
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls .btn-ghost,
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls .btn-primary {
+  [data-shell-collapsed="1"] .editorial-layout .sidebar-turtle {
     display: none;
   }
+  /* The auth control survives the collapse as an icon-only affordance — its text
+   * label folds away (.nav-label above) but the glyph stays reachable, so a
+   * collapsed rail can still sign in/out. */
+  [data-shell-collapsed="1"] .editorial-layout .auth-control {
+    padding-inline: 0;
+    justify-content: center;
+    width: 2.5rem;
+    min-width: 2.5rem;
+  }
+  [data-shell-collapsed="1"] .editorial-layout .auth-control-icon { display: inline-flex; }
   /* Stack the brand over the collapse toggle so the toggle stays reachable in
    * the rail — without it, a collapsed sidebar could never be re-expanded. */
   [data-shell-collapsed="1"] .editorial-layout .sidebar-top {

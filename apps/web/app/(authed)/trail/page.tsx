@@ -1,19 +1,6 @@
 import { PageCorner } from '~/components/hale/page-corner';
-import { Folio } from '~/components/hale/folio';
-import { ToneLabel } from '~/components/hale/tone';
+import { TrailTimeline } from '~/components/hale/trail-timeline';
 import { loadTrail } from '~/lib/dashboard/queries';
-
-const ACTOR_LABEL: Record<'hale' | 'you' | 'co-parent', string> = {
-  hale: 'Hale',
-  you: 'you',
-  'co-parent': 'co-parent',
-};
-
-const ACTOR_TONE: Record<'hale' | 'you' | 'co-parent', string> = {
-  hale: 'text-apricot-deep',
-  you: 'text-spruce',
-  'co-parent': 'text-sky-deep',
-};
 
 export default async function TrailPage() {
   const entries = await loadTrail();
@@ -65,18 +52,7 @@ export default async function TrailPage() {
         </div>
       </section>
 
-      {/* ── Filters ────────────────────────────────────────────────────── */}
-      <section className="rise rise-3 flex flex-wrap items-baseline gap-x-5 gap-y-3 border-b border-rule pb-5 mb-2">
-        <span className="eyebrow">show</span>
-        <button type="button" className="btn-ghost" aria-current="true">all</button>
-        <button type="button" className="btn-ghost">Hale only</button>
-        <button type="button" className="btn-ghost">parent decisions</button>
-        <span className="ml-auto">
-          <button type="button" className="btn-ghost">export csv</button>
-        </span>
-      </section>
-
-      {/* ── Timeline ───────────────────────────────────────────────────── */}
+      {/* ── Filters + timeline ─────────────────────────────────────────── */}
       {entries.length === 0 ? (
         <section className="rise rise-4 panel-oat px-6 py-12 lg:py-16 text-center">
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
@@ -88,35 +64,7 @@ export default async function TrailPage() {
           </p>
         </section>
       ) : (
-        <section>
-          {entries.map((entry, idx) => {
-            const delay = `rise-${Math.min(idx + 4, 7)}`;
-            return (
-              <article
-                key={entry.id}
-                className={`rise ${delay} py-8 lg:py-10 border-t border-rule first:border-t-0`}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-y-3 md:gap-x-8">
-                  <div className="md:col-span-2">
-                    <Folio index={idx + 1} />
-                    <p className="meta tabular mt-2">{entry.time}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className={`eyebrow ${ACTOR_TONE[entry.actor]}`}>
-                      {ACTOR_LABEL[entry.actor]}
-                    </span>
-                    <p className="meta mt-1">{entry.category}</p>
-                  </div>
-                  <div className="md:col-span-8">
-                    <ToneLabel tone={entry.tone} />
-                    <p className="mt-3 text-lg text-spruce leading-relaxed">{entry.summary}</p>
-                    <p className="mt-2 meta italic">— {entry.detail}</p>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+        <TrailTimeline entries={entries} />
       )}
 
       <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">

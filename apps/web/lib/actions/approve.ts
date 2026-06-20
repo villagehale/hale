@@ -22,7 +22,7 @@ export type ApproveResult =
 /**
  * Validates that `actionId` exists, belongs to `familyId`, and is in
  * `drafted_for_approval`, then enqueues an actions.approved payload stamped with
- * the approving Clerk user id. The worker (other maker) does the actual
+ * the approving user id. The worker (other maker) does the actual
  * execution — this only records the human's consent and hands it off.
  *
  * Order matters: cross-family is a 403 (it exists but isn't yours), a missing
