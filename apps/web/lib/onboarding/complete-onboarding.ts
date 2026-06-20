@@ -1,7 +1,7 @@
 'use server';
 
 import { schema } from '@hale/db';
-import type { PlanTier } from '@hale/types';
+import { type PlanTier, parseIntents } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
@@ -47,6 +47,11 @@ export interface CompleteOnboardingInput {
    * edited in setup. Trimmed; an empty value leaves the mirrored name unchanged.
    */
   parentName?: string;
+  /**
+   * Optional onboarding intents (OnboardingIntent values). Unknown / duplicate
+   * values are dropped; an empty selection is stored as null (column is nullable).
+   */
+  intents?: string[];
 }
 
 export type CompleteOnboardingResult =
@@ -108,6 +113,7 @@ export async function completeOnboarding(
 
   const userId = await ensureUserRow(identity, database);
   const location = normalizeLocation(input.location ?? {});
+  const intents = parseIntents(input.intents ?? []);
   const familyUpdate = {
     planTier: input.planTier,
     country: location.country,
@@ -115,6 +121,7 @@ export async function completeOnboarding(
     city: location.city,
     postalCode: location.postalCode,
     areaCoarse: location.areaCoarse,
+    intents: intents.length > 0 ? intents : null,
   };
 
   await database.transaction(async (tx) => {

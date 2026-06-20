@@ -75,6 +75,7 @@ export function loadFamilyMembers(): Promise<FamilyMembersView> {
 const EMPTY_FAMILY_BASICS: FamilyBasicsView = {
   location: { country: null, province: null, city: null, postalCode: null },
   planTier: 'free',
+  intents: [],
   children: [],
 };
 
@@ -93,6 +94,7 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
         city: schema.families.city,
         postalCode: schema.families.postalCode,
         planTier: schema.families.planTier,
+        intents: schema.families.intents,
       })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))

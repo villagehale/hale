@@ -23,6 +23,10 @@ export const families = pgTable('families', {
    * in to local discovery. Kept = postal_code for back-compat with existing
    * discovery reads. */
   areaCoarse: text('area_coarse'),
+  /** What the parent hopes Hale can help with — the optional onboarding intents
+   * (see OnboardingIntent in @hale/types). Nullable: a family that picks none is
+   * stored as null. Nothing else keys off this yet; it is captured for tailoring. */
+  intents: text('intents').array(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

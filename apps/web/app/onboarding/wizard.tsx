@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
-import type { PlanTier } from '@hale/types';
+import { type OnboardingIntent, type PlanTier, parseIntents } from '@hale/types';
+import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { validateChild } from '~/lib/onboarding/children';
@@ -74,10 +75,11 @@ export function OnboardingWizard({
   const [phase, setPhase] = useState<Phase>(initialPhase);
 
   // Phase A — non-sensitive: first names only (no dates of birth), a coarse city,
-  // and the parent's goal. These survive the OAuth redirect via sessionStorage.
+  // and the optional intents (what the parent is hoping for). These survive the
+  // OAuth redirect via sessionStorage.
   const [nameRows, setNameRows] = useState<NameRow[]>([{ id: nextRowId(), name: '' }]);
   const [city, setCity] = useState('');
-  const [goal, setGoal] = useState('');
+  const [intents, setIntents] = useState<OnboardingIntent[]>([]);
   const [planTier, setPlanTier] = useState<PlanTier>('free');
   const [tosAccepted, setTosAccepted] = useState(false);
 
@@ -109,7 +111,7 @@ export function OnboardingWizard({
     setNameRows(names.map((name) => ({ id: nextRowId(), name })));
     setCity(draft.city);
     setSetupCity(draft.city);
-    setGoal(draft.goal);
+    setIntents(parseIntents(draft.intents ?? []));
     setPlanTier(isPlanTier(draft.planTier) ? draft.planTier : 'free');
     setTosAccepted(draft.tosAccepted);
     const seeded = names
@@ -131,7 +133,7 @@ export function OnboardingWizard({
     const next: IntakeDraft = {
       childNames: nameRows.map((r) => r.name),
       city,
-      goal,
+      intents,
       planTier,
       tosAccepted,
       ...patch,
@@ -165,6 +167,14 @@ export function OnboardingWizard({
     setSetupChildren((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
 
+  function toggleIntent(value: OnboardingIntent) {
+    const next = intents.includes(value)
+      ? intents.filter((v) => v !== value)
+      : [...intents, value];
+    setIntents(next);
+    persistDraft({ intents: next });
+  }
+
   async function handleFinish() {
     setSetupState({ kind: 'saving' });
     const result = await completeOnboarding({
@@ -173,6 +183,7 @@ export function OnboardingWizard({
       tosAccepted,
       parentName: parentName.trim(),
       location: { country, province, city: setupCity, postalCode },
+      intents,
     });
     if (result.status === 'completed') {
       clearIntakeDraft();
@@ -315,20 +326,12 @@ export function OnboardingWizard({
                   </div>
 
                   <div>
-                    <label htmlFor="intake-goal" className="eyebrow">
-                      what are you hoping Hale can help with?
-                    </label>
-                    <textarea
-                      id="intake-goal"
-                      className="field mt-2"
-                      value={goal}
-                      onChange={(e) => {
-                        setGoal(e.currentTarget.value);
-                        persistDraft({ goal: e.currentTarget.value });
-                      }}
-                      placeholder="finding good local classes, keeping the calendar straight…"
-                      rows={3}
+                    <IntentChips
+                      legend="what are you hoping Hale can help with?"
+                      selected={intents}
+                      onToggle={toggleIntent}
                     />
+                    <p className="meta mt-2">optional — pick any that fit, or skip for now.</p>
                   </div>
                 </div>
 

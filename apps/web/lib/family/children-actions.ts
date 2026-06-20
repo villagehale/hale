@@ -8,7 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
-import type { PlanTier } from '@hale/types';
+import { type PlanTier, parseIntents } from '@hale/types';
 import {
   type ChildError,
   type ChildInput,
@@ -318,6 +318,59 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
       targetId: familyId,
       before: { planTier: existing[0]?.planTier ?? null },
       after: { planTier },
+    });
+  });
+
+  revalidatePath('/settings');
+  return { status: 'updated' };
+}
+
+export type SetIntentsResult =
+  | { status: 'updated' }
+  | { status: 'preview' }
+  | { status: 'not_found' };
+
+/**
+ * Sets the family's onboarding intents (what the parent hopes Hale can help
+ * with). Unknown / duplicate values are dropped (parseIntents); an empty
+ * selection clears the column to null. Audits family_intents_updated (rule #6).
+ */
+export async function setIntentsAction(rawIntents: string[]): Promise<SetIntentsResult> {
+  const parsed = parseIntents(rawIntents);
+  const intents = parsed.length > 0 ? parsed : null;
+
+  const ctx = await mutationContext();
+  if (ctx.status === 'preview') {
+    return { status: 'preview' };
+  }
+
+  const { database, identity } = ctx;
+  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  if (!familyId) {
+    return { status: 'not_found' };
+  }
+  const userId = await ensureUserRow(identity, database);
+
+  await database.transaction(async (tx) => {
+    const existing = await tx
+      .select({ intents: schema.families.intents })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+
+    await tx
+      .update(schema.families)
+      .set({ intents })
+      .where(eq(schema.families.id, familyId));
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'family_intents_updated',
+      targetTable: 'families',
+      targetId: familyId,
+      before: { intents: existing[0]?.intents ?? null },
+      after: { intents },
     });
   });
 

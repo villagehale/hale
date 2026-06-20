@@ -1,5 +1,6 @@
 import { PageCorner } from '~/components/hale/page-corner';
 import { FamilyChildren } from '~/components/hale/family-children';
+import { FamilyIntents } from '~/components/hale/family-intents';
 import { FamilyLocation } from '~/components/hale/family-location';
 import { FamilyParent } from '~/components/hale/family-parent';
 import { FamilyPlan } from '~/components/hale/family-plan';
@@ -101,6 +102,19 @@ export default async function FamilyPage() {
           </div>
           <div className="lg:col-span-9">
             <FamilyPlan planTier={basics.planTier} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Hoping for ─────────────────────────────────────────────────── */}
+      <section className="rise rise-7 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-b border-rule pb-10">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-spruce">what you&rsquo;re hoping for</span>
+            <p className="meta mt-2">optional — helps Hale tailor what it surfaces</p>
+          </div>
+          <div className="lg:col-span-9">
+            <FamilyIntents intents={basics.intents} />
           </div>
         </div>
       </section>

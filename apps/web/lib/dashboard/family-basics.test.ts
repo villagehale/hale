@@ -4,7 +4,7 @@ import { toFamilyBasics } from './family-basics.js';
 const NOW = new Date('2026-06-17T12:00:00Z');
 
 describe('toFamilyBasics', () => {
-  it('passes structured location + plan through and derives each child stage live from date_of_birth', () => {
+  it('passes structured location + plan + validated intents through and derives each child stage live from date_of_birth', () => {
     const view = toFamilyBasics(
       {
         country: 'Canada',
@@ -12,6 +12,8 @@ describe('toFamilyBasics', () => {
         city: 'Toronto',
         postalCode: 'M5V 2T6',
         planTier: 'plus',
+        // out of order, with an unknown value the mapper must drop
+        intents: ['health', 'activities', 'groceries'],
       },
       [
         { id: 'a', name: 'Robin', dateOfBirth: '2026-03-15' }, // ~3mo → newborn
@@ -27,6 +29,8 @@ describe('toFamilyBasics', () => {
       postalCode: 'M5V 2T6',
     });
     expect(view.planTier).toBe('plus');
+    // Unknown 'groceries' dropped, canonical order restored.
+    expect(view.intents).toEqual(['activities', 'health']);
     expect(view.children).toEqual([
       { id: 'a', name: 'Robin', dateOfBirth: '2026-03-15', stageLabel: 'newborn' },
       { id: 'b', name: 'Sam', dateOfBirth: '2010-01-01', stageLabel: 'teenager' },
@@ -42,6 +46,7 @@ describe('toFamilyBasics', () => {
       postalCode: null,
     });
     expect(view.planTier).toBe('free');
+    expect(view.intents).toEqual([]);
     expect(view.children).toEqual([]);
   });
 });
