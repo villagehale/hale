@@ -3,7 +3,7 @@ import type { schema } from '@hale/db';
 export type FamilyRole = (typeof schema.familyMembers.$inferSelect)['role'];
 
 export interface MemberView {
-  /** Display name; null when the mirrored Clerk profile carries no name yet. */
+  /** Display name; null when the mirrored Google profile carries no name yet. */
   name: string | null;
   email: string;
   role: FamilyRole;

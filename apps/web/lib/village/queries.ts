@@ -12,7 +12,7 @@ import {
 
 /**
  * Mirrors dashboard/queries.ts: the village page runs both in a credential-less
- * preview (no DATABASE_URL, no Clerk) and in a real authed session, and lands
+ * preview (no DATABASE_URL, no Auth.js session) and in a real authed session, and lands
  * both on the same calm empty state for the two EXPECTED boundaries only — no
  * DATABASE_URL (preview) or no resolved family (unauthed / onboarding
  * incomplete). A genuine query failure once a DB exists must surface as an error

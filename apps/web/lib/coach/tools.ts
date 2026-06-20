@@ -18,12 +18,47 @@ import { toVillageCandidateView } from '~/lib/village/mappers';
  * what the model decides to call. None of these spend money; `save_memory` is the
  * only writer and it persists only what the parent stated (rule: no inference).
  *
+ * Teen-content (rule #1) defense in depth: `get_child_profile` names a childId, so
+ * the guarded invoker's `checkChildContentAccess` gate refuses a teenager before
+ * the handler runs. The two reads that DON'T name a child — `search_village` and
+ * `search_memory` — can still surface rows attributed to a teen (memory facts and
+ * episodes carry a nullable child_id; candidates likewise). The guard can't reach
+ * those (no childId in the input to resolve), so each is teen-safe BY
+ * CONSTRUCTION instead: it resolves the family's teen child ids LIVE from DOB and
+ * drops/redacts any teen-attributed row at the source, before it can reach the
+ * model. `search_memory` excludes teen rows outright (facts/episodes carry raw,
+ * potentially teen-quoting content); `search_village` redacts to category only via
+ * the mapper. `get_framework_guidance` reads no real child data at all.
+ *
  * Tools take a `Database` by closure so the same definitions are reused with a
  * test db. The harness validates each tool's zod input at the boundary, so a
  * hallucinated arg is rejected before the handler runs.
  */
 
 const MEMORY_RESULT_LIMIT = 15;
+
+/**
+ * The family's children currently in the teenager stage, derived LIVE from DOB
+ * (never stored) — the source-side teen filter shared by the child-naming-less
+ * reads (`search_memory`, `search_village`) so a teen's row can't slip past the
+ * guard those tools never trigger.
+ */
+async function teenChildIdsForFamily(
+  database: Database,
+  familyId: string,
+): Promise<Set<string>> {
+  const children = await database
+    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return new Set(
+    children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
+  );
+}
+
+function isTeenAttributed(childId: string | null, teenChildIds: ReadonlySet<string>): boolean {
+  return childId !== null && teenChildIds.has(childId);
+}
 
 const memoryFactType = z.enum([
   'preference',
@@ -81,6 +116,8 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       factType: memoryFactType.optional(),
     }),
     handler: async (input, ctx) => {
+      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+
       const factConditions = [
         eq(schema.familyMemoryFacts.familyId, ctx.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
@@ -90,6 +127,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       }
       const factRows = await database
         .select({
+          childId: schema.familyMemoryFacts.childId,
           factType: schema.familyMemoryFacts.factType,
           factKey: schema.familyMemoryFacts.factKey,
           factValue: schema.familyMemoryFacts.factValue,
@@ -102,6 +140,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       const needle = input.query.toLowerCase();
       const episodeRows = await database
         .select({
+          childId: schema.familyMemoryEpisodes.childId,
           occurredAt: schema.familyMemoryEpisodes.occurredAt,
           episodeType: schema.familyMemoryEpisodes.episodeType,
           summary: schema.familyMemoryEpisodes.summary,
@@ -112,8 +151,11 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
         .limit(MEMORY_RESULT_LIMIT);
 
       return {
-        facts: factRows,
+        facts: factRows
+          .filter((f) => !isTeenAttributed(f.childId, teenChildIds))
+          .map(({ childId: _childId, ...fact }) => fact),
         episodes: episodeRows
+          .filter((e) => !isTeenAttributed(e.childId, teenChildIds))
           .filter((e) => e.summary.toLowerCase().includes(needle))
           .map((e) => ({
             occurredAt: e.occurredAt.toISOString(),
@@ -195,13 +237,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       "Surface local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. Teen-attributed candidates are redacted to category only (rule #1).",
     inputSchema: z.object({ query: z.string().optional() }),
     handler: async (input, ctx) => {
-      const children = await database
-        .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-        .from(schema.children)
-        .where(eq(schema.children.familyId, ctx.familyId));
-      const teenChildIds = new Set(
-        children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
-      );
+      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
 
       const candidateRows = await database
         .select()
@@ -212,9 +248,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
 
       const needle = input.query?.toLowerCase();
       const candidates = candidateRows
-        .map((row) =>
-          toVillageCandidateView(row, row.childId !== null && teenChildIds.has(row.childId)),
-        )
+        .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
         .filter(
           (c) =>
             !needle ||
