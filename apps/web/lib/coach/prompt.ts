@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { resolveRepoFile } from './resolve-repo-file';
 
 /**
  * Loads the coach SYSTEM PROMPT from the single source of truth that the worker
@@ -22,30 +21,8 @@ const PROMPT_REL = join('apps', 'worker', 'prompts', 'coach.md');
 
 let cached: string | undefined;
 
-function repoRootFrom(start: string): string | undefined {
-  const marker = `${join('apps', 'web')}`;
-  const idx = start.lastIndexOf(marker);
-  if (idx === -1) return undefined;
-  return start.slice(0, idx);
-}
-
-function resolveCoachPromptPath(): string {
-  const candidates = [
-    repoRootFrom(process.cwd()),
-    repoRootFrom(dirname(fileURLToPath(import.meta.url))),
-  ];
-  for (const root of candidates) {
-    if (!root) continue;
-    const path = join(root, PROMPT_REL);
-    if (existsSync(path)) return path;
-  }
-  throw new Error(
-    `coach prompt not found: could not locate ${PROMPT_REL} from cwd=${process.cwd()}`,
-  );
-}
-
 export async function loadCoachPrompt(): Promise<string> {
   if (cached) return cached;
-  cached = await readFile(resolveCoachPromptPath(), 'utf8');
+  cached = await readFile(resolveRepoFile(PROMPT_REL), 'utf8');
   return cached;
 }
