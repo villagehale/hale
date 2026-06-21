@@ -5,6 +5,7 @@ import { currentFamilyId } from '~/lib/family';
 import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
+import { type ApprovalView, toApprovalView } from './approvals';
 import { type TrailView, toTrailView } from './mappers';
 
 /**
@@ -140,5 +141,46 @@ export function loadTrail(): Promise<TrailView[]> {
       .orderBy(desc(schema.auditLog.occurredAt))
       .limit(50);
     return rows.map((row) => toTrailView(row.entry, row.teenContent ?? false));
+  }, []);
+}
+
+/**
+ * The Approvals queue: this family's drafted actions still awaiting a parent's
+ * decision (userVisibleState = 'drafted_for_approval' — rule #4's hold for an
+ * L1/L2 family). Joined to the source event for the teen-content flag so the
+ * mapper can redact a 13+ child's raw drafted payload (rule #1). Same empty-state
+ * degradation as the other reads: no DB or no resolved family → empty queue.
+ */
+export function loadPendingApprovals(): Promise<ApprovalView[]> {
+  return readForFamily(async (database, familyId) => {
+    const rows = await database
+      .select({
+        id: schema.actions.id,
+        actionType: schema.actions.actionType,
+        payload: schema.actions.payload,
+        reviewerVerdict: schema.actions.reviewerVerdict,
+        draftedAt: schema.actions.draftedAt,
+        teenContent: schema.events.teenContent,
+      })
+      .from(schema.actions)
+      .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
+      .where(
+        and(
+          eq(schema.actions.familyId, familyId),
+          eq(schema.actions.userVisibleState, 'drafted_for_approval'),
+        ),
+      )
+      .orderBy(desc(schema.actions.draftedAt))
+      .limit(50);
+    return rows.map((row) =>
+      toApprovalView({
+        id: row.id,
+        actionType: row.actionType,
+        payload: row.payload,
+        reviewerVerdict: row.reviewerVerdict,
+        draftedAt: row.draftedAt,
+        teenContent: row.teenContent,
+      }),
+    );
   }, []);
 }

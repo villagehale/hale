@@ -1,0 +1,304 @@
+import { createHash } from 'node:crypto';
+import { type Database, schema } from '@hale/db';
+import type { ActionType, DraftedAction, ReviewerVerdict } from '@hale/types';
+import { and, eq } from 'drizzle-orm';
+
+/**
+ * The pipeline's deterministic DB writes — the web-side analogue of the worker's
+ * memory-writer record* functions, but scoped to the DRAFT pipeline (this engine
+ * never executes; see ingest.ts). Every transition writes an immutable audit_log
+ * row (rule #6) and a cost-bearing agent_runs row, and every write is
+ * family-scoped (rule #1).
+ */
+
+/** Stable (family_id, dedup_hash) key for an inbound signal — matches the
+ * worker's dedupHashFor so a signal that arrives on both legs dedups. */
+export function dedupHashFor(familyId: string, source: string, rawContent: string): string {
+  return createHash('sha256').update(`${familyId}|${source}|${rawContent}`).digest('hex');
+}
+
+const SONNET_RATE = { inputPerMTok: 3, outputPerMTok: 15 } as const;
+const HAIKU_RATE = { inputPerMTok: 0.8, outputPerMTok: 4 } as const;
+const PER_MTOK = 1_000_000;
+
+function costUsd(
+  rate: { inputPerMTok: number; outputPerMTok: number },
+  usage: { promptTokens: number; completionTokens: number },
+): string {
+  return (
+    (usage.promptTokens * rate.inputPerMTok) / PER_MTOK +
+    (usage.completionTokens * rate.outputPerMTok) / PER_MTOK
+  ).toFixed(6);
+}
+
+async function writeAudit(
+  database: Database,
+  entry: {
+    familyId: string;
+    actor: string;
+    actionTaken: string;
+    targetTable?: string;
+    targetId?: string;
+    after?: unknown;
+  },
+): Promise<void> {
+  await database.insert(schema.auditLog).values({
+    familyId: entry.familyId,
+    actor: entry.actor,
+    actionTaken: entry.actionTaken,
+    targetTable: entry.targetTable ?? null,
+    targetId: entry.targetId ?? null,
+    after: entry.after ?? null,
+  });
+}
+
+export interface RecordEventInput {
+  familyId: string;
+  source: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  classifierConfidence: number;
+  dedupHash: string;
+  suggestion: import('@hale/types').ClassifierSuggestion;
+  teenContent: boolean;
+  childId: string | null;
+  usage: { promptTokens: number; completionTokens: number };
+  model: string;
+}
+
+export interface RecordEventResult {
+  eventId: string;
+  duplicate: boolean;
+}
+
+/**
+ * Insert the classified event (status 'classified'), idempotent on
+ * (family_id, dedup_hash): a re-delivered signal hits the unique index and we
+ * return the existing row's id with duplicate:true — the caller skips the rest of
+ * the pipeline rather than minting a second draft. Records the classifier
+ * agent_run + an audit row for the classification.
+ */
+export async function recordEvent(
+  database: Database,
+  input: RecordEventInput,
+): Promise<RecordEventResult> {
+  const inserted = await database
+    .insert(schema.events)
+    .values({
+      familyId: input.familyId,
+      source: input.source,
+      eventType: input.eventType,
+      childId: input.childId,
+      payload: input.payload,
+      classifierSuggestion: input.suggestion,
+      teenContent: input.teenContent,
+      classifiedAt: new Date(),
+      classifierConfidence: input.classifierConfidence,
+      dedupHash: input.dedupHash,
+      status: 'classified',
+    })
+    .onConflictDoNothing({ target: [schema.events.familyId, schema.events.dedupHash] })
+    .returning({ id: schema.events.id });
+
+  const newId = inserted[0]?.id;
+  if (!newId) {
+    const existing = await database
+      .select({ id: schema.events.id })
+      .from(schema.events)
+      .where(
+        and(
+          eq(schema.events.familyId, input.familyId),
+          eq(schema.events.dedupHash, input.dedupHash),
+        ),
+      )
+      .limit(1);
+    const existingId = existing[0]?.id;
+    if (!existingId) {
+      throw new Error('recordEvent: conflict on dedup_hash but no existing event found');
+    }
+    return { eventId: existingId, duplicate: true };
+  }
+
+  await database.insert(schema.agentRuns).values({
+    familyId: input.familyId,
+    eventId: newId,
+    agentName: 'classifier',
+    modelUsed: input.model,
+    promptTokens: input.usage.promptTokens,
+    completionTokens: input.usage.completionTokens,
+    costUsd: costUsd(HAIKU_RATE, input.usage),
+    completedAt: new Date(),
+    status: 'completed',
+  });
+
+  await writeAudit(database, {
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'event.classified',
+    targetTable: 'events',
+    targetId: newId,
+    after: { eventType: input.eventType, suggestion: input.suggestion },
+  });
+
+  return { eventId: newId, duplicate: false };
+}
+
+export interface RecordDraftInput {
+  familyId: string;
+  eventId: string;
+  draft: DraftedAction;
+  usage: { promptTokens: number; completionTokens: number };
+  model: string;
+}
+
+/**
+ * Insert the drafted action at its drafted_for_approval default (the pipeline's
+ * terminal user-visible state — this engine never executes, rule #4), advance the
+ * event to 'drafted', record the drafter agent_run, and audit. Idempotent on the
+ * event (actions_event_idx unique): a re-drive returns the existing action id.
+ */
+export async function recordDraft(
+  database: Database,
+  input: RecordDraftInput,
+): Promise<{ actionId: string }> {
+  const draftRunId = await database
+    .insert(schema.agentRuns)
+    .values({
+      familyId: input.familyId,
+      eventId: input.eventId,
+      agentName: 'drafter',
+      modelUsed: input.model,
+      promptTokens: input.usage.promptTokens,
+      completionTokens: input.usage.completionTokens,
+      costUsd: costUsd(SONNET_RATE, input.usage),
+      completedAt: new Date(),
+      status: 'completed',
+    })
+    .returning({ id: schema.agentRuns.id });
+
+  const inserted = await database
+    .insert(schema.actions)
+    .values({
+      eventId: input.eventId,
+      familyId: input.familyId,
+      actionType: input.draft.actionType,
+      payload: input.draft.payload,
+      draftedByAgentRunId: draftRunId[0]?.id ?? null,
+      userVisibleState: 'drafted_for_approval',
+    })
+    .onConflictDoNothing({ target: schema.actions.eventId })
+    .returning({ id: schema.actions.id });
+
+  let actionId = inserted[0]?.id;
+  if (!actionId) {
+    const existing = await database
+      .select({ id: schema.actions.id })
+      .from(schema.actions)
+      .where(eq(schema.actions.eventId, input.eventId))
+      .limit(1);
+    actionId = existing[0]?.id;
+    if (!actionId) {
+      throw new Error('recordDraft: conflict on event but no existing action found');
+    }
+    return { actionId };
+  }
+
+  await database
+    .update(schema.events)
+    .set({ status: 'drafted', updatedAt: new Date() })
+    .where(eq(schema.events.id, input.eventId));
+
+  await writeAudit(database, {
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'action.drafted',
+    targetTable: 'actions',
+    targetId: actionId,
+    after: { actionType: input.draft.actionType },
+  });
+
+  return { actionId };
+}
+
+const VERDICT_ENUM = {
+  approve: 'approved',
+  reject: 'rejected',
+  flag_for_human: 'flagged',
+} as const;
+
+export interface RecordVerdictInput {
+  familyId: string;
+  eventId: string;
+  actionId: string;
+  actionType: ActionType;
+  verdict: ReviewerVerdict;
+  usage: { promptTokens: number; completionTokens: number };
+  model: string;
+}
+
+/**
+ * Persist the reviewer verdict + its tool results onto the action, advance the
+ * event to 'reviewed', record the reviewer agent_run, and audit. The action stays
+ * at drafted_for_approval regardless of verdict — even an approve means "Hale may
+ * NOT act on its own; a parent must approve" in this draft pipeline (rule #4).
+ */
+export async function recordVerdict(
+  database: Database,
+  input: RecordVerdictInput,
+): Promise<void> {
+  await database.insert(schema.agentRuns).values({
+    familyId: input.familyId,
+    eventId: input.eventId,
+    actionId: input.actionId,
+    agentName: 'reviewer',
+    modelUsed: input.model,
+    promptTokens: input.usage.promptTokens,
+    completionTokens: input.usage.completionTokens,
+    costUsd: costUsd(SONNET_RATE, input.usage),
+    completedAt: new Date(),
+    status: 'completed',
+  });
+
+  await database
+    .update(schema.actions)
+    .set({
+      reviewerVerdict: VERDICT_ENUM[input.verdict.kind],
+      reviewerVerdictAt: new Date(),
+      reviewerToolResults: input.verdict.toolResults,
+    })
+    .where(eq(schema.actions.id, input.actionId));
+
+  await database
+    .update(schema.events)
+    .set({ status: 'reviewed', updatedAt: new Date() })
+    .where(eq(schema.events.id, input.eventId));
+
+  await writeAudit(database, {
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: `action.reviewed.${input.verdict.kind}`,
+    targetTable: 'actions',
+    targetId: input.actionId,
+    after: { verdict: input.verdict.kind, rationale: input.verdict.rationale },
+  });
+}
+
+/**
+ * Audit-only record that an autonomy gate held the action back (rule #4). The
+ * pipeline never executes, so the action is already at drafted_for_approval; this
+ * row makes the REASON observable on the trail (e.g. the 7-day observe window),
+ * mirroring the worker's action.gated.* audits without acting.
+ */
+export async function writeAutonomyGate(
+  database: Database,
+  input: { familyId: string; actionId: string; reason: string; detail: Record<string, unknown> },
+): Promise<void> {
+  await writeAudit(database, {
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: `action.gated.${input.reason}`,
+    targetTable: 'actions',
+    targetId: input.actionId,
+    after: input.detail,
+  });
+}
