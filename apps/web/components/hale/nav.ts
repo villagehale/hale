@@ -1,6 +1,7 @@
 import type { Route } from 'next';
 import {
   CalendarRange,
+  CheckCircle2,
   History,
   House,
   Home as HomeIcon,
@@ -25,6 +26,7 @@ export interface NavItem {
 
 export const PRIMARY_NAV = [
   { href: '/home', label: 'home', icon: HomeIcon },
+  { href: '/approvals', label: 'approvals', icon: CheckCircle2 },
   { href: '/coach', label: 'ask Hale', icon: MessageCircleHeart },
   { href: '/companion', label: 'companion', icon: Sparkles },
   { href: '/village', label: 'village', icon: Users },
