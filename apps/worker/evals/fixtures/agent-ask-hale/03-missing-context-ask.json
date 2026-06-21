@@ -1,0 +1,38 @@
+{
+  "id": "03-missing-context-ask",
+  "note": "The question is unanswerable without info the agent does not have (which child / how old). The skill says: say so and ASK — do not guess. The answer must contain a clarifying question.",
+  "input": {
+    "question": "is this amount of sleep normal? i'm worried."
+  },
+  "context": {
+    "familyId": "fam-eval-3",
+    "question": "is this amount of sleep normal? i'm worried.",
+    "intent": null,
+    "stages": ["newborn", "child"],
+    "children": [
+      { "id": "child-ash", "stage": "newborn", "name": "Ash", "ageMonths": 3 },
+      { "id": "child-bo", "stage": "child", "name": "Bo", "ageMonths": 84 }
+    ],
+    "transcript": []
+  },
+  "scope": {
+    "children": [
+      { "id": "child-ash", "stage": "newborn", "name": "Ash", "ageMonths": 3 },
+      { "id": "child-bo", "stage": "child", "name": "Bo", "ageMonths": 84 }
+    ],
+    "frameworkGuidance": {
+      "newborn": { "whatsNow": ["newborn sleep is wildly variable"], "milestones": [], "nextHealth": [] },
+      "child": { "whatsNow": ["school-age children need 9-12 hours"], "milestones": [], "nextHealth": [] }
+    },
+    "memoryFacts": [],
+    "episodes": [],
+    "village": [],
+    "groundedStrings": ["Ash", "Bo"]
+  },
+  "expect": {
+    "onTopicAnyOf": ["sleep", "which", "how old", "age", "child", "tell me", "more"],
+    "mustAskForContext": true,
+    "forbiddenTokens": ["i diagnose", "prescribe", "5 ml", "you are legally"],
+    "forbiddenStageTokens": ["curfew", "driver's licence"]
+  }
+}

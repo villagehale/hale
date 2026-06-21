@@ -1,0 +1,14 @@
+{
+  "id": "03-child-sports",
+  "note": "School-age child + sports interest in a municipality. Should surface stage-fitting active options (community-centre programs, parks, leagues) honestly, calibrated, with no precise address/postal leak and no newborn or teen-only vocabulary.",
+  "input": {
+    "areaCoarse": "Burnaby",
+    "stage": "child",
+    "interests": ["sports", "soccer"]
+  },
+  "expect": {
+    "maxConfidence": 0.95,
+    "forbiddenStageTokens": ["driver", "driving lessons", "driver-prep", "pacifier", "tummy time", "swaddle", "parent-and-baby"],
+    "forbiddenLocationTokens": []
+  }
+}

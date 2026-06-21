@@ -67,3 +67,70 @@ Calibrated BOTH directions: the real cached model must pass every fixture; the `
 invented, off-stage, confidence-inflated item) is rejected on every routine fixture by the deterministic checks alone
 (no API call), while the deterministic discovery fixtures still pass. Gate: real mode exits 0 iff every fixture
 passes; broken mode exits 0 iff at least one is rejected. Token usage per keyed call is logged as the budget instrument.
+
+# Agent-skill eval harness (ask-hale + daily-brief + discovery)
+
+The `@hale/agent` skills already have LOOP-MECHANICS tests (a fake client feeding a tool call back, the maxSteps
+stop). Those prove plumbing, not QUALITY. This harness closes the rule #8 gap for the live agent surfaces: it runs the
+agents against real (cached) Claude and gates on checkable properties + a cached Haiku judge. Run from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-agent-eval.mjs                 # live pass, then caches
+node --env-file=../../.env evals/run-agent-eval.mjs --broken        # calibration: must FAIL
+node evals/run-agent-eval.mjs --cached-only                         # CI: replay only, never calls the API
+node evals/run-agent-eval.mjs --suite=ask-hale                      # restrict to one suite (ask-hale|daily-brief|discovery)
+```
+
+CI command (free, never calls the API): **`pnpm eval:agents`** (root) — delegates to `@hale/worker eval:agents`,
+which runs the `--cached-only` form. A cache miss in `--cached-only` mode FAILS LOUDLY (exit 1) rather than silently
+calling live, so CI can never spend.
+
+Three suites, each calibrated BOTH directions (real cached model PASSES; the `--broken` known-bad generator FAILS):
+
+- **ask-hale** (the interactive coach, `apps/web/lib/coach/agent.ts`): runs the REAL `runAgent` loop over the REAL
+  `packages/agent/skills/ask-hale.md` skill (imported live via tsx), with FIXTURE-backed tools (deterministic,
+  family-scoped) dispatched through the REAL guarded `invokeTool` — so rule #1 (the teen-content guard refuses a
+  teenager's profile) and rule #6 (an audit row per tool call) actually fire in the eval path. Model id = the skill's
+  own `pickModel(task)` (single source `packages/agent/src/model.ts`), exactly as the live agent uses. Gates: on-topic
+  (names the thing asked about), stage-appropriate (no wrong-stage vocabulary), no diagnosis/dose/legal-assertion,
+  ASKS for missing context when it can't answer without it, no fabricated specifics (email/$/long-digit must be
+  grounded), an audit row was written, and a cached Haiku judge for tone & safety (>= 4).
+- **daily-brief** (the scheduled morning note, `apps/web/lib/cron/digest.ts`): same REAL `runAgent` loop over the REAL
+  `daily-brief.md` skill + fixture tools. Gates: every non-teen child the tools surfaced is NAMED; NO event/child the
+  tools did NOT surface is invented (the core "no hallucinated events" check — fabrication SIGNALS like a dated
+  appointment / named clinic / price, not bare nouns the model legitimately negates); a teen may be named but their
+  developmental detail is never leaked (rule #1); length is bounded (no wall of text); cached Haiku judge for warmth &
+  faithfulness (>= 4).
+- **discovery** (web-side village discovery, `apps/web/lib/village/discover.ts`): REPLICATES that file's exact request
+  shape — same prompt (`prompts/discovery.md`), same `SONNET_MODEL` (read live from `src/anthropic/client.ts`, the same
+  constant `discover.ts`'s `loadCoachModel` reads), same `submit_candidates` tool-forced schema + serialization (the
+  web modules aren't importable across the process boundary, same reasoning as the drafter eval). Gates: candidates fit
+  the queried stage (no wrong-stage vocabulary), NO precise-location leak (street address / full postal code / forbidden
+  location token — rule #1; `discover.ts` only ever sends the coarse area), calibrated confidence honesty (nothing is
+  grounded, so no candidate may assert near-certainty; coverageNote non-empty), no fabricated contact specifics, and a
+  cached Haiku judge for local-fit & honesty (>= 4).
+
+IMPORT vs REPLICATE: ask-hale / daily-brief IMPORT the real `runAgent` + `loadSkill` + `defineTool` from
+`packages/agent/src` via the tsx loader (the way `tsx watch` runs the worker), so the eval drives the genuine loop and
+genuine skill instructions, not a re-implementation; only the TOOLS are fixture-backed (the eval controls the data, the
+agent's reasoning is real). Discovery REPLICATES because its web-only modules can't be imported here.
+
+## Refreshing the cache
+
+Responses are content-addressed to `cache/` (key = sha256 of the canonical request: model + system/skill + messages +
+tool schema). Any change to a model id, a skill/prompt, or a fixture input mints a NEW key, so a stale answer is never
+silently reused — and a cache hit makes zero API calls. To (re)populate after such a change:
+
+```
+node --env-file=../../.env evals/run-agent-eval.mjs            # live: fills any missing keys, then commit cache/
+```
+
+Commit the new `cache/*.json` files alongside the change. The first full live populate costs ~$0.22 USD
+(ask-hale ≈ $0.10, daily-brief ≈ $0.04, discovery ≈ $0.08; 31 sonnet+haiku calls). PII stays OUT of fixtures and the
+cache (rule #1): every fixture uses synthetic child names + coarse areas only, and a teenager is surfaced by stage /
+name only — never a real identity or a precise location.
+
+Calibrated BOTH directions (verified): real cached model passes **11/11** (judge 4–5); `--broken` (an unsafe coach
+answer, a hallucinating wall-of-text brief, and an off-stage location-leaking candidate list) is rejected on **11/11**
+fixtures by the deterministic checks alone — zero API calls in broken mode. Gate: real mode exits 0 iff every fixture
+passes; broken mode exits 0 iff at least one is rejected.

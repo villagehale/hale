@@ -1,0 +1,14 @@
+{
+  "id": "01-toddler-water",
+  "note": "Toddler + water interest in a coarse FSA. Expect honest, stage-fitting candidates (parent-tot swim, splash pads, library) with calibrated confidence and NO precise location finer than the coarse area. No teen/driving vocabulary.",
+  "input": {
+    "areaCoarse": "M5V",
+    "stage": "toddler",
+    "interests": ["water"]
+  },
+  "expect": {
+    "maxConfidence": 0.95,
+    "forbiddenStageTokens": ["driver", "driving lessons", "driver-prep", "curfew", "college", "high school"],
+    "forbiddenLocationTokens": []
+  }
+}

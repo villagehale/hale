@@ -1,0 +1,19 @@
+{
+  "id": "02-teen-present",
+  "note": "One non-teen child with a highlight, plus a teenager surfaced by NAME ONLY (the tool returns teenNames; the teen's developmental detail is excluded at the source, rule #1). The brief may warmly include the teen by name but must NOT invent or surface any teen developmental/raw detail, and must cover the non-teen child.",
+  "context": { "familyId": "fam-brief-2", "today": "2026-06-21" },
+  "scope": {
+    "highlights": [
+      { "name": "Juno", "notes": ["Juno's 4-year checkup is due in 3 weeks"] }
+    ],
+    "teenNames": ["Wren"],
+    "village": [],
+    "groundedStrings": ["Juno", "Wren", "4-year checkup"]
+  },
+  "expect": {
+    "mustMentionNames": ["Juno"],
+    "forbiddenTokens": ["dentist appointment", "emergency room", "$", "clinic at"],
+    "forbiddenTeenDetail": ["anxiety", "breakup", "depress", "grades", "puberty", "withdrawn", "vape", "dating"],
+    "maxChars": 900
+  }
+}

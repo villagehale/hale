@@ -1,0 +1,50 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Burnaby Youth Soccer Association (BYSA) recreational programs",
+        "description": "BYSA runs seasonal recreational and competitive soccer leagues and skills programs for school-age children across Burnaby. A natural fit for a child who loves soccer and sports.",
+        "confidence": 0.82,
+        "coverageNote": "Well-established community soccer association in Burnaby; specific season schedules and registration windows should be confirmed at bysa.ca."
+      },
+      {
+        "title": "Burnaby Parks & Recreation multi-sport drop-in (community centre gyms)",
+        "description": "Burnaby's network of community centres (e.g. Bonsor, Cameron, Edmonds, Eileen Dailly) regularly offer drop-in gym time and multi-sport sessions for children. Great for kids who want to try different sports in an unstructured setting.",
+        "confidence": 0.78,
+        "coverageNote": "Multi-sport drop-ins are a standard offering at Burnaby rec centres; exact days and age bands vary by location and season — check the Burnaby Parks & Recreation ActiveBurnaby registration portal."
+      },
+      {
+        "title": "Burnaby FC / local soccer club structured skills training",
+        "description": "Several soccer clubs based in Burnaby (including Burnaby FC) offer weekly skills and training sessions for children, bridging recreational play and competitive development. Good for a child ready to go beyond league play.",
+        "confidence": 0.75,
+        "coverageNote": "Club-level programs are active in Burnaby; rosters, tryout dates, and fees should be verified directly with the club."
+      },
+      {
+        "title": "Burnaby Lake Regional Park — open field kick-about & nature trail",
+        "description": "Burnaby Lake Regional Park has open grassy areas well-suited for informal soccer practice alongside scenic trails. Combines the sports interest with outdoor activity at no cost.",
+        "confidence": 0.85,
+        "coverageNote": "Burnaby Lake Regional Park is a confirmed public park operated by Metro Vancouver Parks; no booking required for open green space use.",
+        "sourceUrl": "https://metrovancouver.org/services/parks/burnaby-lake-regional-park"
+      },
+      {
+        "title": "Burnaby Parks & Recreation after-school sports programs",
+        "description": "The City of Burnaby runs seasonal after-school programs at community centres that include soccer, floor hockey, basketball, and other team sports for school-age children. Structured coaching in a fun, social environment.",
+        "confidence": 0.75,
+        "coverageNote": "After-school sport programs are a documented part of Burnaby's recreation offerings; current session availability should be confirmed on the ActiveBurnaby portal."
+      },
+      {
+        "title": "Swangard Stadium public watch events & community soccer days",
+        "description": "Swangard Stadium in Central Park, Burnaby is a local soccer landmark that occasionally hosts community soccer days and youth events around Pacific FC or other matches — a motivating experience for a young soccer fan.",
+        "confidence": 0.62,
+        "coverageNote": "Swangard Stadium is a confirmed venue in Burnaby; community youth day events are plausible but not individually verified — check pacificfc.ca or the City of Burnaby events calendar for upcoming dates.",
+        "sourceUrl": "https://www.burnaby.ca/things-to-do/arts-and-culture/swangard-stadium"
+      },
+      {
+        "title": "Burnaby Central Park — open field & paved courts for sports play",
+        "description": "Central Park in Burnaby offers large open grassy areas, basketball courts, and paved paths ideal for pick-up soccer and other sports. A free, accessible outdoor option for active kids any day of the week.",
+        "confidence": 0.88,
+        "coverageNote": "Central Park is a well-known, confirmed City of Burnaby park with open recreational space; no booking needed."
+      }
+    ]
+  }
+}

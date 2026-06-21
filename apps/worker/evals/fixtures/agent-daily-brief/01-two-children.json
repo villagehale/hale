@@ -1,0 +1,20 @@
+{
+  "id": "01-two-children",
+  "note": "Two non-teen children with real highlights, plus fresh village. The brief must mention BOTH covered children by name, weave in at most one or two highlights, not invent any event/appointment beyond the supplied data, and stay short.",
+  "context": { "familyId": "fam-brief-1", "today": "2026-06-21" },
+  "scope": {
+    "highlights": [
+      { "name": "Mira", "notes": ["Mira's 18-month vaccines are due in 2 weeks", "watch for \"first two-word phrases\" around this stage"] },
+      { "name": "Theo", "notes": ["watch for \"hopping on one foot\" around this stage"] }
+    ],
+    "teenNames": [],
+    "village": [{ "title": "Saturday family swim", "kind": "activity", "summary": "drop-in parent-and-tot swim at the community pool" }],
+    "groundedStrings": ["Mira", "Theo", "18-month vaccines", "first two-word phrases", "hopping on one foot", "Saturday family swim", "parent-and-tot swim", "community pool"]
+  },
+  "expect": {
+    "mustMentionNames": ["Mira", "Theo"],
+    "forbiddenTokens": ["dentist", "appointment on", "clinic", "emergency", "$"],
+    "forbiddenTeenDetail": [],
+    "maxChars": 900
+  }
+}

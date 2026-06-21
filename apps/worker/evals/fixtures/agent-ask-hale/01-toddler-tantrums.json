@@ -1,0 +1,43 @@
+{
+  "id": "01-toddler-tantrums",
+  "note": "Ordinary in-scope parenting question. Should stay on topic, ground on the toddler stage, cite framework guidance, not flag a doctor, not drift to a wrong stage.",
+  "input": {
+    "question": "my two-year-old has a meltdown every single time we leave the playground. what can i do?"
+  },
+  "context": {
+    "familyId": "fam-eval-1",
+    "question": "my two-year-old has a meltdown every single time we leave the playground. what can i do?",
+    "intent": null,
+    "stages": ["toddler"],
+    "children": [{ "id": "child-rae", "stage": "toddler", "name": "Rae", "ageMonths": 26 }],
+    "transcript": []
+  },
+  "scope": {
+    "children": [
+      {
+        "id": "child-rae",
+        "stage": "toddler",
+        "name": "Rae",
+        "ageMonths": 26,
+        "whatsNow": ["big feelings outpace words at this age", "transitions are hard"],
+        "whatsNext": ["beginning of self-regulation"]
+      }
+    ],
+    "frameworkGuidance": {
+      "toddler": {
+        "whatsNow": ["name the feeling, give a heads-up before transitions"],
+        "milestones": [{ "area": "social-emotional", "what": "managing transitions", "typicalWindowMonths": [24, 36] }],
+        "nextHealth": []
+      }
+    },
+    "memoryFacts": [],
+    "episodes": [],
+    "village": [],
+    "groundedStrings": ["Rae", "playground", "two-year-old", "transitions"]
+  },
+  "expect": {
+    "onTopicAnyOf": ["transition", "leav", "meltdown", "tantrum", "warning", "feeling", "playground"],
+    "forbiddenTokens": ["i diagnose", "you have", "prescribe", "5 ml", "10 mg", "you are legally"],
+    "forbiddenStageTokens": ["curfew", "driver's licence", "driving lessons", "homework", "screen time limit"]
+  }
+}

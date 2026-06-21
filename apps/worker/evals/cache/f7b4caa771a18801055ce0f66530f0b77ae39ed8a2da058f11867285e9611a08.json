@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_01VG2USGkJW2LgALYgT8Ts81",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "For Kit at 8, the **Canadian Paediatric Society** shifts the framing away from a hard daily minute cap and toward *consistency and quality* — so rather than a fixed number, what tends to work well is agreeing on predictable limits ahead of the weekend (e.g., a set window in the afternoon after outdoor time or reading), watching or playing together when you can, and keeping screens off at least an hour before bed. A practical starting point many families use is 1–2 hours of recreational screen time per day on weekends, but the CPS guidance is clear that how it's used — whether it's passive scrolling vs. a game you play together, and whether it crowds out sleep, movement, or face-to-face time — matters more than the number itself. If you'd like, share what your current weekend rhythm looks like and I can help you build a structure that fits Kit's routine specifically."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1817,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 199,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
