@@ -1,0 +1,55 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Parent-and-baby drop-in, local CLSC (Centre de santé)",
+        "description": "CLSCs across the Plateau-Mont-Royal area regularly host free drop-in sessions for new parents and newborns, covering feeding support, baby development, and peer connection. A go-to first stop for families in the first weeks and months.",
+        "confidence": 0.82,
+        "coverageNote": "CLSC drop-ins are a standard offering across Montréal neighbourhoods; specific schedules should be confirmed directly with the local CLSC (CLSC du Plateau-Mont-Royal).",
+        "sourceUrl": ""
+      },
+      {
+        "title": "Bibliothèque Mordecai-Richler — newborn & baby storytime",
+        "description": "The Mordecai-Richler branch of the Bibliothèque de Montréal is on the Plateau and typically offers gentle lapsit/storytime programs for babies 0–12 months, combining songs, rhymes, and short stories in a calm setting.",
+        "confidence": 0.78,
+        "coverageNote": "Montréal public libraries reliably run baby storytime programs; exact session times and registration windows should be verified on the Réseau des bibliothèques de Montréal website.",
+        "sourceUrl": "https://www.bibliothequesdemontreal.com"
+      },
+      {
+        "title": "Parent-and-tot swim, Centre sportif de la Petite-Patrie or Bain Rosemont",
+        "description": "Montréal municipal pools in and around the Plateau offer parent-and-baby swim sessions for infants as young as a few months old — a safe, warm-water introduction supervised by certified lifeguards.",
+        "confidence": 0.75,
+        "coverageNote": "Municipal pool infant swim programs are a standard City of Montréal offering; confirm current infant age minimums and session schedules via the Accès Montréal / SportsPlus portal.",
+        "sourceUrl": "https://montreal.ca/en/topics/aquatic-activities"
+      },
+      {
+        "title": "Parc Laurier — gentle outdoor strolls and fresh air",
+        "description": "Parc Laurier is one of the Plateau's main green spaces and is ideal for daily newborn-friendly walks in a stroller or carrier. Benches and shaded paths make it easy for a recovering parent to pace themselves.",
+        "confidence": 0.9,
+        "coverageNote": "Parc Laurier is a well-established public park in Plateau-Mont-Royal; no scheduling needed.",
+        "sourceUrl": ""
+      },
+      {
+        "title": "Café-rencontre for new parents (Regroupement Naissance-Renaissance / community org)",
+        "description": "Several community organisations and family resource centres (OPDs / maisons de la famille) in the Plateau and adjacent neighbourhoods run informal café-style gatherings where new parents can meet peers, share experiences, and get light support.",
+        "confidence": 0.68,
+        "coverageNote": "This type of offering is common in Montréal's family resource network; parents should search 'maison de la famille Plateau' or contact Regroupement Naissance-Renaissance to find a current group near them.",
+        "sourceUrl": "https://www.naissance-renaissance.qc.ca"
+      },
+      {
+        "title": "Yoga parents-bébés — local studio or community centre class",
+        "description": "Postnatal/baby yoga classes pairing a parent's gentle recovery stretches with safe sensory movement for the newborn are widely offered at yoga studios and community centres around the Plateau. Typically suitable from 6–8 weeks postpartum.",
+        "confidence": 0.7,
+        "coverageNote": "This class type is very common in the Plateau's active wellness-studio scene; schedules and age minimums vary by provider and should be confirmed locally.",
+        "sourceUrl": ""
+      },
+      {
+        "title": "Centre de ressources familiales du Plateau — family resource drop-in",
+        "description": "Family resource centres (Centres de ressources familiales / OPDs) in the Plateau area provide free or low-cost drop-in time, lending libraries of baby gear, and peer support groups specifically designed for families with newborns.",
+        "confidence": 0.72,
+        "coverageNote": "OPD-type centres are funded across Québec neighbourhoods; confirm current offerings and hours through the CIUSSS du Centre-Sud-de-l'Île-de-Montréal or a local search.",
+        "sourceUrl": ""
+      }
+    ]
+  }
+}

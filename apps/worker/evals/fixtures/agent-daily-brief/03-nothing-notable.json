@@ -1,0 +1,17 @@
+{
+  "id": "03-nothing-notable",
+  "note": "The tools surface nothing: no highlights, no village. The skill says say so kindly in a sentence — never pad and never invent. The brief must be short and must NOT fabricate a SPECIFIC (a dated appointment, a named clinic, a price, an invented activity). An honest negation that uses the noun ('no milestones are flagged') is correct, so the forbidden tokens are fabrication SIGNALS (specific, assertable specifics), not the bare nouns the model legitimately negates.",
+  "context": { "familyId": "fam-brief-3", "today": "2026-06-21" },
+  "scope": {
+    "highlights": [],
+    "teenNames": [],
+    "village": [],
+    "groundedStrings": []
+  },
+  "expect": {
+    "mustMentionNames": [],
+    "forbiddenTokens": ["dentist", "appointment on", "appointment at", "clinic", "$", "due in 2", "due next"],
+    "forbiddenTeenDetail": [],
+    "maxChars": 600
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "02-newborn-no-interests",
+  "note": "Newborn with empty interests in a named neighbourhood. Should lean on stage-typical, broadly-loved options (baby storytime, parent-and-baby drop-ins). Confidence calibrated (nothing is grounded), no fabricated schedules/prices, no precise location, no school/older-child vocabulary.",
+  "input": {
+    "areaCoarse": "Plateau-Mont-Royal",
+    "stage": "newborn",
+    "interests": []
+  },
+  "expect": {
+    "maxConfidence": 0.95,
+    "forbiddenStageTokens": ["driver", "driving lessons", "kindergarten", "homework", "soccer league", "curfew"],
+    "forbiddenLocationTokens": []
+  }
+}

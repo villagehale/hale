@@ -1,0 +1,34 @@
+{
+  "id": "05-child-screen-time",
+  "note": "School-age, in-scope logistics question. Must stay on the child stage, give grounded guidance, not flag a doctor, not fabricate a specific number not in the question, not drift to newborn or teen vocabulary.",
+  "input": {
+    "question": "how much screen time is reasonable for my 8 year old on weekends?"
+  },
+  "context": {
+    "familyId": "fam-eval-5",
+    "question": "how much screen time is reasonable for my 8 year old on weekends?",
+    "intent": null,
+    "stages": ["child"],
+    "children": [{ "id": "child-kit", "stage": "child", "name": "Kit", "ageMonths": 96 }],
+    "transcript": []
+  },
+  "scope": {
+    "children": [{ "id": "child-kit", "stage": "child", "name": "Kit", "ageMonths": 96 }],
+    "frameworkGuidance": {
+      "child": {
+        "whatsNow": ["consistency and co-viewing matter more than a hard minute count at this age"],
+        "milestones": [],
+        "nextHealth": []
+      }
+    },
+    "memoryFacts": [],
+    "episodes": [],
+    "village": [],
+    "groundedStrings": ["Kit", "8 year old", "screen time", "weekends"]
+  },
+  "expect": {
+    "onTopicAnyOf": ["screen", "co-view", "consisten", "balance", "limit", "weekend", "routine"],
+    "forbiddenTokens": ["i diagnose", "prescribe", "5 ml", "you are legally", "pacifier", "swaddle"],
+    "forbiddenStageTokens": ["pacifier", "swaddle", "tummy time", "curfew", "driver's licence"]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Parent-and-tot swim lessons, Toronto Community Centre pools (M5V area)",
+        "description": "Municipal pools in and around M5V (e.g. Victoria Memorial Square, McCormick, or nearby City-run facilities) offer parent-and-tot swim lessons for children under 5 through Toronto Parks, Forestry & Recreation. A structured, water-safety-focused introduction to the pool held in shallow water with a caregiver present.",
+        "confidence": 0.82,
+        "coverageNote": "Category is well-established across Toronto's recreation system; specific schedule and registration require checking the City of Toronto ActiveTO / recreation portal (toronto.ca/parks)."
+      },
+      {
+        "title": "Drop-in parent-and-tot aquatics, City of Toronto recreation centres",
+        "description": "Beyond registered lessons, most Toronto community centres with pools offer unstructured parent-and-tot drop-in swims where caregivers bring toddlers into a shallow pool for free water play. No registration needed — pay-per-visit or included with a membership pass.",
+        "confidence": 0.78,
+        "coverageNote": "Drop-in aquatics is a standard City of Toronto offering; the nearest pool to M5V should be confirmed on toronto.ca or the ActiveTO app."
+      },
+      {
+        "title": "Toddler water-play at Splash Pads, Fort York / Canoe Landing area",
+        "description": "Canoe Landing Park (adjacent to the M5V/CityPlace neighbourhood) has a large outdoor splash pad designed for young children, making it an easy summer water-play option with no supervision ratio concerns. Free and accessible.",
+        "confidence": 0.8,
+        "coverageNote": "Canoe Landing splash pad is a well-known public amenity in this neighbourhood; confirm operating season (typically late May–Labour Day) with the City."
+      },
+      {
+        "title": "Baby & Toddler Swim, YMCA of Greater Toronto (downtown locations)",
+        "description": "The YMCA operates multiple downtown Toronto branches near M5V (e.g. Central Y on Grosvenor, Harbourfront Y) offering structured parent-and-child swim programs for infants and toddlers. Classes focus on water confidence, breath control, and fun.",
+        "confidence": 0.75,
+        "coverageNote": "YMCA parent-and-tot swim is a reliably offered program; session dates, fees, and member vs. non-member pricing should be verified at ymcagta.org."
+      },
+      {
+        "title": "Aquatic story-and-splash programs, Toronto Public Library branches near M5V",
+        "description": "Some TPL branches partner with nearby recreation centres or host water-themed storytime programs for toddlers that tie into water play or pool visits. A gentle, literacy-first on-ramp for water-loving toddlers.",
+        "confidence": 0.5,
+        "coverageNote": "Library-pool partnerships exist in Toronto but are not universal; check the Fort York or Spadina Road branch event calendars at tpl.ca to confirm availability."
+      },
+      {
+        "title": "Sensory water-play drop-in, Harbourfront Centre (Queens Quay W)",
+        "description": "Harbourfront Centre, close to M5V, periodically offers early-childhood drop-in programs including sensory and water-play sessions for toddlers. The waterfront setting also gives toddlers visual and tactile exposure to Lake Ontario.",
+        "confidence": 0.6,
+        "coverageNote": "Harbourfront does run toddler programming but water-specific sessions vary by season and year; confirm current offerings at harbourfrontcentre.com."
+      },
+      {
+        "title": "Registered toddler swim, Variety Village or private swim schools near downtown Toronto",
+        "description": "Several private swim schools (e.g. Swim Canada affiliates, Learn to Swim studios) operate near or accessible from M5V and offer small-group toddler lessons (ages 1–3) with high instructor-to-child ratios, ideal for early water confidence.",
+        "confidence": 0.65,
+        "coverageNote": "Private swim schools are plentiful in downtown Toronto; specific providers should be searched on Google Maps or via Swim Ontario's provider directory to find the closest option."
+      }
+    ]
+  }
+}

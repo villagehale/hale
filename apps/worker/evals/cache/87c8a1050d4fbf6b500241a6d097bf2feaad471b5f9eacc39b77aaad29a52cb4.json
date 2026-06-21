@@ -1,0 +1,63 @@
+{
+  "response": {
+    "id": "msg_01T9hGawb8uxwD9ugDvCz1ob",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll look up Kit's profile, any relevant family context, and the framework guidance all at once."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01G6gMBQPpvtHZZdjgYbNmSC",
+        "name": "get_child_profile",
+        "input": {
+          "childId": "child-kit"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01M2UgZ3Hiek3i7atdLA8dJK",
+        "name": "search_memory",
+        "input": {
+          "familyId": "fam-eval-5",
+          "query": "screen time routine preferences"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01U38srvLu9KfAHsSqgQNwQp",
+        "name": "get_framework_guidance",
+        "input": {
+          "stage": "child",
+          "topic": "screen time"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1448,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 199,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

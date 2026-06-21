@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_01SNUiBkAgNmgEqAZYm4FAzP",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "good morning — a couple of small things on the radar for mira and theo this week.\n\nmira's 18-month vaccines are coming up in about two weeks, so now's a good moment to ring the pediatric office if you haven't already booked that visit. it's also right around the age when little ones start stringing two words together (\"more milk,\" \"daddy go\") — just a fun one to notice and not worry about if it's not quite there yet; her care team can give you the full picture at that same appointment. on the theo front, hopping on one foot is a typical milestone to watch for at his stage — no action needed, just something worth a smile when it shows up.\n\nif you're looking for something to do this weekend, there's a drop-in parent-and-tot swim at the community pool on saturday — could be a nice one for the little ones to splash around."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1479,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 197,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
