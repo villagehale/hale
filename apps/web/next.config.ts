@@ -18,11 +18,15 @@ const config: NextConfig = {
   // into the function bundles, else the readFile throws in the Vercel serverless
   // runtime (works locally only).
   outputFileTracingRoot: repoRoot,
+  // Globs are relative to this config's directory (apps/web); use ../ to reach
+  // the repo root so the worker prompts + agent skills (read at runtime via
+  // resolveRepoFile) actually land in the function bundle. outputFileTracingRoot
+  // preserves their repo-root-relative paths, where resolveRepoFile finds them.
   outputFileTracingIncludes: {
     '/**': [
-      'apps/worker/prompts/**',
-      'apps/worker/src/anthropic/client.ts',
-      'packages/agent/skills/**',
+      '../worker/prompts/**',
+      '../worker/src/anthropic/client.ts',
+      '../../packages/agent/skills/**',
     ],
   },
   webpack: (config) => {
