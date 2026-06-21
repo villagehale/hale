@@ -1,0 +1,7 @@
+.claude
+.loop
+.git
+/*.png
+**/.next
+**/*.tsbuildinfo
+.playwright-mcp
