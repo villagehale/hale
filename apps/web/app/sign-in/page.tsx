@@ -4,6 +4,9 @@ import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { authConfigured } from '~/lib/auth-config';
 
+// Mirrors middleware.ts: the marketing/waitlist site newcomers are sent to.
+const MARKETING_URL = process.env.NEXT_PUBLIC_MARKETING_URL ?? 'https://villagehale.com';
+
 interface PageProps {
   searchParams: Promise<{ callbackUrl?: string }>;
 }
@@ -27,16 +30,27 @@ export default async function SignInPage({ searchParams }: PageProps) {
         <span className="font-display text-3xl font-semibold">Hale</span>
       </Link>
       {authConfigured() ? (
-        <form
-          action={async () => {
-            'use server';
-            await signIn('google', { redirectTo });
-          }}
-        >
-          <button type="submit" className="btn-primary">
-            Continue with Google
-          </button>
-        </form>
+        <div className="flex flex-col items-center gap-4">
+          <p className="meta max-w-sm text-center">
+            Hale is in invite-only beta. Already have access? Continue below.
+          </p>
+          <form
+            action={async () => {
+              'use server';
+              await signIn('google', { redirectTo });
+            }}
+          >
+            <button type="submit" className="btn-primary">
+              Continue with Google
+            </button>
+          </form>
+          <a
+            href={MARKETING_URL}
+            className="meta underline-offset-4 transition-opacity hover:opacity-70"
+          >
+            New to Hale? Join the waitlist &rarr;
+          </a>
+        </div>
       ) : (
         <p className="meta max-w-sm text-center">
           Sign-in isn&rsquo;t available in this preview — Google OAuth isn&rsquo;t configured here.
