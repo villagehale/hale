@@ -3,6 +3,10 @@
 import { LogoMark } from '~/components/logo-mark';
 import { ThemeToggle } from '~/components/theme-toggle';
 
+// Returning users who land on the marketing site need a path into the app —
+// the standard "Log in" cross-link to the app's sign-in. Overridable per env.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.villagehale.com';
+
 /**
  * The marketing header: the turtle LogoMark beside the "Hale" wordmark on the
  * left, the research-preview pill and the Light / Dark / System ThemeToggle on
@@ -19,6 +23,12 @@ export function SiteHeader() {
         <span className="hidden sm:block">
           <span className="pill pill-apricot">research preview</span>
         </span>
+        <a
+          href={`${APP_URL}/sign-in`}
+          className="text-sm font-medium opacity-80 transition-opacity hover:opacity-100"
+        >
+          Log in
+        </a>
         <ThemeToggle />
       </div>
     </header>
