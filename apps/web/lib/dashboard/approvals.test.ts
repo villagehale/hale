@@ -1,0 +1,72 @@
+import { describe, expect, it } from 'vitest';
+import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
+import { type PendingApprovalRow, toApprovalView } from './approvals';
+
+const BASE: PendingApprovalRow = {
+  id: '33333333-3333-4333-8333-333333333333',
+  actionType: 'reply_to_email',
+  payload: {},
+  reviewerVerdict: 'approved',
+  draftedAt: new Date('2026-06-17T15:00:00.000Z'),
+  teenContent: false,
+};
+
+describe('toApprovalView — human preview (A1)', () => {
+  it('previews a reply with recipient + subject, not raw JSON', () => {
+    const view = toApprovalView({
+      ...BASE,
+      actionType: 'reply_to_email',
+      payload: { to: 'Dr. Chen', subject: 'confirm Tuesday 3pm', body: 'See you then.' },
+    });
+    expect(view.preview).toBe('Reply to Dr. Chen — confirm Tuesday 3pm');
+  });
+
+  it('previews a new email with recipient + subject', () => {
+    const view = toApprovalView({
+      ...BASE,
+      actionType: 'send_email',
+      payload: { to: 'daycare@example.com', subject: 'pickup change', body: '...' },
+    });
+    expect(view.preview).toBe('Email daycare@example.com — pickup change');
+  });
+
+  it('previews a calendar event with its title', () => {
+    const view = toApprovalView({
+      ...BASE,
+      actionType: 'create_calendar_event',
+      payload: { title: '6-month checkup', start: '2026-07-01T14:00:00Z' },
+    });
+    expect(view.preview).toBe('Add to calendar — 6-month checkup');
+  });
+
+  it('previews a supply order with the item', () => {
+    const view = toApprovalView({
+      ...BASE,
+      actionType: 'place_supply_order',
+      payload: { item: 'size 3 diapers' },
+    });
+    expect(view.preview).toBe('Order size 3 diapers');
+  });
+
+  it('falls back to a readable label when the salient field is absent', () => {
+    const view = toApprovalView({
+      ...BASE,
+      actionType: 'reply_to_email',
+      payload: {},
+    });
+    expect(view.preview).toBe('Reply to an email');
+  });
+
+  it('redacts the preview entirely for teen content (rule #1) — raw never reaches the view', () => {
+    const view = toApprovalView({
+      ...BASE,
+      actionType: 'reply_to_email',
+      payload: { to: 'Coach Ramirez', subject: 'about Maya' },
+      teenContent: true,
+    });
+    expect(view.preview).toBe(TEEN_REDACTED_PLACEHOLDER);
+    expect(view.payload).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('Maya');
+    expect(JSON.stringify(view)).not.toContain('Coach Ramirez');
+  });
+});

@@ -1,15 +1,20 @@
 import { ApproveButton } from '~/components/hale/approve-button';
+import { DismissButton } from '~/components/hale/dismiss-button';
 import { PageCorner } from '~/components/hale/page-corner';
+import { ToneLabel } from '~/components/hale/tone';
 import { loadPendingApprovals } from '~/lib/dashboard/queries';
 
 /**
  * The Approvals surface — the parent-facing queue of drafts the inbound pipeline
  * produced and held for approval (rule #4: an L1/L2 family's drafts never execute
- * on their own). Each row shows the action type + the reviewer's framing; the raw
- * drafted payload is redacted for a 13+ child (rule #1, via the approvals mapper).
- * Approving a row is the only path to execution — it posts to the existing approve
- * route, which enqueues actions.approved for the worker.
+ * on their own). Each row shows the action type + a human preview of what the
+ * draft does; the raw drafted payload is redacted for a 13+ child (rule #1, via
+ * the approvals mapper). Approving a row posts to the approve route (enqueues
+ * actions.approved); dismissing posts to the decline route — the "no" the consent
+ * queue requires, which records its own audit_log row (rule #6).
  */
+const NEEDS_YOU_VERDICTS = new Set(['flagged', 'rejected']);
+
 export default async function ApprovalsPage() {
   const approvals = await loadPendingApprovals();
 
@@ -46,19 +51,32 @@ export default async function ApprovalsPage() {
           {approvals.map((approval) => (
             <li
               key={approval.id}
-              className="py-7 border-b border-rule flex flex-wrap items-baseline justify-between gap-y-4 gap-x-8"
+              className="py-7 border-b border-rule flex flex-wrap items-start justify-between gap-y-4 gap-x-8"
             >
               <div className="min-w-0">
                 <span className="eyebrow">{approval.actionType.replaceAll('_', ' ')}</span>
-                <p className="font-display text-[1.25rem] mt-1 text-spruce">{approval.summary}</p>
+                <p className="font-display text-[1.25rem] mt-1 text-spruce">{approval.preview}</p>
+                {NEEDS_YOU_VERDICTS.has(approval.verdict) ? (
+                  <p className="mt-2">
+                    <ToneLabel tone="needs-you" detail={approval.summary} />
+                  </p>
+                ) : (
+                  <p className="meta mt-2 text-slate-green">{approval.summary}</p>
+                )}
                 <p className="meta mt-2 text-slate-green">drafted {approval.draftedAt}</p>
                 {approval.payload ? (
-                  <pre className="meta mt-3 whitespace-pre-wrap break-words text-faded-sage">
-                    {JSON.stringify(approval.payload, null, 2)}
-                  </pre>
+                  <details className="mt-3">
+                    <summary className="meta text-slate-green cursor-pointer">view details</summary>
+                    <pre className="meta mt-2 whitespace-pre-wrap break-words text-faded-sage">
+                      {JSON.stringify(approval.payload, null, 2)}
+                    </pre>
+                  </details>
                 ) : null}
               </div>
-              <ApproveButton actionId={approval.id} />
+              <div className="flex flex-wrap items-center gap-3">
+                <DismissButton actionId={approval.id} />
+                <ApproveButton actionId={approval.id} />
+              </div>
             </li>
           ))}
         </ul>
