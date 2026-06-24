@@ -3,6 +3,7 @@ import { pickModel } from './model.js';
 import type { Skill } from './skill.js';
 import {
   type GuardDeps,
+  GuardrailError,
   type ToolDefinition,
   type ToolHandlerContext,
   invokeTool,
@@ -94,6 +95,14 @@ function textFrom(content: Anthropic.ContentBlock[]): string | null {
   return parts.length > 0 ? parts.join('\n') : null;
 }
 
+/** A tool failure fed back to the model so it self-corrects instead of crashing the turn. */
+function toolErrorMessage(err: unknown): string {
+  if (err instanceof GuardrailError) {
+    return `This action was refused by a safety policy (${err.rail}). Do not retry it — continue without it.`;
+  }
+  return `Tool call failed: ${err instanceof Error ? err.message : String(err)}. Correct the arguments and try again, or proceed without this tool.`;
+}
+
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const model = pickModel(args.skill.meta.task);
   const system = buildSystemPrompt(args.skill, args.context);
@@ -137,6 +146,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
 
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUses) {
+      // Unknown / not-allowlisted tool = a skill-config bug that can't happen in
+      // correct operation (the model is only offered allowlisted tools) — fail loud.
       const tool = toolByName.get(block.name);
       if (!tool) {
         throw new Error(`runAgent: model called unknown tool '${block.name}'`);
@@ -146,12 +157,26 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
           `runAgent: model called tool '${block.name}' not in skill '${args.skill.meta.name}' allowlist`,
         );
       }
-      const result = await invokeTool(tool, block.input, args.toolContext, args.guardDeps);
-      toolResults.push({
-        type: 'tool_result',
-        tool_use_id: block.id,
-        content: JSON.stringify(result),
-      });
+      // But a bad tool ARGUMENT (e.g. an out-of-enum value the model invented) or a
+      // guardrail rejection must NOT crash the turn — feed the error back so the
+      // model self-corrects (retries with valid args) or adapts (answers without
+      // the blocked tool). The rails still enforce: a GuardrailError means the
+      // handler never ran (rule #1/#7), and only authorized calls were audited.
+      try {
+        const result = await invokeTool(tool, block.input, args.toolContext, args.guardDeps);
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify(result),
+        });
+      } catch (err) {
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          is_error: true,
+          content: toolErrorMessage(err),
+        });
+      }
     }
     messages.push({ role: 'user', content: toolResults });
   }
