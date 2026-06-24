@@ -24,7 +24,9 @@ const GOOGLE_ID = 'google_user_abc';
 const NEW_USER_ID = '22222222-2222-4222-8222-222222222222';
 const NEW_FAMILY_ID = '33333333-3333-4333-8333-333333333333';
 
-const CHILDREN = [{ name: 'Robin', dateOfBirth: '2024-01-01' }];
+const CHILDREN = [
+  { name: 'Robin', lastName: 'Stone', dateOfBirth: '2024-01-01', gender: 'girl' as const },
+];
 
 /**
  * Chainable query-builder stub: every terminal builder method resolves to the
@@ -176,10 +178,16 @@ describe('saveOnboardingChildren — provision vs reuse', () => {
     expect(
       (fakeDbHandle as { transaction: ReturnType<typeof vi.fn> }).transaction,
     ).not.toHaveBeenCalled();
-    // The single insert writes the children rows (each carries a dateOfBirth).
+    // The single insert writes the children rows, each carrying the source-of-truth
+    // columns: name(s), dateOfBirth, and gender (rule #1 — gender persisted as given).
     const chain = insert.mock.results[0]?.value as { values: ReturnType<typeof vi.fn> };
     expect(chain.values.mock.calls[0]?.[0]).toEqual([
-      expect.objectContaining({ name: 'Robin', dateOfBirth: '2024-01-01' }),
+      expect.objectContaining({
+        name: 'Robin',
+        lastName: 'Stone',
+        dateOfBirth: '2024-01-01',
+        gender: 'girl',
+      }),
     ]);
   });
 });

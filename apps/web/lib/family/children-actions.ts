@@ -55,7 +55,12 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
 
   if (!familyId) {
     await provisionAndWriteChildren(database, identity, [
-      { name: validated.child.name, dateOfBirth: validated.child.dateOfBirth },
+      {
+        name: validated.child.name,
+        lastName: validated.child.lastName,
+        dateOfBirth: validated.child.dateOfBirth,
+        gender: validated.child.gender,
+      },
     ]);
     revalidatePath('/family');
     return { status: 'added' };
@@ -68,7 +73,9 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
       .values({
         familyId,
         name: validated.child.name,
+        lastName: validated.child.lastName,
         dateOfBirth: validated.child.dateOfBirth,
+        gender: validated.child.gender,
         interests,
       })
       .returning({ id: schema.children.id });

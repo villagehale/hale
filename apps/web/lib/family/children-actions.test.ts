@@ -243,13 +243,13 @@ describe('removeChildAction', () => {
 });
 
 describe('setLocationAction', () => {
-  it('writes the structured location, mirrors postal into area_coarse, and audits before/after', async () => {
+  it('writes the structured location, derives a coarse FSA for area_coarse, and audits before/after', async () => {
     const existing = {
       country: 'Canada',
       province: 'Ontario',
       city: 'Toronto',
       postalCode: 'M4L 1A1',
-      areaCoarse: 'M4L 1A1',
+      areaCoarse: 'M4L',
     };
     const { tx, inserts, updates } = makeTx([existing]);
     fakeDbHandle = txDb(tx);
@@ -267,7 +267,8 @@ describe('setLocationAction', () => {
       province: 'Ontario',
       city: 'Toronto',
       postalCode: 'M6K 3P6',
-      areaCoarse: 'M6K 3P6',
+      // areaCoarse is the DERIVED FSA only — never the full postal code (rule #1).
+      areaCoarse: 'M6K',
     });
     expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
       familyId: FAMILY_ID,

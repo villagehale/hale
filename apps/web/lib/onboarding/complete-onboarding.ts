@@ -107,7 +107,12 @@ export async function completeOnboarding(
       await provisionAndWriteChildren(
         database,
         identity,
-        validated.map((child) => ({ name: child.name, dateOfBirth: child.dateOfBirth })),
+        validated.map((child) => ({
+          name: child.name,
+          lastName: child.lastName,
+          dateOfBirth: child.dateOfBirth,
+          gender: child.gender,
+        })),
       )
     ).familyId;
 
