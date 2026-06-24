@@ -155,6 +155,34 @@ describe('runAgent loop mechanics', () => {
     expect(result.steps).toBe(2);
   });
 
+  it('feeds a bad-argument tool error back to the model instead of crashing the turn', async () => {
+    // Regression: the model invented an out-of-schema arg (childId must be a string).
+    // invokeTool's parse throws — the loop must return an is_error tool_result so the
+    // model self-corrects, NOT propagate the throw and 500 the whole request.
+    const client = fakeClient([
+      toolUseMessage('tu-bad', 'get_child_profile', { childId: 42 }, usage(50, 10)),
+      textMessage('here is general guidance.', usage(60, 15)),
+    ]);
+    const { deps, audits } = guardDeps();
+
+    const result = await runAgent({
+      skill,
+      context: { question: 'help' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+    });
+
+    // The turn did NOT crash — the model got the error back and answered.
+    expect(result.answer).toBe('here is general guidance.');
+    expect(result.steps).toBe(2);
+    expect(result.hitMaxSteps).toBe(false);
+    // The rejected call's handler never ran, so nothing was audited (rule #6).
+    expect(audits).toEqual([]);
+  });
+
   it('refuses a tool the skill does not list, even if the model calls it', async () => {
     const client = fakeClient([
       toolUseMessage('x', 'place_supply_order', { item: 'wipes' }, usage(10, 5)),
