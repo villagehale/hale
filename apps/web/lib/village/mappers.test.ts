@@ -24,10 +24,13 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     source: 'web_grounded',
     confidence: 0.9,
     coverageNote: RAW_COVERAGE,
+    shareToken: null,
     discoveredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
   };
 }
+
+const NO_ENGAGEMENT = { endorsementCount: 0, endorsedByFamily: false };
 
 function proposal(overrides: Partial<RoutineProposal> = {}): RoutineProposal {
   return {
@@ -43,7 +46,7 @@ function proposal(overrides: Partial<RoutineProposal> = {}): RoutineProposal {
 
 describe('toVillageCandidateView', () => {
   it('marks teen-attributed, surfaces only the category, and never duplicates the redaction line', () => {
-    const view = toVillageCandidateView(candidate(), true);
+    const view = toVillageCandidateView(candidate(), true, NO_ENGAGEMENT);
 
     // Rule #1: only the category survives. The title carries the one redaction
     // line; summary is empty so the renderer states the why exactly once.
@@ -63,7 +66,7 @@ describe('toVillageCandidateView', () => {
   });
 
   it('passes every raw field through unchanged and unmarked when NOT teen-attributed', () => {
-    const view = toVillageCandidateView(candidate(), false);
+    const view = toVillageCandidateView(candidate(), false, NO_ENGAGEMENT);
 
     expect(view.teenAttributed).toBe(false);
     expect(view.title).toBe(RAW_TITLE);
@@ -71,6 +74,20 @@ describe('toVillageCandidateView', () => {
     expect(view.coverageNote).toBe(RAW_COVERAGE);
     expect(view.sourceUrl).toBe(RAW_SOURCE_URL);
     expect(view.kind).toBe('support_group');
+  });
+
+  it('folds the aggregate engagement (count + own-endorsed) into both teen and non-teen views', () => {
+    const engaged = { endorsementCount: 5, endorsedByFamily: true };
+
+    const teen = toVillageCandidateView(candidate(), true, engaged);
+    const open = toVillageCandidateView(candidate({ childId: null }), false, engaged);
+
+    // The count is an aggregate (identity-free) so it is safe even on a teen row.
+    expect(teen.endorsementCount).toBe(5);
+    expect(teen.endorsedByFamily).toBe(true);
+    expect(open.endorsementCount).toBe(5);
+    expect(open.endorseHref).toBe('/api/village/cand-1/endorse');
+    expect(open.shareHref).toBe('/api/village/cand-1/share');
   });
 });
 
