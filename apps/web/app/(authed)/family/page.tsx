@@ -16,7 +16,7 @@ export default async function FamilyPage() {
 
   return (
     <div>
-      <PageCorner folio="family" section="family · your household" />
+      <PageCorner folio="family" section="your household" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
