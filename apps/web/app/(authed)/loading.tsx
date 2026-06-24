@@ -1,10 +1,16 @@
+import { PageCorner } from '~/components/hale/page-corner';
+
 /**
- * Suspense fallback for every authed page while its server data loads. Renders a
- * calm skeleton in the same editorial rhythm as the real pages rather than a
- * spinner — the header band stays, the body settles into placeholder lines.
+ * Suspense fallback for every authed page while its server data loads. It mirrors
+ * the universal page frame — the desktop page corner and the `rise rise-1`
+ * eyebrow + display-H1 header every page opens with — so the swap from skeleton
+ * to real content is a fill in place, not a jump. That is the fix for nav feeling
+ * buggy between screens: the boundary was here, but the placeholder didn't match
+ * the page's shape, so each transition shifted. Bars settle to the page's own
+ * surface and motion stops under prefers-reduced-motion (DESIGN.md §6).
  */
-function SkeletonLine({ className }: { className?: string }) {
-  return <div className={`h-4 rounded bg-rule animate-pulse ${className ?? ''}`} />;
+function SkeletonBar({ className }: { className?: string }) {
+  return <div className={`skeleton-bar ${className ?? ''}`} />;
 }
 
 export default function AuthedLoading() {
@@ -12,27 +18,35 @@ export default function AuthedLoading() {
     <div aria-busy="true" aria-live="polite">
       <span className="sr-only">Loading…</span>
 
+      <PageCorner folio="··" section="loading" />
+
+      {/* The eyebrow + display-H1 header band every page opens with. Heights are
+       * reserved to the real header's so nothing reflows when content lands. */}
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">loading</span>
-            <SkeletonLine className="mt-3 w-3/4" />
+          <div className="lg:col-span-3 space-y-3">
+            <SkeletonBar className="h-3 w-24" />
+            <SkeletonBar className="h-3 w-40" />
           </div>
           <div className="lg:col-span-9 space-y-4">
-            <SkeletonLine className="h-10 w-11/12" />
-            <SkeletonLine className="h-10 w-3/5" />
+            <SkeletonBar className="h-12 lg:h-16 w-11/12" />
+            <SkeletonBar className="h-12 lg:h-16 w-3/5" />
           </div>
         </div>
       </header>
 
-      <section className="rise rise-2 grid grid-cols-1 md:grid-cols-2 gap-5">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="panel-oat px-6 py-8 space-y-3">
-            <SkeletonLine className="w-2/5" />
-            <SkeletonLine className="h-6 w-11/12" />
-            <SkeletonLine className="w-3/4" />
-          </div>
-        ))}
+      {/* A first body block, sized like a section, so the page below the fold has
+       * weight too — keeps the skeleton from looking top-heavy then jumping. */}
+      <section className="rise rise-2 space-y-5">
+        <div className="panel-oat px-6 py-8 space-y-3">
+          <SkeletonBar className="h-3 w-2/5" />
+          <SkeletonBar className="h-6 w-11/12" />
+          <SkeletonBar className="h-6 w-3/4" />
+        </div>
+        <div className="panel-oat px-6 py-8 space-y-3">
+          <SkeletonBar className="h-3 w-1/3" />
+          <SkeletonBar className="h-6 w-4/5" />
+        </div>
       </section>
     </div>
   );

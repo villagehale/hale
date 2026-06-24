@@ -478,13 +478,6 @@ strong { font-weight: 700; }
  * sidebar and the mobile drawer show the text label instead. */
 .auth-control-icon { display: none; }
 
-.sidebar-turtle {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  padding-top: 0.5rem;
-}
-
 /* ── Collapsed rail — icons only, labels + chrome fold away, tips on hover ─ */
 
 @media (min-width: 1024px) {
@@ -498,8 +491,7 @@ strong { font-weight: 700; }
   }
   [data-shell-collapsed="1"] .editorial-layout .sidebar-wordmark,
   [data-shell-collapsed="1"] .editorial-layout .sidebar-tagline,
-  [data-shell-collapsed="1"] .editorial-layout .nav-label,
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-turtle {
+  [data-shell-collapsed="1"] .editorial-layout .nav-label {
     display: none;
   }
   /* The auth control survives the collapse as an icon-only affordance — its text
@@ -589,8 +581,6 @@ strong { font-weight: 700; }
   text-decoration: none;
   color: var(--color-spruce);
 }
-
-.runninghead-trail { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
 
 .runninghead-menu {
   display: inline-flex;
@@ -1004,6 +994,27 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; opacity: 1; transform: none; }
+}
+
+/* ── Loading skeleton — a calm placeholder during route transitions ─────── */
+
+/* A skeleton bar is a hairline-coloured block on the card surface. Its only job
+ * is to hold the page's shape so the swap from skeleton to content is a fill, not
+ * a jump (no layout shift). The breathe is gentle and stops entirely under
+ * prefers-reduced-motion (DESIGN.md §6) — a still placeholder is still calm. */
+.skeleton-bar {
+  background: var(--color-rule);
+  border-radius: var(--r-sm);
+  animation: skeleton-breathe 1600ms var(--ease-breathe) infinite;
+}
+
+@keyframes skeleton-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar { animation: none; }
 }
 
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */

@@ -7,12 +7,12 @@ import { Icon } from '~/components/ui/icon';
 import { useShell } from '~/components/hale/app-shell';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ALL_NAV } from '~/components/hale/nav';
-import { ThemeToggle } from '~/components/hale/theme-toggle';
 
 /**
  * The sticky header frame above the scrolling main stage. The brand and the
  * current-page eyebrow sit on the running head; the hamburger (mobile only)
- * opens the off-canvas nav drawer.
+ * opens the off-canvas nav drawer. Appearance (theme) lives in Settings, not
+ * here — there is exactly one such control in the app.
  */
 export function TopHeader() {
   const pathname = usePathname();
@@ -37,10 +37,6 @@ export function TopHeader() {
           <span className="font-display text-2xl leading-none font-semibold">Hale</span>
         </Link>
         {current ? <span className="eyebrow text-spruce">{current.label}</span> : null}
-      </div>
-
-      <div className="runninghead-trail">
-        <ThemeToggle />
       </div>
     </header>
   );

@@ -187,7 +187,7 @@ export function OnboardingWizard({
     });
     if (result.status === 'completed') {
       clearIntakeDraft();
-      router.push(inviteCoParent ? '/settings' : '/home');
+      router.push(inviteCoParent ? '/family' : '/home');
       return;
     }
     if (result.status === 'preview') {
@@ -636,7 +636,7 @@ export function OnboardingWizard({
                     className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
                   />
                   <span className="text-slate-green leading-relaxed">
-                    I&rsquo;d like to invite my co-parent — take me to my family settings to
+                    I&rsquo;d like to invite my co-parent — take me to my family page to
                     send the link after I finish.
                   </span>
                 </label>

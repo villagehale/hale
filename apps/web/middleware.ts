@@ -11,6 +11,7 @@ const MARKETING_FALLBACK = 'https://villagehale.com';
 const PROTECTED_PREFIXES = [
   '/coach',
   '/companion',
+  '/family',
   '/home',
   '/plan',
   '/settings',
