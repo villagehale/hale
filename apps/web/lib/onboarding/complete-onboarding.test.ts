@@ -110,11 +110,12 @@ describe('completeOnboarding', () => {
 
     expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
 
-    // Provisioning ran with the Phase-C child (the full DOB carried through).
+    // Provisioning ran with the Phase-C child (the full DOB carried through; an
+    // unspecified-gender default and a null last name fill the optional fields).
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(
       s.database,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
-      [{ name: 'Robin', dateOfBirth: '2024-03-15' }],
+      [{ name: 'Robin', lastName: null, dateOfBirth: '2024-03-15', gender: 'unspecified' }],
     );
 
     // The chosen plan tier is written to the family (no charge taken).
@@ -154,13 +155,36 @@ describe('completeOnboarding', () => {
       s.database,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       [
-        { name: 'Robin', dateOfBirth: '2024-03-15' },
-        { name: 'Sam', dateOfBirth: '2010-01-01' },
+        { name: 'Robin', lastName: null, dateOfBirth: '2024-03-15', gender: 'unspecified' },
+        { name: 'Sam', lastName: null, dateOfBirth: '2010-01-01', gender: 'unspecified' },
       ],
     );
   });
 
-  it('writes the structured location and mirrors postal_code into area_coarse (rule #1)', async () => {
+  it('carries each child\'s last name and chosen gender through to provisioning (rule #1: optional)', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+
+    await completeOnboarding({
+      children: [{ name: 'Robin', lastName: 'Stone', dateOfBirth: '2024-03-15', gender: 'girl' }],
+      planTier: 'plus',
+      tosAccepted: true,
+    });
+
+    expect(provisionAndWriteChildren).toHaveBeenCalledWith(
+      s.database,
+      { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
+      [{ name: 'Robin', lastName: 'Stone', dateOfBirth: '2024-03-15', gender: 'girl' }],
+    );
+  });
+
+  it('writes the structured location and derives a coarse area from the postal code (rule #1)', async () => {
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
@@ -177,7 +201,8 @@ describe('completeOnboarding', () => {
     });
 
     expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
-    // Postal code is normalized (upper-cased, trimmed) and mirrored into areaCoarse.
+    // Postal code is normalized (upper-cased, trimmed); areaCoarse is the DERIVED
+    // FSA only (rule #1: never the full postal code surfaced to discovery).
     // No intents supplied → stored as null (column is nullable).
     expect(s.updateFor(schema.families)).toEqual({
       planTier: 'plus',
@@ -185,7 +210,7 @@ describe('completeOnboarding', () => {
       province: 'Ontario',
       city: 'Toronto',
       postalCode: 'M5V 2T6',
-      areaCoarse: 'M5V 2T6',
+      areaCoarse: 'M5V',
       intents: null,
     });
   });
@@ -253,7 +278,7 @@ describe('completeOnboarding', () => {
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(
       s.database,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery Q' },
-      [{ name: 'Robin', dateOfBirth: '2024-03-15' }],
+      [{ name: 'Robin', lastName: null, dateOfBirth: '2024-03-15', gender: 'unspecified' }],
     );
     // ... and is written (trimmed) to the users row.
     expect(s.updateFor(schema.users)).toEqual({ name: 'Avery Q' });

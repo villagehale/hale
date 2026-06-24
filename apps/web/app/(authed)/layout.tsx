@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '~/auth';
 import { AppShell } from '~/components/hale/app-shell';
@@ -55,7 +56,14 @@ export default async function AuthedLayout({ children }: { children: React.React
               because Google OAuth is not configured.
             </output>
           )}
-          <FamilyHeader />
+          {/* The family band reads the DB; stream it so it never blocks the
+           * shell's first paint. It renders nothing when there are no children,
+           * so a null fallback is correct — no reserved space to reflow. This is
+           * part of the nav-loading fix: without the boundary, every entry into
+           * the group waited on this read before anything appeared. */}
+          <Suspense fallback={null}>
+            <FamilyHeader />
+          </Suspense>
           {children}
         </main>
       </AppShell>

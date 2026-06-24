@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { runInferenceCron } from '~/lib/cron/inference';
+import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the agent reads its skill file off disk and calls the Anthropic
 // SDK — neither works on the edge runtime.
@@ -23,6 +24,11 @@ export async function GET(req: Request) {
   const denied = requireCronSecret(req);
   if (denied) return denied;
 
-  const summary = await runInferenceCron(db());
-  return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+  try {
+    const summary = await runInferenceCron(db());
+    return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+  } finally {
+    // Serverless flush: send buffered spans before the function returns (rule #8).
+    await flushTelemetry();
+  }
 }

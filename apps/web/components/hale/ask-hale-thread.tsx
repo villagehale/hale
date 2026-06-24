@@ -4,6 +4,7 @@ import { useId } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Folio } from '~/components/hale/folio';
+import { Markdown } from '~/components/hale/markdown';
 import { type UseAskHale, useAskHale } from '~/components/hale/use-ask-hale';
 import type { ThreadSeed } from '~/lib/coach/thread';
 
@@ -136,7 +137,7 @@ function CompactSurface({ canAsk, chat }: { canAsk: boolean; chat: UseAskHale })
               </p>
             ) : (
               <article key={turn.id} className="panel">
-                <p className="text-lg text-spruce leading-relaxed">{turn.body}</p>
+                <Markdown>{turn.body}</Markdown>
               </article>
             ),
           )}
@@ -176,7 +177,7 @@ function FullSurface({ canAsk, chat }: { canAsk: boolean; chat: UseAskHale }) {
                   <p className="eyebrow text-apricot-deep mt-2">Hale</p>
                 </div>
                 <div className="md:col-span-10 space-y-6">
-                  <p className="text-lg text-spruce leading-relaxed">{turn.body}</p>
+                  <Markdown>{turn.body}</Markdown>
                 </div>
               </div>
             </article>

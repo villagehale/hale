@@ -6,6 +6,7 @@ import { db } from '~/lib/db';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { ingestEvent } from '~/lib/pipeline/ingest';
 import { INBOUND_SIGNATURE_HEADER, verifyInboundSignature } from '~/lib/pipeline/verify-secret';
+import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the pipeline reads its skill files off disk and calls the
 // Anthropic SDK — neither works on the edge runtime. The bound is the harness's
@@ -78,17 +79,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: 'unbound' }, { status: 200 });
   }
 
-  const outcome = await ingestEvent(
-    {
-      familyId: family[0].id,
-      source: payload.data.kind,
-      subject: payload.data.subject,
-      body: payload.data.body,
-      extra: payload.data.extra,
-    },
-    database,
-    pipelineClient(),
-  );
+  try {
+    const outcome = await ingestEvent(
+      {
+        familyId: family[0].id,
+        source: payload.data.kind,
+        subject: payload.data.subject,
+        body: payload.data.body,
+        extra: payload.data.extra,
+      },
+      database,
+      pipelineClient(),
+    );
 
-  return NextResponse.json({ status: 'ingested', outcome }, { status: 200 });
+    return NextResponse.json({ status: 'ingested', outcome }, { status: 200 });
+  } finally {
+    // Serverless flush: the pipeline emitted classify/draft/review traces — send
+    // their buffered spans before the function returns (rule #8).
+    await flushTelemetry();
+  }
 }

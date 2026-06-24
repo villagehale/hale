@@ -10,3 +10,4 @@ export * from './entitlements.js';
 export * from './allowance.js';
 export * from './village.js';
 export * from './onboarding-intents.js';
+export * from './child-gender.js';

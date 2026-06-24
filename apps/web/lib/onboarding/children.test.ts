@@ -38,8 +38,32 @@ describe('validateChild', () => {
     const result = validateChild({ name: 'Maya', dateOfBirth: '2026-06-15' }, NOW);
     expect(result).toEqual({
       ok: true,
-      child: { name: 'Maya', dateOfBirth: '2026-06-15', stage: 'newborn' },
+      child: {
+        name: 'Maya',
+        lastName: null,
+        dateOfBirth: '2026-06-15',
+        stage: 'newborn',
+        gender: 'unspecified',
+      },
     });
+  });
+
+  it('carries a trimmed last name and a known gender through (rule #1: both optional)', () => {
+    const result = validateChild(
+      { name: 'Maya', lastName: '  Stone  ', dateOfBirth: '2026-01-15', gender: 'girl' },
+      NOW,
+    );
+    expect(result.ok && result.child.lastName).toBe('Stone');
+    expect(result.ok && result.child.gender).toBe('girl');
+  });
+
+  it('defaults a missing / unknown gender to unspecified and an empty last name to null', () => {
+    const result = validateChild(
+      { name: 'Maya', lastName: '   ', dateOfBirth: '2026-01-15', gender: 'male' },
+      NOW,
+    );
+    expect(result.ok && result.child.lastName).toBeNull();
+    expect(result.ok && result.child.gender).toBe('unspecified');
   });
 
   it('rejects a child past the 18-year ceiling (216mo: born 2008-06-15)', () => {
@@ -52,7 +76,13 @@ describe('validateChild', () => {
     const result = validateChild({ name: 'Teen', dateOfBirth: '2008-07-15' }, NOW);
     expect(result).toEqual({
       ok: true,
-      child: { name: 'Teen', dateOfBirth: '2008-07-15', stage: 'teenager' },
+      child: {
+        name: 'Teen',
+        lastName: null,
+        dateOfBirth: '2008-07-15',
+        stage: 'teenager',
+        gender: 'unspecified',
+      },
     });
   });
 
@@ -91,14 +121,14 @@ describe('unionStages', () => {
 });
 
 describe('buildChildInserts', () => {
-  it('scopes each child to the family and writes only name + date_of_birth (no stage)', () => {
+  it('scopes each child to the family and writes the source-of-truth columns (no stage)', () => {
     const inserts = buildChildInserts(FAMILY_ID, [
-      { name: 'Maya', dateOfBirth: '2026-01-15' },
-      { name: 'Theo', dateOfBirth: '2013-06-15' },
+      { name: 'Maya', lastName: 'Stone', dateOfBirth: '2026-01-15', gender: 'girl' },
+      { name: 'Theo', lastName: null, dateOfBirth: '2013-06-15', gender: 'unspecified' },
     ]);
     expect(inserts).toEqual([
-      { familyId: FAMILY_ID, name: 'Maya', dateOfBirth: '2026-01-15' },
-      { familyId: FAMILY_ID, name: 'Theo', dateOfBirth: '2013-06-15' },
+      { familyId: FAMILY_ID, name: 'Maya', lastName: 'Stone', dateOfBirth: '2026-01-15', gender: 'girl' },
+      { familyId: FAMILY_ID, name: 'Theo', lastName: null, dateOfBirth: '2013-06-15', gender: 'unspecified' },
     ]);
   });
 });

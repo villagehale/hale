@@ -23,7 +23,9 @@ import { type LocationInput, normalizeLocation } from './location-input';
  * update the parent's display name. Each one validates, resolves the caller's
  * family from the Auth.js session (never a fabricated id — rule #1), and writes an
  * immutable audit_log row alongside the mutation (rule #6). Each mutation
- * revalidates /settings so the page re-reads after a write.
+ * revalidates the page that renders it after a write: the children, location, and
+ * intents live on /family; the parent profile and plan live on /settings (the IA
+ * split — family control vs. account config).
  *
  * Degradation mirrors saveOnboardingChildren: no DATABASE_URL or auth-unconfigured
  * (dev preview) returns `preview` — nothing is written, never a crash. A signed-in
@@ -53,9 +55,14 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
 
   if (!familyId) {
     await provisionAndWriteChildren(database, identity, [
-      { name: validated.child.name, dateOfBirth: validated.child.dateOfBirth },
+      {
+        name: validated.child.name,
+        lastName: validated.child.lastName,
+        dateOfBirth: validated.child.dateOfBirth,
+        gender: validated.child.gender,
+      },
     ]);
-    revalidatePath('/settings');
+    revalidatePath('/family');
     return { status: 'added' };
   }
 
@@ -66,7 +73,9 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
       .values({
         familyId,
         name: validated.child.name,
+        lastName: validated.child.lastName,
         dateOfBirth: validated.child.dateOfBirth,
+        gender: validated.child.gender,
         interests,
       })
       .returning({ id: schema.children.id });
@@ -83,7 +92,7 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
     });
   });
 
-  revalidatePath('/settings');
+  revalidatePath('/family');
   return { status: 'added' };
 }
 
@@ -147,7 +156,7 @@ export async function editChildAction(
   if (!updated) {
     return { status: 'not_found' };
   }
-  revalidatePath('/settings');
+  revalidatePath('/family');
   return { status: 'updated' };
 }
 
@@ -200,7 +209,7 @@ export async function removeChildAction(childId: string): Promise<RemoveChildRes
   if (!removed) {
     return { status: 'not_found' };
   }
-  revalidatePath('/settings');
+  revalidatePath('/family');
   return { status: 'removed' };
 }
 
@@ -265,7 +274,7 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
     });
   });
 
-  revalidatePath('/settings');
+  revalidatePath('/family');
   return { status: 'updated' };
 }
 
@@ -374,7 +383,7 @@ export async function setIntentsAction(rawIntents: string[]): Promise<SetIntents
     });
   });
 
-  revalidatePath('/settings');
+  revalidatePath('/family');
   return { status: 'updated' };
 }
 

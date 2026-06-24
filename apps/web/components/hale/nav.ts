@@ -6,6 +6,7 @@ import {
   House,
   Home as HomeIcon,
   MessageCircleHeart,
+  Settings,
   Sparkles,
   Users,
 } from 'lucide-react';
@@ -13,9 +14,10 @@ import {
 /**
  * The single source of truth for the app's navigation, imported by BOTH the
  * sidebar and the top header so the two can never disagree on the route list or
- * its labels. `PRIMARY_NAV` is the main stops; History (the audit trail) is kept
- * separate because the sidebar files it quietly at the foot rather than alongside
- * the primary stops — the header still finds it via `ALL_NAV` for the eyebrow.
+ * its labels. `PRIMARY_NAV` is the daily product surfaces. History (the audit
+ * trail) and Settings (configuration) are kept separate: the sidebar files both
+ * quietly at the foot, near the user, rather than alongside the primary stops —
+ * the header still finds them via `ALL_NAV` for the eyebrow.
  */
 
 export interface NavItem {
@@ -31,7 +33,7 @@ export const PRIMARY_NAV = [
   { href: '/companion', label: 'companion', icon: Sparkles },
   { href: '/village', label: 'village', icon: Users },
   { href: '/plan', label: 'plan', icon: CalendarRange },
-  { href: '/settings', label: 'family', icon: House },
+  { href: '/family', label: 'family', icon: House },
 ] as const satisfies ReadonlyArray<NavItem>;
 
 export const HISTORY_NAV = {
@@ -40,4 +42,14 @@ export const HISTORY_NAV = {
   icon: History,
 } as const satisfies NavItem;
 
-export const ALL_NAV = [...PRIMARY_NAV, HISTORY_NAV] as const satisfies ReadonlyArray<NavItem>;
+export const SETTINGS_NAV = {
+  href: '/settings',
+  label: 'settings',
+  icon: Settings,
+} as const satisfies NavItem;
+
+export const ALL_NAV = [
+  ...PRIMARY_NAV,
+  HISTORY_NAV,
+  SETTINGS_NAV,
+] as const satisfies ReadonlyArray<NavItem>;

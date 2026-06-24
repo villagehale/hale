@@ -4,10 +4,19 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
-import { type OnboardingIntent, type PlanTier, parseIntents } from '@hale/types';
+import {
+  type ChildGender,
+  CHILD_GENDERS,
+  type OnboardingIntent,
+  type PlanTier,
+  parseIntents,
+} from '@hale/types';
+import { HomeAddress } from '~/components/hale/home-address';
 import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
+import { OnboardingPlanPicker } from '~/components/hale/onboarding-plan-picker';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+import type { LocationInput } from '~/lib/family/location-input';
 import { validateChild } from '~/lib/onboarding/children';
 import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
 import {
@@ -26,23 +35,23 @@ const PHASE_META: Record<Phase, { folio: string; section: string; title: string 
   C: { folio: '03', section: 'step three of three', title: 'finish setting up' },
 };
 
-const PLAN_OPTIONS: { tier: PlanTier; label: string; note: string }[] = [
-  { tier: 'free', label: 'free', note: 'observe + draft · no autonomous action' },
-  { tier: 'plus', label: 'plus', note: 'hale acts on your approval · $24/mo' },
-  { tier: 'family', label: 'family', note: 'autonomy + commerce + portals · $49/mo' },
-];
-
 /** A Phase-A name row, keyed by a stable id so add/remove keeps React state aligned. */
 interface NameRow {
   id: string;
   name: string;
 }
 
-/** A child as the setup phase collects it: a name plus the full DOB, asked once. */
+/**
+ * A child as the setup phase collects it (post-auth): full name (first + optional
+ * last), an optional gender (rule #1: sensitive — asked, never required), and the
+ * full DOB, asked once.
+ */
 interface SetupChild {
   id: string;
   name: string;
+  lastName: string;
   dateOfBirth: string;
+  gender: ChildGender;
 }
 
 let rowSeq = 0;
@@ -88,12 +97,9 @@ export function OnboardingWizard({
   // structured location.
   const [parentName, setParentName] = useState('');
   const [setupChildren, setSetupChildren] = useState<SetupChild[]>([
-    { id: nextRowId(), name: '', dateOfBirth: '' },
+    { id: nextRowId(), name: '', lastName: '', dateOfBirth: '', gender: 'unspecified' },
   ]);
-  const [country, setCountry] = useState('Canada');
-  const [province, setProvince] = useState('');
-  const [setupCity, setSetupCity] = useState('');
-  const [postalCode, setPostalCode] = useState('');
+  const [location, setLocation] = useState<LocationInput>({ country: 'Canada' });
   const [inviteCoParent, setInviteCoParent] = useState(false);
 
   // On mount, hydrate from the sessionStorage draft so Phase A survives the OAuth
@@ -110,14 +116,20 @@ export function OnboardingWizard({
     const names = draft.childNames.length > 0 ? draft.childNames : [''];
     setNameRows(names.map((name) => ({ id: nextRowId(), name })));
     setCity(draft.city);
-    setSetupCity(draft.city);
+    setLocation((prev) => ({ ...prev, city: draft.city || prev.city }));
     setIntents(parseIntents(draft.intents ?? []));
     setPlanTier(isPlanTier(draft.planTier) ? draft.planTier : 'free');
     setTosAccepted(draft.tosAccepted);
     const seeded = names
       .map((name) => name.trim())
       .filter((name) => name.length > 0)
-      .map((name) => ({ id: nextRowId(), name, dateOfBirth: '' }));
+      .map((name) => ({
+        id: nextRowId(),
+        name,
+        lastName: '',
+        dateOfBirth: '',
+        gender: 'unspecified' as const,
+      }));
     if (seeded.length > 0) {
       setSetupChildren(seeded);
     }
@@ -178,16 +190,21 @@ export function OnboardingWizard({
   async function handleFinish() {
     setSetupState({ kind: 'saving' });
     const result = await completeOnboarding({
-      children: setupChildren.map((c) => ({ name: c.name.trim(), dateOfBirth: c.dateOfBirth })),
+      children: setupChildren.map((c) => ({
+        name: c.name.trim(),
+        lastName: c.lastName.trim(),
+        dateOfBirth: c.dateOfBirth,
+        gender: c.gender,
+      })),
       planTier,
       tosAccepted,
       parentName: parentName.trim(),
-      location: { country, province, city: setupCity, postalCode },
+      location,
       intents,
     });
     if (result.status === 'completed') {
       clearIntakeDraft();
-      router.push(inviteCoParent ? '/settings' : '/home');
+      router.push(inviteCoParent ? '/family' : '/home');
       return;
     }
     if (result.status === 'preview') {
@@ -356,43 +373,9 @@ export function OnboardingWizard({
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
                   Create your account with Google to save your setup — I&rsquo;ll use
-                  your Google name and email, so there&rsquo;s nothing to re-type. Pick a
-                  plan; you can change it any time and nothing is charged today.
+                  your Google name and email, so there&rsquo;s nothing to re-type. You&rsquo;ll
+                  pick a plan on the last step, and nothing is charged today.
                 </p>
-
-                <fieldset>
-                  <legend className="eyebrow">choose a plan</legend>
-                  <div className="mt-4 space-y-3">
-                    {PLAN_OPTIONS.map((opt) => {
-                      const selected = planTier === opt.tier;
-                      return (
-                        <label
-                          key={opt.tier}
-                          className={`choice-card cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between ${
-                            selected ? 'bg-oat border border-spruce' : 'border border-rule-strong hover:border-spruce'
-                          }`}
-                        >
-                          <span>
-                            <span className="font-display text-xl block">{opt.label}</span>
-                            <span className="meta block mt-1">{opt.note}</span>
-                          </span>
-                          <input
-                            type="radio"
-                            name="plan-tier"
-                            value={opt.tier}
-                            checked={selected}
-                            onChange={() => {
-                              setPlanTier(opt.tier);
-                              persistDraft({ planTier: opt.tier });
-                            }}
-                            className="sr-only"
-                          />
-                          {selected ? <span className="eyebrow text-spruce">selected</span> : null}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </fieldset>
 
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
@@ -458,9 +441,10 @@ export function OnboardingWizard({
                       , <span className="text-spruce">{parentName.split(/\s+/)[0]}</span>
                     </>
                   ) : null}
-                  . Now each child&rsquo;s exact date of birth and your location, so I can
-                  tailor precisely — this is the first thing that gets saved, encrypted,
-                  to your family.
+                  . Now each child&rsquo;s details and your home address, so I can tailor
+                  precisely and find things nearby — this is the first thing that gets
+                  saved, encrypted, to your family. I keep only the coarse area for
+                  discovery; the full address stays private for booking.
                 </p>
 
                 <div className="space-y-6">
@@ -523,6 +507,23 @@ export function OnboardingWizard({
                             />
                           </div>
                           <div>
+                            <label htmlFor={`setup-lastname-${child.id}`} className="eyebrow">
+                              last name <span className="text-faded-sage">(optional)</span>
+                            </label>
+                            <input
+                              id={`setup-lastname-${child.id}`}
+                              type="text"
+                              className="field mt-2"
+                              value={child.lastName}
+                              onChange={(e) =>
+                                updateSetupChild(child.id, { lastName: e.currentTarget.value })
+                              }
+                              placeholder="ramos"
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                          </div>
+                          <div>
                             <label htmlFor={`setup-dob-${child.id}`} className="eyebrow">
                               date of birth
                             </label>
@@ -537,6 +538,27 @@ export function OnboardingWizard({
                               }
                               autoComplete="bday"
                             />
+                          </div>
+                          <div>
+                            <label htmlFor={`setup-gender-${child.id}`} className="eyebrow">
+                              gender <span className="text-faded-sage">(optional)</span>
+                            </label>
+                            <select
+                              id={`setup-gender-${child.id}`}
+                              className="field mt-2"
+                              value={child.gender}
+                              onChange={(e) =>
+                                updateSetupChild(child.id, {
+                                  gender: e.currentTarget.value as ChildGender,
+                                })
+                              }
+                            >
+                              {CHILD_GENDERS.map((g) => (
+                                <option key={g.value} value={g.value}>
+                                  {g.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                         {dobError ? (
@@ -553,7 +575,13 @@ export function OnboardingWizard({
                     onClick={() =>
                       setSetupChildren((prev) => [
                         ...prev,
-                        { id: nextRowId(), name: '', dateOfBirth: '' },
+                        {
+                          id: nextRowId(),
+                          name: '',
+                          lastName: '',
+                          dateOfBirth: '',
+                          gender: 'unspecified',
+                        },
                       ])
                     }
                   >
@@ -563,70 +591,17 @@ export function OnboardingWizard({
                 </fieldset>
 
                 <fieldset className="space-y-5">
-                  <legend className="eyebrow text-spruce">your location</legend>
-                  <p className="meta">
-                    coarse only — for finding local things. the postal code helps me find
-                    your neighbourhood; I never store or surface a precise address.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div>
-                      <label htmlFor="setup-country" className="eyebrow">
-                        country
-                      </label>
-                      <input
-                        id="setup-country"
-                        type="text"
-                        className="field mt-2"
-                        value={country}
-                        onChange={(e) => setCountry(e.currentTarget.value)}
-                        placeholder="Canada"
-                        autoComplete="country-name"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="setup-province" className="eyebrow">
-                        province / state
-                      </label>
-                      <input
-                        id="setup-province"
-                        type="text"
-                        className="field mt-2"
-                        value={province}
-                        onChange={(e) => setProvince(e.currentTarget.value)}
-                        placeholder="Ontario"
-                        autoComplete="address-level1"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="setup-city" className="eyebrow">
-                        city
-                      </label>
-                      <input
-                        id="setup-city"
-                        type="text"
-                        className="field mt-2"
-                        value={setupCity}
-                        onChange={(e) => setSetupCity(e.currentTarget.value)}
-                        placeholder="Toronto"
-                        autoComplete="address-level2"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="setup-postal" className="eyebrow">
-                        postal code
-                      </label>
-                      <input
-                        id="setup-postal"
-                        type="text"
-                        className="field mt-2"
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.currentTarget.value)}
-                        placeholder="M5V 2T6"
-                        autoComplete="postal-code"
-                      />
-                    </div>
-                  </div>
+                  <legend className="eyebrow text-spruce">your home address</legend>
+                  <HomeAddress value={location} onChange={setLocation} />
                 </fieldset>
+
+                <OnboardingPlanPicker
+                  selected={planTier}
+                  onSelect={(tier) => {
+                    setPlanTier(tier);
+                    persistDraft({ planTier: tier });
+                  }}
+                />
 
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
@@ -636,7 +611,7 @@ export function OnboardingWizard({
                     className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
                   />
                   <span className="text-slate-green leading-relaxed">
-                    I&rsquo;d like to invite my co-parent — take me to my family settings to
+                    I&rsquo;d like to invite my co-parent — take me to my family page to
                     send the link after I finish.
                   </span>
                 </label>

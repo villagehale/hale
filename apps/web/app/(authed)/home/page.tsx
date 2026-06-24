@@ -3,7 +3,7 @@ import { Baby, CalendarPlus, Sparkles } from 'lucide-react';
 import { AcceptActivityCard } from '~/components/hale/accept-activity-card';
 import { AskBox } from '~/components/hale/ask-box';
 import { BookButton } from '~/components/hale/book-button';
-import { PageCorner } from '~/components/hale/page-corner';
+import { LongDate } from '~/components/hale/long-date';
 import { QuickLog } from '~/components/hale/quick-log';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
@@ -37,7 +37,11 @@ export default async function HomePage() {
   if (children.length === 0) {
     return (
       <div>
-        <PageCorner folio="home" section="home · today" />
+        <div className="page-corner">
+          <span className="ml-auto">
+            <LongDate />
+          </span>
+        </div>
 
         <header className="rise rise-1 mb-12 lg:mb-16">
           <h1 className="font-display">
@@ -70,7 +74,11 @@ export default async function HomePage() {
 
   return (
     <div>
-      <PageCorner folio="home" section="home · today" />
+      <div className="page-corner">
+        <span className="ml-auto">
+          <LongDate />
+        </span>
+      </div>
 
       {/* ── Ask Hale — the hero ─────────────────────────────────────────── */}
       <section className="rise rise-1 mb-16 lg:mb-20">

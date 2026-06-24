@@ -2,6 +2,7 @@ import { type AgentClient, HAIKU_MODEL, SONNET_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { classifyEvent } from './classify';
 import { draftAction } from './draft';
 import { dedupHashFor, recordDraft, recordEvent, recordVerdict, writeAutonomyGate } from './record';
@@ -83,8 +84,16 @@ export async function ingestEvent(
   });
   const dedupHash = dedupHashFor(familyId, input.source, rawContent);
 
-  // 1. Classify (Haiku skill).
-  const classified = await classifyEvent({ source: input.source, rawContent }, client);
+  // 1. Classify (Haiku skill). Traced as 'classify-event'; the mask is the rule-#1
+  // backstop over the inbound raw content the classifier sees.
+  const { classified, classifyTraceId } = await traceAgentRun(
+    { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
+    async (trace) => {
+      const result = await classifyEvent({ source: input.source, rawContent }, client);
+      trace.recordGeneration('classify-event-call', { model: HAIKU_MODEL, usage: result.usage });
+      return { classified: result, classifyTraceId: trace.traceId };
+    },
+  );
 
   // Validate child attribution against THIS family's children before persisting a
   // reference: a hallucinated/stale/cross-family id is dropped to null (rule #1 —
@@ -105,6 +114,7 @@ export async function ingestEvent(
     childId,
     usage: classified.usage,
     model: HAIKU_MODEL,
+    langfuseTraceId: classifyTraceId,
   });
 
   if (recorded.duplicate) {
@@ -126,14 +136,21 @@ export async function ingestEvent(
     return { status: 'dropped', eventId, reason: 'unknown_action_type' };
   }
 
-  // 3. Draft (Sonnet skill).
-  const drafted = await draftAction(
-    {
-      familyId,
-      event: { eventId, eventType: classified.eventType, payload: classified.payload },
-      actionType,
+  // 3. Draft (Sonnet skill). Traced as 'draft-action'.
+  const { drafted, draftTraceId } = await traceAgentRun(
+    { name: 'draft-action', userId: 'system', tags: ['draft-action'], metadata: { familyId } },
+    async (trace) => {
+      const result = await draftAction(
+        {
+          familyId,
+          event: { eventId, eventType: classified.eventType, payload: classified.payload },
+          actionType,
+        },
+        client,
+      );
+      trace.recordGeneration('draft-action-call', { model: SONNET_MODEL, usage: result.usage });
+      return { drafted: result, draftTraceId: trace.traceId };
     },
-    client,
   );
 
   const { actionId } = await recordDraft(database, {
@@ -142,14 +159,23 @@ export async function ingestEvent(
     draft: drafted.draft,
     usage: drafted.usage,
     model: SONNET_MODEL,
+    langfuseTraceId: draftTraceId,
   });
 
   // 4. Review (the reviewer skill — MUST invoke verification tools, rule #3). The
   // verdict is persisted; the action stays drafted_for_approval whatever it is.
-  const reviewed = await reviewAction(
-    { familyId, draft: { ...drafted.draft, id: actionId } },
-    database,
-    client,
+  // Traced as 'review-action'.
+  const { reviewed, reviewTraceId } = await traceAgentRun(
+    { name: 'review-action', userId: 'system', tags: ['review-action'], metadata: { familyId } },
+    async (trace) => {
+      const result = await reviewAction(
+        { familyId, draft: { ...drafted.draft, id: actionId } },
+        database,
+        client,
+      );
+      trace.recordGeneration('review-action-loop', { model: SONNET_MODEL, usage: result.usage });
+      return { reviewed: result, reviewTraceId: trace.traceId };
+    },
   );
 
   await recordVerdict(database, {
@@ -160,6 +186,7 @@ export async function ingestEvent(
     verdict: reviewed.verdict,
     usage: reviewed.usage,
     model: SONNET_MODEL,
+    langfuseTraceId: reviewTraceId,
   });
 
   // Rule #4 evidence: the action is HELD for a parent regardless of verdict (this
