@@ -5,6 +5,7 @@ import { db } from '~/lib/db';
 import { authConfigured } from '~/lib/auth-config';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { askHale } from '~/lib/coach/agent';
+import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the agent reads the skill file off disk and calls the Anthropic
 // SDK — neither works on the edge runtime.
@@ -56,16 +57,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
 
-  const { answer, conversationId } = await askHale(
-    {
-      familyId,
-      question: parsed.data.question,
-      intent: parsed.data.intent ?? null,
-      conversationId: parsed.data.conversationId ?? null,
-      actor: actorUserId,
-    },
-    database,
-  );
+  try {
+    const { answer, conversationId } = await askHale(
+      {
+        familyId,
+        question: parsed.data.question,
+        intent: parsed.data.intent ?? null,
+        conversationId: parsed.data.conversationId ?? null,
+        actor: actorUserId,
+      },
+      database,
+    );
 
-  return NextResponse.json({ body: answer, conversationId }, { status: 200 });
+    return NextResponse.json({ body: answer, conversationId }, { status: 200 });
+  } finally {
+    // Serverless flush: the Vercel function is short-lived, so buffered spans must
+    // be sent before it returns or the trace is dropped (best-effort, rule #8).
+    await flushTelemetry();
+  }
 }

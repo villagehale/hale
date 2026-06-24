@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
 import { buildInferenceTools } from './inference-tools';
@@ -55,46 +56,62 @@ export async function runInferenceForFamily(
   const guardDeps = buildCronGuardDeps(database);
   const modelUsed = pickModel(skill.meta.task);
 
-  const startedAt = Date.now();
-  let result: Awaited<ReturnType<typeof runAgent>>;
-  try {
-    result = await runAgent({
-      skill,
-      context: { familyId },
-      tools,
-      client: deps.client,
-      maxSteps: MAX_STEPS,
-      maxTokens: MAX_TOKENS,
-      toolContext: { familyId, actor: 'system' },
-      guardDeps,
-    });
-  } catch (err) {
-    // Rule #8: record the failed run (real model, latency) without swallowing.
-    await recordAgentRun(database, {
-      familyId,
-      agentName: 'infer-memory',
-      modelUsed,
-      promptTokens: 0,
-      completionTokens: 0,
-      costUsd: 0,
-      latencyMs: Date.now() - startedAt,
-      status: 'failed',
-    });
-    throw err;
-  }
+  // Trace the inference run: a scheduled run (userId 'system'), familyId is
+  // correlating metadata. The mask keeps teen/PII out of the trace (rule #1).
+  return traceAgentRun(
+    {
+      name: 'infer-memory',
+      userId: 'system',
+      tags: ['infer-memory'],
+      metadata: { familyId },
+    },
+    async (trace) => {
+      const startedAt = Date.now();
+      let result: Awaited<ReturnType<typeof runAgent>>;
+      try {
+        result = await runAgent({
+          skill,
+          context: { familyId },
+          tools,
+          client: deps.client,
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+          toolContext: { familyId, actor: 'system' },
+          guardDeps,
+        });
+      } catch (err) {
+        // Rule #8: record the failed run (real model, latency) without swallowing.
+        await recordAgentRun(database, {
+          familyId,
+          agentName: 'infer-memory',
+          modelUsed,
+          promptTokens: 0,
+          completionTokens: 0,
+          costUsd: 0,
+          latencyMs: Date.now() - startedAt,
+          status: 'failed',
+          langfuseTraceId: trace.traceId,
+        });
+        throw err;
+      }
 
-  await recordAgentRun(database, {
-    familyId,
-    agentName: 'infer-memory',
-    modelUsed,
-    promptTokens: result.usage.promptTokens,
-    completionTokens: result.usage.completionTokens,
-    costUsd: sonnetCostUsd(result.usage),
-    latencyMs: Date.now() - startedAt,
-    status: 'completed',
-  });
+      trace.recordGeneration('infer-memory-loop', { model: modelUsed, usage: result.usage });
 
-  return { steps: result.steps, hitMaxSteps: result.hitMaxSteps };
+      await recordAgentRun(database, {
+        familyId,
+        agentName: 'infer-memory',
+        modelUsed,
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        costUsd: sonnetCostUsd(result.usage),
+        latencyMs: Date.now() - startedAt,
+        status: 'completed',
+        langfuseTraceId: trace.traceId,
+      });
+
+      return { steps: result.steps, hitMaxSteps: result.hitMaxSteps };
+    },
+  );
 }
 
 export interface InferenceCronResult {

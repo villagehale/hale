@@ -14,6 +14,7 @@ export async function recordCoachRun(
   metrics: CoachRunMetrics,
   database: Database,
   status: 'completed' | 'failed' = 'completed',
+  langfuseTraceId: string | null = null,
 ): Promise<string> {
   return recordAgentRun(database, {
     familyId,
@@ -24,5 +25,6 @@ export async function recordCoachRun(
     costUsd: metrics.costUsd,
     latencyMs: metrics.latencyMs,
     status,
+    langfuseTraceId,
   });
 }
