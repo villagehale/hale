@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, timestamp, index, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { families } from './families.js';
+import { children } from './children.js';
 
 /**
  * Multi-turn Ask Hale threads. A conversation is a family-scoped container; its
@@ -28,6 +29,12 @@ export const conversations = pgTable(
  * One turn in a conversation — a parent question (`user`) or Hale's answer
  * (`assistant`). Append-only; the (conversation_id, created_at) index serves the
  * in-order replay the agent reads to ground each new turn.
+ *
+ * `childId` and `topic` scope a turn so the family's ONE continuous conversation
+ * reads as a searchable timeline filterable by child and by topic. Both are
+ * nullable: a turn can be about the whole family (no child) and an untagged turn
+ * is valid (topic null). ON DELETE SET NULL on `childId` — a removed child must
+ * not cascade-delete the family's conversation history.
  */
 export const messages = pgTable(
   'messages',
@@ -38,6 +45,10 @@ export const messages = pgTable(
       .references(() => conversations.id, { onDelete: 'cascade' }),
     role: text('role').$type<'user' | 'assistant'>().notNull(),
     content: text('content').notNull(),
+    /** Which child the parent was focused on for this turn, or null for the whole family. */
+    childId: uuid('child_id').references(() => children.id, { onDelete: 'set null' }),
+    /** Coarse topic tag (health/sleep/feeding/…) for timeline filtering; null when untagged. */
+    topic: text('topic'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

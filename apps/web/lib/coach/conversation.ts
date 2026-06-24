@@ -13,9 +13,20 @@ export interface TranscriptMessage {
   content: string;
 }
 
+/** A transcript turn carrying its scope — the shape the timeline filters on. */
+export interface TimelineMessage extends TranscriptMessage {
+  id: string;
+  /** Which child the turn was focused on, or null for the whole family. */
+  childId: string | null;
+  /** Coarse topic tag for filtering, or null when untagged. */
+  topic: string | null;
+  createdAt: string;
+}
+
 export interface RehydratedThread {
   conversationId: string;
-  messages: TranscriptMessage[];
+  /** The one conversation's full timeline, scope-tagged for filtering. */
+  timeline: TimelineMessage[];
 }
 
 /** Creates a fresh conversation for a family and returns its id. */
@@ -81,9 +92,9 @@ export async function resolveLatestConversationForFamily(
 }
 
 /**
- * Loads the family's latest thread with its persisted messages, or null when
- * there is nothing to rehydrate. The single read path Ask Hale uses on load so
- * the same conversation the agent persisted re-appears after a refresh.
+ * Loads the family's one continuous conversation with its full timeline, or null
+ * when there is nothing to rehydrate. The single read path the Ask Hale shell uses
+ * on load so the same conversation the agent persisted re-appears after a refresh.
  */
 export async function loadLatestThread(
   familyId: string,
@@ -94,8 +105,8 @@ export async function loadLatestThread(
     return null;
   }
 
-  const messages = await loadTranscript(conversationId, database);
-  return { conversationId, messages };
+  const timeline = await loadTimeline(conversationId, database);
+  return { conversationId, timeline };
 }
 
 /** Loads a conversation's transcript in chronological order. */
@@ -112,12 +123,53 @@ export async function loadTranscript(
   return rows.map((r) => ({ role: r.role, content: r.content }));
 }
 
-/** Appends one message turn to a conversation. */
+/** One turn's scope, persisted on the message so the timeline can filter on it. */
+export interface MessageScope {
+  childId: string | null;
+  topic: string | null;
+}
+
+/** Appends one message turn to a conversation, carrying its scope (child + topic). */
 export async function appendMessage(
   conversationId: string,
   role: 'user' | 'assistant',
   content: string,
   database: Database,
+  scope: MessageScope = { childId: null, topic: null },
 ): Promise<void> {
-  await database.insert(schema.messages).values({ conversationId, role, content });
+  await database
+    .insert(schema.messages)
+    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic });
+}
+
+/**
+ * Loads a conversation's full timeline — every turn with its scope — in
+ * chronological order. The single read the continuous-companion shell rehydrates:
+ * the family's ONE ongoing conversation as a scrollable, filterable history.
+ */
+export async function loadTimeline(
+  conversationId: string,
+  database: Database,
+): Promise<TimelineMessage[]> {
+  const rows = await database
+    .select({
+      id: schema.messages.id,
+      role: schema.messages.role,
+      content: schema.messages.content,
+      childId: schema.messages.childId,
+      topic: schema.messages.topic,
+      createdAt: schema.messages.createdAt,
+    })
+    .from(schema.messages)
+    .where(eq(schema.messages.conversationId, conversationId))
+    .orderBy(asc(schema.messages.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    role: r.role,
+    content: r.content,
+    childId: r.childId,
+    topic: r.topic,
+    createdAt: r.createdAt.toISOString(),
+  }));
 }

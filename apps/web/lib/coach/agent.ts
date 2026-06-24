@@ -8,11 +8,13 @@ import {
   loadTranscript,
   resolveConversationForFamily,
 } from './conversation';
+import { type ActionIntent, detectActionIntents } from './action-intent';
 import { loadAgentContext } from './context';
 import { buildGuardDeps } from './guards';
 import { recordCoachRun } from './record-run';
 import { loadAskHaleSkill } from './skill';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { tagTopic } from './topic';
 import { buildAskHaleTools } from './tools';
 
 /**
@@ -43,6 +45,8 @@ export interface AskHaleInput {
   intent: string | null;
   /** Continue an existing thread, or null to start a fresh one. */
   conversationId: string | null;
+  /** Which child the parent has focused on (the per-child chip), or null for the family. */
+  focusedChildId: string | null;
   /** The acting parent's user id — written to audit_log.actor (rule #6 / PIPEDA). */
   actor: string;
 }
@@ -50,6 +54,8 @@ export interface AskHaleInput {
 export interface AskHaleResult {
   answer: string;
   conversationId: string;
+  /** Gated action chips the answer implied — drafts, never auto-executed (rule #4). */
+  actionIntents: ActionIntent[];
   metrics: CoachRunMetrics;
 }
 
@@ -78,10 +84,21 @@ export async function askHale(
   const conversationId = existing ?? (await createConversation(input.familyId, database));
 
   const transcript = await loadTranscript(conversationId, database);
-  await appendMessage(conversationId, 'user', input.question, database);
+  // Persist the parent turn with its scope so the timeline can filter on child +
+  // topic; topic is keyword-tagged (no LLM), child is the focused chip.
+  await appendMessage(conversationId, 'user', input.question, database, {
+    childId: input.focusedChildId,
+    topic: tagTopic(input.question),
+  });
 
   const context = await loadAgentContext(
-    { familyId: input.familyId, question: input.question, intent: input.intent, transcript },
+    {
+      familyId: input.familyId,
+      question: input.question,
+      intent: input.intent,
+      focusedChildId: input.focusedChildId,
+      transcript,
+    },
     database,
   );
 
@@ -138,10 +155,17 @@ export async function askHale(
         );
       }
 
-      await appendMessage(conversationId, 'assistant', result.answer, database);
+      await appendMessage(conversationId, 'assistant', result.answer, database, {
+        childId: input.focusedChildId,
+        topic: tagTopic(result.answer) ?? tagTopic(input.question),
+      });
       await recordCoachRun(input.familyId, metrics, database, 'completed', trace.traceId);
 
-      return { answer: result.answer, conversationId, metrics };
+      // Surface gated action chips the answer implied — these create DRAFTS the
+      // parent must approve (rule #4); the agent never auto-acts.
+      const actionIntents = detectActionIntents(result.answer);
+
+      return { answer: result.answer, conversationId, actionIntents, metrics };
     },
   );
 }

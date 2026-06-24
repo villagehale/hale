@@ -12,9 +12,18 @@ import { loadLatestThread, resolveLatestConversationForFamily } from './conversa
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const CONVERSATION_ID = '22222222-2222-4222-8222-222222222222';
 
+interface TimelineRow {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  childId: string | null;
+  topic: string | null;
+  createdAt: Date;
+}
+
 interface SelectStub {
   conversationRows: Array<{ id: string }>;
-  messageRows: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messageRows: TimelineRow[];
 }
 
 /**
@@ -81,12 +90,28 @@ describe('resolveLatestConversationForFamily', () => {
 });
 
 describe('loadLatestThread', () => {
-  it('rehydrates the latest conversation with its persisted messages in order', async () => {
+  it('rehydrates the latest conversation with its scope-tagged timeline in order', async () => {
+    const t0 = new Date('2026-06-17T10:00:00Z');
+    const t1 = new Date('2026-06-17T10:01:00Z');
     const db = fakeDb({
       conversationRows: [{ id: CONVERSATION_ID }],
       messageRows: [
-        { role: 'user', content: 'when do I start solids?' },
-        { role: 'assistant', content: 'around six months is the common window.' },
+        {
+          id: 'm0',
+          role: 'user',
+          content: 'when do I start solids?',
+          childId: 'child-1',
+          topic: 'feeding',
+          createdAt: t0,
+        },
+        {
+          id: 'm1',
+          role: 'assistant',
+          content: 'around six months is the common window.',
+          childId: 'child-1',
+          topic: 'feeding',
+          createdAt: t1,
+        },
       ],
     });
 
@@ -94,9 +119,24 @@ describe('loadLatestThread', () => {
 
     expect(thread).not.toBeNull();
     expect(thread?.conversationId).toBe(CONVERSATION_ID);
-    expect(thread?.messages).toEqual([
-      { role: 'user', content: 'when do I start solids?' },
-      { role: 'assistant', content: 'around six months is the common window.' },
+    // The timeline carries scope (child + topic) for filtering, not just text.
+    expect(thread?.timeline).toEqual([
+      {
+        id: 'm0',
+        role: 'user',
+        content: 'when do I start solids?',
+        childId: 'child-1',
+        topic: 'feeding',
+        createdAt: t0.toISOString(),
+      },
+      {
+        id: 'm1',
+        role: 'assistant',
+        content: 'around six months is the common window.',
+        childId: 'child-1',
+        topic: 'feeding',
+        createdAt: t1.toISOString(),
+      },
     ]);
   });
 

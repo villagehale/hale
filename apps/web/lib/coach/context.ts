@@ -1,6 +1,12 @@
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import { ageInMonths, deriveStage, type FamilyStage } from '@hale/types';
+import {
+  ageInMonths,
+  type CompanionView,
+  companionForChild,
+  deriveStage,
+  type FamilyStage,
+} from '@hale/types';
 import type { TranscriptMessage } from './conversation';
 
 /**
@@ -34,6 +40,25 @@ export interface ChildContext {
   teenRedacted: boolean;
 }
 
+/**
+ * The child the conversation is currently focused on (the per-child chip). For a
+ * non-teen child this carries the deterministic companion view (stage guidance +
+ * milestones around now) so the agent grounds its answer on THAT child's stage.
+ * For a teenager it carries stage only — name, age, and milestone detail are
+ * withheld (rule #1), exactly as ChildContext redacts.
+ */
+export interface FocusedChildContext {
+  id: string;
+  stage: FamilyStage;
+  /** Null for a teenager (rule #1). */
+  name: string | null;
+  /** Null for a teenager (rule #1). */
+  ageMonths: number | null;
+  teenRedacted: boolean;
+  /** Deterministic stage view for grounding — null for a teenager (rule #1). */
+  companion: CompanionView | null;
+}
+
 export interface MemoryFactContext {
   factType: string;
   factKey: string;
@@ -54,6 +79,8 @@ export interface AgentContext {
   location: { city: string | null; province: string | null; country: string | null };
   planTier: schema.Family['planTier'];
   children: ChildContext[];
+  /** Which child the parent has focused this turn on, or null for the whole family. */
+  focusedChild: FocusedChildContext | null;
   /** Distinct stages the family spans, childhood-ordered. */
   stages: FamilyStage[];
   memoryFacts: MemoryFactContext[];
@@ -86,7 +113,36 @@ export interface LoadAgentContextInput {
   familyId: string;
   question: string;
   intent: string | null;
+  /** The child the parent has focused on (the per-child chip), or null for the family. */
+  focusedChildId: string | null;
   transcript: TranscriptMessage[];
+}
+
+/**
+ * Builds the focused-child slice from the family's own child rows. A teenager is
+ * reduced to stage only (rule #1) — name, age, and companion detail are withheld.
+ * A focus id that doesn't name one of THIS family's children resolves to null (no
+ * cross-family leak), so the conversation falls back to the whole-family scope.
+ */
+function toFocusedChild(
+  focusedChildId: string,
+  childRows: ReadonlyArray<{ id: string; name: string; dateOfBirth: string }>,
+  now: Date,
+): FocusedChildContext | null {
+  const row = childRows.find((c) => c.id === focusedChildId);
+  if (!row) return null;
+  const stage = deriveStage(row.dateOfBirth, now);
+  if (stage === 'teenager') {
+    return { id: row.id, stage, name: null, ageMonths: null, teenRedacted: true, companion: null };
+  }
+  return {
+    id: row.id,
+    stage,
+    name: row.name,
+    ageMonths: ageInMonths(row.dateOfBirth, now),
+    teenRedacted: false,
+    companion: companionForChild({ dateOfBirth: row.dateOfBirth, name: row.name }, now),
+  };
 }
 
 /**
@@ -97,6 +153,7 @@ export interface LoadAgentContextInput {
 export async function loadAgentContext(
   input: LoadAgentContextInput,
   database: Database,
+  now: Date = new Date(),
 ): Promise<AgentContext> {
   const familyRows = await database
     .select({
@@ -139,6 +196,10 @@ export async function loadAgentContext(
   const presentStages = new Set(children.map((c) => c.stage));
   const stages = STAGE_ORDER.filter((s) => presentStages.has(s));
 
+  const focusedChild = input.focusedChildId
+    ? toFocusedChild(input.focusedChildId, childRows, now)
+    : null;
+
   const factRows = await database
     .select({
       factType: schema.familyMemoryFacts.factType,
@@ -171,6 +232,7 @@ export async function loadAgentContext(
     location: { city: family.city, province: family.province, country: family.country },
     planTier: family.planTier,
     children,
+    focusedChild,
     stages,
     memoryFacts: factRows.map((r) => ({
       factType: r.factType,
@@ -189,4 +251,4 @@ export async function loadAgentContext(
   };
 }
 
-export const _internal = { toChildContext };
+export const _internal = { toChildContext, toFocusedChild };

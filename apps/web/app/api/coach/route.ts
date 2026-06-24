@@ -17,6 +17,8 @@ const bodySchema = z.object({
   conversationId: z.string().uuid().optional(),
   /** The intent chip the parent tapped, if any. */
   intent: z.string().trim().min(1).max(200).optional(),
+  /** The child the parent focused the conversation on (per-child chip), if any. */
+  focusedChildId: z.string().uuid().optional(),
 });
 
 /**
@@ -58,18 +60,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { answer, conversationId } = await askHale(
+    const { answer, conversationId, actionIntents } = await askHale(
       {
         familyId,
         question: parsed.data.question,
         intent: parsed.data.intent ?? null,
         conversationId: parsed.data.conversationId ?? null,
+        focusedChildId: parsed.data.focusedChildId ?? null,
         actor: actorUserId,
       },
       database,
     );
 
-    return NextResponse.json({ body: answer, conversationId }, { status: 200 });
+    return NextResponse.json({ body: answer, conversationId, actionIntents }, { status: 200 });
   } finally {
     // Serverless flush: the Vercel function is short-lived, so buffered spans must
     // be sent before it returns or the trace is dropped (best-effort, rule #8).

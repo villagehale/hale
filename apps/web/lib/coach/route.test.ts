@@ -101,6 +101,7 @@ describe('POST /api/coach — auth + spend gating', () => {
         question: 'my teen barely talks to me anymore',
         intent: null,
         conversationId: '44444444-4444-4444-8444-444444444444',
+        focusedChildId: null,
         actor: 'user-1',
       },
       expect.anything(),
