@@ -19,6 +19,12 @@ export interface VillageCandidateView {
   sourceUrl: string | null;
   /** The accept action POSTs here — the route lands in the next phase. */
   acceptHref: string;
+  /**
+   * True when the candidate is attributed to a 13+ child (rule #1): the renderer
+   * shows the locked treatment and a parent cannot accept content they can't
+   * preview. The raw fields are already redacted when this is set.
+   */
+  teenAttributed: boolean;
 }
 
 export interface RoutineItemView {
@@ -36,11 +42,14 @@ export interface RoutineProposalView {
 
 /**
  * Hard rule #1 (teen privacy): a candidate attributed to a 13+ child surfaces
- * only its category (`kind`) — its title/summary/coverage/source are redacted to
- * the shared placeholder, never the raw discovered text. `teenAttributed` is an
- * EXPLICIT input (derived by the query layer from the child's live stage), so a
- * caller that forgets to resolve the child still cannot leak raw teen-attributed
- * text — the raw fields never reach the view shape once the flag is true.
+ * only its category (`kind`) — its title is the shared placeholder and every
+ * other raw field drops to null/empty, never the raw discovered text. The
+ * renderer reads `teenAttributed` to show the locked treatment once (no repeated
+ * sentence) and to block accept on content a parent can't preview.
+ * `teenAttributed` is an EXPLICIT input (derived by the query layer from the
+ * child's live stage), so a caller that forgets to resolve the child still
+ * cannot leak raw teen-attributed text — the raw fields never reach the view
+ * shape once the flag is true.
  */
 export function toVillageCandidateView(
   candidate: VillageCandidate,
@@ -52,10 +61,11 @@ export function toVillageCandidateView(
       id: candidate.id,
       title: TEEN_REDACTED_PLACEHOLDER,
       kind: candidate.kind,
-      summary: TEEN_REDACTED_PLACEHOLDER,
+      summary: '',
       coverageNote: null,
       sourceUrl: null,
       acceptHref,
+      teenAttributed: true,
     };
   }
   return {
@@ -66,6 +76,7 @@ export function toVillageCandidateView(
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,
     acceptHref,
+    teenAttributed: false,
   };
 }
 
