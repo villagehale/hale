@@ -96,6 +96,32 @@ export function House({ className, style }: IlloProps) {
   );
 }
 
+/* A small cluster of houses on a shared ground line — the "village": several
+ * homes near each other, drawn in the same flat House language. The network
+ * motif for the marketing site (a village is more than one house). */
+export function Village({ className, style }: IlloProps) {
+  return (
+    <svg viewBox="0 0 200 120" width="200" height="120" style={style} className={className} aria-hidden="true" focusable="false">
+      {/* shared ground line */}
+      <rect x="6" y="100" width="188" height="12" rx="6" fill={C.oat} />
+      {/* left house — set back, smaller, sky roof */}
+      <rect x="20" y="64" width="44" height="40" rx="9" fill={C.oat} />
+      <path d="M15 68 Q42 40 69 68 Z" fill={C.sky} />
+      <rect x="36" y="80" width="12" height="24" rx="6" fill={C.skyDeep} />
+      {/* center house — the tallest, apricot roof */}
+      <rect x="74" y="48" width="56" height="56" rx="10" fill={C.oat} />
+      <path d="M68 52 Q102 16 136 52 Z" fill={C.apricot} />
+      <rect x="95" y="74" width="16" height="30" rx="8" fill={C.apricotDeep} />
+      <rect x="80" y="62" width="12" height="12" rx="6" fill={C.sky} />
+      <rect x="112" y="62" width="12" height="12" rx="6" fill={C.sky} />
+      {/* right house — sea roof */}
+      <rect x="138" y="66" width="44" height="38" rx="9" fill={C.oat} />
+      <path d="M133 70 Q160 44 187 70 Z" fill={C.sea} />
+      <rect x="154" y="82" width="12" height="22" rx="6" fill={C.sea} />
+    </svg>
+  );
+}
+
 /* A baby's day, suggested without ever depicting a child: a soft curve
  * under a crescent — the "sleeping" motif. */
 export function SleepingCurve({ className, style }: IlloProps) {
