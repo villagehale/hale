@@ -207,7 +207,7 @@ export function OnboardingWizard({
   }
 
   return (
-    <div className="min-h-screen bg-linen">
+    <div className="min-h-[100dvh] bg-linen">
       <header className="shell flex items-center justify-between pt-6 pb-4 border-b border-rule">
         <Link href="/" className="flex items-center gap-3">
           <LogoMark size={32} />
@@ -368,7 +368,7 @@ export function OnboardingWizard({
                       return (
                         <label
                           key={opt.tier}
-                          className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between ${
+                          className={`choice-card cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between ${
                             selected ? 'bg-oat border border-spruce' : 'border border-rule-strong hover:border-spruce'
                           }`}
                         >
