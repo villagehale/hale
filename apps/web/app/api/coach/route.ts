@@ -5,7 +5,6 @@ import { db } from '~/lib/db';
 import { authConfigured } from '~/lib/auth-config';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { askHale } from '~/lib/coach/agent';
-import { recordCoachRun } from '~/lib/coach/record-run';
 
 // Node runtime: the agent reads the skill file off disk and calls the Anthropic
 // SDK — neither works on the edge runtime.
@@ -57,7 +56,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
 
-  const { answer, conversationId, metrics } = await askHale(
+  const { answer, conversationId } = await askHale(
     {
       familyId,
       question: parsed.data.question,
@@ -67,7 +66,6 @@ export async function POST(req: Request) {
     },
     database,
   );
-  await recordCoachRun(familyId, metrics, database);
 
   return NextResponse.json({ body: answer, conversationId }, { status: 200 });
 }

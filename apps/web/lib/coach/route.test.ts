@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // is allowed to spend, and that a successful call is persisted + recorded.
 const authMock = vi.fn();
 const askHaleMock = vi.fn();
-const recordCoachRunMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -17,9 +16,6 @@ vi.mock('~/lib/family', () => ({
   resolveUserIdForUser: vi.fn(async () => 'user-1'),
 }));
 vi.mock('~/lib/coach/agent', () => ({ askHale: (...a: unknown[]) => askHaleMock(...a) }));
-vi.mock('~/lib/coach/record-run', () => ({
-  recordCoachRun: (...a: unknown[]) => recordCoachRunMock(...a),
-}));
 
 function configureAuth(on: boolean) {
   vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
@@ -46,7 +42,6 @@ describe('POST /api/coach — auth + spend gating', () => {
     vi.resetModules();
     authMock.mockReset();
     askHaleMock.mockReset();
-    recordCoachRunMock.mockReset().mockResolvedValue('run-1');
   });
 
   afterEach(() => {
@@ -83,7 +78,7 @@ describe('POST /api/coach — auth + spend gating', () => {
     expect(askHaleMock).not.toHaveBeenCalled();
   });
 
-  it('runs the agent family-scoped, persists, records the run, and returns the answer + conversationId', async () => {
+  it('runs the agent family-scoped, persists, and returns the answer + conversationId', async () => {
     configureAuth(true);
     authMock.mockResolvedValue(session('google-1'));
     askHaleMock.mockResolvedValue({
@@ -108,11 +103,6 @@ describe('POST /api/coach — auth + spend gating', () => {
         conversationId: '44444444-4444-4444-8444-444444444444',
         actor: 'user-1',
       },
-      expect.anything(),
-    );
-    expect(recordCoachRunMock).toHaveBeenCalledWith(
-      'fam-1',
-      expect.objectContaining({ costUsd: 0.001 }),
       expect.anything(),
     );
     expect(body.body).toContain('teens pull away');

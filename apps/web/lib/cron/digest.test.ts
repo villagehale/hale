@@ -14,6 +14,7 @@ const TODDLER_DOB = '2024-06-01';
 interface Capture {
   auditLog: unknown[];
   dailyDigests: unknown[];
+  agentRuns: Record<string, unknown>[];
 }
 
 /**
@@ -54,16 +55,8 @@ function fakeDb(args: { email: string | null; children: Array<{ id: string; name
     };
   });
 
-  function tableName(table: unknown): keyof Capture | null {
-    if (table === schema.auditLog) return 'auditLog';
-    if (table === schema.dailyDigests) return 'dailyDigests';
-    return null;
-  }
-
   const insert = vi.fn().mockImplementation((table: unknown) => {
-    const name = tableName(table);
-    if (!name) throw new Error('unexpected insert target');
-    if (name === 'dailyDigests') {
+    if (table === schema.dailyDigests) {
       return {
         values: (row: unknown) => ({
           onConflictDoUpdate: async () => {
@@ -72,11 +65,24 @@ function fakeDb(args: { email: string | null; children: Array<{ id: string; name
         }),
       };
     }
-    return {
-      values: async (row: unknown) => {
-        args.capture.auditLog.push(row);
-      },
-    };
+    if (table === schema.agentRuns) {
+      return {
+        values: (row: Record<string, unknown>) => ({
+          returning: async () => {
+            args.capture.agentRuns.push(row);
+            return [{ id: 'run-1' }];
+          },
+        }),
+      };
+    }
+    if (table === schema.auditLog) {
+      return {
+        values: async (row: unknown) => {
+          args.capture.auditLog.push(row);
+        },
+      };
+    }
+    throw new Error('unexpected insert target');
   });
 
   return { select, insert } as never;
@@ -124,7 +130,7 @@ function fakeEmail(): { sender: DigestEmailSender; sent: Array<{ to: string; sub
 
 describe('runDigestForFamily', () => {
   it('composes the brief on the harness, stores it in daily_digests, audits each tool, and emails it', async () => {
-    const capture: Capture = { auditLog: [], dailyDigests: [] };
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [] };
     const db = fakeDb({
       email: 'parent@example.com',
       children: [{ id: 'c1', name: 'Maya', dateOfBirth: TODDLER_DOB }],
@@ -164,10 +170,51 @@ describe('runDigestForFamily', () => {
       expect(row.actor).toBe('system');
       expect(row.actionTaken).toMatch(/^tool:(get_companion_brief|get_week_village)$/);
     }
+
+    // Exactly one agent_runs row, family-scoped, with the real model + token
+    // counts (summed across the two round-trips) + latency, marked completed.
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('daily-brief');
+    expect(run.modelUsed).toBe('claude-sonnet-4-6');
+    expect(run.promptTokens).toBe(18);
+    expect(run.completionTokens).toBe(17);
+    expect(typeof run.latencyMs).toBe('number');
+    expect(run.status).toBe('completed');
+  });
+
+  it('records a FAILED agent_runs row and rethrows when the harness call throws (rule #8)', async () => {
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [] };
+    const db = fakeDb({
+      email: 'parent@example.com',
+      children: [{ id: 'c1', name: 'Maya', dateOfBirth: TODDLER_DOB }],
+      capture,
+    });
+    const boom = {
+      messages: {
+        create: vi.fn(async () => {
+          throw new Error('anthropic 529 overloaded');
+        }),
+      },
+    } as unknown as AgentClient;
+
+    await expect(
+      runDigestForFamily(FAMILY_ID, db, { client: boom, email: fakeEmail().sender }, NOW),
+    ).rejects.toThrow('anthropic 529 overloaded');
+
+    // The failure was recorded — one row, family-scoped, status 'failed'.
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('daily-brief');
+    expect(run.status).toBe('failed');
+    // No digest was stored on the failure path.
+    expect(capture.dailyDigests).toEqual([]);
   });
 
   it('returns no_recipient and does NOT run the agent when the family has no primary parent', async () => {
-    const capture: Capture = { auditLog: [], dailyDigests: [] };
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [] };
     const db = fakeDb({ email: null, children: [], capture });
     const email = fakeEmail();
     const client = fakeClient();

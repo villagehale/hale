@@ -50,6 +50,7 @@ function fakeClient(text: string): AgentClient {
 interface InsertCapture {
   conversations: unknown[];
   messages: Array<{ conversationId: string; role: string; content: string }>;
+  agentRuns: Record<string, unknown>[];
 }
 
 /**
@@ -84,6 +85,10 @@ function fakeDb(capture: InsertCapture, existingConversationId?: string): Databa
         if (table === schema.auditLog) {
           return Promise.resolve(undefined);
         }
+        if (table === schema.agentRuns) {
+          capture.agentRuns.push(rows as Record<string, unknown>);
+          return { returning: async () => [{ id: 'run-1' }] };
+        }
         throw new Error('unexpected insert target');
       },
     }),
@@ -115,7 +120,7 @@ function fakeDb(capture: InsertCapture, existingConversationId?: string): Databa
 
 describe('askHale — multi-turn persistence + conversationId', () => {
   it('opens a conversation, persists the question and answer, and returns the conversationId', async () => {
-    const capture: InsertCapture = { conversations: [], messages: [] };
+    const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
     const db = fakeDb(capture);
 
     const result = await askHale(
@@ -152,10 +157,60 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     expect(result.metrics.promptTokens).toBe(100);
     expect(result.metrics.completionTokens).toBe(30);
     expect(result.metrics.modelUsed).toBe('claude-sonnet-4-6');
+
+    // Exactly one agent_runs row, family-scoped, with real model + token counts +
+    // latency, marked completed (observability gap closed).
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('ask-hale');
+    expect(run.modelUsed).toBe('claude-sonnet-4-6');
+    expect(run.promptTokens).toBe(100);
+    expect(run.completionTokens).toBe(30);
+    expect(typeof run.latencyMs).toBe('number');
+    expect(run.status).toBe('completed');
+  });
+
+  it('records a FAILED agent_runs row and rethrows when the agent returns no answer (rule #8)', async () => {
+    const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
+    const db = fakeDb(capture);
+    // A client that emits a tool_use the loop can't satisfy would loop to maxSteps;
+    // simpler: an assistant turn with no text and no tool_use yields answer:null.
+    const noAnswerClient = {
+      messages: {
+        create: vi.fn(async () => ({
+          ...textMessage(''),
+          content: [] as Anthropic.ContentBlock[],
+        })),
+      },
+    } as unknown as AgentClient;
+
+    await expect(
+      askHale(
+        {
+          familyId: FAMILY_ID,
+          question: 'anything?',
+          intent: null,
+          conversationId: null,
+          actor: 'user-1',
+        },
+        db,
+        noAnswerClient,
+      ),
+    ).rejects.toThrow();
+
+    // The failure was still recorded — one row, family-scoped, status 'failed'.
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('ask-hale');
+    expect(run.status).toBe('failed');
+    // No assistant message was persisted on the failure path.
+    expect(capture.messages.map((m) => m.role)).toEqual(['user']);
   });
 
   it('continues an existing thread when the conversation belongs to the family', async () => {
-    const capture: InsertCapture = { conversations: [], messages: [] };
+    const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
     // The conversation-resolve read returns the existing thread (it is owned by
     // this family), so askHale reuses it instead of opening a new one.
     const db = fakeDb(capture, CONVERSATION_ID);

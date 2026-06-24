@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
 import { loadDiscoveryPrompt } from './discovery-prompt';
 
@@ -165,6 +166,7 @@ export async function discoverForFamily(
     limit: DISCOVERY_LIMIT,
   });
 
+  const startedAt = Date.now();
   const response = await deps.client.messages.create({
     model,
     max_tokens: 4096,
@@ -180,16 +182,36 @@ export async function discoverForFamily(
     messages: [{ role: 'user', content: userMessage }],
   });
 
+  const usage = {
+    promptTokens: response.usage.input_tokens,
+    completionTokens: response.usage.output_tokens,
+  };
+  const recordRun = (status: 'completed' | 'failed') =>
+    recordAgentRun(database, {
+      familyId,
+      agentName: 'discovery',
+      modelUsed: model,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      costUsd: sonnetCostUsd(usage),
+      latencyMs: Date.now() - startedAt,
+      status,
+    });
+
   const toolUse = response.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === DISCOVERY_TOOL,
   );
   if (!toolUse) {
+    // Rule #8: a forced-tool call that came back without the tool is a failed run —
+    // record it (the model still billed input/output tokens) before surfacing.
+    await recordRun('failed');
     throw new Error(`discovery: model returned no ${DISCOVERY_TOOL} tool call`);
   }
   const parsed = candidatesSchema.parse(toolUse.input);
 
   const candidates = parsed.candidates.slice(0, DISCOVERY_LIMIT);
   if (candidates.length === 0) {
+    await recordRun('completed');
     return { status: 'discovered', insertedCount: 0 };
   }
 
@@ -215,6 +237,8 @@ export async function discoverForFamily(
       after: { areaCoarse, provider: SOURCE, count: candidates.length },
     });
   });
+
+  await recordRun('completed');
 
   return { status: 'discovered', insertedCount: candidates.length };
 }
