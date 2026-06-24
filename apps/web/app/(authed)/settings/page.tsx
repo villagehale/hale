@@ -16,7 +16,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <PageCorner folio="settings" section="settings · your account" />
+      <PageCorner folio="settings" section="your account" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">

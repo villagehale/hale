@@ -16,7 +16,7 @@ export default async function PlanPage() {
 
   return (
     <div>
-      <PageCorner folio="plan" section="plan · your week" />
+      <PageCorner folio="plan" section="your week" />
 
       {/* ── Headline ────────────────────────────────────────────────────── */}
       <header className="rise rise-1 mb-16 lg:mb-24">

@@ -20,7 +20,7 @@ export default async function ApprovalsPage() {
 
   return (
     <div>
-      <PageCorner folio="approvals" section="approvals · awaiting you" />
+      <PageCorner folio="approvals" section="awaiting you" />
 
       <header className="rise rise-1 mb-16 lg:mb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
