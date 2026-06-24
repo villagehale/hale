@@ -17,7 +17,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
   const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/home';
 
   return (
-    <main className="min-h-screen bg-linen flex flex-col items-center justify-center gap-8 px-6 py-16">
+    <main className="min-h-[100dvh] bg-linen flex flex-col items-center justify-center gap-8 px-6 py-16">
       <header className="absolute top-0 left-0 right-0 shell flex items-center justify-between pt-8">
         <Link href="/" className="flex items-center gap-3">
           <LogoMark size={32} />

@@ -1,5 +1,6 @@
 'use client';
 
+import { AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import type { PlanTier } from '@hale/types';
 import { setPlanAction } from '~/lib/family/children-actions';
@@ -51,7 +52,7 @@ export function FamilyPlan({ planTier }: { planTier: PlanTier }) {
           return (
             <label
               key={opt.tier}
-              className={`cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between ${
+              className={`choice-card cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between ${
                 isSelected
                   ? 'bg-oat border border-spruce'
                   : 'border border-rule-strong hover:border-spruce'
@@ -84,7 +85,8 @@ export function FamilyPlan({ planTier }: { planTier: PlanTier }) {
         </output>
       ) : null}
       {state.kind === 'error' ? (
-        <p className="meta text-apricot-deep" role="alert">
+        <p className="field-error flex items-center gap-2" role="alert">
+          <AlertCircle size={14} strokeWidth={2} aria-hidden="true" className="shrink-0" />
           couldn&rsquo;t change your plan just now — please try again.
         </p>
       ) : null}
