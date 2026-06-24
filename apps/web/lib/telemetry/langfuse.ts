@@ -39,6 +39,8 @@ export type AgentTraceName =
   | 'daily-brief'
   | 'infer-memory'
   | 'discovery'
+  | 'rank-recommendations'
+  | 'curate-shortlist'
   | 'classify-event'
   | 'draft-action'
   | 'review-action';
