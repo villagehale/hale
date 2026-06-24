@@ -1,6 +1,7 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gte, isNull } from 'drizzle-orm';
+import { type FamilyStage, deriveStage } from '@hale/types';
+import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -159,3 +160,202 @@ export function buildInferenceTools(
 
   return [readRecentMemory, saveMemory];
 }
+
+/**
+ * Chat → memory distillation. The infer-memory agent also reads recent
+ * CONVERSATIONS and distills durable, per-child, categorized facts. The teen
+ * redaction (rule #1) is STRUCTURAL: a 13+ child's chat turn is reduced to
+ * category/summary BEFORE the model sees it (in `read_recent_conversations`), so
+ * raw teen content never enters the distiller's input and no teen-specific fact
+ * can ever be derived or stored.
+ *
+ * The five distillation categories (health/development/routines/preferences/
+ * concerns) are the parent-facing spec set; each maps onto the existing coarse
+ * memory_fact_type enum (no enum migration) while the precise category is kept in
+ * the fact value, so nothing is lost.
+ */
+
+/** How many days of conversation the distiller reads. */
+const CONVERSATION_WINDOW_DAYS = 14;
+const CONVERSATION_TURN_LIMIT = 60;
+
+/** The parent-facing distillation categories (the prompt + UI vocabulary). */
+const distillCategory = z.enum([
+  'health',
+  'development',
+  'routines',
+  'preferences',
+  'concerns',
+]);
+type DistillCategory = z.infer<typeof distillCategory>;
+
+/** Maps a distillation category onto the coarse DB fact-type enum (no migration). */
+const CATEGORY_TO_FACT_TYPE: Record<DistillCategory, 'medical' | 'routine' | 'preference' | 'relationship'> =
+  {
+    health: 'medical',
+    development: 'relationship',
+    routines: 'routine',
+    preferences: 'preference',
+    concerns: 'relationship',
+  };
+
+interface RawTimelineTurn {
+  childId: string | null;
+  role: 'user' | 'assistant';
+  content: string;
+  topic: string | null;
+}
+
+interface DistillTurn {
+  childId: string | null;
+  role: 'user' | 'assistant';
+  /** Raw content for a non-teen turn; a redaction marker for a teen turn. */
+  content: string;
+  topic: string | null;
+  /** True iff this turn was a 13+ child's content, reduced to category only (rule #1). */
+  redacted?: boolean;
+}
+
+const TEEN_DISTILL_PLACEHOLDER = '[teen content — category only, raw text withheld (rule #1)]';
+
+/**
+ * Reduce a conversation timeline to what the distiller may see. A turn focused on
+ * a 13+ child is stripped to its topic/category and a redaction marker, and its
+ * child scope is dropped to null so no teen-specific fact can be derived (rule #1).
+ * Non-teen and family-wide turns pass through unchanged.
+ */
+function redactTimelineForDistill(
+  turns: readonly RawTimelineTurn[],
+  stageByChild: ReadonlyMap<string, FamilyStage>,
+): DistillTurn[] {
+  return turns.map((turn) => {
+    const isTeen = turn.childId !== null && stageByChild.get(turn.childId) === 'teenager';
+    if (isTeen) {
+      return {
+        childId: null,
+        role: turn.role,
+        content: TEEN_DISTILL_PLACEHOLDER,
+        topic: turn.topic,
+        redacted: true,
+      };
+    }
+    return { childId: turn.childId, role: turn.role, content: turn.content, topic: turn.topic };
+  });
+}
+
+/**
+ * The chat-distiller's tools — the conversation-reading + per-child save the
+ * infer-memory agent uses on top of its event/episode tools. Family-scoped (rule
+ * #1); every save runs through the guarded invoker (audited, rule #6) and is held
+ * to the same 0.7 confidence floor as inferred facts.
+ */
+export function buildDistillTools(database: Database, now: Date = new Date()): RegisteredTool[] {
+  const readRecentConversations = defineTool({
+    name: 'read_recent_conversations',
+    description:
+      "Read THIS family's recent Ask Hale conversation turns (the last two weeks). A 13+ child's turns are already reduced to category/summary — raw teen content is never shown (rule #1). Use these to distill durable, per-child facts.",
+    inputSchema: z.object({}),
+    handler: async (_input, ctx) => {
+      const since = new Date(now.getTime() - CONVERSATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+      const childRows = await database
+        .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+        .from(schema.children)
+        .where(eq(schema.children.familyId, ctx.familyId));
+      const stageByChild = new Map<string, FamilyStage>(
+        childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
+      );
+
+      const familyConversations = await database
+        .select({ id: schema.conversations.id })
+        .from(schema.conversations)
+        .where(eq(schema.conversations.familyId, ctx.familyId));
+      const conversationIds = familyConversations.map((c) => c.id);
+      if (conversationIds.length === 0) {
+        return { turns: [] };
+      }
+
+      const turnRows = await database
+        .select({
+          childId: schema.messages.childId,
+          role: schema.messages.role,
+          content: schema.messages.content,
+          topic: schema.messages.topic,
+        })
+        .from(schema.messages)
+        .where(
+          and(
+            inArray(schema.messages.conversationId, conversationIds),
+            gte(schema.messages.createdAt, since),
+          ),
+        )
+        .orderBy(desc(schema.messages.createdAt))
+        .limit(CONVERSATION_TURN_LIMIT);
+
+      const raw: RawTimelineTurn[] = turnRows.map((r) => ({
+        childId: r.childId,
+        role: r.role,
+        content: r.content,
+        topic: r.topic,
+      }));
+
+      return { turns: redactTimelineForDistill(raw, stageByChild) };
+    },
+  });
+
+  const saveChildFact = defineTool({
+    name: 'save_child_fact',
+    description:
+      "Persist ONE durable, categorized fact distilled from conversation about a specific child (or family-wide with childId omitted), confidence in [0,1]. Categories: health, development, routines, preferences, concerns. Facts below 0.7 confidence are REFUSED. NEVER pass raw teen content — only a category/summary.",
+    inputSchema: z.object({
+      childId: z.string().uuid().nullish(),
+      category: distillCategory,
+      factKey: z.string().min(1),
+      summary: z.string().min(1),
+      confidence: z.number().min(0).max(1),
+    }),
+    handler: async (input, ctx) => {
+      if (input.confidence < CONFIDENCE_FLOOR) {
+        return { saved: false as const, reason: 'below_confidence_floor' };
+      }
+
+      const factType = CATEGORY_TO_FACT_TYPE[input.category];
+      const childId = input.childId ?? null;
+
+      await database
+        .update(schema.familyMemoryFacts)
+        .set({ validUntil: now })
+        .where(
+          and(
+            eq(schema.familyMemoryFacts.familyId, ctx.familyId),
+            eq(schema.familyMemoryFacts.factType, factType),
+            eq(schema.familyMemoryFacts.factKey, input.factKey),
+            isNull(schema.familyMemoryFacts.validUntil),
+          ),
+        );
+
+      const inserted = await database
+        .insert(schema.familyMemoryFacts)
+        .values({
+          familyId: ctx.familyId,
+          childId,
+          factType,
+          factKey: input.factKey,
+          factValue: { category: input.category, summary: input.summary },
+          confidence: input.confidence,
+          inferredBy: 'chat_distiller',
+        })
+        .returning({ id: schema.familyMemoryFacts.id });
+
+      const factId = inserted[0]?.id;
+      if (!factId) {
+        throw new Error('save_child_fact: family_memory_facts insert returned no row');
+      }
+      return { saved: true as const, factId };
+    },
+  });
+
+  return [readRecentConversations, saveChildFact];
+}
+
+export const _internal = { redactTimelineForDistill };

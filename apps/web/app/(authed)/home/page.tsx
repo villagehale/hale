@@ -8,7 +8,7 @@ import { QuickLog } from '~/components/hale/quick-log';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { authConfigured } from '~/lib/auth-config';
-import { loadLatestThreadForRequest } from '~/lib/coach/thread';
+import { loadThreadShellForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -30,7 +30,7 @@ export default async function HomePage() {
   const [children, village, askSeed] = await Promise.all([
     loadCompanion(),
     loadVillage(),
-    loadLatestThreadForRequest(),
+    loadThreadShellForRequest(),
   ]);
   const topActivities = village.candidates.slice(0, 2);
 

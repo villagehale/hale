@@ -7,6 +7,22 @@ import type { ThreadSeed } from '~/lib/coach/thread';
  * the running conversationId, auto-scroll, and focus-after-send with the Home
  * hero; only the layout differs.
  */
-export function CoachConversation({ canAsk, seed }: { canAsk: boolean; seed: ThreadSeed }) {
-  return <AskHaleThread canAsk={canAsk} seed={seed} variant="full" />;
+export function CoachConversation({
+  canAsk,
+  seed,
+  initialFocusedChildId = null,
+}: {
+  canAsk: boolean;
+  seed: ThreadSeed;
+  /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
+  initialFocusedChildId?: string | null;
+}) {
+  return (
+    <AskHaleThread
+      canAsk={canAsk}
+      seed={seed}
+      variant="full"
+      initialFocusedChildId={initialFocusedChildId}
+    />
+  );
 }

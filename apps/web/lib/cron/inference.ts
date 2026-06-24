@@ -5,7 +5,7 @@ import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
-import { buildInferenceTools } from './inference-tools';
+import { buildDistillTools, buildInferenceTools } from './inference-tools';
 import { loadInferMemorySkill } from './skill';
 
 /**
@@ -52,7 +52,10 @@ export async function runInferenceForFamily(
   now: Date = new Date(),
 ): Promise<InferenceResult> {
   const skill = await loadInferMemorySkill();
-  const tools = buildInferenceTools(database, now);
+  // The inferencer reads events/episodes AND distills durable facts from recent
+  // conversations — both tool sets, one guarded loop. Teen redaction is structural
+  // in read_recent_conversations (rule #1).
+  const tools = [...buildInferenceTools(database, now), ...buildDistillTools(database, now)];
   const guardDeps = buildCronGuardDeps(database);
   const modelUsed = pickModel(skill.meta.task);
 

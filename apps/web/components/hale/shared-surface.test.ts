@@ -14,7 +14,18 @@ import { AskHaleThread } from './ask-hale-thread';
 
 const SEED = {
   conversationId: 'conv-1',
-  messages: [{ role: 'user' as const, content: 'is this normal?' }],
+  timeline: [
+    {
+      id: 'm0',
+      role: 'user' as const,
+      content: 'is this normal?',
+      childId: null,
+      topic: null,
+      createdAt: 't0',
+    },
+  ],
+  children: [],
+  suggestions: [{ childId: null, label: null, stage: null, prompts: ['help me plan the week'] }],
 };
 
 describe('Ask Hale surfaces share one component', () => {

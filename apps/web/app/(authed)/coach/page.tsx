@@ -1,11 +1,19 @@
 import { PageCorner } from '~/components/hale/page-corner';
 import { CoachConversation } from '~/components/hale/coach-conversation';
 import { authConfigured } from '~/lib/auth-config';
-import { loadLatestThreadForRequest } from '~/lib/coach/thread';
+import { loadThreadShellForRequest } from '~/lib/coach/thread';
 
-export default async function CoachPage() {
+export default async function CoachPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ child?: string }>;
+}) {
   const canAsk = authConfigured();
-  const askSeed = await loadLatestThreadForRequest();
+  const askSeed = await loadThreadShellForRequest();
+  const { child } = await searchParams;
+  // Contextual entry (e.g. from a child's companion page): pre-scope to that child,
+  // but only if it's actually one of this family's children (no arbitrary id).
+  const initialFocusedChildId = askSeed.children.some((c) => c.id === child) ? (child ?? null) : null;
 
   return (
     <div>
@@ -15,7 +23,7 @@ export default async function CoachPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
           <div className="lg:col-span-3">
             <span className="eyebrow">ask Hale</span>
-            <p className="meta mt-2">grounded in named frameworks</p>
+            <p className="meta mt-2">one ongoing conversation · grounded in your family</p>
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
@@ -39,7 +47,11 @@ export default async function CoachPage() {
         </div>
       </section>
 
-      <CoachConversation canAsk={canAsk} seed={askSeed} />
+      <CoachConversation
+        canAsk={canAsk}
+        seed={askSeed}
+        initialFocusedChildId={initialFocusedChildId}
+      />
     </div>
   );
 }

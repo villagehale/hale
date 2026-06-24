@@ -196,8 +196,8 @@ export default async function CompanionPage() {
                       <p className="meta mt-2 text-spruce">{child.whatsNext}</p>
                     </div>
                     <div className="pt-2">
-                      <Link href="/coach" className="btn-ghost">
-                        ask the coach about {child.name ?? 'your child'} →
+                      <Link href={`/coach?child=${child.id}`} className="btn-ghost">
+                        ask Hale about {child.name ?? 'your child'} →
                       </Link>
                     </div>
                   </div>
