@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, runAgent } from '@hale/agent';
+import { type AgentClient, pickModel, runAgent } from '@hale/agent';
 import { type Database, type DigestPerChildBreakdown, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
+import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { type DigestEmailSender, createDigestEmailSender } from './email';
 import { buildDailyBriefTools } from './digest-tools';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
@@ -93,16 +94,45 @@ export async function runDigestForFamily(
   const skill = await loadDailyBriefSkill();
   const tools = buildDailyBriefTools(database, now);
   const guardDeps = buildCronGuardDeps(database);
+  const modelUsed = pickModel(skill.meta.task);
 
-  const result = await runAgent({
-    skill,
-    context: { familyId, today: torontoDate(now) },
-    tools,
-    client: deps.client,
-    maxSteps: MAX_STEPS,
-    maxTokens: MAX_TOKENS,
-    toolContext: { familyId, actor: 'system' },
-    guardDeps,
+  const startedAt = Date.now();
+  let result: Awaited<ReturnType<typeof runAgent>>;
+  try {
+    result = await runAgent({
+      skill,
+      context: { familyId, today: torontoDate(now) },
+      tools,
+      client: deps.client,
+      maxSteps: MAX_STEPS,
+      maxTokens: MAX_TOKENS,
+      toolContext: { familyId, actor: 'system' },
+      guardDeps,
+    });
+  } catch (err) {
+    // Rule #8: record the failed run (real model, latency) without swallowing.
+    await recordAgentRun(database, {
+      familyId,
+      agentName: 'daily-brief',
+      modelUsed,
+      promptTokens: 0,
+      completionTokens: 0,
+      costUsd: 0,
+      latencyMs: Date.now() - startedAt,
+      status: 'failed',
+    });
+    throw err;
+  }
+
+  await recordAgentRun(database, {
+    familyId,
+    agentName: 'daily-brief',
+    modelUsed,
+    promptTokens: result.usage.promptTokens,
+    completionTokens: result.usage.completionTokens,
+    costUsd: sonnetCostUsd(result.usage),
+    latencyMs: Date.now() - startedAt,
+    status: result.answer === null ? 'failed' : 'completed',
   });
 
   if (result.answer === null) {

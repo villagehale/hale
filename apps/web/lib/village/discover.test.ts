@@ -25,6 +25,7 @@ interface ChildRow {
 interface InsertCapture {
   villageCandidates: unknown[];
   auditLog: unknown[];
+  agentRuns: Record<string, unknown>[];
 }
 
 /**
@@ -84,10 +85,26 @@ function fakeDb(args: {
     return cb(tx);
   });
 
+  // The agent_runs telemetry insert runs at the top level (outside the candidate
+  // transaction), so route it here by table identity.
+  const insert = vi.fn().mockImplementation((table: unknown) => {
+    if (table === schema.agentRuns) {
+      return {
+        values: (row: Record<string, unknown>) => ({
+          returning: async () => {
+            args.capture.agentRuns.push(row);
+            return [{ id: 'run-1' }];
+          },
+        }),
+      };
+    }
+    throw new Error('unexpected insert target');
+  });
+
   // families needs an areaCoarse=null row to exist for the no_area path; an
   // absent family row is a thrown error, so we always return one row when
   // areaCoarse is provided OR explicitly null (vs. a truly missing family).
-  return { select, transaction } as never;
+  return { select, transaction, insert } as never;
 }
 
 /** A fake Anthropic client returning a forced submit_candidates tool_use. */
@@ -149,7 +166,7 @@ describe('selectDiscoveryInputs — teen exclusion (rule #1)', () => {
 
 describe('discoverForFamily', () => {
   it('inserts candidates scoped to the family with the right shape + ONE audit row', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [] };
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -195,10 +212,50 @@ describe('discoverForFamily', () => {
         after: { areaCoarse: 'L7G', provider: 'llm_only', count: 2 },
       }),
     ]);
+
+    // Exactly one agent_runs row, family-scoped, real model + token counts +
+    // latency, marked completed (observability gap closed).
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('discovery');
+    expect(run.modelUsed).toBe('claude-test-model');
+    expect(run.promptTokens).toBe(10);
+    expect(run.completionTokens).toBe(20);
+    expect(typeof run.latencyMs).toBe('number');
+    expect(run.status).toBe('completed');
+  });
+
+  it('records a FAILED agent_runs row and rethrows when the model returns no tool call (rule #8)', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    // The forced tool came back with only text — a failed discovery run that still
+    // billed input/output tokens.
+    const create = vi.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'no.' }],
+      usage: { input_tokens: 10, output_tokens: 20 },
+    });
+    const client = { messages: { create } } as unknown as DiscoveryAnthropicClient;
+
+    await expect(discoverForFamily(FAMILY_ID, db, deps(client))).rejects.toThrow(
+      'submit_candidates',
+    );
+
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('discovery');
+    expect(run.status).toBe('failed');
+    // No candidates persisted on the failure path.
+    expect(capture.villageCandidates).toEqual([]);
   });
 
   it('passes the model ONLY the coarse area + stage + interests — no precise location, no DOB', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [] };
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -223,7 +280,7 @@ describe('discoverForFamily', () => {
   });
 
   it('never stores a precise location: no row field carries the child DOB or a finer area', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [] };
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -264,7 +321,7 @@ describe('discoverForFamily', () => {
   });
 
   it('returns no_area and does NOT call the model when the family has no coarse area', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [] };
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({ areaCoarse: null, children: [], capture });
     const c = fakeClient(SAMPLE_CANDIDATES);
 
@@ -277,7 +334,7 @@ describe('discoverForFamily', () => {
   });
 
   it('returns no_non_teen_children (no spend) for a teen-only family', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [] };
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TEEN_DOB, interests: ['driving'] }],

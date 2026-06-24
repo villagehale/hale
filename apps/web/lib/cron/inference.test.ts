@@ -10,6 +10,7 @@ interface Capture {
   auditLog: unknown[];
   factInserts: unknown[];
   factSupersedes: number;
+  agentRuns: Record<string, unknown>[];
 }
 
 /**
@@ -59,6 +60,16 @@ function fakeDb(capture: Capture) {
         }),
       };
     }
+    if (table === schema.agentRuns) {
+      return {
+        values: (row: Record<string, unknown>) => ({
+          returning: async () => {
+            capture.agentRuns.push(row);
+            return [{ id: 'run-1' }];
+          },
+        }),
+      };
+    }
     throw new Error('unexpected insert target');
   });
 
@@ -100,7 +111,7 @@ function fakeClient(confidence: number): AgentClient {
 
 describe('runInferenceForFamily', () => {
   it('saves a high-confidence inferred fact through the guarded tool and audits it (rule #6)', async () => {
-    const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0 };
+    const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
     const db = fakeDb(capture);
 
     await runInferenceForFamily(FAMILY_ID, db, { client: fakeClient(0.9) }, NOW);
@@ -124,10 +135,51 @@ describe('runInferenceForFamily', () => {
         actionTaken: 'tool:save_memory',
       }),
     ]);
+
+    // Exactly one agent_runs row, family-scoped, real model + summed token counts
+    // + latency, marked completed (observability gap closed).
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('infer-memory');
+    expect(run.modelUsed).toBe('claude-sonnet-4-6');
+    expect(run.promptTokens).toBe(16);
+    expect(run.completionTokens).toBe(9);
+    expect(typeof run.latencyMs).toBe('number');
+    expect(run.status).toBe('completed');
+  });
+
+  it('records a FAILED agent_runs row and rethrows when the harness call throws (rule #8)', async () => {
+    const capture: Capture = {
+      auditLog: [],
+      factInserts: [],
+      factSupersedes: 0,
+      agentRuns: [],
+    };
+    const db = fakeDb(capture);
+    const boom = {
+      messages: {
+        create: vi.fn(async () => {
+          throw new Error('anthropic 529 overloaded');
+        }),
+      },
+    } as unknown as AgentClient;
+
+    await expect(
+      runInferenceForFamily(FAMILY_ID, db, { client: boom }, NOW),
+    ).rejects.toThrow('anthropic 529 overloaded');
+
+    expect(capture.agentRuns).toHaveLength(1);
+    const run = capture.agentRuns[0] as Record<string, unknown>;
+    expect(run.familyId).toBe(FAMILY_ID);
+    expect(run.agentName).toBe('infer-memory');
+    expect(run.status).toBe('failed');
+    // No fact was written on the failure path.
+    expect(capture.factInserts).toEqual([]);
   });
 
   it('REFUSES a below-0.7-confidence fact: no insert, but the call is still audited', async () => {
-    const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0 };
+    const capture: Capture = { auditLog: [], factInserts: [], factSupersedes: 0, agentRuns: [] };
     const db = fakeDb(capture);
 
     await runInferenceForFamily(FAMILY_ID, db, { client: fakeClient(0.5) }, NOW);

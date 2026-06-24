@@ -88,6 +88,10 @@ export const agentNameEnum = pgEnum('agent_name', [
   'coach',
   'reviewer',
   'memory_inferencer',
+  'ask-hale',
+  'daily-brief',
+  'infer-memory',
+  'discovery',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [

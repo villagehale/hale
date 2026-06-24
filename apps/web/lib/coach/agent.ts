@@ -10,6 +10,7 @@ import {
 } from './conversation';
 import { loadAgentContext } from './context';
 import { buildGuardDeps } from './guards';
+import { recordCoachRun } from './record-run';
 import { loadAskHaleSkill } from './skill';
 import { buildAskHaleTools } from './tools';
 
@@ -86,6 +87,7 @@ export async function askHale(
   const skill = await loadAskHaleSkill();
   const tools = buildAskHaleTools(database);
   const guardDeps = buildGuardDeps(database);
+  const modelUsed = pickModel(skill.meta.task);
 
   const startedAt = Date.now();
   const result = await runAgent({
@@ -99,7 +101,21 @@ export async function askHale(
     guardDeps,
   });
 
+  const costUsd =
+    (result.usage.promptTokens * SONNET_RATE.inputPerMTok) / PER_MTOK +
+    (result.usage.completionTokens * SONNET_RATE.outputPerMTok) / PER_MTOK;
+  const metrics: CoachRunMetrics = {
+    modelUsed,
+    promptTokens: result.usage.promptTokens,
+    completionTokens: result.usage.completionTokens,
+    costUsd,
+    latencyMs: Date.now() - startedAt,
+  };
+
   if (result.answer === null) {
+    // Rule #8: a run that produced no answer is a failed run — record it as such
+    // (real model + accumulated usage), then surface the error rather than swallow.
+    await recordCoachRun(input.familyId, metrics, database, 'failed');
     throw new Error(
       result.hitMaxSteps
         ? 'askHale: agent hit maxSteps without an answer'
@@ -108,20 +124,7 @@ export async function askHale(
   }
 
   await appendMessage(conversationId, 'assistant', result.answer, database);
+  await recordCoachRun(input.familyId, metrics, database, 'completed');
 
-  const costUsd =
-    (result.usage.promptTokens * SONNET_RATE.inputPerMTok) / PER_MTOK +
-    (result.usage.completionTokens * SONNET_RATE.outputPerMTok) / PER_MTOK;
-
-  return {
-    answer: result.answer,
-    conversationId,
-    metrics: {
-      modelUsed: pickModel(skill.meta.task),
-      promptTokens: result.usage.promptTokens,
-      completionTokens: result.usage.completionTokens,
-      costUsd,
-      latencyMs: Date.now() - startedAt,
-    },
-  };
+  return { answer: result.answer, conversationId, metrics };
 }

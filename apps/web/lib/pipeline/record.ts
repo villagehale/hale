@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import type { ActionType, DraftedAction, ReviewerVerdict } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
+import { haikuCostUsd, recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 
 /**
  * The pipeline's deterministic DB writes — the web-side analogue of the worker's
@@ -15,20 +16,6 @@ import { and, eq } from 'drizzle-orm';
  * worker's dedupHashFor so a signal that arrives on both legs dedups. */
 export function dedupHashFor(familyId: string, source: string, rawContent: string): string {
   return createHash('sha256').update(`${familyId}|${source}|${rawContent}`).digest('hex');
-}
-
-const SONNET_RATE = { inputPerMTok: 3, outputPerMTok: 15 } as const;
-const HAIKU_RATE = { inputPerMTok: 0.8, outputPerMTok: 4 } as const;
-const PER_MTOK = 1_000_000;
-
-function costUsd(
-  rate: { inputPerMTok: number; outputPerMTok: number },
-  usage: { promptTokens: number; completionTokens: number },
-): string {
-  return (
-    (usage.promptTokens * rate.inputPerMTok) / PER_MTOK +
-    (usage.completionTokens * rate.outputPerMTok) / PER_MTOK
-  ).toFixed(6);
 }
 
 async function writeAudit(
@@ -119,15 +106,14 @@ export async function recordEvent(
     return { eventId: existingId, duplicate: true };
   }
 
-  await database.insert(schema.agentRuns).values({
+  await recordAgentRun(database, {
     familyId: input.familyId,
     eventId: newId,
     agentName: 'classifier',
     modelUsed: input.model,
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
-    costUsd: costUsd(HAIKU_RATE, input.usage),
-    completedAt: new Date(),
+    costUsd: haikuCostUsd(input.usage),
     status: 'completed',
   });
 
@@ -161,20 +147,16 @@ export async function recordDraft(
   database: Database,
   input: RecordDraftInput,
 ): Promise<{ actionId: string }> {
-  const draftRunId = await database
-    .insert(schema.agentRuns)
-    .values({
-      familyId: input.familyId,
-      eventId: input.eventId,
-      agentName: 'drafter',
-      modelUsed: input.model,
-      promptTokens: input.usage.promptTokens,
-      completionTokens: input.usage.completionTokens,
-      costUsd: costUsd(SONNET_RATE, input.usage),
-      completedAt: new Date(),
-      status: 'completed',
-    })
-    .returning({ id: schema.agentRuns.id });
+  const draftRunId = await recordAgentRun(database, {
+    familyId: input.familyId,
+    eventId: input.eventId,
+    agentName: 'drafter',
+    modelUsed: input.model,
+    promptTokens: input.usage.promptTokens,
+    completionTokens: input.usage.completionTokens,
+    costUsd: sonnetCostUsd(input.usage),
+    status: 'completed',
+  });
 
   const inserted = await database
     .insert(schema.actions)
@@ -183,7 +165,7 @@ export async function recordDraft(
       familyId: input.familyId,
       actionType: input.draft.actionType,
       payload: input.draft.payload,
-      draftedByAgentRunId: draftRunId[0]?.id ?? null,
+      draftedByAgentRunId: draftRunId,
       userVisibleState: 'drafted_for_approval',
     })
     .onConflictDoNothing({ target: schema.actions.eventId })
@@ -246,7 +228,7 @@ export async function recordVerdict(
   database: Database,
   input: RecordVerdictInput,
 ): Promise<void> {
-  await database.insert(schema.agentRuns).values({
+  await recordAgentRun(database, {
     familyId: input.familyId,
     eventId: input.eventId,
     actionId: input.actionId,
@@ -254,8 +236,7 @@ export async function recordVerdict(
     modelUsed: input.model,
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
-    costUsd: costUsd(SONNET_RATE, input.usage),
-    completedAt: new Date(),
+    costUsd: sonnetCostUsd(input.usage),
     status: 'completed',
   });
 
