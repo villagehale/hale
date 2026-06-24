@@ -3,7 +3,9 @@
 import { useId, useMemo, useState } from 'react';
 import { Lock, Search } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
+import { EndorseButton } from '~/components/hale/endorse-button';
 import { Folio } from '~/components/hale/folio';
+import { ShareButton } from '~/components/hale/share-button';
 import { Icon } from '~/components/ui/icon';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 
@@ -84,8 +86,19 @@ export function VillageSearch({ candidates }: { candidates: VillageCandidateView
                         <p className="meta text-slate-green">{candidate.coverageNote}</p>
                       ) : null}
 
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-2">
                         <AcceptButton href={candidate.acceptHref} />
+                        <EndorseButton
+                          endpoint={candidate.endorseHref}
+                          initiallyEndorsed={candidate.endorsedByFamily}
+                          initialCount={candidate.endorsementCount}
+                        />
+                        <ShareButton
+                          endpoint={candidate.shareHref}
+                          label="share this pick"
+                          shareTitle={candidate.title}
+                          variant="ghost"
+                        />
                         {candidate.sourceUrl ? (
                           <a
                             href={candidate.sourceUrl}

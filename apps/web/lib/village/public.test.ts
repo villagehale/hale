@@ -50,6 +50,7 @@ describe('toPublicWeekPlan — privacy contract (rule #1)', () => {
     expect(activity).toBeDefined();
     expect(Object.keys(activity ?? {}).sort()).toEqual([
       'coverageNote',
+      'endorsementCount',
       'kind',
       'sourceUrl',
       'summary',
@@ -57,6 +58,8 @@ describe('toPublicWeekPlan — privacy contract (rule #1)', () => {
     ]);
     expect(activity?.title).toBe('Saturday family swim drop-in');
     expect(activity?.kind).toBe('drop_in');
+    // Aggregate count only — defaults to 0 when the loader resolved no counts.
+    expect(activity?.endorsementCount).toBe(0);
   });
 
   it('DROPS any candidate attributed to a child (childId set) — no child-linked row is public', () => {

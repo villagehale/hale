@@ -1,7 +1,6 @@
+import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { FindActivitiesButton } from '~/components/hale/find-activities-button';
-import { InviteCoParent } from '~/components/hale/invite-coparent';
 import { PageCorner } from '~/components/hale/page-corner';
-import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { VillageSearch } from '~/components/hale/village-search';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -36,6 +35,11 @@ export default async function VillagePage() {
           </div>
         </div>
       </header>
+
+      {/* ── Build your village (the growth engine — always visible) ──────── */}
+      <div className="rise rise-2 mb-16 lg:mb-20">
+        <BuildYourVillage nothingToShare={!hasRoutine} />
+      </div>
 
       {/* ── This week's routine ─────────────────────────────────────────── */}
       {routine && hasRoutine ? (
@@ -82,22 +86,6 @@ export default async function VillagePage() {
       ) : (
         <VillageSearch candidates={candidates} />
       )}
-
-      {/* ── Share & invite ──────────────────────────────────────────────── */}
-      <section className="rise rise-6 mt-16 lg:mt-24 panel">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-8">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">share the load</span>
-            <p className="meta mt-2">a link for your week, or a hand from your co-parent</p>
-            <div className="mt-5">
-              <ShareWeekButton nothingToShare={!hasRoutine} />
-            </div>
-          </div>
-          <div className="lg:col-span-9">
-            <InviteCoParent />
-          </div>
-        </div>
-      </section>
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">

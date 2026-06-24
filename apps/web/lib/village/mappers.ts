@@ -17,14 +17,28 @@ export interface VillageCandidateView {
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
-  /** The accept action POSTs here — the route lands in the next phase. */
+  /** The accept action POSTs here. */
   acceptHref: string;
+  /** The endorse action POSTs here (the trusted-parent half of hybrid trust). */
+  endorseHref: string;
+  /** The per-activity public-share mint POSTs here. */
+  shareHref: string;
+  /** Aggregate distinct-family endorsements (a count, never an identity — rule #1). */
+  endorsementCount: number;
+  /** Whether THIS family has already endorsed — drives the button's state. */
+  endorsedByFamily: boolean;
   /**
    * True when the candidate is attributed to a 13+ child (rule #1): the renderer
    * shows the locked treatment and a parent cannot accept content they can't
    * preview. The raw fields are already redacted when this is set.
    */
   teenAttributed: boolean;
+}
+
+/** The endorsement signals the query layer resolves and the mapper folds in. */
+export interface CandidateEngagement {
+  endorsementCount: number;
+  endorsedByFamily: boolean;
 }
 
 export interface RoutineItemView {
@@ -51,11 +65,22 @@ export interface RoutineProposalView {
  * cannot leak raw teen-attributed text — the raw fields never reach the view
  * shape once the flag is true.
  */
+/** Default when a caller doesn't resolve endorsements (e.g. the coach/digest
+ * read paths that only need the redacted title/kind/summary). Keeps those call
+ * sites unchanged while the village page passes the real signals. */
+const NO_ENGAGEMENT: CandidateEngagement = { endorsementCount: 0, endorsedByFamily: false };
+
 export function toVillageCandidateView(
   candidate: VillageCandidate,
   teenAttributed: boolean,
+  engagement: CandidateEngagement = NO_ENGAGEMENT,
 ): VillageCandidateView {
   const acceptHref = `/api/village/${candidate.id}/accept`;
+  const endorseHref = `/api/village/${candidate.id}/endorse`;
+  const shareHref = `/api/village/${candidate.id}/share`;
+  // The aggregate count is identity-free, so it is safe even on a teen row; the
+  // renderer still blocks endorse/share on teen-attributed cards (rule #1).
+  const { endorsementCount, endorsedByFamily } = engagement;
   if (teenAttributed) {
     return {
       id: candidate.id,
@@ -65,6 +90,10 @@ export function toVillageCandidateView(
       coverageNote: null,
       sourceUrl: null,
       acceptHref,
+      endorseHref,
+      shareHref,
+      endorsementCount,
+      endorsedByFamily,
       teenAttributed: true,
     };
   }
@@ -76,6 +105,10 @@ export function toVillageCandidateView(
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,
     acceptHref,
+    endorseHref,
+    shareHref,
+    endorsementCount,
+    endorsedByFamily,
     teenAttributed: false,
   };
 }

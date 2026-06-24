@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { families } from './families.js';
+import { users } from './users.js';
 
 /**
  * One discovered local resource (a class, group, drop-in, program) the village
@@ -38,10 +39,54 @@ export const villageCandidates = pgTable(
     confidence: doublePrecision('confidence').notNull(),
     /** Coarse, human-readable coverage note (e.g. "serves your area"); never precise. */
     coverageNote: text('coverage_note'),
+    /** Opaque token for a public, read-only share of THIS single candidate (the
+     * per-activity viral card at /a/:token). Nullable: minted only when a parent
+     * opts to share this one pick. UNIQUE so the token alone resolves the row. It
+     * carries no child or parent identity. */
+    shareToken: text('share_token').unique(),
     discoveredAt: timestamp('discovered_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     familyIdx: index('village_candidates_family_idx').on(table.familyId),
+  }),
+);
+
+/**
+ * One family endorsing one village candidate — the trusted-parent signal that
+ * turns AI-sourced discovery into HYBRID trust (AI-sourced + parent-endorsed).
+ * The unique (candidate_id, family_id) index makes endorsing idempotent: a
+ * family can endorse a candidate at most once, so the aggregate is a true count
+ * of DISTINCT families.
+ *
+ * Privacy (rule #1): the only thing ever surfaced from this table is an AGGREGATE
+ * count ("loved by N families near you") — never a family's identity. No name, no
+ * display field, no per-family detail is stored or exposed.
+ *
+ * familyId / candidateId ON DELETE cascade: removing either parent removes the
+ * endorsement, so a stale count can never outlive its row.
+ */
+export const villageEndorsements = pgTable(
+  'village_endorsements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: uuid('candidate_id')
+      .notNull()
+      .references(() => villageCandidates.id, { onDelete: 'cascade' }),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    /** The user who tapped endorse — for the audit trail (rule #6); never surfaced. */
+    endorsedByUserId: uuid('endorsed_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    candidateFamilyIdx: uniqueIndex('village_endorsements_candidate_family_idx').on(
+      table.candidateId,
+      table.familyId,
+    ),
+    candidateIdx: index('village_endorsements_candidate_idx').on(table.candidateId),
   }),
 );
 
@@ -89,3 +134,5 @@ export type VillageCandidate = typeof villageCandidates.$inferSelect;
 export type NewVillageCandidate = typeof villageCandidates.$inferInsert;
 export type RoutineProposal = typeof routineProposals.$inferSelect;
 export type NewRoutineProposal = typeof routineProposals.$inferInsert;
+export type VillageEndorsement = typeof villageEndorsements.$inferSelect;
+export type NewVillageEndorsement = typeof villageEndorsements.$inferInsert;

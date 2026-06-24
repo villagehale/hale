@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 
 /**
  * The PUBLIC, unauthenticated share view of a family's week plan (rule #1). This
@@ -29,6 +29,10 @@ export interface PublicCandidateRow {
   summary: string;
   sourceUrl: string | null;
   coverageNote: string | null;
+  /** Aggregate distinct-family endorsements for this candidate (rule #1: a
+   * count only, never an identity). Optional: a loader that does not resolve
+   * counts omits it and the activity surfaces 0. */
+  endorsementCount?: number;
 }
 
 /** A proposal row as queried for the public view — its jsonb items carry a
@@ -45,6 +49,9 @@ export interface PublicActivity {
   summary: string;
   sourceUrl: string | null;
   coverageNote: string | null;
+  /** Aggregate distinct-family endorsement count — drives "loved by N families"
+   * social proof on the artifact. A count, never an identity (rule #1). */
+  endorsementCount: number;
 }
 
 /** The public week plan — the only shape that crosses to the public page/OG. */
@@ -82,6 +89,25 @@ function safeSourceUrl(raw: string | null): string | null {
 }
 
 /**
+ * Projects ONE family-wide candidate onto the closed public activity allow-list
+ * (rule #1). Shared by every public artifact (week plan, picks, single activity)
+ * so the redaction — text caps, sourceUrl scheme validation, count-only social
+ * proof — lives in exactly one place. The caller is responsible for having
+ * already dropped child-attributed rows; this never reads childId.
+ */
+export function toPublicActivity(candidate: PublicCandidateRow): PublicActivity {
+  return {
+    title: candidate.title.slice(0, TITLE_MAX),
+    kind: candidate.kind,
+    summary: candidate.summary.slice(0, SUMMARY_MAX),
+    sourceUrl: safeSourceUrl(candidate.sourceUrl),
+    coverageNote:
+      candidate.coverageNote === null ? null : candidate.coverageNote.slice(0, COVERAGE_MAX),
+    endorsementCount: candidate.endorsementCount ?? 0,
+  };
+}
+
+/**
  * Privacy mapper (rule #1). Drops every child-attributed candidate and projects
  * the survivors onto the closed activity allow-list. Untrusted (LLM/web-sourced)
  * text is length-capped and the sourceUrl is validated to an absolute http(s)
@@ -91,14 +117,7 @@ function safeSourceUrl(raw: string | null): string | null {
 export function toPublicWeekPlan(input: PublicWeekPlanInput): PublicWeekPlan {
   const activities = input.candidates
     .filter((candidate) => candidate.childId === null)
-    .map((candidate) => ({
-      title: candidate.title.slice(0, TITLE_MAX),
-      kind: candidate.kind,
-      summary: candidate.summary.slice(0, SUMMARY_MAX),
-      sourceUrl: safeSourceUrl(candidate.sourceUrl),
-      coverageNote:
-        candidate.coverageNote === null ? null : candidate.coverageNote.slice(0, COVERAGE_MAX),
-    }));
+    .map(toPublicActivity);
 
   return {
     weekOf: input.proposal.weekOf,
@@ -110,6 +129,15 @@ export function toPublicWeekPlan(input: PublicWeekPlanInput): PublicWeekPlan {
 /** A share link surfaces at most this many (most-recent) candidates, so it can
  * never return the family's entire all-time candidate history. */
 const PUBLIC_CANDIDATE_LIMIT = 24;
+
+/** A correlated subquery yielding the distinct-family endorsement count for the
+ * outer candidate row, cast to int. COUNT only — never any family identity. */
+function endorsementCountSubquery() {
+  return sql<number>`(
+    select count(*)::int from ${schema.villageEndorsements}
+    where ${schema.villageEndorsements.candidateId} = ${schema.villageCandidates.id}
+  )`;
+}
 
 /**
  * Resolves a share token to its public week plan, or null for an unknown token.
@@ -146,6 +174,9 @@ export async function loadSharedWeekPlan(
       summary: schema.villageCandidates.summary,
       sourceUrl: schema.villageCandidates.sourceUrl,
       coverageNote: schema.villageCandidates.coverageNote,
+      // Aggregate endorsement count via a correlated subquery — a COUNT only, no
+      // join to families/users, so no identity is reachable (rule #1).
+      endorsementCount: endorsementCountSubquery(),
     })
     .from(schema.villageCandidates)
     .where(eq(schema.villageCandidates.familyId, proposal.proposalFamilyId))
