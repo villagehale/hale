@@ -114,3 +114,13 @@ export const consentTypeEnum = pgEnum('consent_type', [
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
 // is free for every stage and child. Values mirror @hale/types PlanTier.
 export const planTierEnum = pgEnum('plan_tier', ['free', 'plus', 'family']);
+
+// A child's gender, captured as an OPTIONAL onboarding field (rule #1: sensitive).
+// Non-null with an explicit 'unspecified' default so a skipped answer is a value,
+// not a SQL null. Values mirror @hale/types ChildGender.
+export const childGenderEnum = pgEnum('child_gender', [
+  'boy',
+  'girl',
+  'nonbinary',
+  'unspecified',
+]);

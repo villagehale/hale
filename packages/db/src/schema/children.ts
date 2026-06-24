@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, date, integer, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { childGenderEnum } from './enums.js';
 import { families } from './families.js';
 
 export const children = pgTable(
@@ -8,8 +9,15 @@ export const children = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
+    /** Given / first name. Required since onboarding's first step. */
     name: text('name').notNull(),
+    /** Family / last name, collected post-auth in setup. Nullable: optional,
+     * and many single-name records predate it. */
+    lastName: text('last_name'),
     dateOfBirth: date('date_of_birth').notNull(),
+    /** Optional, sensitive (rule #1) gender. Non-null with an explicit
+     * 'unspecified' default so a skipped answer is a value, not a SQL null. */
+    gender: childGenderEnum('gender').notNull().default('unspecified'),
     biologicalSex: text('biological_sex'),
     gestationalWeeks: integer('gestational_weeks'),
     birthWeightG: integer('birth_weight_g'),

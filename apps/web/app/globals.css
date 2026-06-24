@@ -1144,3 +1144,17 @@ html, body, .sidebar, .panel, .card, .field {
 @media (prefers-reduced-motion: reduce) {
   .card-interactive:hover { transform: none; }
 }
+
+/* Google Places Autocomplete (New) host. The gmp-place-autocomplete element is
+ * injected at runtime; size it to fill the row and theme its input to read like a
+ * .field via the element's documented CSS custom properties, so the autocomplete
+ * box matches every other input (DESIGN.md: reference tokens, mandatory focus ring). */
+.hale-places gmp-place-autocomplete {
+  display: block;
+  width: 100%;
+  --gmp-mat-color-surface: var(--color-linen);
+  --gmp-mat-color-on-surface: var(--color-spruce);
+  --gmp-mat-color-on-surface-variant: var(--color-faded-sage);
+  --gmp-mat-color-outline: var(--color-rule-strong);
+  --gmp-mat-color-primary: var(--color-apricot-deep);
+}

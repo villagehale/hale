@@ -1,7 +1,9 @@
 import {
+  type ChildGender,
   type FamilyStage,
   deriveStage,
   isBeyondProductAge,
+  parseChildGender,
 } from '@hale/types';
 
 /**
@@ -18,15 +20,22 @@ import {
 /** A child as typed into the wizard, before validation. */
 export interface ChildInput {
   name: string;
+  /** Optional family / last name (rule #1: sensitive, never required). */
+  lastName?: string;
   /** A date-only `YYYY-MM-DD` string from the native date input. */
   dateOfBirth: string;
+  /** Optional, sensitive (rule #1) gender; absent / unknown → 'unspecified'. */
+  gender?: string;
 }
 
-/** A validated child: trimmed name, a real birthdate, and its derived stage. */
+/** A validated child: trimmed name(s), a real birthdate, its derived stage, and gender. */
 export interface ValidatedChild {
   name: string;
+  /** Trimmed last name, or null when not given. */
+  lastName: string | null;
   dateOfBirth: string;
   stage: FamilyStage;
+  gender: ChildGender;
 }
 
 export type ChildError = 'name_required' | 'dob_required' | 'dob_invalid' | 'dob_future' | 'dob_too_old';
@@ -69,7 +78,17 @@ export function validateChild(input: ChildInput, now: Date = new Date()): Valida
     return { ok: false, error: 'dob_too_old' };
   }
 
-  return { ok: true, child: { name, dateOfBirth: dob, stage: deriveStage(dob, now) } };
+  const lastName = input.lastName?.trim();
+  return {
+    ok: true,
+    child: {
+      name,
+      lastName: lastName && lastName.length > 0 ? lastName : null,
+      dateOfBirth: dob,
+      stage: deriveStage(dob, now),
+      gender: parseChildGender(input.gender),
+    },
+  };
 }
 
 function toDateOnly(date: Date): string {
@@ -94,22 +113,26 @@ export function unionStages(children: ReadonlyArray<{ stage: FamilyStage }>): Fa
 
 /**
  * The insert payload for the children table, scoped to a family. Only the
- * source-of-truth columns are written — name and date_of_birth. No stage
- * column exists; nothing derived is persisted.
+ * source-of-truth columns are written — name(s), date_of_birth, and gender.
+ * No stage column exists; nothing derived is persisted.
  */
 export interface ChildInsert {
   familyId: string;
   name: string;
+  lastName: string | null;
   dateOfBirth: string;
+  gender: ChildGender;
 }
 
 export function buildChildInserts(
   familyId: string,
-  children: ReadonlyArray<Pick<ValidatedChild, 'name' | 'dateOfBirth'>>,
+  children: ReadonlyArray<Pick<ValidatedChild, 'name' | 'lastName' | 'dateOfBirth' | 'gender'>>,
 ): ChildInsert[] {
   return children.map((child) => ({
     familyId,
     name: child.name,
+    lastName: child.lastName,
     dateOfBirth: child.dateOfBirth,
+    gender: child.gender,
   }));
 }

@@ -1,7 +1,7 @@
 'use server';
 
 import { type Database, schema } from '@hale/db';
-import type { FamilyStage } from '@hale/types';
+import type { ChildGender, FamilyStage } from '@hale/types';
 import type { Session } from 'next-auth';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
@@ -38,7 +38,13 @@ export async function saveOnboardingChildren(
   inputs: ReadonlyArray<ChildInput>,
   now: Date = new Date(),
 ): Promise<OnboardingResult> {
-  const validated: { name: string; dateOfBirth: string; stage: FamilyStage }[] = [];
+  const validated: {
+    name: string;
+    lastName: string | null;
+    dateOfBirth: string;
+    stage: FamilyStage;
+    gender: ChildGender;
+  }[] = [];
   for (const [index, input] of inputs.entries()) {
     const result = validateChild(input, now);
     if (!result.ok) {
@@ -107,7 +113,7 @@ function authIdentity(session: Session): AuthIdentity {
 export async function provisionAndWriteChildren(
   database: Database,
   identity: AuthIdentity,
-  children: ReadonlyArray<{ name: string; dateOfBirth: string }>,
+  children: ReadonlyArray<ChildPersist>,
 ): Promise<{ familyId: string }> {
   return database.transaction(async (tx) => {
     const userId = await ensureUserRow(identity, tx as unknown as Database);
@@ -151,15 +157,19 @@ function familyDisplayName(name: string | null): string {
   return firstName ? `${firstName}'s family` : 'Your family';
 }
 
+/** The child fields the persist path needs: the source-of-truth columns only. */
+type ChildPersist = {
+  name: string;
+  lastName: string | null;
+  dateOfBirth: string;
+  gender: ChildGender;
+};
+
 async function writeChildren(
   database: Database,
   familyId: string,
-  children: ReadonlyArray<{ name: string; dateOfBirth: string }>,
+  children: ReadonlyArray<ChildPersist>,
 ): Promise<void> {
-  const rows = buildChildInserts(familyId, children).map((row) => ({
-    familyId: row.familyId,
-    name: row.name,
-    dateOfBirth: row.dateOfBirth,
-  }));
+  const rows = buildChildInserts(familyId, children);
   await database.insert(schema.children).values(rows);
 }
