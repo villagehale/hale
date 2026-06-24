@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BookButton } from '~/components/hale/book-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { Folio } from '~/components/hale/folio';
 import { QuickLog } from '~/components/hale/quick-log';
@@ -112,12 +113,25 @@ export default async function CompanionPage() {
                         {child.nextHealth.slice(0, 3).map((item) => (
                           <li
                             key={`${item.ageMonths}-${item.kind}`}
-                            className="flex items-baseline gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
+                            className="border-t border-rule pt-4 first:border-t-0 first:pt-0"
                           >
-                            <span className="eyebrow text-spruce shrink-0 w-28">
-                              {duePhrase(item.dueInWeeks)}
-                            </span>
-                            <span className="text-lg text-spruce leading-relaxed">{item.what}</span>
+                            <div className="flex items-baseline gap-4">
+                              <span className="shrink-0 w-28">
+                                {item.dueInWeeks <= 0 ? (
+                                  <span className="stamp">{duePhrase(item.dueInWeeks)}</span>
+                                ) : (
+                                  <span className="eyebrow text-spruce">
+                                    {duePhrase(item.dueInWeeks)}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-lg text-spruce leading-relaxed">
+                                {item.what}
+                              </span>
+                            </div>
+                            <div className="mt-2">
+                              <BookButton what={item.what} childId={child.id} />
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -142,8 +156,14 @@ export default async function CompanionPage() {
                           key={milestone.what}
                           className="flex items-baseline gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
                         >
-                          <span className="eyebrow text-spruce shrink-0 w-28">
-                            {TIMING_LABEL[milestone.timing]}
+                          <span className="shrink-0 w-28">
+                            {milestone.timing === 'in_window' ? (
+                              <span className="stamp">{TIMING_LABEL[milestone.timing]}</span>
+                            ) : (
+                              <span className="eyebrow text-spruce">
+                                {TIMING_LABEL[milestone.timing]}
+                              </span>
+                            )}
                           </span>
                           <span className="text-lg text-spruce leading-relaxed">
                             {milestone.what}
@@ -198,7 +218,7 @@ export default async function CompanionPage() {
             </div>
             <div className="lg:col-span-9 space-y-8">
               <RecentLogs logs={recentLogs} />
-              <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name }))} />
+              <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
             </div>
           </div>
         </section>

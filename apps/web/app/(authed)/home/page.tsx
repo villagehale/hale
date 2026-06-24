@@ -147,7 +147,7 @@ export default async function HomePage() {
 
       {/* ── Quick-log ───────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule space-y-4">
-        <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name }))} />
+        <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
         <span className="meta flex items-center gap-2 text-slate-green">
           <Icon as={CalendarPlus} size={16} />
           kept in {children[0]?.name ?? 'your child'}&rsquo;s companion
