@@ -82,6 +82,7 @@ export default async function HomePage() {
         {children.map((child, idx) => {
           const milestone = milestoneInWindow(child);
           const nextHealth = child.nextHealth[0] ?? null;
+          const whatsNow = child.whatsNow[0] ?? null;
           const delay = `rise-${Math.min(idx + 2, 7)}`;
           return (
             <article key={child.id} className={`rise ${delay}`}>
@@ -105,6 +106,14 @@ export default async function HomePage() {
                     <div className="mt-4">
                       <BookButton what={nextHealth.what} childId={child.id} />
                     </div>
+                  </Card>
+                ) : whatsNow ? (
+                  <Card href="/companion">
+                    <span className="eyebrow">what matters now</span>
+                    <p className="font-display text-[1.25rem] mt-2 leading-snug">{whatsNow}</p>
+                    <span className="link mt-4 inline-block">
+                      see {child.name ?? 'your child'} →
+                    </span>
                   </Card>
                 ) : null}
 

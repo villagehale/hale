@@ -53,6 +53,17 @@ describe('companionForChild — health timeline', () => {
     const after18 = view.nextHealth.filter((h) => h.ageMonths > 18).map((h) => h.ageMonths);
     expect(after18[0]).toBe(60);
   });
+
+  it("a teen-aged child has no upcoming health items but keeps 'what matters now'", () => {
+    // Born 2013-05-15 → 157mo on 2026-06-15 → teenager. The curated routine
+    // schedule's last entry is the 144mo (pre-teen) set, so a 13+ child has run
+    // off the end of the timeline: nextHealth is empty. whatsNow is keyed by
+    // stage, so it stays non-empty — Home's Today fills the freed card with it.
+    const view = companionForChild({ dateOfBirth: '2013-05-15' }, NOW);
+    expect(view.stage).toBe('teenager');
+    expect(view.nextHealth).toHaveLength(0);
+    expect(view.whatsNow.length).toBeGreaterThan(0);
+  });
 });
 
 describe('companionForChild — milestones', () => {
