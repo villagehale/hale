@@ -1,13 +1,11 @@
+import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
-import { FindActivitiesButton } from '~/components/hale/find-activities-button';
 import { PageCorner } from '~/components/hale/page-corner';
-import { VillageSearch } from '~/components/hale/village-search';
-import { loadVillageFeed } from '~/lib/village/feed';
+import { VillageCandidates, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function VillagePage() {
-  const [feed, { routine }] = await Promise.all([loadVillageFeed(), loadVillage()]);
-  const candidates = feed.candidates;
+  const { routine } = await loadVillage();
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
@@ -19,21 +17,11 @@ export default async function VillagePage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
           <div className="lg:col-span-3">
             <span className="eyebrow">your village</span>
-            <p className="meta mt-2">
-              {feed.ranked ? 'ranked for your family by Hale' : 'near you'}
-            </p>
+            <p className="meta mt-2">ranked for your family by Hale</p>
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
-              {candidates.length === 0 ? (
-                <>
-                  nothing <span className="text-apricot-deep">to gather</span> yet.
-                </>
-              ) : (
-                <>
-                  what your <span className="text-apricot-deep">village</span> recommends near you.
-                </>
-              )}
+              what your <span className="text-apricot-deep">village</span> recommends near you.
             </h1>
           </div>
         </div>
@@ -72,23 +60,12 @@ export default async function VillagePage() {
         </section>
       ) : null}
 
-      {/* ── Candidates ──────────────────────────────────────────────────── */}
-      {candidates.length === 0 ? (
-        <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center">
-          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
-            a quiet week, for now.
-          </p>
-          <p className="meta mt-4 text-slate-green">
-            no data yet — tell me your area and what your kids love, and I'll gather the classes,
-            groups, and drop-ins near you worth a look.
-          </p>
-          <div className="mt-8">
-            <FindActivitiesButton />
-          </div>
-        </section>
-      ) : (
-        <VillageSearch candidates={candidates} />
-      )}
+      {/* ── Candidates — streamed (the agent ranker must not block the page) ─ */}
+      <div className="rise rise-3">
+        <Suspense fallback={<VillageFeedSkeleton />}>
+          <VillageCandidates />
+        </Suspense>
+      </div>
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">

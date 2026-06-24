@@ -1,17 +1,16 @@
-import Link from 'next/link';
 import { Baby, CalendarPlus } from 'lucide-react';
+import Link from 'next/link';
+import { Suspense } from 'react';
 import { BookButton } from '~/components/hale/book-button';
 import { ConciergeAsk } from '~/components/hale/concierge-ask';
-import { FindActivitiesButton } from '~/components/hale/find-activities-button';
 import { LongDate } from '~/components/hale/long-date';
 import { QuickLog } from '~/components/hale/quick-log';
-import { VillageFeed, VillageFeedHeader } from '~/components/hale/village-feed';
+import { HomeVillageFeed, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { authConfigured } from '~/lib/auth-config';
 import { loadThreadShellForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
-import { loadVillageFeed } from '~/lib/village/feed';
 
 function duePhrase(dueInWeeks: number): string {
   if (dueInWeeks <= 0) return 'due now';
@@ -28,11 +27,7 @@ function milestoneInWindow(child: ChildCompanionView) {
 
 export default async function HomePage() {
   const canAsk = authConfigured();
-  const [children, feed, askSeed] = await Promise.all([
-    loadCompanion(),
-    loadVillageFeed(),
-    loadThreadShellForRequest(),
-  ]);
+  const [children, askSeed] = await Promise.all([loadCompanion(), loadThreadShellForRequest()]);
 
   if (children.length === 0) {
     return (
@@ -54,9 +49,9 @@ export default async function HomePage() {
             tell Hale about your kid.
           </p>
           <p className="meta text-slate-green max-w-xl mx-auto">
-            add your child&rsquo;s birthday and your area, and this page fills with your
-            village — the genuinely good local things families like yours recommend near you,
-            ranked for your family.
+            add your child&rsquo;s birthday and your area, and this page fills with your village —
+            the genuinely good local things families like yours recommend near you, ranked for your
+            family.
           </p>
           <div className="pt-2">
             <Link href="/onboarding" className="btn-primary">
@@ -81,24 +76,11 @@ export default async function HomePage() {
       </div>
 
       {/* ── The village — the agent-ranked, trusted feed (the hero) ──────── */}
+      {/* Streamed: the rank-recommendations agent must not block the shell. */}
       <section className="rise rise-1 mb-16 lg:mb-20">
-        <VillageFeedHeader area={feed.areaCoarse} />
-        {feed.candidates.length > 0 ? (
-          <VillageFeed candidates={feed.candidates} />
-        ) : (
-          <div className="panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
-            <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
-              your village is quiet, for now.
-            </p>
-            <p className="meta text-slate-green max-w-xl mx-auto">
-              tell Hale your area and what your kids love, and it&rsquo;ll gather the classes,
-              groups, and drop-ins near you worth a look — then rank them for your family.
-            </p>
-            <div className="pt-2">
-              <FindActivitiesButton />
-            </div>
-          </div>
-        )}
+        <Suspense fallback={<VillageFeedSkeleton />}>
+          <HomeVillageFeed />
+        </Suspense>
       </section>
 
       {/* ── Ask Hale — the concierge (present, not the hero) ─────────────── */}
