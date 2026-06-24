@@ -11,12 +11,10 @@ import {
   X,
   type Home as HomeIcon,
 } from 'lucide-react';
-import { SeaTurtle } from '~/components/illos';
 import { Icon } from '~/components/ui/icon';
 import { useShell } from '~/components/hale/app-shell';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { HISTORY_NAV, PRIMARY_NAV } from '~/components/hale/nav';
-import { ThemeToggle } from '~/components/hale/theme-toggle';
+import { HISTORY_NAV, PRIMARY_NAV, SETTINGS_NAV } from '~/components/hale/nav';
 import { signOutAction } from '~/lib/auth-actions';
 
 function NavLink({
@@ -105,7 +103,9 @@ export function Sidebar({
         ))}
       </nav>
 
-      {/* History — the audit trail, kept quiet at the foot, not a primary stop. */}
+      {/* The user area: History (the audit trail) and Settings (configuration)
+       * sit quietly at the foot, near sign-out — not as primary stops. Settings
+       * is filed here by the user, the modern-app pattern, never a top-nav peer. */}
       <div className="sidebar-foot">
         <div className="rule" />
         <NavLink
@@ -118,9 +118,18 @@ export function Sidebar({
           }
           onNavigate={closeDrawer}
         />
+        <NavLink
+          href={SETTINGS_NAV.href}
+          label={SETTINGS_NAV.label}
+          icon={SETTINGS_NAV.icon}
+          active={
+            pathname === SETTINGS_NAV.href ||
+            Boolean(pathname?.startsWith(`${SETTINGS_NAV.href}/`))
+          }
+          onNavigate={closeDrawer}
+        />
 
         <div className="sidebar-foot-controls">
-          <ThemeToggle />
           {authControls ? (
             signedIn ? (
               <form action={signOutAction}>
@@ -141,12 +150,6 @@ export function Sidebar({
               </Link>
             )
           ) : null}
-        </div>
-
-        {/* The one tasteful sea turtle — Hale, resting at the foot. */}
-        <div className="sidebar-turtle" aria-hidden>
-          <SeaTurtle age="hatchling" style={{ height: 44, width: 'auto' }} />
-          <span className="meta">here for your family</span>
         </div>
       </div>
     </aside>

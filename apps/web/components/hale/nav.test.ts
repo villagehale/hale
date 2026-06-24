@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_NAV, HISTORY_NAV, PRIMARY_NAV } from './nav';
+import { ALL_NAV, HISTORY_NAV, PRIMARY_NAV, SETTINGS_NAV } from './nav';
 
 /**
  * The sidebar and the top header both render navigation off these exports — the
@@ -8,15 +8,23 @@ import { ALL_NAV, HISTORY_NAV, PRIMARY_NAV } from './nav';
  * never drift apart again.
  */
 describe('shared nav definition', () => {
-  it('files history separately from the primary stops', () => {
+  it('files history and settings separately from the primary stops', () => {
     expect(PRIMARY_NAV.map((n) => n.href)).not.toContain('/trail');
+    expect(PRIMARY_NAV.map((n) => n.href)).not.toContain('/settings');
     expect(HISTORY_NAV.href).toBe('/trail');
     expect(HISTORY_NAV.label).toBe('history');
+    expect(SETTINGS_NAV.href).toBe('/settings');
+    expect(SETTINGS_NAV.label).toBe('settings');
   });
 
-  it('ALL_NAV is the primary stops followed by history, with no duplicate routes', () => {
+  it('the primary stops are the daily product surfaces, with family pointing at /family (not settings)', () => {
+    const family = PRIMARY_NAV.find((n) => n.label === 'family');
+    expect(family?.href).toBe('/family');
+  });
+
+  it('ALL_NAV is the primary stops followed by history then settings, with no duplicate routes', () => {
     const hrefs = ALL_NAV.map((n) => n.href);
-    expect(hrefs).toEqual([...PRIMARY_NAV.map((n) => n.href), '/trail']);
+    expect(hrefs).toEqual([...PRIMARY_NAV.map((n) => n.href), '/trail', '/settings']);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
