@@ -42,13 +42,14 @@ function proposal(overrides: Partial<RoutineProposal> = {}): RoutineProposal {
 }
 
 describe('toVillageCandidateView', () => {
-  it('redacts every raw field to the placeholder, keeps kind, leaks no raw text when teen-attributed', () => {
+  it('marks teen-attributed, surfaces only the category, and never duplicates the redaction line', () => {
     const view = toVillageCandidateView(candidate(), true);
 
-    // Rule #1: only the category survives. Title/summary become the shared
-    // placeholder; coverage/source drop to null.
+    // Rule #1: only the category survives. The title carries the one redaction
+    // line; summary is empty so the renderer states the why exactly once.
+    expect(view.teenAttributed).toBe(true);
     expect(view.title).toBe(TEEN_REDACTED_PLACEHOLDER);
-    expect(view.summary).toBe(TEEN_REDACTED_PLACEHOLDER);
+    expect(view.summary).toBe('');
     expect(view.coverageNote).toBeNull();
     expect(view.sourceUrl).toBeNull();
     expect(view.kind).toBe('support_group');
@@ -61,9 +62,10 @@ describe('toVillageCandidateView', () => {
     expect(serialized).not.toContain(RAW_SOURCE_URL);
   });
 
-  it('passes every raw field through unchanged when NOT teen-attributed', () => {
+  it('passes every raw field through unchanged and unmarked when NOT teen-attributed', () => {
     const view = toVillageCandidateView(candidate(), false);
 
+    expect(view.teenAttributed).toBe(false);
     expect(view.title).toBe(RAW_TITLE);
     expect(view.summary).toBe(RAW_SUMMARY);
     expect(view.coverageNote).toBe(RAW_COVERAGE);

@@ -1,4 +1,5 @@
 import { FindActivitiesButton } from '~/components/hale/find-activities-button';
+import { InviteCoParent } from '~/components/hale/invite-coparent';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { VillageSearch } from '~/components/hale/village-search';
@@ -6,6 +7,7 @@ import { loadVillage } from '~/lib/village/queries';
 
 export default async function VillagePage() {
   const { candidates, routine } = await loadVillage();
+  const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
     <div>
@@ -36,15 +38,12 @@ export default async function VillagePage() {
       </header>
 
       {/* ── This week's routine ─────────────────────────────────────────── */}
-      {routine && routine.items.length > 0 ? (
+      {routine && hasRoutine ? (
         <section className="rise rise-2 mb-16 lg:mb-20 panel">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-8">
             <div className="lg:col-span-3">
               <span className="eyebrow">a gentle routine</span>
               <p className="meta mt-2">week of {routine.weekOf}</p>
-              <div className="mt-5">
-                <ShareWeekButton />
-              </div>
             </div>
             <div className="lg:col-span-9 space-y-5">
               {routine.items.map((item, idx) => (
@@ -83,6 +82,22 @@ export default async function VillagePage() {
       ) : (
         <VillageSearch candidates={candidates} />
       )}
+
+      {/* ── Share & invite ──────────────────────────────────────────────── */}
+      <section className="rise rise-6 mt-16 lg:mt-24 panel">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-8">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">share the load</span>
+            <p className="meta mt-2">a link for your week, or a hand from your co-parent</p>
+            <div className="mt-5">
+              <ShareWeekButton nothingToShare={!hasRoutine} />
+            </div>
+          </div>
+          <div className="lg:col-span-9">
+            <InviteCoParent />
+          </div>
+        </div>
+      </section>
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
