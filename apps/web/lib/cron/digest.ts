@@ -3,6 +3,7 @@ import { type AgentClient, pickModel, runAgent } from '@hale/agent';
 import { type Database, type DigestPerChildBreakdown, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type DigestEmailSender, createDigestEmailSender } from './email';
 import { buildDailyBriefTools } from './digest-tools';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
@@ -96,84 +97,100 @@ export async function runDigestForFamily(
   const guardDeps = buildCronGuardDeps(database);
   const modelUsed = pickModel(skill.meta.task);
 
-  const startedAt = Date.now();
-  let result: Awaited<ReturnType<typeof runAgent>>;
-  try {
-    result = await runAgent({
-      skill,
-      context: { familyId, today: torontoDate(now) },
-      tools,
-      client: deps.client,
-      maxSteps: MAX_STEPS,
-      maxTokens: MAX_TOKENS,
-      toolContext: { familyId, actor: 'system' },
-      guardDeps,
-    });
-  } catch (err) {
-    // Rule #8: record the failed run (real model, latency) without swallowing.
-    await recordAgentRun(database, {
-      familyId,
-      agentName: 'daily-brief',
-      modelUsed,
-      promptTokens: 0,
-      completionTokens: 0,
-      costUsd: 0,
-      latencyMs: Date.now() - startedAt,
-      status: 'failed',
-    });
-    throw err;
-  }
-
-  await recordAgentRun(database, {
-    familyId,
-    agentName: 'daily-brief',
-    modelUsed,
-    promptTokens: result.usage.promptTokens,
-    completionTokens: result.usage.completionTokens,
-    costUsd: sonnetCostUsd(result.usage),
-    latencyMs: Date.now() - startedAt,
-    status: result.answer === null ? 'failed' : 'completed',
-  });
-
-  if (result.answer === null) {
-    return { status: 'no_answer' };
-  }
-
-  const digestDate = torontoDate(now);
-  const breakdown: DigestPerChildBreakdown = {
-    children: [],
-    unattributed: {
-      handledCount: 0,
-      awaitingCount: 0,
-      needsYouCount: 0,
-      revertedCount: 0,
-      totalCount: 0,
+  // Trace the brief: a scheduled run (userId 'system'), familyId is correlating
+  // metadata. The mask keeps teen/PII out of the trace (rule #1).
+  return traceAgentRun(
+    {
+      name: 'daily-brief',
+      userId: 'system',
+      tags: ['daily-brief'],
+      metadata: { familyId },
     },
-    coordinationFlags: [],
-    briefText: result.answer,
-  };
+    async (trace) => {
+      const startedAt = Date.now();
+      let result: Awaited<ReturnType<typeof runAgent>>;
+      try {
+        result = await runAgent({
+          skill,
+          context: { familyId, today: torontoDate(now) },
+          tools,
+          client: deps.client,
+          maxSteps: MAX_STEPS,
+          maxTokens: MAX_TOKENS,
+          toolContext: { familyId, actor: 'system' },
+          guardDeps,
+        });
+      } catch (err) {
+        // Rule #8: record the failed run (real model, latency) without swallowing.
+        await recordAgentRun(database, {
+          familyId,
+          agentName: 'daily-brief',
+          modelUsed,
+          promptTokens: 0,
+          completionTokens: 0,
+          costUsd: 0,
+          latencyMs: Date.now() - startedAt,
+          status: 'failed',
+          langfuseTraceId: trace.traceId,
+        });
+        throw err;
+      }
 
-  const row = {
-    handledCount: 0,
-    awaitingCount: 0,
-    needsYouCount: 0,
-    revertedCount: 0,
-    totalCount: 0,
-    perChildBreakdown: breakdown,
-    generatedAt: now,
-  };
+      trace.recordGeneration('daily-brief-loop', { model: modelUsed, usage: result.usage });
 
-  await database
-    .insert(schema.dailyDigests)
-    .values({ familyId, digestDate, ...row })
-    .onConflictDoUpdate({
-      target: [schema.dailyDigests.familyId, schema.dailyDigests.digestDate],
-      set: row,
-    });
+      await recordAgentRun(database, {
+        familyId,
+        agentName: 'daily-brief',
+        modelUsed,
+        promptTokens: result.usage.promptTokens,
+        completionTokens: result.usage.completionTokens,
+        costUsd: sonnetCostUsd(result.usage),
+        latencyMs: Date.now() - startedAt,
+        status: result.answer === null ? 'failed' : 'completed',
+        langfuseTraceId: trace.traceId,
+      });
 
-  const emailed = await deps.email.sendDigest(to, 'your hale daily brief', result.answer);
+      if (result.answer === null) {
+        return { status: 'no_answer' };
+      }
 
-  return { status: 'sent', emailed };
+      const digestDate = torontoDate(now);
+      const breakdown: DigestPerChildBreakdown = {
+        children: [],
+        unattributed: {
+          handledCount: 0,
+          awaitingCount: 0,
+          needsYouCount: 0,
+          revertedCount: 0,
+          totalCount: 0,
+        },
+        coordinationFlags: [],
+        briefText: result.answer,
+      };
+
+      const row = {
+        handledCount: 0,
+        awaitingCount: 0,
+        needsYouCount: 0,
+        revertedCount: 0,
+        totalCount: 0,
+        perChildBreakdown: breakdown,
+        generatedAt: now,
+      };
+
+      await database
+        .insert(schema.dailyDigests)
+        .values({ familyId, digestDate, ...row })
+        .onConflictDoUpdate({
+          target: [schema.dailyDigests.familyId, schema.dailyDigests.digestDate],
+          set: row,
+        });
+
+      const emailed = await deps.email.sendDigest(to, 'your hale daily brief', result.answer);
+
+      return { status: 'sent', emailed };
+    },
+  );
 }
 
 export interface DigestCronResult {

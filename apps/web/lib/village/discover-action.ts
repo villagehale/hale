@@ -5,6 +5,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { resolveFamilyForUser } from '~/lib/family';
+import { flushTelemetry } from '~/lib/telemetry/langfuse';
 import { type DiscoverResult, defaultDiscoverDeps, discoverForFamily } from './discover';
 
 /**
@@ -38,7 +39,13 @@ export async function findActivitiesAction(): Promise<FindActivitiesResult> {
     return { status: 'no_family' };
   }
 
-  const result = await discoverForFamily(familyId, database, defaultDiscoverDeps());
-  revalidatePath('/village');
-  return result;
+  try {
+    const result = await discoverForFamily(familyId, database, defaultDiscoverDeps());
+    revalidatePath('/village');
+    return result;
+  } finally {
+    // Serverless flush: send the discovery trace's buffered spans before the
+    // Server Action returns (rule #8).
+    await flushTelemetry();
+  }
 }

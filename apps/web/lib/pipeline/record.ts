@@ -51,6 +51,7 @@ export interface RecordEventInput {
   childId: string | null;
   usage: { promptTokens: number; completionTokens: number };
   model: string;
+  langfuseTraceId?: string | null;
 }
 
 export interface RecordEventResult {
@@ -115,6 +116,7 @@ export async function recordEvent(
     completionTokens: input.usage.completionTokens,
     costUsd: haikuCostUsd(input.usage),
     status: 'completed',
+    langfuseTraceId: input.langfuseTraceId,
   });
 
   await writeAudit(database, {
@@ -135,6 +137,7 @@ export interface RecordDraftInput {
   draft: DraftedAction;
   usage: { promptTokens: number; completionTokens: number };
   model: string;
+  langfuseTraceId?: string | null;
 }
 
 /**
@@ -156,6 +159,7 @@ export async function recordDraft(
     completionTokens: input.usage.completionTokens,
     costUsd: sonnetCostUsd(input.usage),
     status: 'completed',
+    langfuseTraceId: input.langfuseTraceId,
   });
 
   const inserted = await database
@@ -216,6 +220,7 @@ export interface RecordVerdictInput {
   verdict: ReviewerVerdict;
   usage: { promptTokens: number; completionTokens: number };
   model: string;
+  langfuseTraceId?: string | null;
 }
 
 /**
@@ -238,6 +243,7 @@ export async function recordVerdict(
     completionTokens: input.usage.completionTokens,
     costUsd: sonnetCostUsd(input.usage),
     status: 'completed',
+    langfuseTraceId: input.langfuseTraceId,
   });
 
   await database

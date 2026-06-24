@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
+import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { loadDiscoveryPrompt } from './discovery-prompt';
 
 /**
@@ -166,81 +167,96 @@ export async function discoverForFamily(
     limit: DISCOVERY_LIMIT,
   });
 
-  const startedAt = Date.now();
-  const response = await deps.client.messages.create({
-    model,
-    max_tokens: 4096,
-    system,
-    tools: [
-      {
-        name: DISCOVERY_TOOL,
-        description: 'Return the structured local activity candidates.',
-        input_schema: candidatesJsonSchema,
-      },
-    ],
-    tool_choice: { type: 'tool', name: DISCOVERY_TOOL },
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  // Trace the single discovery call: a scheduled/on-demand run (userId 'system'),
+  // familyId is correlating metadata. Only the coarse area + stage + interests
+  // reach the model and the trace; the mask is the rule-#1 backstop.
+  return traceAgentRun(
+    {
+      name: 'discovery',
+      userId: 'system',
+      tags: ['discovery'],
+      metadata: { familyId },
+    },
+    async (trace) => {
+      const startedAt = Date.now();
+      const response = await deps.client.messages.create({
+        model,
+        max_tokens: 4096,
+        system,
+        tools: [
+          {
+            name: DISCOVERY_TOOL,
+            description: 'Return the structured local activity candidates.',
+            input_schema: candidatesJsonSchema,
+          },
+        ],
+        tool_choice: { type: 'tool', name: DISCOVERY_TOOL },
+        messages: [{ role: 'user', content: userMessage }],
+      });
 
-  const usage = {
-    promptTokens: response.usage.input_tokens,
-    completionTokens: response.usage.output_tokens,
-  };
-  const recordRun = (status: 'completed' | 'failed') =>
-    recordAgentRun(database, {
-      familyId,
-      agentName: 'discovery',
-      modelUsed: model,
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      costUsd: sonnetCostUsd(usage),
-      latencyMs: Date.now() - startedAt,
-      status,
-    });
+      const usage = {
+        promptTokens: response.usage.input_tokens,
+        completionTokens: response.usage.output_tokens,
+      };
+      trace.recordGeneration('discovery-llm-call', { model, usage });
+      const recordRun = (status: 'completed' | 'failed') =>
+        recordAgentRun(database, {
+          familyId,
+          agentName: 'discovery',
+          modelUsed: model,
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          costUsd: sonnetCostUsd(usage),
+          latencyMs: Date.now() - startedAt,
+          status,
+          langfuseTraceId: trace.traceId,
+        });
 
-  const toolUse = response.content.find(
-    (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === DISCOVERY_TOOL,
+      const toolUse = response.content.find(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === DISCOVERY_TOOL,
+      );
+      if (!toolUse) {
+        // Rule #8: a forced-tool call that came back without the tool is a failed run —
+        // record it (the model still billed input/output tokens) before surfacing.
+        await recordRun('failed');
+        throw new Error(`discovery: model returned no ${DISCOVERY_TOOL} tool call`);
+      }
+      const parsed = candidatesSchema.parse(toolUse.input);
+
+      const candidates = parsed.candidates.slice(0, DISCOVERY_LIMIT);
+      if (candidates.length === 0) {
+        await recordRun('completed');
+        return { status: 'discovered', insertedCount: 0 };
+      }
+
+      await database.transaction(async (tx) => {
+        await tx.insert(schema.villageCandidates).values(
+          candidates.map((c) => ({
+            familyId,
+            childId: null,
+            title: c.title,
+            kind: CANDIDATE_KIND,
+            summary: c.description,
+            sourceUrl: c.sourceUrl,
+            source: SOURCE,
+            confidence: c.confidence,
+            coverageNote: c.coverageNote,
+          })),
+        );
+        await tx.insert(schema.auditLog).values({
+          familyId,
+          actor: 'system',
+          actionTaken: 'village.discovery.recorded',
+          targetTable: 'village_candidates',
+          after: { areaCoarse, provider: SOURCE, count: candidates.length },
+        });
+      });
+
+      await recordRun('completed');
+
+      return { status: 'discovered', insertedCount: candidates.length };
+    },
   );
-  if (!toolUse) {
-    // Rule #8: a forced-tool call that came back without the tool is a failed run —
-    // record it (the model still billed input/output tokens) before surfacing.
-    await recordRun('failed');
-    throw new Error(`discovery: model returned no ${DISCOVERY_TOOL} tool call`);
-  }
-  const parsed = candidatesSchema.parse(toolUse.input);
-
-  const candidates = parsed.candidates.slice(0, DISCOVERY_LIMIT);
-  if (candidates.length === 0) {
-    await recordRun('completed');
-    return { status: 'discovered', insertedCount: 0 };
-  }
-
-  await database.transaction(async (tx) => {
-    await tx.insert(schema.villageCandidates).values(
-      candidates.map((c) => ({
-        familyId,
-        childId: null,
-        title: c.title,
-        kind: CANDIDATE_KIND,
-        summary: c.description,
-        sourceUrl: c.sourceUrl,
-        source: SOURCE,
-        confidence: c.confidence,
-        coverageNote: c.coverageNote,
-      })),
-    );
-    await tx.insert(schema.auditLog).values({
-      familyId,
-      actor: 'system',
-      actionTaken: 'village.discovery.recorded',
-      targetTable: 'village_candidates',
-      after: { areaCoarse, provider: SOURCE, count: candidates.length },
-    });
-  });
-
-  await recordRun('completed');
-
-  return { status: 'discovered', insertedCount: candidates.length };
 }
 
 /**
