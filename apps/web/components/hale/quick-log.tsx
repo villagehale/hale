@@ -12,18 +12,29 @@ import {
   NAP_EPISODE,
   type QuickLogInput,
 } from '~/lib/companion/log-types';
+import {
+  eligibleKidsFor,
+  type Kind,
+  type QuickLogChild,
+  visibleKindsFor,
+} from './quick-log-kinds';
 
-export interface QuickLogChild {
-  id: string;
-  name: string | null;
-}
-
-type Kind = typeof FEED_EPISODE | typeof NAP_EPISODE | typeof MILESTONE_EPISODE;
-
-const KIND_META: Record<Kind, { label: string; icon: typeof Utensils }> = {
-  [FEED_EPISODE]: { label: 'log a feed', icon: Utensils },
-  [NAP_EPISODE]: { label: 'log a nap', icon: Moon },
-  [MILESTONE_EPISODE]: { label: 'note a milestone', icon: Sparkles },
+const KIND_META: Record<Kind, { label: string; icon: typeof Utensils; emptyError: string }> = {
+  [FEED_EPISODE]: {
+    label: 'log a feed',
+    icon: Utensils,
+    emptyError: 'enter how much (ml) before saving',
+  },
+  [NAP_EPISODE]: {
+    label: 'log a nap',
+    icon: Moon,
+    emptyError: 'enter how long (minutes) before saving',
+  },
+  [MILESTONE_EPISODE]: {
+    label: 'note a milestone',
+    icon: Sparkles,
+    emptyError: 'enter what happened before saving',
+  },
 };
 
 type Status =
@@ -51,6 +62,9 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
 
   if (kids.length === 0) return null;
 
+  const visibleKinds = visibleKindsFor(kids);
+  const eligibleKids = open ? eligibleKidsFor(kids, open) : kids;
+
   function reset() {
     setAmountMl('');
     setDurationMin('');
@@ -60,14 +74,22 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
   function toggle(kind: Kind) {
     setStatus({ kind: 'idle' });
     reset();
-    setOpen((current) => (current === kind ? null : kind));
+    if (open === kind) {
+      setOpen(null);
+      return;
+    }
+    const eligible = eligibleKidsFor(kids, kind);
+    if (!eligible.some((c) => c.id === childId) && eligible[0]) {
+      setChildId(eligible[0].id);
+    }
+    setOpen(kind);
   }
 
   async function submit() {
     if (!open) return;
     const input = buildInput(open, childId, { amountMl, durationMin, milestone });
     if (!input) {
-      setStatus({ kind: 'error', message: 'please fill in the field above' });
+      setStatus({ kind: 'error', message: KIND_META[open].emptyError });
       return;
     }
     setStatus({ kind: 'saving' });
@@ -98,7 +120,7 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <span className="eyebrow text-spruce mr-2">quick log</span>
-        {(Object.keys(KIND_META) as Kind[]).map((kind) => {
+        {visibleKinds.map((kind) => {
           const meta = KIND_META[kind];
           return (
             <Button
@@ -116,7 +138,7 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
 
       {open ? (
         <div className="panel-oat px-6 py-5 space-y-5">
-          {kids.length > 1 ? (
+          {eligibleKids.length > 1 ? (
             <div className="field-group">
               <label htmlFor={selectId} className="field-label">
                 which child
@@ -127,7 +149,7 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
                 value={childId}
                 onChange={(e) => setChildId(e.currentTarget.value)}
               >
-                {kids.map((child) => (
+                {eligibleKids.map((child) => (
                   <option key={child.id} value={child.id}>
                     {child.name ?? 'your child'}
                   </option>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Lock, Search } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { Folio } from '~/components/hale/folio';
 import { Icon } from '~/components/ui/icon';
@@ -66,30 +66,39 @@ export function VillageSearch({ candidates }: { candidates: VillageCandidateView
                     <p className="mt-3 eyebrow text-spruce">{candidate.kind}</p>
                   </div>
 
-                  <div className="md:col-span-7 space-y-5">
-                    <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
-                      {candidate.title}
-                    </h2>
-                    <p className="text-lg text-spruce leading-relaxed">{candidate.summary}</p>
-
-                    {candidate.coverageNote ? (
-                      <p className="meta text-slate-green">{candidate.coverageNote}</p>
-                    ) : null}
-
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
-                      <AcceptButton href={candidate.acceptHref} />
-                      {candidate.sourceUrl ? (
-                        <a
-                          href={candidate.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-ghost"
-                        >
-                          see the listing →
-                        </a>
-                      ) : null}
+                  {candidate.teenAttributed ? (
+                    <div className="md:col-span-7">
+                      <p className="flex items-center gap-2 text-spruce leading-relaxed">
+                        <Icon as={Lock} size={18} className="shrink-0 text-slate-green" />
+                        {candidate.title}
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="md:col-span-7 space-y-5">
+                      <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
+                        {candidate.title}
+                      </h2>
+                      <p className="text-lg text-spruce leading-relaxed">{candidate.summary}</p>
+
+                      {candidate.coverageNote ? (
+                        <p className="meta text-slate-green">{candidate.coverageNote}</p>
+                      ) : null}
+
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-2">
+                        <AcceptButton href={candidate.acceptHref} />
+                        {candidate.sourceUrl ? (
+                          <a
+                            href={candidate.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-ghost"
+                          >
+                            see the listing →
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </article>
             );

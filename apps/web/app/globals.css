@@ -742,6 +742,7 @@ strong { font-weight: 700; }
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-height: 44px;
   padding: 0.45rem 0;
   background: transparent;
   color: var(--color-apricot-deep);
@@ -768,6 +769,9 @@ strong { font-weight: 700; }
 }
 
 .btn-ghost:hover::after { transform: scaleX(1); }
+
+.btn-ghost[aria-pressed="true"] { color: var(--color-spruce); }
+.btn-ghost[aria-pressed="true"]::after { transform: scaleX(1); }
 
 .btn-ghost:focus-visible {
   outline: none;
@@ -802,6 +806,14 @@ strong { font-weight: 700; }
 
 .link:hover::after { transform: scaleX(1); }
 
+.link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  border-radius: var(--r-sm);
+}
+
+.link:focus-visible::after { transform: scaleX(1); }
+
 @media (prefers-reduced-motion: reduce) {
   .link::after { transition: none; }
 }
@@ -826,6 +838,21 @@ strong { font-weight: 700; }
 .pill-sky { background: var(--color-sky-tint); color: var(--color-spruce); }
 .pill-sage { background: var(--color-sage-tint); color: var(--color-spruce); }
 .pill-berry { background: var(--color-berry-tint); color: var(--color-spruce); }
+
+.pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  border-radius: var(--r-sm);
+}
+
+/* Interactive pill (tappable chip) — 44px touch target; base .pill stays a static stamp size. */
+.pill-action { min-height: 44px; }
+
+/* Choice card — focus ring for a styled <label> wrapping an sr-only radio/checkbox. */
+.choice-card:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
 
 /* Stamp — a soft status label for "trial mode", "draft only", etc. */
 .stamp {

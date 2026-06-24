@@ -34,7 +34,7 @@ export function IntentChips({
               aria-pressed={isSelected}
               disabled={disabled}
               onClick={() => onToggle(value)}
-              className={`rounded-full px-4 py-2 text-sm leading-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`choice-card rounded-full px-4 py-2 text-sm leading-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 isSelected
                   ? 'bg-oat border border-spruce text-spruce'
                   : 'border border-rule-strong text-slate-green hover:border-spruce'

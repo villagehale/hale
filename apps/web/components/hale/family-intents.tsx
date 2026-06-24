@@ -1,6 +1,6 @@
 'use client';
 
-import { Check } from 'lucide-react';
+import { AlertCircle, Check } from 'lucide-react';
 import { useState } from 'react';
 import type { OnboardingIntent } from '@hale/types';
 import { Button } from '~/components/ui/button';
@@ -57,7 +57,8 @@ export function FamilyIntents({ intents }: { intents: OnboardingIntent[] }) {
         </output>
       ) : null}
       {state.kind === 'error' ? (
-        <p className="meta text-apricot-deep" role="alert">
+        <p className="field-error flex items-center gap-2" role="alert">
+          <AlertCircle size={14} strokeWidth={2} aria-hidden="true" className="shrink-0" />
           couldn&rsquo;t save just now — please try again.
         </p>
       ) : null}
