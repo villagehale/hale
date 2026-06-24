@@ -2,33 +2,36 @@ import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { FindActivitiesButton } from '~/components/hale/find-activities-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { VillageSearch } from '~/components/hale/village-search';
+import { loadVillageFeed } from '~/lib/village/feed';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function VillagePage() {
-  const { candidates, routine } = await loadVillage();
+  const [feed, { routine }] = await Promise.all([loadVillageFeed(), loadVillage()]);
+  const candidates = feed.candidates;
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
     <div>
-      <PageCorner folio="09" section="village · this week" />
+      <PageCorner folio="09" section="village · near you" />
 
       {/* ── Headline ────────────────────────────────────────────────────── */}
       <header className="rise rise-1 mb-16 lg:mb-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
           <div className="lg:col-span-3">
             <span className="eyebrow">your village</span>
-            <p className="meta mt-2">near you · for this week</p>
+            <p className="meta mt-2">
+              {feed.ranked ? 'ranked for your family by Hale' : 'near you'}
+            </p>
           </div>
           <div className="lg:col-span-9">
             <h1 className="font-display">
               {candidates.length === 0 ? (
                 <>
-                  nothing <span className="text-apricot-deep">to gather</span> yet this week.
+                  nothing <span className="text-apricot-deep">to gather</span> yet.
                 </>
               ) : (
                 <>
-                  {candidates.length} {candidates.length === 1 ? 'thing' : 'things'}{' '}
-                  <span className="text-apricot-deep">near you</span> this week.
+                  what your <span className="text-apricot-deep">village</span> recommends near you.
                 </>
               )}
             </h1>

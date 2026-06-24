@@ -38,56 +38,65 @@ export interface VillageData {
 const EMPTY_VILLAGE: VillageData = { candidates: [], routine: null };
 
 /**
- * Reads a family's discovered candidates and its latest weekly routine proposal.
- * Teen attribution (rule #1) is derived LIVE from each child's date_of_birth via
- * deriveStage — never stored — so a candidate or routine item tied to a 13+ child
- * is redacted at the mapper. Children with no DOB-derived teenager stage carry no
- * redaction; family-wide rows (childId null) are never teen-attributed.
+ * Reads ONE resolved family's discovered candidates + latest routine proposal,
+ * teen-safe. Split out of loadVillage so the agent-ranked feed can reuse the exact
+ * same teen-redacted candidate read (rule #1) against an already-resolved
+ * family/database — the redaction lives in one place, the feed never re-implements
+ * it. Teen attribution is derived LIVE from date_of_birth via deriveStage (never
+ * stored); a candidate/routine item tied to a 13+ child is redacted at the mapper.
+ */
+export async function readVillage(database: Database, familyId: string): Promise<VillageData> {
+  const children = await database
+    .select({
+      id: schema.children.id,
+      dateOfBirth: schema.children.dateOfBirth,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+
+  const teenChildIds = new Set(
+    children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
+  );
+
+  const candidateRows = await database
+    .select()
+    .from(schema.villageCandidates)
+    .where(eq(schema.villageCandidates.familyId, familyId))
+    .orderBy(
+      desc(schema.villageCandidates.confidence),
+      desc(schema.villageCandidates.discoveredAt),
+    );
+
+  const routineRows = await database
+    .select()
+    .from(schema.routineProposals)
+    .where(eq(schema.routineProposals.familyId, familyId))
+    .orderBy(desc(schema.routineProposals.weekOf))
+    .limit(1);
+
+  const candidateIds = candidateRows.map((row) => row.id);
+  const [endorsementCounts, familyEndorsed] = await Promise.all([
+    countEndorsementsForCandidates(database, candidateIds),
+    listFamilyEndorsedCandidateIds(database, familyId),
+  ]);
+
+  const candidates = candidateRows.map((row) =>
+    toVillageCandidateView(row, row.childId !== null && teenChildIds.has(row.childId), {
+      endorsementCount: endorsementCounts.get(row.id) ?? 0,
+      endorsedByFamily: familyEndorsed.has(row.id),
+    }),
+  );
+  const routine = routineRows[0] ? toRoutineProposalView(routineRows[0], teenChildIds) : null;
+
+  return { candidates, routine };
+}
+
+/**
+ * The credential-less-preview / unauthed boundary wrapper around readVillage: the
+ * village page runs both in a preview (no DATABASE_URL, no session) and a real
+ * authed session, landing both on the same calm empty state for the two EXPECTED
+ * boundaries only. A genuine query failure once a DB exists must surface (rule #8).
  */
 export function loadVillage(): Promise<VillageData> {
-  return readForFamily(async (database, familyId) => {
-    const children = await database
-      .select({
-        id: schema.children.id,
-        dateOfBirth: schema.children.dateOfBirth,
-      })
-      .from(schema.children)
-      .where(eq(schema.children.familyId, familyId));
-
-    const teenChildIds = new Set(
-      children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
-    );
-
-    const candidateRows = await database
-      .select()
-      .from(schema.villageCandidates)
-      .where(eq(schema.villageCandidates.familyId, familyId))
-      .orderBy(
-        desc(schema.villageCandidates.confidence),
-        desc(schema.villageCandidates.discoveredAt),
-      );
-
-    const routineRows = await database
-      .select()
-      .from(schema.routineProposals)
-      .where(eq(schema.routineProposals.familyId, familyId))
-      .orderBy(desc(schema.routineProposals.weekOf))
-      .limit(1);
-
-    const candidateIds = candidateRows.map((row) => row.id);
-    const [endorsementCounts, familyEndorsed] = await Promise.all([
-      countEndorsementsForCandidates(database, candidateIds),
-      listFamilyEndorsedCandidateIds(database, familyId),
-    ]);
-
-    const candidates = candidateRows.map((row) =>
-      toVillageCandidateView(row, row.childId !== null && teenChildIds.has(row.childId), {
-        endorsementCount: endorsementCounts.get(row.id) ?? 0,
-        endorsedByFamily: familyEndorsed.has(row.id),
-      }),
-    );
-    const routine = routineRows[0] ? toRoutineProposalView(routineRows[0], teenChildIds) : null;
-
-    return { candidates, routine };
-  }, EMPTY_VILLAGE);
+  return readForFamily(readVillage, EMPTY_VILLAGE);
 }

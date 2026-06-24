@@ -46,6 +46,18 @@ flips; the meaning doesn't). Pick a token by the element's *role + state*.
 Rule: **canvas → card → raised → chrome** is the elevation ladder. A control that
 lifts on hover steps **one notch up** the ladder; never invent a new surface.
 
+**Surface by product area — two felt registers, same tokens:**
+- **The village (home/primary, the agent-ranked trusted feed)** is the warm,
+  image-forward register: `panel bg-raised` cards, a folio per card, the
+  apricot-tint social-proof pill ("loved by N families near you"), and the
+  endorse/share/accept controls. The feed leads — it is the hero.
+- **The Companion (per-child guidance)** is the quiet-utility register: plain
+  `Card`/`panel-oat` surfaces, no social proof, no folio, no warm tint. It must
+  **not** read like the village. Ask Hale sits as the calm concierge entry
+  (`panel-oat`), present but not the headline.
+Same tokens and ladder throughout; warmth comes from which surface + accent each
+area earns, never from a new color.
+
 ### Text & ink
 | Role | Token | Min contrast |
 |---|---|---|
