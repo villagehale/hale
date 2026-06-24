@@ -9,11 +9,9 @@
  * key or any address (rule #1).
  */
 
-const REGION_CODES = ['us', 'ca', 'au', 'nz', 'gb'];
-
-type PlaceAutocompleteElementCtor = new (
-  options: { includedRegionCodes: string[] },
-) => HTMLElement;
+type PlaceAutocompleteElementCtor = new (options: {
+  includedRegionCodes?: string[];
+}) => HTMLElement;
 
 interface MapsGlobal {
   maps?: {
@@ -22,9 +20,6 @@ interface MapsGlobal {
 }
 
 let loadPromise: Promise<PlaceAutocompleteElementCtor | null> | null = null;
-
-/** The region allow-list passed to the autocomplete element (US/CA/AU/NZ/UK). */
-export const PLACES_REGION_CODES = REGION_CODES;
 
 /**
  * Inject the Maps JS bootstrap loader exactly once. Mirrors Google's official

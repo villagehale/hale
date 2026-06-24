@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { LocationInput } from '~/lib/family/location-input';
-import { loadPlacesAutocomplete, PLACES_REGION_CODES } from '~/lib/onboarding/load-places';
+import { loadPlacesAutocomplete } from '~/lib/onboarding/load-places';
 import { type PlaceAddressComponent, parsePlaceAddress } from '~/lib/onboarding/parse-place';
 
 /**
- * Home-address capture, backed by Google Places Autocomplete (New) restricted to
- * US/CA/AU/NZ/UK. Selecting a suggestion autofills the structured parts
+ * Home-address capture, backed by Google Places Autocomplete (New), global (any
+ * country — entry must work for everyone; the focus markets only shape discovery
+ * quality). Selecting a suggestion autofills the structured parts
  * (country / province / city / postal code). The full address is sensitive
  * (rule #1): we store ONLY those coarse parts — never the street line — and
  * discovery uses the derived coarse area (normalizeLocation). We never log the
@@ -44,11 +45,14 @@ export function HomeAddress({
         setStatus('manual');
         return;
       }
-      element = new Ctor({ includedRegionCodes: PLACES_REGION_CODES });
+      // Global: no country restriction — anyone who signs up can enter their
+      // address (the 5 focus markets matter for discovery quality, not entry).
+      element = new Ctor({});
       element.setAttribute('aria-label', 'search your home address');
       listener = (event: Event) => {
-        const place = (event as { placePrediction?: { toPlace?: () => PlaceLike } })
-          .placePrediction?.toPlace?.();
+        const place = (
+          event as { placePrediction?: { toPlace?: () => PlaceLike } }
+        ).placePrediction?.toPlace?.();
         if (place) {
           void applyPlace(place, onChangeRef.current);
         }
@@ -158,7 +162,10 @@ interface PlaceLike {
  * coarse fields up. Failures (network, quota) are swallowed: the manual fields
  * remain, so selection never blocks the parent. No address is ever logged (rule #1).
  */
-async function applyPlace(place: PlaceLike, onChange: (next: LocationInput) => void): Promise<void> {
+async function applyPlace(
+  place: PlaceLike,
+  onChange: (next: LocationInput) => void,
+): Promise<void> {
   try {
     await place.fetchFields({ fields: ['addressComponents'] });
   } catch {
