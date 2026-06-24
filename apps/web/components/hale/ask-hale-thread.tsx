@@ -96,7 +96,7 @@ function CompactSurface({ canAsk, chat }: { canAsk: boolean; chat: UseAskHale })
           <button
             key={prompt}
             type="button"
-            className={`pill cursor-pointer ${DISABLED_AFFORDANCE}`}
+            className={`pill-action cursor-pointer ${DISABLED_AFFORDANCE}`}
             onClick={() => ask(prompt)}
             disabled={status === 'pending'}
           >
@@ -113,7 +113,6 @@ function CompactSurface({ canAsk, chat }: { canAsk: boolean; chat: UseAskHale })
           icon={ArrowRight}
           onClick={() => ask(draft)}
           disabled={status === 'pending' || draft.trim().length === 0}
-          aria-live="polite"
         >
           {status === 'pending' ? 'thinking…' : 'ask Hale'}
         </Button>
@@ -121,12 +120,12 @@ function CompactSurface({ canAsk, chat }: { canAsk: boolean; chat: UseAskHale })
 
       {status === 'error' ? (
         <p className="meta italic text-apricot-deep" role="alert">
-          something went wrong reaching Hale — please try again.
+          Couldn&rsquo;t reach Hale — try again in a moment.
         </p>
       ) : null}
 
       {turns.length > 0 ? (
-        <div className="space-y-5 rise rise-1">
+        <div className="space-y-5 rise rise-1" aria-live="polite">
           {turns.map((turn) =>
             turn.role === 'user' ? (
               <p
@@ -243,7 +242,7 @@ function FullSurface({ canAsk, chat }: { canAsk: boolean; chat: UseAskHale }) {
                 </div>
                 {status === 'error' ? (
                   <p className="meta italic text-apricot-deep" role="alert">
-                    something went wrong reaching Hale — please try again.
+                    Couldn&rsquo;t reach Hale — try again in a moment.
                   </p>
                 ) : null}
                 <p className="meta">
