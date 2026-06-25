@@ -1,10 +1,11 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DigestEmailSender } from './email';
 import { runDigestForFamily } from './digest';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ID = '99999999-9999-4999-8999-999999999999';
 const NOW = new Date('2026-06-17T13:00:00Z'); // 9am Toronto (EDT)
 
 /** A child young enough that companionForChild yields a soon-due health item +
@@ -15,45 +16,43 @@ interface Capture {
   auditLog: unknown[];
   dailyDigests: unknown[];
   agentRuns: Record<string, unknown>[];
+  emailSends: unknown[];
 }
 
 /**
- * Fakes the exact Drizzle chains runDigestForFamily + its tools run. Routed by
- * call order for selects and by table identity for inserts. No real DB.
- *
- * Select order:
- *  0. recipientEmail:        from(familyMembers).innerJoin(users).where().limit() → [{email}]
- *  1. get_companion_brief:   from(children).where() → child rows
- *  2. get_week_village #1:   from(children).where() → child rows (teen set)
- *  3. get_week_village #2:   from(villageCandidates).where().orderBy().limit() → []
- *
- * The model in this test calls both tools once each, then answers, so the select
- * order is deterministic.
+ * Fakes the exact Drizzle chains runDigestForFamily + its tools run. Selects are
+ * routed by the FROM table (robust to ordering); inserts by table identity. No
+ * real DB. The recipient select reads {userId,email}; the opt-out select reads
+ * email_opt_outs (returns rows iff optedOut).
  */
-function fakeDb(args: { email: string | null; children: Array<{ id: string; name: string; dateOfBirth: string }>; capture: Capture }) {
-  let selectCall = 0;
-
-  const select = vi.fn().mockImplementation(() => {
-    const call = selectCall++;
-    if (call === 0) {
-      return {
-        from: () => ({
+function fakeDb(args: {
+  recipient: { userId: string; email: string } | null;
+  children: Array<{ id: string; name: string; dateOfBirth: string }>;
+  optedOut?: boolean;
+  capture: Capture;
+}) {
+  const select = vi.fn().mockImplementation(() => ({
+    from: (table: unknown) => {
+      if (table === schema.familyMembers) {
+        return {
           innerJoin: () => ({
-            where: () => ({ limit: async () => (args.email ? [{ email: args.email }] : []) }),
+            where: () => ({
+              limit: async () =>
+                args.recipient ? [{ userId: args.recipient.userId, email: args.recipient.email }] : [],
+            }),
           }),
-        }),
-      };
-    }
-    if (call === 1 || call === 2) {
-      return { from: () => ({ where: async () => args.children }) };
-    }
-    // village candidates: from().where().orderBy().limit()
-    return {
-      from: () => ({
-        where: () => ({ orderBy: () => ({ limit: async () => [] }) }),
-      }),
-    };
-  });
+        };
+      }
+      if (table === schema.children) {
+        return { where: async () => args.children };
+      }
+      if (table === schema.emailOptOuts) {
+        return { where: () => ({ limit: async () => (args.optedOut ? [{ id: 'opt-1' }] : []) }) };
+      }
+      // village candidates: from().where().orderBy().limit()
+      return { where: () => ({ orderBy: () => ({ limit: async () => [] }) }) };
+    },
+  }));
 
   const insert = vi.fn().mockImplementation((table: unknown) => {
     if (table === schema.dailyDigests) {
@@ -79,6 +78,13 @@ function fakeDb(args: { email: string | null; children: Array<{ id: string; name
       return {
         values: async (row: unknown) => {
           args.capture.auditLog.push(row);
+        },
+      };
+    }
+    if (table === schema.emailSends) {
+      return {
+        values: async (row: unknown) => {
+          args.capture.emailSends.push(row);
         },
       };
     }
@@ -115,24 +121,39 @@ function fakeClient(): AgentClient {
   return { messages: { create } } as unknown as AgentClient;
 }
 
-function fakeEmail(): { sender: DigestEmailSender; sent: Array<{ to: string; subject: string; body: string }> } {
-  const sent: Array<{ to: string; subject: string; body: string }> = [];
+function fakeEmail(): {
+  sender: DigestEmailSender;
+  sent: Array<{ to: string; subject: string; body: string; unsubscribeUrl: string }>;
+} {
+  const sent: Array<{ to: string; subject: string; body: string; unsubscribeUrl: string }> = [];
   return {
     sent,
     sender: {
-      async sendDigest(to, subject, body) {
-        sent.push({ to, subject, body });
-        return true;
+      async sendDigest(to, subject, body, unsubscribeUrl) {
+        sent.push({ to, subject, body, unsubscribeUrl });
+        return { accepted: true, providerMessageId: 'resend-msg-1' };
       },
     },
   };
 }
 
 describe('runDigestForFamily', () => {
-  it('composes the brief on the harness, stores it in daily_digests, audits each tool, and emails it', async () => {
-    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [] };
+  // Sending is gated behind the flag + a configured unsubscribe secret; the
+  // happy-path tests turn both on. The gate tests below leave the flag off / opt
+  // the recipient out to prove the send is suppressed.
+  beforeEach(() => {
+    vi.stubEnv('DIGEST_SEND_ENABLED', 'true');
+    vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsub-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('composes the brief on the harness, stores it in daily_digests, audits each tool, emails it, and records the send', async () => {
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [], emailSends: [] };
     const db = fakeDb({
-      email: 'parent@example.com',
+      recipient: { userId: USER_ID, email: 'parent@example.com' },
       children: [{ id: 'c1', name: 'Maya', dateOfBirth: TODDLER_DOB }],
       capture,
     });
@@ -158,10 +179,27 @@ describe('runDigestForFamily', () => {
     expect(digestRow.digestDate).toBe('2026-06-17');
     expect(digestRow.perChildBreakdown.briefText).toContain('good morning');
 
-    // The same brief is emailed from the family's primary parent address.
-    expect(email.sent).toEqual([
-      { to: 'parent@example.com', subject: 'your hale daily brief', body: digestRow.perChildBreakdown.briefText },
-    ]);
+    // The same brief is emailed to the family's primary parent, with a CASL
+    // unsubscribe URL bound to that user + stream.
+    expect(email.sent).toHaveLength(1);
+    const sent = email.sent[0];
+    expect(sent?.to).toBe('parent@example.com');
+    expect(sent?.subject).toBe('your hale daily brief');
+    expect(sent?.body).toBe(digestRow.perChildBreakdown.briefText);
+    const unsub = new URL(sent?.unsubscribeUrl as string);
+    expect(unsub.pathname).toBe('/unsubscribe');
+    expect(unsub.searchParams.get('u')).toBe(USER_ID);
+    expect(unsub.searchParams.get('t')).toBe('daily_digest');
+
+    // The accepted send is recorded in the email_sends ledger (CASL: who + when).
+    expect(capture.emailSends).toHaveLength(1);
+    expect(capture.emailSends[0]).toMatchObject({
+      userId: USER_ID,
+      familyId: FAMILY_ID,
+      emailType: 'daily_digest',
+      recipient: 'parent@example.com',
+      providerMessageId: 'resend-msg-1',
+    });
 
     // Rule #6: every tool call wrote an immutable audit row, actor 'system'.
     expect(capture.auditLog).toHaveLength(2);
@@ -185,9 +223,9 @@ describe('runDigestForFamily', () => {
   });
 
   it('records a FAILED agent_runs row and rethrows when the harness call throws (rule #8)', async () => {
-    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [] };
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [], emailSends: [] };
     const db = fakeDb({
-      email: 'parent@example.com',
+      recipient: { userId: USER_ID, email: 'parent@example.com' },
       children: [{ id: 'c1', name: 'Maya', dateOfBirth: TODDLER_DOB }],
       capture,
     });
@@ -214,8 +252,8 @@ describe('runDigestForFamily', () => {
   });
 
   it('returns no_recipient and does NOT run the agent when the family has no primary parent', async () => {
-    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [] };
-    const db = fakeDb({ email: null, children: [], capture });
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [], emailSends: [] };
+    const db = fakeDb({ recipient: null, children: [], capture });
     const email = fakeEmail();
     const client = fakeClient();
 
@@ -224,5 +262,52 @@ describe('runDigestForFamily', () => {
     expect(result).toEqual({ status: 'no_recipient' });
     expect(capture.dailyDigests).toEqual([]);
     expect(email.sent).toEqual([]);
+  });
+
+  it('stores the brief but SKIPS the send when DIGEST_SEND_ENABLED is not "true" (off by default)', async () => {
+    vi.stubEnv('DIGEST_SEND_ENABLED', '');
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [], emailSends: [] };
+    const db = fakeDb({
+      recipient: { userId: USER_ID, email: 'parent@example.com' },
+      children: [{ id: 'c1', name: 'Maya', dateOfBirth: TODDLER_DOB }],
+      capture,
+    });
+    const email = fakeEmail();
+
+    const result = await runDigestForFamily(
+      FAMILY_ID,
+      db,
+      { client: fakeClient(), email: email.sender },
+      NOW,
+    );
+
+    expect(result).toEqual({ status: 'send_skipped', reason: 'flag_off' });
+    // The brief is still composed + stored — only the outbound send is gated.
+    expect(capture.dailyDigests).toHaveLength(1);
+    expect(email.sent).toEqual([]);
+    expect(capture.emailSends).toEqual([]);
+  });
+
+  it('stores the brief but SKIPS the send when the recipient has opted out (CASL consent)', async () => {
+    const capture: Capture = { auditLog: [], dailyDigests: [], agentRuns: [], emailSends: [] };
+    const db = fakeDb({
+      recipient: { userId: USER_ID, email: 'parent@example.com' },
+      children: [{ id: 'c1', name: 'Maya', dateOfBirth: TODDLER_DOB }],
+      optedOut: true,
+      capture,
+    });
+    const email = fakeEmail();
+
+    const result = await runDigestForFamily(
+      FAMILY_ID,
+      db,
+      { client: fakeClient(), email: email.sender },
+      NOW,
+    );
+
+    expect(result).toEqual({ status: 'send_skipped', reason: 'opted_out' });
+    expect(capture.dailyDigests).toHaveLength(1);
+    expect(email.sent).toEqual([]);
+    expect(capture.emailSends).toEqual([]);
   });
 });

@@ -126,3 +126,9 @@ export const childGenderEnum = pgEnum('child_gender', [
   'nonbinary',
   'unspecified',
 ]);
+
+// The kind of non-transactional email Hale sends. CASL: each such message needs
+// consent (an absent opt-out), sender identification, and a working unsubscribe.
+// One value today (the daily brief); the enum keeps the send ledger + opt-out
+// honest about which stream a row belongs to.
+export const emailTypeEnum = pgEnum('email_type', ['daily_digest']);

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { BUSINESS_ADDRESS, SENDER_NAME } from './email-compliance';
 
 const DEFAULT_FROM = 'hello@villagehale.com';
 
@@ -12,14 +13,23 @@ const DEFAULT_FROM = 'hello@villagehale.com';
  * (no raw teen content) composed by the daily-brief agent.
  */
 export interface DigestEmailSender {
-  /** Returns true iff the provider accepted the send. */
-  sendDigest(to: string, subject: string, body: string): Promise<boolean>;
+  /** Returns the provider message id when accepted, null when not sent. The
+   * unsubscribe URL is required by CASL — the footer always carries a working
+   * one-click unsubscribe + the business mailing address + sender identity. */
+  sendDigest(
+    to: string,
+    subject: string,
+    body: string,
+    unsubscribeUrl: string,
+  ): Promise<{ accepted: boolean; providerMessageId: string | null }>;
 }
 
 /** Plain, portable HTML wrapper for the agent's prose brief — inline styles only
  * (most portable across email clients), one paragraph per blank-line-separated
- * block so the agent's two short paragraphs render as paragraphs. */
-function renderHtml(body: string): string {
+ * block so the agent's two short paragraphs render as paragraphs. The CASL footer
+ * (sender identity, mailing address, working unsubscribe) is appended to every
+ * message. */
+function renderHtml(body: string, unsubscribeUrl: string): string {
   const paragraphs = body
     .split(/\n{2,}/)
     .map((block) => block.trim())
@@ -31,7 +41,19 @@ function renderHtml(body: string): string {
         ).replace(/\n/g, '<br/>')}</p>`,
     )
     .join('');
-  return `<div style="font-family:Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif;background:#f6f1e7;padding:24px;">${paragraphs}</div>`;
+  const footer = `<hr style="border:none;border-top:1px solid #d8cfbe;margin:24px 0 12px;"/><p style="margin:0;color:#6b6357;font-size:12px;line-height:1.5;">Sent by ${escapeHtml(
+    SENDER_NAME,
+  )} · ${escapeHtml(
+    BUSINESS_ADDRESS,
+  )}<br/>You're receiving this because you have a Hale account. <a href="${escapeHtml(
+    unsubscribeUrl,
+  )}" style="color:#6b6357;">Unsubscribe from daily briefs</a>.</p>`;
+  return `<div style="font-family:Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif;background:#f6f1e7;padding:24px;">${paragraphs}${footer}</div>`;
+}
+
+/** Plain-text counterpart of the CASL footer, for the text/plain part. */
+function renderTextFooter(unsubscribeUrl: string): string {
+  return `\n\n—\nSent by ${SENDER_NAME} · ${BUSINESS_ADDRESS}\nUnsubscribe from daily briefs: ${unsubscribeUrl}`;
 }
 
 function escapeHtml(value: string): string {
@@ -43,26 +65,26 @@ function escapeHtml(value: string): string {
 
 export function createDigestEmailSender(client?: Resend): DigestEmailSender {
   return {
-    async sendDigest(to, subject, body) {
+    async sendDigest(to, subject, body, unsubscribeUrl) {
       const apiKey = process.env.RESEND_API_KEY;
       if (!apiKey && !client) {
         console.info('digest email skipped: RESEND_API_KEY not set');
-        return false;
+        return { accepted: false, providerMessageId: null };
       }
       const resend = client ?? new Resend(apiKey);
       const from = process.env.RESEND_FROM ?? DEFAULT_FROM;
-      const { error } = await resend.emails.send({
+      const { data, error } = await resend.emails.send({
         from,
         to,
         subject,
-        html: renderHtml(body),
-        text: body,
+        html: renderHtml(body, unsubscribeUrl),
+        text: body + renderTextFooter(unsubscribeUrl),
       });
       if (error) {
         console.error('digest email send failed', error);
-        return false;
+        return { accepted: false, providerMessageId: null };
       }
-      return true;
+      return { accepted: true, providerMessageId: data?.id ?? null };
     },
   };
 }
