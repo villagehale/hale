@@ -1,6 +1,7 @@
 import { Baby, CalendarPlus } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { ActivationPanel } from '~/components/hale/activation-panel';
 import { BookButton } from '~/components/hale/book-button';
 import { ConciergeAsk } from '~/components/hale/concierge-ask';
 import { LongDate } from '~/components/hale/long-date';
@@ -8,9 +9,12 @@ import { QuickLog } from '~/components/hale/quick-log';
 import { HomeVillageFeed, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
+import { allStepsDone, deriveActivationSteps } from '~/lib/activation/checklist';
 import { authConfigured } from '~/lib/auth-config';
 import { loadThreadShellForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
+import { loadFamilyMembers } from '~/lib/dashboard/queries';
+import { loadVillage } from '~/lib/village/queries';
 
 function duePhrase(dueInWeeks: number): string {
   if (dueInWeeks <= 0) return 'due now';
@@ -27,7 +31,12 @@ function milestoneInWindow(child: ChildCompanionView) {
 
 export default async function HomePage() {
   const canAsk = authConfigured();
-  const [children, askSeed] = await Promise.all([loadCompanion(), loadThreadShellForRequest()]);
+  const [children, askSeed, village, members] = await Promise.all([
+    loadCompanion(),
+    loadThreadShellForRequest(),
+    loadVillage(),
+    loadFamilyMembers(),
+  ]);
 
   if (children.length === 0) {
     return (
@@ -67,6 +76,13 @@ export default async function HomePage() {
     );
   }
 
+  const activationSignals = {
+    acceptedCandidateCount: village.candidates.filter((c) => c.accepted).length,
+    hasUserCoachMessage: askSeed.timeline.some((m) => m.role === 'user'),
+    hasCoParent: members.coParent !== null,
+  };
+  const showActivation = !allStepsDone(activationSignals);
+
   return (
     <div>
       <div className="page-corner">
@@ -91,6 +107,13 @@ export default async function HomePage() {
           </div>
         </div>
       </header>
+
+      {/* ── First-run activation — auto-hides once the loop is found ──────── */}
+      {showActivation ? (
+        <section className="rise rise-2 mb-16 lg:mb-20">
+          <ActivationPanel steps={deriveActivationSteps(activationSignals)} />
+        </section>
+      ) : null}
 
       {/* ── The village — the agent-ranked, trusted feed (the hero) ──────── */}
       {/* Streamed: the rank-recommendations agent must not block the shell. */}
