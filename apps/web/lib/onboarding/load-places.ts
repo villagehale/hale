@@ -19,6 +19,7 @@ interface MapsImportLibrary {
   (name: 'places'): Promise<{ PlaceAutocompleteElement?: PlaceAutocompleteElementCtor }>;
   (name: 'maps'): Promise<{ Map?: unknown }>;
   (name: 'marker'): Promise<{ AdvancedMarkerElement?: unknown; PinElement?: unknown }>;
+  (name: 'core'): Promise<{ LatLngBounds?: unknown }>;
   (name: string): Promise<unknown>;
 }
 
@@ -117,13 +118,16 @@ export async function loadMapsLibrary(): Promise<MapsLibraries | null> {
   const importLibrary = await whenMapsReady();
   if (!importLibrary) return null;
   try {
-    const [mapsLib, markerLib] = await Promise.all([
-      importLibrary('maps') as Promise<{ Map?: unknown; LatLngBounds?: unknown }>,
+    const [mapsLib, markerLib, coreLib] = await Promise.all([
+      importLibrary('maps') as Promise<{ Map?: unknown }>,
       importLibrary('marker') as Promise<{ AdvancedMarkerElement?: unknown; PinElement?: unknown }>,
+      // LatLngBounds is in the 'core' library, NOT 'maps' — importing it from
+      // 'maps' yielded undefined and silently nulled the whole map.
+      importLibrary('core') as Promise<{ LatLngBounds?: unknown }>,
     ]);
     if (
       !mapsLib.Map ||
-      !mapsLib.LatLngBounds ||
+      !coreLib.LatLngBounds ||
       !markerLib.AdvancedMarkerElement ||
       !markerLib.PinElement
     ) {
@@ -131,7 +135,7 @@ export async function loadMapsLibrary(): Promise<MapsLibraries | null> {
     }
     return {
       Map: mapsLib.Map as MapsLibraries['Map'],
-      LatLngBounds: mapsLib.LatLngBounds as MapsLibraries['LatLngBounds'],
+      LatLngBounds: coreLib.LatLngBounds as MapsLibraries['LatLngBounds'],
       AdvancedMarkerElement: markerLib.AdvancedMarkerElement as MapsLibraries['AdvancedMarkerElement'],
       PinElement: markerLib.PinElement as MapsLibraries['PinElement'],
     };
