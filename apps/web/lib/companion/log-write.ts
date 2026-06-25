@@ -34,10 +34,12 @@ export function buildEpisodeInsert(
       return {
         ...base,
         episodeType: FEED_EPISODE,
-        summary: `Fed ${input.amountMl} ml`,
-        payload: input.note
-          ? { amountMl: input.amountMl, note: input.note }
-          : { amountMl: input.amountMl },
+        summary: input.feedKind ? `Fed ${input.amountMl} ml (${input.feedKind})` : `Fed ${input.amountMl} ml`,
+        payload: {
+          amountMl: input.amountMl,
+          ...(input.feedKind ? { feedKind: input.feedKind } : {}),
+          ...(input.note ? { note: input.note } : {}),
+        },
       };
     case NAP_EPISODE:
       return {
@@ -53,7 +55,10 @@ export function buildEpisodeInsert(
         ...base,
         episodeType: MILESTONE_EPISODE,
         summary: input.milestone,
-        payload: { milestone: input.milestone },
+        payload: {
+          milestone: input.milestone,
+          ...(input.note ? { note: input.note } : {}),
+        },
       };
   }
 }

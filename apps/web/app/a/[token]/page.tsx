@@ -71,7 +71,7 @@ export default async function SharedActivityPage({ params }: PageProps) {
         />
 
         <section>
-          <PublicActivityCard activity={card.activity} />
+          <PublicActivityCard activity={card.activity} area={card.areaCoarse} />
         </section>
 
         <JoinCta heading="there's more where this came from." />

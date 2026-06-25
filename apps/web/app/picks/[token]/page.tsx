@@ -85,6 +85,7 @@ export default async function SharedPicksPage({ params }: PageProps) {
                 key={`${activity.kind}-${idx}`}
                 activity={activity}
                 index={idx + 1}
+                area={picks.areaCoarse}
               />
             ))}
           </section>

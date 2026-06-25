@@ -10,6 +10,7 @@ import {
   type LogResult,
   bookingSchema,
   quickLogSchema,
+  resolveOccurredAt,
 } from './log-types.js';
 import { buildEpisodeInsert, childBelongsToFamily, writeEpisode } from './log-write.js';
 
@@ -33,6 +34,11 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
     return { status: 'invalid', error: parsed.error.issues[0]?.message ?? 'invalid input' };
   }
 
+  const occurredAt = resolveOccurredAt(parsed.data.occurredAt, now);
+  if (!occurredAt.ok) {
+    return { status: 'invalid', error: occurredAt.error };
+  }
+
   if (!process.env.DATABASE_URL) {
     return { status: 'preview', reason: 'no_database' };
   }
@@ -50,7 +56,7 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
     return { status: 'forbidden' };
   }
 
-  await writeEpisode(database, buildEpisodeInsert(parsed.data, familyId, now));
+  await writeEpisode(database, buildEpisodeInsert(parsed.data, familyId, occurredAt.date));
 
   revalidatePath('/companion');
   revalidatePath('/home');

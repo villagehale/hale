@@ -5,6 +5,7 @@ import { List, Lock, Map as MapIcon, Search } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
 import { Folio } from '~/components/hale/folio';
+import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
@@ -27,9 +28,11 @@ type View = 'list' | 'map';
 export function VillageSearch({
   candidates,
   coarseCenter,
+  area = null,
 }: {
   candidates: VillageCandidateView[];
   coarseCenter: LatLng | null;
+  area?: string | null;
 }) {
   const inputId = useId();
   const [query, setQuery] = useState('');
@@ -95,7 +98,7 @@ export function VillageSearch({
       </div>
 
       {view === 'map' ? (
-        <VillageMap candidates={filtered} coarseCenter={coarseCenter} />
+        <VillageMap candidates={filtered} coarseCenter={coarseCenter} area={area} />
       ) : null}
 
       <div className={view === 'map' ? 'hidden' : undefined}>
@@ -149,16 +152,11 @@ export function VillageSearch({
                           shareTitle={candidate.title}
                           variant="ghost"
                         />
-                        {candidate.sourceUrl ? (
-                          <a
-                            href={candidate.sourceUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn-ghost"
-                          >
-                            see the listing →
-                          </a>
-                        ) : null}
+                        <RegisterLink
+                          sourceUrl={candidate.sourceUrl}
+                          title={candidate.title}
+                          area={area}
+                        />
                       </div>
                     </div>
                   )}
