@@ -8,7 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
-  type Home as HomeIcon,
+  type House as HouseIcon,
 } from 'lucide-react';
 import { Icon } from '~/components/ui/icon';
 import { AccountMenu } from '~/components/hale/account-menu';
@@ -25,7 +25,7 @@ function NavLink({
 }: {
   href: Route;
   label: string;
-  icon: typeof HomeIcon;
+  icon: typeof HouseIcon;
   active: boolean;
   onNavigate: () => void;
 }) {

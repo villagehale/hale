@@ -4,11 +4,11 @@ import {
   CheckCircle2,
   History,
   House,
-  Home as HomeIcon,
   MessageCircleHeart,
   Settings,
   Sparkles,
   Users,
+  UsersRound,
 } from 'lucide-react';
 
 /**
@@ -23,17 +23,17 @@ import {
 export interface NavItem {
   href: Route;
   label: string;
-  icon: typeof HomeIcon;
+  icon: typeof House;
 }
 
 export const PRIMARY_NAV = [
-  { href: '/home', label: 'home', icon: HomeIcon },
+  { href: '/home', label: 'home', icon: House },
   { href: '/approvals', label: 'approvals', icon: CheckCircle2 },
   { href: '/coach', label: 'ask Hale', icon: MessageCircleHeart },
   { href: '/companion', label: 'companion', icon: Sparkles },
   { href: '/village', label: 'village', icon: Users },
   { href: '/plan', label: 'plan', icon: CalendarRange },
-  { href: '/family', label: 'family', icon: House },
+  { href: '/family', label: 'family', icon: UsersRound },
 ] as const satisfies ReadonlyArray<NavItem>;
 
 export const HISTORY_NAV = {

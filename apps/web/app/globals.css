@@ -768,10 +768,11 @@ strong { font-weight: 700; }
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
 
-/* On desktop the sidebar carries the brand + nav, so the running head keeps
- * only the current-page eyebrow and the theme toggle; the hamburger hides. */
+/* On desktop the always-visible sidebar carries the brand, nav, and current
+ * surface, so the running head is pure duplication; drop it and reclaim the
+ * vertical space. It stays on mobile, where the hamburger opens the drawer. */
 @media (min-width: 1024px) {
-  .runninghead-menu, .runninghead-brand { display: none; }
+  .runninghead { display: none; }
 }
 
 .main-stage {

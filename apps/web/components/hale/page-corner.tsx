@@ -1,8 +1,9 @@
 import { LongDate } from './long-date';
 
 interface PageCornerProps {
-  /** Folio for this section (i, ii, iii, …). */
-  folio: string;
+  /** Optional folio for this section (i, ii, iii, …). Omit on surfaces whose
+   * order isn't a real sequence — a number there reads as a false rank. */
+  folio?: string;
   /** Section name — printed right after the folio. */
   section: string;
 }
@@ -17,7 +18,7 @@ export function PageCorner({ folio, section }: PageCornerProps) {
   return (
     <div className="page-corner">
       <div className="flex items-baseline gap-3">
-        <span className="folio">{folio}</span>
+        {folio ? <span className="folio">{folio}</span> : null}
         <span className="eyebrow text-spruce">{section}</span>
       </div>
       <LongDate />

@@ -5,6 +5,7 @@ import { AppShell } from '~/components/hale/app-shell';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
 import { FamilyHeader } from '~/components/hale/family-header';
+import { ScrollReset } from '~/components/hale/scroll-reset';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
 import { loadFamilyName } from '~/lib/dashboard/queries';
@@ -62,6 +63,7 @@ export default async function AuthedLayout({ children }: { children: React.React
         header={<TopHeader />}
       >
         <main id="main-content" className="main-stage">
+          <ScrollReset />
           {!authEnabled && (
             <output className="dev-preview-banner">
               Auth disabled — development preview. This route group is unprotected

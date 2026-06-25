@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { BookButton } from '~/components/hale/book-button';
 import { PageCorner } from '~/components/hale/page-corner';
-import { Folio } from '~/components/hale/folio';
 import { QuickLog } from '~/components/hale/quick-log';
 import { RecentLogs } from '~/components/hale/recent-logs';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
@@ -45,7 +44,7 @@ export default async function CompanionPage() {
 
   return (
     <div>
-      <PageCorner folio="10" section="companion · 0–18" />
+      <PageCorner section="companion · 0–18" />
 
       {/* ── Headline ────────────────────────────────────────────────────── */}
       <header className="rise rise-1 mb-16 lg:mb-24">
@@ -91,8 +90,7 @@ export default async function CompanionPage() {
                 {/* Child header */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-12 border-b border-rule pb-6">
                   <div className="lg:col-span-3">
-                    <Folio index={idx + 1} />
-                    <span className="stamp mt-3 inline-block">{STAGE_LABEL[child.stage]}</span>
+                    <span className="stamp inline-block">{STAGE_LABEL[child.stage]}</span>
                   </div>
                   <div className="lg:col-span-9">
                     <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">

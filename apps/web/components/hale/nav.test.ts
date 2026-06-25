@@ -34,4 +34,9 @@ describe('shared nav definition', () => {
       expect(item.icon).toBeTruthy();
     }
   });
+
+  it('every nav glyph is a distinct icon (lucide aliases like Home===House render identically, so the sidebar must not reuse one)', () => {
+    const icons = ALL_NAV.map((n) => n.icon);
+    expect(new Set(icons).size).toBe(icons.length);
+  });
 });
