@@ -159,18 +159,20 @@ export function VillageMap({
           ) : null}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-1">
             <AcceptButton href={selected.acceptHref} />
-            <EndorseButton
-              endpoint={selected.endorseHref}
-              initiallyEndorsed={selected.endorsedByFamily}
-              initialCount={selected.endorsementCount}
-            />
-            <ShareButton
-              endpoint={selected.shareHref}
-              label="share this pick"
-              shareTitle={selected.title}
-              variant="ghost"
-            />
             <RegisterLink sourceUrl={selected.sourceUrl} title={selected.title} area={area} />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
+              <EndorseButton
+                endpoint={selected.endorseHref}
+                initiallyEndorsed={selected.endorsedByFamily}
+                initialCount={selected.endorsementCount}
+              />
+              <ShareButton
+                endpoint={selected.shareHref}
+                label="share this pick"
+                shareTitle={selected.title}
+                variant="ghost"
+              />
+            </div>
           </div>
         </section>
       ) : null}
