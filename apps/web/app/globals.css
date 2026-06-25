@@ -885,6 +885,10 @@ strong { font-weight: 700; }
 
 .field::placeholder { color: var(--color-faded-sage); }
 
+/* Search variant: clear the leading icon. .field is unlayered, so it overrides the
+   Tailwind pl-* utility; set the larger padding-left here so it actually applies. */
+.field-search { padding-left: 2.75rem; }
+
 .field:focus,
 .field:focus-visible {
   outline: none;
