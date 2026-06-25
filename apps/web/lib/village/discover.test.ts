@@ -117,11 +117,15 @@ function fakeClient(candidates: unknown[]) {
   return { client, create };
 }
 
-function deps(client: DiscoveryAnthropicClient): DiscoverDeps {
+function deps(
+  client: DiscoveryAnthropicClient,
+  geocode: DiscoverDeps['geocode'] = async () => null,
+): DiscoverDeps {
   return {
     client,
     loadPrompt: async () => 'DISCOVERY SYSTEM PROMPT',
     loadModel: async () => 'claude-test-model',
+    geocode,
   };
 }
 
@@ -279,30 +283,36 @@ describe('discoverForFamily', () => {
     expect(sentUser).not.toContain(FAMILY_ID);
   });
 
-  it('never stores a precise location: no row field carries the child DOB or a finer area', async () => {
+  it('never stores the family location: coords are PUBLIC venue only, no DOB/precise-home field', async () => {
     const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
       capture,
     });
-    // A model that tries to smuggle a precise address into a candidate still only
-    // populates the coarse columns the row schema has — there is no precise-
-    // location column to write to.
     const c = fakeClient([
       {
-        title: '123 Main St toddler swim',
-        description: 'at 123 Main Street',
+        title: 'Toddler swim',
+        description: 'a class at a municipal pool',
         confidence: 0.5,
         coverageNote: 'serves your area',
       },
     ]);
+    // The geocode resolves a PUBLIC venue (a pool) — its location is a public
+    // place, never the family's home. Capture what reaches Google to assert only
+    // the coarse area is sent (rule #1).
+    const geoCalls: Array<{ title: string; area: string }> = [];
+    const geocode: DiscoverDeps['geocode'] = async (title, area) => {
+      geoCalls.push({ title, area });
+      return { lat: 43.6, lng: -79.4, venueName: 'Public Pool', venueAddress: '1 Pool Rd' };
+    };
 
-    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
 
     for (const row of capture.villageCandidates as Record<string, unknown>[]) {
-      // The persisted row has exactly the coarse village_candidates columns —
-      // no latitude/longitude/address field exists to leak a precise location.
+      // The persisted row carries exactly the village_candidates columns — the
+      // lat/lng/venue columns hold the PUBLIC venue, and there is still NO column
+      // for a child DOB or the precise family home (rule #1).
       expect(Object.keys(row).sort()).toEqual(
         [
           'childId',
@@ -310,14 +320,50 @@ describe('discoverForFamily', () => {
           'coverageNote',
           'familyId',
           'kind',
+          'lat',
+          'lng',
           'source',
           'sourceUrl',
           'summary',
           'title',
+          'venueAddress',
+          'venueName',
         ].sort(),
       );
       expect(row).not.toHaveProperty('dateOfBirth');
+      // Coords are the public venue's, set from the geocode.
+      expect(row.lat).toBe(43.6);
+      expect(row.venueName).toBe('Public Pool');
     }
+
+    // The geocode received ONLY the candidate title + the coarse area — no precise
+    // location ever leaves the server (rule #1).
+    expect(geoCalls).toEqual([{ title: 'Toddler swim', area: 'L7G' }]);
+  });
+
+  it('leaves coords null for a candidate the geocode can not resolve (list-only, no pin)', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      {
+        title: 'online newborn webinar',
+        description: 'a virtual session, no venue',
+        confidence: 0.5,
+        coverageNote: 'online',
+      },
+    ]);
+
+    // geocode returns null for an online / no-venue activity (deps default).
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    const row = (capture.villageCandidates as Record<string, unknown>[])[0];
+    expect(row?.lat).toBeNull();
+    expect(row?.lng).toBeNull();
+    expect(row?.venueName).toBeNull();
   });
 
   it('returns no_area and does NOT call the model when the family has no coarse area', async () => {

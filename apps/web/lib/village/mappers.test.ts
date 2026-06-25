@@ -24,6 +24,10 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     source: 'web_grounded',
     confidence: 0.9,
     coverageNote: RAW_COVERAGE,
+    lat: 43.6777,
+    lng: -79.3534,
+    venueName: 'Riverdale Community Centre',
+    venueAddress: '123 Broadview Ave, Toronto, ON',
     shareToken: null,
     discoveredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
@@ -56,6 +60,11 @@ describe('toVillageCandidateView', () => {
     expect(view.coverageNote).toBeNull();
     expect(view.sourceUrl).toBeNull();
     expect(view.kind).toBe('support_group');
+    // Rule #1: a teen-attributed candidate is never plottable — coords drop to
+    // null so the map can never surface a teen's activity location.
+    expect(view.lat).toBeNull();
+    expect(view.lng).toBeNull();
+    expect(view.venueName).toBeNull();
 
     // Structural guarantee: no raw discovered text reaches the view at all.
     const serialized = JSON.stringify(view);
@@ -74,6 +83,11 @@ describe('toVillageCandidateView', () => {
     expect(view.coverageNote).toBe(RAW_COVERAGE);
     expect(view.sourceUrl).toBe(RAW_SOURCE_URL);
     expect(view.kind).toBe('support_group');
+    // Public venue coords pass through for the map pin (a public place, not the
+    // family's location — rule #1).
+    expect(view.lat).toBe(43.6777);
+    expect(view.lng).toBe(-79.3534);
+    expect(view.venueName).toBe('Riverdale Community Centre');
   });
 
   it('folds the aggregate engagement (count + own-endorsed) into both teen and non-teen views', () => {
