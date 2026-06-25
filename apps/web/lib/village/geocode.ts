@@ -16,14 +16,20 @@
 
 const PLACES_TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 
-/** Only the fields we persist — keeps the response (and any log) minimal. */
-const FIELD_MASK = 'places.location,places.displayName,places.formattedAddress';
+/** Only the fields we persist — keeps the response (and any log) minimal.
+ * websiteUri is a Places "Pro" SKU field; we request it so a candidate without
+ * an LLM-supplied source_url can link straight to the venue's real site rather
+ * than a Google search fallback. */
+const FIELD_MASK = 'places.location,places.displayName,places.formattedAddress,places.websiteUri';
 
 export interface GeocodeResult {
   lat: number;
   lng: number;
   venueName: string;
   venueAddress: string;
+  /** The venue's public website, when Places has one — the real
+   * details/registration URL we prefer over a Google-search fallback. */
+  website?: string;
 }
 
 /** The single HTTP edge, injected so tests exercise the parsing/guard logic with
@@ -47,6 +53,7 @@ interface PlacesResponse {
     location?: { latitude?: number; longitude?: number };
     displayName?: { text?: string };
     formattedAddress?: string;
+    websiteUri?: string;
   }>;
 }
 
@@ -61,6 +68,7 @@ function parseFirstPlace(raw: unknown): GeocodeResult | null {
     lng,
     venueName: place?.displayName?.text ?? '',
     venueAddress: place?.formattedAddress ?? '',
+    website: place?.websiteUri,
   };
 }
 
