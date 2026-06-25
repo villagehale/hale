@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { runQueueMaintenanceCron } from '~/lib/cron/queue-maintenance';
+import { captureException } from '~/lib/monitoring/sentry';
 
 // Node runtime: instantiates pg-boss (prepared statements, raw pg) — not edge.
 export const runtime = 'nodejs';
@@ -15,6 +16,14 @@ export async function GET(req: Request) {
   const denied = requireCronSecret(req);
   if (denied) return denied;
 
-  await runQueueMaintenanceCron();
-  return NextResponse.json({ ok: true }, { status: 200 });
+  try {
+    await runQueueMaintenanceCron();
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (err) {
+    // Surface the failure instead of 500-ing silently: report to Sentry (no-op
+    // without a DSN) and log, then re-throw so the run stays a real error (rule #8).
+    captureException(err);
+    console.error({ err }, 'cron/queue-maintenance failed');
+    throw err;
+  }
 }

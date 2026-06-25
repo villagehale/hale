@@ -158,7 +158,7 @@ export function VillageMap({
             <p className="text-lg text-spruce leading-relaxed">{selected.summary}</p>
           ) : null}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-1">
-            <AcceptButton href={selected.acceptHref} />
+            <AcceptButton href={selected.acceptHref} initiallyAccepted={selected.accepted} />
             <RegisterLink sourceUrl={selected.sourceUrl} title={selected.title} area={area} />
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
               <EndorseButton

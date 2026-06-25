@@ -17,9 +17,20 @@ const LABEL: Record<State, string> = {
  * next phase). Optimistic but honest: pending while in flight, "added to your
  * week" on 202, the error surfaced (never a silent success). The worker drafts
  * the routine action; this only hands off.
+ *
+ * `initiallyAccepted` seeds the "added" state from SERVER data so a card the
+ * family already accepted shows "added to your week" on load and survives the
+ * streamed feed remounting this button — its optimistic local state alone would
+ * reset on every re-render.
  */
-export function AcceptButton({ href }: { href: string }) {
-  const [state, setState] = useState<State>('idle');
+export function AcceptButton({
+  href,
+  initiallyAccepted = false,
+}: {
+  href: string;
+  initiallyAccepted?: boolean;
+}) {
+  const [state, setState] = useState<State>(initiallyAccepted ? 'added' : 'idle');
   const capture = useAnalytics();
 
   async function accept() {

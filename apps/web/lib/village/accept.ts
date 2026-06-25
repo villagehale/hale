@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { type IngestedEventPayload, ingestedEventPayloadSchema } from '@hale/tools-contracts';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
@@ -10,6 +10,11 @@ import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
  * events.ingested pipeline (classify → draft → review → drafted_for_approval),
  * it never executes directly.
  */
+/** The `events.source` value the accept flow tags every ingested village item
+ * with — the join key the accepted-state query filters on so it never picks up a
+ * non-village event that happens to carry a candidate_id. */
+const VILLAGE_SOURCE = 'village';
+
 export interface AcceptQueue {
   send(
     name: string,
@@ -67,7 +72,7 @@ export async function acceptVillageCandidate(
 
   const payload: IngestedEventPayload = ingestedEventPayloadSchema.parse({
     family_id: candidate.familyId,
-    source: 'village',
+    source: VILLAGE_SOURCE,
     payload: {
       event_type: 'activity_signup_open',
       candidate_id: candidate.id,
@@ -85,4 +90,35 @@ export async function acceptVillageCandidate(
   // stored default.
   await queue.send('events.ingested', payload, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
   return { status: 202, payload };
+}
+
+/**
+ * The set of candidate ids THIS family has already accepted (added to their
+ * week). An accept re-enters the spine as a village-sourced event carrying the
+ * candidate_id in its payload, which the pipeline then drafts into an action; the
+ * existence of that drafted action is the durable "added to your week" signal.
+ * Sourcing it from SERVER data (rather than the button's optimistic local state)
+ * is what lets the accept button render "added to your week" on load and survive
+ * the streamed feed remounting it.
+ *
+ * Joins actions → their originating event so we read candidate_id from the
+ * already-stored village payload (rule #1: only the coarse candidate fields ever
+ * live there). Filtered to the family's own village events so it never reflects
+ * another family's accepts.
+ */
+export async function listFamilyAcceptedCandidateIds(
+  database: Database,
+  familyId: string,
+): Promise<Set<string>> {
+  const rows = await database
+    .select({ candidateId: sql<string | null>`${schema.events.payload} ->> 'candidate_id'` })
+    .from(schema.actions)
+    .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
+    .where(and(eq(schema.events.familyId, familyId), eq(schema.events.source, VILLAGE_SOURCE)));
+
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (row.candidateId) ids.add(row.candidateId);
+  }
+  return ids;
 }

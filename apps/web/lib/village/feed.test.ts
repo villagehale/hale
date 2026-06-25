@@ -71,6 +71,7 @@ function view(id: string): VillageCandidateView {
     shareHref: `/api/village/${id}/share`,
     endorsementCount: 0,
     endorsedByFamily: false,
+    accepted: false,
     lat: null,
     lng: null,
     venueName: null,

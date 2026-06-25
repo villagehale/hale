@@ -3,6 +3,7 @@ import { requireCronSecret } from '~/lib/cron/auth';
 import { runDiscoveryCron } from '~/lib/cron/discovery';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
+import { captureException } from '~/lib/monitoring/sentry';
 import { getQueue } from '~/lib/queue';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
@@ -35,6 +36,12 @@ export async function GET(req: Request) {
     const origin = process.env.APP_URL ?? new URL(req.url).origin;
     after(() => kickDrain(origin));
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+  } catch (err) {
+    // Surface the failure instead of 500-ing silently: report to Sentry (no-op
+    // without a DSN) and log, then re-throw so the run stays a real error (rule #8).
+    captureException(err);
+    console.error({ err }, 'cron/discovery failed');
+    throw err;
   } finally {
     // Serverless flush: send buffered spans before the function returns (rule #8).
     await flushTelemetry();
