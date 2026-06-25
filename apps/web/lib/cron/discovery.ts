@@ -1,8 +1,6 @@
 import type { Database } from '@hale/db';
-import {
-  type BackfillResult,
-  backfillCandidateCoords,
-} from '~/lib/village/backfill-coords';
+import type { RerankJobPayload } from '@hale/tools-contracts';
+import { type BackfillResult, backfillCandidateCoords } from '~/lib/village/backfill-coords';
 import {
   type DiscoverDeps,
   type DiscoverResult,
@@ -26,15 +24,24 @@ import { MAX_FAMILIES_PER_RUN, selectFamiliesNeedingDiscovery } from './families
  */
 export interface DiscoveryRunResult {
   processed: number;
-  results: Array<{ familyId: string; result: DiscoverResult } | { familyId: string; error: string }>;
+  results: Array<
+    { familyId: string; result: DiscoverResult } | { familyId: string; error: string }
+  >;
   /** Coords backfilled this run for candidates that predate the map. */
   backfill: BackfillResult;
+}
+
+/** Minimal producer surface: enqueue a background feed-rank job for a family
+ * whose candidate set just changed. Injected so the cron is unit-testable. */
+export interface RerankQueue {
+  send(name: string, data: RerankJobPayload): Promise<string | null>;
 }
 
 export async function runDiscoveryCron(
   database: Database,
   deps: DiscoverDeps = defaultDiscoverDeps(),
   now: Date = new Date(),
+  rerankQueue?: RerankQueue,
 ): Promise<DiscoveryRunResult> {
   const familyIds = await selectFamiliesNeedingDiscovery(
     database,
@@ -47,6 +54,12 @@ export async function runDiscoveryCron(
     try {
       const result = await discoverForFamily(familyId, database, deps);
       results.push({ familyId, result });
+      // New candidates change the feed's candidate set — enqueue a background
+      // rerank so the home feed re-materializes OUT of the request path. The
+      // upsert short-circuits an unchanged set (rule #7), so an enqueue is cheap.
+      if (rerankQueue && result.status === 'discovered' && result.insertedCount > 0) {
+        await rerankQueue.send('village.rerank', { family_id: familyId });
+      }
     } catch (err) {
       results.push({ familyId, error: err instanceof Error ? err.message : String(err) });
     }

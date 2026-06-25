@@ -139,9 +139,34 @@ export const routineProposals = pgTable(
   }),
 );
 
+/**
+ * The materialized agent-ranked feed order for one family — one row per family
+ * (family_id is the PK). The rank-recommendations agent (~25s) runs in the
+ * BACKGROUND on the write events that change the candidate set, and stores the
+ * decided order here; the home feed read is then a pure DB lookup, so the model
+ * never runs in the request path.
+ *
+ * fingerprint = the candidate ids joined in their discovery order: an upsert
+ * whose fingerprint matches the stored one short-circuits before any model call
+ * (bounded spend, rule #7), so the agent re-runs only when the candidate set
+ * actually changed. ordered_ids is the agent's permutation of those ids; the read
+ * path reconciles it against the live candidates so a stale id is never rendered.
+ */
+export const villageFeedRank = pgTable('village_feed_rank', {
+  familyId: uuid('family_id')
+    .primaryKey()
+    .references(() => families.id, { onDelete: 'cascade' }),
+  orderedIds: jsonb('ordered_ids').$type<string[]>().notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  modelUsed: text('model_used').notNull(),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type VillageCandidate = typeof villageCandidates.$inferSelect;
 export type NewVillageCandidate = typeof villageCandidates.$inferInsert;
 export type RoutineProposal = typeof routineProposals.$inferSelect;
 export type NewRoutineProposal = typeof routineProposals.$inferInsert;
 export type VillageEndorsement = typeof villageEndorsements.$inferSelect;
 export type NewVillageEndorsement = typeof villageEndorsements.$inferInsert;
+export type VillageFeedRank = typeof villageFeedRank.$inferSelect;
+export type NewVillageFeedRank = typeof villageFeedRank.$inferInsert;

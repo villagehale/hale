@@ -4,11 +4,10 @@ import { VillageFeed, VillageFeedHeader } from './village-feed';
 import { VillageSearch } from './village-search';
 
 /**
- * The agent-ranked feed is the slowest thing on home/village: loadVillageFeed
- * runs the rank-recommendations agent (an LLM call on a cache miss). Awaiting it
- * at the top of the page blocks the WHOLE render, so navigation stalls on the
- * model. These async sections isolate that await behind a <Suspense> boundary —
- * the page shell streams instantly and the feed fills in with its own skeleton.
+ * loadVillageFeed is now a pure DB read (the ~25s ranker is materialized in the
+ * background, never in this request path). These async sections keep the await
+ * behind a <Suspense> boundary anyway — the page shell streams instantly and the
+ * feed fills in with its own skeleton on the quick DB round-trip.
  */
 
 export async function HomeVillageFeed() {

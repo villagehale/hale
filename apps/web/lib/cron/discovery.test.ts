@@ -32,6 +32,11 @@ vi.mock('./families', () => ({
 
 const DEPS = { client: {}, loadPrompt: async () => '', loadModel: async () => '' } as never;
 
+function makeQueue() {
+  const send = vi.fn(async () => 'job-id');
+  return { queue: { send }, send };
+}
+
 describe('runDiscoveryCron', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -51,8 +56,9 @@ describe('runDiscoveryCron', () => {
       .mockResolvedValueOnce({ status: 'discovered', insertedCount: 3 })
       .mockResolvedValueOnce({ status: 'no_non_teen_children' });
 
+    const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    const summary = await runDiscoveryCron({} as never, DEPS);
+    const summary = await runDiscoveryCron({} as never, DEPS, new Date(), queue);
 
     // Bounded by the discovery cap.
     expect(selectFamiliesNeedingDiscoveryMock).toHaveBeenCalledWith({}, 50, expect.any(Date));
@@ -62,6 +68,10 @@ describe('runDiscoveryCron', () => {
       { familyId: 'fam-a', result: { status: 'discovered', insertedCount: 3 } },
       { familyId: 'fam-b', result: { status: 'no_non_teen_children' } },
     ]);
+    // A village.rerank is enqueued ONLY for the family that actually got new
+    // candidates (fam-a) — not for the no-children family (fam-b).
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('village.rerank', { family_id: 'fam-a' });
     // The bounded coords backfill runs once per discovery run.
     expect(backfillCandidateCoordsMock).toHaveBeenCalledTimes(1);
     expect(summary.backfill).toEqual({ scanned: 0, geocoded: 0 });
@@ -73,13 +83,28 @@ describe('runDiscoveryCron', () => {
       .mockRejectedValueOnce(new Error('model timeout'))
       .mockResolvedValueOnce({ status: 'discovered', insertedCount: 1 });
 
+    const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    const summary = await runDiscoveryCron({} as never, DEPS);
+    const summary = await runDiscoveryCron({} as never, DEPS, new Date(), queue);
 
     expect(discoverForFamilyMock).toHaveBeenCalledTimes(2);
     expect(summary.results).toEqual([
       { familyId: 'fam-a', error: 'model timeout' },
       { familyId: 'fam-b', result: { status: 'discovered', insertedCount: 1 } },
     ]);
+    // The failed family is never enqueued; only the one that wrote candidates is.
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('village.rerank', { family_id: 'fam-b' });
+  });
+
+  it('does NOT enqueue a rerank when discovery wrote zero candidates', async () => {
+    selectFamiliesNeedingDiscoveryMock.mockResolvedValue(['fam-a']);
+    discoverForFamilyMock.mockResolvedValueOnce({ status: 'discovered', insertedCount: 0 });
+
+    const { queue, send } = makeQueue();
+    const { runDiscoveryCron } = await import('./discovery');
+    await runDiscoveryCron({} as never, DEPS, new Date(), queue);
+
+    expect(send).not.toHaveBeenCalled();
   });
 });

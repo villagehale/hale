@@ -134,6 +134,13 @@
       "when": 1781460780000,
       "tag": "0018_village_venue_coords",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781460840000,
+      "tag": "0019_village_feed_rank",
+      "breakpoints": true
     }
   ]
 }

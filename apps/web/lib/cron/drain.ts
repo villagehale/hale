@@ -1,6 +1,10 @@
-import PgBoss from 'pg-boss';
-import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hale/tools-contracts';
+import {
+  approvedActionPayloadSchema,
+  ingestedEventPayloadSchema,
+  rerankJobPayloadSchema,
+} from '@hale/tools-contracts';
 import { executeApprovedAction, runOrchestrator } from '@hale/worker/orchestrator';
+import PgBoss from 'pg-boss';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
@@ -20,6 +24,10 @@ import { executeApprovedAction, runOrchestrator } from '@hale/worker/orchestrato
 
 const EVENTS_QUEUE = 'events.ingested';
 const ACTIONS_QUEUE = 'actions.approved';
+/** Background feed-rank materialization: a job carries {family_id}; the handler
+ * runs the ~25s ranker OUT of the request path and stores the order in
+ * village_feed_rank, so the home feed read is a pure DB lookup. */
+const RERANK_QUEUE = 'village.rerank';
 
 /** Per-job expiry: a killed pipeline re-queues in ~3min, not the 15min default
  * (recipe #6). Set on queue creation AND mirrored on the producer send. */
@@ -44,6 +52,9 @@ export interface DrainBoss {
 export interface DrainHandlers {
   runOrchestrator: typeof runOrchestrator;
   executeApprovedAction: typeof executeApprovedAction;
+  /** Materialize one family's feed rank (upsertFeedRank), bound to a db by the
+   * caller — injected so the drain loop is testable without a real ranker/db. */
+  rerank: (familyId: string) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -107,6 +118,26 @@ async function processApprovedJob(
   return 'processed';
 }
 
+/** Drive one `village.rerank` job into background rank materialization. Same
+ * drop-don't-throw policy for a schema-invalid payload; upsertFeedRank itself
+ * short-circuits an unchanged candidate set (no model call, rule #7), so a re-run
+ * after expiry is idempotent and free when nothing changed. */
+async function processRerankJob(
+  deps: DrainDeps,
+  job: { id: string; data: unknown },
+): Promise<'processed' | 'dropped'> {
+  const parsed = rerankJobPayloadSchema.safeParse(job.data);
+  if (!parsed.success) {
+    deps.log.error(
+      { queue: RERANK_QUEUE, jobId: job.id, issues: parsed.error.issues },
+      'drain: village.rerank payload failed contract validation — dropping',
+    );
+    return 'dropped';
+  }
+  await deps.handlers.rerank(parsed.data.family_id);
+  return 'processed';
+}
+
 /**
  * Fetch + process a single queue in bounded batches until it drains, the batch
  * cap is hit, or the wall-clock budget expires. Each job: complete() on a clean
@@ -116,7 +147,10 @@ async function processApprovedJob(
 async function drainQueue(
   deps: DrainDeps,
   queue: string,
-  process: (deps: DrainDeps, job: { id: string; data: unknown }) => Promise<'processed' | 'dropped'>,
+  process: (
+    deps: DrainDeps,
+    job: { id: string; data: unknown },
+  ) => Promise<'processed' | 'dropped'>,
   deadlineMs: number,
   summary: DrainSummary,
 ): Promise<void> {
@@ -156,12 +190,17 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     name: ACTIONS_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
   });
+  await deps.boss.createQueue(RERANK_QUEUE, {
+    name: RERANK_QUEUE,
+    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+  });
 
   const deadlineMs = deps.now() + WALL_CLOCK_BUDGET_MS;
   const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
 
   await drainQueue(deps, EVENTS_QUEUE, processIngestedJob, deadlineMs, summary);
   await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
+  await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
 
   deps.log.info({ ...summary }, 'drain: run complete');
   return summary;
@@ -181,12 +220,23 @@ export async function runDrainCron(): Promise<DrainSummary> {
     throw new Error('DATABASE_DIRECT_URL or DATABASE_URL must be set to drain the queue');
   }
 
+  // Lazily imported here, not at module top: upsertFeedRank pulls the village
+  // read chain (queries → family → auth) which drags next-auth into every test
+  // that imports a drain constant. The runtime entrypoint is the only place that
+  // needs the real handler, so the import stays scoped to it.
+  const { db } = await import('~/lib/db');
+  const { upsertFeedRank } = await import('~/lib/village/rank/upsert');
+
   const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });
   await boss.start();
   try {
     return await drainHotQueues({
       boss: boss as unknown as DrainBoss,
-      handlers: { runOrchestrator, executeApprovedAction },
+      handlers: {
+        runOrchestrator,
+        executeApprovedAction,
+        rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
+      },
       log: console,
       now: () => Date.now(),
     });
