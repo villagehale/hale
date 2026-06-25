@@ -3,6 +3,7 @@ import { deriveStage } from '@hale/types';
 import { desc, eq } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
+import { listFamilyAcceptedCandidateIds } from './accept';
 import { countEndorsementsForCandidates, listFamilyEndorsedCandidateIds } from './endorse';
 import {
   type RoutineProposalView,
@@ -75,15 +76,17 @@ export async function readVillage(database: Database, familyId: string): Promise
     .limit(1);
 
   const candidateIds = candidateRows.map((row) => row.id);
-  const [endorsementCounts, familyEndorsed] = await Promise.all([
+  const [endorsementCounts, familyEndorsed, familyAccepted] = await Promise.all([
     countEndorsementsForCandidates(database, candidateIds),
     listFamilyEndorsedCandidateIds(database, familyId),
+    listFamilyAcceptedCandidateIds(database, familyId),
   ]);
 
   const candidates = candidateRows.map((row) =>
     toVillageCandidateView(row, row.childId !== null && teenChildIds.has(row.childId), {
       endorsementCount: endorsementCounts.get(row.id) ?? 0,
       endorsedByFamily: familyEndorsed.has(row.id),
+      accepted: familyAccepted.has(row.id),
     }),
   );
   const routine = routineRows[0] ? toRoutineProposalView(routineRows[0], teenChildIds) : null;

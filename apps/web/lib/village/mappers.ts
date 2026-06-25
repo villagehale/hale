@@ -27,6 +27,11 @@ export interface VillageCandidateView {
   endorsementCount: number;
   /** Whether THIS family has already endorsed — drives the button's state. */
   endorsedByFamily: boolean;
+  /** Whether THIS family has already accepted (added to their week) — drives the
+   * accept button's "added to your week" state from SERVER data so it survives the
+   * streamed feed remounting the button (it would otherwise reset its optimistic
+   * local state on every re-render). */
+  accepted: boolean;
   /** PUBLIC venue coordinates for the map pin (a YMCA, a library) — null for an
    * online / no-venue activity or an unresolved geocode (list-only, no pin). These
    * are a public place, never the family's location (rule #1). Always null on a
@@ -43,10 +48,12 @@ export interface VillageCandidateView {
   teenAttributed: boolean;
 }
 
-/** The endorsement signals the query layer resolves and the mapper folds in. */
+/** The per-family signals the query layer resolves and the mapper folds in. */
 export interface CandidateEngagement {
   endorsementCount: number;
   endorsedByFamily: boolean;
+  /** True when this family already accepted (added to their week) this candidate. */
+  accepted: boolean;
 }
 
 export interface RoutineItemView {
@@ -76,7 +83,11 @@ export interface RoutineProposalView {
 /** Default when a caller doesn't resolve endorsements (e.g. the coach/digest
  * read paths that only need the redacted title/kind/summary). Keeps those call
  * sites unchanged while the village page passes the real signals. */
-const NO_ENGAGEMENT: CandidateEngagement = { endorsementCount: 0, endorsedByFamily: false };
+const NO_ENGAGEMENT: CandidateEngagement = {
+  endorsementCount: 0,
+  endorsedByFamily: false,
+  accepted: false,
+};
 
 export function toVillageCandidateView(
   candidate: VillageCandidate,
@@ -88,7 +99,7 @@ export function toVillageCandidateView(
   const shareHref = `/api/village/${candidate.id}/share`;
   // The aggregate count is identity-free, so it is safe even on a teen row; the
   // renderer still blocks endorse/share on teen-attributed cards (rule #1).
-  const { endorsementCount, endorsedByFamily } = engagement;
+  const { endorsementCount, endorsedByFamily, accepted } = engagement;
   if (teenAttributed) {
     return {
       id: candidate.id,
@@ -102,6 +113,7 @@ export function toVillageCandidateView(
       shareHref,
       endorsementCount,
       endorsedByFamily,
+      accepted,
       // Never plot a teen-redacted card — its location stays list-only (rule #1).
       lat: null,
       lng: null,
@@ -121,6 +133,7 @@ export function toVillageCandidateView(
     shareHref,
     endorsementCount,
     endorsedByFamily,
+    accepted,
     lat: candidate.lat,
     lng: candidate.lng,
     venueName: candidate.venueName,

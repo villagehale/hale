@@ -140,7 +140,10 @@ export function VillageSearch({
                       ) : null}
 
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-2">
-                        <AcceptButton href={candidate.acceptHref} />
+                        <AcceptButton
+                          href={candidate.acceptHref}
+                          initiallyAccepted={candidate.accepted}
+                        />
                         <RegisterLink
                           sourceUrl={candidate.sourceUrl}
                           title={candidate.title}

@@ -34,7 +34,7 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
   };
 }
 
-const NO_ENGAGEMENT = { endorsementCount: 0, endorsedByFamily: false };
+const NO_ENGAGEMENT = { endorsementCount: 0, endorsedByFamily: false, accepted: false };
 
 function proposal(overrides: Partial<RoutineProposal> = {}): RoutineProposal {
   return {
@@ -91,7 +91,7 @@ describe('toVillageCandidateView', () => {
   });
 
   it('folds the aggregate engagement (count + own-endorsed) into both teen and non-teen views', () => {
-    const engaged = { endorsementCount: 5, endorsedByFamily: true };
+    const engaged = { endorsementCount: 5, endorsedByFamily: true, accepted: false };
 
     const teen = toVillageCandidateView(candidate(), true, engaged);
     const open = toVillageCandidateView(candidate({ childId: null }), false, engaged);
@@ -102,6 +102,16 @@ describe('toVillageCandidateView', () => {
     expect(open.endorsementCount).toBe(5);
     expect(open.endorseHref).toBe('/api/village/cand-1/endorse');
     expect(open.shareHref).toBe('/api/village/cand-1/share');
+  });
+
+  it('folds the family-accepted flag through so the accept button can render "added" on load', () => {
+    const accepted = { endorsementCount: 0, endorsedByFamily: false, accepted: true };
+
+    const open = toVillageCandidateView(candidate({ childId: null }), false, accepted);
+    const notAccepted = toVillageCandidateView(candidate({ childId: null }), false, NO_ENGAGEMENT);
+
+    expect(open.accepted).toBe(true);
+    expect(notAccepted.accepted).toBe(false);
   });
 });
 

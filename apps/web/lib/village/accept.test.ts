@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type AcceptQueue, acceptVillageCandidate } from './accept.js';
+import {
+  type AcceptQueue,
+  acceptVillageCandidate,
+  listFamilyAcceptedCandidateIds,
+} from './accept.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_FAMILY = '22222222-2222-4222-8222-222222222222';
@@ -100,5 +104,42 @@ describe('acceptVillageCandidate', () => {
 
     expect(result.status).toBe(404);
     expect(queue.send).not.toHaveBeenCalled();
+  });
+});
+
+/** Fakes the select(...).from(...).innerJoin(...).where(...) chain the accepted
+ * lookup runs; resolves to the joined rows so the candidate-id extraction is the
+ * only thing under test. */
+function fakeAcceptedDb(rows: Array<{ candidateId: string | null }>) {
+  const where = vi.fn().mockResolvedValue(rows);
+  const innerJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ innerJoin });
+  const select = vi.fn().mockReturnValue({ from });
+  return { select } as never;
+}
+
+describe('listFamilyAcceptedCandidateIds', () => {
+  it('returns the set of candidate ids the family has a drafted action for', async () => {
+    const db = fakeAcceptedDb([{ candidateId: 'cand-a' }, { candidateId: 'cand-b' }]);
+
+    const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
+
+    expect(accepted).toEqual(new Set(['cand-a', 'cand-b']));
+  });
+
+  it('drops a row whose joined event payload carries no candidate_id (non-village action)', async () => {
+    const db = fakeAcceptedDb([{ candidateId: 'cand-a' }, { candidateId: null }]);
+
+    const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
+
+    expect(accepted).toEqual(new Set(['cand-a']));
+  });
+
+  it('returns an empty set when the family has accepted nothing', async () => {
+    const db = fakeAcceptedDb([]);
+
+    const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
+
+    expect(accepted.size).toBe(0);
   });
 });

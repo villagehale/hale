@@ -7,6 +7,7 @@
     { "path": "/api/cron/inference", "schedule": "0 6 * * *" },
     { "path": "/api/cron/discovery", "schedule": "0 13 * * 1" },
     { "path": "/api/cron/drain", "schedule": "* * * * *" },
-    { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" }
+    { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/spend-alert", "schedule": "0 * * * *" }
   ]
 }

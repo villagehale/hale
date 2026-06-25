@@ -90,7 +90,7 @@ function VillageFeedCard({
       <SocialProofBadge count={candidate.endorsementCount} />
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-1">
-        <AcceptButton href={candidate.acceptHref} />
+        <AcceptButton href={candidate.acceptHref} initiallyAccepted={candidate.accepted} />
         <RegisterLink sourceUrl={candidate.sourceUrl} title={candidate.title} area={area} />
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
           <EndorseButton
