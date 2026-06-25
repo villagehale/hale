@@ -1352,3 +1352,71 @@ html, body, .sidebar, .panel, .card, .field {
   --gmp-mat-color-outline: var(--color-rule-strong);
   --gmp-mat-color-primary: var(--color-apricot-deep);
 }
+
+/* ── Legal long-form (Terms + Privacy) ─────────────────────────────────────
+ * A comfortable reading column with tightened heading sizes — the global h1/h2
+ * scale is built for hero headlines and is too large for dense policy copy. */
+.legal {
+  max-width: 46rem;
+}
+
+.legal-title {
+  font-size: clamp(2.2rem, 5vw, 3rem);
+}
+
+.legal-section h2 {
+  font-size: clamp(1.45rem, 3vw, 1.85rem);
+  margin-top: 3rem;
+  scroll-margin-top: 1.5rem;
+}
+
+.legal-intro,
+.legal-body p,
+.legal-body li {
+  color: var(--color-slate-green);
+  line-height: 1.7;
+  font-size: 1.05rem;
+}
+
+.legal-body p {
+  margin-top: 1rem;
+}
+
+.legal-body ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+  margin-top: 1rem;
+}
+
+.legal-body li {
+  margin-top: 0.6rem;
+}
+
+.legal-body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.legal-disclaimer {
+  color: var(--color-faded-sage);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.legal-toc {
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-oat);
+}
+
+.legal-toc ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  color: var(--color-slate-green);
+}
+
+.legal-toc li {
+  margin-top: 0.4rem;
+  line-height: 1.5;
+}
