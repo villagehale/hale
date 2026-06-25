@@ -105,6 +105,97 @@ describe('logQuickEpisode', () => {
     expect(result.status).toBe('preview');
     expect(writeEpisodeMock).not.toHaveBeenCalled();
   });
+
+  it('persists a chosen past occurredAt (a parent logging something earlier)', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const earlier = '2026-06-18T08:30:00.000Z';
+    const { logQuickEpisode } = await import('./log.js');
+
+    const result = await logQuickEpisode(
+      { kind: 'feed', childId: CHILD_ID, amountMl: 90, occurredAt: earlier },
+      NOW,
+    );
+
+    expect(result.status).toBe('logged');
+    expect(writeEpisodeMock.mock.calls[0]?.[1].occurredAt).toEqual(new Date(earlier));
+  });
+
+  it('defaults occurredAt to the request clock when omitted', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const { logQuickEpisode } = await import('./log.js');
+
+    await logQuickEpisode({ kind: 'feed', childId: CHILD_ID, amountMl: 90 }, NOW);
+
+    expect(writeEpisodeMock.mock.calls[0]?.[1].occurredAt).toEqual(NOW);
+  });
+
+  it('round-trips the feed kind through to the persisted episode', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const { logQuickEpisode } = await import('./log.js');
+
+    await logQuickEpisode(
+      { kind: 'feed', childId: CHILD_ID, amountMl: 120, feedKind: 'bottle' },
+      NOW,
+    );
+
+    expect(writeEpisodeMock.mock.calls[0]?.[1]).toMatchObject({
+      summary: 'Fed 120 ml (bottle)',
+      payload: { amountMl: 120, feedKind: 'bottle' },
+    });
+  });
+
+  it('round-trips a milestone note through to the persisted episode', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const { logQuickEpisode } = await import('./log.js');
+
+    await logQuickEpisode(
+      { kind: 'milestone', childId: CHILD_ID, milestone: 'first steps', note: 'in the kitchen' },
+      NOW,
+    );
+
+    expect(writeEpisodeMock.mock.calls[0]?.[1].payload).toEqual({
+      milestone: 'first steps',
+      note: 'in the kitchen',
+    });
+  });
+
+  it('rejects an occurredAt in the future (beyond clock skew) before any write', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    const future = new Date(NOW.getTime() + 60 * 60 * 1000).toISOString();
+    const { logQuickEpisode } = await import('./log.js');
+
+    const result = await logQuickEpisode(
+      { kind: 'feed', childId: CHILD_ID, amountMl: 90, occurredAt: future },
+      NOW,
+    );
+
+    expect(result.status).toBe('invalid');
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an absurdly old occurredAt before any write', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    const ancient = new Date(NOW.getTime() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString();
+    const { logQuickEpisode } = await import('./log.js');
+
+    const result = await logQuickEpisode(
+      { kind: 'nap', childId: CHILD_ID, durationMin: 30, occurredAt: ancient },
+      NOW,
+    );
+
+    expect(result.status).toBe('invalid');
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('logBookingRequested', () => {

@@ -7,6 +7,8 @@ import { Field } from '~/components/ui/field';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
   FEED_EPISODE,
+  FEED_KINDS,
+  type FeedKind,
   type LogResult,
   MILESTONE_EPISODE,
   NAP_EPISODE,
@@ -18,6 +20,19 @@ import {
   type QuickLogChild,
   visibleKindsFor,
 } from './quick-log-kinds';
+
+/** A datetime-local input takes/returns local wall-clock time with no zone. This
+ * formats a Date to that shape (the form's default "when" = now). */
+function toLocalInputValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+const FEED_KIND_LABEL: Record<FeedKind, string> = {
+  bottle: 'bottle',
+  breast: 'breast',
+  solid: 'solid',
+};
 
 const KIND_META: Record<Kind, { label: string; icon: typeof Utensils; emptyError: string }> = {
   [FEED_EPISODE]: {
@@ -53,11 +68,16 @@ type Status =
  */
 export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
   const selectId = useId();
+  const whenId = useId();
+  const feedKindId = useId();
   const [open, setOpen] = useState<Kind | null>(null);
   const [childId, setChildId] = useState<string>(kids[0]?.id ?? '');
   const [amountMl, setAmountMl] = useState('');
+  const [feedKind, setFeedKind] = useState<FeedKind | ''>('');
   const [durationMin, setDurationMin] = useState('');
   const [milestone, setMilestone] = useState('');
+  const [milestoneNote, setMilestoneNote] = useState('');
+  const [when, setWhen] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
   if (kids.length === 0) return null;
@@ -67,8 +87,10 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
 
   function reset() {
     setAmountMl('');
+    setFeedKind('');
     setDurationMin('');
     setMilestone('');
+    setMilestoneNote('');
   }
 
   function toggle(kind: Kind) {
@@ -82,12 +104,20 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
     if (!eligible.some((c) => c.id === childId) && eligible[0]) {
       setChildId(eligible[0].id);
     }
+    setWhen(toLocalInputValue(new Date()));
     setOpen(kind);
   }
 
   async function submit() {
     if (!open) return;
-    const input = buildInput(open, childId, { amountMl, durationMin, milestone });
+    const input = buildInput(open, childId, {
+      amountMl,
+      feedKind,
+      durationMin,
+      milestone,
+      milestoneNote,
+      when,
+    });
     if (!input) {
       setStatus({ kind: 'error', message: KIND_META[open].emptyError });
       return;
@@ -158,18 +188,53 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
             </div>
           ) : null}
 
-          {open === FEED_EPISODE ? (
-            <Field
-              label="how much (ml)"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={2000}
-              required
-              value={amountMl}
-              onChange={(e) => setAmountMl(e.currentTarget.value)}
-              placeholder="120"
+          <div className="field-group">
+            <label htmlFor={whenId} className="field-label">
+              when
+            </label>
+            <input
+              id={whenId}
+              type="datetime-local"
+              className="field"
+              value={when}
+              max={toLocalInputValue(new Date())}
+              onChange={(e) => setWhen(e.currentTarget.value)}
             />
+            <p className="field-hint">defaults to now — change it to log something earlier</p>
+          </div>
+
+          {open === FEED_EPISODE ? (
+            <>
+              <Field
+                label="how much (ml)"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={2000}
+                required
+                value={amountMl}
+                onChange={(e) => setAmountMl(e.currentTarget.value)}
+                placeholder="120"
+              />
+              <div className="field-group">
+                <label htmlFor={feedKindId} className="field-label">
+                  kind (optional)
+                </label>
+                <select
+                  id={feedKindId}
+                  className="field cursor-pointer"
+                  value={feedKind}
+                  onChange={(e) => setFeedKind(e.currentTarget.value as FeedKind | '')}
+                >
+                  <option value="">not sure</option>
+                  {FEED_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {FEED_KIND_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
           ) : null}
 
           {open === NAP_EPISODE ? (
@@ -187,14 +252,24 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
           ) : null}
 
           {open === MILESTONE_EPISODE ? (
-            <Field
-              label="what happened"
-              required
-              maxLength={280}
-              value={milestone}
-              onChange={(e) => setMilestone(e.currentTarget.value)}
-              placeholder="rolled over for the first time"
-            />
+            <>
+              <Field
+                label="what happened"
+                required
+                maxLength={280}
+                value={milestone}
+                onChange={(e) => setMilestone(e.currentTarget.value)}
+                placeholder="rolled over for the first time"
+              />
+              <Field
+                label="note (optional)"
+                multiline
+                maxLength={280}
+                value={milestoneNote}
+                onChange={(e) => setMilestoneNote(e.currentTarget.value)}
+                placeholder="anything to remember about it"
+              />
+            </>
           ) : null}
 
           <div className="flex flex-wrap items-center gap-4">
@@ -232,6 +307,15 @@ function childName(kids: QuickLogChild[], id: string): string {
   return kids.find((c) => c.id === id)?.name ?? 'your child';
 }
 
+/** Converts the datetime-local field (local wall-clock, no zone) to an ISO
+ * string with offset for the schema, or undefined when blank (server defaults to
+ * now). A blank/invalid string yields undefined rather than a bad date. */
+function toOccurredAt(when: string): string | undefined {
+  if (!when) return undefined;
+  const date = new Date(when);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 /**
  * Builds the typed server-action input for the open form, or null when the
  * required field is empty / non-numeric. Numeric coercion + bounds are enforced
@@ -240,24 +324,45 @@ function childName(kids: QuickLogChild[], id: string): string {
 function buildInput(
   kind: Kind,
   childId: string,
-  values: { amountMl: string; durationMin: string; milestone: string },
+  values: {
+    amountMl: string;
+    feedKind: FeedKind | '';
+    durationMin: string;
+    milestone: string;
+    milestoneNote: string;
+    when: string;
+  },
 ): QuickLogInput | null {
   if (!childId) return null;
+  const occurredAt = toOccurredAt(values.when);
   switch (kind) {
     case FEED_EPISODE: {
       const amountMl = Number(values.amountMl);
       if (!values.amountMl || Number.isNaN(amountMl)) return null;
-      return { kind: FEED_EPISODE, childId, amountMl };
+      return {
+        kind: FEED_EPISODE,
+        childId,
+        amountMl,
+        ...(values.feedKind ? { feedKind: values.feedKind } : {}),
+        occurredAt,
+      };
     }
     case NAP_EPISODE: {
       const durationMin = Number(values.durationMin);
       if (!values.durationMin || Number.isNaN(durationMin)) return null;
-      return { kind: NAP_EPISODE, childId, durationMin };
+      return { kind: NAP_EPISODE, childId, durationMin, occurredAt };
     }
     case MILESTONE_EPISODE: {
       const milestone = values.milestone.trim();
       if (!milestone) return null;
-      return { kind: MILESTONE_EPISODE, childId, milestone };
+      const note = values.milestoneNote.trim();
+      return {
+        kind: MILESTONE_EPISODE,
+        childId,
+        milestone,
+        ...(note ? { note } : {}),
+        occurredAt,
+      };
     }
   }
 }

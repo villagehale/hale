@@ -17,7 +17,7 @@ export async function HomeVillageFeed() {
     <>
       <VillageFeedHeader area={feed.areaCoarse} />
       {feed.candidates.length > 0 ? (
-        <VillageFeed candidates={feed.candidates} />
+        <VillageFeed candidates={feed.candidates} area={feed.areaCoarse} />
       ) : (
         <div className="panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
@@ -54,7 +54,13 @@ export async function VillageCandidates() {
       </section>
     );
   }
-  return <VillageSearch candidates={feed.candidates} coarseCenter={feed.coarseCenter} />;
+  return (
+    <VillageSearch
+      candidates={feed.candidates}
+      coarseCenter={feed.coarseCenter}
+      area={feed.areaCoarse}
+    />
+  );
 }
 
 export function VillageFeedSkeleton() {

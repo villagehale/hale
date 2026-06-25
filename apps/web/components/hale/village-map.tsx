@@ -8,6 +8,7 @@ import { type LatLng, buildVillageMapModel } from '~/lib/village/map-model';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 import { AcceptButton } from './accept-button';
 import { EndorseButton } from './endorse-button';
+import { RegisterLink } from './register-link';
 import { ShareButton } from './share-button';
 
 /**
@@ -38,9 +39,11 @@ const FALLBACK_ZOOM = 12;
 export function VillageMap({
   candidates,
   coarseCenter,
+  area = null,
 }: {
   candidates: VillageCandidateView[];
   coarseCenter: LatLng | null;
+  area?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapInstance | null>(null);
@@ -170,16 +173,7 @@ export function VillageMap({
               shareTitle={selected.title}
               variant="ghost"
             />
-            {selected.sourceUrl ? (
-              <a
-                href={selected.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-ghost"
-              >
-                see the listing &rarr;
-              </a>
-            ) : null}
+            <RegisterLink sourceUrl={selected.sourceUrl} title={selected.title} area={area} />
           </div>
         </section>
       ) : null}
