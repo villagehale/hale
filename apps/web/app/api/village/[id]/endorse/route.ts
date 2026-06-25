@@ -1,3 +1,4 @@
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
@@ -59,6 +60,11 @@ export async function POST(_req: Request, context: RouteContext) {
   });
 
   if (result.status === 200) {
+    // A new endorsement changes the trust signal the ranker weighs — invalidate
+    // the family's cached feed order so the next load re-ranks with it.
+    if (!result.alreadyEndorsed) {
+      revalidateTag(`village-feed:${familyId}`);
+    }
     return NextResponse.json(
       { count: result.count, alreadyEndorsed: result.alreadyEndorsed },
       { status: 200 },

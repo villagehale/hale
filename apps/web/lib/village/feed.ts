@@ -27,8 +27,14 @@ import { rankRecommendations } from './rank/rank';
  * the feed, and reordering never un-redacts it.
  */
 
-/** How long a family's ranked order is reused before the agent re-ranks. */
-const RANK_TTL_SECONDS = 60 * 30;
+/**
+ * Safety-net TTL only. The cache key already includes the candidate-id
+ * fingerprint, so a new discovery re-ranks automatically; an endorsement
+ * invalidates the `village-feed:<family>` tag explicitly. This long TTL just
+ * catches changes not otherwise invalidated (e.g. a child's stage crossing a
+ * boundary) — so the model is no longer re-run on unchanged inputs every 30 min.
+ */
+const RANK_TTL_SECONDS = 60 * 60 * 24;
 
 export interface VillageFeed {
   /** Candidates in the agent-decided order — the trusted feed. */
@@ -115,9 +121,17 @@ export async function loadVillageFeed(): Promise<VillageFeed> {
     return { candidates, ranked: false, areaCoarse };
   }
 
-  const orderedIds = await rankedIdsCached(
-    familyId,
-    candidates.map((c) => c.id),
-  );
-  return { candidates: orderCandidates(candidates, orderedIds), ranked: true, areaCoarse };
+  try {
+    const orderedIds = await rankedIdsCached(
+      familyId,
+      candidates.map((c) => c.id),
+    );
+    return { candidates: orderCandidates(candidates, orderedIds), ranked: true, areaCoarse };
+  } catch {
+    // The ranker is an enhancement, not a gate: if the model is unavailable
+    // (rate-limited or spend-capped), serve the discovery order so the feed still
+    // renders. ranked:false signals the un-ranked fallback; the failure is captured
+    // in the agent's Langfuse trace, so it is observable, not silently swallowed.
+    return { candidates, ranked: false, areaCoarse };
+  }
 }
