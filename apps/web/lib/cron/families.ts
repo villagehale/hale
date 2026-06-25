@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { asc, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { asc, isNotNull, or, sql } from 'drizzle-orm';
 
 /**
  * Per-run family caps. A cron run iterates families, runs a real (token-spending)
@@ -66,7 +66,15 @@ export async function selectFamiliesNeedingDiscovery(
     )
     .where(isNotNull(schema.families.areaCoarse))
     .groupBy(schema.families.id, schema.families.createdAt)
-    .having(or(sql`${lastDiscovered} IS NULL`, lt(lastDiscovered, staleBefore)))
+    .having(
+      or(
+        sql`${lastDiscovered} IS NULL`,
+        // Bind the cutoff as an ISO string + cast: the left side is a sql fragment
+        // (max(...)), so Drizzle can't infer the param type and would pass a raw
+        // Date to postgres.js (which throws). A string param casts cleanly.
+        sql`${lastDiscovered} < ${staleBefore.toISOString()}::timestamptz`,
+      ),
+    )
     .orderBy(asc(schema.families.createdAt))
     .limit(limit);
 
