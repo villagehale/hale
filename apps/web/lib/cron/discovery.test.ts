@@ -10,10 +10,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const discoverForFamilyMock = vi.fn();
 const selectFamiliesNeedingDiscoveryMock = vi.fn();
+const backfillCandidateCoordsMock = vi.fn();
 
 vi.mock('~/lib/village/discover', () => ({
   discoverForFamily: (...a: unknown[]) => discoverForFamilyMock(...a),
-  defaultDiscoverDeps: () => ({ client: {}, loadPrompt: async () => '', loadModel: async () => '' }),
+  defaultDiscoverDeps: () => ({
+    client: {},
+    loadPrompt: async () => '',
+    loadModel: async () => '',
+    geocode: async () => null,
+  }),
+}));
+vi.mock('~/lib/village/backfill-coords', () => ({
+  backfillCandidateCoords: (...a: unknown[]) => backfillCandidateCoordsMock(...a),
 }));
 vi.mock('./families', () => ({
   MAX_FAMILIES_PER_RUN: { digest: 100, discovery: 50, inference: 100 },
@@ -28,6 +37,8 @@ describe('runDiscoveryCron', () => {
     vi.resetModules();
     discoverForFamilyMock.mockReset();
     selectFamiliesNeedingDiscoveryMock.mockReset();
+    backfillCandidateCoordsMock.mockReset();
+    backfillCandidateCoordsMock.mockResolvedValue({ scanned: 0, geocoded: 0 });
   });
 
   afterEach(() => {
@@ -51,6 +62,9 @@ describe('runDiscoveryCron', () => {
       { familyId: 'fam-a', result: { status: 'discovered', insertedCount: 3 } },
       { familyId: 'fam-b', result: { status: 'no_non_teen_children' } },
     ]);
+    // The bounded coords backfill runs once per discovery run.
+    expect(backfillCandidateCoordsMock).toHaveBeenCalledTimes(1);
+    expect(summary.backfill).toEqual({ scanned: 0, geocoded: 0 });
   });
 
   it('records a per-family failure and continues the batch', async () => {

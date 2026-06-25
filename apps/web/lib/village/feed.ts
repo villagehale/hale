@@ -3,6 +3,8 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
+import { geocodeVenue } from './geocode';
+import type { LatLng } from './map-model';
 import type { VillageCandidateView } from './mappers';
 import { readVillage } from './queries';
 import { rankRecommendations } from './rank/rank';
@@ -43,9 +45,41 @@ export interface VillageFeed {
   ranked: boolean;
   /** Coarse area (FSA / city) for the feed header copy, or null. Never precise (rule #1). */
   areaCoarse: string | null;
+  /** Centroid of the COARSE area (FSA / city) for the map's default center — the
+   * map centers here, NEVER the precise home (rule #1). Null when there is no
+   * area or it couldn't be geocoded; the map then fits its public-venue markers. */
+  coarseCenter: LatLng | null;
 }
 
-const EMPTY_FEED: VillageFeed = { candidates: [], ranked: false, areaCoarse: null };
+const EMPTY_FEED: VillageFeed = {
+  candidates: [],
+  ranked: false,
+  areaCoarse: null,
+  coarseCenter: null,
+};
+
+/** How long a coarse-area centroid is reused before re-geocoding — the centroid
+ * of an FSA/city is effectively static, so a long TTL keeps Places calls rare. */
+const CENTER_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+/**
+ * Geocode the COARSE area string (e.g. "M4K", "Toronto") to a centroid for the
+ * map's default center, cached by the area string so the same area never
+ * re-geocodes within the TTL. Best-effort: a miss yields null (the map fits its
+ * markers instead). Only the coarse area is ever sent — never a precise home
+ * (rule #1).
+ */
+function coarseCenterCached(areaCoarse: string): Promise<LatLng | null> {
+  const run = unstable_cache(
+    async () => {
+      const resolved = await geocodeVenue(areaCoarse, '');
+      return resolved ? { lat: resolved.lat, lng: resolved.lng } : null;
+    },
+    ['village-coarse-center', areaCoarse],
+    { revalidate: CENTER_TTL_SECONDS, tags: ['village-coarse-center'] },
+  );
+  return run();
+}
 
 /** Reorder candidate views to match the agent's ordered ids; any view whose id
  * the order omits is appended in its original position (defence in depth — the
@@ -116,9 +150,10 @@ export async function loadVillageFeed(): Promise<VillageFeed> {
       .limit(1),
   ]);
   const areaCoarse = areaRows[0]?.areaCoarse ?? null;
+  const coarseCenter = areaCoarse ? await coarseCenterCached(areaCoarse) : null;
 
   if (candidates.length < 2) {
-    return { candidates, ranked: false, areaCoarse };
+    return { candidates, ranked: false, areaCoarse, coarseCenter };
   }
 
   try {
@@ -126,12 +161,17 @@ export async function loadVillageFeed(): Promise<VillageFeed> {
       familyId,
       candidates.map((c) => c.id),
     );
-    return { candidates: orderCandidates(candidates, orderedIds), ranked: true, areaCoarse };
+    return {
+      candidates: orderCandidates(candidates, orderedIds),
+      ranked: true,
+      areaCoarse,
+      coarseCenter,
+    };
   } catch {
     // The ranker is an enhancement, not a gate: if the model is unavailable
     // (rate-limited or spend-capped), serve the discovery order so the feed still
     // renders. ranked:false signals the un-ranked fallback; the failure is captured
     // in the agent's Langfuse trace, so it is observable, not silently swallowed.
-    return { candidates, ranked: false, areaCoarse };
+    return { candidates, ranked: false, areaCoarse, coarseCenter };
   }
 }

@@ -1,25 +1,42 @@
 /**
- * Loads the Google Maps JS "places" library (the New Places Autocomplete) on the
- * client, on demand. Returns the `PlaceAutocompleteElement` constructor, or null
- * if the API key is absent or the script fails to load — the caller degrades to
- * manual address entry (rule: degrade gracefully if the key/script fails).
+ * Loads Google Maps JS libraries on the client, on demand, behind ONE shared
+ * bootstrap. `loadPlacesAutocomplete` returns the `PlaceAutocompleteElement`
+ * constructor (onboarding address entry); `loadMapsLibrary` returns the `Map` +
+ * `marker` constructors (the village map). Both degrade to null if the API key is
+ * absent or the script fails to load — the caller falls back gracefully (manual
+ * address entry / no map). We never log the key or any address (rule #1).
  *
- * The bootstrap loader is injected at most once per page and memoised, so multiple
- * address fields share a single script + a single in-flight load. We never log the
- * key or any address (rule #1).
+ * The bootstrap loader is injected at most once per page and memoised, so every
+ * caller (multiple address fields, the village map) shares a single script + a
+ * single in-flight load.
  */
 
 type PlaceAutocompleteElementCtor = new (options: {
   includedRegionCodes?: string[];
 }) => HTMLElement;
 
+interface MapsImportLibrary {
+  (name: 'places'): Promise<{ PlaceAutocompleteElement?: PlaceAutocompleteElementCtor }>;
+  (name: 'maps'): Promise<{ Map?: unknown }>;
+  (name: 'marker'): Promise<{ AdvancedMarkerElement?: unknown; PinElement?: unknown }>;
+  (name: string): Promise<unknown>;
+}
+
 interface MapsGlobal {
   maps?: {
-    importLibrary?: (name: string) => Promise<unknown>;
+    importLibrary?: MapsImportLibrary;
   };
 }
 
-let loadPromise: Promise<PlaceAutocompleteElementCtor | null> | null = null;
+/** Resolves to the Maps JS `importLibrary`, or null if the key/script is absent. */
+export interface MapsLibraries {
+  Map: new (el: HTMLElement, opts: unknown) => unknown;
+  AdvancedMarkerElement: new (opts: unknown) => unknown;
+  PinElement: new (opts: unknown) => { element: HTMLElement };
+  LatLngBounds: new () => { extend: (p: unknown) => void };
+}
+
+let bootstrapPromise: Promise<MapsImportLibrary | null> | null = null;
 
 /**
  * Inject the Maps JS bootstrap loader exactly once. Mirrors Google's official
@@ -38,11 +55,16 @@ function injectBootstrap(apiKey: string): void {
   document.head.appendChild(script);
 }
 
-export function loadPlacesAutocomplete(): Promise<PlaceAutocompleteElementCtor | null> {
-  if (loadPromise) {
-    return loadPromise;
+/**
+ * The single shared loader: resolves to the Maps `importLibrary` once the script
+ * is ready, or null when the key is absent / the script fails. Memoised so every
+ * caller shares one script + one in-flight load.
+ */
+function whenMapsReady(): Promise<MapsImportLibrary | null> {
+  if (bootstrapPromise) {
+    return bootstrapPromise;
   }
-  loadPromise = new Promise((resolve) => {
+  bootstrapPromise = new Promise((resolve) => {
     if (typeof window === 'undefined') {
       resolve(null);
       return;
@@ -53,21 +75,10 @@ export function loadPlacesAutocomplete(): Promise<PlaceAutocompleteElementCtor |
       return;
     }
 
-    const ready = async () => {
+    const ready = () => {
       const importLibrary = (window as unknown as { google?: MapsGlobal }).google?.maps
         ?.importLibrary;
-      if (!importLibrary) {
-        resolve(null);
-        return;
-      }
-      try {
-        const lib = (await importLibrary('places')) as {
-          PlaceAutocompleteElement?: PlaceAutocompleteElementCtor;
-        };
-        resolve(lib.PlaceAutocompleteElement ?? null);
-      } catch {
-        resolve(null);
-      }
+      resolve(importLibrary ?? null);
     };
 
     (window as unknown as { __halePlacesReady?: () => void }).__halePlacesReady = ready;
@@ -83,5 +94,48 @@ export function loadPlacesAutocomplete(): Promise<PlaceAutocompleteElementCtor |
       resolve(null);
     }
   });
-  return loadPromise;
+  return bootstrapPromise;
+}
+
+export async function loadPlacesAutocomplete(): Promise<PlaceAutocompleteElementCtor | null> {
+  const importLibrary = await whenMapsReady();
+  if (!importLibrary) return null;
+  try {
+    const lib = await importLibrary('places');
+    return lib.PlaceAutocompleteElement ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loads the `maps` + `marker` libraries for the village map, or null if the key /
+ * script is unavailable (the caller renders the list-only fallback). Reuses the
+ * same shared bootstrap as the address autocomplete — one script, one key.
+ */
+export async function loadMapsLibrary(): Promise<MapsLibraries | null> {
+  const importLibrary = await whenMapsReady();
+  if (!importLibrary) return null;
+  try {
+    const [mapsLib, markerLib] = await Promise.all([
+      importLibrary('maps') as Promise<{ Map?: unknown; LatLngBounds?: unknown }>,
+      importLibrary('marker') as Promise<{ AdvancedMarkerElement?: unknown; PinElement?: unknown }>,
+    ]);
+    if (
+      !mapsLib.Map ||
+      !mapsLib.LatLngBounds ||
+      !markerLib.AdvancedMarkerElement ||
+      !markerLib.PinElement
+    ) {
+      return null;
+    }
+    return {
+      Map: mapsLib.Map as MapsLibraries['Map'],
+      LatLngBounds: mapsLib.LatLngBounds as MapsLibraries['LatLngBounds'],
+      AdvancedMarkerElement: markerLib.AdvancedMarkerElement as MapsLibraries['AdvancedMarkerElement'],
+      PinElement: markerLib.PinElement as MapsLibraries['PinElement'],
+    };
+  } catch {
+    return null;
+  }
 }

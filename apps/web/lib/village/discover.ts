@@ -7,6 +7,7 @@ import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { loadDiscoveryPrompt } from './discovery-prompt';
+import { type GeocodeResult, geocodeVenue } from './geocode';
 
 /**
  * Web-side, on-demand village discovery. The scheduled worker job
@@ -88,6 +89,10 @@ export interface DiscoverDeps {
   client: DiscoveryAnthropicClient;
   loadPrompt: () => Promise<string>;
   loadModel: () => Promise<string>;
+  /** Best-effort venue geocode for the map pin. Resolves a candidate's title to
+   * PUBLIC coordinates using the family's COARSE area only (rule #1), or null for
+   * an online / no-venue activity or an unresolved lookup. Never throws. */
+  geocode: (title: string, areaCoarse: string) => Promise<GeocodeResult | null>;
 }
 
 export type DiscoverResult =
@@ -229,19 +234,35 @@ export async function discoverForFamily(
         return { status: 'discovered', insertedCount: 0 };
       }
 
+      // Resolve each venue to PUBLIC coords (a YMCA, a library) for the map pin,
+      // using the COARSE area only (rule #1). Best-effort and bounded by the
+      // discovery limit; an online / no-venue activity or a miss stays null
+      // (list-only, no pin). geocodeVenue never throws (rule #8 boundary), so one
+      // bad lookup can't abort the discovery write.
+      const geocoded = await Promise.all(
+        candidates.map((c) => deps.geocode(c.title, areaCoarse)),
+      );
+
       await database.transaction(async (tx) => {
         await tx.insert(schema.villageCandidates).values(
-          candidates.map((c) => ({
-            familyId,
-            childId: null,
-            title: c.title,
-            kind: CANDIDATE_KIND,
-            summary: c.description,
-            sourceUrl: c.sourceUrl,
-            source: SOURCE,
-            confidence: c.confidence,
-            coverageNote: c.coverageNote,
-          })),
+          candidates.map((c, i) => {
+            const coords = geocoded[i];
+            return {
+              familyId,
+              childId: null,
+              title: c.title,
+              kind: CANDIDATE_KIND,
+              summary: c.description,
+              sourceUrl: c.sourceUrl,
+              source: SOURCE,
+              confidence: c.confidence,
+              coverageNote: c.coverageNote,
+              lat: coords?.lat ?? null,
+              lng: coords?.lng ?? null,
+              venueName: coords?.venueName ?? null,
+              venueAddress: coords?.venueAddress ?? null,
+            };
+          }),
         );
         await tx.insert(schema.auditLog).values({
           familyId,
@@ -277,5 +298,6 @@ export function defaultDiscoverDeps(): DiscoverDeps {
     client: anthropicClient,
     loadPrompt: loadDiscoveryPrompt,
     loadModel: defaultLoadModel,
+    geocode: (title, areaCoarse) => geocodeVenue(title, areaCoarse),
   };
 }

@@ -54,7 +54,7 @@ export async function VillageCandidates() {
       </section>
     );
   }
-  return <VillageSearch candidates={feed.candidates} />;
+  return <VillageSearch candidates={feed.candidates} coarseCenter={feed.coarseCenter} />;
 }
 
 export function VillageFeedSkeleton() {

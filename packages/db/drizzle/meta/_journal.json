@@ -127,6 +127,13 @@
       "when": 1781460720000,
       "tag": "0017_village_rank_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781460780000,
+      "tag": "0018_village_venue_coords",
+      "breakpoints": true
     }
   ]
 }
