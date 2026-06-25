@@ -17,7 +17,8 @@ type PlaceAutocompleteElementCtor = new (options: {
 
 interface MapsImportLibrary {
   (name: 'places'): Promise<{ PlaceAutocompleteElement?: PlaceAutocompleteElementCtor }>;
-  (name: 'maps'): Promise<{ Map?: unknown; Marker?: unknown }>;
+  (name: 'maps'): Promise<{ Map?: unknown }>;
+  (name: 'marker'): Promise<{ Marker?: unknown }>;
   (name: 'core'): Promise<{ LatLngBounds?: unknown }>;
   (name: string): Promise<unknown>;
 }
@@ -119,19 +120,21 @@ export async function loadMapsLibrary(): Promise<MapsLibraries | null> {
   const importLibrary = await whenMapsReady();
   if (!importLibrary) return null;
   try {
-    const [mapsLib, coreLib] = await Promise.all([
-      // Classic Marker (from 'maps') renders without a Map ID; AdvancedMarkerElement
-      // would require NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID and otherwise silently no-ops.
-      importLibrary('maps') as Promise<{ Map?: unknown; Marker?: unknown }>,
-      // LatLngBounds is in the 'core' library, NOT 'maps'.
+    const [mapsLib, markerLib, coreLib] = await Promise.all([
+      importLibrary('maps') as Promise<{ Map?: unknown }>,
+      // Classic Marker lives in the 'marker' library (alongside the Advanced
+      // markers), NOT 'maps'. It renders without a Map ID, unlike
+      // AdvancedMarkerElement which silently no-ops without one.
+      importLibrary('marker') as Promise<{ Marker?: unknown }>,
+      // LatLngBounds is in the 'core' library.
       importLibrary('core') as Promise<{ LatLngBounds?: unknown }>,
     ]);
-    if (!mapsLib.Map || !mapsLib.Marker || !coreLib.LatLngBounds) {
+    if (!mapsLib.Map || !markerLib.Marker || !coreLib.LatLngBounds) {
       return null;
     }
     return {
       Map: mapsLib.Map as MapsLibraries['Map'],
-      Marker: mapsLib.Marker as MapsLibraries['Marker'],
+      Marker: markerLib.Marker as MapsLibraries['Marker'],
       LatLngBounds: coreLib.LatLngBounds as MapsLibraries['LatLngBounds'],
     };
   } catch {
