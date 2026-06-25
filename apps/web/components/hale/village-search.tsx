@@ -141,22 +141,24 @@ export function VillageSearch({
 
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-2">
                         <AcceptButton href={candidate.acceptHref} />
-                        <EndorseButton
-                          endpoint={candidate.endorseHref}
-                          initiallyEndorsed={candidate.endorsedByFamily}
-                          initialCount={candidate.endorsementCount}
-                        />
-                        <ShareButton
-                          endpoint={candidate.shareHref}
-                          label="share this pick"
-                          shareTitle={candidate.title}
-                          variant="ghost"
-                        />
                         <RegisterLink
                           sourceUrl={candidate.sourceUrl}
                           title={candidate.title}
                           area={area}
                         />
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
+                          <EndorseButton
+                            endpoint={candidate.endorseHref}
+                            initiallyEndorsed={candidate.endorsedByFamily}
+                            initialCount={candidate.endorsementCount}
+                          />
+                          <ShareButton
+                            endpoint={candidate.shareHref}
+                            label="share this pick"
+                            shareTitle={candidate.title}
+                            variant="ghost"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
