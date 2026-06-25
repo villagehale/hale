@@ -27,6 +27,14 @@ export interface VillageCandidateView {
   endorsementCount: number;
   /** Whether THIS family has already endorsed — drives the button's state. */
   endorsedByFamily: boolean;
+  /** PUBLIC venue coordinates for the map pin (a YMCA, a library) — null for an
+   * online / no-venue activity or an unresolved geocode (list-only, no pin). These
+   * are a public place, never the family's location (rule #1). Always null on a
+   * teen-redacted card so a teen's activity is never plotted. */
+  lat: number | null;
+  lng: number | null;
+  /** Public venue name for the marker tooltip; null when there is no pin. */
+  venueName: string | null;
   /**
    * True when the candidate is attributed to a 13+ child (rule #1): the renderer
    * shows the locked treatment and a parent cannot accept content they can't
@@ -94,6 +102,10 @@ export function toVillageCandidateView(
       shareHref,
       endorsementCount,
       endorsedByFamily,
+      // Never plot a teen-redacted card — its location stays list-only (rule #1).
+      lat: null,
+      lng: null,
+      venueName: null,
       teenAttributed: true,
     };
   }
@@ -109,6 +121,9 @@ export function toVillageCandidateView(
     shareHref,
     endorsementCount,
     endorsedByFamily,
+    lat: candidate.lat,
+    lng: candidate.lng,
+    venueName: candidate.venueName,
     teenAttributed: false,
   };
 }

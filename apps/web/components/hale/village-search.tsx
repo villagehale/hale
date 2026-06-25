@@ -1,25 +1,39 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { Lock, Search } from 'lucide-react';
+import { List, Lock, Map as MapIcon, Search } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
 import { Folio } from '~/components/hale/folio';
 import { ShareButton } from '~/components/hale/share-button';
+import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
+import type { LatLng } from '~/lib/village/map-model';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 
 /**
- * Client-side search/filter over the already-loaded village candidates. Instant
- * and accessible: a labelled search input narrows the list by title / kind /
- * summary as the parent types. Filtering happens over the rows already sent to
- * the page (no new request, no precise location involved — rule #1), so it's
- * safe and fast for the MVP. Accepting a candidate still goes through the real
+ * Client-side search/filter over the already-loaded village candidates, with a
+ * list↔map toggle. Default view is the agent-ranked LIST; the map is a spatial
+ * companion over the SAME ranked feed (it never re-ranks). Filtering happens over
+ * the rows already sent to the page (no new request, no precise location — rule
+ * #1), so it's safe and fast. Accepting a candidate still goes through the real
  * accept pipeline via AcceptButton.
+ *
+ * The map (rule #1) plots only PUBLIC venue coords and centers on the coarse area,
+ * never the precise home; coordless and teen-redacted candidates stay list-only.
  */
-export function VillageSearch({ candidates }: { candidates: VillageCandidateView[] }) {
+type View = 'list' | 'map';
+
+export function VillageSearch({
+  candidates,
+  coarseCenter,
+}: {
+  candidates: VillageCandidateView[];
+  coarseCenter: LatLng | null;
+}) {
   const inputId = useId();
   const [query, setQuery] = useState('');
+  const [view, setView] = useState<View>('list');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -29,27 +43,63 @@ export function VillageSearch({ candidates }: { candidates: VillageCandidateView
 
   return (
     <div>
-      <div className="field-group mb-10 lg:mb-12 max-w-xl">
-        <label htmlFor={inputId} className="field-label">
-          search this week
-        </label>
-        <div className="relative">
-          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
-            <Icon as={Search} size={18} />
-          </span>
-          <input
-            id={inputId}
-            type="search"
-            className="field field-search"
-            value={query}
-            onChange={(e) => setQuery(e.currentTarget.value)}
-            placeholder="classes, drop-ins, a kind of thing…"
-            autoComplete="off"
-          />
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-10 lg:mb-12">
+        <div className="field-group max-w-xl flex-1 min-w-[12rem]">
+          <label htmlFor={inputId} className="field-label">
+            search this week
+          </label>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
+              <Icon as={Search} size={18} />
+            </span>
+            <input
+              id={inputId}
+              type="search"
+              className="field field-search"
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              placeholder="classes, drop-ins, a kind of thing…"
+              autoComplete="off"
+            />
+          </div>
         </div>
+
+        <fieldset
+          className="shrink-0 inline-flex rounded-[var(--r-full)] border border-rule-strong p-1"
+          aria-label="view activities as a list or a map"
+        >
+          {(
+            [
+              { value: 'list', label: 'list', icon: List },
+              { value: 'map', label: 'map', icon: MapIcon },
+            ] as const
+          ).map((option) => {
+            const active = view === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setView(option.value)}
+                className={`inline-flex min-h-[44px] items-center gap-2 rounded-[var(--r-full)] px-4 cursor-pointer transition-colors ${
+                  active ? 'bg-spruce text-on-spruce' : 'text-slate-green'
+                }`}
+                style={{ touchAction: 'manipulation' }}
+              >
+                <Icon as={option.icon} size={18} className="shrink-0" />
+                {option.label}
+              </button>
+            );
+          })}
+        </fieldset>
       </div>
 
-      {filtered.length === 0 ? (
+      {view === 'map' ? (
+        <VillageMap candidates={filtered} coarseCenter={coarseCenter} />
+      ) : null}
+
+      <div className={view === 'map' ? 'hidden' : undefined}>
+        {filtered.length === 0 ? (
         <output className="meta italic text-slate-green block">
           nothing matches “{query.trim()}” this week.
         </output>
@@ -118,6 +168,7 @@ export function VillageSearch({ candidates }: { candidates: VillageCandidateView
           })}
         </section>
       )}
+      </div>
     </div>
   );
 }

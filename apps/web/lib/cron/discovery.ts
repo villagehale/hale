@@ -1,5 +1,9 @@
 import type { Database } from '@hale/db';
 import {
+  type BackfillResult,
+  backfillCandidateCoords,
+} from '~/lib/village/backfill-coords';
+import {
   type DiscoverDeps,
   type DiscoverResult,
   defaultDiscoverDeps,
@@ -23,6 +27,8 @@ import { MAX_FAMILIES_PER_RUN, selectFamiliesNeedingDiscovery } from './families
 export interface DiscoveryRunResult {
   processed: number;
   results: Array<{ familyId: string; result: DiscoverResult } | { familyId: string; error: string }>;
+  /** Coords backfilled this run for candidates that predate the map. */
+  backfill: BackfillResult;
 }
 
 export async function runDiscoveryCron(
@@ -46,5 +52,9 @@ export async function runDiscoveryCron(
     }
   }
 
-  return { processed: familyIds.length, results };
+  // Bounded backfill: geocode a capped batch of existing candidates that predate
+  // the map so the spatial view fills in over time (rule #1: coarse area only).
+  const backfill = await backfillCandidateCoords(database);
+
+  return { processed: familyIds.length, results, backfill };
 }

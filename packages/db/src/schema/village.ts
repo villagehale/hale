@@ -39,6 +39,15 @@ export const villageCandidates = pgTable(
     confidence: doublePrecision('confidence').notNull(),
     /** Coarse, human-readable coverage note (e.g. "serves your area"); never precise. */
     coverageNote: text('coverage_note'),
+    /** PUBLIC venue coordinates (e.g. a YMCA, a library) resolved from the
+     * candidate's title + the family's COARSE area via Places Text Search — these
+     * are public-place locations, NOT the family's location (rule #1). All
+     * nullable: online / no-venue activities and geocode misses stay list-only
+     * (no pin). The family's precise home is never stored here or anywhere. */
+    lat: doublePrecision('lat'),
+    lng: doublePrecision('lng'),
+    venueName: text('venue_name'),
+    venueAddress: text('venue_address'),
     /** Opaque token for a public, read-only share of THIS single candidate (the
      * per-activity viral card at /a/:token). Nullable: minted only when a parent
      * opts to share this one pick. UNIQUE so the token alone resolves the row. It
