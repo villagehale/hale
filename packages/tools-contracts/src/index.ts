@@ -37,6 +37,19 @@ export const approvedActionPayloadSchema = z.object({
 export type ApprovedActionPayload = z.infer<typeof approvedActionPayloadSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// village.rerank — the async contract for re-materializing a family's feed rank.
+// Enqueued (by discovery, endorse, and a cold read) whenever a family's candidate
+// set may have changed; the drain consumes it and runs the ranker in the
+// BACKGROUND so the ~25s model call never lands in the home-page request path.
+// Carries only the family id — the candidates and their order are read from / are
+// written to Postgres, so nothing precise (rule #1) crosses the queue.
+// ─────────────────────────────────────────────────────────────────────────────
+export const rerankJobPayloadSchema = z.object({
+  family_id: z.string().uuid(),
+});
+export type RerankJobPayload = z.infer<typeof rerankJobPayloadSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // check_calendar_conflict
 // ─────────────────────────────────────────────────────────────────────────────
 export const calendarConflictInput = z.object({

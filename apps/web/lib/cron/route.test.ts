@@ -15,6 +15,15 @@ const runInferenceCronMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
+// The discovery route enqueues a village.rerank + kicks the drain inside after();
+// stub the queue + kick so the gate test never touches a real pg-boss or network,
+// and run after() inline (the real one throws outside a Next request scope).
+vi.mock('~/lib/queue', () => ({ getQueue: async () => ({ send: vi.fn() }) }));
+vi.mock('~/lib/cron/kick-drain', () => ({ kickDrain: vi.fn() }));
+vi.mock('next/server', async (importActual) => ({
+  ...(await importActual<typeof import('next/server')>()),
+  after: (fn: () => void) => fn(),
+}));
 vi.mock('~/lib/cron/digest', () => ({
   runDigestCron: (...a: unknown[]) => runDigestCronMock(...a),
 }));

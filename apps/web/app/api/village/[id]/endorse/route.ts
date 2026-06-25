@@ -1,10 +1,11 @@
-import { revalidateTag } from 'next/cache';
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { kickDrain } from '~/lib/cron/kick-drain';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { getQueue } from '~/lib/queue';
 import { endorseVillageCandidate } from '~/lib/village/endorse';
 
 interface RouteContext {
@@ -23,7 +24,7 @@ const idSchema = z.string().uuid();
  * signed out → 401; no family → 403. Endorse is gated to the candidate's own
  * family server-side (404/403 from the lib).
  */
-export async function POST(_req: Request, context: RouteContext) {
+export async function POST(req: Request, context: RouteContext) {
   const { id } = await context.params;
   const idParse = idSchema.safeParse(id);
   if (!idParse.success) {
@@ -60,10 +61,15 @@ export async function POST(_req: Request, context: RouteContext) {
   });
 
   if (result.status === 200) {
-    // A new endorsement changes the trust signal the ranker weighs — invalidate
-    // the family's cached feed order so the next load re-ranks with it.
+    // A new endorsement changes the trust signal the ranker weighs — enqueue a
+    // background rerank so the materialized feed order picks it up OUT of the
+    // request path, then kick the drain so it runs now rather than on the next
+    // cron tick. The upsert short-circuits an unchanged candidate set (rule #7).
     if (!result.alreadyEndorsed) {
-      revalidateTag(`village-feed:${familyId}`);
+      const queue = await getQueue();
+      await queue.send('village.rerank', { family_id: familyId });
+      const origin = process.env.APP_URL ?? new URL(req.url).origin;
+      after(() => kickDrain(origin));
     }
     return NextResponse.json(
       { count: result.count, alreadyEndorsed: result.alreadyEndorsed },

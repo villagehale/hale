@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
-import { db } from '~/lib/db';
+import { NextResponse, after } from 'next/server';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { runDiscoveryCron } from '~/lib/cron/discovery';
+import { kickDrain } from '~/lib/cron/kick-drain';
+import { db } from '~/lib/db';
+import { getQueue } from '~/lib/queue';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: discovery reads the worker's prompt/model files off disk and
@@ -26,7 +28,12 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    const summary = await runDiscoveryCron(db());
+    const queue = await getQueue();
+    const summary = await runDiscoveryCron(db(), undefined, new Date(), queue);
+    // Kick the drain so any rerank jobs enqueued for newly-discovered families
+    // materialize now rather than waiting up to 60s for the next cron tick.
+    const origin = process.env.APP_URL ?? new URL(req.url).origin;
+    after(() => kickDrain(origin));
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } finally {
     // Serverless flush: send buffered spans before the function returns (rule #8).

@@ -1,13 +1,15 @@
-import { unstable_cache } from 'next/cache';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { unstable_cache } from 'next/cache';
+import { after } from 'next/server';
+import { kickDrain } from '~/lib/cron/kick-drain';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
+import { getQueue } from '~/lib/queue';
 import { geocodeVenue } from './geocode';
 import type { LatLng } from './map-model';
 import type { VillageCandidateView } from './mappers';
 import { readVillage } from './queries';
-import { rankRecommendations } from './rank/rank';
 
 /**
  * The agent-ranked village feed — the home/primary surface's data source. It is
@@ -16,27 +18,18 @@ import { rankRecommendations } from './rank/rank';
  * memory), so the feed reads as "what your village, and families like yours,
  * recommend near you."
  *
- * Bounded spend (rule #7): the agent ranking is wrapped in `unstable_cache`,
- * keyed by familyId AND a fingerprint of the candidate-id set. A re-render, a tab
- * switch, or a second visit reuses the cached order — the model is re-run only
- * when the candidate set actually changes (a new discovery) or the TTL lapses, so
- * the home page never re-spends per render. The endorsement/teen-redaction reads
- * still run fresh each render (cheap DB reads), so social proof and teen safety
- * are always current; only the ORDER is cached.
+ * Fan-out-on-WRITE: the ~25s ranker NEVER runs in this request path. It is
+ * materialized in the BACKGROUND (upsertFeedRank, on the discovery/endorse write
+ * events) into village_feed_rank, so this read is a pure DB lookup of the stored
+ * order. A cold family with no row yet is served the discovery order immediately
+ * (stale-while-revalidate) and a background rerank is enqueued to warm it for the
+ * next visit — so the home page renders instantly either way (bounded spend,
+ * rule #7: the background upsert short-circuits an unchanged candidate set).
  *
  * Teen safety (rule #1): the feed reorders the SAME teen-redacted views readVillage
  * produces — a teen-attributed candidate is already category-only before it enters
  * the feed, and reordering never un-redacts it.
  */
-
-/**
- * Safety-net TTL only. The cache key already includes the candidate-id
- * fingerprint, so a new discovery re-ranks automatically; an endorsement
- * invalidates the `village-feed:<family>` tag explicitly. This long TTL just
- * catches changes not otherwise invalidated (e.g. a child's stage crossing a
- * boundary) — so the model is no longer re-run on unchanged inputs every 30 min.
- */
-const RANK_TTL_SECONDS = 60 * 60 * 24;
 
 export interface VillageFeed {
   /** Candidates in the agent-decided order — the trusted feed. */
@@ -107,33 +100,34 @@ export function orderCandidates(
 }
 
 /**
- * Run (or reuse) the agent ranking for one family's candidate set. Cached by
- * familyId + candidate-id fingerprint so the model is invoked only when the set
- * changes or the TTL lapses (bounded spend, rule #7). Constructs its own deps so
- * only serializable args cross the cache boundary.
+ * Warm a cold family's feed rank in the BACKGROUND: enqueue a village.rerank job
+ * and kick the drain so the materialization runs out of this request path. Best
+ * effort — a failure to warm is swallowed (the feed already rendered in discovery
+ * order; the next discovery/endorse write, or the next visit, will warm it).
  */
-function rankedIdsCached(familyId: string, candidateIds: string[]): Promise<string[]> {
-  const fingerprint = candidateIds.join(',');
-  const run = unstable_cache(
-    async () => {
-      const { orderedIds } = await rankRecommendations(
-        { familyId, candidateIds, actor: 'system' },
-        defaultDb(),
-      );
-      return orderedIds;
-    },
-    ['village-feed-rank', familyId, fingerprint],
-    { revalidate: RANK_TTL_SECONDS, tags: [`village-feed:${familyId}`] },
-  );
-  return run();
+async function enqueueRerankWarm(familyId: string): Promise<void> {
+  try {
+    const queue = await getQueue();
+    await queue.send('village.rerank', { family_id: familyId });
+    if (process.env.APP_URL) {
+      after(() => kickDrain(process.env.APP_URL as string));
+    }
+  } catch (err) {
+    console.error(
+      { err, familyId },
+      'feed: failed to enqueue rerank warm (will warm on next write)',
+    );
+  }
 }
 
 /**
- * Loads the agent-ranked feed for the signed-in family. Mirrors loadVillage's
+ * Loads the agent-ranked feed for the signed-in family — a PURE DB read; the
+ * ~25s ranker NEVER runs here (fan-out-on-write). Mirrors loadVillage's
  * preview/unauthed boundary: no DATABASE_URL (preview) or no resolved family →
- * the empty feed, no model call, no spend. Fewer than two candidates → nothing to
- * rank, so the discovery order is returned as-is (no spend). Otherwise the agent
- * ranks and the views are reordered.
+ * the empty feed. Fewer than two candidates → nothing to rank, discovery order.
+ * A materialized village_feed_rank row → the stored agent order (ranked:true). No
+ * row yet → the discovery order now (ranked:false) plus a background rerank to
+ * warm it for next time.
  */
 export async function loadVillageFeed(): Promise<VillageFeed> {
   if (!process.env.DATABASE_URL) return EMPTY_FEED;
@@ -141,12 +135,17 @@ export async function loadVillageFeed(): Promise<VillageFeed> {
   const familyId = await currentFamilyId(database);
   if (!familyId) return EMPTY_FEED;
 
-  const [{ candidates }, areaRows] = await Promise.all([
+  const [{ candidates }, areaRows, rankRows] = await Promise.all([
     readVillage(database, familyId),
     database
       .select({ areaCoarse: schema.families.areaCoarse })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))
+      .limit(1),
+    database
+      .select({ orderedIds: schema.villageFeedRank.orderedIds })
+      .from(schema.villageFeedRank)
+      .where(eq(schema.villageFeedRank.familyId, familyId))
       .limit(1),
   ]);
   const areaCoarse = areaRows[0]?.areaCoarse ?? null;
@@ -156,22 +155,18 @@ export async function loadVillageFeed(): Promise<VillageFeed> {
     return { candidates, ranked: false, areaCoarse, coarseCenter };
   }
 
-  try {
-    const orderedIds = await rankedIdsCached(
-      familyId,
-      candidates.map((c) => c.id),
-    );
+  const orderedIds = rankRows[0]?.orderedIds ?? null;
+  if (orderedIds) {
     return {
       candidates: orderCandidates(candidates, orderedIds),
       ranked: true,
       areaCoarse,
       coarseCenter,
     };
-  } catch {
-    // The ranker is an enhancement, not a gate: if the model is unavailable
-    // (rate-limited or spend-capped), serve the discovery order so the feed still
-    // renders. ranked:false signals the un-ranked fallback; the failure is captured
-    // in the agent's Langfuse trace, so it is observable, not silently swallowed.
-    return { candidates, ranked: false, areaCoarse, coarseCenter };
   }
+
+  // No materialized order yet — serve the discovery order now and warm the rank
+  // in the background so the next visit is ranked. The model never runs here.
+  await enqueueRerankWarm(familyId);
+  return { candidates, ranked: false, areaCoarse, coarseCenter };
 }

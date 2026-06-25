@@ -1,11 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { ApprovedActionPayload, IngestedEventPayload } from '@hale/tools-contracts';
-import {
-  type DrainBoss,
-  type DrainDeps,
-  HOT_QUEUE_EXPIRE_SECONDS,
-  drainHotQueues,
-} from './drain';
+import { describe, expect, it, vi } from 'vitest';
+import { type DrainBoss, type DrainDeps, HOT_QUEUE_EXPIRE_SECONDS, drainHotQueues } from './drain';
 
 /**
  * Drain-loop control flow with a FAKE pg-boss + FAKE orchestrator handlers
@@ -19,6 +14,7 @@ import {
 
 const EVENTS = 'events.ingested';
 const ACTIONS = 'actions.approved';
+const RERANK = 'village.rerank';
 const FAMILY = '11111111-1111-1111-1111-111111111111';
 const ACTION = '22222222-2222-2222-2222-222222222222';
 
@@ -51,14 +47,17 @@ function makeFakeBoss(initial: Record<string, Pending>) {
   const pending = new Map<string, Pending>([
     [EVENTS, [...(initial[EVENTS] ?? [])]],
     [ACTIONS, [...(initial[ACTIONS] ?? [])]],
+    [RERANK, [...(initial[RERANK] ?? [])]],
   ]);
   const completed = new Map<string, string[]>([
     [EVENTS, []],
     [ACTIONS, []],
+    [RERANK, []],
   ]);
   const failed = new Map<string, string[]>([
     [EVENTS, []],
     [ACTIONS, []],
+    [RERANK, []],
   ]);
   const created: Array<{ name: string; expireInSeconds?: number }> = [];
 
@@ -68,9 +67,11 @@ function makeFakeBoss(initial: Record<string, Pending>) {
   });
 
   const boss = {
-    createQueue: vi.fn(async (name: string, options?: { name: string; expireInSeconds?: number }) => {
-      created.push({ name: options?.name ?? name, expireInSeconds: options?.expireInSeconds });
-    }),
+    createQueue: vi.fn(
+      async (name: string, options?: { name: string; expireInSeconds?: number }) => {
+        created.push({ name: options?.name ?? name, expireInSeconds: options?.expireInSeconds });
+      },
+    ),
     fetch,
     complete: vi.fn(async (name: string, id: string) => {
       completed.get(name)?.push(id);
@@ -94,6 +95,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
     handlers: {
       runOrchestrator: vi.fn(async () => undefined),
       executeApprovedAction: vi.fn(async () => undefined),
+      rerank: vi.fn(async () => undefined),
       ...overrides,
     },
     log: { info: vi.fn(), error: vi.fn() },
@@ -102,13 +104,43 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
 }
 
 describe('drainHotQueues', () => {
-  it('creates both queues with the fast expiry, then drains them', async () => {
+  it('creates all hot queues with the fast expiry, then drains them', async () => {
     const { boss, created } = makeFakeBoss({});
     await drainHotQueues(makeDeps(boss));
 
     expect(created).toContainEqual({ name: EVENTS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
     expect(created).toContainEqual({ name: ACTIONS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
+    expect(created).toContainEqual({ name: RERANK, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
     expect(HOT_QUEUE_EXPIRE_SECONDS).toBe(180);
+  });
+
+  it('materializes the feed rank for a pending village.rerank job and completes it', async () => {
+    const { boss, completed, failed } = makeFakeBoss({
+      [RERANK]: [{ id: 'r1', data: { family_id: FAMILY } }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.rerank).toHaveBeenCalledTimes(1);
+    expect(deps.handlers.rerank).toHaveBeenCalledWith(FAMILY);
+    expect(completed(RERANK)).toEqual(['r1']);
+    expect(failed(RERANK)).toEqual([]);
+    expect(summary.processed).toBe(1);
+  });
+
+  it('DROPS a schema-invalid village.rerank payload (never calls the ranker)', async () => {
+    const { boss, completed, failed } = makeFakeBoss({
+      [RERANK]: [{ id: 'bad', data: { family_id: 'not-a-uuid' } }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.rerank).not.toHaveBeenCalled();
+    expect(completed(RERANK)).toEqual(['bad']);
+    expect(failed(RERANK)).toEqual([]);
+    expect(summary.dropped).toBe(1);
   });
 
   it('runs the orchestrator for a pending events.ingested job and completes it', async () => {
