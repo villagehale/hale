@@ -1,5 +1,3 @@
-import { Analytics } from '@vercel/analytics/next';
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
@@ -30,10 +28,13 @@ export const viewport: Viewport = {
   themeColor: '#01204F',
 };
 
-// Runs before first paint to set the .dark class from the stored preference (or
-// the OS setting when on "system"), so the page never flashes the wrong theme.
-// Mirrors lib/theme.ts; kept inline because it must execute before hydration.
-const NO_FLASH_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var p=localStorage.getItem(k);if(p!=='light'&&p!=='dark'&&p!=='system')p='system';var dark=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);}catch(e){}})();`;
+// Runs before first paint: sets the .dark class from the stored preference (so the
+// page never flashes the wrong theme), and switches scroll restoration to manual.
+// The app scrolls inside .main-stage, not the window; with the default "auto" the
+// browser re-applies the stage's old offset on reload AFTER React mounts, undoing
+// the scroll reset — so we disable it here, before any restoration can happen.
+// Kept inline because it must execute before hydration.
+const NO_FLASH_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var p=localStorage.getItem(k);if(p!=='light'&&p!=='dark'&&p!=='system')p='system';var dark=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);if('scrollRestoration' in history){history.scrollRestoration='manual';}}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -48,8 +49,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <PostHogProvider>{children}</PostHogProvider>
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );
