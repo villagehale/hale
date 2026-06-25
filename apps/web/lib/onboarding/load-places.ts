@@ -17,8 +17,7 @@ type PlaceAutocompleteElementCtor = new (options: {
 
 interface MapsImportLibrary {
   (name: 'places'): Promise<{ PlaceAutocompleteElement?: PlaceAutocompleteElementCtor }>;
-  (name: 'maps'): Promise<{ Map?: unknown }>;
-  (name: 'marker'): Promise<{ AdvancedMarkerElement?: unknown; PinElement?: unknown }>;
+  (name: 'maps'): Promise<{ Map?: unknown; Marker?: unknown }>;
   (name: 'core'): Promise<{ LatLngBounds?: unknown }>;
   (name: string): Promise<unknown>;
 }
@@ -32,8 +31,10 @@ interface MapsGlobal {
 /** Resolves to the Maps JS `importLibrary`, or null if the key/script is absent. */
 export interface MapsLibraries {
   Map: new (el: HTMLElement, opts: unknown) => unknown;
-  AdvancedMarkerElement: new (opts: unknown) => unknown;
-  PinElement: new (opts: unknown) => { element: HTMLElement };
+  Marker: new (opts: unknown) => {
+    addListener: (ev: string, fn: () => void) => void;
+    setMap: (m: unknown) => void;
+  };
   LatLngBounds: new () => { extend: (p: unknown) => void };
 }
 
@@ -118,26 +119,20 @@ export async function loadMapsLibrary(): Promise<MapsLibraries | null> {
   const importLibrary = await whenMapsReady();
   if (!importLibrary) return null;
   try {
-    const [mapsLib, markerLib, coreLib] = await Promise.all([
-      importLibrary('maps') as Promise<{ Map?: unknown }>,
-      importLibrary('marker') as Promise<{ AdvancedMarkerElement?: unknown; PinElement?: unknown }>,
-      // LatLngBounds is in the 'core' library, NOT 'maps' — importing it from
-      // 'maps' yielded undefined and silently nulled the whole map.
+    const [mapsLib, coreLib] = await Promise.all([
+      // Classic Marker (from 'maps') renders without a Map ID; AdvancedMarkerElement
+      // would require NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID and otherwise silently no-ops.
+      importLibrary('maps') as Promise<{ Map?: unknown; Marker?: unknown }>,
+      // LatLngBounds is in the 'core' library, NOT 'maps'.
       importLibrary('core') as Promise<{ LatLngBounds?: unknown }>,
     ]);
-    if (
-      !mapsLib.Map ||
-      !coreLib.LatLngBounds ||
-      !markerLib.AdvancedMarkerElement ||
-      !markerLib.PinElement
-    ) {
+    if (!mapsLib.Map || !mapsLib.Marker || !coreLib.LatLngBounds) {
       return null;
     }
     return {
       Map: mapsLib.Map as MapsLibraries['Map'],
+      Marker: mapsLib.Marker as MapsLibraries['Marker'],
       LatLngBounds: coreLib.LatLngBounds as MapsLibraries['LatLngBounds'],
-      AdvancedMarkerElement: markerLib.AdvancedMarkerElement as MapsLibraries['AdvancedMarkerElement'],
-      PinElement: markerLib.PinElement as MapsLibraries['PinElement'],
     };
   } catch {
     return null;
