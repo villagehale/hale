@@ -40,7 +40,7 @@ export function VillageSearch({ candidates }: { candidates: VillageCandidateView
           <input
             id={inputId}
             type="search"
-            className="field pl-11"
+            className="field field-search"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
             placeholder="classes, drop-ins, a kind of thing…"

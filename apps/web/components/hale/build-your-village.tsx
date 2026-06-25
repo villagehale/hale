@@ -16,7 +16,7 @@ import { ShareWeekButton } from '~/components/hale/share-week-button';
  */
 export function BuildYourVillage({ nothingToShare }: { nothingToShare: boolean }) {
   return (
-    <section className="panel-apricot-tint">
+    <section className="panel panel-apricot-tint">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-10 items-start">
         <div className="lg:col-span-5">
           <div className="flex items-start gap-4">
