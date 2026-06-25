@@ -400,12 +400,14 @@ function FullSurface({ canAsk, chat, seed }: { canAsk: boolean; chat: UseAskHale
   } = chat;
   const childLabelOf = useChildLabel(seed.children);
 
-  // The composer is `sticky bottom-0` against `.main-stage` (the scroll container:
-  // overflow-y:auto), so a long conversation scrolls *behind* it while it stays in
-  // reach; a short one leaves it resting at the end. No inner overflow box sits
-  // between here and the stage, so the sticky chain holds.
+  // The composer is `sticky bottom-0` against `.main-stage` (the scroll container).
+  // `.main-stage` carries a bottom pad for every other page; here it would inset the
+  // sticky pin above the viewport edge and leave a strip where the thread bleeds
+  // through beneath the bar. The `coach-surface` marker zeroes that pad on this
+  // route only (globals.css `:has`), so the bar reaches the true bottom and the
+  // thread scrolls cleanly behind it; `pb-24` on the timeline keeps the last turn clear.
   return (
-    <div className="flex flex-col gap-8">
+    <div className="coach-surface flex flex-col gap-8">
       {/* Scope + filters — the continuous conversation, narrowed. */}
       <div className="mx-auto w-full max-w-[42rem] space-y-4">
         <ScopeChips
