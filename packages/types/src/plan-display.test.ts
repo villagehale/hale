@@ -8,9 +8,10 @@ import {
 
 /**
  * Prices are the confirmed freemium model (USD), asserted against the spec, not
- * copied from runtime: Village free $0, Hale helps $9/mo or $79/yr, Hale handles
- * it $19/mo or $159/yr. The display data is presentation-only and must not change
- * the PlanTier enum values (free/plus/family).
+ * copied from runtime: Free $0, Plus $9/mo or $79/yr, Family $19/mo or $159/yr.
+ * Tier names follow the standard plain convention (Free / Plus / Family). The
+ * display data is presentation-only and must not change the PlanTier enum values
+ * (free/plus/family).
  */
 describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
   it('exposes exactly the three PlanTier tiers, free first', () => {
@@ -18,10 +19,17 @@ describe('PLAN_DISPLAY (the displayed plan source of truth)', () => {
     expect(Object.keys(PLAN_DISPLAY).sort()).toEqual(['family', 'free', 'plus']);
   });
 
-  it('carries the confirmed names per tier', () => {
-    expect(PLAN_DISPLAY.free.name).toBe('Village');
-    expect(PLAN_DISPLAY.plus.name).toBe('Hale helps');
-    expect(PLAN_DISPLAY.family.name).toBe('Hale handles it');
+  it('uses the standard plain tier names (Free / Plus / Family)', () => {
+    expect(PLAN_DISPLAY.free.name).toBe('Free');
+    expect(PLAN_DISPLAY.plus.name).toBe('Plus');
+    expect(PLAN_DISPLAY.family.name).toBe('Family');
+  });
+
+  it('drops the old cutesy names entirely', () => {
+    const names = PLAN_TIERS_ORDERED.map((tier) => PLAN_DISPLAY[tier].name);
+    expect(names).not.toContain('Village');
+    expect(names).not.toContain('Hale helps');
+    expect(names).not.toContain('Hale handles it');
   });
 
   it('carries the confirmed monthly + annual prices (USD)', () => {

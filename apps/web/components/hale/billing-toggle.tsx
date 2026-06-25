@@ -10,7 +10,8 @@ const OPTIONS: { value: BillingPeriod; label: string }[] = [
 /**
  * A small segmented monthly↔annual control, shared by the settings plan section
  * and the onboarding plan step. Mirrors the theme-toggle's pill-segmented look
- * with two text segments; annual carries the "better value" hint inline.
+ * with two text segments; the "better value" hint stacks below on mobile and
+ * sits inline from `sm` up.
  */
 export function BillingToggle({
   period,
@@ -20,7 +21,7 @@ export function BillingToggle({
   onChange: (period: BillingPeriod) => void;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
       <fieldset
         className="inline-flex items-center gap-1 m-0 p-1 border-0 min-w-0 rounded-[var(--r-full)] bg-oat"
         aria-label="billing period"
