@@ -11,6 +11,7 @@ import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { type LocationInput, normalizeLocation } from '~/lib/family/location-input';
 import { type ChildInput, type ValidatedChild, validateChild } from './children';
 import { provisionAndWriteChildren } from './persist';
+import { type WelcomeDeps, sendWelcomeEmail } from './send-welcome';
 
 /**
  * The intake-first onboarding completion (Phase C). Runs only AFTER Google
@@ -72,6 +73,7 @@ export type CompleteOnboardingResult =
 
 export async function completeOnboarding(
   input: CompleteOnboardingInput,
+  welcomeDeps?: WelcomeDeps,
 ): Promise<CompleteOnboardingResult> {
   if (!input.tosAccepted) {
     return { status: 'invalid', error: 'tos_required' };
@@ -170,6 +172,17 @@ export async function completeOnboarding(
       await recordConsent(tx, { userId, familyId, consentType, granted: true });
     }
   });
+
+  // The one-time welcome email, fired now that the family + children exist (so it
+  // can be personalized and point at a ready village). Idempotent via the send
+  // ledger, so a second completion/login does not re-send. Transactional, so it
+  // is NOT held behind the digest send flag. A send failure must NOT fail
+  // onboarding — swallow it at this boundary only (CLAUDE.md #8 boundary catch).
+  try {
+    await sendWelcomeEmail(database, { userId, familyId, email, name: identity.name }, welcomeDeps);
+  } catch (err) {
+    console.error('welcome email failed (onboarding unaffected)', err);
+  }
 
   return { status: 'completed', familyId };
 }
