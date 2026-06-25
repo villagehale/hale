@@ -78,6 +78,7 @@ function makeDb() {
     updateFor: (table: unknown) => updates.find((u) => u.table === table)?.values,
     updateCount: (table: unknown) => updates.filter((u) => u.table === table).length,
     insertFor: (table: unknown) => inserts.find((i) => i.table === table)?.values,
+    insertsFor: (table: unknown) => inserts.filter((i) => i.table === table).map((i) => i.values),
   };
 }
 
@@ -129,6 +130,28 @@ describe('completeOnboarding', () => {
       targetTable: 'families',
       targetId: NEW_FAMILY_ID,
     });
+
+    // Each consent given at sign-up is recorded with its policy version + family
+    // (the Privacy Policy promises a verifiable record of every consent). The
+    // four consents asked for at onboarding: ToS, privacy, cross-border, LLM.
+    const consents = s.insertsFor(schema.consentRecords) as Array<{
+      userId: string;
+      familyId: string;
+      consentType: string;
+      granted: boolean;
+      policyVersion: string;
+    }>;
+    expect(consents.map((c) => c.consentType).sort()).toEqual([
+      'cross_border_data',
+      'llm_processing',
+      'privacy_policy',
+      'terms_of_service',
+    ]);
+    for (const c of consents) {
+      expect(c).toMatchObject({ userId: USER_ID, familyId: NEW_FAMILY_ID, granted: true });
+      expect(typeof c.policyVersion).toBe('string');
+      expect(c.policyVersion.length).toBeGreaterThan(0);
+    }
   });
 
   it('provisions ALL children (multi-child) with their full DOBs through the audited path', async () => {

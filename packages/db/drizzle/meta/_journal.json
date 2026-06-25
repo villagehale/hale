@@ -141,6 +141,13 @@
       "when": 1781460840000,
       "tag": "0019_village_feed_rank",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1781460900000,
+      "tag": "0020_email_sends_opt_outs",
+      "breakpoints": true
     }
   ]
 }

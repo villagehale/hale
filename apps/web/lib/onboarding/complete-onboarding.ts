@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
+import { recordConsent } from '~/lib/consent';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { type LocationInput, normalizeLocation } from '~/lib/family/location-input';
 import { type ChildInput, type ValidatedChild, validateChild } from './children';
@@ -30,6 +31,16 @@ import { provisionAndWriteChildren } from './persist';
  */
 
 const PLAN_TIERS: readonly PlanTier[] = ['free', 'plus', 'family'];
+
+/** The consents asked for, and given, at sign-up. terms + privacy are the policy
+ * acceptance; cross-border + LLM cover that sensitive processing runs on US AI
+ * infrastructure (both disclosed in the Privacy Policy as consented at sign-up). */
+const CONSENTS_AT_SIGNUP = [
+  'terms_of_service',
+  'privacy_policy',
+  'cross_border_data',
+  'llm_processing',
+] as const satisfies ReadonlyArray<schema.NewConsentRecord['consentType']>;
 
 function isPlanTier(value: string): value is PlanTier {
   return (PLAN_TIERS as readonly string[]).includes(value);
@@ -150,6 +161,14 @@ export async function completeOnboarding(
       targetId: familyId,
       after: { planTier: input.planTier },
     });
+
+    // The consents the user gives at sign-up, each stamped with the policy
+    // version + time (the Privacy Policy promises a verifiable record). Sign-up
+    // is where we ask for terms + privacy, and — because all sensitive
+    // processing runs on US AI infra — cross-border + LLM processing too.
+    for (const consentType of CONSENTS_AT_SIGNUP) {
+      await recordConsent(tx, { userId, familyId, consentType, granted: true });
+    }
   });
 
   return { status: 'completed', familyId };

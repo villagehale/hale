@@ -5,6 +5,11 @@ import { and, eq } from 'drizzle-orm';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type DigestEmailSender, createDigestEmailSender } from './email';
+import {
+  hasOptedOut,
+  recordEmailSend,
+  unsubscribeUrl,
+} from './email-compliance';
 import { buildDailyBriefTools } from './digest-tools';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
@@ -30,7 +35,20 @@ const MAX_TOKENS = 1024;
 export type DigestResult =
   | { status: 'sent'; emailed: boolean }
   | { status: 'no_recipient' }
-  | { status: 'no_answer' };
+  | { status: 'no_answer' }
+  /** Brief composed + stored, but not emailed: the send flag is off, the
+   * recipient opted out, or no unsubscribe secret is configured to mint the
+   * CASL-required link. The dashboard still shows the stored brief. */
+  | { status: 'send_skipped'; reason: 'flag_off' | 'opted_out' | 'no_unsub_secret' };
+
+const DIGEST_EMAIL_TYPE = 'daily_digest' as const;
+
+/** The send flag: emailing real users stays OFF until the sending domain is
+ * verified and this is flipped to 'true' on purpose. Composing + storing the
+ * brief is unaffected — only the outbound send is gated. */
+function digestSendEnabled(): boolean {
+  return process.env.DIGEST_SEND_ENABLED === 'true';
+}
 
 export interface DigestDeps {
   client: AgentClient;
@@ -48,15 +66,15 @@ export function defaultDigestDeps(): DigestDeps {
   return { client: anthropicClient, email: createDigestEmailSender() };
 }
 
-/** The primary parent's email — the brief's recipient. Null when the family has
- * no primary parent linked yet (onboarding incomplete): nothing to send, not an
- * error. */
-async function recipientEmail(
+/** The primary parent (id + email) — the brief's recipient. Null when the family
+ * has no primary parent linked yet (onboarding incomplete): nothing to send, not
+ * an error. The id keys the per-recipient opt-out + send ledger. */
+async function recipient(
   familyId: string,
   database: Database,
-): Promise<string | null> {
+): Promise<{ userId: string; email: string } | null> {
   const rows = await database
-    .select({ email: schema.users.email })
+    .select({ userId: schema.users.id, email: schema.users.email })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
     .where(
@@ -66,7 +84,8 @@ async function recipientEmail(
       ),
     )
     .limit(1);
-  return rows[0]?.email ?? null;
+  const row = rows[0];
+  return row ? { userId: row.userId, email: row.email } : null;
 }
 
 /** Today in the digest's date column format (YYYY-MM-DD), in America/Toronto —
@@ -87,8 +106,8 @@ export async function runDigestForFamily(
   deps: DigestDeps,
   now: Date = new Date(),
 ): Promise<DigestResult> {
-  const to = await recipientEmail(familyId, database);
-  if (!to) {
+  const parent = await recipient(familyId, database);
+  if (!parent) {
     return { status: 'no_recipient' };
   }
 
@@ -186,9 +205,42 @@ export async function runDigestForFamily(
           set: row,
         });
 
-      const emailed = await deps.email.sendDigest(to, 'your hale daily brief', result.answer);
+      // The brief is composed + stored regardless; the SEND is gated twice. The
+      // flag keeps real users unemailed until the domain is verified and it is
+      // flipped on purpose; the opt-out is the CASL consent check. Either gate
+      // skips the send (the dashboard still shows the stored brief).
+      if (!digestSendEnabled()) {
+        return { status: 'send_skipped', reason: 'flag_off' };
+      }
+      if (await hasOptedOut(database, parent.userId, DIGEST_EMAIL_TYPE)) {
+        return { status: 'send_skipped', reason: 'opted_out' };
+      }
 
-      return { status: 'sent', emailed };
+      const unsubUrl = unsubscribeUrl({ userId: parent.userId, emailType: DIGEST_EMAIL_TYPE });
+      if (!unsubUrl) {
+        // No UNSUBSCRIBE_SECRET → a CASL-required unsubscribe link cannot be
+        // minted, so we must NOT send (fail closed) rather than email without one.
+        return { status: 'send_skipped', reason: 'no_unsub_secret' };
+      }
+
+      const sendResult = await deps.email.sendDigest(
+        parent.email,
+        'your hale daily brief',
+        result.answer,
+        unsubUrl,
+      );
+
+      if (sendResult.accepted) {
+        await recordEmailSend(database, {
+          userId: parent.userId,
+          familyId,
+          emailType: DIGEST_EMAIL_TYPE,
+          recipient: parent.email,
+          providerMessageId: sendResult.providerMessageId,
+        });
+      }
+
+      return { status: 'sent', emailed: sendResult.accepted };
     },
   );
 }
