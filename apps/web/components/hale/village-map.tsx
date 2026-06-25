@@ -59,7 +59,7 @@ export function VillageMap({
 
   useEffect(() => {
     let cancelled = false;
-    const markers: Array<{ map: unknown }> = [];
+    const markers: Array<{ setMap: (m: unknown) => void }> = [];
 
     (async () => {
       const lib = await loadMapsLibrary();
@@ -72,7 +72,6 @@ export function VillageMap({
       const map = new lib.Map(container, {
         center: model.center ?? model.markers[0]?.position ?? { lat: 0, lng: 0 },
         zoom: FALLBACK_ZOOM,
-        mapId: process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ?? undefined,
         disableDefaultUI: true,
         zoomControl: true,
         clickableIcons: false,
@@ -81,17 +80,15 @@ export function VillageMap({
 
       const bounds = new lib.LatLngBounds();
       for (const marker of model.markers) {
-        const pin = new lib.PinElement({});
-        const advanced = new lib.AdvancedMarkerElement({
+        const pin = new lib.Marker({
           map,
           position: marker.position,
           title: marker.title,
-          content: pin.element,
-        }) as unknown as { addListener: (ev: string, fn: () => void) => void; map: unknown };
-        advanced.addListener('click', () => {
+        });
+        pin.addListener('click', () => {
           if (!cancelled) setSelectedId(marker.id);
         });
-        markers.push(advanced);
+        markers.push(pin);
         bounds.extend(marker.position);
       }
 
@@ -110,7 +107,7 @@ export function VillageMap({
     return () => {
       cancelled = true;
       for (const m of markers) {
-        m.map = null;
+        m.setMap(null);
       }
     };
   }, [model]);
