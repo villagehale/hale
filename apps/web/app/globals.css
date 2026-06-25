@@ -782,6 +782,14 @@ strong { font-weight: 700; }
   background: var(--color-linen);
 }
 
+/* Ask Hale pins a `sticky bottom-0` composer to the stage. The bottom pad would
+ * inset that pin above the viewport edge and leave a strip where the thread shows
+ * through beneath the bar; zero it when the coach surface is present so the bar
+ * reaches the true bottom. Scoped via :has so no other page loses its bottom pad. */
+.main-stage:has(.coach-surface) {
+  padding-bottom: 0;
+}
+
 @media (min-width: 1024px) {
   .main-stage {
     padding-top: clamp(2.5rem, 4vw, 4rem);
