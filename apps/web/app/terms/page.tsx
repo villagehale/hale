@@ -29,8 +29,10 @@ export default function TermsPage() {
       title="Terms of Service"
       intro={
         <p>
-          These terms are an agreement between you and Hale. By creating an account or using Hale,
-          you agree to them. Please read them alongside our{' '}
+          These terms are an agreement between you and Village Hale Technologies Inc.
+          (&ldquo;Hale,&rdquo; &ldquo;we,&rdquo; or &ldquo;us&rdquo;), a company incorporated in
+          Ontario, Canada. By creating an account or using Hale, you agree to them. Please read them
+          alongside our{' '}
           <a href="/privacy" className="link">
             Privacy Policy
           </a>
