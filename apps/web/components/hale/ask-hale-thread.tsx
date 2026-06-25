@@ -155,11 +155,9 @@ function TimelineFilters({
   return (
     <div className="space-y-3">
       <div className="relative">
-        <Search
-          aria-hidden
-          size={16}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage"
-        />
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
+          <Search aria-hidden size={18} />
+        </span>
         <label htmlFor={searchId} className="sr-only">
           search this conversation
         </label>
@@ -169,7 +167,7 @@ function TimelineFilters({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="search this conversation"
-          className="field pl-10"
+          className="field field-search"
           autoComplete="off"
         />
       </div>
@@ -402,10 +400,14 @@ function FullSurface({ canAsk, chat, seed }: { canAsk: boolean; chat: UseAskHale
   } = chat;
   const childLabelOf = useChildLabel(seed.children);
 
+  // The composer is `sticky bottom-0` against `.main-stage` (the scroll container:
+  // overflow-y:auto), so a long conversation scrolls *behind* it while it stays in
+  // reach; a short one leaves it resting at the end. No inner overflow box sits
+  // between here and the stage, so the sticky chain holds.
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-8">
       {/* Scope + filters — the continuous conversation, narrowed. */}
-      <div className="space-y-4">
+      <div className="mx-auto w-full max-w-[42rem] space-y-4">
         <ScopeChips
           kids={seed.children}
           focusedChildId={focusedChildId}
@@ -422,79 +424,90 @@ function FullSurface({ canAsk, chat, seed }: { canAsk: boolean; chat: UseAskHale
         ) : null}
       </div>
 
-      {/* The timeline of this one relationship. */}
-      {turns.length === 0 ? (
-        <p className="meta">
-          this is the start of your conversation with Hale. ask anything — it stays here, grounded
-          in your family.
-        </p>
-      ) : visibleTurns.length === 0 ? (
-        <output className="meta italic block">
-          nothing here for this filter — clear it to see the rest of your conversation.
-        </output>
-      ) : (
-        <Timeline turns={visibleTurns} childLabelOf={childLabelOf} focusedChildId={focusedChildId} />
-      )}
-
-      {status === 'pending' ? (
-        <p className="meta italic" aria-live="polite">
-          thinking it through…
-        </p>
-      ) : null}
-      <div ref={threadEndRef} />
-
-      {/* Sticky composer — the next action is always in reach (mobile-first). */}
-      <div className="sticky bottom-0 -mx-1 bg-linen/95 pt-4 pb-3 backdrop-blur supports-[backdrop-filter]:bg-linen/80">
-        {canAsk ? (
-          <div className="space-y-3">
-            <Suggestions
-              suggestions={seed.suggestions}
-              focusedChildId={focusedChildId}
-              onPick={ask}
-              disabled={status === 'pending'}
-            />
-            <label htmlFor="coach-input" className="sr-only">
-              ask Hale
-            </label>
-            <textarea
-              ref={inputRef}
-              id="coach-input"
-              name="question"
-              rows={2}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  ask(draft);
-                }
-              }}
-              placeholder="ask about this child, or your whole family…"
-              className="field"
-              autoComplete="off"
-            />
-            <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-6">
-              <ComposerNote />
-              <Button
-                icon={ArrowRight}
-                onClick={() => ask(draft)}
-                disabled={status === 'pending' || draft.trim().length === 0}
-              >
-                {status === 'pending' ? 'thinking…' : 'ask Hale'}
-              </Button>
-            </div>
-            {status === 'error' ? (
-              <p className="meta italic text-apricot-deep" role="alert">
-                Couldn&rsquo;t reach Hale — try again in a moment.
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <output className="dev-preview-banner">
-            Sign in to ask Hale. In development preview (auth not configured) the thread is
-            read-only — no question is sent and no model is called.
+      {/* The timeline of this one relationship. The bottom pad keeps the newest
+          turn clear of the pinned composer when auto-scrolled to the end. */}
+      <div className="mx-auto w-full max-w-[42rem] pb-24">
+        {turns.length === 0 ? (
+          <p className="meta">
+            this is the start of your conversation with Hale. ask anything — it stays here, grounded
+            in your family.
+          </p>
+        ) : visibleTurns.length === 0 ? (
+          <output className="meta italic block">
+            nothing here for this filter — clear it to see the rest of your conversation.
           </output>
+        ) : (
+          <Timeline
+            turns={visibleTurns}
+            childLabelOf={childLabelOf}
+            focusedChildId={focusedChildId}
+          />
         )}
+
+        {status === 'pending' ? (
+          <p className="meta italic mt-5" aria-live="polite">
+            thinking it through…
+          </p>
+        ) : null}
+        <div ref={threadEndRef} />
+      </div>
+
+      {/* Pinned composer — solid canvas bar (flips with the theme via --color-linen)
+          with a hairline top seam; the timeline scrolls cleanly behind it. The
+          safe-area pad keeps the input clear of the mobile keyboard / home bar. */}
+      <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4">
+        <div className="mx-auto w-full max-w-[42rem]">
+          {canAsk ? (
+            <div className="space-y-3">
+              <Suggestions
+                suggestions={seed.suggestions}
+                focusedChildId={focusedChildId}
+                onPick={ask}
+                disabled={status === 'pending'}
+              />
+              <label htmlFor="coach-input" className="sr-only">
+                ask Hale
+              </label>
+              <textarea
+                ref={inputRef}
+                id="coach-input"
+                name="question"
+                rows={2}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    ask(draft);
+                  }
+                }}
+                placeholder="ask about this child, or your whole family…"
+                className="field"
+                autoComplete="off"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-6">
+                <ComposerNote />
+                <Button
+                  icon={ArrowRight}
+                  onClick={() => ask(draft)}
+                  disabled={status === 'pending' || draft.trim().length === 0}
+                >
+                  {status === 'pending' ? 'thinking…' : 'ask Hale'}
+                </Button>
+              </div>
+              {status === 'error' ? (
+                <p className="meta italic text-apricot-deep" role="alert">
+                  Couldn&rsquo;t reach Hale — try again in a moment.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <output className="dev-preview-banner">
+              Sign in to ask Hale. In development preview (auth not configured) the thread is
+              read-only — no question is sent and no model is called.
+            </output>
+          )}
+        </div>
       </div>
     </div>
   );

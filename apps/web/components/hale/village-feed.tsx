@@ -2,6 +2,7 @@ import { Lock, Sparkles } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
 import { Folio } from '~/components/hale/folio';
+import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
 import { Icon } from '~/components/ui/icon';
@@ -24,7 +25,13 @@ import type { VillageCandidateView } from '~/lib/village/mappers';
  * category-only (title is the placeholder, summary empty) and renders the locked
  * treatment — no endorse/share/accept on content a parent can't preview.
  */
-export function VillageFeed({ candidates }: { candidates: VillageCandidateView[] }) {
+export function VillageFeed({
+  candidates,
+  area = null,
+}: {
+  candidates: VillageCandidateView[];
+  area?: string | null;
+}) {
   return (
     <section className="space-y-5">
       {candidates.map((candidate, idx) => (
@@ -33,6 +40,7 @@ export function VillageFeed({ candidates }: { candidates: VillageCandidateView[]
           candidate={candidate}
           index={idx + 1}
           delay={`rise-${Math.min(idx + 2, 7)}`}
+          area={area}
         />
       ))}
     </section>
@@ -43,10 +51,12 @@ function VillageFeedCard({
   candidate,
   index,
   delay,
+  area,
 }: {
   candidate: VillageCandidateView;
   index: number;
   delay: string;
+  area: string | null;
 }) {
   if (candidate.teenAttributed) {
     return (
@@ -92,11 +102,7 @@ function VillageFeedCard({
           shareTitle={candidate.title}
           variant="ghost"
         />
-        {candidate.sourceUrl ? (
-          <a href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="btn-ghost">
-            see the listing &rarr;
-          </a>
-        ) : null}
+        <RegisterLink sourceUrl={candidate.sourceUrl} title={candidate.title} area={area} />
       </div>
     </article>
   );

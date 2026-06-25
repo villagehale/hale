@@ -86,6 +86,7 @@ export default async function SharedWeekPage({ params }: PageProps) {
                 key={`${activity.kind}-${idx}`}
                 activity={activity}
                 index={idx + 1}
+                area={plan.areaCoarse}
               />
             ))}
           </section>

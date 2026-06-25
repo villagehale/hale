@@ -12,11 +12,29 @@ export const NAP_EPISODE = 'nap';
 export const MILESTONE_EPISODE = 'milestone';
 export const BOOKING_EPISODE = 'booking_requested';
 
+/** A feed's kind, surfaced in the timeline. 'unspecified' is the default when a
+ * parent doesn't pick one (kept out of the summary). */
+export const FEED_KINDS = ['bottle', 'breast', 'solid'] as const;
+export type FeedKind = (typeof FEED_KINDS)[number];
+
+/** How far in the future a logged time may be (small clock-skew tolerance) and
+ * how far back it may reach. A quick-log is a recent household event, so a year
+ * back is generous while still rejecting an absurd / mistyped date. */
+export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+export const MAX_BACKDATE_MS = 365 * 24 * 60 * 60 * 1000;
+
+/** An optional logged time: an ISO/datetime-local string, validated to a real
+ * date. Range bounds are checked at the action boundary against the request
+ * clock (validateOccurredAt), since "now" is only authoritative there. */
+const occurredAtField = z.string().trim().min(1).datetime({ offset: true }).optional();
+
 export const feedSchema = z.object({
   kind: z.literal(FEED_EPISODE),
   childId: z.string().uuid(),
   amountMl: z.coerce.number().positive().max(2000),
+  feedKind: z.enum(FEED_KINDS).optional(),
   note: z.string().trim().max(280).optional(),
+  occurredAt: occurredAtField,
 });
 
 export const napSchema = z.object({
@@ -24,12 +42,15 @@ export const napSchema = z.object({
   childId: z.string().uuid(),
   durationMin: z.coerce.number().positive().max(1440),
   note: z.string().trim().max(280).optional(),
+  occurredAt: occurredAtField,
 });
 
 export const milestoneSchema = z.object({
   kind: z.literal(MILESTONE_EPISODE),
   childId: z.string().uuid(),
   milestone: z.string().trim().min(1).max(280),
+  note: z.string().trim().max(280).optional(),
+  occurredAt: occurredAtField,
 });
 
 export const quickLogSchema = z.discriminatedUnion('kind', [
@@ -39,6 +60,31 @@ export const quickLogSchema = z.discriminatedUnion('kind', [
 ]);
 
 export type QuickLogInput = z.infer<typeof quickLogSchema>;
+
+/**
+ * Resolves and bounds-checks an optional logged time against the request clock.
+ * Returns the chosen Date (defaulting to `now` when omitted), or an error string
+ * when the time is unparseable, in the future beyond a small skew, or absurdly
+ * old. Lives here so client and server agree on the rule.
+ */
+export function resolveOccurredAt(
+  occurredAt: string | undefined,
+  now: Date,
+): { ok: true; date: Date } | { ok: false; error: string } {
+  if (occurredAt === undefined) return { ok: true, date: now };
+  const date = new Date(occurredAt);
+  if (Number.isNaN(date.getTime())) {
+    return { ok: false, error: 'enter a real date and time' };
+  }
+  const delta = date.getTime() - now.getTime();
+  if (delta > MAX_FUTURE_SKEW_MS) {
+    return { ok: false, error: 'that time is in the future — pick when it happened' };
+  }
+  if (-delta > MAX_BACKDATE_MS) {
+    return { ok: false, error: 'that time is too far in the past' };
+  }
+  return { ok: true, date };
+}
 
 export const bookingSchema = z.object({
   childId: z.string().uuid().optional(),

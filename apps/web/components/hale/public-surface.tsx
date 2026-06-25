@@ -1,4 +1,5 @@
 import { Heart } from 'lucide-react';
+import { RegisterLink } from '~/components/hale/register-link';
 import { Cloud, Hill, SeaTurtle, Sun } from '~/components/illos';
 import type { PublicActivity } from '~/lib/village/public';
 import { endorsementLabel } from '~/lib/village/social-proof';
@@ -78,9 +79,11 @@ export function PublicHero({
 export function PublicActivityCard({
   activity,
   index,
+  area = null,
 }: {
   activity: PublicActivity;
   index?: number;
+  area?: string | null;
 }) {
   return (
     <article className="panel bg-raised flex flex-col gap-4">
@@ -103,11 +106,7 @@ export function PublicActivityCard({
       ) : null}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-1">
         <SocialProofBadge count={activity.endorsementCount} />
-        {activity.sourceUrl ? (
-          <a href={activity.sourceUrl} target="_blank" rel="noreferrer" className="btn-ghost">
-            see the listing &rarr;
-          </a>
-        ) : null}
+        <RegisterLink sourceUrl={activity.sourceUrl} title={activity.title} area={area} />
       </div>
     </article>
   );

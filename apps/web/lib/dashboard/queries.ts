@@ -115,6 +115,22 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
   }, EMPTY_FAMILY_BASICS);
 }
 
+/**
+ * The family's display name, for the sidebar account chip's second line (Hale's
+ * two-parent identity). Same empty-state degradation as the other reads: no DB or
+ * no resolved family → null, and the chip falls back to a neutral label.
+ */
+export function loadFamilyName(): Promise<string | null> {
+  return readForFamily(async (database, familyId) => {
+    const [family] = await database
+      .select({ displayName: schema.families.displayName })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+    return family?.displayName ?? null;
+  }, null);
+}
+
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
     // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
