@@ -5,17 +5,16 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LogIn,
-  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   X,
   type Home as HomeIcon,
 } from 'lucide-react';
 import { Icon } from '~/components/ui/icon';
+import { AccountMenu } from '~/components/hale/account-menu';
 import { useShell } from '~/components/hale/app-shell';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { HISTORY_NAV, PRIMARY_NAV, SETTINGS_NAV } from '~/components/hale/nav';
-import { signOutAction } from '~/lib/auth-actions';
+import { PRIMARY_NAV } from '~/components/hale/nav';
 
 function NavLink({
   href,
@@ -51,12 +50,20 @@ function NavLink({
 export function Sidebar({
   authControls = false,
   signedIn = false,
+  parentName = null,
+  familyName = null,
 }: {
   authControls?: boolean;
   signedIn?: boolean;
+  parentName?: string | null;
+  familyName?: string | null;
 }) {
   const pathname = usePathname();
   const { collapsed, toggleCollapsed, closeDrawer } = useShell();
+
+  // The account chip stands in for a real identity: a live session, or the
+  // dev-preview family (auth off). The signed-out-with-auth case shows sign-in.
+  const showAccount = signedIn || !authControls;
 
   return (
     <aside className="sidebar">
@@ -103,54 +110,31 @@ export function Sidebar({
         ))}
       </nav>
 
-      {/* The user area: History (the audit trail) and Settings (configuration)
-       * sit quietly at the foot, near sign-out — not as primary stops. Settings
-       * is filed here by the user, the modern-app pattern, never a top-nav peer. */}
+      {/* The account area: an identity chip (parent + family) whose menu holds the
+       * destinations that aren't daily stops — Settings, History, Appearance — and
+       * Sign out, an account action, below a divider. The signed-out-with-auth case
+       * shows a plain sign-in instead. */}
       <div className="sidebar-foot">
         <div className="rule" />
-        <NavLink
-          href={HISTORY_NAV.href}
-          label={HISTORY_NAV.label}
-          icon={HISTORY_NAV.icon}
-          active={
-            pathname === HISTORY_NAV.href ||
-            Boolean(pathname?.startsWith(`${HISTORY_NAV.href}/`))
-          }
-          onNavigate={closeDrawer}
-        />
-        <NavLink
-          href={SETTINGS_NAV.href}
-          label={SETTINGS_NAV.label}
-          icon={SETTINGS_NAV.icon}
-          active={
-            pathname === SETTINGS_NAV.href ||
-            Boolean(pathname?.startsWith(`${SETTINGS_NAV.href}/`))
-          }
-          onNavigate={closeDrawer}
-        />
-
-        <div className="sidebar-foot-controls">
-          {authControls ? (
-            signedIn ? (
-              <form action={signOutAction}>
-                <button type="submit" className="btn-ghost auth-control" title="sign out">
-                  <Icon as={LogOut} size={18} className="auth-control-icon" />
-                  <span className="nav-label">sign out</span>
-                </button>
-              </form>
-            ) : (
-              <Link
-                href="/sign-in"
-                className="btn-primary auth-control"
-                onClick={closeDrawer}
-                title="sign in"
-              >
-                <Icon as={LogIn} size={18} className="auth-control-icon" />
-                <span className="nav-label">sign in</span>
-              </Link>
-            )
-          ) : null}
-        </div>
+        {showAccount ? (
+          <AccountMenu
+            parentName={parentName}
+            familyName={familyName}
+            canSignOut={authControls && signedIn}
+          />
+        ) : (
+          <div className="sidebar-foot-controls">
+            <Link
+              href="/sign-in"
+              className="btn-primary auth-control"
+              onClick={closeDrawer}
+              title="sign in"
+            >
+              <Icon as={LogIn} size={18} className="auth-control-icon" />
+              <span className="nav-label">sign in</span>
+            </Link>
+          </div>
+        )}
       </div>
     </aside>
   );

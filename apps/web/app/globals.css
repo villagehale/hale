@@ -474,6 +474,132 @@ strong { font-weight: 700; }
   flex-wrap: wrap;
 }
 
+/* ── Account chip + menu ────────────────────────────────────────────────── *
+ * The signed-in parent and their family identity at the foot of the rail; the
+ * chip is the trigger, the popover opens upward above it (the foot anchors the
+ * bottom of the column). */
+.account-menu { position: relative; }
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--color-spruce);
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+  transition: background 220ms var(--ease-breathe);
+}
+
+.account-chip:hover { background: var(--color-linen); }
+
+.account-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-apricot-deep);
+}
+
+.account-chip-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.account-chip-name {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--color-spruce);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-chip-family {
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-chip-caret { color: var(--color-faded-sage); flex-shrink: 0; }
+
+.account-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.5rem);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem;
+  border-radius: var(--r-md);
+  background: var(--color-raised);
+  box-shadow: 0 12px 32px rgb(1 32 79 / 0.18);
+}
+
+.account-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.account-pop-item:hover { color: var(--color-spruce); background: var(--color-oat); }
+
+.account-pop-item:focus-visible {
+  outline: none;
+  color: var(--color-spruce);
+  box-shadow: 0 0 0 3px var(--color-apricot-deep);
+}
+
+.account-pop-signout { color: var(--color-berry); }
+.account-pop-signout:hover { color: var(--color-berry); background: var(--color-berry-tint); }
+
+.account-pop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.account-pop-row-label {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-slate-green);
+}
+
+.account-pop-divider {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: var(--color-rule);
+}
+
 /* The sign-in/out glyph is the collapsed-rail fallback only; the expanded
  * sidebar and the mobile drawer show the text label instead. */
 .auth-control-icon { display: none; }
@@ -516,6 +642,21 @@ strong { font-weight: 700; }
   [data-shell-collapsed="1"] .editorial-layout .nav-item .nav-folio { width: auto; }
   [data-shell-collapsed="1"] .editorial-layout .sidebar-foot-controls { justify-content: center; }
   [data-shell-collapsed="1"] .editorial-layout .nav-tip { display: block; }
+  /* Collapsed: the chip folds to its avatar; identity text + caret hide, and the
+   * popover widens past the rail so its items stay readable when opened. */
+  [data-shell-collapsed="1"] .editorial-layout .account-chip {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  [data-shell-collapsed="1"] .editorial-layout .account-chip-identity,
+  [data-shell-collapsed="1"] .editorial-layout .account-chip-caret {
+    display: none;
+  }
+  [data-shell-collapsed="1"] .editorial-layout .account-pop {
+    left: 0;
+    right: auto;
+    width: 14rem;
+  }
 }
 
 /* ── Off-canvas drawer (below the desktop breakpoint) ──────────────────── */

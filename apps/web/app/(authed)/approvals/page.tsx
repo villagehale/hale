@@ -1,3 +1,4 @@
+import { ApprovalsHeader } from '~/components/hale/approvals-header';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { PageCorner } from '~/components/hale/page-corner';
@@ -20,33 +21,11 @@ export default async function ApprovalsPage() {
 
   return (
     <div>
-      <PageCorner folio="approvals" section="awaiting you" />
+      <PageCorner folio="02" section="awaiting you" />
 
-      <header className="rise rise-1 mb-16 lg:mb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">approvals</span>
-            <p className="meta mt-2">Hale drafts — you decide</p>
-          </div>
-          <div className="lg:col-span-9">
-            <h1 className="font-display">
-              waiting for your <span className="text-apricot-deep">yes</span>.
-            </h1>
-          </div>
-        </div>
-      </header>
+      <ApprovalsHeader pendingCount={approvals.length} />
 
-      {approvals.length === 0 ? (
-        <section className="rise rise-4 panel-oat px-6 py-12 lg:py-16 text-center">
-          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
-            nothing waiting on you.
-          </p>
-          <p className="meta mt-4 text-slate-green">
-            when a signal comes in, Hale drafts a response and parks it here for
-            your approval — it never acts on its own.
-          </p>
-        </section>
-      ) : (
+      {approvals.length > 0 ? (
         <ul className="rise rise-2 border-t border-rule">
           {approvals.map((approval) => (
             <li
@@ -80,7 +59,7 @@ export default async function ApprovalsPage() {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </div>
   );
 }
