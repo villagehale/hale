@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { type IngestedEventPayload, ingestedEventPayloadSchema } from '@hale/tools-contracts';
+import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 
 /**
  * Minimal queue surface the accept flow needs — just `send`. Injected so the
@@ -10,7 +11,11 @@ import { type IngestedEventPayload, ingestedEventPayloadSchema } from '@hale/too
  * it never executes directly.
  */
 export interface AcceptQueue {
-  send(name: string, data: IngestedEventPayload): Promise<string | null>;
+  send(
+    name: string,
+    data: IngestedEventPayload,
+    options?: { expireInSeconds: number },
+  ): Promise<string | null>;
 }
 
 export type AcceptResult =
@@ -75,6 +80,9 @@ export async function acceptVillageCandidate(
     received_at: new Date().toISOString(),
   });
 
-  await queue.send('events.ingested', payload);
+  // expireInSeconds (recipe #6): a killed pipeline re-queues in ~3min, not the
+  // 15min default — set per-job here so it applies regardless of the queue row's
+  // stored default.
+  await queue.send('events.ingested', payload, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
   return { status: 202, payload };
 }

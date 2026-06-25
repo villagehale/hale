@@ -4,13 +4,18 @@ import {
   type ApprovedActionPayload,
   approvedActionPayloadSchema,
 } from '@hale/tools-contracts';
+import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 
 /**
  * Minimal queue surface the approve flow needs — just `send`. Injected so the
  * precondition + payload-build logic is unit-testable without a real pg-boss.
  */
 export interface ApproveQueue {
-  send(name: string, data: ApprovedActionPayload): Promise<string | null>;
+  send(
+    name: string,
+    data: ApprovedActionPayload,
+    options?: { expireInSeconds: number },
+  ): Promise<string | null>;
 }
 
 export type ApproveResult =
@@ -63,6 +68,8 @@ export async function approveDraftedAction(
     approved_at: new Date().toISOString(),
   });
 
-  await queue.send('actions.approved', payload);
+  // expireInSeconds (recipe #6): a killed execution re-queues in ~3min, not the
+  // 15min default — set per-job so it applies regardless of the queue default.
+  await queue.send('actions.approved', payload, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
   return { status: 202, payload };
 }

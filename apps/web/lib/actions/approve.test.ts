@@ -43,6 +43,7 @@ describe('approveDraftedAction', () => {
         approved_by: APPROVER,
         approved_at: expect.any(String),
       }),
+      { expireInSeconds: 180 },
     );
     const payload = queue.send.mock.calls[0]?.[1];
     expect(payload).toBeDefined();
