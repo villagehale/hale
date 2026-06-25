@@ -5,6 +5,7 @@ import { AppShell } from '~/components/hale/app-shell';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
 import { FamilyHeader } from '~/components/hale/family-header';
+import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
 import { loadFamilyName } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
@@ -48,6 +49,7 @@ export default async function AuthedLayout({ children }: { children: React.React
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
+      {session?.user?.id ? <IdentifyUser userId={session.user.id} /> : null}
       <AppShell
         sidebar={
           <Sidebar

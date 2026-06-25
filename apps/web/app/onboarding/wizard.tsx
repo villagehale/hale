@@ -16,6 +16,7 @@ import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { OnboardingPlanPicker } from '~/components/hale/onboarding-plan-picker';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { LocationInput } from '~/lib/family/location-input';
 import { validateChild } from '~/lib/onboarding/children';
 import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
@@ -77,6 +78,7 @@ export function OnboardingWizard({
   sessionName: string | null;
 }) {
   const router = useRouter();
+  const capture = useAnalytics();
 
   // Returning from the OAuth round-trip with ?step=setup AND a real session lands
   // straight in Phase C; otherwise intake starts at Phase A.
@@ -203,6 +205,7 @@ export function OnboardingWizard({
       intents,
     });
     if (result.status === 'completed') {
+      capture('onboarding_completed', { kidCount: setupChildren.length, planTier });
       clearIntakeDraft();
       router.push(inviteCoParent ? '/family' : '/home');
       return;
@@ -410,7 +413,10 @@ export function OnboardingWizard({
                         type="submit"
                         className="btn-primary ml-auto"
                         disabled={!tosAccepted}
-                        onClick={() => persistDraft({})}
+                        onClick={() => {
+                          capture('sign_up');
+                          persistDraft({});
+                        }}
                       >
                         continue with Google →
                       </button>

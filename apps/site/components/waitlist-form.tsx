@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 type Status = 'idle' | 'submitting' | 'done' | 'error';
 
@@ -8,6 +9,7 @@ export function WaitlistForm() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
+  const capture = useAnalytics();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -21,6 +23,7 @@ export function WaitlistForm() {
     });
 
     if (res.ok) {
+      capture('waitlist_signup');
       setStatus('done');
       return;
     }

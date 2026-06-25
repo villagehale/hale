@@ -14,10 +14,10 @@ export type PlanTier = 'free' | 'plus' | 'family';
 export type Entitlement = 'autonomy_l3' | 'commerce' | 'portal_automation';
 
 /**
- * What each tier grants, ratified pricing (state.md, user gate 2026-06-12):
+ * What each tier grants (displayed names + prices live in plan-display.ts):
  *   free   — observe/draft only; no autonomous execution.
- *   plus   — L3 autonomy ($24/mo CAD).
- *   family — L3 + commerce action types + portal automation ($49/mo CAD).
+ *   plus   — L3 autonomy.
+ *   family — L3 + commerce action types + portal automation.
  *
  * `satisfies Record<PlanTier, ...>` is load-bearing (mirrors REQUIRED_CHECKS in
  * @hale/tools-contracts): adding a PlanTier without an entry is a COMPILE error,

@@ -39,9 +39,22 @@ describe('Privacy Policy page', () => {
   });
 
   it('names every disclosed sub-processor', () => {
-    for (const processor of ['Anthropic', 'Google Maps', 'Supabase', 'Vercel', 'Langfuse', 'Resend']) {
+    for (const processor of [
+      'Anthropic',
+      'Google Maps',
+      'Supabase',
+      'Vercel',
+      'Langfuse',
+      'Resend',
+      'PostHog',
+    ]) {
       expect(privacyHtml).toContain(processor);
     }
+  });
+
+  it('discloses PostHog as coarse, no-child-data analytics and Vercel as cookieless', () => {
+    expect(privacyHtml).toContain('no child data');
+    expect(privacyHtml).toContain('cookieless');
   });
 
   it('states the Canadian data residency and the regulators to complain to', () => {
