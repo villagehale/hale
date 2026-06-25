@@ -46,8 +46,9 @@ export default function PrivacyPage() {
           Hale is a passive, event-driven household assistant for families. You (a parent or legal
           guardian) create an account, add your children, and optionally connect tools you already
           use. Hale watches for things that matter, drafts helpful suggestions, and — only with your
-          approval — helps carry them out. For privacy questions, we are the organization
-          responsible for your data; see <a href="#contact" className="link">How to reach us</a>.
+          approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a
+          company incorporated in Ontario, Canada, which is the organization responsible for your
+          family&rsquo;s data; see <a href="#contact" className="link">How to reach us</a>.
         </p>
       </LegalSectionBlock>
 
