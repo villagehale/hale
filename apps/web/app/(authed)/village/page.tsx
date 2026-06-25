@@ -10,7 +10,7 @@ export default async function VillagePage() {
 
   return (
     <div>
-      <PageCorner folio="09" section="village · near you" />
+      <PageCorner section="village · near you" />
 
       {/* ── Headline ────────────────────────────────────────────────────── */}
       <header className="rise rise-1 mb-16 lg:mb-24">

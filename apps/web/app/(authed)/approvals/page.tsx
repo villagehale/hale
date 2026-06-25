@@ -22,7 +22,7 @@ export default async function ApprovalsPage() {
 
   return (
     <div>
-      <PageCorner folio="02" section="awaiting you" />
+      <PageCorner section="approvals · awaiting you" />
 
       <ApprovalsHeader pendingCount={approvals.length} />
 

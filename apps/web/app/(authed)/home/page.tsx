@@ -75,16 +75,33 @@ export default async function HomePage() {
         </span>
       </div>
 
+      {/* ── Home identity — the warm front door (the runninghead is gone on
+       * desktop, so home carries its own header). One apricot accent on the
+       * verb Hale performs for you; the feed's own header sits below. ─────── */}
+      <header className="rise rise-1 mb-12 lg:mb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">your home</span>
+            <p className="meta mt-2">everything your family needs, in one calm place</p>
+          </div>
+          <div className="lg:col-span-9">
+            <h1 className="font-display">
+              your village, <span className="text-apricot-deep">gathered</span> for you.
+            </h1>
+          </div>
+        </div>
+      </header>
+
       {/* ── The village — the agent-ranked, trusted feed (the hero) ──────── */}
       {/* Streamed: the rank-recommendations agent must not block the shell. */}
-      <section className="rise rise-1 mb-16 lg:mb-20">
+      <section className="rise rise-2 mb-16 lg:mb-20">
         <Suspense fallback={<VillageFeedSkeleton />}>
           <HomeVillageFeed />
         </Suspense>
       </section>
 
       {/* ── Ask Hale — the concierge (present, not the hero) ─────────────── */}
-      <section className="rise rise-2 mb-16 lg:mb-20">
+      <section className="rise rise-3 mb-16 lg:mb-20">
         <ConciergeAsk canAsk={canAsk} seed={askSeed} />
       </section>
 
@@ -94,7 +111,7 @@ export default async function HomePage() {
           const milestone = milestoneInWindow(child);
           const nextHealth = child.nextHealth[0] ?? null;
           const whatsNow = child.whatsNow[0] ?? null;
-          const delay = `rise-${Math.min(idx + 3, 7)}`;
+          const delay = `rise-${Math.min(idx + 4, 7)}`;
           return (
             <article key={child.id} className={`rise ${delay}`}>
               <div className="flex items-center gap-3 border-b border-rule pb-4 mb-6">

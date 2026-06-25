@@ -4,7 +4,6 @@ import { useId, useMemo, useState } from 'react';
 import { List, Lock, Map as MapIcon, Search } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
-import { Folio } from '~/components/hale/folio';
 import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { VillageMap } from '~/components/hale/village-map';
@@ -117,8 +116,7 @@ export function VillageSearch({
               >
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
                   <div className="md:col-span-2">
-                    <Folio index={idx + 1} />
-                    <p className="mt-3 eyebrow text-spruce">{candidate.kind}</p>
+                    <p className="eyebrow text-spruce">{candidate.kind}</p>
                   </div>
 
                   {candidate.teenAttributed ? (

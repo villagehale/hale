@@ -1,7 +1,6 @@
 import { Lock, Sparkles } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
-import { Folio } from '~/components/hale/folio';
 import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
@@ -38,7 +37,6 @@ export function VillageFeed({
         <VillageFeedCard
           key={candidate.id}
           candidate={candidate}
-          index={idx + 1}
           delay={`rise-${Math.min(idx + 2, 7)}`}
           area={area}
         />
@@ -49,12 +47,10 @@ export function VillageFeed({
 
 function VillageFeedCard({
   candidate,
-  index,
   delay,
   area,
 }: {
   candidate: VillageCandidateView;
-  index: number;
   delay: string;
   area: string | null;
 }) {
@@ -72,10 +68,7 @@ function VillageFeedCard({
 
   return (
     <article className={`rise ${delay} panel bg-raised flex flex-col gap-4`}>
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="eyebrow text-spruce">{candidate.kind}</p>
-        <Folio index={index} />
-      </div>
+      <p className="eyebrow text-spruce">{candidate.kind}</p>
 
       <h3 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight text-spruce">
         {candidate.title}
