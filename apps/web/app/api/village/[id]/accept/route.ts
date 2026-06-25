@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { getQueue } from '~/lib/queue';
 import { authConfigured } from '~/lib/auth-config';
 import { resolveFamilyForUser } from '~/lib/family';
+import { kickDrain } from '~/lib/cron/kick-drain';
 import { acceptVillageCandidate } from '~/lib/village/accept';
 
 interface RouteContext {
@@ -26,7 +27,7 @@ const idSchema = z.string().uuid();
  * configured but not signed in → 401; signed in but no family → 403. Only a
  * signed-in parent whose family owns the candidate gets it enqueued (202).
  */
-export async function POST(_req: Request, context: RouteContext) {
+export async function POST(req: Request, context: RouteContext) {
   const { id } = await context.params;
   const idParse = idSchema.safeParse(id);
   if (!idParse.success) {
@@ -59,6 +60,10 @@ export async function POST(_req: Request, context: RouteContext) {
   });
 
   if (result.status === 202) {
+    // Kick the drain so the accepted item flows through the pipeline now rather
+    // than waiting up to 60s for the next cron tick (the cron is the safety net).
+    const origin = process.env.APP_URL ?? new URL(req.url).origin;
+    after(() => kickDrain(origin));
     return NextResponse.json({ status: 'accepted', payload: result.payload }, { status: 202 });
   }
   return NextResponse.json({ error: result.error }, { status: result.status });
