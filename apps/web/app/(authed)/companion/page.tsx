@@ -4,8 +4,10 @@ import { PageCorner } from '~/components/hale/page-corner';
 import { Folio } from '~/components/hale/folio';
 import { QuickLog } from '~/components/hale/quick-log';
 import { RecentLogs } from '~/components/hale/recent-logs';
+import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
 import { loadRecentLogs } from '~/lib/companion/recent-logs';
+import { loadFamilyBasics } from '~/lib/dashboard/queries';
 
 const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
   newborn: 'newborn',
@@ -35,7 +37,11 @@ function duePhrase(dueInWeeks: number): string {
 }
 
 export default async function CompanionPage() {
-  const [children, recentLogs] = await Promise.all([loadCompanion(), loadRecentLogs()]);
+  const [children, recentLogs, basics] = await Promise.all([
+    loadCompanion(),
+    loadRecentLogs(),
+    loadFamilyBasics(),
+  ]);
 
   return (
     <div>
@@ -207,6 +213,16 @@ export default async function CompanionPage() {
           })}
         </section>
       )}
+
+      {/* ── Booking — Hale can take this off your hands ─────────────────── */}
+      {children.length > 0 ? (
+        <div className="rise rise-7 mt-12 lg:mt-16">
+          <UpgradePrompt planTier={basics.planTier} entitlement="portal_automation">
+            Tired of booking these yourself? On Family, Hale can book a clinic appointment for you —
+            you just confirm.
+          </UpgradePrompt>
+        </div>
+      ) : null}
 
       {/* ── Recent logs + quick log ─────────────────────────────────────── */}
       {children.length > 0 ? (

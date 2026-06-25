@@ -3,7 +3,8 @@ import { ApproveButton } from '~/components/hale/approve-button';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ToneLabel } from '~/components/hale/tone';
-import { loadPendingApprovals } from '~/lib/dashboard/queries';
+import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
+import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
 
 /**
  * The Approvals surface — the parent-facing queue of drafts the inbound pipeline
@@ -17,7 +18,7 @@ import { loadPendingApprovals } from '~/lib/dashboard/queries';
 const NEEDS_YOU_VERDICTS = new Set(['flagged', 'rejected']);
 
 export default async function ApprovalsPage() {
-  const approvals = await loadPendingApprovals();
+  const [approvals, basics] = await Promise.all([loadPendingApprovals(), loadFamilyBasics()]);
 
   return (
     <div>
@@ -59,6 +60,15 @@ export default async function ApprovalsPage() {
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {approvals.length > 0 ? (
+        <div className="rise rise-3 mt-7">
+          <UpgradePrompt planTier={basics.planTier} entitlement="autonomy_l3">
+            Want Hale to handle the routine ones on its own? Plus lets it act for you, once
+            you&rsquo;ve approved the kind.
+          </UpgradePrompt>
+        </div>
       ) : null}
     </div>
   );
