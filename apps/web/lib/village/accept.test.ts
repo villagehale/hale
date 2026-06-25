@@ -70,6 +70,7 @@ describe('acceptVillageCandidate', () => {
           coverage_note: 'serves your area',
         }),
       }),
+      { expireInSeconds: 180 },
     );
     const payload = queue.send.mock.calls[0]?.[1];
     expect(Number.isNaN(Date.parse(payload?.received_at ?? ''))).toBe(false);

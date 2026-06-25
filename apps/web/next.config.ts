@@ -9,7 +9,7 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
-  transpilePackages: ['@hale/db', '@hale/types', '@hale/tools-contracts', '@hale/agent'],
+  transpilePackages: ['@hale/db', '@hale/types', '@hale/tools-contracts', '@hale/agent', '@hale/worker'],
   serverExternalPackages: ['postgres', 'pg-boss'],
   // The coach (and any web-side agent) reads the worker's single-source prompt +
   // model files off disk at runtime, plus the agent harness reads its skill files

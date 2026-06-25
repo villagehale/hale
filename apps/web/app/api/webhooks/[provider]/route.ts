@@ -1,5 +1,7 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest, after } from 'next/server';
 import { getQueue } from '~/lib/queue';
+import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
+import { kickDrain } from '~/lib/cron/kick-drain';
 import { getAdapter } from '~/lib/webhooks/registry';
 import { resolveFamilyFromWebhook } from '~/lib/webhooks/resolve-family';
 import { verifyStripeBillingSignature } from '~/lib/webhooks/stripe-billing';
@@ -80,7 +82,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const event = adapter.toIngestedEvent(familyId, payload as Record<string, unknown>);
 
   const queue = await getQueue();
-  await queue.send('events.ingested', event);
+  await queue.send('events.ingested', event, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
+
+  // Kick the drain so an inbound signal flows through the pipeline now rather
+  // than waiting up to 60s for the next cron tick (the cron is the safety net).
+  const origin = process.env.APP_URL ?? new URL(req.url).origin;
+  after(() => kickDrain(origin));
 
   return NextResponse.json({ status: 'queued' }, { status: 200 });
 }
