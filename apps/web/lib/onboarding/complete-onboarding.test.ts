@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { completeOnboarding } from './complete-onboarding.js';
+import type { WelcomeEmailSender } from './welcome-email';
 
 // completeOnboarding reads the Auth.js session + the db at request time and reuses
 // onboarding's audited provisioning path. We stub those edges so each test
@@ -45,8 +46,10 @@ function builder() {
   return chain;
 }
 
-/** Fake tx that records each update/insert table + payload. */
-function makeDb() {
+/** Fake tx that records each update/insert table + payload. The top-level db also
+ * answers the welcome path's prior-send select (email_sends) and captures its
+ * ledger insert — `priorWelcome` makes the prior-send lookup non-empty. */
+function makeDb(opts: { priorWelcome?: boolean } = {}) {
   const updates: Array<{ table: unknown; values: unknown }> = [];
   const inserts: Array<{ table: unknown; values: unknown }> = [];
 
@@ -71,6 +74,18 @@ function makeDb() {
 
   const database = {
     transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
+    // The welcome prior-send lookup: select(email_sends).from().where().limit().
+    select: vi.fn(() => ({
+      from: () => ({
+        where: () => ({ limit: async () => (opts.priorWelcome ? [{ id: 'prev' }] : []) }),
+      }),
+    })),
+    // The welcome ledger write: insert(email_sends).values().
+    insert: vi.fn((table: unknown) => ({
+      values: async (values: unknown) => {
+        inserts.push({ table, values });
+      },
+    })),
   };
 
   return {
@@ -411,5 +426,90 @@ describe('completeOnboarding', () => {
 
     expect(result).toEqual({ status: 'preview' });
     expect(provisionAndWriteChildren).not.toHaveBeenCalled();
+  });
+});
+
+// The welcome email fires AFTER the onboarding tx commits, keyed to the user via
+// the email_sends ledger so it sends exactly once. A fake sender stands in for
+// Resend; UNSUBSCRIBE_SECRET is set so the CASL link can be minted.
+describe('completeOnboarding — welcome email', () => {
+  function fakeWelcomeSender(accepted = true): {
+    deps: { email: WelcomeEmailSender };
+    send: ReturnType<typeof vi.fn>;
+  } {
+    const send = vi.fn(async () => ({
+      accepted,
+      providerMessageId: accepted ? 'resend-welcome-1' : null,
+    }));
+    return { deps: { email: { sendWelcome: send } }, send };
+  }
+
+  beforeEach(() => {
+    configureAuth(true);
+    authMock.mockResolvedValue({
+      user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery Q' },
+    });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+    vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsub-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+  });
+
+  it('sends the welcome once and records the welcome ledger row after completion', async () => {
+    const s = makeDb({ priorWelcome: false });
+    fakeDbHandle = s.database;
+    const { deps, send } = fakeWelcomeSender();
+
+    const result = await completeOnboarding(
+      { children: PHASE_C_CHILDREN, planTier: 'plus', tosAccepted: true },
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    // Sent to the session email, personalized with the first name only.
+    expect(send).toHaveBeenCalledTimes(1);
+    const [to, firstName] = send.mock.calls[0] as [string, string];
+    expect(to).toBe('avery@example.com');
+    expect(firstName).toBe('Avery');
+    // The accepted send is recorded as a 'welcome' row (the idempotency anchor).
+    expect(s.insertFor(schema.emailSends)).toMatchObject({
+      userId: USER_ID,
+      emailType: 'welcome',
+      recipient: 'avery@example.com',
+      providerMessageId: 'resend-welcome-1',
+    });
+  });
+
+  it('does NOT re-send when a prior welcome row exists (second completion / login)', async () => {
+    const s = makeDb({ priorWelcome: true });
+    fakeDbHandle = s.database;
+    const { deps, send } = fakeWelcomeSender();
+
+    const result = await completeOnboarding(
+      { children: PHASE_C_CHILDREN, planTier: 'plus', tosAccepted: true },
+      deps,
+    );
+
+    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(send).not.toHaveBeenCalled();
+    expect(s.insertFor(schema.emailSends)).toBeUndefined();
+  });
+
+  it('still completes onboarding when the welcome send throws (failure is swallowed)', async () => {
+    const s = makeDb({ priorWelcome: false });
+    fakeDbHandle = s.database;
+    const send = vi.fn(async () => {
+      throw new Error('resend down');
+    });
+
+    const result = await completeOnboarding(
+      { children: PHASE_C_CHILDREN, planTier: 'plus', tosAccepted: true },
+      { email: { sendWelcome: send } },
+    );
+
+    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(send).toHaveBeenCalledTimes(1);
+    // No ledger row written, so a later attempt can still send.
+    expect(s.insertFor(schema.emailSends)).toBeUndefined();
   });
 });

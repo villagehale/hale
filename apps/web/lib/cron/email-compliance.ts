@@ -12,9 +12,8 @@ import { and, eq } from 'drizzle-orm';
  */
 
 // CASL requires a postal mailing address in every commercial electronic message.
-// TODO(launch): replace with the real registered street address before enabling
-// sends — a province + country is not a compliant mailing address on its own.
-export const BUSINESS_ADDRESS = 'Village Hale Technologies Inc., Ontario, Canada';
+export const BUSINESS_ADDRESS =
+  'Village Hale Technologies Inc., 13394 10 Line, Georgetown, ON L7G 4S8';
 export const SENDER_NAME = 'Hale';
 
 type EmailType = schema.NewEmailSend['emailType'];
@@ -126,7 +125,7 @@ export type UnsubscribeResult =
   | { status: 'unsubscribed'; emailType: EmailType }
   | { status: 'invalid' };
 
-const EMAIL_TYPES: readonly EmailType[] = ['daily_digest'];
+const EMAIL_TYPES: readonly EmailType[] = ['daily_digest', 'welcome'];
 
 function isEmailType(value: string): value is EmailType {
   return (EMAIL_TYPES as readonly string[]).includes(value);
