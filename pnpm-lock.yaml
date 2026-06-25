@@ -20,6 +20,9 @@ importers:
 
   apps/site:
     dependencies:
+      '@hale/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@react-email/components':
         specifier: ^1.0.12
         version: 1.0.12(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
