@@ -1,5 +1,6 @@
 import { Check, Compass, Heart, Send, Users } from 'lucide-react';
 import { HeroScene } from '~/components/hero-scene';
+import { PricingSection } from '~/components/pricing-section';
 import {
   ParentAndHouse,
   Sapling,
@@ -105,27 +106,6 @@ const LADDER = [
     shape: <Tree style={{ height: 96, width: 'auto' }} />,
     title: 'Autonomy, earned',
     body: 'After five clean approvals of one kind of task, Hale may handle that kind on its own. Revoke any time, with one tap.',
-  },
-] as const;
-
-const TIERS = [
-  {
-    name: 'Free',
-    price: 'Always free',
-    line: 'Join the village, see what families near you recommend, and share what you love. Hale finds your kid’s good local week and drafts the rest — every stage, every child.',
-    panel: 'panel-oat',
-  },
-  {
-    name: 'Hale Plus',
-    price: '$24/mo CAD',
-    line: 'Once it has earned your trust, the concierge makes it happen on its own — registers you, holds the date, reorders the gear. The same care, fewer taps.',
-    panel: 'panel-apricot-tint',
-  },
-  {
-    name: 'Hale Family',
-    price: '$49/mo CAD',
-    line: 'Everything in plus, with the portals on autopilot — daycare, pediatric, school, the registration forms — handled before they slip.',
-    panel: 'panel-sky-tint',
   },
 ] as const;
 
@@ -429,36 +409,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── 8 · Three sizes of help (pricing) ───────────────────────────── */}
-      <section className="shell pb-20 lg:pb-28">
-        <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">Three sizes of help</span>
-          <h2 className="mt-3">Join free. Pay only when Hale has earned it.</h2>
-          <p
-            className="mt-5 text-lg"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-          >
-            The village is always free — joining, seeing what families near you
-            recommend, sharing what you love. The paid tiers simply let the
-            concierge do more of the work itself. Every plan covers every stage
-            and every child.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
-          {TIERS.map((tier, i) => (
-            <div
-              key={tier.name}
-              className={`${tier.panel} px-8 py-10 flex flex-col rise rise-${i + 1}`}
-            >
-              <h3>{tier.name}</h3>
-              <p className="mt-2 font-mono text-xl font-semibold accent">{tier.price}</p>
-              <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
-                {tier.line}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PricingSection />
 
       {/* ── 9 · Hale will never — the inverted night section ─────────────── */}
       <section className="night py-24 lg:py-32">
