@@ -442,6 +442,29 @@ strong { font-weight: 700; }
   box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
 }
 
+/* Dismiss (X) for an in-context upgrade invitation — a quiet, 44px tap target. */
+.upgrade-prompt-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.upgrade-prompt-dismiss:hover { background: var(--color-oat); }
+
+.upgrade-prompt-dismiss:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
 /* The collapse toggle is desktop-only; the close (X) is drawer-only. */
 .sidebar-drawer-close { display: none; }
 
