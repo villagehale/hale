@@ -6,13 +6,13 @@ import type { PlanTier } from './entitlements.js';
  * site). This is presentation only: it does NOT gate anything. Entitlement
  * ENFORCEMENT lives in entitlements.ts (PLAN_ENTITLEMENTS) and is unchanged here.
  *
- * Pre-PMF the free tier ("Village") is fully functional and the active default;
+ * Pre-PMF the free tier (Free) is fully functional and the active default;
  * paid tiers are surfaced with soft CTAs (billing isn't wired). Prices are USD.
  * Annual is the better value — `annualPriceUsd / 12` works out to roughly two
  * months free versus paying monthly.
  */
 export interface PlanDisplay {
-  /** Public display name, e.g. "Village". Distinct from the PlanTier enum value. */
+  /** Public display name, e.g. "Free". Distinct from the PlanTier enum value. */
   readonly name: string;
   /** One-line promise of what the tier does, sentence case. */
   readonly tagline: string;
@@ -31,8 +31,8 @@ export interface PlanDisplay {
  */
 export const PLAN_DISPLAY = {
   free: {
-    name: 'Village',
-    tagline: 'The village, free for every family.',
+    name: 'Free',
+    tagline: 'Everything to get started — free for every family.',
     monthlyPriceUsd: 0,
     annualPriceUsd: 0,
     features: [
@@ -45,12 +45,12 @@ export const PLAN_DISPLAY = {
     ],
   },
   plus: {
-    name: 'Hale helps',
-    tagline: 'Hale acts on your approval.',
+    name: 'Plus',
+    tagline: 'More automation and booking, on your approval.',
     monthlyPriceUsd: 9,
     annualPriceUsd: 79,
     features: [
-      'Everything in Village',
+      'Everything in Free',
       'Hale acts on the things you approve',
       'Reminders + booking, handled',
       'Calendar + integrations connected',
@@ -58,12 +58,12 @@ export const PLAN_DISPLAY = {
     ],
   },
   family: {
-    name: 'Hale handles it',
-    tagline: 'Hale handles it, end to end.',
+    name: 'Family',
+    tagline: 'The full experience for your whole household.',
     monthlyPriceUsd: 19,
     annualPriceUsd: 159,
     features: [
-      'Everything in Hale helps',
+      'Everything in Plus',
       'Full autonomy, earned task by task',
       'Commerce + booking, done for you',
       'Co-parent shared across the household',
