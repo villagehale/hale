@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { MapPin } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Icon } from '~/components/ui/icon';
 import { loadMapsLibrary } from '~/lib/onboarding/load-places';
 import { type LatLng, buildVillageMapModel } from '~/lib/village/map-model';
@@ -35,6 +35,33 @@ interface MapInstance {
 }
 
 const FALLBACK_ZOOM = 12;
+
+// The map recolored to the Hale palette — warm linen base, sage parks/water,
+// Prussian-blue labels — so it reads as part of the product, not raw Google. The
+// classic `styles` array only applies on a raster map (no Map ID); this map
+// renders classic markers without a Map ID, so adding one would silently disable
+// this styling.
+const HALE_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#f3ece0' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#3d4f49' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f6f1e7' }] },
+  { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#fbf7ef' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e6dcc8' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#ecd9bd' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#dcc59c' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#d7e0cd' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#5b6b54' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#bcd0cf' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a6b6b' }] },
+  {
+    featureType: 'administrative',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#cbb89a' }],
+  },
+];
 
 export function VillageMap({
   candidates,
@@ -75,6 +102,7 @@ export function VillageMap({
         disableDefaultUI: true,
         zoomControl: true,
         clickableIcons: false,
+        styles: HALE_MAP_STYLE,
       }) as unknown as MapInstance;
       mapRef.current = map;
 
@@ -115,7 +143,11 @@ export function VillageMap({
   return (
     <div className="space-y-5">
       <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] overflow-hidden rounded-[var(--r-xl)] border border-rule">
-        <div ref={containerRef} className="absolute inset-0" aria-label="map of nearby activities" />
+        <div
+          ref={containerRef}
+          className="absolute inset-0"
+          aria-label="map of nearby activities"
+        />
         {status !== 'ready' ? (
           <div className="absolute inset-0 flex items-center justify-center panel-oat text-center px-6">
             <p className="meta text-slate-green">

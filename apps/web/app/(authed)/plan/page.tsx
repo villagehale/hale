@@ -10,9 +10,10 @@ import { loadVillage } from '~/lib/village/queries';
 export default async function PlanPage() {
   const [village, children] = await Promise.all([loadVillage(), loadCompanion()]);
   const { routine } = village;
+  const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
-  const hasPlan = hasRoutine || childItems.length > 0;
+  const hasPlan = hasRoutine || childItems.length > 0 || addedActivities.length > 0;
 
   return (
     <div>
@@ -40,6 +41,30 @@ export default async function PlanPage() {
           </div>
         </div>
       </header>
+
+      {/* ── Added to your week ──────────────────────────────────────────── */}
+      {addedActivities.length > 0 ? (
+        <section className="rise rise-2 mb-16 lg:mb-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
+            <div className="lg:col-span-3">
+              <span className="eyebrow text-spruce">added to your week</span>
+              <p className="meta mt-2">activities you&rsquo;ve chosen</p>
+            </div>
+            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {addedActivities.map((candidate) => (
+                <Card key={candidate.id} href="/village">
+                  <span className="eyebrow text-spruce">{candidate.kind}</span>
+                  <p className="text-lg text-spruce leading-relaxed mt-3">{candidate.title}</p>
+                  <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
+                    open in village
+                    <Icon as={ArrowRight} size={14} />
+                  </span>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* ── This week's routine ─────────────────────────────────────────── */}
       {routine && hasRoutine ? (
@@ -100,7 +125,8 @@ export default async function PlanPage() {
           </p>
           <p className="meta mt-4 text-slate-green">
             once your kids&rsquo; birthdays and your area are on file, this page gathers the week
-            ahead — the routine for your family and what&rsquo;s coming up for each child.
+            ahead — the routine for your family, what&rsquo;s coming up for each child, and the
+            activities you add from your village.
           </p>
         </section>
       ) : null}
