@@ -19,11 +19,15 @@ const RESOLVED = {
       location: { latitude: 43.6777, longitude: -79.3534 },
       displayName: { text: 'Riverdale Library' },
       formattedAddress: '370 Broadview Ave, Toronto, ON',
+      websiteUri: 'https://www.torontopubliclibrary.ca/riverdale',
     },
   ],
 };
 
-function fakeClient(impl: (q: string) => Promise<unknown>): { client: GeocodeClient; calls: string[] } {
+function fakeClient(impl: (q: string) => Promise<unknown>): {
+  client: GeocodeClient;
+  calls: string[];
+} {
   const calls: string[] = [];
   const client: GeocodeClient = {
     searchText: vi.fn(async (q: string) => {
@@ -44,7 +48,7 @@ describe('buildTextQuery', () => {
 });
 
 describe('geocodeVenue', () => {
-  it('stores coords + venue name/address for a resolvable venue', async () => {
+  it('stores coords + venue name/address + the venue website for a resolvable venue', async () => {
     const { client, calls } = fakeClient(async () => RESOLVED);
 
     const result = await geocodeVenue('Riverdale Library kids storytime', AREA_COARSE, client);
@@ -54,9 +58,24 @@ describe('geocodeVenue', () => {
       lng: -79.3534,
       venueName: 'Riverdale Library',
       venueAddress: '370 Broadview Ave, Toronto, ON',
+      website: 'https://www.torontopubliclibrary.ca/riverdale',
     });
     // Only the coarse area reaches Google — no precise location (rule #1).
     expect(calls).toEqual(['Riverdale Library kids storytime M4K']);
+  });
+
+  it('leaves website undefined when the venue has no websiteUri', async () => {
+    const { client } = fakeClient(async () => ({
+      places: [
+        {
+          location: { latitude: 43.6, longitude: -79.4 },
+          displayName: { text: 'A park' },
+          formattedAddress: '1 Park Lane, Toronto, ON',
+        },
+      ],
+    }));
+    const result = await geocodeVenue('a park', AREA_COARSE, client);
+    expect(result?.website).toBeUndefined();
   });
 
   it('leaves coords null for an unresolvable venue (no pin, list-only)', async () => {

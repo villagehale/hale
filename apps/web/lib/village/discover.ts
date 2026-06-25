@@ -247,13 +247,17 @@ export async function discoverForFamily(
         await tx.insert(schema.villageCandidates).values(
           candidates.map((c, i) => {
             const coords = geocoded[i];
+            // The LLM-supplied url always wins; only when it gave none do we adopt
+            // the venue's real website from Places (so the card links to the venue
+            // rather than a Google search). No website → null → search fallback.
+            const sourceUrl = c.sourceUrl?.trim() || coords?.website || null;
             return {
               familyId,
               childId: null,
               title: c.title,
               kind: CANDIDATE_KIND,
               summary: c.description,
-              sourceUrl: c.sourceUrl,
+              sourceUrl,
               source: SOURCE,
               confidence: c.confidence,
               coverageNote: c.coverageNote,

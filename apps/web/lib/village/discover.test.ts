@@ -341,6 +341,77 @@ describe('discoverForFamily', () => {
     expect(geoCalls).toEqual([{ title: 'Toddler swim', area: 'L7G' }]);
   });
 
+  it('fills source_url from the venue website ONLY when the model gave none — never overwriting an LLM url', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      {
+        // No sourceUrl from the model → should adopt the Places website.
+        title: 'Toddler swim',
+        description: 'a class at a municipal pool',
+        confidence: 0.5,
+        coverageNote: 'serves your area',
+      },
+      {
+        // The model supplied a url → it must win over the Places website.
+        title: 'Neighbourhood park',
+        description: 'outdoor play',
+        sourceUrl: 'https://example.org/park',
+        confidence: 0.8,
+        coverageNote: 'public parks exist everywhere',
+      },
+    ]);
+    // Both venues resolve a public website via Places.
+    const geocode: DiscoverDeps['geocode'] = async (title) => ({
+      lat: 43.6,
+      lng: -79.4,
+      venueName: 'Public Venue',
+      venueAddress: '1 Venue Rd',
+      website: `https://places.example/${encodeURIComponent(title)}`,
+    });
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
+
+    const rows = capture.villageCandidates as Record<string, unknown>[];
+    // No LLM url → adopts the Places website.
+    expect(rows[0]?.sourceUrl).toBe('https://places.example/Toddler%20swim');
+    // LLM url present → preserved, NOT overwritten by the Places website.
+    expect(rows[1]?.sourceUrl).toBe('https://example.org/park');
+  });
+
+  it('leaves source_url null when the model gave none and the venue has no website (Google-search fallback)', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      {
+        title: 'Toddler swim',
+        description: 'a class at a municipal pool',
+        confidence: 0.5,
+        coverageNote: 'serves your area',
+      },
+    ]);
+    // Venue resolves coords but Places has no website.
+    const geocode: DiscoverDeps['geocode'] = async () => ({
+      lat: 43.6,
+      lng: -79.4,
+      venueName: 'Public Pool',
+      venueAddress: '1 Pool Rd',
+    });
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
+
+    const row = (capture.villageCandidates as Record<string, unknown>[])[0];
+    expect(row?.sourceUrl ?? null).toBeNull();
+  });
+
   it('leaves coords null for a candidate the geocode can not resolve (list-only, no pin)', async () => {
     const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
