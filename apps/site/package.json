@@ -15,8 +15,11 @@
   "dependencies": {
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.0.9",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "lucide-react": "^1.20.0",
     "next": "^15.1.4",
+    "posthog-js": "^1.393.4",
     "postgres": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

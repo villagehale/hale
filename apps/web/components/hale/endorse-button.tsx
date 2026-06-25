@@ -3,6 +3,7 @@
 import { Heart } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '~/components/ui/button';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { endorsementLabel } from '~/lib/village/social-proof';
 
 type State = 'idle' | 'pending' | 'endorsed' | 'error';
@@ -27,6 +28,7 @@ interface EndorseButtonProps {
 export function EndorseButton({ endpoint, initiallyEndorsed, initialCount }: EndorseButtonProps) {
   const [state, setState] = useState<State>(initiallyEndorsed ? 'endorsed' : 'idle');
   const [count, setCount] = useState(initialCount);
+  const capture = useAnalytics();
 
   async function endorse() {
     setState('pending');
@@ -38,6 +40,7 @@ export function EndorseButton({ endpoint, initiallyEndorsed, initialCount }: End
       }
       const data = (await res.json()) as { count: number };
       setCount(data.count);
+      capture('endorse');
       setState('endorsed');
     } catch {
       setState('error');

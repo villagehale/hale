@@ -180,8 +180,16 @@ export default function PrivacyPage() {
             sent.
           </li>
           <li>
-            <strong>Vercel</strong> — application hosting and content delivery. Operates in the
-            United States and on a global edge network.
+            <strong>Vercel</strong> — application hosting and content delivery, plus Web Analytics
+            and Speed Insights. Operates in the United States and on a global edge network. Vercel
+            Web Analytics is <strong>cookieless</strong> — it sets no cookies and builds no
+            cross-site profile.
+          </li>
+          <li>
+            <strong>PostHog</strong> — product analytics; coarse, non-identifying event data only (no
+            child data, no message content). We capture only a few key product steps, with autocapture
+            and session replay turned off, and we identify you by an opaque account id, never your
+            name or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
           </li>
           <li>
             <strong>Resend</strong> — delivery of transactional and digest emails (United States).

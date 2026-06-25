@@ -4,6 +4,7 @@ import { Check, Share2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ButtonVariant } from '~/components/ui/button';
 import { Button } from '~/components/ui/button';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 type State = 'idle' | 'pending' | 'shared' | 'copied' | 'ready' | 'error';
 
@@ -46,6 +47,7 @@ export function ShareButton({
   const [state, setState] = useState<State>('idle');
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const capture = useAnalytics();
 
   async function share() {
     setState('pending');
@@ -65,6 +67,7 @@ export function ShareButton({
     }
     const { link: url } = (await res.json()) as { link: string };
     setLink(url);
+    capture('share');
 
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {

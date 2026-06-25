@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { ThreadSeed } from '~/lib/coach/thread';
 
 export type AskStatus = 'idle' | 'pending' | 'error';
@@ -132,6 +133,7 @@ export function useAskHale(
   const [search, setSearch] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  const capture = useAnalytics();
 
   const visibleTurns = useMemo(
     () => filterTurns(turns, focusedChildId, topicFilter, search),
@@ -161,6 +163,7 @@ export function useAskHale(
       { id: crypto.randomUUID(), role: 'user', body: trimmed, childId: scopedChild, topic: null },
     ]);
     setDraft('');
+    capture('ask_hale', { scoped: scopedChild !== null });
     try {
       const res = await fetch('/api/coach', {
         method: 'POST',

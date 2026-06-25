@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 type State = 'idle' | 'pending' | 'added' | 'error';
 
@@ -19,12 +20,15 @@ const LABEL: Record<State, string> = {
  */
 export function AcceptButton({ href }: { href: string }) {
   const [state, setState] = useState<State>('idle');
+  const capture = useAnalytics();
 
   async function accept() {
     setState('pending');
     try {
       const res = await fetch(href, { method: 'POST' });
-      setState(res.status === 202 ? 'added' : 'error');
+      const added = res.status === 202;
+      if (added) capture('add_to_week');
+      setState(added ? 'added' : 'error');
     } catch {
       setState('error');
     }
