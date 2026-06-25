@@ -287,7 +287,9 @@ export default function PrivacyPage() {
 
       <LegalSectionBlock id="contact" title="How to reach us">
         <p>
-          For any privacy question or to exercise your rights, contact our privacy team at{' '}
+          Our Privacy Officer &mdash; the person in charge of personal information under
+          Quebec&rsquo;s Law 25 &mdash; is <strong>Anzhe Dong, Founder</strong>. For any privacy
+          question, or to exercise your rights, contact us at{' '}
           <a href="mailto:privacy@villagehale.com" className="link">
             privacy@villagehale.com
           </a>
