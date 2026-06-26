@@ -5,12 +5,13 @@ import type { ThreadSeed } from '~/lib/coach/thread';
 import { AskHaleThread } from './ask-hale-thread';
 
 /**
- * The /coach Ask Hale surface. These tests render to static HTML (the repo's render
- * idiom — no jsdom, no LLM call). They guard the two polish fixes that can regress
- * silently in markup:
- *  - the search box uses `.field-search` (not the unlayered-overridden `pl-*`), so
- *    the leading icon never overlaps the text;
- *  - the composer renders with a reachable, labelled input pinned at the bottom.
+ * The /coach Ask Hale surface — a contained chat. These tests render to static
+ * HTML (the repo's render idiom — no jsdom, no LLM call). They guard the chat
+ * structure that can regress silently in markup:
+ *  - the composer is a reachable, labelled input pinned at the surface foot (a
+ *    solid canvas bar, not a floating overlay);
+ *  - search is a secondary toggled affordance, not a box stacked above the chat;
+ *  - each turn renders in the transcript.
  * The search→timeline *filtering* logic itself is unit-tested in use-ask-hale.test.
  */
 
@@ -23,7 +24,9 @@ function seed(timeline: ThreadSeed['timeline']): ThreadSeed {
   };
 }
 
-function msg(over: Partial<ThreadSeed['timeline'][number]> & { id: string }): ThreadSeed['timeline'][number] {
+function msg(
+  over: Partial<ThreadSeed['timeline'][number]> & { id: string },
+): ThreadSeed['timeline'][number] {
   return {
     role: 'user',
     content: '',
@@ -41,21 +44,7 @@ function render(s: ThreadSeed): string {
 }
 
 describe('AskHaleThread — full surface', () => {
-  it('renders the search box with .field-search so the icon clears the text', () => {
-    const html = render(seed([msg({ id: 'a', content: 'when do solids start?' })]));
-
-    // The search input carries field-search (the fix), not a raw pl-* utility that
-    // .field (unlayered) would override and leave the icon overlapping the text.
-    const searchInput =
-      html.match(/<input[^>]*placeholder="search this conversation"[^>]*>/)?.[0] ?? '';
-    expect(searchInput).not.toBe('');
-    expect(searchInput).toContain('field-search');
-    expect(searchInput).not.toMatch(/class="[^"]*\bpl-10\b/);
-    // The input is labelled (a11y).
-    expect(html).toContain('search this conversation');
-  });
-
-  it('renders the composer with a reachable, labelled input', () => {
+  it('renders the composer with a reachable, labelled input pinned at the foot', () => {
     const html = render(seed([]));
 
     // The composer textarea exists and is wired to its (sr-only) label.
@@ -68,15 +57,42 @@ describe('AskHaleThread — full surface', () => {
     expect(html).toContain('border-t border-rule');
   });
 
-  it('renders each turn in the timeline', () => {
+  it('keeps search a secondary affordance — the box is revealed, not stacked on top', () => {
+    const html = render(seed([msg({ id: 'a', content: 'when do solids start?' })]));
+
+    // The search toggle exists (so search is reachable)…
+    expect(html).toMatch(/aria-label="search this conversation"/);
+    // …but the full search input is not stacked above the chat by default.
+    expect(html).not.toContain('placeholder="search this conversation"');
+  });
+
+  it('renders the chat arrangement — parent bubble, Hale card with an identity marker', () => {
     const html = render(
       seed([
         msg({ id: 'a', role: 'user', content: 'when do solids start?' }),
-        msg({ id: 'b', role: 'assistant', content: 'Around six months, watch for readiness cues.' }),
+        msg({
+          id: 'b',
+          role: 'assistant',
+          content: 'Around six months, watch for readiness cues.',
+        }),
       ]),
     );
 
+    // Both turns render…
     expect(html).toContain('when do solids start?');
     expect(html).toContain('Around six months');
+    // …as a real transcript: the parent's turn in a chat bubble, Hale's answer in
+    // its card carrying the identity marker (not the editorial quote layout).
+    expect(html).toContain('chat-bubble-you');
+    expect(html).toContain('chat-bubble-hale');
+    expect(html).toMatch(/>Hale</);
+  });
+
+  it('shows the welcoming empty state when there is no conversation yet', () => {
+    const html = render(seed([]));
+
+    // The first-screen invite + suggestion chip (which prefills the composer).
+    expect(html).toContain('one ongoing conversation, grounded in your family');
+    expect(html).toContain('how are naps going?');
   });
 });
