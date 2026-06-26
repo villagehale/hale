@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FrameworkCitation, CoachingFramework, FamilyStage } from '@hale/types';
 import { stageFromAgeInMonths } from '@hale/types';
-import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
+import { anthropicClient, HAIKU_MODEL } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { loadPrompt } from '../prompts/loader.js';
 import { loadStagePacks, stagePackFor } from './stage-pack.js';
@@ -108,7 +108,7 @@ export async function runCoach(input: CoachRunInput): Promise<CoachRunOutput> {
 
   const { value: parsed } = await forceToolJson({
     client: anthropicClient(),
-    model: SONNET_MODEL,
+    model: HAIKU_MODEL,
     system: instructions,
     userMessage,
     toolName: 'coaching_response',

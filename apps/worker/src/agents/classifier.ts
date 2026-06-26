@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ClassifierSuggestion, EventType, FamilyStage } from '@hale/types';
-import { anthropicClient, HAIKU_MODEL } from '../anthropic/client.js';
+import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { dedupHashFor } from './dedup.js';
@@ -155,7 +155,7 @@ export async function runClassifier(input: ClassifierRunInput): Promise<Classifi
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
     client: anthropicClient(),
-    model: HAIKU_MODEL,
+    model: SONNET_MODEL,
     system: instructions,
     userMessage,
     toolName: 'classification',
@@ -172,6 +172,6 @@ export async function runClassifier(input: ClassifierRunInput): Promise<Classifi
     teenContent: parsed.teen_content,
     concernsChildId: parsed.concerns_child_id,
     dedupHash,
-    runMetrics: metricsFromUsage('classifier', HAIKU_MODEL, usage, Date.now() - startedAt),
+    runMetrics: metricsFromUsage('classifier', SONNET_MODEL, usage, Date.now() - startedAt),
   };
 }
