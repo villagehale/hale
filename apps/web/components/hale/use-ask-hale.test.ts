@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCoachRequest, filterTurns, type Turn } from './use-ask-hale';
+import { type Turn, buildCoachRequest, filterTurns, readNdjson } from './use-ask-hale';
 
 /**
  * The continuous-companion shell's two pure seams:
@@ -41,6 +41,49 @@ const TIMELINE: Turn[] = [
   turn({ id: 'c', body: 'what is good this weekend?', childId: null, topic: 'activities' }),
   turn({ id: 'd', body: 'screen time for my teen?', childId: 'teen', topic: 'behavior' }),
 ];
+
+/** A ReadableStream of UTF-8 bytes from the given string slices — one slice per chunk. */
+function byteStream(slices: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const slice of slices) controller.enqueue(encoder.encode(slice));
+      controller.close();
+    },
+  });
+}
+
+describe('readNdjson', () => {
+  it('parses one event per newline-terminated line', async () => {
+    const events: unknown[] = [];
+    await readNdjson(
+      byteStream([
+        '{"type":"delta","text":"a"}\n{"type":"delta","text":"b"}\n{"type":"done","conversationId":"c","actionIntents":[]}\n',
+      ]),
+      (e) => events.push(e),
+    );
+    expect(events).toEqual([
+      { type: 'delta', text: 'a' },
+      { type: 'delta', text: 'b' },
+      { type: 'done', conversationId: 'c', actionIntents: [] },
+    ]);
+  });
+
+  it('reassembles a JSON line split across chunk boundaries', async () => {
+    // The network can split a line mid-token; the buffer must stitch it back before parsing.
+    const events: unknown[] = [];
+    await readNdjson(byteStream(['{"type":"del', 'ta","text":"hel', 'lo"}\n']), (e) =>
+      events.push(e),
+    );
+    expect(events).toEqual([{ type: 'delta', text: 'hello' }]);
+  });
+
+  it('flushes a final line that has no trailing newline', async () => {
+    const events: unknown[] = [];
+    await readNdjson(byteStream(['{"type":"error"}']), (e) => events.push(e));
+    expect(events).toEqual([{ type: 'error' }]);
+  });
+});
 
 describe('filterTurns', () => {
   it('shows the whole family when no child is focused', () => {

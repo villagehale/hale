@@ -528,6 +528,7 @@ function FullSurface({
     turns,
     visibleTurns,
     status,
+    streamingId,
     draft,
     setDraft,
     ask,
@@ -592,7 +593,7 @@ function FullSurface({
             />
           )}
 
-          {status === 'pending' ? (
+          {status === 'pending' && streamingId === null ? (
             <div className="rise mt-6 flex" aria-live="polite">
               <p className="chat-bubble-hale typing-dots" aria-label="Hale is thinking">
                 <span />

@@ -25,11 +25,17 @@ export interface Turn {
   actionIntents?: ActionIntent[];
 }
 
-interface CoachResponse {
-  body: string;
-  conversationId: string;
-  actionIntents?: ActionIntent[];
-}
+/**
+ * One newline-delimited event from POST /api/coach. `delta` carries the next slice
+ * of the streamed answer; `reset` means the text streamed so far was an intermediate
+ * tool turn, not the answer — clear the in-flight bubble; `done` ends the stream with
+ * the running conversationId and the gated action chips; `error` signals a failed run.
+ */
+type CoachStreamEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'reset' }
+  | { type: 'done'; conversationId: string; actionIntents?: ActionIntent[] }
+  | { type: 'error' };
 
 interface CoachRequest {
   question: string;
@@ -53,6 +59,36 @@ export function buildCoachRequest(
     ...(conversationId ? { conversationId } : {}),
     ...(focusedChildId ? { focusedChildId } : {}),
   };
+}
+
+/**
+ * Read a newline-delimited-JSON stream, invoking `onEvent` for each complete line
+ * as it arrives. Buffers across chunk boundaries (a line may split mid-chunk) and
+ * flushes a trailing unterminated line at end. Exported so the parse is unit-tested.
+ */
+export async function readNdjson(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: CoachStreamEvent) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flushLine = (line: string) => {
+    const trimmed = line.trim();
+    if (trimmed) onEvent(JSON.parse(trimmed) as CoachStreamEvent);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline !== -1) {
+      flushLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf('\n');
+    }
+  }
+  flushLine(buffer);
 }
 
 function seedTurns(seed: ThreadSeed): Turn[] {
@@ -92,6 +128,8 @@ export interface UseAskHale {
   /** Turns after the active child + topic + search filters. */
   visibleTurns: Turn[];
   status: AskStatus;
+  /** The id of the assistant turn currently streaming, or null (pre-first-token / idle). */
+  streamingId: string | null;
   draft: string;
   setDraft: (value: string) => void;
   ask: (question: string) => Promise<void>;
@@ -128,6 +166,9 @@ export function useAskHale(
   const [conversationId, setConversationId] = useState<string | null>(seed.conversationId);
   const [draft, setDraft] = useState('');
   const [status, setStatus] = useState<AskStatus>('idle');
+  // The id of the assistant turn currently being streamed into, or null before the
+  // first token (typing indicator) and after the stream ends.
+  const [streamingId, setStreamingId] = useState<string | null>(null);
   const [focusedChildId, setFocusedChildId] = useState<string | null>(initialFocusedChildId);
   const [topicFilter, setTopicFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -171,6 +212,7 @@ export function useAskHale(
     const trimmed = question.trim();
     if (!trimmed || status === 'pending') return;
     setStatus('pending');
+    setStreamingId(null);
     const scopedChild = focusedChildId;
     setTurns((prev) => [
       ...prev,
@@ -178,31 +220,72 @@ export function useAskHale(
     ]);
     setDraft('');
     capture('ask_hale', { scoped: scopedChild !== null });
+
+    // The assistant turn the stream appends into. Created lazily on the first delta
+    // so the typing indicator shows until the first token, then the bubble grows.
+    let assistantId: string | null = null;
+    const ensureAssistantTurn = (): string => {
+      if (assistantId) return assistantId;
+      const id = crypto.randomUUID();
+      assistantId = id;
+      setStreamingId(id);
+      setTurns((prev) => [
+        ...prev,
+        { id, role: 'assistant', body: '', childId: scopedChild, topic: null, actionIntents: [] },
+      ]);
+      return id;
+    };
+    const appendDelta = (text: string) => {
+      const id = ensureAssistantTurn();
+      setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, body: t.body + text } : t)));
+    };
+    // An intermediate tool turn streamed text that is NOT the answer — clear it so
+    // only the final answer renders, and fall back to the typing indicator.
+    const resetAssistantTurn = () => {
+      if (!assistantId) return;
+      const id = assistantId;
+      setTurns((prev) => prev.filter((t) => t.id !== id));
+      assistantId = null;
+      setStreamingId(null);
+    };
+
     try {
       const res = await fetch('/api/coach', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(buildCoachRequest(trimmed, conversationId, scopedChild)),
       });
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         setStatus('error');
         return;
       }
-      const answer = (await res.json()) as CoachResponse;
-      setConversationId(answer.conversationId);
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          body: answer.body,
-          childId: scopedChild,
-          topic: null,
-          actionIntents: answer.actionIntents ?? [],
-        },
-      ]);
+
+      let failed = false;
+      await readNdjson(res.body, (event) => {
+        if (event.type === 'delta') {
+          appendDelta(event.text);
+        } else if (event.type === 'reset') {
+          resetAssistantTurn();
+        } else if (event.type === 'done') {
+          setConversationId(event.conversationId);
+          const id = ensureAssistantTurn();
+          setStreamingId(null);
+          setTurns((prev) =>
+            prev.map((t) => (t.id === id ? { ...t, actionIntents: event.actionIntents ?? [] } : t)),
+          );
+        } else {
+          failed = true;
+        }
+      });
+
+      if (failed) {
+        resetAssistantTurn();
+        setStatus('error');
+        return;
+      }
       setStatus('idle');
     } catch {
+      resetAssistantTurn();
       setStatus('error');
     } finally {
       inputRef.current?.focus();
@@ -213,6 +296,7 @@ export function useAskHale(
     turns,
     visibleTurns,
     status,
+    streamingId,
     draft,
     setDraft,
     ask,
