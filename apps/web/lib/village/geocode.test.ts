@@ -1,5 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-import { type GeocodeClient, buildTextQuery, geocodeVenue } from './geocode.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  type GeocodeClient,
+  type LatLng,
+  buildTextQuery,
+  defaultGeocodeClient,
+  geocodeArea,
+  geocodeVenue,
+} from './geocode.js';
 
 /**
  * geocodeVenue resolves a candidate's venue to PUBLIC coordinates via an injected
@@ -27,15 +34,18 @@ const RESOLVED = {
 function fakeClient(impl: (q: string) => Promise<unknown>): {
   client: GeocodeClient;
   calls: string[];
+  biasCalls: Array<LatLng | undefined>;
 } {
   const calls: string[] = [];
+  const biasCalls: Array<LatLng | undefined> = [];
   const client: GeocodeClient = {
-    searchText: vi.fn(async (q: string) => {
+    searchText: vi.fn(async (q: string, bias?: LatLng) => {
       calls.push(q);
+      biasCalls.push(bias);
       return impl(q);
     }),
   };
-  return { client, calls };
+  return { client, calls, biasCalls };
 }
 
 describe('buildTextQuery', () => {
@@ -97,5 +107,98 @@ describe('geocodeVenue', () => {
       throw new Error('places searchText failed: 429');
     });
     await expect(geocodeVenue('any venue', AREA_COARSE, client)).resolves.toBeNull();
+  });
+
+  it('passes the COARSE-area centre to the Places client as the bias (rule #1)', async () => {
+    const { client, biasCalls } = fakeClient(async () => RESOLVED);
+    const bias = { lat: 43.6285, lng: -79.9618 }; // Halton Hills, not a precise home
+
+    await geocodeVenue('Riverdale Library', AREA_COARSE, client, bias);
+
+    // The bias is the coarse-area centre — never a precise home (rule #1).
+    expect(biasCalls).toEqual([bias]);
+  });
+
+  it('omits the bias when none is supplied (text-only search preserved)', async () => {
+    const { client, biasCalls } = fakeClient(async () => RESOLVED);
+
+    await geocodeVenue('Riverdale Library', AREA_COARSE, client);
+
+    expect(biasCalls).toEqual([undefined]);
+  });
+});
+
+describe('geocodeArea', () => {
+  it('returns the centre of a resolved coarse area', async () => {
+    const { client, calls } = fakeClient(async () => ({
+      places: [{ location: { latitude: 43.6285, longitude: -79.9618 } }],
+    }));
+
+    const center = await geocodeArea('Halton Hills', client);
+
+    expect(center).toEqual({ lat: 43.6285, lng: -79.9618 });
+    // Only the coarse area string reaches Places (rule #1).
+    expect(calls).toEqual(['Halton Hills']);
+  });
+
+  it('returns null for an unresolvable area', async () => {
+    const { client } = fakeClient(async () => ({ places: [] }));
+    expect(await geocodeArea('Nowhere', client)).toBeNull();
+  });
+
+  it('returns null for a blank area without calling Places', async () => {
+    const { client, calls } = fakeClient(async () => RESOLVED);
+    expect(await geocodeArea('  ', client)).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it('NEVER throws on a transport/quota error — returns null instead', async () => {
+    const { client } = fakeClient(async () => {
+      throw new Error('places searchText failed: 429');
+    });
+    await expect(geocodeArea('M4K', client)).resolves.toBeNull();
+  });
+});
+
+describe('defaultGeocodeClient searchText request body', () => {
+  const KEY = 'test-maps-key';
+  const fetchSpy = vi.fn();
+
+  beforeEach(() => {
+    vi.stubEnv('GOOGLE_MAPS_API_KEY', KEY);
+    vi.stubEnv('NEXT_PUBLIC_GOOGLE_MAPS_API_KEY', '');
+    fetchSpy.mockReset();
+    fetchSpy.mockResolvedValue({ ok: true, json: async () => ({ places: [] }) });
+    vi.stubGlobal('fetch', fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  function sentBody(): Record<string, unknown> {
+    return JSON.parse((fetchSpy.mock.calls[0]?.[1] as { body: string }).body);
+  }
+
+  it('includes locationBias.circle with the given centre + 30km radius when a bias is provided', async () => {
+    await defaultGeocodeClient().searchText('Riverdale Library M4K', { lat: 43.6285, lng: -79.9618 });
+
+    expect(sentBody()).toEqual({
+      textQuery: 'Riverdale Library M4K',
+      maxResultCount: 1,
+      locationBias: {
+        circle: {
+          center: { latitude: 43.6285, longitude: -79.9618 },
+          radius: 30000,
+        },
+      },
+    });
+  });
+
+  it('omits locationBias entirely when no bias is provided', async () => {
+    await defaultGeocodeClient().searchText('Halton Hills');
+
+    expect(sentBody()).toEqual({ textQuery: 'Halton Hills', maxResultCount: 1 });
   });
 });

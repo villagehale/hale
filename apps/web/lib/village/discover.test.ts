@@ -120,12 +120,14 @@ function fakeClient(candidates: unknown[]) {
 function deps(
   client: DiscoveryAnthropicClient,
   geocode: DiscoverDeps['geocode'] = async () => null,
+  geocodeArea: DiscoverDeps['geocodeArea'] = async () => null,
 ): DiscoverDeps {
   return {
     client,
     loadPrompt: async () => 'DISCOVERY SYSTEM PROMPT',
     loadModel: async () => 'claude-test-model',
     geocode,
+    geocodeArea,
   };
 }
 
@@ -339,6 +341,56 @@ describe('discoverForFamily', () => {
     // The geocode received ONLY the candidate title + the coarse area — no precise
     // location ever leaves the server (rule #1).
     expect(geoCalls).toEqual([{ title: 'Toddler swim', area: 'L7G' }]);
+  });
+
+  it('resolves the coarse-area centre ONCE and biases every venue lookup to it (rule #1)', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient(SAMPLE_CANDIDATES);
+
+    const center = { lat: 43.6285, lng: -79.9618 }; // coarse-area centre, not a home
+    const areaCalls: string[] = [];
+    const geocodeArea: DiscoverDeps['geocodeArea'] = async (area) => {
+      areaCalls.push(area);
+      return center;
+    };
+    const biasArgs: Array<unknown> = [];
+    const geocode: DiscoverDeps['geocode'] = async (_title, _area, bias) => {
+      biasArgs.push(bias);
+      return null;
+    };
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode, geocodeArea));
+
+    // The coarse area is geocoded exactly once (not once per candidate).
+    expect(areaCalls).toEqual(['L7G']);
+    // Every venue lookup is biased to that single coarse-area centre.
+    expect(biasArgs).toEqual([center, center]);
+  });
+
+  it('falls back to an undefined bias when the coarse-area centre can not be resolved', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient(SAMPLE_CANDIDATES);
+
+    const biasArgs: Array<unknown> = [];
+    const geocode: DiscoverDeps['geocode'] = async (_title, _area, bias) => {
+      biasArgs.push(bias);
+      return null;
+    };
+    const geocodeArea: DiscoverDeps['geocodeArea'] = async () => null;
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode, geocodeArea));
+
+    expect(biasArgs).toEqual([undefined, undefined]);
   });
 
   it('fills source_url from the venue website ONLY when the model gave none — never overwriting an LLM url', async () => {
