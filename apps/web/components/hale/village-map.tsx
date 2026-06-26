@@ -148,6 +148,16 @@ export function VillageMap({
           className="absolute inset-0"
           aria-label="map of nearby activities"
         />
+        {/* Warm brand cast over the map. Google deprecated inline map styles, so a
+         * multiply overlay tints the raster map toward the Hale linen palette
+         * without needing a cloud Map ID. pointer-events-none keeps pins clickable. */}
+        {status === 'ready' ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{ background: '#efe6d3', mixBlendMode: 'multiply', opacity: 0.5 }}
+          />
+        ) : null}
         {status !== 'ready' ? (
           <div className="absolute inset-0 flex items-center justify-center panel-oat text-center px-6">
             <p className="meta text-slate-green">
