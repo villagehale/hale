@@ -16,6 +16,11 @@
 
 const PLACES_TEXT_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 
+/** Radius (metres) of the locationBias circle: wide enough to cover a family's
+ * FSA/city, tight enough to keep a same-named venue in another city out of the
+ * top result. */
+const BIAS_RADIUS_METERS = 30000;
+
 /** Only the fields we persist — keeps the response (and any log) minimal.
  * websiteUri is a Places "Pro" SKU field; we request it so a candidate without
  * an LLM-supplied source_url can link straight to the venue's real site rather
@@ -32,10 +37,19 @@ export interface GeocodeResult {
   website?: string;
 }
 
+/** Centroid used to bias a venue lookup toward the family's coarse area. Always
+ * the COARSE area centre — never a precise home (rule #1). */
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
 /** The single HTTP edge, injected so tests exercise the parsing/guard logic with
- * a fake instead of a real Google call (no network in tests). */
+ * a fake instead of a real Google call (no network in tests). The optional
+ * `bias` biases (does not restrict) results toward a centre — so a same-named
+ * venue in another city no longer wins the top result. */
 export interface GeocodeClient {
-  searchText(textQuery: string): Promise<unknown>;
+  searchText(textQuery: string, bias?: LatLng): Promise<unknown>;
 }
 
 /**
@@ -75,17 +89,41 @@ function parseFirstPlace(raw: unknown): GeocodeResult | null {
 /**
  * Resolve one venue to PUBLIC coordinates, or null on any miss/failure. Never
  * throws. `client` defaults to the live Places client; tests inject a fake.
+ * `bias` is the COARSE area centre (rule #1) — supplying it keeps a same-named
+ * venue in another city out of the top result; omitting it preserves the prior
+ * text-only behaviour.
  */
 export async function geocodeVenue(
   title: string,
   areaCoarse: string,
   client: GeocodeClient = defaultGeocodeClient(),
+  bias?: LatLng,
 ): Promise<GeocodeResult | null> {
   const query = buildTextQuery(title, areaCoarse);
   if (!query) return null;
   try {
-    const raw = await client.searchText(query);
+    const raw = await client.searchText(query, bias);
     return parseFirstPlace(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a COARSE area string (e.g. "M4K", "Halton Hills") to its centre, or
+ * null on any miss/failure. Never throws — this feeds the venue-lookup bias, and
+ * a missing centre just falls back to the prior text-only search. Only the coarse
+ * area is ever sent (rule #1).
+ */
+export async function geocodeArea(
+  areaCoarse: string,
+  client: GeocodeClient = defaultGeocodeClient(),
+): Promise<LatLng | null> {
+  const area = areaCoarse.trim();
+  if (!area) return null;
+  try {
+    const resolved = parseFirstPlace(await client.searchText(area));
+    return resolved ? { lat: resolved.lat, lng: resolved.lng } : null;
   } catch {
     return null;
   }
@@ -102,8 +140,17 @@ export function defaultGeocodeClient(): GeocodeClient {
   const apiKey =
     process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
   return {
-    async searchText(textQuery: string): Promise<unknown> {
+    async searchText(textQuery: string, bias?: LatLng): Promise<unknown> {
       if (!apiKey) return { places: [] };
+      const body: Record<string, unknown> = { textQuery, maxResultCount: 1 };
+      if (bias) {
+        body.locationBias = {
+          circle: {
+            center: { latitude: bias.lat, longitude: bias.lng },
+            radius: BIAS_RADIUS_METERS,
+          },
+        };
+      }
       const res = await fetch(PLACES_TEXT_SEARCH_URL, {
         method: 'POST',
         headers: {
@@ -111,7 +158,7 @@ export function defaultGeocodeClient(): GeocodeClient {
           'X-Goog-Api-Key': apiKey,
           'X-Goog-FieldMask': FIELD_MASK,
         },
-        body: JSON.stringify({ textQuery, maxResultCount: 1 }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         throw new Error(`places searchText failed: ${res.status}`);

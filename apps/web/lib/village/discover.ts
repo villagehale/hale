@@ -7,7 +7,7 @@ import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { loadDiscoveryPrompt } from './discovery-prompt';
-import { type GeocodeResult, geocodeVenue } from './geocode';
+import { type GeocodeResult, type LatLng, geocodeArea, geocodeVenue } from './geocode';
 
 /**
  * Web-side, on-demand village discovery. The scheduled worker job
@@ -91,8 +91,18 @@ export interface DiscoverDeps {
   loadModel: () => Promise<string>;
   /** Best-effort venue geocode for the map pin. Resolves a candidate's title to
    * PUBLIC coordinates using the family's COARSE area only (rule #1), or null for
-   * an online / no-venue activity or an unresolved lookup. Never throws. */
-  geocode: (title: string, areaCoarse: string) => Promise<GeocodeResult | null>;
+   * an online / no-venue activity or an unresolved lookup. `bias` is the coarse
+   * area centre, biasing the lookup so a same-named venue in another city doesn't
+   * win the pin. Never throws. */
+  geocode: (
+    title: string,
+    areaCoarse: string,
+    bias?: LatLng,
+  ) => Promise<GeocodeResult | null>;
+  /** Best-effort centroid of the COARSE area (rule #1) used to bias venue
+   * lookups, or null when it can't be resolved (then geocode falls back to the
+   * text-only search). Never throws. */
+  geocodeArea: (areaCoarse: string) => Promise<LatLng | null>;
 }
 
 export type DiscoverResult =
@@ -235,12 +245,15 @@ export async function discoverForFamily(
       }
 
       // Resolve each venue to PUBLIC coords (a YMCA, a library) for the map pin,
-      // using the COARSE area only (rule #1). Best-effort and bounded by the
-      // discovery limit; an online / no-venue activity or a miss stays null
-      // (list-only, no pin). geocodeVenue never throws (rule #8 boundary), so one
-      // bad lookup can't abort the discovery write.
+      // using the COARSE area only (rule #1). Resolve the coarse-area centre ONCE
+      // and bias every venue lookup to it, so a same-named venue in another city
+      // doesn't win the pin. Best-effort and bounded by the discovery limit; an
+      // online / no-venue activity or a miss stays null (list-only, no pin).
+      // geocodeVenue never throws (rule #8 boundary), so one bad lookup can't
+      // abort the discovery write.
+      const bias = (await deps.geocodeArea(areaCoarse)) ?? undefined;
       const geocoded = await Promise.all(
-        candidates.map((c) => deps.geocode(c.title, areaCoarse)),
+        candidates.map((c) => deps.geocode(c.title, areaCoarse, bias)),
       );
 
       await database.transaction(async (tx) => {
@@ -302,6 +315,7 @@ export function defaultDiscoverDeps(): DiscoverDeps {
     client: anthropicClient,
     loadPrompt: loadDiscoveryPrompt,
     loadModel: defaultLoadModel,
-    geocode: (title, areaCoarse) => geocodeVenue(title, areaCoarse),
+    geocode: (title, areaCoarse, bias) => geocodeVenue(title, areaCoarse, undefined, bias),
+    geocodeArea: (areaCoarse) => geocodeArea(areaCoarse),
   };
 }
