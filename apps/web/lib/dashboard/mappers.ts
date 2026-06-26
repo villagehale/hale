@@ -1,4 +1,5 @@
 import type { schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
 import type { EntryTone } from '~/components/hale/tone';
 
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
@@ -28,6 +29,31 @@ export interface TrailView {
  * shape. (Also imported by the village mappers for the same purpose.)
  */
 export const TEEN_REDACTED_PLACEHOLDER = 'kept private — regarding your teenager';
+
+/**
+ * Rule #1 defense-in-depth: the effective teen flag the surface mappers redact on.
+ * The stored events.teen_content is a probabilistic classifier signal (a classify
+ * miss can leave it false); the concerns-child's live DOB is the source of truth for
+ * "is this a teen" (deriveStage boundary 156mo). These are OR'd so a stored-flag miss
+ * still redacts a 13+ child's content.
+ *
+ * `dateOfBirth` is null when the row has no resolvable concerns-child (a family-wide
+ * / ambiguous event the classifier didn't attribute). The DOUBLE-MISS — stored flag
+ * false AND no DOB — would otherwise fall back to the failed flag and leak; so when
+ * there is no DOB to derive from, we fall back to the FAMILY: redact if the family
+ * has any teenager (`familyHasTeen`), the rule-#1 "most restrictive" default. A
+ * family with no teen is never over-redacted. Pure, no I/O.
+ */
+export function effectiveTeenContent(
+  storedFlag: boolean,
+  dateOfBirth: string | null,
+  familyHasTeen: boolean,
+  now: Date = new Date(),
+): boolean {
+  if (storedFlag) return true;
+  if (dateOfBirth !== null) return deriveStage(dateOfBirth, now) === 'teenager';
+  return familyHasTeen;
+}
 
 /** audit_log.actor is 'system' | agent_run uuid | user uuid; the timeline only
  * distinguishes Hale vs. a parent. A non-system actor is a human ("you"); the

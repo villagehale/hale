@@ -1,6 +1,6 @@
 import { type AgentClient, HAIKU_MODEL, SONNET_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import type { ActionType } from '@hale/types';
+import { type ActionType, deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { classifyEvent } from './classify';
@@ -98,9 +98,18 @@ export async function ingestEvent(
   // Validate child attribution against THIS family's children before persisting a
   // reference: a hallucinated/stale/cross-family id is dropped to null (rule #1 —
   // no dangling cross-family reference), exactly as the worker orchestrator does.
-  const childId = classified.concernsChildId
+  const concernsChild = classified.concernsChildId
     ? await resolveFamilyChild(database, classified.concernsChildId, familyId)
     : null;
+  const childId = concernsChild?.id ?? null;
+  // Rule #1 write-site backstop: the classifier's teen_content is a probabilistic
+  // signal, never the sole gate. When the event resolves to a child whose DOB makes
+  // them a teenager (deriveStage boundary 156mo), the stored flag is OR'd to true —
+  // so a classify miss can't leak a teen's raw content to the mask/surfaces that
+  // read this flag.
+  const teenContent =
+    classified.teenContent ||
+    (concernsChild !== null && deriveStage(concernsChild.dateOfBirth, now) === 'teenager');
 
   const recorded = await recordEvent(database, {
     familyId,
@@ -110,7 +119,7 @@ export async function ingestEvent(
     classifierConfidence: classified.confidence,
     dedupHash,
     suggestion: classified.suggestion,
-    teenContent: classified.teenContent,
+    teenContent,
     childId,
     usage: classified.usage,
     model: HAIKU_MODEL,
@@ -210,18 +219,19 @@ export async function ingestEvent(
   };
 }
 
-/** Returns the child id iff it names a real child of THIS family, else null. */
+/** Returns the child (id + DOB, for the rule-#1 teen derivation) iff it names a
+ * real child of THIS family, else null. */
 async function resolveFamilyChild(
   database: Database,
   childId: string,
   familyId: string,
-): Promise<string | null> {
+): Promise<{ id: string; dateOfBirth: string } | null> {
   const rows = await database
-    .select({ id: schema.children.id })
+    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
     .from(schema.children)
     .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)))
     .limit(1);
-  return rows[0]?.id ?? null;
+  return rows[0] ?? null;
 }
 
 async function isFamilyInObserveWindow(
