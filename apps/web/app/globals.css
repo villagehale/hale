@@ -783,11 +783,16 @@ strong { font-weight: 700; }
   background: var(--color-linen);
 }
 
-/* Ask Hale pins a `sticky bottom-0` composer to the stage. The bottom pad would
- * inset that pin above the viewport edge and leave a strip where the thread shows
- * through beneath the bar; zero it when the coach surface is present so the bar
- * reaches the true bottom. Scoped via :has so no other page loses its bottom pad. */
+/* Ask Hale is a contained chat: the transcript scrolls inside its own region while
+ * the composer stays pinned to the surface foot. So the STAGE itself must not
+ * scroll — it becomes a flex column that hands the remaining height to the surface
+ * (`.coach-surface { flex:1; min-height:0 }`). Zero the bottom pad so the composer
+ * reaches the true bottom; keep the top + side gutter for the family band and the
+ * chat column. Scoped via :has so no other page changes. */
 .main-stage:has(.coach-surface) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding-bottom: 0;
 }
 
@@ -1071,6 +1076,108 @@ strong { font-weight: 700; }
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
 
+/* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
+ * The conversation is the hero: the parent's turns ride right in a warm apricot
+ * bubble, Hale's answers sit left in an oat card. The composer is one rounded row
+ * with the send affordance tucked at its trailing edge — a real chat input. */
+
+.chat-bubble-you {
+  background: var(--color-apricot-tint);
+  color: var(--color-spruce);
+  border-radius: var(--r-xl) var(--r-xl) var(--r-sm) var(--r-xl);
+  padding: 0.7rem 1.05rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-bubble-hale {
+  background: var(--color-oat);
+  color: var(--color-spruce);
+  border-radius: var(--r-xl) var(--r-xl) var(--r-xl) var(--r-sm);
+  padding: clamp(1rem, 2vw, 1.35rem) clamp(1.1rem, 2.4vw, 1.5rem);
+}
+
+/* The composer row — a single rounded field that holds the textarea and the send
+ * button. Focus moves to the whole shell so it reads as one control. */
+.composer-shell {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  background: var(--color-linen);
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: var(--r-lg);
+  padding: 0.4rem 0.4rem 0.4rem 0.5rem;
+  transition: border-color 280ms var(--ease-breathe), box-shadow 280ms var(--ease-breathe);
+}
+
+.composer-shell:focus-within {
+  border-color: var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  resize: none;
+  max-height: 9rem;
+  padding: 0.5rem 0.25rem;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-spruce);
+}
+
+.composer-input::placeholder { color: var(--color-faded-sage); }
+.composer-input:focus, .composer-input:focus-visible { outline: none; }
+
+.composer-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--color-spruce);
+  color: var(--color-linen);
+  transition: background 220ms var(--ease-breathe);
+}
+
+.composer-send:not(:disabled):hover { background: var(--color-apricot-deep); }
+.composer-send:not(:disabled):active { transform: translateY(1px); }
+
+.composer-send:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* The "Hale is thinking" bubble — three dots that breathe in sequence. */
+.typing-dots { display: inline-flex; align-items: center; gap: 0.3rem; }
+.typing-dots span {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: var(--r-full);
+  background: var(--color-faded-sage);
+  animation: typing-dot 1.2s var(--ease-breathe) infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.18s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-0.18rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots span { animation: none; opacity: 0.6; }
+  .composer-send:not(:disabled):active { transform: none; }
+}
+
 /* ── Nav (sidebar + mobile) ────────────────────────────────────────────── */
 
 .nav-item {
@@ -1171,27 +1278,6 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; opacity: 1; transform: none; }
-}
-
-/* ── Loading skeleton — a calm placeholder during route transitions ─────── */
-
-/* A skeleton bar is a hairline-coloured block on the card surface. Its only job
- * is to hold the page's shape so the swap from skeleton to content is a fill, not
- * a jump (no layout shift). The breathe is gentle and stops entirely under
- * prefers-reduced-motion (DESIGN.md §6) — a still placeholder is still calm. */
-.skeleton-bar {
-  background: var(--color-rule);
-  border-radius: var(--r-sm);
-  animation: skeleton-breathe 1600ms var(--ease-breathe) infinite;
-}
-
-@keyframes skeleton-breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-bar { animation: none; }
 }
 
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
