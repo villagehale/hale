@@ -78,23 +78,46 @@ describe('POST /api/coach — auth + spend gating', () => {
     expect(askHaleMock).not.toHaveBeenCalled();
   });
 
-  it('runs the agent family-scoped, persists, and returns the answer + conversationId', async () => {
+  it('streams delta events then a terminal done with conversationId + action intents', async () => {
     configureAuth(true);
     authMock.mockResolvedValue(session('google-1'));
-    askHaleMock.mockResolvedValue({
-      answer: 'teens pull away — that is developmentally on time.',
-      conversationId: 'conv-7',
-      metrics: { modelUsed: 'm', promptTokens: 1, completionTokens: 1, costUsd: 0.001, latencyMs: 5 },
-    });
+    // The mocked agent drives the stream hooks the route passes: a reset (an
+    // intermediate tool turn the client must drop), then the answer in deltas.
+    askHaleMock.mockImplementation(
+      async (
+        _input: unknown,
+        _db: unknown,
+        _client: unknown,
+        hooks: { onTextDelta: (t: string) => void; onTurnReset: () => void },
+      ) => {
+        hooks.onTurnReset();
+        hooks.onTextDelta('teens pull away — ');
+        hooks.onTextDelta('that is developmentally on time.');
+        return {
+          answer: 'teens pull away — that is developmentally on time.',
+          conversationId: 'conv-7',
+          actionIntents: [
+            { kind: 'set_reminder', label: 'Set a reminder', actionType: 'create_calendar_event' },
+          ],
+          metrics: {
+            modelUsed: 'm',
+            promptTokens: 1,
+            completionTokens: 1,
+            costUsd: 0.001,
+            latencyMs: 5,
+          },
+        };
+      },
+    );
 
     const res = await callPost({
       question: 'my teen barely talks to me anymore',
       conversationId: '44444444-4444-4444-8444-444444444444',
     });
-    const body = await res.json();
 
     expect(res.status).toBe(200);
-    // Family-scoped + acting parent is the audit actor (rule #6).
+    expect(res.headers.get('content-type')).toContain('application/x-ndjson');
+    // Family-scoped + acting parent is the audit actor (rule #6); streamHooks passed.
     expect(askHaleMock).toHaveBeenCalledWith(
       {
         familyId: 'fam-1',
@@ -105,8 +128,46 @@ describe('POST /api/coach — auth + spend gating', () => {
         actor: 'user-1',
       },
       expect.anything(),
+      undefined,
+      expect.objectContaining({
+        onTextDelta: expect.any(Function),
+        onTurnReset: expect.any(Function),
+      }),
     );
-    expect(body.body).toContain('teens pull away');
-    expect(body.conversationId).toBe('conv-7');
+
+    const events = await readEvents(res);
+    expect(events).toEqual([
+      { type: 'reset' },
+      { type: 'delta', text: 'teens pull away — ' },
+      { type: 'delta', text: 'that is developmentally on time.' },
+      {
+        type: 'done',
+        conversationId: 'conv-7',
+        actionIntents: [
+          { kind: 'set_reminder', label: 'Set a reminder', actionType: 'create_calendar_event' },
+        ],
+      },
+    ]);
+  });
+
+  it('emits a terminal error event when the agent run fails', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
+    askHaleMock.mockRejectedValue(new Error('agent blew up'));
+
+    const res = await callPost({ question: 'anything?' });
+
+    expect(res.status).toBe(200);
+    const events = await readEvents(res);
+    expect(events).toEqual([{ type: 'error' }]);
   });
 });
+
+/** Drain a streamed NDJSON Response body into parsed events. */
+async function readEvents(res: Response): Promise<unknown[]> {
+  const text = await res.text();
+  return text
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line));
+}

@@ -1,21 +1,21 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel, runAgent } from '@hale/agent';
+import { type AgentClient, pickModel, runAgent, runAgentStreaming } from '@hale/agent';
 import type { Database } from '@hale/db';
+import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { type ActionIntent, detectActionIntents } from './action-intent';
 import type { CoachRunMetrics } from './coach';
+import { loadAgentContext } from './context';
 import {
   appendMessage,
   createConversation,
   loadTranscript,
   resolveConversationForFamily,
 } from './conversation';
-import { type ActionIntent, detectActionIntents } from './action-intent';
-import { loadAgentContext } from './context';
 import { buildGuardDeps } from './guards';
 import { recordCoachRun } from './record-run';
 import { loadAskHaleSkill } from './skill';
-import { traceAgentRun } from '~/lib/telemetry/langfuse';
-import { tagTopic } from './topic';
 import { buildAskHaleTools } from './tools';
+import { tagTopic } from './topic';
 
 /**
  * Ask Hale on the @hale/agent harness — multi-turn, memory-backed, fully
@@ -59,6 +59,18 @@ export interface AskHaleResult {
   metrics: CoachRunMetrics;
 }
 
+/**
+ * Optional streaming hooks. When passed, askHale runs the STREAMING agent loop and
+ * forwards the final answer's text token-by-token via `onTextDelta`; `onTurnReset`
+ * fires when an intermediate (tool-calling) turn streamed text that is NOT the
+ * answer, so the consumer drops it. Absent → the original non-streaming loop. The
+ * persisted answer, action intents, metrics, and trace are identical either way.
+ */
+export interface AskHaleStreamHooks {
+  onTextDelta: (delta: string) => void;
+  onTurnReset: () => void;
+}
+
 let defaultClient: Anthropic | undefined;
 
 function anthropicClient(): AgentClient {
@@ -74,6 +86,7 @@ export async function askHale(
   input: AskHaleInput,
   database: Database,
   client: AgentClient = anthropicClient(),
+  streamHooks?: AskHaleStreamHooks,
 ): Promise<AskHaleResult> {
   // Continue the caller's thread only if it exists AND belongs to their family
   // (rule #1); an unknown or cross-family id is not an error — it starts a fresh
@@ -120,7 +133,7 @@ export async function askHale(
     },
     async (trace) => {
       const startedAt = Date.now();
-      const result = await runAgent({
+      const runArgs = {
         skill,
         context,
         tools,
@@ -129,7 +142,10 @@ export async function askHale(
         maxTokens: MAX_TOKENS,
         toolContext: { familyId: input.familyId, actor: input.actor },
         guardDeps,
-      });
+      };
+      const result = streamHooks
+        ? await runAgentStreaming({ ...runArgs, ...streamHooks })
+        : await runAgent(runArgs);
 
       trace.recordGeneration('ask-hale-loop', { model: modelUsed, usage: result.usage });
 

@@ -65,6 +65,19 @@ export interface RunAgentResult {
   usage: AgentUsage;
 }
 
+/**
+ * The streaming loop's extra hooks. `onTextDelta` is fed each text delta as it
+ * arrives. A turn can emit text BEFORE deciding to call a tool, so that text is
+ * not the answer — when a turn ends in tool calls the loop fires `onTurnReset`,
+ * telling the caller to discard whatever it streamed for that turn. The answer is
+ * the text of the final turn, the one that ends WITHOUT tool calls.
+ */
+export interface RunAgentStreamingArgs extends RunAgentArgs {
+  onTextDelta: (delta: string) => void;
+  /** Fired when a streamed turn turns out to be a tool turn — discard its text. */
+  onTurnReset: () => void;
+}
+
 const DEFAULT_MAX_TOKENS = 2048;
 
 function buildSystemPrompt(skill: Skill, context: unknown): string {
@@ -101,6 +114,58 @@ function toolErrorMessage(err: unknown): string {
     return `This action was refused by a safety policy (${err.rail}). Do not retry it — continue without it.`;
   }
   return `Tool call failed: ${err instanceof Error ? err.message : String(err)}. Correct the arguments and try again, or proceed without this tool.`;
+}
+
+/**
+ * Dispatch one assistant turn's tool calls through the GUARDED invoker and append
+ * the assistant turn + its tool_results to `messages`. Shared by the non-streaming
+ * and streaming loops so the safety rails, allowlist checks, and self-correction
+ * feedback behave identically no matter the transport.
+ */
+async function handleToolUses(
+  args: RunAgentArgs,
+  toolByName: Map<string, RegisteredTool>,
+  messages: Anthropic.MessageParam[],
+  content: Anthropic.ContentBlock[],
+  toolUses: Anthropic.ToolUseBlock[],
+): Promise<void> {
+  messages.push({ role: 'assistant', content });
+
+  const toolResults: Anthropic.ToolResultBlockParam[] = [];
+  for (const block of toolUses) {
+    // Unknown / not-allowlisted tool = a skill-config bug that can't happen in
+    // correct operation (the model is only offered allowlisted tools) — fail loud.
+    const tool = toolByName.get(block.name);
+    if (!tool) {
+      throw new Error(`runAgent: model called unknown tool '${block.name}'`);
+    }
+    if (!args.skill.meta.tools.includes(block.name)) {
+      throw new Error(
+        `runAgent: model called tool '${block.name}' not in skill '${args.skill.meta.name}' allowlist`,
+      );
+    }
+    // But a bad tool ARGUMENT (e.g. an out-of-enum value the model invented) or a
+    // guardrail rejection must NOT crash the turn — feed the error back so the
+    // model self-corrects (retries with valid args) or adapts (answers without
+    // the blocked tool). The rails still enforce: a GuardrailError means the
+    // handler never ran (rule #1/#7), and only authorized calls were audited.
+    try {
+      const result = await invokeTool(tool, block.input, args.toolContext, args.guardDeps);
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        content: JSON.stringify(result),
+      });
+    } catch (err) {
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: block.id,
+        is_error: true,
+        content: toolErrorMessage(err),
+      });
+    }
+  }
+  messages.push({ role: 'user', content: toolResults });
 }
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
@@ -142,43 +207,76 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
       };
     }
 
-    messages.push({ role: 'assistant', content: response.content });
+    await handleToolUses(args, toolByName, messages, response.content, toolUses);
+  }
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of toolUses) {
-      // Unknown / not-allowlisted tool = a skill-config bug that can't happen in
-      // correct operation (the model is only offered allowlisted tools) — fail loud.
-      const tool = toolByName.get(block.name);
-      if (!tool) {
-        throw new Error(`runAgent: model called unknown tool '${block.name}'`);
-      }
-      if (!args.skill.meta.tools.includes(block.name)) {
-        throw new Error(
-          `runAgent: model called tool '${block.name}' not in skill '${args.skill.meta.name}' allowlist`,
-        );
-      }
-      // But a bad tool ARGUMENT (e.g. an out-of-enum value the model invented) or a
-      // guardrail rejection must NOT crash the turn — feed the error back so the
-      // model self-corrects (retries with valid args) or adapts (answers without
-      // the blocked tool). The rails still enforce: a GuardrailError means the
-      // handler never ran (rule #1/#7), and only authorized calls were audited.
-      try {
-        const result = await invokeTool(tool, block.input, args.toolContext, args.guardDeps);
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          content: JSON.stringify(result),
-        });
-      } catch (err) {
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          is_error: true,
-          content: toolErrorMessage(err),
-        });
+  return {
+    answer: null,
+    steps,
+    hitMaxSteps: true,
+    usage: { promptTokens, completionTokens },
+  };
+}
+
+/**
+ * Identical to {@link runAgent} — same model, system prompt, tools, guarded
+ * invoker, maxSteps, and usage accounting — but each turn is STREAMED. Text
+ * deltas are forwarded through `onTextDelta` as they arrive; once a turn produces
+ * no tool calls its accumulated text is the answer and the loop ends. The
+ * client's per-turn handling reads the SDK's `finalMessage()`, so the post-turn
+ * logic is the same shape as the non-streaming `messages.create` response.
+ */
+export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
+  const model = pickModel(args.skill.meta.task);
+  const system = buildSystemPrompt(args.skill, args.context);
+  const tools = toAnthropicTools(args.skill, args.tools);
+  const toolByName = new Map(args.tools.map((t) => [t.name, t]));
+
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: JSON.stringify(args.context) },
+  ];
+
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let steps = 0;
+
+  while (steps < args.maxSteps) {
+    steps += 1;
+    const stream = args.client.messages.stream({
+      model,
+      max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
+      system,
+      ...(tools.length > 0 && { tools }),
+      messages,
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        args.onTextDelta(event.delta.text);
       }
     }
-    messages.push({ role: 'user', content: toolResults });
+
+    const response = await stream.finalMessage();
+    promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+    completionTokens += response.usage.output_tokens;
+
+    const toolUses = response.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+
+    if (toolUses.length === 0) {
+      return {
+        answer: textFrom(response.content),
+        steps,
+        hitMaxSteps: false,
+        usage: { promptTokens, completionTokens },
+      };
+    }
+
+    // This turn called tools, so any text it streamed was reasoning, not the
+    // answer — tell the caller to drop it before the next turn streams.
+    args.onTurnReset();
+    await handleToolUses(args, toolByName, messages, response.content, toolUses);
   }
 
   return {

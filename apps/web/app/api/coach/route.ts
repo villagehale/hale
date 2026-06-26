@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
-import { db } from '~/lib/db';
 import { authConfigured } from '~/lib/auth-config';
-import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { askHale } from '~/lib/coach/agent';
+import { db } from '~/lib/db';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the agent reads the skill file off disk and calls the Anthropic
@@ -59,23 +59,53 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
 
-  try {
-    const { answer, conversationId, actionIntents } = await askHale(
-      {
-        familyId,
-        question: parsed.data.question,
-        intent: parsed.data.intent ?? null,
-        conversationId: parsed.data.conversationId ?? null,
-        focusedChildId: parsed.data.focusedChildId ?? null,
-        actor: actorUserId,
-      },
-      database,
-    );
+  // Stream the answer as newline-delimited JSON events so it renders token-by-token
+  // (perceived latency is output-length-bound). Events: {type:'delta',text} as the
+  // final answer streams, {type:'reset'} when an intermediate tool turn streamed
+  // text that is NOT the answer (drop it), then a terminal {type:'done',
+  // conversationId,actionIntents}. A failure mid-run emits {type:'error'} so the
+  // client shows its retry state rather than a dangling stream. The agent run
+  // (persistence, audit, action-intent detection, trace — rule #1/#4/#6) is
+  // unchanged; only the transport differs.
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: unknown) =>
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      try {
+        const { conversationId, actionIntents } = await askHale(
+          {
+            familyId,
+            question: parsed.data.question,
+            intent: parsed.data.intent ?? null,
+            conversationId: parsed.data.conversationId ?? null,
+            focusedChildId: parsed.data.focusedChildId ?? null,
+            actor: actorUserId,
+          },
+          database,
+          undefined,
+          {
+            onTextDelta: (text) => send({ type: 'delta', text }),
+            onTurnReset: () => send({ type: 'reset' }),
+          },
+        );
+        send({ type: 'done', conversationId, actionIntents });
+      } catch {
+        send({ type: 'error' });
+      } finally {
+        // Serverless flush: the Vercel function is short-lived, so buffered spans
+        // must be sent before it returns or the trace is dropped (rule #8).
+        await flushTelemetry();
+        controller.close();
+      }
+    },
+  });
 
-    return NextResponse.json({ body: answer, conversationId, actionIntents }, { status: 200 });
-  } finally {
-    // Serverless flush: the Vercel function is short-lived, so buffered spans must
-    // be sent before it returns or the trace is dropped (best-effort, rule #8).
-    await flushTelemetry();
-  }
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
 }

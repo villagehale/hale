@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { schema, type Database } from '@hale/db';
 import type { AgentClient } from '@hale/agent';
+import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { askHale } from './agent';
 
@@ -44,6 +44,31 @@ function textMessage(text: string): Anthropic.Message {
 function fakeClient(text: string): AgentClient {
   return {
     messages: { create: vi.fn(async () => textMessage(text)) },
+  } as unknown as AgentClient;
+}
+
+/**
+ * A fake streaming client: one text turn, emitted as one text_delta per chunk, with
+ * `finalMessage()` resolving the assembled answer. Drives askHale's streaming path's
+ * plumbing only (rule #8) — never the model's reasoning.
+ */
+function fakeStreamingClient(chunks: string[]): AgentClient {
+  const text = chunks.join('');
+  return {
+    messages: {
+      stream: vi.fn(() => ({
+        async *[Symbol.asyncIterator]() {
+          for (const chunk of chunks) {
+            yield {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: chunk },
+            } as Anthropic.MessageStreamEvent;
+          }
+        },
+        finalMessage: async () => textMessage(text),
+      })),
+    },
   } as unknown as AgentClient;
 }
 
@@ -209,6 +234,54 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     expect(run.status).toBe('failed');
     // No assistant message was persisted on the failure path.
     expect(capture.messages.map((m) => m.role)).toEqual(['user']);
+  });
+
+  it('streams the answer in deltas, then persists the full answer + attaches action intents', async () => {
+    const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
+    const db = fakeDb(capture);
+    // The answer implies a reminder, so detectActionIntents must surface a chip on
+    // the streamed-then-persisted answer (rule #4 draft).
+    const chunks = ['watch for the cues — ', "I'll remind you ", 'next week.'];
+    const deltas: string[] = [];
+    let resets = 0;
+
+    const result = await askHale(
+      {
+        familyId: FAMILY_ID,
+        question: 'when do solids start?',
+        intent: null,
+        conversationId: null,
+        focusedChildId: null,
+        actor: 'user-1',
+      },
+      db,
+      fakeStreamingClient(chunks),
+      {
+        onTextDelta: (d) => deltas.push(d),
+        onTurnReset: () => {
+          resets += 1;
+        },
+      },
+    );
+
+    // The tokens flowed to the client, in order, and join to the full answer.
+    expect(deltas).toEqual(chunks);
+    expect(resets).toBe(0);
+    expect(result.answer).toBe(chunks.join(''));
+
+    // The FULL answer (not a partial) was persisted as the assistant turn.
+    expect(capture.messages).toEqual([
+      { conversationId: CONVERSATION_ID, role: 'user', content: 'when do solids start?' },
+      { conversationId: CONVERSATION_ID, role: 'assistant', content: chunks.join('') },
+    ]);
+    expect(result.conversationId).toBe(CONVERSATION_ID);
+
+    // Action intents are detected on the complete answer and returned (rule #4).
+    expect(result.actionIntents.map((i) => i.kind)).toContain('set_reminder');
+
+    // The run was still recorded as completed with real token counts.
+    expect(capture.agentRuns).toHaveLength(1);
+    expect((capture.agentRuns[0] as Record<string, unknown>).status).toBe('completed');
   });
 
   it('continues an existing thread when the conversation belongs to the family', async () => {

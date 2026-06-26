@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { type AgentClient, runAgent } from './agent.js';
+import { type AgentClient, runAgent, runAgentStreaming } from './agent.js';
 import type { Skill } from './skill.js';
 import { type AuditEntry, type GuardDeps, defineTool } from './tool.js';
 
@@ -206,5 +206,130 @@ describe('runAgent loop mechanics', () => {
         guardDeps: deps,
       }),
     ).rejects.toThrow(/not in skill 'ask-hale' allowlist/);
+  });
+});
+
+/**
+ * A fake MessageStream: yields one text_delta event per supplied chunk (the SDK's
+ * `content_block_delta`), then resolves `finalMessage()` with the assembled
+ * Message. Tool turns carry no text chunks — only the tool_use in finalMessage.
+ * Plumbing only (rule #8); the model's reasoning is never simulated here.
+ */
+function fakeStream(chunks: string[], final: Anthropic.Message) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const text of chunks) {
+        yield {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text },
+        } as Anthropic.MessageStreamEvent;
+      }
+    },
+    finalMessage: async () => final,
+  };
+}
+
+function fakeStreamingClient(
+  script: Array<{ chunks: string[]; final: Anthropic.Message }>,
+): AgentClient {
+  let calls = 0;
+  return {
+    messages: {
+      stream: vi.fn(() => {
+        const turn = script[calls];
+        calls += 1;
+        if (!turn) {
+          throw new Error('fakeStreamingClient: script exhausted');
+        }
+        return fakeStream(turn.chunks, turn.final);
+      }),
+    },
+  } as unknown as AgentClient;
+}
+
+describe('runAgentStreaming', () => {
+  it('streams the final answer token-by-token and returns the joined text', async () => {
+    const client = fakeStreamingClient([
+      {
+        chunks: ['around ', 'six ', 'months.'],
+        final: textMessage('around six months.', usage(80, 12)),
+      },
+    ]);
+    const { deps } = guardDeps();
+    const deltas: string[] = [];
+    let resets = 0;
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'when do I start solids?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: (d) => deltas.push(d),
+      onTurnReset: () => {
+        resets += 1;
+      },
+    });
+
+    // Every token was forwarded, in order, and the joined deltas equal the answer.
+    expect(deltas).toEqual(['around ', 'six ', 'months.']);
+    expect(deltas.join('')).toBe(result.answer);
+    expect(result.answer).toBe('around six months.');
+    expect(result.steps).toBe(1);
+    expect(result.hitMaxSteps).toBe(false);
+    expect(result.usage).toEqual({ promptTokens: 80, completionTokens: 12 });
+    // The single answer turn never reset.
+    expect(resets).toBe(0);
+  });
+
+  it('runs the guarded tool turn, fires onTurnReset, then streams only the answer', async () => {
+    const client = fakeStreamingClient([
+      {
+        chunks: [],
+        final: toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(100, 20)),
+      },
+      {
+        chunks: ['right ', 'on ', 'track.'],
+        final: textMessage('right on track.', usage(120, 30)),
+      },
+    ]);
+    const { deps, audits } = guardDeps();
+    const deltas: string[] = [];
+    let resets = 0;
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'is my baby on track?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: (d) => deltas.push(d),
+      onTurnReset: () => {
+        resets += 1;
+      },
+    });
+
+    // The tool turn produced no answer text; the reset fired once for it.
+    expect(resets).toBe(1);
+    // Only the final turn's tokens reached the client.
+    expect(deltas).toEqual(['right ', 'on ', 'track.']);
+    expect(result.answer).toBe('right on track.');
+    expect(result.steps).toBe(2);
+    // Usage summed across both round-trips.
+    expect(result.usage).toEqual({ promptTokens: 220, completionTokens: 50 });
+    // The tool went through the guarded invoker → an audit row (rule #6).
+    expect(audits).toEqual([
+      {
+        familyId: 'fam-1',
+        actor: 'agent-run-1',
+        actionTaken: 'tool:get_child_profile',
+        after: { childId: 'kid-1' },
+      },
+    ]);
   });
 });
