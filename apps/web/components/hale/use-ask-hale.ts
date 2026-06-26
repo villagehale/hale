@@ -160,7 +160,11 @@ export function useAskHale(
       didHydrate.current = true;
       return;
     }
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    threadEndRef.current?.scrollIntoView({
+      behavior: reduced ? 'auto' : 'smooth',
+      block: 'end',
+    });
   }, [visibleTurns]);
 
   async function ask(question: string): Promise<void> {
