@@ -2,6 +2,17 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { z } from 'zod';
 
 /**
+ * Wraps an agent's instructions in a single cache-marked system block. The
+ * instructions are the largest stable prefix every run shares, so a 5-minute
+ * ephemeral breakpoint here lets repeated runs read it at ~0.1x input cost
+ * instead of reprocessing it. The variable per-run content lives in `messages`,
+ * which renders after `system` and so stays outside the cached prefix.
+ */
+export function cachedSystem(instructions: string): Anthropic.TextBlockParam[] {
+  return [{ type: 'text', text: instructions, cache_control: { type: 'ephemeral' } }];
+}
+
+/**
  * Single-shot structured output via tool-forced JSON.
  *
  * The pinned @anthropic-ai/sdk (0.41.0) has no `messages.parse` /
@@ -33,7 +44,7 @@ export async function forceToolJson<TSchema extends z.ZodTypeAny>(
   const response = await args.client.messages.create({
     model: args.model,
     max_tokens: 4096,
-    system: args.system,
+    system: cachedSystem(args.system),
     tools: [
       {
         name: args.toolName,

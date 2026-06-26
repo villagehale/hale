@@ -11,6 +11,7 @@ import { invokeReviewerTool } from '../tools/registry.js';
 import { loadChildNames } from '../services/memory-writer.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
+import { cachedSystem } from './structured.js';
 import { logger } from '../logger.js';
 
 const VERDICT_TOOL = 'submit_verdict';
@@ -68,7 +69,10 @@ export async function runReviewer(
   const client = deps.client ?? anthropicClient();
   const invokeTool = deps.invokeTool ?? invokeReviewerTool;
   const getChildNames = deps.loadChildNames ?? loadChildNames;
-  const system = await loadPrompt('reviewer');
+  // The reviewer's instructions + tool list are the same on every turn of the
+  // loop; caching the system block once lets each turn read the stable
+  // tools+system prefix instead of reprocessing it.
+  const system = cachedSystem(await loadPrompt('reviewer'));
   const collected: ToolResult[] = [];
 
   // The model cannot know the family's child names; check_pii_leak needs them to
@@ -77,8 +81,11 @@ export async function runReviewer(
   let childNames: string[] | null = null;
 
   // Reviewer is a multi-turn loop — one agent_runs row aggregates the whole
-  // review, summing usage across every messages.create call it made.
+  // review, summing usage across every messages.create call it made. Cache-read
+  // tokens are tracked apart from full-rate prompt tokens because they bill at
+  // the 0.1x read rate (estimateCostUsd applies the split).
   let promptTokens = 0;
+  let cacheReadTokens = 0;
   let completionTokens = 0;
   const startedAt = Date.now();
   const finish = (verdict: ReviewerVerdict): ReviewerRunResult => ({
@@ -90,7 +97,7 @@ export async function runReviewer(
         input_tokens: promptTokens,
         output_tokens: completionTokens,
         cache_creation_input_tokens: null,
-        cache_read_input_tokens: null,
+        cache_read_input_tokens: cacheReadTokens,
         server_tool_use: null,
       },
       Date.now() - startedAt,
@@ -122,6 +129,7 @@ export async function runReviewer(
       messages,
     });
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+    cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
     completionTokens += response.usage.output_tokens;
 
     const toolUses = response.content.filter(

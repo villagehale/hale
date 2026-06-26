@@ -26,7 +26,10 @@ export function metricsFromUsage(
   return {
     agentName,
     modelUsed: model,
-    promptTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0),
+    promptTokens:
+      usage.input_tokens +
+      (usage.cache_creation_input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0),
     completionTokens: usage.output_tokens,
     costUsd: estimateCostUsd(model, usage),
     latencyMs,

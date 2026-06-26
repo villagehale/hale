@@ -198,6 +198,25 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
     expect(verdict.rationale).toContain('check_spending_cap');
   });
 
+  it('marks the reviewer system prefix cacheable, with the draft outside it', async () => {
+    const create = vi.fn(
+      async (_req: Anthropic.MessageCreateParamsNonStreaming) => assistantMessage([]),
+    );
+    const client = { messages: { create } } as unknown as ReviewerAnthropicClient;
+
+    await runReviewer({ familyId, draft: draft('send_email') }, { client });
+
+    const req = create.mock.calls[0]?.[0] as Anthropic.MessageCreateParamsNonStreaming;
+    const systemBlocks = req.system as Anthropic.TextBlockParam[];
+    expect(systemBlocks).toHaveLength(1);
+    expect(systemBlocks[0]?.cache_control).toEqual({ type: 'ephemeral' });
+    // The variable per-review draft (identified by its draft id) rides in
+    // messages, outside the cached prefix.
+    const draftId = draft('send_email').id;
+    expect(JSON.stringify(req.system)).not.toContain(draftId);
+    expect(JSON.stringify(req.messages)).toContain(draftId);
+  });
+
   it('passes a reject verdict through unchanged', async () => {
     const client = scriptedClient([
       [
