@@ -34,6 +34,7 @@ import {
   entitlementRequiredFor,
   isOverAllowance,
   monthlyAllowanceUsd,
+  stageFromAgeInMonths,
   type DraftedAction,
   type ApprovedAction,
   type ActionType,
@@ -213,11 +214,20 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
     // names a real child of this family — a hallucinated or stale id is dropped
     // to null rather than written as a dangling reference. events.child_id is
     // additive + nullable, so null (undeterminable or family-wide) is fine.
-    const knownChildIds = new Set(familyContext.children.map((c) => c.id));
-    const childId =
-      fresh.concernsChildId && knownChildIds.has(fresh.concernsChildId)
-        ? fresh.concernsChildId
-        : null;
+    const knownChild =
+      fresh.concernsChildId
+        ? familyContext.children.find((c) => c.id === fresh.concernsChildId)
+        : undefined;
+    const childId = knownChild?.id ?? null;
+    // Rule #1 write-site backstop: the classifier's teen_content is a probabilistic
+    // signal, never the sole gate. When the event resolves to a known child whose
+    // age makes them a teenager (deriveStage boundary 156mo, via stageFromAgeInMonths
+    // on the age already loaded here), the stored flag is OR'd to true — so a
+    // classify miss can't leak a teen's raw content to the mask/autonomy cap that
+    // read this flag.
+    const teenContent =
+      fresh.teenContent ||
+      (knownChild !== undefined && stageFromAgeInMonths(knownChild.ageInMonths) === 'teenager');
     const { eventId, duplicate } = await recordEvent({
       familyId,
       source: job.source,
@@ -226,7 +236,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       classifierConfidence: fresh.confidence.score,
       dedupHash: fresh.dedupHash,
       suggestion: fresh.suggestion,
-      teenContent: fresh.teenContent,
+      teenContent,
       childId,
       classifierMetrics: fresh.runMetrics,
     });
@@ -241,7 +251,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       payload: fresh.payload,
       confidence: fresh.confidence.score,
       suggestion: fresh.suggestion,
-      teenContent: fresh.teenContent,
+      teenContent,
     };
   }
 

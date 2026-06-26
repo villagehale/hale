@@ -6,7 +6,7 @@ import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import { type ApprovalView, toApprovalView } from './approvals';
-import { type TrailView, toTrailView } from './mappers';
+import { type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**
  * The remaining family-scoped reads (the family band, the Family page, and the
@@ -142,8 +142,17 @@ export function loadTrail(): Promise<TrailView[]> {
     // = null/false and render in full, the documented trail boundary: we redact
     // exactly when a row resolves to teen_content, never claiming to cover targets
     // we can't tie.
+    //
+    // Defense-in-depth (rule #1): the stored teen_content is a probabilistic
+    // classifier signal, so we ALSO resolve the event's child DOB (third LEFT JOIN)
+    // and OR-in the age-derived teen check — a classify miss on a 13+ child's event
+    // still redacts. effectiveTeenContent does the OR.
     const rows = await database
-      .select({ entry: schema.auditLog, teenContent: schema.events.teenContent })
+      .select({
+        entry: schema.auditLog,
+        teenContent: schema.events.teenContent,
+        childDob: schema.children.dateOfBirth,
+      })
       .from(schema.auditLog)
       .leftJoin(
         schema.actions,
@@ -153,19 +162,26 @@ export function loadTrail(): Promise<TrailView[]> {
         ),
       )
       .leftJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
+      .leftJoin(schema.children, eq(schema.events.childId, schema.children.id))
       .where(eq(schema.auditLog.familyId, familyId))
       .orderBy(desc(schema.auditLog.occurredAt))
       .limit(50);
-    return rows.map((row) => toTrailView(row.entry, row.teenContent ?? false));
+    return rows.map((row) =>
+      toTrailView(row.entry, effectiveTeenContent(row.teenContent ?? false, row.childDob ?? null)),
+    );
   }, []);
 }
 
 /**
  * The Approvals queue: this family's drafted actions still awaiting a parent's
  * decision (userVisibleState = 'drafted_for_approval' — rule #4's hold for an
- * L1/L2 family). Joined to the source event for the teen-content flag so the
- * mapper can redact a 13+ child's raw drafted payload (rule #1). Same empty-state
- * degradation as the other reads: no DB or no resolved family → empty queue.
+ * L1/L2 family). Joined to the source event for the teen-content flag, and to the
+ * event's child for its DOB, so the mapper can redact a 13+ child's raw drafted
+ * payload (rule #1). Defense-in-depth: the stored teen_content is a probabilistic
+ * classifier signal, so effectiveTeenContent ORs it with the age-derived teen check
+ * (LEFT JOIN children — null DOB when the event names no child) so a classify miss
+ * on a teen's draft still redacts. Same empty-state degradation as the other reads:
+ * no DB or no resolved family → empty queue.
  */
 export function loadPendingApprovals(): Promise<ApprovalView[]> {
   return readForFamily(async (database, familyId) => {
@@ -177,9 +193,11 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         reviewerVerdict: schema.actions.reviewerVerdict,
         draftedAt: schema.actions.draftedAt,
         teenContent: schema.events.teenContent,
+        childDob: schema.children.dateOfBirth,
       })
       .from(schema.actions)
       .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
+      .leftJoin(schema.children, eq(schema.events.childId, schema.children.id))
       .where(
         and(
           eq(schema.actions.familyId, familyId),
@@ -195,7 +213,7 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         payload: row.payload,
         reviewerVerdict: row.reviewerVerdict,
         draftedAt: row.draftedAt,
-        teenContent: row.teenContent,
+        teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null),
       }),
     );
   }, []);
