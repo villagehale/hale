@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "The check_spending_cap tool returned ok:false — the order total of $189.00 exceeds the family's $75 monthly autonomous spending cap. This is a clear policy violation (spending cap exceeded), and there is no user override set. Per rejection criteria, this must be rejected.",
+    "remediation": "Reduce the order to fit within the $75 monthly autonomous cap (e.g., a smaller quantity), or escalate to the parent for explicit per-action approval of the $189.00 order. Once a user override or approval is granted, the order can be re-submitted for review."
+  },
+  "latencyMs": 3990
+}

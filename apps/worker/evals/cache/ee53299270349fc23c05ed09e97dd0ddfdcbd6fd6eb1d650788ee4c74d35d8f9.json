@@ -1,0 +1,23 @@
+{
+  "value": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "Sunny Daycare is confirming a spot has opened and asking the family to reply by Friday to accept — a direct response to a prior daycare application requiring action.",
+    "payload": {
+      "sender": "admissions@sunnydaycare.ca",
+      "daycareName": "Sunny Daycare",
+      "childName": "Mira",
+      "room": "toddler room",
+      "startDate": "September",
+      "replyDeadline": "Friday",
+      "offerAcceptanceRequired": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 4712
+}

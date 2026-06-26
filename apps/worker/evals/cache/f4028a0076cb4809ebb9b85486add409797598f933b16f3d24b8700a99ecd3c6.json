@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01KAo1VBPpoBmbXKhsK1xTVk",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "i don't have a Saturday class stored for Mira — nothing in her memory or your local village discoveries mentions a specific Saturday enrollment. i can see she's enjoyed a parent-and-tot swim class and a library rhyme-time session recently, but neither has a day-of-week attached in what's been recorded. if you let me know the class name or day, i can save it so it's easy to pull up next time — or if you're looking for Saturday options in Toronto, i can search for toddler-friendly classes in your area."
+      }
+    ],
+    "usage": {
+      "input_tokens": 3919,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 121,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3853,
+  "firstInputTokens": 3919
+}

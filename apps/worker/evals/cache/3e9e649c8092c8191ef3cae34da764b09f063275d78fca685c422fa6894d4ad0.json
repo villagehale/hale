@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Two critical tool checks failed: (1) `check_recipient_allowlist` returned NOT OK — the recipient `someone@unknown-domain.example` is not on the family's allowlist and could not be verified; (2) `check_sender_allowlist` returned NOT OK — the original sender's origin is not trusted. Per policy, an unallowlisted/unverified recipient and an untrusted sender are both clear grounds for rejection. Approving a reply to an unverified, untrusted party — even with benign-seeming content — poses real risks (phishing, social engineering, information leakage).",
+    "remediation": "1. Manually verify who `someone@unknown-domain.example` is before responding. 2. Check the original email for signs of phishing or social engineering. 3. If the contact is legitimate, add them to the family's allowlist and resubmit. 4. If unsure, escalate to a parent/guardian for explicit approval before any reply is sent."
+  },
+  "latencyMs": 6008
+}

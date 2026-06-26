@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.97,
+    "rationale": "Inventory webhook shows size 4 diapers at critically low stock (6 units, ~1 day remaining at current daily use of 7), which is a clear supply-low signal for an 18-month-old toddler.",
+    "payload": {
+      "item": "size 4 diapers",
+      "on_hand": 6,
+      "daily_use": 7,
+      "days_remaining": 1,
+      "urgency": "critical"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "place_supply_order"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4495
+}

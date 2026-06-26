@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "This is a medical communication — replying to the pediatric clinic to confirm Mira's 18-month visit. Per policy, medical communications require explicit per-action user approval regardless of allowlist state, and no such approval is present in the verification results. While the gathered tool checks (PII, recipient/sender allowlist, idempotency) all returned ok, several relevant verifications are missing: there is no check_calendar_conflict to confirm Tuesday June 23 at 5:30 PM is actually free, no check_action_time_window, and no check_user_override. The combination of a medical-category message without per-action approval plus unverified appointment-time accuracy means this cannot be auto-approved.",
+    "remediation": "Obtain explicit per-action parental approval for this medical reply, and run check_calendar_conflict for Tue June 23 5:30 PM, check_action_time_window, and check_user_override before sending."
+  },
+  "latencyMs": 7513
+}

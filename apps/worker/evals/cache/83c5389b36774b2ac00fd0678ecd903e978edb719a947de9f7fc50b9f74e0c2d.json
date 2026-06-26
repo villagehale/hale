@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale is clear, specific, and directly matches the signal content. It correctly identifies two key indicators: (1) the sender domain (canada.ca/Service Canada), and (2) the explicit mention of \"Employment Insurance maternity benefit claim.\" These details definitively confirm the event_type as ei_correspondence. The reasoning is not circular or vague—it provides concrete evidence that directly supports the classification."
+  }
+}

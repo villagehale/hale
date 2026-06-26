@@ -1,0 +1,56 @@
+{
+  "response": {
+    "id": "msg_01JLUGU9uVZKQPF5xd2LPCTp",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check Mira's profile and pull her allergy memory at the same time."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01YH3kW1n5mgspWKrBrX1kS2",
+        "name": "get_child_profile",
+        "input": {
+          "childId": "synth-child-1"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01KyGAP6CRXP4ZwfNG8MhuqT",
+        "name": "search_memory",
+        "input": {
+          "familyId": "synth-family-1",
+          "query": "food allergy",
+          "factTypes": [
+            "medical"
+          ]
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 3031,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 163,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3112,
+  "firstInputTokens": 3031
+}

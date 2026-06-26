@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "This is a medical communication (confirming a pediatric visit for a minor, Mira). Per policy, medical communications require explicit per-action user approval regardless of allowlist state. Additionally, two required verification checks were not performed: `check_action_time_window` and `check_user_override`. Without these results, I cannot fully approve the action. The Drafter also makes an implicit factual claim (\"Tuesday June 23 at 5:30 PM works\") that should be verified via `check_calendar_conflict` but no such check was run.",
+    "remediation": "1. Obtain explicit per-action parental/guardian approval for this medical communication before sending. 2. Run `check_action_time_window` to confirm the action is within the permitted operating window. 3. Run `check_user_override` to confirm no override is in effect. 4. Run `check_calendar_conflict` for Tuesday June 23 at 5:30 PM to confirm the appointment slot is free on Mira's/family's calendar. Only after all checks pass and explicit user approval is received should this reply be sent."
+  },
+  "latencyMs": 6614
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "This is a clear, well-structured supply order with appropriate urgency communicated through the reason field. The specifics are concrete (size 4 diapers, DiaperCo vendor, quantity, unit price). The tone is professional and factual. Minor deduction: ordering only 1 unit for a critical need (~1 day remaining) seems potentially insufficient for a household stock order, which suggests either incomplete context or possibly an oversight in quantity planning, though this is a minor consideration for a supply order message rather than a family communication issue."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The assistant correctly states both key facts from the reference: (1) Mira's bedtime is 7:30 pm / 19:30, and (2) the wind-down routine is bath → story → lights out in that exact order. The answer includes these facts accurately, with paraphrasing (e.g., \"bedtime window\" for bedtime) that doesn't contradict the reference. The additional context about newborn sleep frameworks is supplementary educational information that doesn't contradict or invent specific facts about Mira's routine. The core recall is factually accurate."
+  }
+}

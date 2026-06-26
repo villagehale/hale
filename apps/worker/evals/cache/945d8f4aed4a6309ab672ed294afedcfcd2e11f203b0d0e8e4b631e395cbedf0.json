@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "approve",
+    "rationale": "Internal-only calendar event creation. Time-window check passed (10:15 within allowed hours, not quiet-hours) and idempotency check confirmed no duplicate. The action is reversible (calendar events can be deleted/edited), has no external recipient (internal_only), involves no spending, and no PII leaves the family. Though the title references a medical visit, this is an internal calendar reminder, not a medical communication sent to a provider, so per-action medical approval is not triggered. Both invoked tools returned ok:true."
+  },
+  "latencyMs": 3567
+}

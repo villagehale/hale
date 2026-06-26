@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "approve",
+    "rationale": "All verification tools returned ok: true. The action is a simple email reply confirming an appointment slot at an allowlisted pediatric clinic. No PII leak detected, recipient is on allowlist, sender is trusted, and this is not a duplicate action. The reply is reversible (can be followed up if needed) and contains only appointment confirmation details."
+  },
+  "latencyMs": 1738
+}

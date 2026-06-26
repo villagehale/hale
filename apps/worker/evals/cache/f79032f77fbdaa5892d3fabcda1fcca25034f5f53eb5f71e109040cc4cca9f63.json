@@ -1,0 +1,12 @@
+{
+  "value": {
+    "payload": {
+      "eventId": "evt-06",
+      "summary": "EI maternity benefits claim processed — first payment within 3 business days"
+    },
+    "confidence": 0.95,
+    "rationale": "Government confirmation that maternity benefits claim has been processed and payment is imminent — routine administrative notification suitable for digest.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 1539
+}

@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01CQMah7TXUcPgbUTUrW1zRN",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "based on what you've told me before, mira's bedtime window is **7:30 pm**, and your wind-down routine goes: **bath → story → lights out** — three steps, in that order. that's a solid sequence for a 4-month-old; a consistent, short routine (roughly 20–30 minutes) helps her nervous system recognize that sleep is coming, which over time makes settling easier. if you ever want to layer in something like a brief feed or a lullaby between story and lights out, that's an easy tweak — just keep the order the same each night so the predictability stays intact. let me know if anything has shifted and i'll update what i have on file."
+      }
+    ],
+    "usage": {
+      "input_tokens": 4092,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 157,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5157,
+  "firstInputTokens": 4092
+}

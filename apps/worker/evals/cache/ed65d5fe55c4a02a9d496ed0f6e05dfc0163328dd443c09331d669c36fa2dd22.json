@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01UAu9p5yyDkz7kQPJs7t7WK",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I don't have a recorded milestone entry for Mira's first steps in her memory — the most recent milestone notes are pulling to standing (June) and stacking three blocks (May), but no logged date for independent walking. What I can tell you is that the typical window for first steps is around 9–12 months, and since Mira is 18 months now, that would put it roughly 6–9 months ago if she was in the common range — but that's just a general estimate, not something specific to Mira. If you remember roughly when it happened and want to log it, just let me know and I'll save it so it's easy to look back on!"
+      }
+    ],
+    "usage": {
+      "input_tokens": 3925,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 151,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5264,
+  "firstInputTokens": 3925
+}

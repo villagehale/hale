@@ -1,0 +1,26 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "create_calendar_event",
+      "title": "Mira — Dr. Okafor @ Riverdale Peds",
+      "datetime": "2026-06-23T10:15:00-04:00",
+      "location": "Riverdale Peds",
+      "attendees": [],
+      "notes": "Pediatric appointment for Mira with Dr. Okafor at Riverdale Peds.",
+      "reminders": [
+        {
+          "method": "notification",
+          "minutes_before": 1440
+        },
+        {
+          "method": "notification",
+          "minutes_before": 60
+        }
+      ]
+    },
+    "confidence": 0.88,
+    "rationale": "All required fields (child, datetime, location, provider) are present in the event, so a clean calendar entry can be drafted with sensible default reminders (1 day and 1 hour before).",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 4810
+}

@@ -1,0 +1,13 @@
+{
+  "value": {
+    "event_type": "ignore",
+    "confidence": 0.95,
+    "rationale": "This is unsolicited marketing spam with no family-relevant content or signal.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 1634
+}

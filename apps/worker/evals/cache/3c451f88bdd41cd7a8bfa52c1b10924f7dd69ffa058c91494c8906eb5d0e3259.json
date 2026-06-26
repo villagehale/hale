@@ -1,0 +1,17 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.99,
+    "rationale": "This is a generic promotional/spam email from an unknown marketing sender with no family-relevant signal whatsoever.",
+    "payload": {
+      "from": "deals@randommarketing.example",
+      "subject": "50% OFF EVERYTHING!!!",
+      "signal_source": "email"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4025
+}

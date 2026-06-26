@@ -1,0 +1,54 @@
+{
+  "role": "draft",
+  "note": "Representative draft tasks scored on the proven run-drafter-eval battery: reader-facing PROPERTIES, not a payload schema (the drafter prompt leaves the payload an open object, so field names legitimately vary). Email actions guarantee to/subject/body and echo the recipient; open-payload action types (calendar, supply, digest) only require non-empty reader-facing text. All arms additionally: no placeholder tokens, body within bound, no ungrounded specifics (a fabricated email/$/long-digit must appear in the input).",
+  "cases": [
+    {
+      "id": "pediatric-confirm-reply",
+      "input": {
+        "actionType": "reply_to_email",
+        "event": { "eventId": "evt-01", "eventType": "pediatric_appointment_request", "payload": { "from": "frontdesk@riverdale-peds.ca", "subject": "Confirm visit", "body": "We have an opening for Mira's 18-month visit Tuesday June 23 at 5:30 PM. Can you confirm?" } }
+      },
+      "expect": { "requiredPayloadFields": ["to", "subject", "body"], "recipientEchoOf": "from", "maxBodyChars": 600 }
+    },
+    {
+      "id": "daycare-accept-reply",
+      "input": {
+        "actionType": "reply_to_email",
+        "event": { "eventId": "evt-02", "eventType": "daycare_application_response", "payload": { "from": "admissions@sunnydaycare.ca", "subject": "Your application", "body": "A spot has opened for Mira in our toddler room starting September. Please reply by Friday to accept." } }
+      },
+      "expect": { "requiredPayloadFields": ["to", "subject", "body"], "recipientEchoOf": "from", "maxBodyChars": 600 }
+    },
+    {
+      "id": "supply-reorder",
+      "input": {
+        "actionType": "place_supply_order",
+        "event": { "eventId": "evt-03", "eventType": "supply_low_signal", "payload": { "item": "size 4 diapers", "vendor": "DiaperCo", "unit_price": "42.99", "days_remaining": 1 } }
+      },
+      "expect": { "requireNonEmptyText": true, "maxBodyChars": 600 }
+    },
+    {
+      "id": "appointment-calendar-event",
+      "input": {
+        "actionType": "create_calendar_event",
+        "event": { "eventId": "evt-04", "eventType": "pediatric_appointment_reminder", "payload": { "child": "Mira", "datetime": "2026-06-23T10:15:00-04:00", "location": "Riverdale Peds", "provider": "Dr. Okafor" } }
+      },
+      "expect": { "requireNonEmptyText": true, "maxBodyChars": 600 }
+    },
+    {
+      "id": "office-message-reply",
+      "input": {
+        "actionType": "reply_to_email",
+        "event": { "eventId": "evt-05", "eventType": "pediatric_office_message", "payload": { "from": "nurse@riverdale-peds.ca", "subject": "Follow-up question", "body": "Just checking — did Mira's cough improve after the weekend? Let us know if you'd like to book a visit." } }
+      },
+      "expect": { "requiredPayloadFields": ["to", "subject", "body"], "recipientEchoOf": "from", "maxBodyChars": 600 }
+    },
+    {
+      "id": "ei-digest-only",
+      "input": {
+        "actionType": "add_to_digest_only",
+        "event": { "eventId": "evt-06", "eventType": "ei_correspondence", "payload": { "from": "noreply@canada.ca", "subject": "EI maternity benefits", "body": "Your claim has been processed. First payment within 3 business days." } }
+      },
+      "expect": { "requireNonEmptyText": true, "maxBodyChars": 400, "judgeTone": false }
+    }
+  ]
+}

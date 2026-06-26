@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "lab_results_ready",
+    "confidence": 0.95,
+    "rationale": "Email from a known pediatric clinic notifying the family that bloodwork results are available for their child in the patient portal.",
+    "payload": {
+      "sender": "portal@riverdale-peds.ca",
+      "clinic_name": "Riverdale Peds",
+      "child_name": "Mira",
+      "test_type": "bloodwork",
+      "action_required": "log_in_to_portal"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 2506
+}

@@ -1,0 +1,15 @@
+{
+  "value": {
+    "payload": {
+      "title": "pediatric appointment with Dr. Okafor",
+      "datetime": "2026-06-23T10:15:00-04:00",
+      "location": "Riverdale Peds",
+      "description": "Appointment reminder for Mira",
+      "calendar_type": "appointment"
+    },
+    "confidence": 0.92,
+    "rationale": "Pediatric appointment details are complete and clear; standard calendar event with all logistics present.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 3577
+}

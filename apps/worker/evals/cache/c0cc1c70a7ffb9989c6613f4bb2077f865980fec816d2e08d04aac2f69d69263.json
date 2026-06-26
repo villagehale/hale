@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Order total of $189.00 exceeds the family's $75 monthly autonomous spending cap. This is a clear policy violation that prevents approval without explicit user override.",
+    "remediation": "Reduce order quantity or value to stay within the $75 cap, or obtain explicit parental approval to exceed the spending limit."
+  },
+  "latencyMs": 1415
+}

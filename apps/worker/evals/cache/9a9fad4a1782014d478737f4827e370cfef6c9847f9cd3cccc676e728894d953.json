@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "recipient": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "thanks so much — we're excited about the spot in the toddler room. we accept and will be ready for september."
+    },
+    "confidence": 0.85,
+    "rationale": "Accepting the daycare spot with warm enthusiasm while meeting the Friday deadline, using a friendly conversational tone.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 1821
+}

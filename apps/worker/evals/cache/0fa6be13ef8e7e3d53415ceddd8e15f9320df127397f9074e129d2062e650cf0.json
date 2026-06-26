@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "hi — yes, tuesday june 23 at 5:30 pm works. see you then!"
+    },
+    "confidence": 0.72,
+    "rationale": "No memory slice was provided, so I can't verify calendar availability — confirming the slot as offered, but confidence is reduced because a conflict can't be ruled out.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 3832
+}

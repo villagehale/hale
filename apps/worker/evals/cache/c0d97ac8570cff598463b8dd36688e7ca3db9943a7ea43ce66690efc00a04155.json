@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01RF7kj23C6yJizSKyqepLum",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "you've got Mira's bedtime set at **7:30 pm**, with a three-step wind-down: **bath → story → lights out** — that's a solid, consistent sequence, which the toddler sleep framework supports because the predictable order acts as a cue that sleep is coming, helping Mira's nervous system shift gears. one thing worth noting from recent episodes: on days when her nap runs short she's been crankier by evening, so on those days you might start the bath a little earlier (say 7:00) to keep overtiredness from making the settle harder. if you ever want to layer in something extra — like Mira's blue elephant joining the story step — that comfort object can do double duty as a sleep-onset cue too."
+      }
+    ],
+    "usage": {
+      "input_tokens": 4049,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 174,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 5931,
+  "firstInputTokens": 4049
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "The scheduled calendar event falls during the family's configured quiet hours (03:00 AM). The check_action_time_window tool returned ok: false, which is a clear policy violation for non-emergency calendar actions.",
+    "remediation": "Reschedule the calendar reminder for a time outside the quiet-hours window. For example, set the event to 08:00 or 09:00 on 2026-06-23 instead of 03:00 AM."
+  },
+  "latencyMs": 1806
+}

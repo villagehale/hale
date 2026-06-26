@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "thanks for the note — tuesday june 23 at 5:30 pm works great. see you then."
+    },
+    "confidence": 0.7,
+    "rationale": "Confirming the appointment time as requested, matching default voice profile (lowercase, warm, direct) but with moderate confidence due to no explicit memory or voice guidance provided.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 1872
+}

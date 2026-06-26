@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "hi — thanks for letting us know a spot opened up for mira. we'd like to accept the toddler room spot starting september. can you let me know the next steps and anything you need from us before friday?\n\nthanks!"
+    },
+    "confidence": 0.55,
+    "rationale": "The email asks for a reply by Friday to accept; I drafted an acceptance, but no memory confirms the family actually wants this spot, so this needs parent review.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 4073
+}

@@ -1,0 +1,53 @@
+{
+  "response": {
+    "id": "msg_01K2gEmz7iybF7Ug7Eay2sUo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check Mira's profile and pull the relevant memory facts at the same time."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_016qgsUD4kQyrNYR9TLqoJLL",
+        "name": "get_child_profile",
+        "input": {
+          "childId": "synth-child-1"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_0149pzhC7FJY9ukKUm13X8iq",
+        "name": "search_memory",
+        "input": {
+          "familyId": "synth-family-1",
+          "query": "early sleep swaddle"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 3037,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 145,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4104,
+  "firstInputTokens": 3037
+}

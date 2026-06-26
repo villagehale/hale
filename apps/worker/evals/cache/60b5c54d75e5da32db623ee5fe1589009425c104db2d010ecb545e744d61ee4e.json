@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "unit_price": 42.99,
+      "quantity": 1
+    },
+    "confidence": 0.85,
+    "rationale": "size 4 diapers running out in 1 day — ordering from DiaperCo to avoid stockout.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 1538
+}

@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01YHhmRrR2LQoCrPpfNx9CQ4",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "according to what you've shared with us, mira settled best when swaddled on her back as a young baby, and you dropped the swaddle at around 5 months — both of those are saved in her profile as things you told us directly. that timing lines up well with standard safe-sleep practice, since rolling ability (which typically emerges around 4–6 months) is the usual cue to transition out of a swaddle. if you're ever trying to recreate that early-days calm for a younger sibling or just reminiscing, the combination of back placement and snug wrapping was clearly the magic formula for her. and if you want to jot down any other early details you remember — like whether she preferred a particular settling sound or feed-to-sleep pattern — just mention them and i'll save them alongside the rest."
+      }
+    ],
+    "usage": {
+      "input_tokens": 13376,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 184,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 6771,
+  "firstInputTokens": 13376
+}

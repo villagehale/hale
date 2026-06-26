@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "hi — tuesday june 23 at 5:30 works for us. confirmed for the 18-month visit. thanks!"
+    },
+    "confidence": 0.78,
+    "rationale": "Confirming the offered appointment slot in the parent's voice without adding any details not in the event.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 3232
+}

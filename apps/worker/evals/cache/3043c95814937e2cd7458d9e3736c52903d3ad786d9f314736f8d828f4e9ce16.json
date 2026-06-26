@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale is clear, accurate, and specific. It correctly identifies the signal as official federal Employment Insurance (EI) correspondence from Service Canada (canada.ca domain), accurately describes the event content (maternity benefit claim processing confirmation), and matches the assigned event_type of \"ei_correspondence\" with appropriate context about the notification source and purpose."
+  }
+}

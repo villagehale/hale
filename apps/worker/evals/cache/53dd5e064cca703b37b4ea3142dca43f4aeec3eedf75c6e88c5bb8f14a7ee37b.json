@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The answer correctly identifies the core fact: Mira has a confirmed egg allergy causing mild hives, verified by the pediatric office. However, the reference does not mention \"Riverdale Pediatrics\" by name—it only says \"your pediatric office.\" The answer adds this specific name, which is a fabrication not in the reference. Additionally, the answer goes significantly beyond the reference by providing extensive practical guidance (care cards, examples of egg-containing foods, antihistamine considerations, etc.), though this additional detail is helpful and not contradictory to the reference. The core factual answer matches, but the invented detail and substantial elaboration beyond the scope of the reference prevent a perfect 5."
+  }
+}

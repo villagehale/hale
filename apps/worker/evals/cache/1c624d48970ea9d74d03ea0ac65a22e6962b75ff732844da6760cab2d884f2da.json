@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "The `check_action_time_window` tool returned `ok: false`, indicating that the proposed event start time of 03:00 falls within the family's configured quiet-hours window. This is a clear policy violation — actions must not be scheduled or triggered during quiet hours. The idempotency check passed, but a single failed policy check is sufficient grounds for rejection.",
+    "remediation": "Reschedule the calendar reminder to a time outside the family's quiet-hours window — for example, 09:00 AM on 2026-06-23 (2026-06-23T09:00:00-04:00). No other changes to the action appear necessary."
+  },
+  "latencyMs": 4141
+}

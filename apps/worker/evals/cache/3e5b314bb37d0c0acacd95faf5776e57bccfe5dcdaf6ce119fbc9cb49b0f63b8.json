@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the event type. It accurately describes the signal as a notification from a healthcare clinic about lab results being available in a patient portal, which directly matches the \"lab_results_ready\" event type. The rationale is specific, mentions the key elements (bloodwork results, patient portal, one-way notification), and demonstrates understanding of the actual content and purpose of the signal."
+  }
+}

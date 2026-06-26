@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the signal as a lab results notification. It specifically notes: (1) the sender is a known pediatric clinic (portal@riverdale-peds.ca), (2) the event involves bloodwork results becoming available, and (3) the action is accessing a patient portal. This directly matches the event_type \"lab_results_ready\" with accurate details from the signal content. The rationale is specific, not circular, and demonstrates proper understanding of the notification's purpose."
+  }
+}

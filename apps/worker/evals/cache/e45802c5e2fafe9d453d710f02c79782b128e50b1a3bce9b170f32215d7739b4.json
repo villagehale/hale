@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "lab_results_ready",
+    "confidence": 0.95,
+    "rationale": "Email from the family's known clinic (Riverdale Peds) notifying that bloodwork results are available in the patient portal — a clear one-way lab results notice requiring no reply.",
+    "payload": {
+      "clinic": "Riverdale Peds",
+      "sender_email": "portal@riverdale-peds.ca",
+      "patient_name": "Mira",
+      "result_type": "bloodwork",
+      "portal_action_required": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 4749
+}

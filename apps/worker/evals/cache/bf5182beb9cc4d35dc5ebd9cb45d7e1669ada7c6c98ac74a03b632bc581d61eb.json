@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "admissions@sunnydaycare.ca",
+      "subject": "Re: Your application",
+      "body": "hi there — so glad to hear a spot has opened up! we'd love to accept. please consider this our confirmation. thanks so much for letting us know."
+    },
+    "confidence": 0.72,
+    "rationale": "The email confirms acceptance of the daycare spot before Friday's deadline, matching default voice; confidence is moderate because no memory slice was available to confirm the parent's intent or calendar readiness for a September start.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 7331
+}

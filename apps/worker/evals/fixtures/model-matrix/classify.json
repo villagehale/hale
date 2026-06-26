@@ -1,0 +1,78 @@
+{
+  "role": "classify",
+  "note": "Representative inbound signals with a reference event_type derived from the signal content (not model output). Mix of easy (automated reminder) and harder (ambiguous office message vs request; a teen-content signal) so model tiers can separate.",
+  "cases": [
+    {
+      "id": "pediatric-reminder",
+      "input": {
+        "source": "email",
+        "rawContent": "From: reminders@riverdale-peds.ca\nSubject: Appointment Reminder\n\nAutomated reminder: Mira has a well-baby visit Tuesday June 23 at 10:15 AM with Dr. Okafor. Reply STOP to opt out.",
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Riverdale Peds"], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "pediatric_appointment_reminder" }
+    },
+    {
+      "id": "appointment-request",
+      "input": {
+        "source": "email",
+        "rawContent": "From: frontdesk@riverdale-peds.ca\nSubject: Confirm visit\n\nHi! We have an opening for Mira's 18-month visit Tuesday June 23 at 5:30 PM. Can you confirm this works?",
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Riverdale Peds"], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "pediatric_appointment_request" }
+    },
+    {
+      "id": "lab-results",
+      "input": {
+        "source": "email",
+        "rawContent": "From: portal@riverdale-peds.ca\nSubject: New results available\n\nMira's bloodwork results are now available in your patient portal. Log in to view.",
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Riverdale Peds"], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "lab_results_ready" }
+    },
+    {
+      "id": "ei-correspondence",
+      "input": {
+        "source": "email",
+        "rawContent": "From: noreply@canada.ca\nSubject: Your EI maternity benefits\n\nYour Employment Insurance maternity benefit claim has been processed. Your first payment will be deposited within 3 business days.",
+        "familyContextSlice": { "childrenAgesMonths": [2], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "ei_correspondence" }
+    },
+    {
+      "id": "supply-low",
+      "input": {
+        "source": "inventory_signal",
+        "rawContent": "{\"item\":\"size 4 diapers\",\"on_hand\":6,\"daily_use\":7,\"days_remaining\":1}",
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "supply_low_signal" }
+    },
+    {
+      "id": "daycare-response",
+      "input": {
+        "source": "email",
+        "rawContent": "From: admissions@sunnydaycare.ca\nSubject: Your application\n\nGood news — a spot has opened for Mira in our toddler room starting September. Please reply by Friday to accept.",
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": ["Sunny Daycare"] }
+      },
+      "expect": { "eventType": "daycare_application_response" }
+    },
+    {
+      "id": "teen-school-content",
+      "input": {
+        "source": "email",
+        "rawContent": "From: counsellor@centralhs.ca\nSubject: Check-in about Jordan\n\nI wanted to share that Jordan seemed withdrawn this week and mentioned feeling overwhelmed about exams. Happy to talk.",
+        "familyContextSlice": { "childrenAgesMonths": [180], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-jordan", "name": "Jordan", "ageInMonths": 180 }] }
+      },
+      "expect": { "eventType": "school_communication", "teenContent": true }
+    },
+    {
+      "id": "spam-unclassified",
+      "input": {
+        "source": "email",
+        "rawContent": "From: deals@randommarketing.example\nSubject: 50% OFF EVERYTHING!!!\n\nLimited time! Click here for unbeatable prices on products you never knew you needed.",
+        "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "unclassified" }
+    }
+  ]
+}

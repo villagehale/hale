@@ -1,0 +1,38 @@
+{
+  "response": {
+    "id": "msg_01ErAiWrP9Lajmy8udhCbCWx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01QcM5kPV2HedetYr1bomQP7",
+        "name": "search_memory",
+        "input": {
+          "query": "pediatric office booking preference",
+          "familyId": "synth-family-1"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 3013,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 82,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2144,
+  "firstInputTokens": 3013
+}

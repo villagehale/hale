@@ -1,0 +1,23 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Riverdale Peds is asking the parent to confirm a proposed appointment slot for Mira's 18-month visit — this is an actionable request requiring a reply, not a passive reminder.",
+    "payload": {
+      "clinic": "Riverdale Peds",
+      "childName": "Mira",
+      "visitType": "18-month well-baby visit",
+      "proposedDate": "2025-06-23",
+      "proposedTime": "17:30",
+      "timezone": "America/Toronto",
+      "replyRequired": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 4726
+}

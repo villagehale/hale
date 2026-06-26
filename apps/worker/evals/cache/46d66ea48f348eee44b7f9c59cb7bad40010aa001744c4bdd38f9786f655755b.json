@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This is a supply order, not a family message. It contains order details (item, vendor, price, quantity) rather than warm, personal communication appropriate for family correspondence. It appears to be a system data object rather than a drafted message for tone and appropriateness evaluation."
+  }
+}

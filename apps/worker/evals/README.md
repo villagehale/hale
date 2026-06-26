@@ -115,6 +115,77 @@ IMPORT vs REPLICATE: ask-hale / daily-brief IMPORT the real `runAgent` + `loadSk
 genuine skill instructions, not a re-implementation; only the TOOLS are fixture-backed (the eval controls the data, the
 agent's reasoning is real). Discovery REPLICATES because its web-only modules can't be imported here.
 
+# VIL-143 launch evals (memory-cost curve + model-per-role matrix)
+
+Two evals that answer the launch questions the per-agent evals above don't: (1) does the coach stay cheap + accurate as
+a family's memory grows, and (2) which Claude model is right per agent role. Both make REAL (cached) Claude calls and
+share `evals/lib/` (a seeded long-history simulator + the cache/judge/cost primitives). CI runs the combined gate free:
+
+```
+pnpm eval:vil143                                              # root: cached-only + calibration, one exit code
+node --env-file=../../.env evals/run-memory-cost-eval.mjs     # live: populate the cost-curve cache
+node --env-file=../../.env evals/run-model-matrix-eval.mjs    # live: populate the matrix cache
+node evals/run-memory-cost-eval.mjs --cached-only             # CI replay (never calls the API)
+node evals/run-memory-cost-eval.mjs --broken                  # calibration: a memory-blind coach must be REJECTED
+node evals/run-model-matrix-eval.mjs --cached-only            # CI replay
+node evals/run-model-matrix-eval.mjs --broken                 # calibration: a uniformly-failing matrix must be REJECTED
+```
+
+## 1. Cost + accuracy as memory grows (`run-memory-cost-eval.mjs`)
+
+The architecture's bet is the BOUNDED `memory_slice` (`apps/web/lib/coach/context.ts`: currently-valid facts capped at
+`RELEVANT_FACT_LIMIT` + the newest `RECENT_EPISODE_LIMIT` episodes — the coach never reads the raw log). The eval pits
+it against the naive alternative (DUMP every fact + episode) across small/medium/large synthetic history (a child
+0→3yr: 4/6/6 facts, 12/92/290 episodes). It runs the REAL `runAgent` ask-hale loop (imported via tsx) for both arms —
+the ONLY difference is the memory the context + `search_memory` carry — and measures per arm: input tokens, latency,
+fact-store recall, episode-store recall, and a cached Haiku faithfulness judge. Reference Q&A is derived FROM the
+generated facts (`evals/lib/synth-family.mjs`), never from model output.
+
+Result (live, claude-sonnet-4-6 coach + haiku judge):
+
+| size   | arm     | in_tok | latency | fact_recall | episode_recall | judge |
+|--------|---------|--------|---------|-------------|----------------|-------|
+| small  | bounded | 2866   | 5997ms  | 92%         | n/a            | 5.0   |
+| small  | dump    | 3026   | 7925ms  | 92%         | n/a            | 5.0   |
+| medium | bounded | 3024   | 7548ms  | 94%         | 0%             | 4.0   |
+| medium | dump    | 9420   | 6561ms  | 94%         | 100%           | 4.8   |
+| large  | bounded | 3012   | 7933ms  | 94%         | 0%             | 4.0   |
+| large  | dump    | 24848  | 7469ms  | 94%         | 100%           | 4.9   |
+
+Input-token growth small→large: **bounded 1.05x** (flat), **dump 8.21x** (linear in history). The bounded slice keeps
+the coach cheap as memory grows and holds fact recall at 92–94% (the fact store is consolidated, so it fits the slice
+at every size). The DOCUMENTED TRADEOFF (reported, not gated): the recency-only bounded slice loses OLD episodes a dump
+retains (episode recall 0% vs 100% at medium/large) — the price of bounding. Gate: bounded fact-recall ≥ 80% + judge
+≥ 4 at every size AND bounded token-growth ≤ 1.5x. The episode loss is NOT gated (the slice is recency-only by design;
+gating it would gate the architecture out). Calibrated BOTH directions: real cached coach PASSES; `--broken` (a
+memory-blind coach that recalls nothing) collapses fact recall and is REJECTED with zero API calls.
+
+## 2. Model per role (`run-model-matrix-eval.mjs`)
+
+Runs the SAME representative inputs for each role (classify / draft / review / coach) across `claude-haiku-4-5`,
+`claude-sonnet-4-6`, `claude-opus-4-8`, scoring quality (reference + judge), latency, cost. Each role REPLICATES its
+real request shape (same prompt from `prompts/*.md` or the `ask-hale` skill, same tool-forced schema) with `model` the
+only variable — the same replicate-not-import discipline the other evals use. REVIEW is scored on the single-turn
+VERDICT with the verification `tool_results` supplied (the judgment model tier affects), on the SAFETY DIRECTION: for a
+clean draft `approve`/`flag_for_human` both pass, for a violating draft `reject`/`flag_for_human` both pass — the
+reviewer prompt's "default to flag under ambiguity" makes conservative escalation correct, not a miss.
+
+Result (live):
+
+| role     | haiku       | sonnet      | opus        | current | recommend |
+|----------|-------------|-------------|-------------|---------|-----------|
+| classify | 88% (teen 0%) 2446ms | 100% (teen 100%) 4606ms | 100% 3389ms | haiku | **sonnet** (teen-content detection — rule #1) |
+| draft    | 67% 2031ms  | 100% 4777ms | 100% 3970ms | sonnet  | sonnet (well-placed) |
+| review   | 100% 1821ms | 100% 7176ms | 100% 4872ms | sonnet  | haiku ties + 4x faster (safety-critical → advisory) |
+| coach    | 100% 3049ms | 98% 5207ms  | 100% 5114ms | sonnet  | haiku ties + ~2s faster (cuts the 11–17s coach latency) |
+
+Headline findings: **classify on Haiku misses teen-content detection (0% vs 100% on Sonnet/Opus)** — a rule-#1 safety
+gap that argues for Sonnet on the teen-content path even though Haiku is cheapest. **Coach holds quality on Haiku** at
+~half Sonnet's latency, the cheapest win against today's 11–17s coach. Gate: a COMPETENCE FLOOR (current tier ≥ 70%
+quality per role), not "current == single best" — on a small per-role set one disagreement is 12–20%, so a top-model
+gate would flap on noise; cheaper/better-tier findings are NOTES for a human to act on. Calibrated BOTH directions:
+real cached matrix PASSES; `--broken` (a uniformly-failing matrix) is REJECTED with zero API calls.
+
 ## Refreshing the cache
 
 Responses are content-addressed to `cache/` (key = sha256 of the canonical request: model + system/skill + messages +

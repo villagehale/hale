@@ -1,0 +1,22 @@
+{
+  "value": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.95,
+    "rationale": "Daycare accepting the child's application and asking the parent to confirm acceptance by a deadline.",
+    "payload": {
+      "sender": "admissions@sunnydaycare.ca",
+      "daycare_name": "Sunny Daycare",
+      "child_name": "Mira",
+      "offer_details": "spot in toddler room starting September",
+      "deadline": "Friday",
+      "action_required": "reply to accept"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 2637
+}
