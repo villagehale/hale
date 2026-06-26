@@ -148,8 +148,18 @@ export function useAskHale(
     return [...seen];
   }, [turns]);
 
+  // Scroll to the latest turn after a NEW message — but never on initial mount.
+  // On mount the thread hydrates with the existing history, and scrollIntoView
+  // there drags the whole .main-stage page down to the conversation's end, so home
+  // and coach opened scrolled past their header. Skip the first run; only follow
+  // turns the user actually adds in this session.
+  const didHydrate = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: visibleTurns is the intended trigger, not a value read in the body
   useEffect(() => {
+    if (!didHydrate.current) {
+      didHydrate.current = true;
+      return;
+    }
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [visibleTurns]);
 
