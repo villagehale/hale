@@ -184,7 +184,7 @@ function ConversationHeader({
 
   return (
     <div className="border-b border-rule pb-3">
-      <div className="mx-auto w-full max-w-[44rem] space-y-3">
+      <div className="mx-auto w-full max-w-[64rem] space-y-3">
         <div className="flex items-center gap-3">
           {showScope ? (
             <div className="min-w-0 flex-1 overflow-x-auto">
@@ -347,7 +347,7 @@ function Timeline({
         const showScope = scopeKey !== lastScope;
         lastScope = scopeKey;
         return (
-          <div key={turn.id} className="space-y-2">
+          <div key={turn.id} className={`space-y-2 ${chat ? 'rise' : ''}`}>
             {showScope ? (
               <p className={`eyebrow text-faded-sage ${chat ? 'text-center' : ''}`}>
                 {childLabelOf(turn.childId)}
@@ -356,7 +356,7 @@ function Timeline({
             {turn.role === 'user' ? (
               chat ? (
                 <div className="flex justify-end">
-                  <p className="chat-bubble-you max-w-[85%] sm:max-w-[80%]">{turn.body}</p>
+                  <p className="chat-bubble-you w-fit max-w-[85%] sm:max-w-prose">{turn.body}</p>
                 </div>
               ) : (
                 <p className="max-w-prose font-display text-[1.15rem] leading-snug text-spruce">
@@ -366,7 +366,9 @@ function Timeline({
             ) : (
               <article
                 className={
-                  chat ? 'chat-bubble-hale max-w-[92%] sm:max-w-[80%]' : 'panel max-w-prose'
+                  chat
+                    ? 'chat-bubble-hale w-fit max-w-[92%] sm:max-w-prose'
+                    : 'panel max-w-prose'
                 }
               >
                 {chat ? <p className="eyebrow mb-2 text-sky-deep">Hale</p> : null}
@@ -566,7 +568,7 @@ function FullSurface({
       {/* The transcript — the hero. Its own scroll region; the composer sits below
           it, not over it, so nothing is hidden behind a floating bar. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[44rem] px-1 pb-6 pt-2">
+        <div className="mx-auto w-full max-w-[64rem] px-1 pb-6 pt-2">
           {isEmpty ? (
             <EmptyState
               canAsk={canAsk}
@@ -591,7 +593,7 @@ function FullSurface({
           )}
 
           {status === 'pending' ? (
-            <div className="mt-6 flex" aria-live="polite">
+            <div className="rise mt-6 flex" aria-live="polite">
               <p className="chat-bubble-hale typing-dots" aria-label="Hale is thinking">
                 <span />
                 <span />
@@ -607,7 +609,7 @@ function FullSurface({
           with a hairline top seam, anchored to the surface foot. The safe-area pad
           keeps the input clear of the mobile keyboard / home bar. */}
       <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="mx-auto w-full max-w-[44rem]">
+        <div className="mx-auto w-full max-w-[64rem]">
           {canAsk ? (
             <div className="space-y-3">
               {!isEmpty ? (

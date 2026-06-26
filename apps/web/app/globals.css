@@ -1013,8 +1013,24 @@ strong { font-weight: 700; }
   border-radius: var(--r-sm);
 }
 
-/* Interactive pill (tappable chip) — 44px touch target; base .pill stays a static stamp size. */
-.pill-action { min-height: 44px; }
+/* Interactive pill (tappable chip) — 44px touch target; base .pill stays a static
+ * stamp size. Hover draws a hairline ring (reads on every chip variant + both
+ * themes, no contrast gamble), press depresses 1px — no layout shift, matching the
+ * button press idiom. */
+.pill-action {
+  min-height: 44px;
+  cursor: pointer;
+  transition: box-shadow 200ms var(--ease-breathe), transform 120ms var(--ease-breathe);
+}
+.pill-action:not(:disabled):hover {
+  box-shadow: inset 0 0 0 1.5px var(--color-rule-strong);
+}
+.pill-action:not(:disabled):active { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill-action { transition: none; }
+  .pill-action:not(:disabled):active { transform: none; }
+}
 
 /* Choice card — focus ring for a styled <label> wrapping an sr-only radio/checkbox. */
 .choice-card:focus-within {
