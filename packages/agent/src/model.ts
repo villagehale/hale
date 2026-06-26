@@ -19,8 +19,9 @@ export type ModelId = typeof HAIKU_MODEL | typeof SONNET_MODEL | typeof OPUS_MOD
  * pin a concrete model (which would drift from the cost/latency assumptions).
  *
  * Tiers (per the user's subagent-tiering policy + this package's brief):
- *  - classify / simple-lookup → Haiku  (cheap, mechanical)
- *  - converse / draft / review / infer / discover → Sonnet (bulk reasoning)
+ *  - simple-lookup → Haiku  (cheap, mechanical)
+ *  - classify / converse / draft / review / infer / discover → Sonnet
+ *    (classify carries teen_content — a rule-#1 safety call Haiku misses; eval VIL-143)
  *  - high-stakes-judgment → Opus  (run-rarely, judgment-dense)
  */
 export type AgentTask =
@@ -34,7 +35,7 @@ export type AgentTask =
   | 'high-stakes-judgment';
 
 const TASK_MODEL: Record<AgentTask, ModelId> = {
-  classify: HAIKU_MODEL,
+  classify: SONNET_MODEL,
   'simple-lookup': HAIKU_MODEL,
   converse: SONNET_MODEL,
   draft: SONNET_MODEL,

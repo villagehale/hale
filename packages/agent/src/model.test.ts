@@ -10,7 +10,7 @@ import {
 
 describe('pickModel', () => {
   it.each<[AgentTask, string]>([
-    ['classify', HAIKU_MODEL],
+    ['classify', SONNET_MODEL],
     ['simple-lookup', HAIKU_MODEL],
     ['converse', SONNET_MODEL],
     ['draft', SONNET_MODEL],
