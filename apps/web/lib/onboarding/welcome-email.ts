@@ -25,6 +25,20 @@ const LINKS = {
   family: `${APP_BASE}/family`,
 } as const;
 
+/* Brand palette, mirroring apps/site's design system (globals.css) and the
+ * waitlist email: Spruce/Prussian #01204F ink + night band, Linen #f6f1e7
+ * canvas, Apricot #c8622d as the warm large-graphic/fill accent, Apricot-deep
+ * #a84e20 as the text-safe accent (used for the step labels), Slate-green body
+ * text, Faded-sage footer meta. Inline styles only — most portable for email. */
+const PRUSSIAN = '#01204F';
+const LINEN = '#f6f1e7';
+const APRICOT = '#c8622d';
+const APRICOT_DEEP = '#a84e20';
+const SLATE_GREEN = '#33486b';
+const FADED_SAGE = '#5b6b86';
+const FONT_STACK =
+  "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
+
 export interface WelcomeEmailSender {
   /** Returns the provider message id when accepted, null when not sent. The
    * unsubscribe URL is rendered into the CASL footer alongside the business
@@ -59,14 +73,19 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** The body as portable inline-styled HTML, with the three steps as real links.
- * The CASL footer (sender identity, mailing address, working unsubscribe) is
- * appended to every message. */
+/** White sea-turtle silhouette — the same domed-shell + reaching-head profile
+ * as the waitlist email (apps/site/emails/waitlist-welcome.tsx). Glows on the
+ * Prussian header band. */
+const TURTLE_SVG = `<svg width="80" height="55" viewBox="0 0 152 104" fill="${LINEN}" role="img" aria-label="Hale sea turtle"><path d="M32 74 Q32 34 70 34 Q108 34 108 74 Z"/><rect x="32" y="64" width="76" height="13" rx="6.5"/><rect x="22" y="68" width="15" height="12" rx="6"/><rect x="38" y="72" width="23" height="15" rx="7.5"/><rect x="78" y="72" width="25" height="15" rx="7.5"/><rect x="104" y="48" width="22" height="15" rx="7.5"/><circle cx="126" cy="50" r="13"/></svg>`;
+
+/** The body as portable inline-styled HTML, matching the waitlist email's
+ * design language: a Prussian header band with the turtle wordmark, a warm
+ * linen card, and the three next steps as numbered, branded link rows. The CASL
+ * footer (sender identity, mailing address, working unsubscribe) closes every
+ * message. */
 function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
   const para = (text: string) =>
-    `<p style="margin:0 0 16px;color:#01204F;font-size:16px;line-height:1.6;">${text}</p>`;
-  const link = (href: string, label: string) =>
-    `<a href="${escapeHtml(href)}" style="color:#01204F;">${escapeHtml(label)}</a>`;
+    `<p style="margin:0 0 16px;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${text}</p>`;
 
   const intro = [
     para(escapeHtml(greeting(firstName))),
@@ -75,30 +94,51 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
         "I'm so glad you're here. Hale is the village around your family — the people, places, and quiet help that make raising kids a little lighter.",
       ),
     ),
-    para(escapeHtml("Here's where to start:")),
   ].join('');
 
-  const stepItems = [
-    `<li>See what your village recommends — ${link(LINKS.village, 'open your village')}</li>`,
-    `<li>Add your first activity to your week — ${link(LINKS.home, 'open your home')}</li>`,
-    `<li>Invite a parent you trust — ${link(LINKS.family, 'invite a co-parent')}</li>`,
-  ].join('');
-  const steps = `<ol style="margin:0 0 16px;padding-left:20px;color:#01204F;font-size:16px;line-height:1.6;">${stepItems}</ol>`;
+  const step = (n: number, href: string, lead: string, label: string) =>
+    `<tr><td style="padding:0 0 12px;"><a href="${escapeHtml(
+      href,
+    )}" style="display:block;text-decoration:none;background:${LINEN};border:1px solid rgba(1,32,79,0.10);border-radius:12px;padding:14px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="34" valign="top" style="color:${APRICOT_DEEP};font-size:18px;font-weight:700;line-height:1.4;">${n}</td><td style="color:${PRUSSIAN};font-size:16px;line-height:1.4;"><span style="font-weight:600;">${escapeHtml(
+      lead,
+    )}</span><br/><span style="color:${APRICOT_DEEP};font-size:14px;font-weight:600;">${escapeHtml(
+      label,
+    )} &rarr;</span></td></tr></table></a></td></tr>`;
+
+  const steps = `<p style="margin:0 0 14px;color:${PRUSSIAN};font-size:15px;font-weight:600;letter-spacing:-0.01em;">Here's where to start</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${step(
+    1,
+    LINKS.village,
+    'See what your village recommends',
+    'open your village',
+  )}${step(
+    2,
+    LINKS.home,
+    'Add your first activity to your week',
+    'open your home',
+  )}${step(3, LINKS.family, 'Invite a parent you trust', 'invite a co-parent')}</table>`;
 
   const outro = [
-    para(escapeHtml('Reply any time — a real person reads these.')),
-    para(escapeHtml('— the team at Hale')),
+    `<p style="margin:24px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(
+      'Reply any time — a real person reads these.',
+    )}</p>`,
+    `<p style="margin:8px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(
+      '— the team at Hale',
+    )}</p>`,
   ].join('');
 
-  const footer = `<hr style="border:none;border-top:1px solid #d8cfbe;margin:24px 0 12px;"/><p style="margin:0;color:#6b6357;font-size:12px;line-height:1.5;">Sent by ${escapeHtml(
+  const header = `<tr><td style="background:${PRUSSIAN};border-radius:18px;padding:36px 40px 28px;text-align:center;">${TURTLE_SVG}<h1 style="margin:14px 0 0;color:${LINEN};font-size:26px;font-weight:700;letter-spacing:-0.02em;">Welcome to your village.</h1><p style="margin:10px 0 0;color:${APRICOT};font-size:15px;font-weight:600;">Hale — the village around your family.</p></td></tr>`;
+
+  const card = `<tr><td style="padding:28px 8px 0;">${intro}${steps}${outro}</td></tr>`;
+
+  const footer = `<tr><td style="padding:28px 8px 0;"><hr style="border:none;border-top:1px solid rgba(1,32,79,0.12);margin:0 0 14px;"/><p style="margin:0;color:${FADED_SAGE};font-size:12px;line-height:1.6;">Sent by ${escapeHtml(
     SENDER_NAME,
   )} · ${escapeHtml(
     BUSINESS_ADDRESS,
   )}<br/>You're receiving this because you created a Hale account. <a href="${escapeHtml(
     unsubscribeUrl,
-  )}" style="color:#6b6357;">Unsubscribe</a>.</p>`;
+  )}" style="color:${FADED_SAGE};">Unsubscribe</a>.</p></td></tr>`;
 
-  return `<div style="font-family:Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif;background:#f6f1e7;padding:24px;">${intro}${steps}${outro}${footer}</div>`;
+  return `<div style="margin:0;background:${LINEN};font-family:${FONT_STACK};padding:24px 0 40px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;"><tr><td>${header}${card}${footer}</td></tr></table></div>`;
 }
 
 /** Plain-text CASL footer, for the text/plain part. */
