@@ -73,10 +73,11 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** White sea-turtle silhouette — the same domed-shell + reaching-head profile
- * as the waitlist email (apps/site/emails/waitlist-welcome.tsx). Glows on the
+/** The Hale logo as a HOSTED PNG (served from apps/web/public). Inline SVG is
+ * stripped by Gmail/Outlook, so email clients rendered a logo-less header — a real
+ * <img> at an absolute URL renders everywhere. The turtle icon tile sits on the
  * Prussian header band. */
-const TURTLE_SVG = `<svg width="80" height="55" viewBox="0 0 152 104" fill="${LINEN}" role="img" aria-label="Hale sea turtle"><path d="M32 74 Q32 34 70 34 Q108 34 108 74 Z"/><rect x="32" y="64" width="76" height="13" rx="6.5"/><rect x="22" y="68" width="15" height="12" rx="6"/><rect x="38" y="72" width="23" height="15" rx="7.5"/><rect x="78" y="72" width="25" height="15" rx="7.5"/><rect x="104" y="48" width="22" height="15" rx="7.5"/><circle cx="126" cy="50" r="13"/></svg>`;
+const LOGO_IMG = `<img src="https://app.villagehale.com/email-logo.png" width="60" height="60" alt="Hale" style="display:inline-block;border-radius:14px;border:0;outline:none;text-decoration:none;" />`;
 
 /** The body as portable inline-styled HTML, matching the waitlist email's
  * design language: a Prussian header band with the turtle wordmark, a warm
@@ -126,7 +127,7 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
     )}</p>`,
   ].join('');
 
-  const header = `<tr><td style="background:${PRUSSIAN};border-radius:18px;padding:36px 40px 28px;text-align:center;">${TURTLE_SVG}<h1 style="margin:14px 0 0;color:${LINEN};font-size:26px;font-weight:700;letter-spacing:-0.02em;">Welcome to your village.</h1><p style="margin:10px 0 0;color:${APRICOT};font-size:15px;font-weight:600;">Hale — the village around your family.</p></td></tr>`;
+  const header = `<tr><td style="background:${PRUSSIAN};border-radius:18px;padding:36px 40px 28px;text-align:center;">${LOGO_IMG}<h1 style="margin:14px 0 0;color:${LINEN};font-size:26px;font-weight:700;letter-spacing:-0.02em;">Welcome to your village.</h1><p style="margin:10px 0 0;color:${APRICOT};font-size:15px;font-weight:600;">Hale — the village around your family.</p></td></tr>`;
 
   const card = `<tr><td style="padding:28px 8px 0;">${intro}${steps}${outro}</td></tr>`;
 
