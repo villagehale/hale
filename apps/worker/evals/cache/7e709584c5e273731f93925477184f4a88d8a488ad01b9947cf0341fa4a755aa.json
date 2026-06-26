@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and accurately identifies the key elements of the signal: (1) a daycare (Sunny Day Care) is accepting a child's application, (2) a specific spot is available for a named child (Mira) in a specific program (toddler room), (3) there is a specific deadline for response (Friday), and (4) action is required (parent must reply to accept). The event type \"daycare_application_response\" perfectly matches the content, and the rationale is neither vague nor circular—it directly describes what the email communicates."
+  }
+}

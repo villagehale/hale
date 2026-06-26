@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.95,
+    "rationale": "Inventory system detected that size 4 diapers are nearly depleted (6 on hand, 7 daily use, ~1 day remaining).",
+    "payload": {
+      "item": "size 4 diapers",
+      "on_hand": 6,
+      "daily_use": 7,
+      "days_remaining": 1
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "place_supply_order"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 2024
+}

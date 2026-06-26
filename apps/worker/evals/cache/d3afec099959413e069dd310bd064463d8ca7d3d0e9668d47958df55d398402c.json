@@ -1,0 +1,21 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.9,
+    "rationale": "The clinic is proposing a time for Mira's 18-month visit and asking the parent to confirm, which requires action to book.",
+    "payload": {
+      "clinic": "Riverdale Peds",
+      "childName": "Mira",
+      "visitType": "18-month visit",
+      "proposedDate": "2025-06-23",
+      "proposedTime": "17:30",
+      "action": "confirm"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 3468
+}

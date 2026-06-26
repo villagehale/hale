@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "ei_correspondence",
+    "confidence": 0.95,
+    "rationale": "Federal Service Canada / canada.ca notice confirming an Employment Insurance maternity benefit claim has been processed.",
+    "payload": {
+      "sender": "noreply@canada.ca",
+      "program": "Employment Insurance maternity benefits",
+      "status": "claim_processed",
+      "paymentTiming": "within 3 business days"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 3839
+}

@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01Ln4CvaLSSE3cfwPhB3GCEi",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "yes — there's one confirmed allergy on file for Mira: **egg**, which has caused mild hives and was confirmed by your pediatric office (Riverdale Pediatrics). that's the one flag worth writing down explicitly for any new caregiver, since egg can show up in less obvious places like baked goods, pasta, or some sauces. a good next step is to give the caregiver a short written note that names the allergen, describes what a reaction looks like (mild hives), and includes your pediatric office number in case they're unsure about an ingredient — that way they're not relying on memory in a busy moment."
+      }
+    ],
+    "usage": {
+      "input_tokens": 3691,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 144,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4501,
+  "firstInputTokens": 3691
+}

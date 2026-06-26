@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.78,
+    "rationale": "A high-school counsellor is reaching out about Jordan's wellbeing and offering to talk, which is sensitive and warrants human judgment.",
+    "payload": {
+      "from": "counsellor@centralhs.ca",
+      "subject": "Check-in about Jordan",
+      "summary": "Counsellor reports Jordan seemed withdrawn and overwhelmed about exams, and offers to talk.",
+      "institution": "Central HS",
+      "sensitive": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-jordan",
+    "teen_content": true
+  },
+  "latencyMs": 3909
+}

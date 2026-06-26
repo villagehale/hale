@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale directly and accurately describes the signal content: it identifies the sender (Sunny Daycare), the specific action (responding with a positive application outcome), the child's name (Mira), the room placement (toddler room), the timing (starting September), and the required action with deadline (reply by Friday to accept). This matches the event_type of \"daycare_application_response\" clearly and correctly."
+  }
+}

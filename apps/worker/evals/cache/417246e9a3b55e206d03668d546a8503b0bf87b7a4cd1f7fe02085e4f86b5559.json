@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale accurately identifies key characteristics of the signal: (1) it's from an automated system at a known pediatric clinic, (2) it confirms an existing appointment rather than requesting a new one, (3) it provides specific appointment details (patient name, date, time, provider), and (4) it's a one-way notification with an opt-out mechanism. The event type \"pediatric_appointment_reminder\" matches the signal content precisely, and the rationale correctly distinguishes this as a passive reminder notification rather than an action request."
+  }
+}

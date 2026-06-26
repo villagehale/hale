@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The reference clearly states that \"mira took her first independent steps about 25 months ago,\" which directly answers the question. However, the assistant's response says \"I don't have a recorded episode of Mira's first steps in her memory slice\" and declines to provide the answer, instead asking the user to check other sources. This is factually incorrect given the reference shows the information was available, and constitutes a MISS of the required fact. The assistant should have stated that Mira took her first steps approximately 25 months ago."
+  }
+}

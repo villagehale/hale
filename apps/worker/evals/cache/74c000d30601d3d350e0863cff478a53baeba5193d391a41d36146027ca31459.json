@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "The draft contains a clear PII leak: a health card number is being sent to a third party (daycare). The check_pii_leak tool returned `ok: false`. This is a policy violation under the family's security guidelines. While the recipient is on the allowlist and the sender is trusted, transmitting sensitive health information like a health card number unsecured to external parties poses a significant privacy and security risk.",
+    "remediation": "Remove the health card number from the email body. The daycare should obtain health information through secure, official channels (e.g., a health form or secure portal), not via email. If the daycare requires health documentation, ask them for their preferred secure submission method instead."
+  },
+  "latencyMs": 2603
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The answer correctly identifies the core facts: bedtime is 7:30 pm (19:30) and the wind-down routine is bath → story → lights out. However, it significantly expands beyond the reference by adding substantial interpretation and advice (noting afternoon nap effects on crankiness, suggesting earlier bath times, referencing a \"toddler sleep framework,\" and recommending dim lights and quiet play as a buffer). While the factual core is accurate, the assistant invents specific context and recommendations not present in the reference (e.g., mentioning Mira is 18 months old, discussing overtiredness patterns, suggesting alternative timing). The reference only states the basic bedtime and routine sequence. The answer doesn't contradict the reference but adds considerable fabricated detail beyond what was provided."
+  }
+}

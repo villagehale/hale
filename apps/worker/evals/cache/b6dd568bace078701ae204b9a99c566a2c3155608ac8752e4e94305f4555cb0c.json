@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The rationale correctly identifies this as a generic promotional/spam email from an unknown marketing sender. The key identifying features are present: unsolicited marketing email (deals@randommarketing.example), aggressive promotional language (\"50% OFF EVERYTHING!!!\"), vague marketing copy, and lack of any family-relevant signal. The rationale accurately describes the signal content and correctly categorizes it as unclassified promotional material rather than a legitimate family-relevant communication."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Two verification tools returned red: check_recipient_allowlist (ok:false — recipient someone@unknown-domain.example is not on the family's allowlist and could not be verified) and check_sender_allowlist (ok:false — sender origin not trusted). Replying to an untrusted sender at an unverified recipient is a clear policy violation, even though PII and idempotency checks passed. Approval criteria require all invoked tools to return ok:true and the recipient/sender to be on the allowlist.",
+    "remediation": "Do not auto-reply. Hold the original message for a parent to review the sender and recipient manually. If the parent recognizes and trusts the contact, add the address to the family allowlist first, then re-draft the reply for per-action approval."
+  },
+  "latencyMs": 4587
+}

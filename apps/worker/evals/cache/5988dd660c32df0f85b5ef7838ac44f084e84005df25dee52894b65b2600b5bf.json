@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01GfLFYAM4qBmDAn19wvuvSm",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Based on the activity history, Mira started the **Tumbleweeds toddler gym class on Saturdays** back in March — that's the Saturday class on record for her. No additional details like location or session time are stored on my end, so if you need those specifics (or want to confirm she's still enrolled), you'd have to check directly with the program. Want me to save any updated details about it?"
+      }
+    ],
+    "usage": {
+      "input_tokens": 4187,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 95,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3867,
+  "firstInputTokens": 4187
+}

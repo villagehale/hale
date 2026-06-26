@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale accurately identifies the core elements of the signal that match the event type: it's an automated reminder (not a request for action), it comes from a legitimate healthcare provider (Riverdale Pediatrics), and it contains specific appointment details (patient name, date, time, and provider). The rationale correctly notes that while an opt-out option exists, no confirmation or reply is actually requested—the message is purely informational. This clearly aligns with the pediatric_appointment_reminder classification."
+  }
+}

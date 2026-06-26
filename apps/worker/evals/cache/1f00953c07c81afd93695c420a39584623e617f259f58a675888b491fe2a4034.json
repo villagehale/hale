@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "approve",
+    "rationale": "Calendar event creation for a pediatric wellness visit (18-month checkup with Dr. Okafor at Riverdale Peds on 2026-06-23 at 10:15 AM). Verification confirms: (1) time is within allowed hours and outside quiet-hours, (2) no duplicate event exists. Event is routine, reversible, and meets all approval criteria."
+  },
+  "latencyMs": 1596
+}

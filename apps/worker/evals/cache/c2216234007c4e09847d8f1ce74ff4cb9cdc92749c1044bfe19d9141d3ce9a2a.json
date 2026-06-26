@@ -1,0 +1,19 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.92,
+    "rationale": "Email from a high school (centralhs.ca) counsellor sharing a welfare check-in about Jordan's emotional state and exam stress; no action requested from parent.",
+    "payload": {
+      "sender": "counsellor@centralhs.ca",
+      "school_name": "Central HS",
+      "subject_summary": "Student welfare check-in regarding emotional well-being and exam anxiety",
+      "key_concern": "Student appeared withdrawn and expressed feeling overwhelmed about exams",
+      "tone": "supportive, open to dialogue"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "child-jordan"
+  },
+  "latencyMs": 2535
+}

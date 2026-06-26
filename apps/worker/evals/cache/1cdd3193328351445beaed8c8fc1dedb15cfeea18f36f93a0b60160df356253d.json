@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "recipient": "nurse@riverdale-peds.ca",
+      "subject": "Re: Follow-up question",
+      "body": "thanks for checking in. yes, the cough has improved over the past few days. we'll reach out if we need to schedule a visit."
+    },
+    "confidence": 0.75,
+    "rationale": "Positive update on child's cough improvement, declining further visit unless needed—matches typical parent response to pediatric follow-up.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 1823
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "The spending cap check returned `ok: false`. The estimated order total of $189.00 exceeds the family's $75.00 monthly autonomous spending cap. No user override is in place to authorize this amount. This is a clear policy violation requiring rejection.",
+    "remediation": "Reduce the order quantity so the total falls at or below $75.00 (approximately 3 packs at the implied ~$23.63/pack), or have a parent/guardian explicitly approve the full $189.00 order by setting an override for this action category before resubmitting."
+  },
+  "latencyMs": 4144
+}

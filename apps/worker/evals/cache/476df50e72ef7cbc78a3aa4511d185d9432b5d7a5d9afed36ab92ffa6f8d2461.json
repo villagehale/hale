@@ -1,0 +1,16 @@
+{
+  "value": {
+    "payload": {
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "unit_price": "42.99",
+      "quantity": 1,
+      "estimated_total": "42.99",
+      "note": "running low — about 1 day of supply left"
+    },
+    "confidence": 0.55,
+    "rationale": "low-supply signal with 1 day left warrants reorder, but quantity and recurring-cadence aren't confirmed by memory.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 3271
+}

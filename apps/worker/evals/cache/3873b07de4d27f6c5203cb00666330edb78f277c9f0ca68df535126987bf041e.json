@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale correctly identifies the key characteristics of this signal: it is an automated (one-way) reminder from a known pediatric clinic (riverdale-peds.ca) about a specific appointment type (well-baby visit) with actionable details (patient name, date, time, provider). The rationale accurately notes it requires no action beyond optional opt-out, which matches the event type classification as a pediatric appointment reminder perfectly."
+  }
+}

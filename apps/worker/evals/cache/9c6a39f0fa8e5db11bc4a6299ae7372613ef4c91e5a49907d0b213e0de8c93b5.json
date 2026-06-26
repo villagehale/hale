@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and accurately identifies the event type by noting: (1) the clinic is making a specific appointment proposal with date/time details (Tuesday June 23 at 5:30 PM), (2) it explicitly requests confirmation from the parent, and (3) it requires an active reply. This directly matches the signal content and is a precise characterization of a pediatric_appointment_request."
+  }
+}

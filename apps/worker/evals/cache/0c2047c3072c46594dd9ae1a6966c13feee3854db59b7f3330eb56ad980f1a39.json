@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "ei_correspondence",
+    "confidence": 0.97,
+    "rationale": "Email is from canada.ca and explicitly references \"Employment Insurance maternity benefit claim,\" making this clearly federal EI correspondence from Service Canada.",
+    "payload": {
+      "sender": "noreply@canada.ca",
+      "subject": "Your EI maternity benefits",
+      "benefit_type": "EI maternity",
+      "status": "claim processed",
+      "payment_eta": "within 3 business days",
+      "payment_method": "direct deposit"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4401
+}

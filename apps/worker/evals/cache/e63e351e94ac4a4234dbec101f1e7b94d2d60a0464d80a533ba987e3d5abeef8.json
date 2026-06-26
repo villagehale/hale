@@ -1,0 +1,12 @@
+{
+  "value": {
+    "payload": {
+      "event_id": "evt-06",
+      "include_in_digest": true
+    },
+    "confidence": 0.95,
+    "rationale": "EI maternity benefits claim approved with payment arriving within 3 business days—informational and time-sensitive enough to surface in digest.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 1553
+}

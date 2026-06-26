@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "Two critical allowlist failures: (1) recipient \"someone@unknown-domain.example\" is not on the family's allowlist and could not be verified, and (2) sender origin is not trusted. Both are clear policy violations that prevent approval of outbound communication.",
+    "remediation": "Before sending, the recipient must be added to the family's allowlist or explicitly verified as trusted, and the sender origin must be validated. Alternatively, request explicit per-action user approval for this communication if the recipient is legitimate."
+  },
+  "latencyMs": 1769
+}

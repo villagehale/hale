@@ -1,0 +1,16 @@
+{
+  "value": {
+    "payload": {
+      "digest_entry": {
+        "title": "EI maternity benefits — claim processed",
+        "summary": "your EI maternity claim was processed. first payment expected within 3 business days.",
+        "source": "noreply@canada.ca",
+        "category": "ei_correspondence"
+      }
+    },
+    "confidence": 0.9,
+    "rationale": "Informational EI status update with no action needed, so it belongs in the digest only.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 3088
+}

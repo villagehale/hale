@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The assistant's answer is incorrect and contradicts the reference. The reference clearly states that \"mira goes to the Tumbleweeds toddler gym class on saturdays.\" However, the assistant claims to have no information about a Saturday class enrollment for Mira and states they don't have the day of the week recorded for her classes. This is a factual misses—the assistant should have known about the Tumbleweeds class on Saturdays but instead said they don't have this information stored, which is wrong according to the reference material."
+  }
+}

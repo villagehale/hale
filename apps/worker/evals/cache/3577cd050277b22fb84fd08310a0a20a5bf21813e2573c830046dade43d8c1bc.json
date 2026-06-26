@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.92,
+    "rationale": "Generic marketing blast with no family-specific signal.",
+    "payload": {
+      "sender": "deals@randommarketing.example",
+      "subject": "50% OFF EVERYTHING!!!"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2844
+}

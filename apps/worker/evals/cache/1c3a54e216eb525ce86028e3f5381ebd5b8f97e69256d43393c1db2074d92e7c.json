@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale is clear, specific, and directly matches the signal content. It correctly identifies: (1) the sender as a known clinic (Riverdale Peds), (2) the event type as a lab results notification, (3) the mechanism (patient portal access), and (4) the one-way nature of the communication. The rationale demonstrates proper understanding of the signal context and provides accurate reasoning for the lab_results_ready classification."
+  }
+}

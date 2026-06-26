@@ -1,0 +1,19 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "add_to_digest_only",
+      "digest_entry": {
+        "event_id": "evt-06",
+        "category": "ei_correspondence",
+        "summary": "EI maternity benefits claim processed — first payment arriving within 3 business days.",
+        "source": "noreply@canada.ca",
+        "subject": "EI maternity benefits",
+        "requires_action": false
+      }
+    },
+    "confidence": 0.95,
+    "rationale": "No reply or external action needed — this is a government notification confirming payment processing, so it belongs in the digest for awareness only.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 3950
+}

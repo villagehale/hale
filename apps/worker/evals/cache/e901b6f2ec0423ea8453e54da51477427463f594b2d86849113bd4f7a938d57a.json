@@ -1,0 +1,16 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "place_supply_order",
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "unit_price": 42.99,
+      "quantity": 1,
+      "reason": "stock critically low — ~1 day remaining"
+    },
+    "confidence": 0.82,
+    "rationale": "Stock of size 4 diapers is down to ~1 day; placing a reorder with DiaperCo at the known unit price to avoid running out — quantity defaulted to 1 unit since no memory slice or order history was available.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 4394
+}

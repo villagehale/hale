@@ -1,0 +1,13 @@
+{
+  "value": {
+    "payload": {
+      "to": "nurse@riverdale-peds.ca",
+      "subject": "Re: Follow-up question",
+      "body": "hi — thanks for checking in. i don't have an update to share right now, but i'll keep an eye on the cough and reach out to book a visit if it doesn't settle. appreciate it."
+    },
+    "confidence": 0.45,
+    "rationale": "No memory slice confirms how the cough actually progressed, so I kept the reply honest and non-committal rather than inventing a medical update.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 6659
+}

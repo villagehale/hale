@@ -1,0 +1,21 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.92,
+    "rationale": "An email from a high school counsellor sharing a welfare concern about Jordan and offering to talk is routine school communication — one-way notice that surfaces in the digest; no autonomous reply is appropriate for a sensitive wellbeing message.",
+    "payload": {
+      "sender": "counsellor@centralhs.ca",
+      "subject": "Check-in about Jordan",
+      "studentName": "Jordan",
+      "concern": "Withdrawn behaviour and feeling overwhelmed about exams",
+      "counsellorOfferedToTalk": true,
+      "institution": "Central HS"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-jordan",
+    "teen_content": true
+  },
+  "latencyMs": 5249
+}

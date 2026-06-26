@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly explains why the event is classified as supply_low_signal. It directly references the signal data (6 on-hand, 7 daily use, 1 day remaining), performs the correct calculation (6 ÷ 7 ≈ 1 day of supply), and accurately concludes that this short timeframe warrants a low supply alert. The reasoning is specific, logically sound, and matches the signal content perfectly."
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.95,
+    "rationale": "Clinic is proposing a specific appointment time and explicitly asking the parent to confirm, requiring an active reply.",
+    "payload": {
+      "clinic_name": "Riverdale Peds",
+      "child_name": "Mira",
+      "visit_type": "18-month visit",
+      "proposed_date": "2025-06-23",
+      "proposed_time": "17:30",
+      "timezone": "America/Toronto",
+      "sender_email": "frontdesk@riverdale-peds.ca",
+      "action_required": "confirm"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null,
+    "teen_content": false
+  },
+  "latencyMs": 2886
+}

@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_01NtzWCiBckGJJ7BRUfWJjWo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "yes — mira has a confirmed egg allergy (mild hives), verified by her pediatric office at Riverdale Pediatrics, so that's the one to flag clearly to any new caregiver: no egg in any form, including baked goods, pasta made with egg, or anything with egg as an ingredient, since it can hide in a lot of toddler-friendly foods like muffins or frittatas. because the reaction recorded is hives rather than anaphylaxis, it's on the milder end, but it's still worth making sure the caregiver knows what the reaction looks like and to call you immediately if they see it — as a next step, you could put together a short written note with the allergen, the symptom to watch for, and your pediatric office contact (Riverdale Pediatrics) so the caregiver has it on hand without having to remember the details verbally."
+      }
+    ],
+    "usage": {
+      "input_tokens": 13371,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 200,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 6899,
+  "firstInputTokens": 13371
+}
