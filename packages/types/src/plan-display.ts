@@ -52,8 +52,8 @@ export const PLAN_DISPLAY = {
     features: [
       'Everything in Free',
       'Hale acts on the things you approve',
-      'Reminders + booking, handled',
-      'Calendar + integrations connected',
+      'Reminders + booking, on your approval',
+      'Calendar + integrations, rolling out',
       'Multi-child households',
     ],
   },
@@ -65,7 +65,7 @@ export const PLAN_DISPLAY = {
     features: [
       'Everything in Plus',
       'Full autonomy, earned task by task',
-      'Commerce + booking, done for you',
+      'Commerce + booking, as integrations roll out',
       'Co-parent shared across the household',
       'Concierge + priority support',
     ],
