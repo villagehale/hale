@@ -20,21 +20,28 @@ const RATES: Record<string, ModelRate> = {
 
 const PER_MTOK = 1_000_000;
 
+/** Prompt-cache reads bill at 0.1x the base input rate (Anthropic pricing). */
+const CACHE_READ_RATE_MULTIPLIER = 0.1;
+
 /**
- * Sums input + output token cost for one agent call. Cache-read and
- * cache-creation tokens are folded into `input_tokens` exposure here as plain
- * input cost — the worker does not yet use prompt caching, so the SDK reports
- * them as null. Accumulates raw input_tokens at full rate.
+ * Sums input + output token cost for one agent call. With prompt caching on
+ * (cachedSystem in structured.ts), the SDK splits prompt tokens three ways:
+ * fresh `input_tokens` at full rate, `cache_creation_input_tokens` at full rate
+ * (a slight underestimate — cache writes bill ~1.25x), and
+ * `cache_read_input_tokens` at the 0.1x read rate. Each is non-null only when
+ * that tier actually applied.
  */
 export function estimateCostUsd(model: string, usage: Anthropic.Usage): number {
   const rate = RATES[model];
   if (!rate) {
     throw new Error(`estimateCostUsd: no rate configured for model '${model}'`);
   }
-  const inputTokens = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+  const fullRateInputTokens = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0);
+  const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
   const outputTokens = usage.output_tokens;
   return (
-    (inputTokens * rate.inputPerMTok) / PER_MTOK +
+    (fullRateInputTokens * rate.inputPerMTok) / PER_MTOK +
+    (cacheReadTokens * rate.inputPerMTok * CACHE_READ_RATE_MULTIPLIER) / PER_MTOK +
     (outputTokens * rate.outputPerMTok) / PER_MTOK
   );
 }

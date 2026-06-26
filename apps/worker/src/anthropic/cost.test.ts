@@ -32,6 +32,13 @@ describe('estimateCostUsd', () => {
     expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(6, 6);
   });
 
+  it('prices cache-read tokens at 0.1x the input rate', () => {
+    const u = usage(0, 0);
+    u.cache_read_input_tokens = 1_000_000;
+    // 1M cache-read @ $3/MTok * 0.1 = $0.30.
+    expect(estimateCostUsd(SONNET_MODEL, u)).toBeCloseTo(0.3, 6);
+  });
+
   it('throws on an unpriced model rather than guessing a rate', () => {
     expect(() => estimateCostUsd('claude-unknown-9', usage(1, 1))).toThrow(/no rate configured/);
   });
