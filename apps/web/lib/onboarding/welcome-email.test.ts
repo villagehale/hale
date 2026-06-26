@@ -78,6 +78,11 @@ describe('createWelcomeEmailSender', () => {
       expect(part).toContain('https://app.villagehale.com/village');
       expect(part).toContain('https://app.villagehale.com/family');
     }
+    // The HTML is the branded layout (Prussian header band), not the old plain
+    // body: it carries the header heading and the warm Prussian + linen tokens.
+    expect(payload.html).toContain('Welcome to your village.');
+    expect(payload.html).toContain('#01204F');
+    expect(payload.html).toContain('#f6f1e7');
   });
 
   it('greets without a name when none is known', async () => {
