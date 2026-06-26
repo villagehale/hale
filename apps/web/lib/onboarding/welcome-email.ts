@@ -139,7 +139,7 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
     unsubscribeUrl,
   )}" style="color:${FADED_SAGE};">Unsubscribe</a>.</p></td></tr>`;
 
-  return `<div style="margin:0;background:${LINEN};font-family:${FONT_STACK};padding:24px 0 40px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;"><tr><td>${header}${card}${footer}</td></tr></table></div>`;
+  return `<div style="margin:0;background:${LINEN};font-family:${FONT_STACK};padding:24px 0 40px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;">${header}${card}${footer}</table></div>`;
 }
 
 /** Plain-text CASL footer, for the text/plain part. */
