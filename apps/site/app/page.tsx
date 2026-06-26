@@ -11,6 +11,7 @@ import {
   Tree,
   Village,
 } from '~/components/illos';
+import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { WaitlistForm } from '~/components/waitlist-form';
 
@@ -67,22 +68,22 @@ const WEEK = [
   {
     arc: 'Newborn',
     stage: 'the first months',
-    task: 'A water-babies class two streets over, a quiet drop-in for new parents on Thursday — the things nearby families swear by, held on your calendar with a gentle this is normal, you are doing fine.',
+    task: 'A water-babies class two streets over, a quiet drop-in for new parents on Thursday — the things nearby families swear by, surfaced for the week ahead with a gentle this is normal, you are doing fine.',
   },
   {
     arc: 'Toddler',
     stage: 'finding the world',
-    task: 'Library story-time, the good Montessori with a spot opening, the park festival on Saturday — the ones other parents recommend, surfaced for their age, registration started.',
+    task: 'Library story-time, the good Montessori with a spot opening, the park festival on Saturday — the ones other parents recommend, surfaced for their age, the registration ready when you are.',
   },
   {
     arc: 'Child',
     stage: 'growing into it',
-    task: 'The soccer season that fits your week, the art class they would actually love, the field-trip form due Friday — vouched for by families near you, and on the calendar before it slips.',
+    task: 'The soccer season that fits your week, the art class they would actually love, the field-trip form due Friday — vouched for by families near you, drafted and ready to add before they slip.',
   },
   {
     arc: 'Teenager',
     stage: 'almost grown',
-    task: 'The maker-space, the volunteer hours, the permission slips kept honest — and their own privacy held: you see what kind of thing, never their messages.',
+    task: 'The maker-space, the volunteer hours, the permission slips you don’t want to miss — and their own privacy held: you see what kind of thing, never their messages.',
   },
 ] as const;
 
@@ -105,7 +106,7 @@ const LADDER = [
   {
     shape: <Tree style={{ height: 96, width: 'auto' }} />,
     title: 'Autonomy, earned',
-    body: 'After five clean approvals of one kind of task, Hale may handle that kind on its own. Revoke any time, with one tap.',
+    body: 'After five clean approvals of one kind of task, Hale may handle that kind on its own. You stay in control — withdraw any automation at any time.',
   },
 ] as const;
 
@@ -114,7 +115,7 @@ const NEVER = [
   'send anything to anyone you have not greenlit',
   'spend more than your per-action cap without asking',
   'share a precise location — only ever a coarse area, and only a count, never a family’s identity',
-  'store your family’s data outside Canada',
+  'store your family’s core data outside Canada',
   'sell your family’s data to anyone, for any price',
 ] as const;
 
@@ -500,9 +501,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="shell pb-12 flex flex-wrap items-center justify-between gap-4">
-        <p className="meta">Hale · Toronto · Canada · a research preview</p>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
