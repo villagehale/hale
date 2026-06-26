@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
@@ -131,6 +132,20 @@ export function loadFamilyName(): Promise<string | null> {
   }, null);
 }
 
+/**
+ * Whether the family has any child currently in the teenager stage (deriveStage
+ * boundary 156mo). Used as the rule-#1 double-miss fallback on the parent-facing
+ * surfaces: when a row resolves to no child, redact its raw content if the family
+ * has a teen (effectiveTeenContent's last clause).
+ */
+async function familyHasTeenager(database: Database, familyId: string): Promise<boolean> {
+  const rows = await database
+    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return rows.some((c) => deriveStage(c.dateOfBirth) === 'teenager');
+}
+
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
     // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
@@ -147,6 +162,14 @@ export function loadTrail(): Promise<TrailView[]> {
     // classifier signal, so we ALSO resolve the event's child DOB (third LEFT JOIN)
     // and OR-in the age-derived teen check — a classify miss on a 13+ child's event
     // still redacts. effectiveTeenContent does the OR.
+    //
+    // The double-miss fallback (family-has-teen) applies ONLY to rows that resolved
+    // to an EVENT (teen_content non-null): a family-wide event the classifier didn't
+    // attribute still redacts when the family has a teen. Rows that don't resolve to
+    // an event (non-`actions` targets — teen_content null) keep the documented trail
+    // boundary and render in full, so e.g. a consent/family-settings audit isn't
+    // blanket-redacted just because the family has a teenager.
+    const familyHasTeen = await familyHasTeenager(database, familyId);
     const rows = await database
       .select({
         entry: schema.auditLog,
@@ -166,9 +189,17 @@ export function loadTrail(): Promise<TrailView[]> {
       .where(eq(schema.auditLog.familyId, familyId))
       .orderBy(desc(schema.auditLog.occurredAt))
       .limit(50);
-    return rows.map((row) =>
-      toTrailView(row.entry, effectiveTeenContent(row.teenContent ?? false, row.childDob ?? null)),
-    );
+    return rows.map((row) => {
+      const resolvedToEvent = row.teenContent !== null;
+      return toTrailView(
+        row.entry,
+        effectiveTeenContent(
+          row.teenContent ?? false,
+          row.childDob ?? null,
+          resolvedToEvent && familyHasTeen,
+        ),
+      );
+    });
   }, []);
 }
 
@@ -180,11 +211,14 @@ export function loadTrail(): Promise<TrailView[]> {
  * payload (rule #1). Defense-in-depth: the stored teen_content is a probabilistic
  * classifier signal, so effectiveTeenContent ORs it with the age-derived teen check
  * (LEFT JOIN children — null DOB when the event names no child) so a classify miss
- * on a teen's draft still redacts. Same empty-state degradation as the other reads:
- * no DB or no resolved family → empty queue.
+ * on a teen's draft still redacts. The double-miss (no flag AND no attributed child)
+ * falls back to familyHasTeen — every approval row resolves to an event, so a
+ * family-wide draft in a family with a teen redacts. Same empty-state degradation as
+ * the other reads: no DB or no resolved family → empty queue.
  */
 export function loadPendingApprovals(): Promise<ApprovalView[]> {
   return readForFamily(async (database, familyId) => {
+    const familyHasTeen = await familyHasTeenager(database, familyId);
     const rows = await database
       .select({
         id: schema.actions.id,
@@ -213,7 +247,7 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         payload: row.payload,
         reviewerVerdict: row.reviewerVerdict,
         draftedAt: row.draftedAt,
-        teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null),
+        teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
       }),
     );
   }, []);

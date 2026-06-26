@@ -28,8 +28,12 @@ interface EpisodeRow {
  * Rule #1: drop any episode attributed to a 13+ child. The episodes table carries
  * NO teen flag, so this list would leak a teen's quick-log summary regardless of the
  * classifier — the teen set is derived LIVE from each child's DOB (deriveStage
- * boundary 156mo), mirroring search_memory in coach/tools.ts. Family-wide rows
- * (childId null) and non-teen children are kept. Pure, no I/O.
+ * boundary 156mo), mirroring search_memory in coach/tools.ts.
+ *
+ * Double-miss (rule #1 "most restrictive"): an UNATTRIBUTED episode (childId null)
+ * has no DOB to derive from, so it is ALSO dropped when the family has any teenager —
+ * a family-wide quick-log could quote the teen. A family with no teen keeps every
+ * unattributed and non-teen row (no over-redaction). Pure, no I/O.
  */
 function dropTeenEpisodes(
   episodes: EpisodeRow[],
@@ -39,7 +43,10 @@ function dropTeenEpisodes(
   const teenChildIds = new Set(
     children.filter((c) => deriveStage(c.dateOfBirth, now) === 'teenager').map((c) => c.id),
   );
-  return episodes.filter((e) => e.childId === null || !teenChildIds.has(e.childId));
+  const familyHasTeen = teenChildIds.size > 0;
+  return episodes.filter((e) =>
+    e.childId === null ? !familyHasTeen : !teenChildIds.has(e.childId),
+  );
 }
 
 /**
