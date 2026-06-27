@@ -8,6 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { actionTypeForIntent } from '~/lib/coach/action-intent';
 import { draftInlineAction } from '~/lib/coach/inline-action';
+import { enforceRateLimit } from '~/lib/rate-limit/apply';
 
 // Node runtime: the inline-action engine uses node:crypto + the Drizzle client.
 export const runtime = 'nodejs';
@@ -65,6 +66,10 @@ export async function POST(req: Request) {
   if (!actorUserId) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
+
+  // Per-user cap before the billable inline-action draft — caps one parent's spend.
+  const limited = await enforceRateLimit('coach-action', actorUserId);
+  if (limited) return limited;
 
   const childId = parsed.data.focusedChildId
     ? await resolveFamilyChild(database, parsed.data.focusedChildId, familyId)
