@@ -72,7 +72,7 @@ export function SiteFooter() {
         className="mt-16 flex flex-wrap items-center justify-between gap-4 pt-8"
         style={{ borderTop: '1px solid var(--color-rule)' }}
       >
-        <p className="meta">Hale · Toronto · Canada · a research preview</p>
+        <p className="meta">Hale · Toronto · Canada</p>
         <p className="meta">© {new Date().getFullYear()} Village Hale Technologies Inc.</p>
       </div>
     </footer>

@@ -1,3 +1,4 @@
+import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import { ParentAndHouse, Village } from '~/components/illos';
 import { SiteFooter } from '~/components/site-footer';
@@ -7,8 +8,15 @@ import { APP_URL } from '~/lib/app-url';
 export const metadata: Metadata = {
   title: 'About · Hale',
   description:
-    'Hale puts the village back online — the trusted, word-of-mouth network parents used to have, rebuilt so it grows with every family that joins. Built by Village Hale Technologies Inc. in Georgetown, Ontario.',
+    'Hale puts the village back online — the trusted, word-of-mouth network parents used to have, rebuilt so it grows with every family that joins. Built by Anzhe Dong at Village Hale Technologies Inc. in Georgetown, Ontario.',
 };
+
+const SOCIALS = [
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/anzhe-dong/' },
+  { label: 'X', href: 'https://x.com/therealbossdong' },
+  { label: 'GitHub', href: 'https://github.com/donganzh' },
+  { label: 'anzhe.xyz', href: 'https://anzhe.xyz' },
+] as const;
 
 export default function AboutPage() {
   return (
@@ -64,27 +72,34 @@ export default function AboutPage() {
       <section className="shell pb-16 lg:pb-24">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-start">
           <div className="lg:col-span-7 rise rise-1">
-            <span className="eyebrow">What Hale is</span>
-            <h2 className="mt-3">A trusted network, not a directory.</h2>
+            <span className="eyebrow">The founder</span>
+            <h2 className="mt-3">Built by a parent, far from his village.</h2>
             <p
               className="mt-5 text-lg"
               style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
             >
-              Hale gathers what families like yours actually recommend near you, and
-              makes it one tap to share what you love. A calm AI concierge finds and
-              organizes it — and, only once you’ve let it, drafts the small tasks for
-              your approval. The village is the point; the concierge is how it gets
-              done.
+              Hale is built by Anzhe Dong — an AI agent engineer who builds
+              production agentic systems for a living. He started it raising a kid
+              far from the village his own parents had: no elders down the street,
+              no one who just knew which class was worth it. The trust was still out
+              there, in what other parents told each other; it just couldn’t reach
+              him. So he built a way to put it online.
             </p>
-            <p
-              className="mt-4"
-              style={{ color: 'var(--color-faded-sage)', lineHeight: 1.55 }}
-            >
-              We handle newborn and childhood data — among the most sensitive data
-              there is — so trust is the product. Your family’s data stays in Canada,
-              and Hale never acts on its own. PIPEDA, Quebec Law 25, and CASL
-              compliant by default.
-            </p>
+            <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-3">
+              {SOCIALS.map((social) => (
+                <li key={social.href}>
+                  <a
+                    href={social.href}
+                    target="_blank"
+                    rel="me noreferrer"
+                    className="link inline-flex items-center gap-1.5"
+                  >
+                    {social.label}
+                    <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div className="lg:col-span-5 rise rise-2">
@@ -94,9 +109,10 @@ export default function AboutPage() {
               className="mt-5 text-lg"
               style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
             >
-              Hale is built by Village Hale Technologies Inc., a company incorporated
-              in Ontario and based in Georgetown, ON. We’re small, parent-built, and
-              early — this is a research preview.
+              Incorporated in Ontario and based in Georgetown, ON. We handle
+              newborn and childhood data — among the most sensitive there is — so
+              your family’s data stays in Canada, and Hale never acts on its own.
+              PIPEDA, Quebec Law 25, and CASL compliant by default.
             </p>
             <p className="mt-6">
               <a href="/contact" className="link">

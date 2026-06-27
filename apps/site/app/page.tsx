@@ -19,7 +19,7 @@ import { APP_URL } from '~/lib/app-url';
 // Aggregate, illustrative social proof — a COUNT only, never a family identity
 // (hard rule #1). Mirrors the app's endorsementLabel ("loved by N families near
 // you") and the count-only SocialProofBadge on the real share surfaces. These
-// are example cards on a research preview, not real recommendations.
+// are illustrative example cards, not real recommendations.
 const RECOMMENDED = [
   {
     kind: 'Story-time',
@@ -56,7 +56,7 @@ const LOOP = [
   {
     Icon: Send,
     title: 'Share the ones you love',
-    body: 'One tap sends a family’s week — the handful of things worth it this week — to a friend, a group chat, the new parent down the street. No app required to open it.',
+    body: 'One tap sends them to a friend, a group chat, the new parent down the street — no app required to open it.',
   },
   {
     Icon: Users,
@@ -174,30 +174,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 2 · The plain-language promise band — the village, online ───── */}
-      <section className="shell pb-20 lg:pb-28">
-        <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20 lg:py-24">
-          <p
-            className="font-display max-w-4xl"
-            style={{
-              fontSize: 'clamp(1.65rem, 3.4vw, 2.75rem)',
-              lineHeight: 1.2,
-              letterSpacing: 'var(--tracking-display)',
-              fontWeight: 600,
-            }}
-          >
-            Once, a family had a village — elders who knew which class was worth
-            it, neighbors who carried the small things, a grandmother who said
-            this is normal, you are doing fine. That trust still lives in
-            word-of-mouth between parents — it just doesn’t scale, and you can’t
-            reach it when you move. Hale puts that village online: what families
-            near you actually recommend, in one place, growing with every family
-            that joins.
-          </p>
-        </div>
-      </section>
-
-      {/* ── 3 · Social proof — what families near you recommend ─────────── */}
+      {/* ── 2 · Social proof — what families near you recommend ─────────── */}
       <section id="village" className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
           <span className="eyebrow">What families near you recommend</span>
@@ -207,9 +184,8 @@ export default function LandingPage() {
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
             Not reviews from strangers — the genuinely good local things families
-            like yours keep coming back to. You see how many families love each
-            one, never who they are: an aggregate count, a coarse area, nothing
-            more.
+            like yours keep coming back to. You see how many love each one, never
+            who they are.
           </p>
         </div>
 
@@ -231,26 +207,40 @@ export default function LandingPage() {
           ))}
         </div>
         <p className="meta mt-6">
-          Illustrative examples — a research preview. Counts are aggregate; no
-          family is ever named.
+          Illustrative examples. Counts are aggregate; no family is ever named.
         </p>
       </section>
 
-      {/* ── 4 · The share artifact — the hook ───────────────────────────── */}
-      <section className="shell pb-20 lg:pb-28">
+      {/* ── 3 · How the village grows — the share hook → the loop ───────── */}
+      <section id="loop" className="shell pb-20 lg:pb-28">
+        <div className="max-w-2xl mb-12 lg:mb-16">
+          <span className="eyebrow">How the village grows</span>
+          <h2 className="mt-3">One tap shares the good week. Then they join.</h2>
+          <p
+            className="mt-5 text-lg"
+            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
+          >
+            Hale is a network, not a directory. When a friend loves their kid’s
+            week, they send it — and every family who joins makes the
+            recommendations better for everyone near them.
+          </p>
+        </div>
+
+        {/* the hook, made concrete — a mocked share card families actually send */}
         <div className="panel-sky-tint px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
             <div className="lg:col-span-6 rise rise-1">
               <span className="eyebrow">See a family’s week</span>
-              <h2 className="mt-3">One tap shares the good week. Then they join.</h2>
+              <h3 className="mt-3 font-display text-2xl" style={{ lineHeight: 1.2 }}>
+                A clean, private card — no app, no account to open it.
+              </h3>
               <p
                 className="mt-5 text-lg"
                 style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}
               >
-                When a friend loves their kid’s week, they send it — a clean,
-                private card of the handful of things worth it near them. It opens
-                in any browser, no app, no account. And at the bottom: join the
-                village. That’s how it spreads, parent to parent.
+                Just the handful of things worth it near them. It opens in any
+                browser, and at the bottom: join the village. That’s how it
+                spreads, parent to parent.
               </p>
               <div className="mt-8">
                 <LandingCta
@@ -302,24 +292,9 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
 
-      {/* ── 5 · The loop — discover → share → grow ──────────────────────── */}
-      <section id="loop" className="shell pb-20 lg:pb-28">
-        <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">How the village grows</span>
-          <h2 className="mt-3">It gets better the more it grows.</h2>
-          <p
-            className="mt-5 text-lg"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-          >
-            Hale is a network, not a directory. Every family who joins makes the
-            recommendations better for everyone near them — the more your village
-            grows, the more it knows what’s actually worth your week.
-          </p>
-        </div>
-
-        <ol className="grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-12">
+        {/* the loop the hook sets in motion: discover → share → grow */}
+        <ol className="mt-14 lg:mt-20 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-12">
           {LOOP.map((step, i) => (
             <li key={step.title} className={`rise rise-${i + 1}`}>
               <span
@@ -355,7 +330,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 6 · The good local week — every stage ───────────────────────── */}
+      {/* ── 4 · The good local week — every stage ───────────────────────── */}
       <section className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
           <span className="eyebrow">The good local week</span>
@@ -365,9 +340,8 @@ export default function LandingPage() {
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
             From the first months to almost grown, the village surfaces the
-            genuinely good things near you — vouched for by families ahead of you —
-            and the concierge brings them within reach, one at a time. It grows up
-            alongside your kid, and the week grows with them.
+            genuinely good things near you — vouched for by families ahead of you.
+            It grows up alongside your kid, and the week grows with them.
           </p>
         </div>
 
@@ -392,7 +366,7 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      {/* ── 7 · Trust, earned slowly — the concierge ────────────────────── */}
+      {/* ── 5 · Trust, earned slowly — the concierge ────────────────────── */}
       <section id="how" className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
           <span className="eyebrow">The concierge, trust earned slowly</span>
@@ -422,10 +396,10 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      {/* ── 8 · Three sizes of help (pricing) ───────────────────────────── */}
+      {/* ── 6 · Three sizes of help (pricing) ───────────────────────────── */}
       <PricingSection />
 
-      {/* ── 9 · Hale will never — the inverted night section ─────────────── */}
+      {/* ── 7 · Hale will never — the inverted night section ─────────────── */}
       <section className="night py-24 lg:py-32">
         <div className="shell grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16">
           <div className="lg:col-span-4">
@@ -462,7 +436,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 10 · A note from the maker ──────────────────────────────────── */}
+      {/* ── 8 · A note from the maker ───────────────────────────────────── */}
       <section className="shell py-24 lg:py-32">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
           <div className="lg:col-span-3 flex justify-center lg:justify-start">
@@ -487,7 +461,7 @@ export default function LandingPage() {
               the things families near you swear by, easy to share, growing with
               every family that joins.
             </p>
-            <p className="mt-6 meta">— Barton, Toronto</p>
+            <p className="mt-6 meta">— Anzhe Dong, founder · Toronto</p>
           </div>
         </div>
       </section>

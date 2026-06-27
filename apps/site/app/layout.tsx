@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Hale · the village every parent needs',
   description:
-    "Hale is the trusted parent network for your neighborhood — find what families like yours actually do near you, and share what you love, across every stage of childhood. A calm AI concierge finds and organizes it; the village is the point. Your family's data stays in Canada. A research preview.",
+    "Hale is the trusted parent network for your neighborhood — find what families like yours actually do near you, and share what you love, across every stage of childhood. A calm AI concierge finds and organizes it; the village is the point. Your family's data stays in Canada.",
 };
 
 export const viewport: Viewport = {

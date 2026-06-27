@@ -29,4 +29,8 @@ describe('LandingPage (go-live funnel)', () => {
     expect(html).not.toContain('id="waitlist"');
     expect(html).not.toContain('join the waitlist');
   });
+
+  it('carries no pre-launch "research preview" marking', () => {
+    expect(html.toLowerCase()).not.toContain('research preview');
+  });
 });
