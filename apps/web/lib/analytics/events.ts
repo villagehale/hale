@@ -13,7 +13,12 @@
 export type AnalyticsEvent =
   | 'waitlist_signup'
   | 'sign_up'
+  | 'preview_submitted'
+  | 'signup_completed'
   | 'onboarding_completed'
+  | 'first_activity_added'
+  | 'first_ask'
+  | 'first_invite'
   | 'add_to_week'
   | 'endorse'
   | 'share'

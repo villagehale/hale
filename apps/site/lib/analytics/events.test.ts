@@ -24,4 +24,15 @@ describe('site buildEvent privacy gate', () => {
     expect(built.properties).toEqual({ referrer: 'twitter' });
     expect(JSON.stringify(built)).not.toContain('sam@example.com');
   });
+
+  it('fires the landing CTA funnel events with no properties', () => {
+    expect(buildEvent('landing_cta_preview')).toEqual({
+      event: 'landing_cta_preview',
+      properties: {},
+    });
+    expect(buildEvent('landing_cta_signin')).toEqual({
+      event: 'landing_cta_signin',
+      properties: {},
+    });
+  });
 });

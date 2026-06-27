@@ -2,6 +2,7 @@
 
 import { Copy, UserPlus } from 'lucide-react';
 import { useState } from 'react';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { Button } from '~/components/ui/button';
 
 type State =
@@ -21,6 +22,7 @@ type State =
  */
 export function InviteCoParent() {
   const [state, setState] = useState<State>({ kind: 'idle' });
+  const capture = useAnalytics();
 
   async function generate() {
     setState({ kind: 'generating' });
@@ -28,6 +30,7 @@ export function InviteCoParent() {
       const res = await fetch('/api/invite', { method: 'POST' });
       if (res.status === 201) {
         const { link } = (await res.json()) as { link: string };
+        capture('first_invite');
         setState({ kind: 'ready', link, copied: false });
         return;
       }
