@@ -10,6 +10,7 @@
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
@@ -45,6 +46,7 @@
   "devDependencies": {
     "@opentelemetry/context-async-hooks": "^2.8.0",
     "@opentelemetry/sdk-trace-base": "^2.8.0",
+    "@playwright/test": "^1.51.1",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.7",
