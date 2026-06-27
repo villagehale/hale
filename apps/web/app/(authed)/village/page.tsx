@@ -47,7 +47,7 @@ export default async function VillagePage() {
                   className="flex items-baseline gap-4 border-t border-rule pt-5 first:border-t-0 first:pt-0"
                 >
                   <span className="eyebrow text-spruce shrink-0">{item.kind}</span>
-                  <div>
+                  <div data-hale-pii>
                     <p className="text-lg text-spruce leading-relaxed">{item.title}</p>
                     {item.stageNote ? (
                       <p className="meta mt-1 text-slate-green">{item.stageNote}</p>

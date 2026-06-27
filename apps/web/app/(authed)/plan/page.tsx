@@ -81,10 +81,12 @@ export default async function PlanPage() {
               {routine.items.map((item, idx) => (
                 <Card key={`${item.kind}-${idx}`} href="/village">
                   <span className="eyebrow text-spruce">{item.kind}</span>
-                  <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
-                  {item.stageNote ? (
-                    <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
-                  ) : null}
+                  <div data-hale-pii>
+                    <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
+                    {item.stageNote ? (
+                      <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
+                    ) : null}
+                  </div>
                   <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
                     open in village
                     <Icon as={ArrowRight} size={14} />

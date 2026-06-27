@@ -112,8 +112,10 @@ export function TrailTimeline({ entries }: { entries: TrailView[] }) {
                   </div>
                   <div className="md:col-span-8">
                     <ToneLabel tone={entry.tone} />
-                    <p className="mt-3 text-lg text-spruce leading-relaxed">{entry.summary}</p>
-                    <p className="mt-2 meta italic">— {entry.detail}</p>
+                    <div data-hale-pii>
+                      <p className="mt-3 text-lg text-spruce leading-relaxed">{entry.summary}</p>
+                      <p className="mt-2 meta italic">— {entry.detail}</p>
+                    </div>
                   </div>
                 </div>
               </article>

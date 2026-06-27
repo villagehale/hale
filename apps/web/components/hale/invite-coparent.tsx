@@ -56,7 +56,9 @@ export function InviteCoParent() {
           share this one-time link with your co-parent. it expires in 14 days.
         </p>
         <div className="flex flex-wrap items-center gap-4">
-          <p className="font-display text-lg break-all">{state.link}</p>
+          <p className="font-display text-lg break-all" data-hale-pii>
+            {state.link}
+          </p>
           <Button variant="secondary" icon={Copy} onClick={() => copy(state.link)} aria-live="polite">
             {state.copied ? 'copied' : 'copy link'}
           </Button>

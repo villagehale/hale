@@ -96,7 +96,7 @@ export function AccountMenuView({
         onClick={onToggle}
       >
         <LogoMark size={32} />
-        <span className="account-chip-identity">
+        <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{displayName}</span>
           <span className="account-chip-family meta">{familyLine}</span>
         </span>
