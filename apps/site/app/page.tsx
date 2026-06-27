@@ -154,11 +154,11 @@ export default function LandingPage() {
               the point: real recommendations from real families near you.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a href={`${APP_URL}/sign-in`} className="btn-primary">
-                Join the village
+              <a href={`${APP_URL}/preview`} className="btn-primary">
+                See what Hale finds for you
               </a>
-              <a href="#loop" className="btn-secondary">
-                How it grows
+              <a href={`${APP_URL}/sign-in`} className="btn-secondary">
+                Join the village
               </a>
             </div>
           </div>

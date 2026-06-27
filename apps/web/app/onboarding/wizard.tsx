@@ -7,6 +7,8 @@ import { Plus, X } from 'lucide-react';
 import {
   type ChildGender,
   CHILD_GENDERS,
+  FAMILY_STAGES,
+  type FamilyStage,
   type OnboardingIntent,
   type PlanTier,
   parseIntents,
@@ -103,6 +105,10 @@ export function OnboardingWizard({
   ]);
   const [location, setLocation] = useState<LocationInput>({ country: 'Canada' });
   const [inviteCoParent, setInviteCoParent] = useState(false);
+  // A coarse stage hint carried from the pre-auth preview (an age RANGE, never a
+  // DOB). Surfaced as an honest note in Phase C; the real DOB is still required
+  // and consented here (rule #1).
+  const [stageHint, setStageHint] = useState<FamilyStage | null>(null);
 
   // On mount, hydrate from the sessionStorage draft so Phase A survives the OAuth
   // redirect and seeds Phase C's child names + city. The parent name prefills from
@@ -122,6 +128,7 @@ export function OnboardingWizard({
     setIntents(parseIntents(draft.intents ?? []));
     setPlanTier(isPlanTier(draft.planTier) ? draft.planTier : 'free');
     setTosAccepted(draft.tosAccepted);
+    setStageHint(isFamilyStage(draft.stage) ? draft.stage : null);
     const seeded = names
       .map((name) => name.trim())
       .filter((name) => name.length > 0)
@@ -150,6 +157,7 @@ export function OnboardingWizard({
       intents,
       planTier,
       tosAccepted,
+      stage: stageHint ?? undefined,
       ...patch,
     };
     writeIntakeDraft(next);
@@ -473,6 +481,12 @@ export function OnboardingWizard({
 
                 <fieldset className="space-y-6">
                   <legend className="eyebrow text-spruce">your kids</legend>
+                  {stageHint ? (
+                    <p className="meta">
+                      from your preview, you&rsquo;re looking for {STAGE_WORD[stageHint]} — add
+                      their birthday below so I can tailor precisely.
+                    </p>
+                  ) : null}
                   {setupChildren.map((child, index) => {
                     const validation = childValidations[index];
                     const dobError =
@@ -654,6 +668,19 @@ export function OnboardingWizard({
 function isPlanTier(value: string): value is PlanTier {
   return value === 'free' || value === 'plus' || value === 'family';
 }
+
+function isFamilyStage(value: string | undefined): value is FamilyStage {
+  return value !== undefined && (FAMILY_STAGES as readonly string[]).includes(value);
+}
+
+/** The plain stage word for the preview hint note (no age range — the real DOB
+ * is collected below, so the note never asserts an age). */
+const STAGE_WORD: Record<FamilyStage, string> = {
+  newborn: 'a newborn',
+  toddler: 'a toddler',
+  child: 'a child',
+  teenager: 'a teenager',
+};
 
 function describeError(error: string): string {
   switch (error) {

@@ -16,6 +16,11 @@ describe('LandingPage (go-live funnel)', () => {
     expect(html).toContain('Join the village');
   });
 
+  it('leads the hero with the pre-auth value preview CTA', () => {
+    expect(html).toContain(`href="${APP_URL}/preview"`);
+    expect(html).toContain('See what Hale finds for you');
+  });
+
   it('no longer wires any CTA to the waitlist anchor', () => {
     expect(html).not.toContain('href="#waitlist"');
   });

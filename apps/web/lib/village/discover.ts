@@ -46,11 +46,11 @@ const CANDIDATE_KIND = 'activity';
 const SOURCE = 'llm_only';
 
 /** Max candidates the model is asked for; matches the worker's DEFAULT_LIMIT. */
-const DISCOVERY_LIMIT = 8;
+export const DISCOVERY_LIMIT = 8;
 
-const DISCOVERY_TOOL = 'submit_candidates';
+export const DISCOVERY_TOOL = 'submit_candidates';
 
-const candidatesSchema = z.object({
+export const candidatesSchema = z.object({
   candidates: z.array(
     z.object({
       title: z.string(),
@@ -62,7 +62,7 @@ const candidatesSchema = z.object({
   ),
 });
 
-const candidatesJsonSchema = {
+export const candidatesJsonSchema = {
   type: 'object',
   properties: {
     candidates: {
