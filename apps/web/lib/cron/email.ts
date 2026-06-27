@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import { BUSINESS_ADDRESS, SENDER_NAME } from './email-compliance';
 
-const DEFAULT_FROM = 'hello@villagehale.com';
+const DEFAULT_FROM = 'aloha@villagehale.com';
 
 /**
  * The minimal email surface the digest cron needs: send one brief and report
@@ -57,10 +57,7 @@ function renderTextFooter(unsubscribeUrl: string): string {
 }
 
 function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function createDigestEmailSender(client?: Resend): DigestEmailSender {

@@ -31,8 +31,9 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('Join free');
   });
 
-  it('keeps paid CTAs soft — no checkout, paid plans coming soon', () => {
-    expect(html).toContain('coming soon');
+  it('keeps paid CTAs soft — no checkout, paid tiers marked coming soon', () => {
+    expect(html).toContain('Coming soon');
+    expect(html).toContain('Founding families');
     expect(html.toLowerCase()).not.toContain('checkout');
   });
 });

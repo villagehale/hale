@@ -12,7 +12,7 @@ import { BUSINESS_ADDRESS, SENDER_NAME } from '~/lib/cron/email-compliance';
  */
 
 // The welcome's warm from-identity. Distinct from the digest/executor RESEND_FROM
-// (hello@) on purpose; overridable for non-prod sending domains.
+// (aloha@) on purpose; overridable for non-prod sending domains.
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
 
 const APP_BASE = 'https://app.villagehale.com';
@@ -36,8 +36,7 @@ const APRICOT = '#c8622d';
 const APRICOT_DEEP = '#a84e20';
 const SLATE_GREEN = '#33486b';
 const FADED_SAGE = '#5b6b86';
-const FONT_STACK =
-  "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
+const FONT_STACK = "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
 
 export interface WelcomeEmailSender {
   /** Returns the provider message id when accepted, null when not sent. The
@@ -120,6 +119,9 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
 
   const outro = [
     `<p style="margin:24px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(
+      "You're one of Hale's founding families — everything's free while we grow, and when paid plans open you'll be first in line.",
+    )}</p>`,
+    `<p style="margin:8px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(
       'Reply any time — a real person reads these.',
     )}</p>`,
     `<p style="margin:8px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(

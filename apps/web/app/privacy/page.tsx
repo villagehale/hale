@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { LegalLayout, LegalSectionBlock, type LegalSection } from '~/components/hale/legal-layout';
+import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/hale/legal-layout';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy · Hale',
@@ -33,8 +33,8 @@ export default function PrivacyPage() {
           most sensitive data there is — including information about newborns and children. We treat
           that responsibility as the centre of the product, not an afterthought. This policy
           explains, in plain language, what we collect, why, where it lives, and the control you
-          keep over it. It is written for Canada&rsquo;s federal privacy law (PIPEDA), Quebec&rsquo;s
-          Law 25, and Canada&rsquo;s anti-spam law (CASL).
+          keep over it. It is written for Canada&rsquo;s federal privacy law (PIPEDA),
+          Quebec&rsquo;s Law 25, and Canada&rsquo;s anti-spam law (CASL).
         </p>
       }
       sections={SECTIONS}
@@ -48,7 +48,11 @@ export default function PrivacyPage() {
           use. Hale watches for things that matter, drafts helpful suggestions, and — only with your
           approval — helps carry them out. Hale is operated by Village Hale Technologies Inc., a
           company incorporated in Ontario, Canada, which is the organization responsible for your
-          family&rsquo;s data; see <a href="#contact" className="link">How to reach us</a>.
+          family&rsquo;s data; see{' '}
+          <a href="#contact" className="link">
+            How to reach us
+          </a>
+          .
         </p>
       </LegalSectionBlock>
 
@@ -94,9 +98,12 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Audit logs and technical data.</strong> Every action Hale takes produces an
-            immutable audit record (see <a href="#your-rights" className="link">Your rights</a>),
-            and we keep limited technical information such as your IP address and browser type for
-            security and to honour your access requests.
+            immutable audit record (see{' '}
+            <a href="#your-rights" className="link">
+              Your rights
+            </a>
+            ), and we keep limited technical information such as your IP address and browser type
+            for security and to honour your access requests.
           </li>
         </ul>
       </LegalSectionBlock>
@@ -114,8 +121,11 @@ export default function PrivacyPage() {
           again for specific, sensitive purposes — connecting an integration, sending your context
           to our AI provider, processing data across borders, and unlocking any automated action. We
           record each consent (including the policy version and time) so the choice is verifiable,
-          and you can withdraw it at any time (see <a href="#your-rights" className="link">Your
-          rights</a>).
+          and you can withdraw it at any time (see{' '}
+          <a href="#your-rights" className="link">
+            Your rights
+          </a>
+          ).
         </p>
       </LegalSectionBlock>
 
@@ -123,45 +133,42 @@ export default function PrivacyPage() {
         <p>
           Hale is built around children&rsquo;s information, and we apply heightened protection to
           it. A child&rsquo;s data is provided by you, their parent or guardian, and is processed on
-          your authority and for your family&rsquo;s benefit. Optional and sensitive fields — such as
-          gender — are exactly that: optional, and stored only if you provide them. A child&rsquo;s
-          information belongs to one family and is never visible to another family.
+          your authority and for your family&rsquo;s benefit. Optional and sensitive fields — such
+          as gender — are exactly that: optional, and stored only if you provide them. A
+          child&rsquo;s information belongs to one family and is never visible to another family.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="teen-privacy" title="Teen privacy (children 13 and older)">
         <p>
           As children grow, their privacy matters more. For a child aged 13 or older, raw content
-          (the actual text of a message or post Hale observes) is <strong>redacted from parents by
-          default</strong>. Parents see only a category or short summary — enough to stay involved,
-          without reading their teen&rsquo;s words verbatim.
+          (the actual text of a message or post Hale observes) is{' '}
+          <strong>redacted from parents by default</strong>. Parents see only a category or short
+          summary — enough to stay involved, without reading their teen&rsquo;s words verbatim.
         </p>
         <p>
-          Access to a teen&rsquo;s raw content requires an explicit, logged, and time-limited grant.
-          The only exception is a genuine safety escalation — for example, a credible risk of harm —
-          in which case relevant content may be surfaced to a parent, and the teen is notified that
-          this happened.
+          Controls to grant a parent time-limited, explicitly logged access to a teen&rsquo;s raw
+          content — and a safety-escalation path for a credible risk of harm, in which relevant
+          content may be surfaced and the teen is notified — are planned and not yet available.
+          Until then, the default redaction above always applies.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="ai-processing" title="AI and automated processing">
         <p>
           Hale uses artificial intelligence (Anthropic&rsquo;s Claude models) to read your
-          family&rsquo;s context and draft suggestions. To do this, relevant conversation and context
-          data is sent to our AI provider to generate a response.
+          family&rsquo;s context and draft suggestions. To do this, relevant conversation and
+          context data is sent to our AI provider to generate a response.
         </p>
         <p>
           <strong>Hale never acts on its own.</strong> The AI only drafts; a parent approves every
           action before anything happens in the outside world. New accounts begin in an observe-only
-          mode, and any move toward more automation requires your explicit, per-action-type approval.
-          You are always the decision-maker.
+          mode, and any move toward more automation requires your explicit, per-action-type
+          approval. You are always the decision-maker.
         </p>
       </LegalSectionBlock>
 
-      <LegalSectionBlock
-        id="sub-processors"
-        title="Sub-processors and cross-border processing"
-      >
+      <LegalSectionBlock id="sub-processors" title="Sub-processors and cross-border processing">
         <p>
           We rely on a small set of trusted service providers to run Hale. We share with each only
           what that service needs, under contractual safeguards:
@@ -187,10 +194,10 @@ export default function PrivacyPage() {
             cross-site profile.
           </li>
           <li>
-            <strong>PostHog</strong> — product analytics; coarse, non-identifying event data only (no
-            child data, no message content). We capture only a few key product steps, with autocapture
-            and session replay turned off, and we identify you by an opaque account id, never your
-            name or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
+            <strong>PostHog</strong> — product analytics; coarse, non-identifying event data only
+            (no child data, no message content). We capture only a few key product steps, with
+            autocapture and session replay turned off, and we identify you by an opaque account id,
+            never your name or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
           </li>
           <li>
             <strong>Resend</strong> — delivery of transactional and digest emails (United States).
@@ -211,26 +218,27 @@ export default function PrivacyPage() {
         </p>
       </LegalSectionBlock>
 
-      <LegalSectionBlock
-        id="residency-retention"
-        title="Data residency, retention, and security"
-      >
+      <LegalSectionBlock id="residency-retention" title="Data residency, retention, and security">
         <p>
           <strong>Residency.</strong> Your family&rsquo;s primary data is stored in Canada
-          (Toronto). See <a href="#sub-processors" className="link">Sub-processors</a> for the
-          processing that occurs elsewhere.
+          (Toronto). See{' '}
+          <a href="#sub-processors" className="link">
+            Sub-processors
+          </a>{' '}
+          for the processing that occurs elsewhere.
         </p>
         <p>
-          <strong>Retention.</strong> We keep your family&rsquo;s data for as long as your account is
-          active and as needed to provide Hale. When you delete your account or ask us to erase your
-          data, we delete it, except where we must retain certain records (such as audit logs) to
-          meet legal obligations. Removing a child removes that child&rsquo;s identifying data; some
-          family history is retained in de-identified form.
+          <strong>Retention.</strong> We keep your family&rsquo;s data for as long as your account
+          is active and as needed to provide Hale. When you delete your account or ask us to erase
+          your data, we delete it, except where we must retain certain records (such as audit logs)
+          to meet legal obligations. Removing a child removes that child&rsquo;s identifying data;
+          some family history is retained in de-identified form.
         </p>
         <p>
-          <strong>Security.</strong> Access to your data is isolated per family at the database level
-          (row-level security), data is encrypted in transit, and integration tokens are encrypted
-          before they are stored. We log every action Hale takes so it can always be reviewed.
+          <strong>Security.</strong> Access to your data is isolated per family at the database
+          level (row-level security), data is encrypted in transit, and integration tokens are
+          encrypted before they are stored. We log every action Hale takes so it can always be
+          reviewed.
         </p>
       </LegalSectionBlock>
 
@@ -238,9 +246,9 @@ export default function PrivacyPage() {
         <p>Under PIPEDA and Quebec&rsquo;s Law 25, you have the right to:</p>
         <ul>
           <li>
-            <strong>Access</strong> the personal information we hold about your family. Because every
-            action Hale takes is recorded in an immutable audit log, we can show you what happened
-            and when.
+            <strong>Access</strong> the personal information we hold about your family. Because
+            every action Hale takes is recorded in an immutable audit log, we can show you what
+            happened and when.
           </li>
           <li>
             <strong>Correct</strong> information that is inaccurate or incomplete.
@@ -256,14 +264,17 @@ export default function PrivacyPage() {
             <strong>Port</strong> your data — receive a copy in a structured, commonly used format.
           </li>
           <li>
-            <strong>Complain.</strong> If you are not satisfied with how we handle your data, you may
-            contact the Office of the Privacy Commissioner of Canada, or, in Quebec, the Commission
-            d&rsquo;accès à l&rsquo;information du Québec.
+            <strong>Complain.</strong> If you are not satisfied with how we handle your data, you
+            may contact the Office of the Privacy Commissioner of Canada, or, in Quebec, the
+            Commission d&rsquo;accès à l&rsquo;information du Québec.
           </li>
         </ul>
         <p>
           To exercise any of these rights, contact us at the address in{' '}
-          <a href="#contact" className="link">How to reach us</a>.
+          <a href="#contact" className="link">
+            How to reach us
+          </a>
+          .
         </p>
       </LegalSectionBlock>
 

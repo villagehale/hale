@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   type BillingPeriod,
   PLAN_DISPLAY,
@@ -8,6 +7,7 @@ import {
   type PlanTier,
   formatPlanPrice,
 } from '@hale/types';
+import { useState } from 'react';
 import { BillingToggle } from './billing-toggle';
 
 /**
@@ -40,14 +40,19 @@ export function OnboardingPlanPicker({
       <div className="mt-4 space-y-3">
         {PLAN_TIERS_ORDERED.map((tier) => {
           const plan = PLAN_DISPLAY[tier];
+          const isFree = tier === 'free';
           const isSelected = selected === tier;
           return (
             <label
               key={tier}
-              className={`choice-card cursor-pointer text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between gap-4 ${
-                isSelected
-                  ? 'bg-oat border border-spruce'
-                  : 'border border-rule-strong hover:border-spruce'
+              className={`choice-card text-left p-4 rounded-[var(--r-md)] transition-colors flex items-baseline justify-between gap-4 ${
+                isFree
+                  ? `cursor-pointer ${
+                      isSelected
+                        ? 'bg-oat border border-spruce'
+                        : 'border border-rule-strong hover:border-spruce'
+                    }`
+                  : 'border border-rule-strong opacity-60'
               }`}
             >
               <span>
@@ -58,13 +63,20 @@ export function OnboardingPlanPicker({
                 <span className="font-mono text-base font-semibold text-spruce">
                   {formatPlanPrice(tier, period)}
                 </span>
-                {isSelected ? <span className="eyebrow text-spruce mt-1">selected</span> : null}
+                {isFree ? (
+                  isSelected ? (
+                    <span className="eyebrow text-spruce mt-1">selected</span>
+                  ) : null
+                ) : (
+                  <span className="eyebrow text-slate-green mt-1">coming soon</span>
+                )}
               </span>
               <input
                 type="radio"
                 name="onboarding-plan-tier"
                 value={tier}
                 checked={isSelected}
+                disabled={!isFree}
                 onChange={() => onSelect(tier)}
                 className="sr-only"
               />

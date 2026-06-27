@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import { WaitlistWelcomeEmail } from '~/emails/waitlist-welcome';
 
-const DEFAULT_FROM = 'hello@villagehale.com';
+const DEFAULT_FROM = 'aloha@villagehale.com';
 
 // The minimal Resend surface the site needs: send one email and report whether
 // the provider accepted it. Injected so the waitlist route is testable without a
