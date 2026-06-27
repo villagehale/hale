@@ -13,7 +13,7 @@ import {
 } from '~/components/illos';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { WaitlistForm } from '~/components/waitlist-form';
+import { APP_URL } from '~/lib/app-url';
 
 // Aggregate, illustrative social proof — a COUNT only, never a family identity
 // (hard rule #1). Mirrors the app's endorsementLabel ("loved by N families near
@@ -154,7 +154,7 @@ export default function LandingPage() {
               the point: real recommendations from real families near you.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a href="#waitlist" className="btn-primary">
+              <a href={`${APP_URL}/sign-in`} className="btn-primary">
                 Join the village
               </a>
               <a href="#loop" className="btn-secondary">
@@ -244,7 +244,7 @@ export default function LandingPage() {
                 village. That’s how it spreads, parent to parent.
               </p>
               <div className="mt-8">
-                <a href="#waitlist" className="btn-primary">
+                <a href={`${APP_URL}/sign-in`} className="btn-primary">
                   Join the village
                 </a>
               </div>
@@ -282,7 +282,7 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </div>
-                <a href="#waitlist" className="btn-primary self-start">
+                <a href={`${APP_URL}/sign-in`} className="btn-primary self-start">
                   Join the village
                 </a>
               </div>
@@ -475,28 +475,6 @@ export default function LandingPage() {
               every family that joins.
             </p>
             <p className="mt-6 meta">— Barton, Toronto</p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 11 · Waitlist close ─────────────────────────────────────────── */}
-      <section id="waitlist" className="shell pb-24 lg:pb-32">
-        <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
-            <div className="lg:col-span-6">
-              <h2>Join your family’s village.</h2>
-              <p
-                className="mt-6 text-lg"
-                style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-              >
-                Free for one year in exchange for honest feedback. Your family’s
-                data stays in Canada. PIPEDA + Quebec Law 25 + CASL compliant by
-                default. Leave any time and take your family graph with you.
-              </p>
-            </div>
-            <div className="lg:col-span-6">
-              <WaitlistForm />
-            </div>
           </div>
         </div>
       </section>
