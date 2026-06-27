@@ -150,15 +150,21 @@ describe('addChildAction', () => {
   it('provisions a family (the audited onboarding path) when the parent has none yet', async () => {
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: FAMILY_ID });
-    const transaction = vi.fn();
-    fakeDbHandle = { transaction };
+    const { tx } = makeTx([]);
+    fakeDbHandle = txDb(tx);
 
     const result = await addChildAction({ name: 'Robin', dateOfBirth: '2024-01-01' });
 
     expect(result).toEqual({ status: 'added' });
+    // Provisioning runs INSIDE the caller's transaction (it no longer owns its
+    // own), so the family + child + audit rows commit atomically with it.
+    expect(
+      (fakeDbHandle as { transaction: ReturnType<typeof vi.fn> }).transaction,
+    ).toHaveBeenCalledTimes(1);
     expect(provisionAndWriteChildren).toHaveBeenCalledTimes(1);
-    // No ad-hoc transaction — provisioning owns the family + child + audit rows.
-    expect(transaction).not.toHaveBeenCalled();
+    expect(provisionAndWriteChildren).toHaveBeenCalledWith(tx, expect.anything(), [
+      { name: 'Robin', lastName: null, dateOfBirth: '2024-01-01', gender: 'unspecified' },
+    ]);
   });
 
   it('returns preview (no write) when auth is unconfigured', async () => {
