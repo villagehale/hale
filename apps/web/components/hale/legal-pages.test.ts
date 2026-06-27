@@ -63,9 +63,10 @@ describe('Privacy Policy page', () => {
     expect(privacyHtml).toContain('Commission d’accès à l’information du Québec');
   });
 
-  it('describes the teen raw-content redaction default and its safety exception', () => {
+  it('describes the teen redaction default and marks grant/escalation as planned', () => {
     expect(privacyHtml).toContain('redacted from parents by default');
-    expect(privacyHtml).toContain('safety escalation');
+    expect(privacyHtml).toContain('safety-escalation');
+    expect(privacyHtml).toContain('not yet available');
   });
 
   it('carries the not-legal-advice caveat and the last-updated date', () => {
