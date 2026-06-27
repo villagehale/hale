@@ -21,12 +21,18 @@ import type { RateLimitOptions } from './limiter';
  * - auth (20/min/IP): sign-in + sign-up share one per-IP window. A human signs in
  *   or registers a handful of times a minute even fumbling a password; 20 is far
  *   above that yet blunts password brute-force / signup spam from one source.
+ * - preview (10/min/IP): the pre-auth value preview is an UNAUTHENTICATED, LLM-
+ *   backed call (cost abuse), so it is capped per source IP — the only identifier
+ *   available before sign-in. A curious visitor re-runs it a few times tweaking
+ *   age/area/interests; 10/min sits well above that yet stops a scripted loop from
+ *   running up spend on an open endpoint.
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
   'coach-action': { limit: 60, windowSec: 60 },
   ingest: { limit: 120, windowSec: 60 },
   auth: { limit: 20, windowSec: 60 },
+  preview: { limit: 10, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

@@ -6,6 +6,14 @@
 export type FamilyStage = 'newborn' | 'toddler' | 'child' | 'teenager';
 
 /**
+ * The stages as a runtime tuple, childhood-ordered. The `FamilyStage` union is
+ * type-only (not iterable at runtime), so this is the single source for code that
+ * must enumerate or validate a stage value — a server-side guard, a stage picker.
+ * `satisfies` ties it to the union, so adding a stage to the type forces it here.
+ */
+export const FAMILY_STAGES = ['newborn', 'toddler', 'child', 'teenager'] as const satisfies readonly FamilyStage[];
+
+/**
  * Stage boundaries in completed months. Config, not magic numbers:
  * newborn <12mo, toddler 12-47mo, child 48-155mo, teenager 156mo+.
  */

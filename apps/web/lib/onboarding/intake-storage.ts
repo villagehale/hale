@@ -21,6 +21,14 @@ export interface IntakeDraft {
   intents: string[];
   planTier: string;
   tosAccepted: boolean;
+  /**
+   * A coarse FamilyStage chosen on the pre-auth preview (an age RANGE, never a
+   * DOB). Optional and non-sensitive: it survives the sign-in round-trip so
+   * onboarding can hint the child's stage, but the actual date of birth is still
+   * entered and consented post-auth in Phase C (rule #1). Absent when the visitor
+   * entered onboarding directly without the preview.
+   */
+  stage?: string;
 }
 
 export function readIntakeDraft(): IntakeDraft | null {
