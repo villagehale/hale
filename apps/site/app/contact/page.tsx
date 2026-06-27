@@ -6,14 +6,14 @@ import { SiteHeader } from '~/components/site-header';
 export const metadata: Metadata = {
   title: 'Contact · Hale',
   description:
-    'Reach the team behind Hale. Email hello@villagehale.com for anything; privacy@villagehale.com for privacy and data requests.',
+    'Reach the team behind Hale. Email aloha@villagehale.com for anything; privacy@villagehale.com for privacy and data requests.',
 };
 
 const CHANNELS = [
   {
     eyebrow: 'Anything at all',
     line: 'Questions, feedback, a class your village should know about — we read every note.',
-    email: 'hello@villagehale.com',
+    email: 'aloha@villagehale.com',
   },
   {
     eyebrow: 'Privacy & your data',
@@ -42,8 +42,8 @@ export default function ContactPage() {
               send. The fastest way to reach us is email.
             </p>
             <div className="mt-8">
-              <a href="mailto:hello@villagehale.com" className="btn-primary">
-                Email hello@villagehale.com
+              <a href="mailto:aloha@villagehale.com" className="btn-primary">
+                Email aloha@villagehale.com
               </a>
             </div>
           </div>

@@ -12,7 +12,7 @@ import { BUSINESS_ADDRESS, SENDER_NAME } from '~/lib/cron/email-compliance';
  */
 
 // The welcome's warm from-identity. Distinct from the digest/executor RESEND_FROM
-// (hello@) on purpose; overridable for non-prod sending domains.
+// (aloha@) on purpose; overridable for non-prod sending domains.
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
 
 const APP_BASE = 'https://app.villagehale.com';
