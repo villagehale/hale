@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { type SignUpState, signUpAction } from '~/lib/auth/auth-actions';
 import { MIN_PASSWORD_LENGTH } from '~/lib/auth/constants';
 
@@ -14,6 +15,7 @@ export function EmailSignUpForm() {
   const [state, formAction] = useActionState<SignUpState, FormData>(signUpAction, {
     status: 'idle',
   });
+  const capture = useAnalytics();
 
   if (state.status === 'check_email') {
     return (
@@ -23,8 +25,14 @@ export function EmailSignUpForm() {
     );
   }
 
+  // Coarse funnel signal on submit — method only, never the email entered (rule #1).
+  function submit(formData: FormData) {
+    capture('signup_completed', { method: 'email' });
+    formAction(formData);
+  }
+
   return (
-    <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
+    <form action={submit} className="flex w-full max-w-sm flex-col gap-4">
       <div className="field-group">
         <label htmlFor="signup-email" className="field-label">
           Email

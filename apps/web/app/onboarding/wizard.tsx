@@ -397,6 +397,7 @@ export function OnboardingWizard({
                 }}
                 onGoogle={() => {
                   capture('sign_up');
+                  capture('signup_completed', { method: 'google' });
                   persistDraft({});
                 }}
               />
