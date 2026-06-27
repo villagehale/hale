@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DiscoveryAnthropicClient } from './discover.js';
 import { type PreviewDeps, discoverPreview } from './preview.js';
 
+// The PRIVACY GATE for this feature (rule #1): poison the DB module so ANY
+// attempt to reach the database throws. discoverPreview must complete a full run
+// with this in place — proving the pre-auth path never touches the DB (no
+// candidate insert, no audit row, no agent_runs, no cache keyed to identity).
+vi.mock('~/lib/db', () => ({
+  db: () => {
+    throw new Error('discoverPreview must NOT touch the database (rule #1)');
+  },
+}));
+
 /** A fake Anthropic client returning a forced submit_candidates tool_use. */
 function fakeClient(candidates: unknown[]) {
   const create = vi.fn().mockResolvedValue({
@@ -53,6 +63,21 @@ describe('discoverPreview — pre-auth, no-DB value sample (rule #1)', () => {
       interests: ['water', 'music'],
       limit: 8,
     });
+  });
+
+  it('completes a full run WITHOUT touching the database (the rule #1 privacy gate)', async () => {
+    // ~/lib/db is mocked at module scope to throw on any access. A successful run
+    // here proves discoverPreview persists nothing — no candidate/audit/agent_runs
+    // write, no identity-keyed cache. It has no Database parameter to write through.
+    const c = fakeClient(SAMPLE);
+
+    const activities = await discoverPreview(
+      { stage: 'child', areaCoarse: 'Burnaby', interests: ['soccer'] },
+      deps(c.client),
+    );
+
+    expect(activities).toHaveLength(2);
+    expect(c.create).toHaveBeenCalledTimes(1);
   });
 
   it('projects candidates onto the closed preview shape — no ids, childId, or familyId leak', async () => {

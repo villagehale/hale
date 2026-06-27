@@ -194,10 +194,10 @@ export function PreviewIntake() {
       {result.kind === 'teen' ? (
         <section className="rise rise-2 max-w-2xl panel-oat px-6 py-6 space-y-4">
           <p className="text-lg text-spruce leading-relaxed">
-            Hale&rsquo;s local discovery focuses on the under-13 years for now — so I won&rsquo;t
-            pretend to surface teen activities I can&rsquo;t stand behind. For teenagers, Hale
-            helps with the logistics and their privacy instead: you see the kind of thing,
-            never their messages.
+            Hale supports teens too — with a privacy-first approach. We don&rsquo;t surface a
+            teen&rsquo;s activities to you the way we do for younger kids; instead Hale helps with
+            the logistics and holds their privacy (you see the kind of thing, never their
+            messages). Sign in to set up your family and I&rsquo;ll tailor it for them.
           </p>
           <Link
             href="/sign-in?callbackUrl=/onboarding"
