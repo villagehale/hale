@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { runDrainCron } from '~/lib/cron/drain';
-import { captureException } from '~/lib/monitoring/sentry';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the drain instantiates pg-boss (prepared statements, raw pg) and
@@ -31,10 +30,9 @@ export async function GET(req: Request) {
     const summary = await runDrainCron();
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } catch (err) {
-    // Surface the failure instead of letting it 500 silently: report to Sentry
-    // (no-op without a DSN) and log, then re-throw so the run is still a real
-    // error, not a masked success (rule #8).
-    captureException(err);
+    // Surface the failure instead of letting it 500 silently: log to the
+    // platform, then re-throw so the run is still a real error, not a masked
+    // success (rule #8).
     console.error({ err }, 'cron/drain failed');
     throw err;
   } finally {

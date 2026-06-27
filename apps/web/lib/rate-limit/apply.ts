@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
-import { captureException } from '~/lib/monitoring/sentry';
 import { RATE_LIMITS, type RateLimitRoute } from './config';
 import type { RateLimiter } from './limiter';
 import { PostgresRateLimiter } from './postgres';
@@ -54,7 +53,6 @@ export async function enforceRateLimit(
       { status: 429, headers: { 'Retry-After': String(result.retryAfterSec) } },
     );
   } catch (err) {
-    captureException(err);
     if (failClosed) {
       console.error({ err, route }, 'rate-limit check failed — failing closed');
       return NextResponse.json({ error: 'rate_limited' }, { status: 429 });

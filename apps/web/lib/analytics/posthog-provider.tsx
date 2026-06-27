@@ -14,26 +14,48 @@ export function analyticsEnabled(): boolean {
 }
 
 /**
- * Initialize posthog-js once, privacy-first (hard rule #1):
- *  - autocapture OFF — we only send the hand-picked key-loop events.
- *  - session recording OFF — never replay a parent's screen.
+ * The single posthog-js init config, privacy-first (hard rule #1). Exported as a
+ * pure value so the privacy posture is unit-tested directly (the test asserts
+ * recording is enabled AND masked, and exception capture is on) without a DOM.
+ *
+ *  - autocapture OFF — we only send the hand-picked key-loop events; no clicks,
+ *    no form interactions are inferred.
+ *  - session_recording ON, fully MASKED — Hale shows newborn/child PII, so the
+ *    replay must never carry it:
+ *      · maskAllInputs masks EVERY <input>/<textarea> value (names, DOB, email,
+ *        address) — so anything a parent TYPES records as masked.
+ *      · maskTextSelector masks the rendered TEXT inside any element tagged
+ *        `[data-hale-pii]` — child names, ages, the health/feed/nap/milestone
+ *        timeline, and Ask Hale chat content are tagged at the render sites, so
+ *        the DOM replay keeps layout/labels/buttons while the PII reads as
+ *        masked.
+ *  - capture_exceptions ON — unhandled errors + promise rejections are captured
+ *    into the SAME session, so an error is linkable to its replay. Console
+ *    errors are left out (they may carry PII).
  *  - respect_dnt ON, plus opt-out-by-default capturing honoured by the browser.
  *  - capture_pageview ON — URLs only (our routes carry no PII).
- *  - mask_all_text / mask_all_element_attributes ON as belt-and-suspenders, so
- *    even if a stray autocapture ever fired it could not read input contents.
  *  - persistence is the minimal first-party cookie+localStorage default.
  * Identity is the opaque user id only — set later via `identify`, never email.
  */
+export const POSTHOG_PII_SELECTOR = '[data-hale-pii]';
+
+export const POSTHOG_INIT_CONFIG = {
+  autocapture: false,
+  capture_pageview: true,
+  disable_session_recording: false,
+  session_recording: {
+    maskAllInputs: true,
+    maskTextSelector: POSTHOG_PII_SELECTOR,
+  },
+  capture_exceptions: true,
+  respect_dnt: true,
+} as const satisfies Partial<Parameters<typeof posthog.init>[1]>;
+
 function initPostHog(): void {
   if (!KEY || posthog.__loaded) return;
   posthog.init(KEY, {
     api_host: HOST ?? 'https://us.i.posthog.com',
-    autocapture: false,
-    capture_pageview: true,
-    disable_session_recording: true,
-    respect_dnt: true,
-    mask_all_text: true,
-    mask_all_element_attributes: true,
+    ...POSTHOG_INIT_CONFIG,
   });
 }
 
@@ -65,6 +87,22 @@ export function useAnalytics(): (
     if (!client) return;
     const { event: name, properties: safe } = buildEvent(event, properties);
     client.capture(name, safe);
+  };
+}
+
+/**
+ * Returns a function that reports an exception to PostHog, bound to the same
+ * privacy gate as capture: no-ops without a key. Unhandled errors + rejections
+ * are already captured automatically via `capture_exceptions`; this is the
+ * explicit path for a React error boundary that catches a render error before it
+ * reaches `window.onerror`. Only the error itself is sent — never extra props —
+ * so a stack trace can't carry child/family PII.
+ */
+export function useCaptureException(): (error: unknown) => void {
+  const client = usePostHog();
+  return (error) => {
+    if (!client) return;
+    client.captureException(error);
   };
 }
 

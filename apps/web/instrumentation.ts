@@ -13,16 +13,10 @@
  * The processor itself (with the explicit HIPAA-instance credentials + the rule-#1
  * mask) lives in lib/telemetry/langfuse.ts and is reused by the route handlers to
  * flush. The Langfuse tracer is guarded to the Node.js runtime (agent routes never
- * run on the edge); Sentry error tracking initializes on both runtimes.
+ * run on the edge).
  */
-import * as Sentry from '@sentry/nextjs';
 
 export async function register(): Promise<void> {
-  // Sentry initializes on BOTH the Node and edge server runtimes (error tracking
-  // must cover edge routes too); env-gated, so a no-op without SENTRY_DSN.
-  const { initServerSentry } = await import('~/lib/monitoring/sentry');
-  initServerSentry();
-
   if (process.env.NEXT_RUNTIME !== 'nodejs') {
     return;
   }
@@ -32,10 +26,3 @@ export async function register(): Promise<void> {
   const provider = new NodeTracerProvider({ spanProcessors: [langfuseSpanProcessor] });
   provider.register();
 }
-
-/**
- * Next 15's hook for errors thrown in Server Components, Route Handlers, and
- * middleware — wired to Sentry so server-side errors (including the cron routes)
- * are captured automatically rather than 500-ing silently. A no-op without a DSN.
- */
-export const onRequestError = Sentry.captureRequestError;

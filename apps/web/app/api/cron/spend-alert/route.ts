@@ -8,8 +8,9 @@ export const runtime = 'nodejs';
 
 /**
  * GET /api/cron/spend-alert — sums this month's agent_runs.cost_usd and raises an
- * alert (Sentry capture + console.error) when it crosses ANTHROPIC_SPEND_ALERT_USD,
- * so a runaway agent loop is caught early rather than on the bill.
+ * alert (console.error, surfaced in the platform logs) when it crosses
+ * ANTHROPIC_SPEND_ALERT_USD, so a runaway agent loop is caught early rather than
+ * on the bill.
  *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING.

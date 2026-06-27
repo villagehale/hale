@@ -194,10 +194,15 @@ export default function PrivacyPage() {
             cross-site profile.
           </li>
           <li>
-            <strong>PostHog</strong> — product analytics; coarse, non-identifying event data only
-            (no child data, no message content). We capture only a few key product steps, with
-            autocapture and session replay turned off, and we identify you by an opaque account id,
-            never your name or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
+            <strong>PostHog</strong> — product analytics, session replay, and error tracking. Event
+            data is coarse and non-identifying (no child data, no message content) — we capture only
+            a few key product steps. Session replay is on so we can understand and fix problems, but
+            every typed value (names, dates of birth, email, address) and all personal data shown on
+            screen — child names and ages, the health and activity timeline, and Ask Hale
+            conversations — is <strong>masked</strong> before the recording leaves your browser.
+            Error tracking captures unhandled errors (a stack trace, not your data) so we can fix
+            them. Autocapture stays off, and we identify you by an opaque account id, never your name
+            or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
           </li>
           <li>
             <strong>Resend</strong> — delivery of transactional and digest emails (United States).

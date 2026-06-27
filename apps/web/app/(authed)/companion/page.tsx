@@ -92,7 +92,7 @@ export default async function CompanionPage() {
                   <div className="lg:col-span-3">
                     <span className="stamp inline-block">{STAGE_LABEL[child.stage]}</span>
                   </div>
-                  <div className="lg:col-span-9">
+                  <div className="lg:col-span-9" data-hale-pii>
                     <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
                       {child.name ?? 'your child'}
                     </h2>
@@ -129,7 +129,7 @@ export default async function CompanionPage() {
                                   </span>
                                 )}
                               </span>
-                              <span className="text-lg text-spruce leading-relaxed">
+                              <span className="text-lg text-spruce leading-relaxed" data-hale-pii>
                                 {item.what}
                               </span>
                             </div>
@@ -169,7 +169,7 @@ export default async function CompanionPage() {
                               </span>
                             )}
                           </span>
-                          <span className="text-lg text-spruce leading-relaxed">
+                          <span className="text-lg text-spruce leading-relaxed" data-hale-pii>
                             {milestone.what}
                           </span>
                         </li>
@@ -188,7 +188,7 @@ export default async function CompanionPage() {
                     <span className="eyebrow">what matters now</span>
                   </div>
                   <div className="lg:col-span-9 space-y-5">
-                    <ul className="space-y-3">
+                    <ul className="space-y-3" data-hale-pii>
                       {child.whatsNow.map((point) => (
                         <li key={point} className="text-lg text-spruce leading-relaxed">
                           {point}
@@ -197,11 +197,13 @@ export default async function CompanionPage() {
                     </ul>
                     <div className="panel-oat px-6 py-5">
                       <span className="eyebrow">what’s next</span>
-                      <p className="meta mt-2 text-spruce">{child.whatsNext}</p>
+                      <p className="meta mt-2 text-spruce" data-hale-pii>
+                        {child.whatsNext}
+                      </p>
                     </div>
                     <div className="pt-2">
                       <Link href={`/coach?child=${child.id}`} className="btn-ghost">
-                        ask Hale about {child.name ?? 'your child'} →
+                        ask Hale about <span data-hale-pii>{child.name ?? 'your child'}</span> →
                       </Link>
                     </div>
                   </div>

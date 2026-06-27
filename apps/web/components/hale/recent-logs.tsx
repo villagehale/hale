@@ -50,7 +50,9 @@ export function RecentLogs({ logs }: { logs: RecentLogView[] }) {
           <span className="shrink-0 text-apricot-deep">
             <Icon as={ICON[log.episodeType] ?? CalendarCheck} size={18} />
           </span>
-          <span className="text-lg text-spruce leading-relaxed flex-1">{log.summary}</span>
+          <span className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
+            {log.summary}
+          </span>
           <span className="eyebrow text-faded-sage shrink-0">{whenPhrase(log.occurredAt)}</span>
         </li>
       ))}

@@ -1,13 +1,12 @@
 import { type Database, schema } from '@hale/db';
 import { gte } from 'drizzle-orm';
-import { captureException } from './sentry';
 
 /**
  * Anthropic spend alerting. agent_runs.cost_usd carries the per-run USD cost (the
  * single web-side writer in lib/agent-run.ts records it for every agent call).
- * This sums the current calendar month's runs and alerts — Sentry capture +
- * console.error — when the total crosses ANTHROPIC_SPEND_ALERT_USD, so a runaway
- * agent loop is caught early instead of surfacing on the bill.
+ * This sums the current calendar month's runs and alerts — console.error — when
+ * the total crosses ANTHROPIC_SPEND_ALERT_USD, so a runaway agent loop is caught
+ * early instead of surfacing on the bill.
  *
  * The summing/threshold logic is the pure summarizeSpend so it is unit-tested
  * without a DB; the cron route owns the month-window query and the alert.
@@ -49,9 +48,9 @@ function startOfMonthUtc(now: Date): Date {
 }
 
 /**
- * Read this month's agent_runs costs, summarize, and raise an alert when over the
- * threshold (Sentry capture, no-op without a DSN, + console.error so it's never
- * fully silent). Returns the summary. The cron route gates the spend.
+ * Read this month's agent_runs costs, summarize, and raise an alert
+ * (console.error, surfaced in the platform logs) when over the threshold. Returns
+ * the summary. The cron route gates the spend.
  */
 export async function checkMonthlySpend(
   database: Database,
@@ -66,7 +65,6 @@ export async function checkMonthlySpend(
 
   if (summary.exceeded) {
     const message = `Anthropic spend alert: $${summary.totalUsd.toFixed(2)} this month exceeds $${summary.threshold.toFixed(2)}`;
-    captureException(new Error(message));
     console.error({ summary }, message);
   }
 

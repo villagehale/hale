@@ -157,9 +157,11 @@ function PlanItemCard({ item }: { item: PlanChildItem }) {
   return (
     <Card href="/companion">
       <span className="eyebrow text-spruce">{item.kindLabel}</span>
-      <p className="text-lg text-spruce leading-relaxed mt-3">{item.what}</p>
+      <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
+        {item.what}
+      </p>
       <p className="meta mt-1 text-slate-green">
-        {item.childName} · {item.when}
+        <span data-hale-pii>{item.childName}</span> · {item.when}
       </p>
       <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
         open in companion
