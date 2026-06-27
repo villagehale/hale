@@ -1,16 +1,15 @@
 /**
- * The landing/waitlist event catalog and its privacy gate (hard rule #1).
+ * The landing event catalog and its privacy gate (hard rule #1).
  *
- * The marketing site collects an email at the waitlist, but that email must
- * never reach product analytics. Events are restricted to the loop step below
- * and their properties to coarse, non-identifying primitives. `buildEvent` is
- * the single chokepoint every capture goes through: it drops any property whose
- * key looks identifying or whose value is a non-primitive, so an accidental
- * `{ email }` can never leave the client. Pure + exported so the redaction is
- * unit-tested.
+ * Nothing identifying may reach product analytics. Events are restricted to the
+ * funnel CTAs below and their properties to coarse, non-identifying primitives.
+ * `buildEvent` is the single chokepoint every capture goes through: it drops any
+ * property whose key looks identifying or whose value is a non-primitive, so an
+ * accidental `{ email }` can never leave the client. Pure + exported so the
+ * redaction is unit-tested.
  */
 
-export type AnalyticsEvent = 'waitlist_signup' | 'landing_cta_preview' | 'landing_cta_signin';
+export type AnalyticsEvent = 'landing_cta_preview' | 'landing_cta_signin';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
