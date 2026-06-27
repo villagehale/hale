@@ -39,6 +39,70 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
+/** Marker swapped in for a 13+ child's raw memory content before the inferencer
+ * sees it — only the type/key survives, the raw value is withheld (rule #1). */
+const TEEN_MEMORY_PLACEHOLDER = '[teen content — withheld from inferencer (rule #1)]';
+
+interface MemorySnapshot {
+  recentEvents: { childId: string | null; eventType: string; payload: unknown; receivedAt: string }[];
+  recentEpisodes: {
+    childId: string | null;
+    episodeType: string;
+    summary: string;
+    occurredAt: string;
+  }[];
+  currentFacts: {
+    childId: string | null;
+    factType: string;
+    factKey: string;
+    factValue: unknown;
+    confidence: number;
+  }[];
+}
+
+/**
+ * Strip raw content from any snapshot row scoped to a 13+ child before the
+ * memory-inferencer sees it (rule #1): the row's child scope is dropped to null
+ * and its raw payload/summary/value is replaced with a marker, so no teen-specific
+ * fact can be inferred or stored. Non-teen and family-wide (childId null) rows pass
+ * through unchanged. Pure, no I/O — mirrors redactTimelineForDistill.
+ */
+function redactMemorySnapshotForTeens(
+  snapshot: MemorySnapshot,
+  stageByChild: ReadonlyMap<string, FamilyStage>,
+): MemorySnapshot {
+  const isTeen = (childId: string | null) =>
+    childId !== null && stageByChild.get(childId) === 'teenager';
+  return {
+    recentEvents: snapshot.recentEvents.map((e) =>
+      isTeen(e.childId)
+        ? { childId: null, eventType: e.eventType, payload: TEEN_MEMORY_PLACEHOLDER, receivedAt: e.receivedAt }
+        : e,
+    ),
+    recentEpisodes: snapshot.recentEpisodes.map((e) =>
+      isTeen(e.childId)
+        ? {
+            childId: null,
+            episodeType: e.episodeType,
+            summary: TEEN_MEMORY_PLACEHOLDER,
+            occurredAt: e.occurredAt,
+          }
+        : e,
+    ),
+    currentFacts: snapshot.currentFacts.map((f) =>
+      isTeen(f.childId)
+        ? {
+            childId: null,
+            factType: f.factType,
+            factKey: f.factKey,
+            factValue: TEEN_MEMORY_PLACEHOLDER,
+            confidence: f.confidence,
+          }
+        : f,
+    ),
+  };
+}
+
 export function buildInferenceTools(
   database: Database,
   now: Date = new Date(),
@@ -51,8 +115,17 @@ export function buildInferenceTools(
     handler: async (_input, ctx) => {
       const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
+      const childRows = await database
+        .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+        .from(schema.children)
+        .where(eq(schema.children.familyId, ctx.familyId));
+      const stageByChild = new Map<string, FamilyStage>(
+        childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
+      );
+
       const recentEvents = await database
         .select({
+          childId: schema.events.childId,
           eventType: schema.events.eventType,
           payload: schema.events.payload,
           receivedAt: schema.events.receivedAt,
@@ -69,6 +142,7 @@ export function buildInferenceTools(
 
       const recentEpisodes = await database
         .select({
+          childId: schema.familyMemoryEpisodes.childId,
           episodeType: schema.familyMemoryEpisodes.episodeType,
           summary: schema.familyMemoryEpisodes.summary,
           occurredAt: schema.familyMemoryEpisodes.occurredAt,
@@ -80,6 +154,7 @@ export function buildInferenceTools(
 
       const currentFacts = await database
         .select({
+          childId: schema.familyMemoryFacts.childId,
           factType: schema.familyMemoryFacts.factType,
           factKey: schema.familyMemoryFacts.factKey,
           factValue: schema.familyMemoryFacts.factValue,
@@ -93,19 +168,23 @@ export function buildInferenceTools(
           ),
         );
 
-      return {
+      const snapshot: MemorySnapshot = {
         recentEvents: recentEvents.map((e) => ({
+          childId: e.childId,
           eventType: e.eventType,
           payload: e.payload,
           receivedAt: e.receivedAt.toISOString(),
         })),
         recentEpisodes: recentEpisodes.map((e) => ({
+          childId: e.childId,
           episodeType: e.episodeType,
           summary: e.summary,
           occurredAt: e.occurredAt.toISOString(),
         })),
         currentFacts,
       };
+
+      return redactMemorySnapshotForTeens(snapshot, stageByChild);
     },
   });
 
@@ -358,4 +437,4 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   return [readRecentConversations, saveChildFact];
 }
 
-export const _internal = { redactTimelineForDistill };
+export const _internal = { redactTimelineForDistill, redactMemorySnapshotForTeens };

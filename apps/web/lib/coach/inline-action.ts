@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
+import { and, eq } from 'drizzle-orm';
 import { actionTypeForIntent } from './action-intent';
 import { dedupHashFor } from '~/lib/pipeline/record';
 
@@ -52,6 +54,13 @@ export async function draftInlineAction(
   // chip mints a fresh draft rather than colliding on the one-action-per-event index.
   const dedupHash = dedupHashFor(input.familyId, 'ask_hale', `${input.intentKind}|${randomUUID()}`);
 
+  // teen_content = age-derived at the write site: a synthetic event scoped to a 13+
+  // child must carry the teen flag (rule #1), so the downstream redaction cap sees
+  // the same value a classified event would. Family-wide drafts (null child) stay
+  // false — there is no child to age.
+  const teenContent =
+    input.childId !== null && (await isTeenChild(input.familyId, input.childId, database, now));
+
   const insertedEvent = await database
     .insert(schema.events)
     .values({
@@ -59,6 +68,7 @@ export async function draftInlineAction(
       source: 'ask_hale',
       eventType: 'ask_hale.action_intent',
       childId: input.childId,
+      teenContent,
       payload: { intentKind: input.intentKind, sourceAnswer: input.sourceAnswer },
       classifierSuggestion: { kind: 'autonomous_action', actionType },
       classifiedAt: now,
@@ -100,4 +110,23 @@ export async function draftInlineAction(
   });
 
   return { actionId, eventId };
+}
+
+/**
+ * Whether a child is in the teenager stage right now, derived from their date of
+ * birth (never a stored flag). Family-scoped: a childId from another family does
+ * not match and reads as non-teen. Returns false if the child row is missing.
+ */
+async function isTeenChild(
+  familyId: string,
+  childId: string,
+  database: Database,
+  now: Date,
+): Promise<boolean> {
+  const rows = await database
+    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)));
+  const dob = rows[0]?.dateOfBirth;
+  return dob !== undefined && deriveStage(dob, now) === 'teenager';
 }
