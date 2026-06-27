@@ -37,7 +37,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
       {google || credentials ? (
         <div className="flex flex-col items-center gap-4">
           <p className="meta max-w-sm text-center">
-            Hale is in invite-only beta. Already have access? Continue below.
+            Sign in to continue.
           </p>
           {credentials ? <EmailSignInForm redirectTo={redirectTo} /> : null}
           {google && credentials ? (
@@ -71,7 +71,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
               href={MARKETING_URL}
               className="meta underline-offset-4 transition-opacity hover:opacity-70"
             >
-              New to Hale? Join the waitlist &rarr;
+              New to Hale? Learn more &rarr;
             </a>
           )}
         </div>
