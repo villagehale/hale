@@ -1,7 +1,15 @@
+import NextAuth from 'next-auth';
 import { NextResponse } from 'next/server';
-import { auth } from '~/auth';
+import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
 import { inviteGateDecision } from '~/lib/onboarding/invite-gate';
+
+// The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
+// base config (Google + identity callbacks) — NOT from ~/auth, whose Credentials
+// authorize pulls in Node-only deps (argon2, node:crypto, the Postgres client)
+// the Edge bundle can't load. Credentials sign-in runs in the Node API route,
+// never here; the middleware only reads the already-signed session JWT.
+const { auth } = NextAuth(authConfig);
 
 const INVITE_COOKIE = 'hale_invite';
 const MARKETING_FALLBACK = 'https://villagehale.com';
