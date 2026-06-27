@@ -13,7 +13,7 @@ Hale is public (2026-06-27). This is the operational checklist for deploys, moni
 
 ## Monitor
 - **Spend** (the cost guard): the spend-alert cron + the Anthropic console. Rate-limiter caps coach 60/min/user, ingest 120/min/source.
-- **Errors**: Sentry — *wire the DSN* (VIL-137); the monitoring code is shipped but no-ops without it.
+- **Errors**: PostHog error tracking (exceptions + linked replay) — unhandled errors capture into the user's masked session, so each error opens to its replay.
 - **Signups / activation**: PostHog funnels — *build the dashboards* (VIL-135); events are wired, autocapture off.
 - **Rate-limit hits**: `rate_limits` table (over-cap rows = someone hit a wall).
 

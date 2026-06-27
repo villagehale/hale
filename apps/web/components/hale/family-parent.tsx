@@ -55,7 +55,9 @@ export function FamilyParent({ name, email }: { name: string | null; email: stri
       />
       <div>
         <p className="field-label">email</p>
-        <p className="font-display text-[1.25rem] mt-1">{email}</p>
+        <p className="font-display text-[1.25rem] mt-1" data-hale-pii>
+          {email}
+        </p>
         <p className="meta mt-1">from your Google account — your account identity.</p>
       </div>
       {state.kind === 'saved' ? (

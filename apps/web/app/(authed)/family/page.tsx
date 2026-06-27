@@ -43,10 +43,12 @@ export default async function FamilyPage() {
             {members.primary ? (
               <div>
                 <p className="meta">you</p>
-                <p className="font-display text-[1.5rem] mt-1">
+                <p className="font-display text-[1.5rem] mt-1" data-hale-pii>
                   {members.primary.name ?? members.primary.email}
                 </p>
-                <p className="meta mt-1">{members.primary.email}</p>
+                <p className="meta mt-1" data-hale-pii>
+                  {members.primary.email}
+                </p>
               </div>
             ) : null}
 
@@ -54,10 +56,12 @@ export default async function FamilyPage() {
               {members.coParent ? (
                 <div>
                   <p className="meta">co-parent</p>
-                  <p className="font-display text-[1.5rem] mt-1">
+                  <p className="font-display text-[1.5rem] mt-1" data-hale-pii>
                     {members.coParent.name ?? members.coParent.email}
                   </p>
-                  <p className="meta mt-1">{members.coParent.email}</p>
+                  <p className="meta mt-1" data-hale-pii>
+                    {members.coParent.email}
+                  </p>
                 </div>
               ) : (
                 <InviteCoParent />

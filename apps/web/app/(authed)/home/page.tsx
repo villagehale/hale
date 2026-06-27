@@ -140,7 +140,7 @@ export default async function HomePage() {
               <div className="flex items-center gap-3 border-b border-rule pb-4 mb-6">
                 <Icon as={Baby} size={20} className="text-apricot-deep" />
                 <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight">
-                  today for {child.name ?? 'your child'}
+                  today for <span data-hale-pii>{child.name ?? 'your child'}</span>
                 </h2>
               </div>
 
@@ -150,10 +150,12 @@ export default async function HomePage() {
                     <span className="eyebrow text-apricot-deep">
                       {duePhrase(nextHealth.dueInWeeks)}
                     </span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug">
+                    <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
                       {nextHealth.what}
                     </p>
-                    <p className="meta mt-3 text-slate-green">{nextHealth.note}</p>
+                    <p className="meta mt-3 text-slate-green" data-hale-pii>
+                      {nextHealth.note}
+                    </p>
                     <div className="mt-4">
                       <BookButton what={nextHealth.what} childId={child.id} />
                     </div>
@@ -161,9 +163,11 @@ export default async function HomePage() {
                 ) : whatsNow ? (
                   <Card href="/companion">
                     <span className="eyebrow">what matters now</span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug">{whatsNow}</p>
+                    <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
+                      {whatsNow}
+                    </p>
                     <span className="link mt-4 inline-block">
-                      see {child.name ?? 'your child'} →
+                      see <span data-hale-pii>{child.name ?? 'your child'}</span> →
                     </span>
                   </Card>
                 ) : null}
@@ -171,14 +175,14 @@ export default async function HomePage() {
                 {milestone ? (
                   <Card href="/companion">
                     <span className="eyebrow">around this age</span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug">
+                    <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
                       {milestone.what}
                     </p>
                     <p className="meta mt-3 text-slate-green">
                       most kids, around this stage — never a verdict.
                     </p>
                     <span className="link mt-4 inline-block">
-                      see {child.name ?? 'your child'} →
+                      see <span data-hale-pii>{child.name ?? 'your child'}</span> →
                     </span>
                   </Card>
                 ) : null}
@@ -193,7 +197,7 @@ export default async function HomePage() {
         <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
         <span className="meta flex items-center gap-2 text-slate-green">
           <Icon as={CalendarPlus} size={16} />
-          kept in {children[0]?.name ?? 'your child'}&rsquo;s companion
+          kept in <span data-hale-pii>{children[0]?.name ?? 'your child'}</span>&rsquo;s companion
         </span>
       </section>
     </div>

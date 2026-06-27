@@ -180,7 +180,7 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
                 onChange={(e) => setChildId(e.currentTarget.value)}
               >
                 {eligibleKids.map((child) => (
-                  <option key={child.id} value={child.id}>
+                  <option key={child.id} value={child.id} data-hale-pii>
                     {child.name ?? 'your child'}
                   </option>
                 ))}
@@ -296,7 +296,7 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
 
       {status.kind === 'logged' ? (
         <output className="meta italic text-spruce block">
-          logged — kept in {childName(kids, childId)}&rsquo;s companion.
+          logged — kept in <span data-hale-pii>{childName(kids, childId)}</span>&rsquo;s companion.
         </output>
       ) : null}
     </div>

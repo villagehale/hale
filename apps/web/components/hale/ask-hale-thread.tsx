@@ -81,7 +81,7 @@ function ScopeChips({
           active={focusedChildId === child.id}
           onClick={() => setFocusedChildId(child.id)}
         >
-          {child.label ?? 'your teen'}
+          <span data-hale-pii>{child.label ?? 'your teen'}</span>
         </ScopeChip>
       ))}
     </fieldset>
@@ -350,16 +350,21 @@ function Timeline({
           <div key={turn.id} className={`space-y-2 ${chat ? 'rise' : ''}`}>
             {showScope ? (
               <p className={`eyebrow text-faded-sage ${chat ? 'text-center' : ''}`}>
-                {childLabelOf(turn.childId)}
+                <span data-hale-pii>{childLabelOf(turn.childId)}</span>
               </p>
             ) : null}
             {turn.role === 'user' ? (
               chat ? (
                 <div className="flex justify-end">
-                  <p className="chat-bubble-you w-fit max-w-[85%] sm:max-w-prose">{turn.body}</p>
+                  <p className="chat-bubble-you w-fit max-w-[85%] sm:max-w-prose" data-hale-pii>
+                    {turn.body}
+                  </p>
                 </div>
               ) : (
-                <p className="max-w-prose font-display text-[1.15rem] leading-snug text-spruce">
+                <p
+                  className="max-w-prose font-display text-[1.15rem] leading-snug text-spruce"
+                  data-hale-pii
+                >
                   &ldquo;{turn.body}&rdquo;
                 </p>
               )
@@ -372,7 +377,9 @@ function Timeline({
                 }
               >
                 {chat ? <p className="eyebrow mb-2 text-sky-deep">Hale</p> : null}
-                <Markdown>{turn.body}</Markdown>
+                <div data-hale-pii>
+                  <Markdown>{turn.body}</Markdown>
+                </div>
                 {turn.actionIntents && turn.actionIntents.length > 0 ? (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {turn.actionIntents.map((intent) => (

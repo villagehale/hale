@@ -57,7 +57,7 @@ export function FamilyChildren({ kids }: { kids: FamilyChild[] }) {
             ) : (
               <Card key={child.id}>
                 <div className="flex items-baseline justify-between gap-4">
-                  <div>
+                  <div data-hale-pii>
                     <p className="font-display text-[1.5rem] leading-tight">{child.name}</p>
                     <p className="meta mt-1">{child.stageLabel}</p>
                   </div>
@@ -232,7 +232,9 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
           {mode === 'edit' ? (
             confirmingRemove ? (
               <span className="flex flex-wrap items-center gap-3">
-                <span className="meta">remove {child.name}?</span>
+                <span className="meta">
+                  remove <span data-hale-pii>{child.name}</span>?
+                </span>
                 <button
                   type="button"
                   className="link meta text-apricot-deep inline-flex items-center gap-1.5"

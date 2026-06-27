@@ -33,7 +33,7 @@ export default async function ApprovalsPage() {
               key={approval.id}
               className="py-7 border-b border-rule flex flex-wrap items-start justify-between gap-y-4 gap-x-8"
             >
-              <div className="min-w-0">
+              <div className="min-w-0" data-hale-pii>
                 <span className="eyebrow">{approval.actionType.replaceAll('_', ' ')}</span>
                 <p className="font-display text-[1.25rem] mt-1 text-spruce">{approval.preview}</p>
                 {NEEDS_YOU_VERDICTS.has(approval.verdict) ? (

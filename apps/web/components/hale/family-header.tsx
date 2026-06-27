@@ -14,7 +14,7 @@ export async function FamilyHeader() {
     <section className="family-band" aria-label="your family">
       <ul className="family-band-children">
         {children.map((child) => (
-          <li key={child.id} className="family-band-child">
+          <li key={child.id} className="family-band-child" data-hale-pii>
             <span className="font-display text-[1.15rem] leading-none">{child.name}</span>
             <span className="stamp">{child.stageLabel}</span>
           </li>
