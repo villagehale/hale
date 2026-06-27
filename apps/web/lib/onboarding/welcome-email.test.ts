@@ -14,6 +14,7 @@ const UNSUB_URL = 'https://app.example.com/unsubscribe?u=u1&t=welcome&sig=abc';
 interface SendPayload {
   from: string;
   to: string;
+  bcc?: string;
   subject: string;
   html: string;
   text: string;
@@ -112,5 +113,26 @@ describe('createWelcomeEmailSender', () => {
     const result = await sender.sendWelcome('parent@example.com', 'Avery', UNSUB_URL);
 
     expect(result).toEqual({ accepted: false, providerMessageId: null });
+  });
+
+  it('BCCs the founder copy when WELCOME_BCC is set (new-signup signal)', async () => {
+    vi.stubEnv('WELCOME_BCC', 'barton@villagehale.com');
+    const { client, send } = fakeResend();
+    const sender = createWelcomeEmailSender(client);
+
+    await sender.sendWelcome('parent@example.com', 'Avery', UNSUB_URL);
+
+    const payload = send.mock.calls[0]?.[0] as SendPayload;
+    expect(payload.bcc).toBe('barton@villagehale.com');
+  });
+
+  it('omits bcc when WELCOME_BCC is unset', async () => {
+    const { client, send } = fakeResend();
+    const sender = createWelcomeEmailSender(client);
+
+    await sender.sendWelcome('parent@example.com', 'Avery', UNSUB_URL);
+
+    const payload = send.mock.calls[0]?.[0] as SendPayload;
+    expect(payload.bcc).toBeUndefined();
   });
 });
