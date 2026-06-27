@@ -2,8 +2,8 @@
 // Model-per-role comparison (VIL-143, launch question #2).
 //
 // THE QUESTION: which Claude model is the right tier for each agent role? The
-// codebase routes classify -> Haiku, draft/review/converse -> Sonnet (model.ts's
-// TASK_MODEL). This eval RE-TESTS those assignments empirically: it runs the SAME
+// codebase routes simple-lookup -> Haiku, classify/draft/review/converse -> Sonnet
+// (model.ts's TASK_MODEL). This eval RE-TESTS those assignments empirically: it runs the SAME
 // representative inputs for each role across claude-haiku-4-5, claude-sonnet-4-6,
 // and claude-opus-4-8, and scores quality (reference + LLM-judge), latency, and
 // cost — then prints a recommendation table (best model per role with the tradeoff).
@@ -50,7 +50,7 @@ const ROLES = ['classify', 'draft', 'review', 'coach'];
 
 // The tier each role is CURRENTLY routed to (packages/agent/src/model.ts). The
 // recommendation table compares the empirical best against this baseline.
-const CURRENT_TIER = { classify: 'haiku', draft: 'sonnet', review: 'sonnet', coach: 'sonnet' };
+const CURRENT_TIER = { classify: 'sonnet', draft: 'sonnet', review: 'sonnet', coach: 'sonnet' };
 
 // --- role request shapes (replicated) ---------------------------------------
 
