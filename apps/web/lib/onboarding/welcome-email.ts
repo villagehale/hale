@@ -36,8 +36,7 @@ const APRICOT = '#c8622d';
 const APRICOT_DEEP = '#a84e20';
 const SLATE_GREEN = '#33486b';
 const FADED_SAGE = '#5b6b86';
-const FONT_STACK =
-  "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
+const FONT_STACK = "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
 
 export interface WelcomeEmailSender {
   /** Returns the provider message id when accepted, null when not sent. The

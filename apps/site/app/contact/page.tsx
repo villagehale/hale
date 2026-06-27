@@ -38,8 +38,8 @@ export default function ContactPage() {
               className="mt-6 text-lg"
               style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
             >
-              We’re small, parent-built, and early — so a real person reads what you
-              send. The fastest way to reach us is email.
+              We’re small, parent-built, and early — so a real person reads what you send. The
+              fastest way to reach us is email.
             </p>
             <div className="mt-8">
               <a href="mailto:aloha@villagehale.com" className="btn-primary">
@@ -59,9 +59,7 @@ export default function ContactPage() {
           {CHANNELS.map((channel, i) => (
             <div key={channel.email} className={`card flex flex-col gap-4 rise rise-${i + 1}`}>
               <span className="eyebrow">{channel.eyebrow}</span>
-              <p style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
-                {channel.line}
-              </p>
+              <p style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>{channel.line}</p>
               <a href={`mailto:${channel.email}`} className="link mt-auto self-start">
                 {channel.email}
               </a>

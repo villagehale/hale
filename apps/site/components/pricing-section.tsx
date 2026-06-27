@@ -1,5 +1,5 @@
+import { PLAN_DISPLAY, PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
-import { type PlanTier, PLAN_DISPLAY, PLAN_TIERS_ORDERED, formatPlanPrice } from '@hale/types';
 
 // Marketing presentation per tier — the panel tint and the one-line "do more"
 // framing. The NAMES, PRICES, and FEATURES come from the shared source of truth
@@ -33,11 +33,10 @@ export function PricingSection() {
         <span className="eyebrow">Three sizes of help</span>
         <h2 className="mt-3">The village is free. Pay only when you want Hale to do more.</h2>
         <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
-          Joining the village, seeing what families near you recommend, asking Hale,
-          sharing what you love — free, always, every stage and every child. The
-          paid tiers are for when you want the concierge to do more of the work
-          itself. Each is a little less monthly when you pay yearly — about two
-          months free.
+          Joining the village, seeing what families near you recommend, asking Hale, sharing what
+          you love — free, always, every stage and every child. The paid tiers are for when you want
+          the concierge to do more of the work itself. Each is a little less monthly when you pay
+          yearly — about two months free.
         </p>
       </div>
 
@@ -61,9 +60,7 @@ export function PricingSection() {
                   </span>
                 )}
               </p>
-              {isFree ? null : (
-                <p className="meta mt-1">billed yearly — about two months free</p>
-              )}
+              {isFree ? null : <p className="meta mt-1">billed yearly — about two months free</p>}
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
                 {presentation.line}
               </p>
@@ -90,7 +87,10 @@ export function PricingSection() {
               ) : (
                 <span
                   className="pill self-start mt-8"
-                  style={{ border: '1px solid var(--color-sage)', color: 'var(--color-slate-green)' }}
+                  style={{
+                    border: '1px solid var(--color-sage)',
+                    color: 'var(--color-slate-green)',
+                  }}
                 >
                   Coming soon
                 </span>

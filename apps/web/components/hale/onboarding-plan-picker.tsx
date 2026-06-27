@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   type BillingPeriod,
   PLAN_DISPLAY,
@@ -8,6 +7,7 @@ import {
   type PlanTier,
   formatPlanPrice,
 } from '@hale/types';
+import { useState } from 'react';
 import { BillingToggle } from './billing-toggle';
 
 /**
@@ -64,7 +64,9 @@ export function OnboardingPlanPicker({
                   {formatPlanPrice(tier, period)}
                 </span>
                 {isFree ? (
-                  isSelected ? <span className="eyebrow text-spruce mt-1">selected</span> : null
+                  isSelected ? (
+                    <span className="eyebrow text-spruce mt-1">selected</span>
+                  ) : null
                 ) : (
                   <span className="eyebrow text-slate-green mt-1">coming soon</span>
                 )}
