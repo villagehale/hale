@@ -4,6 +4,11 @@ import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { credentialsConfigured } from '~/lib/auth-config';
 
+// AUTH_SECRET is a runtime-only secret (not in the build env), so render at
+// request time — otherwise credentialsConfigured() is evaluated at build with
+// no secret and the page caches the "not configured" fallback.
+export const dynamic = 'force-dynamic';
+
 export default function SignUpPage() {
   const credentials = credentialsConfigured();
 
