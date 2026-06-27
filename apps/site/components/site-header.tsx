@@ -2,10 +2,7 @@
 
 import { LogoMark } from '~/components/logo-mark';
 import { ThemeToggle } from '~/components/theme-toggle';
-
-// Returning users who land on the marketing site need a path into the app —
-// the standard "Log in" cross-link to the app's sign-in. Overridable per env.
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.villagehale.com';
+import { APP_URL } from '~/lib/app-url';
 
 /**
  * The marketing header: the turtle LogoMark beside the "Hale" wordmark on the

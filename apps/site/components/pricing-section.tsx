@@ -1,5 +1,6 @@
 import { PLAN_DISPLAY, PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
+import { APP_URL } from '~/lib/app-url';
 
 // Marketing presentation per tier — the panel tint and the one-line "do more"
 // framing. The NAMES, PRICES, and FEATURES come from the shared source of truth
@@ -81,7 +82,7 @@ export function PricingSection() {
                 ))}
               </ul>
               {isFree ? (
-                <a href="#waitlist" className="btn-primary self-start mt-8">
+                <a href={`${APP_URL}/sign-in`} className="btn-primary self-start mt-8">
                   Join free
                 </a>
               ) : (

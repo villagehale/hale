@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { ParentAndHouse, Village } from '~/components/illos';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { APP_URL } from '~/lib/app-url';
 
 export const metadata: Metadata = {
   title: 'About · Hale',
@@ -124,7 +125,7 @@ export default function AboutPage() {
             Your village starts the day you join — one family, then a street, then a
             neighborhood.
           </p>
-          <a href="/#waitlist" className="btn-primary shrink-0">
+          <a href={`${APP_URL}/sign-in`} className="btn-primary shrink-0">
             Join the village
           </a>
         </div>

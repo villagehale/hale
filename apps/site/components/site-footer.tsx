@@ -1,8 +1,5 @@
 import { LogoMark } from '~/components/logo-mark';
-
-// Privacy + Terms live on the product app (app.villagehale.com), not the
-// marketing site — link out to them. Overridable per env, mirrors SiteHeader.
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.villagehale.com';
+import { APP_URL } from '~/lib/app-url';
 
 const PRODUCT = [
   { label: 'How it works', href: '/#how' },
