@@ -2,15 +2,24 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DiscoveryAnthropicClient } from './discover.js';
 import { type PreviewDeps, discoverPreview } from './preview.js';
 
-// The PRIVACY GATE for this feature (rule #1): poison the DB module so ANY
-// attempt to reach the database throws. discoverPreview must complete a full run
-// with this in place — proving the pre-auth path never touches the DB (no
-// candidate insert, no audit row, no agent_runs, no cache keyed to identity).
-vi.mock('~/lib/db', () => ({
-  db: () => {
-    throw new Error('discoverPreview must NOT touch the database (rule #1)');
-  },
-}));
+// The PRIVACY GATE for this feature (rule #1): poison `createDb` — the SINGLE
+// chokepoint every live database path in the web app passes through (~/lib/db's
+// db() calls it; a direct @hale/db write needs a Database, which only createDb
+// mints). A query cannot run without a Database, and a Database cannot exist
+// without createDb, so this throw fires the instant the preview path obtains a
+// handle to persist anything. The real `schema` + types are kept via importActual
+// so the legitimate type/table-ref imports in the discovery chain still resolve;
+// ONLY the connection factory is poisoned. (Verified red-before-green: adding a
+// real db() write inside discoverPreview makes the gate FAIL — see commit msg.)
+vi.mock('@hale/db', async (importActual) => {
+  const actual = await importActual<typeof import('@hale/db')>();
+  return {
+    ...actual,
+    createDb: () => {
+      throw new Error('discoverPreview must NOT touch the database (rule #1)');
+    },
+  };
+});
 
 /** A fake Anthropic client returning a forced submit_candidates tool_use. */
 function fakeClient(candidates: unknown[]) {
