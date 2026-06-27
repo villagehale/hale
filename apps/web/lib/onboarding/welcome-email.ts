@@ -159,9 +159,12 @@ export function createWelcomeEmailSender(client?: Resend): WelcomeEmailSender {
       }
       const resend = client ?? new Resend(apiKey);
       const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
+      // Optional founder copy of each welcome (new-signup signal); set WELCOME_BCC in prod.
+      const bcc = process.env.WELCOME_BCC;
       const { data, error } = await resend.emails.send({
         from,
         to,
+        ...(bcc ? { bcc } : {}),
         subject: SUBJECT,
         html: renderHtml(firstName, unsubscribeUrl),
         text: bodyText(firstName) + renderTextFooter(unsubscribeUrl),
