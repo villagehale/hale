@@ -42,3 +42,59 @@ describe('toFocusedChild', () => {
     expect(_internal.toFocusedChild('not-ours', ROWS, NOW)).toBeNull();
   });
 });
+
+/**
+ * Recent episodes reach the agent (the LLM) via AgentContext.recentEpisodes. The
+ * episodes table carries no teen flag, so an episode attributed to a 13+ child
+ * would feed raw teen content to the model. Rule #1: a teen-scoped episode's
+ * summary is redacted and its child scope dropped before it reaches the model,
+ * while non-teen and family-wide episodes pass through.
+ */
+describe('redactEpisodesForTeens (rule #1)', () => {
+  // DOB derived from the spec stage boundary (≥156 months) vs NOW, not code output.
+  const stageByChild = new Map<string, 'teenager' | 'toddler'>([
+    ['teen', 'teenager'],
+    ['tot', 'toddler'],
+  ]);
+
+  it('redacts a teen episode summary and drops its child scope', () => {
+    const out = _internal.redactEpisodesForTeens(
+      [
+        {
+          childId: 'teen',
+          episodeType: 'concern',
+          summary: 'caught vaping behind the school',
+          occurredAt: '2026-06-14T00:00:00.000Z',
+        },
+      ],
+      stageByChild,
+    );
+
+    const [episode] = out;
+    if (!episode) throw new Error('expected one redacted teen episode');
+    expect(JSON.stringify(out)).not.toContain('vaping');
+    expect(JSON.stringify(out)).not.toContain('school');
+    expect(episode.childId).toBeNull();
+    // Coarse type survives so the agent still knows the family logged a concern.
+    expect(episode.episodeType).toBe('concern');
+  });
+
+  it('passes a non-teen and a family-wide episode through unchanged', () => {
+    const input = [
+      {
+        childId: 'tot',
+        episodeType: 'milestone',
+        summary: 'first steps',
+        occurredAt: '2026-06-13T00:00:00.000Z',
+      },
+      {
+        childId: null,
+        episodeType: 'logistic',
+        summary: 'daycare tour booked',
+        occurredAt: '2026-06-12T00:00:00.000Z',
+      },
+    ];
+    const out = _internal.redactEpisodesForTeens(input, stageByChild);
+    expect(out).toEqual(input);
+  });
+});
