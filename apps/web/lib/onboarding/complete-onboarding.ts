@@ -12,6 +12,7 @@ import { type LocationInput, normalizeLocation } from '~/lib/family/location-inp
 import { type ChildInput, type ValidatedChild, validateChild } from './children';
 import { provisionAndWriteChildren } from './persist';
 import { type WelcomeDeps, sendWelcomeEmail } from './send-welcome';
+import { type DiscoveryTrigger, defaultDiscoveryTrigger } from './trigger-discovery';
 
 /**
  * The intake-first onboarding completion (Phase C). Runs only AFTER Google
@@ -74,6 +75,7 @@ export type CompleteOnboardingResult =
 export async function completeOnboarding(
   input: CompleteOnboardingInput,
   welcomeDeps?: WelcomeDeps,
+  discoveryTrigger: DiscoveryTrigger = defaultDiscoveryTrigger(),
 ): Promise<CompleteOnboardingResult> {
   if (!input.tosAccepted) {
     return { status: 'invalid', error: 'tos_required' };
@@ -188,6 +190,20 @@ export async function completeOnboarding(
     await sendWelcomeEmail(database, { userId, familyId, email, name: identity.name }, welcomeDeps);
   } catch (err) {
     console.error('welcome email failed (onboarding unaffected)', err);
+  }
+
+  // Populate the family's village NOW (in the background) so it isn't blank on
+  // first view — the engine reads only the coarse area just written (rule #1) and
+  // runs the same discovery the cron does. Scheduling must not throw into the
+  // completion path; a failure degrades to the existing empty state (rule #8).
+  // Populate the family's village NOW (in the background) so it isn't blank on
+  // first view — the engine reads only the coarse area just written (rule #1) and
+  // runs the same discovery the cron does. Scheduling must not throw into the
+  // completion path; a failure degrades to the existing empty state (rule #8).
+  try {
+    discoveryTrigger(familyId, database);
+  } catch (err) {
+    console.error('first-village discovery trigger failed (onboarding unaffected)', err);
   }
 
   return { status: 'completed', familyId };
