@@ -38,7 +38,10 @@ export function AcceptButton({
     try {
       const res = await fetch(href, { method: 'POST' });
       const added = res.status === 202;
-      if (added) capture('add_to_week');
+      if (added) {
+        capture('add_to_week');
+        capture('first_activity_added');
+      }
       setState(added ? 'added' : 'error');
     } catch {
       setState('error');

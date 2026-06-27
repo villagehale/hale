@@ -423,6 +423,7 @@ export function OnboardingWizard({
                         disabled={!tosAccepted}
                         onClick={() => {
                           capture('sign_up');
+                          capture('signup_completed', { method: 'google' });
                           persistDraft({});
                         }}
                       >

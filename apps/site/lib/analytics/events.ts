@@ -10,7 +10,7 @@
  * unit-tested.
  */
 
-export type AnalyticsEvent = 'waitlist_signup';
+export type AnalyticsEvent = 'waitlist_signup' | 'landing_cta_preview' | 'landing_cta_signin';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, Compass, Heart } from 'lucide-react';
 import { type FamilyStage, type OnboardingIntent, FAMILY_STAGES } from '@hale/types';
 import { IntentChips } from '~/components/hale/intent-chips';
+import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { writeIntakeDraft } from '~/lib/onboarding/intake-storage';
 
 /**
@@ -52,6 +53,7 @@ export function PreviewIntake() {
   const [area, setArea] = useState('');
   const [intents, setIntents] = useState<OnboardingIntent[]>([]);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
+  const capture = useAnalytics();
 
   const canSearch = stage !== null && area.trim().length > 0;
 
@@ -65,6 +67,13 @@ export function PreviewIntake() {
     if (!stage || area.trim().length === 0) {
       return;
     }
+    // Coarse funnel signal only — the stage enum, whether an area was given, and a
+    // count of intents. Never the area string or any chosen-interest labels (rule #1).
+    capture('preview_submitted', {
+      stage,
+      hasArea: area.trim().length > 0,
+      intentCount: intents.length,
+    });
     // Teens are out of the discovery scope by construction (rule #1) — show the
     // honest message rather than ask the model to fabricate teen activities.
     if (stage === 'teenager') {

@@ -11,6 +11,7 @@ import {
   Tree,
   Village,
 } from '~/components/illos';
+import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
@@ -154,12 +155,20 @@ export default function LandingPage() {
               the point: real recommendations from real families near you.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a href={`${APP_URL}/preview`} className="btn-primary">
+              <LandingCta
+                event="landing_cta_preview"
+                href={`${APP_URL}/preview`}
+                className="btn-primary"
+              >
                 See what Hale finds for you
-              </a>
-              <a href={`${APP_URL}/sign-in`} className="btn-secondary">
+              </LandingCta>
+              <LandingCta
+                event="landing_cta_signin"
+                href={`${APP_URL}/sign-in`}
+                className="btn-secondary"
+              >
                 Join the village
-              </a>
+              </LandingCta>
             </div>
           </div>
         </div>
@@ -244,9 +253,13 @@ export default function LandingPage() {
                 village. That’s how it spreads, parent to parent.
               </p>
               <div className="mt-8">
-                <a href={`${APP_URL}/sign-in`} className="btn-primary">
+                <LandingCta
+                  event="landing_cta_signin"
+                  href={`${APP_URL}/sign-in`}
+                  className="btn-primary"
+                >
                   Join the village
-                </a>
+                </LandingCta>
               </div>
             </div>
 

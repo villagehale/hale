@@ -220,6 +220,7 @@ export function useAskHale(
     ]);
     setDraft('');
     capture('ask_hale', { scoped: scopedChild !== null });
+    capture('first_ask');
 
     // The assistant turn the stream appends into. Created lazily on the first delta
     // so the typing indicator shows until the first token, then the bubble grows.

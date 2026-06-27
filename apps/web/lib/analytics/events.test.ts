@@ -69,6 +69,34 @@ describe('buildEvent privacy gate', () => {
     expect(built.properties).toEqual({});
   });
 
+  it('keeps preview_submitted coarse and drops any location-keyed free text', () => {
+    const built = buildEvent('preview_submitted', {
+      stage: 'toddler',
+      hasArea: true,
+      intentCount: 3,
+      postalCode: 'M5V 2T6',
+      areaLocation: 'Toronto',
+    });
+    // The call site sends ONLY the coarse trio; the gate additionally drops any
+    // location-keyed free text (postal/location) so a careless area string can
+    // never narrow a family's whereabouts.
+    expect(built.properties).toEqual({ stage: 'toddler', hasArea: true, intentCount: 3 });
+    expect(JSON.stringify(built)).not.toContain('M5V');
+    expect(JSON.stringify(built)).not.toContain('Toronto');
+  });
+
+  it('keeps the signup method but never the email used to sign up', () => {
+    const built = buildEvent('signup_completed', { method: 'email', email: 'sam@example.com' });
+    expect(built.properties).toEqual({ method: 'email' });
+    expect(JSON.stringify(built)).not.toContain('sam@example.com');
+  });
+
+  it('fires the first-activation funnel events with no properties', () => {
+    expect(buildEvent('first_activity_added').properties).toEqual({});
+    expect(buildEvent('first_ask').properties).toEqual({});
+    expect(buildEvent('first_invite').properties).toEqual({});
+  });
+
   it('never lets a name/email/content field through under any casing', () => {
     const built = buildEvent('endorse', {
       ChildName: 'Maya',
