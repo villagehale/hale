@@ -9,12 +9,21 @@ import { type SignInState, signInAction } from '~/lib/auth/auth-actions';
  * (on success) redirects, so a 'success' state never renders here — only the
  * single generic error does (rule #1: never leak which field was wrong).
  */
-export function EmailSignInForm({ redirectTo }: { redirectTo: string }) {
+export function EmailSignInForm({
+  redirectTo,
+  secondary = false,
+}: {
+  redirectTo: string;
+  // When Google sits above as the primary action, the email submit drops to
+  // secondary styling so the page has a single primary. Credentials-only, it
+  // stays primary.
+  secondary?: boolean;
+}) {
   const action = signInAction.bind(null, redirectTo);
   const [state, formAction] = useActionState<SignInState, FormData>(action, { status: 'idle' });
 
   return (
-    <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
+    <form action={formAction} className="flex w-full flex-col gap-4">
       <div className="field-group">
         <label htmlFor="signin-email" className="field-label">
           Email
@@ -46,15 +55,20 @@ export function EmailSignInForm({ redirectTo }: { redirectTo: string }) {
           {state.message}
         </p>
       ) : null}
-      <SubmitButton label="Sign in" />
+      <SubmitButton label="Sign in" secondary={secondary} />
     </form>
   );
 }
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, secondary }: { label: string; secondary: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className="btn-primary" disabled={pending} aria-live="polite">
+    <button
+      type="submit"
+      className={secondary ? 'btn-secondary justify-center' : 'btn-primary'}
+      disabled={pending}
+      aria-live="polite"
+    >
       {pending ? 'Signing in…' : label}
     </button>
   );
