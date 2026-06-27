@@ -137,10 +137,10 @@ export default function PrivacyPage() {
           without reading their teen&rsquo;s words verbatim.
         </p>
         <p>
-          Access to a teen&rsquo;s raw content requires an explicit, logged, and time-limited grant.
-          The only exception is a genuine safety escalation — for example, a credible risk of harm —
-          in which case relevant content may be surfaced to a parent, and the teen is notified that
-          this happened.
+          Controls to grant a parent time-limited, explicitly logged access to a teen&rsquo;s raw
+          content — and a safety-escalation path for a credible risk of harm, in which relevant
+          content may be surfaced and the teen is notified — are planned and not yet available. Until
+          then, the default redaction above always applies.
         </p>
       </LegalSectionBlock>
 

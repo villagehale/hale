@@ -120,6 +120,9 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
 
   const outro = [
     `<p style="margin:24px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(
+      "You're one of Hale's founding families — everything's free while we grow, and when paid plans open you'll be first in line.",
+    )}</p>`,
+    `<p style="margin:8px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(
       'Reply any time — a real person reads these.',
     )}</p>`,
     `<p style="margin:8px 0 0;color:${SLATE_GREEN};font-size:16px;line-height:1.65;">${escapeHtml(

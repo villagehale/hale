@@ -87,13 +87,21 @@ export function PricingSection() {
                 <a href="#waitlist" className="btn-primary self-start mt-8">
                   Join free
                 </a>
-              ) : null}
+              ) : (
+                <span
+                  className="pill self-start mt-8"
+                  style={{ border: '1px solid var(--color-sage)', color: 'var(--color-slate-green)' }}
+                >
+                  Coming soon
+                </span>
+              )}
             </div>
           );
         })}
       </div>
       <p className="meta mt-6">
-        Paid plans are coming soon — the village is free to start today.
+        Founding families join free today — when paid plans open, you&rsquo;ll be first in line. The
+        village is free to start.
       </p>
     </section>
   );
