@@ -381,69 +381,25 @@ export function OnboardingWizard({
             ) : null}
 
             {phase === 'B' ? (
-              <section className="rise rise-1 space-y-10 max-w-2xl">
-                <p className="text-lg text-slate-green leading-relaxed">
-                  Create your account with Google to save your setup — I&rsquo;ll use
-                  your Google name and email, so there&rsquo;s nothing to re-type. You&rsquo;ll
-                  pick a plan on the last step, and nothing is charged today.
-                </p>
-
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tosAccepted}
-                    onChange={(e) => {
-                      setTosAccepted(e.currentTarget.checked);
-                      persistDraft({ tosAccepted: e.currentTarget.checked });
-                    }}
-                    className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
-                  />
-                  <span className="text-slate-green leading-relaxed">
-                    I agree to the{' '}
-                    <Link href="/terms" className="link" target="_blank" rel="noopener noreferrer">
-                      Terms of Service
-                    </Link>{' '}
-                    &amp;{' '}
-                    <Link href="/privacy" className="link" target="_blank" rel="noopener noreferrer">
-                      Privacy Policy
-                    </Link>
-                    .
-                  </span>
-                </label>
-
-                {authReady ? (
-                  <form action={startGoogleSignIn}>
-                    <div className="flex flex-wrap items-center gap-5 pt-2">
-                      <button type="button" className="btn-ghost" onClick={() => setPhase('A')}>
-                        ← back
-                      </button>
-                      <button
-                        type="submit"
-                        className="btn-primary ml-auto"
-                        disabled={!tosAccepted}
-                        onClick={() => {
-                          capture('sign_up');
-                          persistDraft({});
-                        }}
-                      >
-                        continue with Google →
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div className="flex flex-wrap items-center gap-5 pt-2">
-                      <button type="button" className="btn-ghost" onClick={() => setPhase('A')}>
-                        ← back
-                      </button>
-                    </div>
-                    <p className="meta">
-                      development preview — Google sign-in isn&rsquo;t configured here, so an account
-                      can&rsquo;t be created and nothing you enter is saved.
-                    </p>
-                  </>
-                )}
-              </section>
+              <AccountStep
+                authReady={authReady}
+                signedIn={signedIn}
+                sessionName={sessionName}
+                tosAccepted={tosAccepted}
+                onToggleTos={(checked) => {
+                  setTosAccepted(checked);
+                  persistDraft({ tosAccepted: checked });
+                }}
+                onBack={() => setPhase('A')}
+                onContinue={() => {
+                  persistDraft({});
+                  setPhase('C');
+                }}
+                onGoogle={() => {
+                  capture('sign_up');
+                  persistDraft({});
+                }}
+              />
             ) : null}
 
             {phase === 'C' ? (
@@ -662,6 +618,123 @@ export function OnboardingWizard({
         </div>
       </main>
     </div>
+  );
+}
+
+/**
+ * Phase B — the account step. Session-aware because the funnel now signs users in
+ * BEFORE onboarding (preview → /sign-in → /onboarding): an already-authenticated
+ * parent (email/password OR Google) just agrees to the terms and continues; only
+ * a signed-out visitor sees the Google account-creation form (or the dev-preview
+ * note when auth isn't configured).
+ */
+export function AccountStep({
+  authReady,
+  signedIn,
+  sessionName,
+  tosAccepted,
+  onToggleTos,
+  onBack,
+  onContinue,
+  onGoogle,
+}: {
+  authReady: boolean;
+  signedIn: boolean;
+  sessionName: string | null;
+  tosAccepted: boolean;
+  onToggleTos: (checked: boolean) => void;
+  onBack: () => void;
+  onContinue: () => void;
+  onGoogle: () => void;
+}) {
+  return (
+    <section className="rise rise-1 space-y-10 max-w-2xl">
+      <p className="text-lg text-slate-green leading-relaxed">
+        {signedIn ? (
+          <>
+            You&rsquo;re signed in
+            {sessionName ? (
+              <>
+                {' '}
+                as <span className="text-spruce">{sessionName}</span>
+              </>
+            ) : null}{' '}
+            — just agree to the terms to continue. You&rsquo;ll pick a plan next, and
+            nothing is charged today.
+          </>
+        ) : (
+          <>
+            Create your account with Google to save your setup — I&rsquo;ll use your
+            Google name and email, so there&rsquo;s nothing to re-type. You&rsquo;ll pick a
+            plan on the last step, and nothing is charged today.
+          </>
+        )}
+      </p>
+
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={tosAccepted}
+          onChange={(e) => onToggleTos(e.currentTarget.checked)}
+          className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
+        />
+        <span className="text-slate-green leading-relaxed">
+          I agree to the{' '}
+          <Link href="/terms" className="link" target="_blank" rel="noopener noreferrer">
+            Terms of Service
+          </Link>{' '}
+          &amp;{' '}
+          <Link href="/privacy" className="link" target="_blank" rel="noopener noreferrer">
+            Privacy Policy
+          </Link>
+          .
+        </span>
+      </label>
+
+      {signedIn ? (
+        <div className="flex flex-wrap items-center gap-5 pt-2">
+          <button type="button" className="btn-ghost" onClick={onBack}>
+            ← back
+          </button>
+          <button
+            type="button"
+            className="btn-primary ml-auto"
+            disabled={!tosAccepted}
+            onClick={onContinue}
+          >
+            continue →
+          </button>
+        </div>
+      ) : authReady ? (
+        <form action={startGoogleSignIn}>
+          <div className="flex flex-wrap items-center gap-5 pt-2">
+            <button type="button" className="btn-ghost" onClick={onBack}>
+              ← back
+            </button>
+            <button
+              type="submit"
+              className="btn-primary ml-auto"
+              disabled={!tosAccepted}
+              onClick={onGoogle}
+            >
+              continue with Google →
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-5 pt-2">
+            <button type="button" className="btn-ghost" onClick={onBack}>
+              ← back
+            </button>
+          </div>
+          <p className="meta">
+            development preview — Google sign-in isn&rsquo;t configured here, so an account
+            can&rsquo;t be created and nothing you enter is saved.
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 
