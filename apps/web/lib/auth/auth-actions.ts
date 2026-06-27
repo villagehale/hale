@@ -2,14 +2,13 @@
 
 import type { Database } from '@hale/db';
 import { AuthError } from 'next-auth';
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { signIn } from '~/auth';
 import { authConfigured, requireEmailVerification } from '~/lib/auth-config';
 import { db } from '~/lib/db';
-import { enforceRateLimit } from '~/lib/rate-limit/apply';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './constants';
+import { MIN_PASSWORD_LENGTH } from './constants';
 import { registerCredential } from './credentials';
+import { authRateLimited } from './rate-limit';
 import { safeInternalRedirect } from './redirect';
 import { createVerificationEmailSender } from './verification-email';
 
@@ -17,10 +16,15 @@ const APP_BASE = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.villagehale.com
 
 /**
  * Server actions for email+password sign-up and sign-in. They wrap the testable
- * core (lib/auth/credentials.ts) with the request-side concerns: per-IP rate
- * limiting, the verification email, and Auth.js sign-in. Both surface a single
- * generic error to the form so neither leaks which field was wrong or whether an
- * email is registered (rule #1).
+ * core (lib/auth/credentials.ts) with request-side concerns: the verification
+ * email and Auth.js sign-in. Both surface a single generic error so neither leaks
+ * which field was wrong or whether an email is registered (rule #1).
+ *
+ * The brute-force rate limit and the password length bound for SIGN-IN live at the
+ * Credentials `authorize` chokepoint (auth.ts) / authenticateCredential, NOT here —
+ * a direct POST to /api/auth/callback/credentials bypasses this action, so guarding
+ * only here would leave that path open. Sign-UP doesn't go through authorize, so it
+ * keeps its own rate limit below.
  */
 
 export type SignUpState =
@@ -34,18 +38,6 @@ export type SignInState = { status: 'idle' } | { status: 'error'; message: strin
 
 const GENERIC_SIGNIN_ERROR = 'That email or password is incorrect.';
 
-async function clientIpFromHeaders(): Promise<string> {
-  const forwarded = (await headers()).get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || 'unknown';
-}
-
-async function rateLimited(): Promise<boolean> {
-  const ip = await clientIpFromHeaders();
-  // Fail CLOSED on this route: a limiter outage must not silently lift the
-  // brute-force / signup-spam guard on an auth endpoint (rule #1).
-  return (await enforceRateLimit('auth', ip, true)) !== null;
-}
-
 export async function signUpAction(
   _prev: SignUpState,
   formData: FormData,
@@ -53,7 +45,9 @@ export async function signUpAction(
   if (!authConfigured()) {
     return { status: 'error', message: 'Sign-up is not available right now.' };
   }
-  if (await rateLimited()) {
+  // Sign-up doesn't pass through the authorize chokepoint, so it carries its own
+  // per-IP guard against signup spam.
+  if (await authRateLimited()) {
     return { status: 'error', message: 'Too many attempts. Please wait a minute and try again.' };
   }
 
@@ -85,7 +79,12 @@ export async function signUpAction(
   // state). A send failure must not fail sign-up (boundary catch, CLAUDE.md #8).
   void createVerificationEmailSender()
     .sendVerification(result.email, verifyUrl)
-    .catch((err) => console.error('verification email failed (signup unaffected)', err));
+    .catch((err) => {
+      // Log only the message — a caught Resend error can carry the recipient
+      // address, and PII must not land in logs (rule #1).
+      const message = err instanceof Error ? err.message : 'unknown error';
+      console.error('verification email failed (signup unaffected)', { message });
+    });
 
   // When verification isn't enforced, the account is usable now — sign the user
   // straight in. Otherwise tell them to confirm their email first.
@@ -108,21 +107,16 @@ export async function signInAction(
   if (!authConfigured()) {
     return { status: 'error', message: 'Sign-in is not available right now.' };
   }
-  if (await rateLimited()) {
-    return { status: 'error', message: 'Too many attempts. Please wait a minute and try again.' };
-  }
 
   const email = String(formData.get('email') ?? '');
   const password = String(formData.get('password') ?? '');
   const safeRedirect = safeInternalRedirect(redirectTo);
 
-  // Bound the password before the (CPU-heavy) argon2 verify so an unauthenticated
-  // caller can't submit a multi-MB password to amplify load. Reject with the same
-  // generic error so it stays non-enumerating.
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return { status: 'error', message: GENERIC_SIGNIN_ERROR };
-  }
-
+  // The rate limit AND the password length bound run inside the authorize
+  // chokepoint (auth.ts / authenticateCredential), which this signIn call goes
+  // through — so they cover the direct /api/auth/callback/credentials path too.
+  // authorize returns null when limited or over-length, which Auth.js surfaces as
+  // the same CredentialsSignin error handled below.
   try {
     await signIn('credentials', { email, password, redirectTo: safeRedirect });
   } catch (err) {

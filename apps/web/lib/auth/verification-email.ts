@@ -90,7 +90,9 @@ export function createVerificationEmailSender(client?: Resend): VerificationEmai
         text: bodyText(verifyUrl),
       });
       if (error) {
-        console.error('verification email send failed', error);
+        // Log only name/message — the Resend error object can carry the recipient
+        // address, and PII must not land in logs (rule #1).
+        console.error('verification email send failed', { name: error.name, message: error.message });
         return { accepted: false, providerMessageId: null };
       }
       return { accepted: true, providerMessageId: data?.id ?? null };

@@ -7,6 +7,7 @@ import {
   validateSignup,
   verifyEmailToken,
 } from './credentials';
+import { MAX_PASSWORD_LENGTH } from './constants';
 import { verifyPassword } from './password';
 
 /**
@@ -75,10 +76,12 @@ function projection(r: Row, cols: Record<string, unknown>): Record<string, unkno
 }
 
 /** In-memory `credentials` table with real unique-email + update semantics,
- * exposed as the Drizzle-shaped builder this module uses. */
-function fakeDb(initial: Row[] = []): { db: Database; rows: Row[] } {
+ * exposed as the Drizzle-shaped builder this module uses. `selectCalls` counts
+ * row lookups so a test can prove an early-return path never touched the DB. */
+function fakeDb(initial: Row[] = []): { db: Database; rows: Row[]; selectCalls: () => number } {
   const rows = [...initial];
   let counter = initial.length;
+  let selects = 0;
 
   const db = {
     insert() {
@@ -114,6 +117,7 @@ function fakeDb(initial: Row[] = []): { db: Database; rows: Row[] } {
       };
     },
     select(cols: Record<string, unknown>) {
+      selects += 1;
       return {
         from() {
           return {
@@ -144,7 +148,7 @@ function fakeDb(initial: Row[] = []): { db: Database; rows: Row[] } {
     },
   };
 
-  return { db: db as unknown as Database, rows };
+  return { db: db as unknown as Database, rows, selectCalls: () => selects };
 }
 
 const EMAIL = 'parent@example.com';
@@ -232,10 +236,10 @@ describe('registerCredential', () => {
 
 describe('authenticateCredential', () => {
   async function seedVerified() {
-    const { db, rows } = fakeDb();
-    await registerCredential(EMAIL, PASSWORD, db);
-    first(rows).emailVerifiedAt = new Date();
-    return { db, rows };
+    const fake = fakeDb();
+    await registerCredential(EMAIL, PASSWORD, fake.db);
+    first(fake.rows).emailVerifiedAt = new Date();
+    return fake;
   }
 
   it('resolves to the namespaced external auth id on the right password', async () => {
@@ -281,6 +285,37 @@ describe('authenticateCredential', () => {
 
     expect(identity).not.toBeNull();
   });
+
+  // H1 (argon2 DoS): the length bound lives in authenticateCredential — the
+  // chokepoint a direct POST to /api/auth/callback/credentials also crosses — so an
+  // over-length password is rejected BEFORE the DB read and the 19 MiB argon2
+  // verify. Proven by asserting no row lookup happened (the verify only runs after
+  // the lookup), and that the call is fast (no argon2).
+  it('rejects an over-length password without reading the DB or running argon2', async () => {
+    const { db, selectCalls } = await seedVerified();
+    const before = selectCalls();
+    const huge = 'a'.repeat(MAX_PASSWORD_LENGTH + 1);
+
+    const start = performance.now();
+    const result = await authenticateCredential(EMAIL, huge, db, VERIFIED);
+    const elapsed = performance.now() - start;
+
+    expect(result).toBeNull();
+    // No row lookup → the password verify (which only runs after the lookup) was
+    // never reached, so no argon2 CPU was spent on the attacker's input.
+    expect(selectCalls()).toBe(before);
+    // A real argon2 verify is ~10ms+; the early return is sub-millisecond.
+    expect(elapsed).toBeLessThan(5);
+  });
+
+  it('accepts a password at exactly the max length', async () => {
+    const maxPw = 'a'.repeat(MAX_PASSWORD_LENGTH);
+    const { db, rows } = fakeDb();
+    await registerCredential(EMAIL, maxPw, db);
+    first(rows).emailVerifiedAt = new Date();
+
+    expect(await authenticateCredential(EMAIL, maxPw, db, VERIFIED)).not.toBeNull();
+  });
 });
 
 describe('verifyEmailToken', () => {
@@ -303,6 +338,15 @@ describe('verifyEmailToken', () => {
     await registerCredential(EMAIL, PASSWORD, db);
 
     expect(await verifyEmailToken('not-a-real-token', db)).toBeNull();
+  });
+
+  it('rejects an implausibly long token without a DB lookup (L1 harden)', async () => {
+    const { db, selectCalls } = fakeDb();
+    await registerCredential(EMAIL, PASSWORD, db);
+    const before = selectCalls();
+
+    expect(await verifyEmailToken('x'.repeat(65), db)).toBeNull();
+    expect(selectCalls()).toBe(before);
   });
 
   it('rejects an expired token (older than the TTL)', async () => {

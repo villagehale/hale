@@ -127,6 +127,15 @@ export async function authenticateCredential(
   database: Database,
   options: AuthenticateOptions,
 ): Promise<CredentialIdentity | null> {
+  // Bound the password BEFORE the DB read and any argon2 verify. This is the
+  // chokepoint BOTH entry paths cross — the /sign-in server action AND a direct
+  // POST to /api/auth/callback/credentials (which bypasses the action) — so an
+  // over-length password can never reach the 19 MiB memory-hard verify and burn
+  // CPU/memory (DoS). Returns null (generic, non-enumerating), never throws.
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return null;
+  }
+
   const email = normalizeEmail(emailInput);
   const rows = await database
     .select({
@@ -169,7 +178,10 @@ export async function verifyEmailToken(
   token: string,
   database: Database,
 ): Promise<{ email: string } | null> {
-  if (!token) {
+  // A real token is a 32-byte base64url string (~43 chars). Reject anything empty
+  // or implausibly long before the indexed lookup — no point scanning for a value
+  // that can't be a token.
+  if (!token || token.length > 64) {
     return null;
   }
   const rows = await database

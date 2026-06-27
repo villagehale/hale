@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from '~/auth.config';
 import { authenticateCredential } from '~/lib/auth/credentials';
+import { authRateLimited } from '~/lib/auth/rate-limit';
 import { requireEmailVerification } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 
@@ -28,11 +29,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       // Returns the session identity on success, null on ANY failure. authorize is
       // the only place a password is checked; it never reveals which field was
-      // wrong (one null for no-such-email / wrong-password / unverified).
+      // wrong (one null for no-such-email / wrong-password / unverified). This is
+      // the chokepoint for EVERY credentials sign-in — the /sign-in action AND a
+      // direct POST to /api/auth/callback/credentials — so the per-IP rate limit
+      // lives here (not just in the action) to throttle brute-force on both paths.
       async authorize(raw) {
         const email = typeof raw?.email === 'string' ? raw.email : '';
         const password = typeof raw?.password === 'string' ? raw.password : '';
         if (!email || !password) {
+          return null;
+        }
+        if (await authRateLimited()) {
           return null;
         }
         const identity = await authenticateCredential(email, password, db(), {
