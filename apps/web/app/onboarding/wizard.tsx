@@ -275,8 +275,8 @@ export function OnboardingWizard({
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
                   Start with the basics — just enough for me to show you how Hale
-                  tailors to your family. Nothing here is saved until you create your
-                  account, and I never ask for a birthday or anything sensitive yet.
+                  tailors to your family. Nothing here is saved yet — I never ask for
+                  a birthday or anything sensitive at this step.
                 </p>
 
                 <div className="space-y-6">

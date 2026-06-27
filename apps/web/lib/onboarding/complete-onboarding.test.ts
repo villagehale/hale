@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { completeOnboarding } from './complete-onboarding.js';
+import type { DiscoveryTrigger } from './trigger-discovery';
 import type { WelcomeEmailSender } from './welcome-email';
 
 // completeOnboarding reads the Auth.js session + the db at request time and reuses
@@ -515,5 +516,73 @@ describe('completeOnboarding — welcome email', () => {
     expect(send).toHaveBeenCalledTimes(1);
     // No ledger row written, so a later attempt can still send.
     expect(s.insertFor(schema.emailSends)).toBeUndefined();
+  });
+});
+
+// On completion we kick off the REAL village discovery for the new family so the
+// village isn't blank on first view. The trigger is injected (the production one
+// runs discoverForFamily in the background); these tests assert the wiring — that
+// it fires for the resolved family, and that a failure cannot fail onboarding.
+describe('completeOnboarding — first-village discovery', () => {
+  const noopWelcome: { email: WelcomeEmailSender } = {
+    email: { sendWelcome: vi.fn(async () => ({ accepted: false, providerMessageId: null })) },
+  };
+
+  beforeEach(() => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+  });
+
+  it('triggers village discovery for the NEW family (engine reads coarse area only — rule #1)', async () => {
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+    const trigger = vi.fn<DiscoveryTrigger>();
+
+    const result = await completeOnboarding(
+      {
+        children: PHASE_C_CHILDREN,
+        planTier: 'plus',
+        tosAccepted: true,
+        // A precise postal code is supplied; only the DERIVED coarse FSA is stored
+        // on the family, and the trigger receives only the familyId — the precise
+        // address is never carried into discovery (rule #1).
+        location: { country: 'Canada', province: 'Ontario', city: 'Toronto', postalCode: 'M5V 2T6' },
+      },
+      noopWelcome,
+      trigger,
+    );
+
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
+    // Fired once, for the newly-provisioned family, with the db handle the engine
+    // reads the coarse area from. The precise postal code is NOT among the args.
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger).toHaveBeenCalledWith(NEW_FAMILY_ID, s.database);
+    expect(JSON.stringify(trigger.mock.calls[0])).not.toContain('M5V 2T6');
+    // The family row stored only the coarse FSA, never the full postal code in a
+    // field discovery would read.
+    expect(s.updateFor(schema.families)).toMatchObject({ areaCoarse: 'M5V' });
+  });
+
+  it('completes onboarding even when the discovery trigger throws (failure swallowed)', async () => {
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+    const trigger = vi.fn<DiscoveryTrigger>(() => {
+      throw new Error('discovery scheduling blew up');
+    });
+
+    const result = await completeOnboarding(
+      { children: PHASE_C_CHILDREN, planTier: 'plus', tosAccepted: true },
+      noopWelcome,
+      trigger,
+    );
+
+    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(trigger).toHaveBeenCalledTimes(1);
   });
 });
