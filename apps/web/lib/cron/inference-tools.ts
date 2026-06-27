@@ -63,8 +63,9 @@ interface MemorySnapshot {
 /**
  * Strip raw content from any snapshot row scoped to a 13+ child before the
  * memory-inferencer sees it (rule #1): the row's child scope is dropped to null
- * and its raw payload/summary/value is replaced with a marker, so no teen-specific
- * fact can be inferred or stored. Non-teen and family-wide (childId null) rows pass
+ * and its raw payload/summary/value — and a fact's free-text factKey — is replaced
+ * with a marker, so no teen-specific fact can be inferred or stored. Non-teen and
+ * family-wide (childId null) rows pass
  * through unchanged. Pure, no I/O — mirrors redactTimelineForDistill.
  */
 function redactMemorySnapshotForTeens(
@@ -94,7 +95,7 @@ function redactMemorySnapshotForTeens(
         ? {
             childId: null,
             factType: f.factType,
-            factKey: f.factKey,
+            factKey: TEEN_MEMORY_PLACEHOLDER,
             factValue: TEEN_MEMORY_PLACEHOLDER,
             confidence: f.confidence,
           }

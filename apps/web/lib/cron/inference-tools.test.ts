@@ -83,6 +83,36 @@ describe('redactMemorySnapshotForTeens (rule #1)', () => {
     expect(episode.episodeType).toBe('concern');
     expect(fact.factType).toBe('medical');
   });
+
+  it('redacts a teen fact whose raw content lives in the factKey (rule #1)', () => {
+    const out = _internal.redactMemorySnapshotForTeens(
+      {
+        recentEvents: [],
+        recentEpisodes: [],
+        currentFacts: [
+          {
+            childId: TEEN,
+            factType: 'medical',
+            factKey: 'pregnancy scare with boyfriend',
+            factValue: { note: 'asked about a clinic' },
+            confidence: 0.9,
+          },
+        ],
+      },
+      stages,
+    );
+
+    const [fact] = out.currentFacts;
+    if (!fact) throw new Error('expected one redacted teen fact');
+
+    // The factKey is model/caller free text — sensitive teen content in it must
+    // not survive into the inferencer's input (the residual VIL-150 closes).
+    expect(JSON.stringify(out)).not.toContain('pregnancy');
+    expect(JSON.stringify(out)).not.toContain('boyfriend');
+    expect(fact.childId).toBeNull();
+    // Coarse type still survives so the model knows the family has medical activity.
+    expect(fact.factType).toBe('medical');
+  });
 });
 
 /**

@@ -22,7 +22,11 @@ import type { TranscriptMessage } from './conversation';
  * model that asks for a teen's profile is refused there too.
  *
  * The memory slice (currently-valid facts + recent episodes) gives the agent its
- * longitudinal recall; the running transcript gives it the multi-turn thread.
+ * longitudinal recall; the running transcript gives it the multi-turn thread. A
+ * recent episode OR currently-valid fact attributed to a 13+ child is redacted at
+ * the source too — neither table carries a teen flag, so the summary / factKey /
+ * factValue is withheld and child scope dropped before the slice reaches the model
+ * (rule #1).
  */
 
 const RECENT_EPISODE_LIMIT = 10;
@@ -60,6 +64,7 @@ export interface FocusedChildContext {
 }
 
 export interface MemoryFactContext {
+  childId: string | null;
   factType: string;
   factKey: string;
   factValue: unknown;
@@ -67,9 +72,62 @@ export interface MemoryFactContext {
 }
 
 export interface MemoryEpisodeContext {
+  childId: string | null;
   occurredAt: string;
   episodeType: string;
   summary: string;
+}
+
+/** Marker swapped in for a 13+ child's episode summary before the agent sees it —
+ * only the coarse episodeType survives, the raw summary is withheld (rule #1). */
+const TEEN_EPISODE_PLACEHOLDER = '[teen content — summary withheld from agent (rule #1)]';
+
+/**
+ * Redact any recent episode attributed to a 13+ child before it reaches the agent
+ * (rule #1): the episode's child scope is dropped to null and its raw summary is
+ * replaced with a marker, so no teen-specific detail can be surfaced. Non-teen and
+ * family-wide (childId null) episodes pass through unchanged. The teen set is
+ * derived LIVE from each child's DOB (deriveStage) — the episodes table carries no
+ * teen flag. Pure, no I/O — mirrors the inferencer's snapshot redaction.
+ */
+function redactEpisodesForTeens(
+  episodes: readonly MemoryEpisodeContext[],
+  stageByChild: ReadonlyMap<string, FamilyStage>,
+): MemoryEpisodeContext[] {
+  return episodes.map((e) =>
+    e.childId !== null && stageByChild.get(e.childId) === 'teenager'
+      ? { childId: null, occurredAt: e.occurredAt, episodeType: e.episodeType, summary: TEEN_EPISODE_PLACEHOLDER }
+      : e,
+  );
+}
+
+/** Marker swapped in for a 13+ child's fact key and value before the agent sees it —
+ * only the coarse factType survives, the raw key/value is withheld (rule #1). */
+const TEEN_FACT_PLACEHOLDER = '[teen content — fact withheld from agent (rule #1)]';
+
+/**
+ * Redact any currently-valid fact attributed to a 13+ child before it reaches the
+ * agent (rule #1): the fact's child scope is dropped to null and BOTH its free-text
+ * factKey and raw jsonb factValue are replaced with a marker, so no teen-specific
+ * detail can be surfaced. Non-teen and family-wide (childId null) facts pass through
+ * unchanged. The teen set is derived LIVE from each child's DOB (deriveStage) — the
+ * facts table carries no teen flag. Pure, no I/O — mirrors redactEpisodesForTeens.
+ */
+function redactFactsForTeens(
+  facts: readonly MemoryFactContext[],
+  stageByChild: ReadonlyMap<string, FamilyStage>,
+): MemoryFactContext[] {
+  return facts.map((f) =>
+    f.childId !== null && stageByChild.get(f.childId) === 'teenager'
+      ? {
+          childId: null,
+          factType: f.factType,
+          factKey: TEEN_FACT_PLACEHOLDER,
+          factValue: TEEN_FACT_PLACEHOLDER,
+          confidence: f.confidence,
+        }
+      : f,
+  );
 }
 
 export interface AgentContext {
@@ -202,6 +260,7 @@ export async function loadAgentContext(
 
   const factRows = await database
     .select({
+      childId: schema.familyMemoryFacts.childId,
       factType: schema.familyMemoryFacts.factType,
       factKey: schema.familyMemoryFacts.factKey,
       factValue: schema.familyMemoryFacts.factValue,
@@ -216,8 +275,13 @@ export async function loadAgentContext(
     )
     .limit(RELEVANT_FACT_LIMIT);
 
+  const stageByChild = new Map<string, FamilyStage>(
+    childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
+  );
+
   const episodeRows = await database
     .select({
+      childId: schema.familyMemoryEpisodes.childId,
       occurredAt: schema.familyMemoryEpisodes.occurredAt,
       episodeType: schema.familyMemoryEpisodes.episodeType,
       summary: schema.familyMemoryEpisodes.summary,
@@ -234,21 +298,29 @@ export async function loadAgentContext(
     children,
     focusedChild,
     stages,
-    memoryFacts: factRows.map((r) => ({
-      factType: r.factType,
-      factKey: r.factKey,
-      factValue: r.factValue,
-      confidence: r.confidence,
-    })),
-    recentEpisodes: episodeRows.map((r) => ({
-      occurredAt: r.occurredAt.toISOString(),
-      episodeType: r.episodeType,
-      summary: r.summary,
-    })),
+    memoryFacts: redactFactsForTeens(
+      factRows.map((r) => ({
+        childId: r.childId,
+        factType: r.factType,
+        factKey: r.factKey,
+        factValue: r.factValue,
+        confidence: r.confidence,
+      })),
+      stageByChild,
+    ),
+    recentEpisodes: redactEpisodesForTeens(
+      episodeRows.map((r) => ({
+        childId: r.childId,
+        occurredAt: r.occurredAt.toISOString(),
+        episodeType: r.episodeType,
+        summary: r.summary,
+      })),
+      stageByChild,
+    ),
     transcript: input.transcript,
     question: input.question,
     intent: input.intent,
   };
 }
 
-export const _internal = { toChildContext, toFocusedChild };
+export const _internal = { toChildContext, toFocusedChild, redactEpisodesForTeens, redactFactsForTeens };

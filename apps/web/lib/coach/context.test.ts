@@ -42,3 +42,121 @@ describe('toFocusedChild', () => {
     expect(_internal.toFocusedChild('not-ours', ROWS, NOW)).toBeNull();
   });
 });
+
+/**
+ * Recent episodes reach the agent (the LLM) via AgentContext.recentEpisodes. The
+ * episodes table carries no teen flag, so an episode attributed to a 13+ child
+ * would feed raw teen content to the model. Rule #1: a teen-scoped episode's
+ * summary is redacted and its child scope dropped before it reaches the model,
+ * while non-teen and family-wide episodes pass through.
+ */
+describe('redactEpisodesForTeens (rule #1)', () => {
+  // DOB derived from the spec stage boundary (≥156 months) vs NOW, not code output.
+  const stageByChild = new Map<string, 'teenager' | 'toddler'>([
+    ['teen', 'teenager'],
+    ['tot', 'toddler'],
+  ]);
+
+  it('redacts a teen episode summary and drops its child scope', () => {
+    const out = _internal.redactEpisodesForTeens(
+      [
+        {
+          childId: 'teen',
+          episodeType: 'concern',
+          summary: 'caught vaping behind the school',
+          occurredAt: '2026-06-14T00:00:00.000Z',
+        },
+      ],
+      stageByChild,
+    );
+
+    const [episode] = out;
+    if (!episode) throw new Error('expected one redacted teen episode');
+    expect(JSON.stringify(out)).not.toContain('vaping');
+    expect(JSON.stringify(out)).not.toContain('school');
+    expect(episode.childId).toBeNull();
+    // Coarse type survives so the agent still knows the family logged a concern.
+    expect(episode.episodeType).toBe('concern');
+  });
+
+  it('passes a non-teen and a family-wide episode through unchanged', () => {
+    const input = [
+      {
+        childId: 'tot',
+        episodeType: 'milestone',
+        summary: 'first steps',
+        occurredAt: '2026-06-13T00:00:00.000Z',
+      },
+      {
+        childId: null,
+        episodeType: 'logistic',
+        summary: 'daycare tour booked',
+        occurredAt: '2026-06-12T00:00:00.000Z',
+      },
+    ];
+    const out = _internal.redactEpisodesForTeens(input, stageByChild);
+    expect(out).toEqual(input);
+  });
+});
+
+/**
+ * Currently-valid facts reach the agent (the LLM) via AgentContext.memoryFacts.
+ * Both the factKey (free text) and factValue (raw jsonb) can carry teen-specific
+ * content, and the facts table is keyed by childId. Rule #1: a teen-scoped fact's
+ * factKey AND factValue are redacted and its child scope dropped before it reaches
+ * the model, while non-teen and family-wide facts pass through.
+ */
+describe('redactFactsForTeens (rule #1)', () => {
+  // DOB derived from the spec stage boundary (≥156 months) vs NOW, not code output.
+  const stageByChild = new Map<string, 'teenager' | 'toddler'>([
+    ['teen', 'teenager'],
+    ['tot', 'toddler'],
+  ]);
+
+  it('redacts a teen fact factKey and factValue and drops its child scope', () => {
+    const out = _internal.redactFactsForTeens(
+      [
+        {
+          childId: 'teen',
+          factType: 'medical',
+          factKey: 'pregnancy scare with boyfriend',
+          factValue: { note: 'asked about a clinic' },
+          confidence: 0.9,
+        },
+      ],
+      stageByChild,
+    );
+
+    const [fact] = out;
+    if (!fact) throw new Error('expected one redacted teen fact');
+    // Sensitive teen content lives in BOTH the factKey and factValue — neither
+    // may survive into the agent's context (the residual VIL-150 closes).
+    expect(JSON.stringify(out)).not.toContain('pregnancy');
+    expect(JSON.stringify(out)).not.toContain('boyfriend');
+    expect(JSON.stringify(out)).not.toContain('clinic');
+    expect(fact.childId).toBeNull();
+    // Coarse type survives so the agent still knows the family has medical activity.
+    expect(fact.factType).toBe('medical');
+  });
+
+  it('passes a non-teen and a family-wide fact through unchanged', () => {
+    const input = [
+      {
+        childId: 'tot',
+        factType: 'routine',
+        factKey: 'nap schedule',
+        factValue: { window: '12:30-14:00' },
+        confidence: 0.8,
+      },
+      {
+        childId: null,
+        factType: 'household',
+        factKey: 'pediatrician',
+        factValue: { name: 'Dr. Lee' },
+        confidence: 1,
+      },
+    ];
+    const out = _internal.redactFactsForTeens(input, stageByChild);
+    expect(out).toEqual(input);
+  });
+});
