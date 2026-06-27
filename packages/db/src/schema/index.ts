@@ -16,4 +16,5 @@ export * from './daily-digests.js';
 export * from './village.js';
 export * from './waitlist.js';
 export * from './conversations.js';
+export * from './rate-limits.js';
 export * from './enums.js';

@@ -5,6 +5,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { askHale } from '~/lib/coach/agent';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { enforceRateLimit } from '~/lib/rate-limit/apply';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the agent reads the skill file off disk and calls the Anthropic
@@ -58,6 +59,10 @@ export async function POST(req: Request) {
   if (!actorUserId) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
+
+  // Per-user cap before the billable agent run — caps one parent's LLM spend.
+  const limited = await enforceRateLimit('coach', actorUserId);
+  if (limited) return limited;
 
   // Stream the answer as newline-delimited JSON events so it renders token-by-token
   // (perceived latency is output-length-bound). Events: {type:'delta',text} as the

@@ -6,6 +6,7 @@ import { db } from '~/lib/db';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { ingestEvent } from '~/lib/pipeline/ingest';
 import { INBOUND_SIGNATURE_HEADER, verifyInboundSignature } from '~/lib/pipeline/verify-secret';
+import { enforceRateLimit } from '~/lib/rate-limit/apply';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the pipeline reads its skill files off disk and calls the
@@ -78,6 +79,12 @@ export async function POST(req: Request) {
   if (!family[0]) {
     return NextResponse.json({ status: 'unbound' }, { status: 200 });
   }
+
+  // Per-source cap before the billable classify→draft→review run — a valid-key
+  // flood from one source can't run the pipeline unboundedly. Keyed on the family
+  // the signed payload binds to (rule #4: the request is already authenticated).
+  const limited = await enforceRateLimit('ingest', family[0].id);
+  if (limited) return limited;
 
   try {
     const outcome = await ingestEvent(

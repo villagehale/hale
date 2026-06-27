@@ -255,6 +255,19 @@ export function useAskHale(
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(buildCoachRequest(trimmed, conversationId, scopedChild)),
       });
+      // Over the silent guard: render a calm, in-thread aside (NOT the error
+      // state) so a burst reads as Hale pausing, never as a failure or a wall.
+      if (res.status === 429) {
+        const id = ensureAssistantTurn();
+        setStreamingId(null);
+        setTurns((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...t, body: 'Just a moment — try that again in a few seconds.' } : t,
+          ),
+        );
+        setStatus('idle');
+        return;
+      }
       if (!res.ok || !res.body) {
         setStatus('error');
         return;
