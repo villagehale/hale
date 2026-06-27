@@ -1,42 +1,55 @@
 import NextAuth from 'next-auth';
-import Google from 'next-auth/providers/google';
+import Credentials from 'next-auth/providers/credentials';
+import { authConfig } from '~/auth.config';
+import { authenticateCredential } from '~/lib/auth/credentials';
+import { authRateLimited } from '~/lib/auth/rate-limit';
+import { requireEmailVerification } from '~/lib/auth-config';
+import { db } from '~/lib/db';
 
-// Auth.js v5 root config. Google is the only provider (tripfix pattern: Google is
-// the primary CTA). JWT session strategy — we provision into our own
-// users/families tables (see lib/family.ts), so no DB adapter is needed.
+// Full Auth.js v5 config for the Node API route (app/api/auth/[...nextauth]).
+// Spreads the Edge-safe base (auth.config.ts — Google + identity callbacks) and
+// adds the Credentials provider, whose authorize pulls in Node-only deps (argon2,
+// node:crypto, the Postgres client). The Edge middleware uses auth.config.ts
+// directly, so those deps never reach the Edge bundle.
 //
-// The identity Hale keys off is the Google account id (the OAuth `sub`), exposed
-// on the JWT as `token.sub` and mirrored to `session.user.id`. That value lands in
-// users.external_auth_id — the same column that previously held the Clerk id, so
-// the provisioning seam is unchanged (no schema migration).
-//
-// Client id/secret come from GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET.
-// AUTH_SECRET signs the session JWT. trustHost is required behind the Vercel/proxy
-// edge so the callback URL host is honored.
+// Two providers share one identity model: a Google login's external id is the
+// OAuth `sub`; a credentials login's is `credentials:<credential id>`. Both land
+// in users.external_auth_id, so the downstream family-linking seam (lib/family.ts)
+// is provider-agnostic.
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    ...authConfig.providers,
+    Credentials({
+      // The fields are validated again in authorize; these just shape the default
+      // form Auth.js would render (we render our own at /sign-in and /sign-up).
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      // Returns the session identity on success, null on ANY failure. authorize is
+      // the only place a password is checked; it never reveals which field was
+      // wrong (one null for no-such-email / wrong-password / unverified). This is
+      // the chokepoint for EVERY credentials sign-in — the /sign-in action AND a
+      // direct POST to /api/auth/callback/credentials — so the per-IP rate limit
+      // lives here (not just in the action) to throttle brute-force on both paths.
+      async authorize(raw) {
+        const email = typeof raw?.email === 'string' ? raw.email : '';
+        const password = typeof raw?.password === 'string' ? raw.password : '';
+        if (!email || !password) {
+          return null;
+        }
+        if (await authRateLimited()) {
+          return null;
+        }
+        const identity = await authenticateCredential(email, password, db(), {
+          requireVerified: requireEmailVerification(),
+        });
+        if (!identity) {
+          return null;
+        }
+        return { id: identity.id, email: identity.email };
+      },
     }),
   ],
-  session: { strategy: 'jwt' },
-  trustHost: true,
-  callbacks: {
-    jwt({ token, account }) {
-      // On sign-in, account.providerAccountId is the Google `sub` — the stable
-      // external account id. Pin it as the JWT subject so session.user.id is the
-      // Google sub, not a derived value.
-      if (account) {
-        token.sub = account.providerAccountId;
-      }
-      return token;
-    },
-    session({ session, token }) {
-      if (token.sub) {
-        session.user.id = token.sub;
-      }
-      return session;
-    },
-  },
 });

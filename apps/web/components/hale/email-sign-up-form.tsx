@@ -1,0 +1,73 @@
+'use client';
+
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { type SignUpState, signUpAction } from '~/lib/auth/auth-actions';
+import { MIN_PASSWORD_LENGTH } from '~/lib/auth/constants';
+
+/**
+ * Email + password sign-up form. On success the action returns 'check_email' (the
+ * verification link was sent) — and a duplicate email returns the SAME state, so
+ * the form never reveals whether an address is already registered (rule #1).
+ */
+export function EmailSignUpForm() {
+  const [state, formAction] = useActionState<SignUpState, FormData>(signUpAction, {
+    status: 'idle',
+  });
+
+  if (state.status === 'check_email') {
+    return (
+      <output className="meta max-w-sm text-center block">
+        Check your inbox for a confirmation link to finish setting up your account.
+      </output>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex w-full max-w-sm flex-col gap-4">
+      <div className="field-group">
+        <label htmlFor="signup-email" className="field-label">
+          Email
+        </label>
+        <input
+          id="signup-email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          className="field"
+        />
+      </div>
+      <div className="field-group">
+        <label htmlFor="signup-password" className="field-label">
+          Password
+        </label>
+        <input
+          id="signup-password"
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={MIN_PASSWORD_LENGTH}
+          className="field"
+        />
+        <p className="field-hint">At least {MIN_PASSWORD_LENGTH} characters.</p>
+      </div>
+      {state.status === 'error' ? (
+        <p className="field-error" role="alert">
+          {state.message}
+        </p>
+      ) : null}
+      <SubmitButton />
+    </form>
+  );
+}
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" className="btn-primary" disabled={pending} aria-live="polite">
+      {pending ? 'Creating account…' : 'Create account'}
+    </button>
+  );
+}

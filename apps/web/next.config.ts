@@ -10,7 +10,7 @@ const config: NextConfig = {
   poweredByHeader: false,
   typedRoutes: true,
   transpilePackages: ['@hale/db', '@hale/types', '@hale/tools-contracts', '@hale/agent', '@hale/worker'],
-  serverExternalPackages: ['postgres', 'pg-boss'],
+  serverExternalPackages: ['postgres', 'pg-boss', '@node-rs/argon2'],
   // The coach (and any web-side agent) reads the worker's single-source prompt +
   // model files off disk at runtime, plus the agent harness reads its skill files
   // (rule #2 — the skill markdown is the source of truth, never inlined). They

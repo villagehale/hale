@@ -6,9 +6,17 @@ import { describe, expect, it, vi } from 'vitest';
 // would otherwise drag the next-auth runtime into this Node test. Stub the edge.
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
 
-import { ensureUserRow } from './family.js';
+// eq(col, val) → a marker so resolveFamilyForUser's fake can read the external
+// auth id it filtered on. ensureUserRow's fake ignores the where, so this is safe.
+vi.mock('drizzle-orm', async () => {
+  const actual = await vi.importActual<typeof import('drizzle-orm')>('drizzle-orm');
+  return { ...actual, eq: (_col: unknown, val: unknown) => ({ __eq: true, val }) };
+});
+
+import { ensureUserRow, resolveFamilyForUser } from './family.js';
 
 const GOOGLE_ID = 'google_user_abc';
+const CREDENTIALS_ID = 'credentials:cred-1';
 const EXISTING_USER_ID = '11111111-1111-4111-8111-111111111111';
 const NEW_USER_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -90,5 +98,46 @@ describe('ensureUserRow', () => {
     // First call inserts (conflict no-ops), second call resolves the existing row
     // up front and never reaches the insert.
     expect(insert).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The whole point of the credentials provider: identity is still just
+ * users.external_auth_id, so a credentials user (`credentials:<id>`) resolves to a
+ * family through the SAME lookup as a Google user (the OAuth `sub`). This fake maps
+ * external_auth_id → family with no knowledge of the id's format; the test proves
+ * both id shapes resolve identically.
+ */
+function familyLookupDb(mapping: Record<string, string>) {
+  const select = vi.fn(() => ({
+    from: () => ({
+      innerJoin: () => ({
+        where: (marker: { val: string }) => ({
+          limit: async () => {
+            const familyId = mapping[marker.val];
+            return familyId ? [{ familyId }] : [];
+          },
+        }),
+      }),
+    }),
+  }));
+  return { db: { select } as unknown as Database };
+}
+
+describe('resolveFamilyForUser — provider-agnostic identity', () => {
+  const FAMILY_ID = '55555555-5555-4555-8555-555555555555';
+
+  it('resolves a credentials user to a family the same way as a Google user', async () => {
+    const google = familyLookupDb({ [GOOGLE_ID]: FAMILY_ID });
+    const credentials = familyLookupDb({ [CREDENTIALS_ID]: FAMILY_ID });
+
+    expect(await resolveFamilyForUser(GOOGLE_ID, google.db)).toBe(FAMILY_ID);
+    expect(await resolveFamilyForUser(CREDENTIALS_ID, credentials.db)).toBe(FAMILY_ID);
+  });
+
+  it('returns null for an external auth id with no membership (either provider)', async () => {
+    const { db } = familyLookupDb({});
+
+    expect(await resolveFamilyForUser(CREDENTIALS_ID, db)).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 export * from './users.js';
+export * from './credentials.js';
 export * from './families.js';
 export * from './family-members.js';
 export * from './family-invites.js';

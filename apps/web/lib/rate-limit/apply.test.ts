@@ -38,6 +38,16 @@ describe('enforceRateLimit', () => {
     expect(await enforceRateLimit('coach', 'user-a')).toBeNull();
     expect(consoleErr).toHaveBeenCalled();
   });
+
+  it('fails CLOSED (returns 429) when the limiter throws and failClosed is set', async () => {
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    setRateLimiterForTesting({ check: vi.fn().mockRejectedValue(new Error('db down')) });
+
+    const res = await enforceRateLimit('auth', '203.0.113.7', true);
+
+    expect(res?.status).toBe(429);
+    expect(consoleErr).toHaveBeenCalled();
+  });
 });
 
 describe('clientIp', () => {

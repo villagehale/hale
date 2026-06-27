@@ -18,11 +18,15 @@ import type { RateLimitOptions } from './limiter';
  *   delivers a handful of signals a minute even on a busy day; a flood is
  *   hundreds. 120 sits far above legitimate traffic yet well under a flood, so it
  *   stops the flood without ever throttling a real source.
+ * - auth (20/min/IP): sign-in + sign-up share one per-IP window. A human signs in
+ *   or registers a handful of times a minute even fumbling a password; 20 is far
+ *   above that yet blunts password brute-force / signup spam from one source.
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
   'coach-action': { limit: 60, windowSec: 60 },
   ingest: { limit: 120, windowSec: 60 },
+  auth: { limit: 20, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

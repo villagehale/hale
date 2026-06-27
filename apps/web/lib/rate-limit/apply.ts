@@ -30,15 +30,20 @@ export function clientIp(req: Request): string {
 
 /**
  * Enforce the per-route cap for `identifier`. Returns a 429 `Response` (with
- * `Retry-After`) when over the cap, or `null` to proceed. FAILS OPEN: a broken
- * limiter must never block legitimate users, so any limiter error is reported and
- * the request is allowed. Each route passes its own already-resolved identifier
- * (a user id for authed routes, a client IP for unauthed) so this helper never
- * has to know how a route authenticates.
+ * `Retry-After`) when over the cap, or `null` to proceed. Each route passes its
+ * own already-resolved identifier (a user id for authed routes, a client IP for
+ * unauthed) so this helper never has to know how a route authenticates.
+ *
+ * Limiter-error behavior is per-route. The default FAILS OPEN: a broken limiter
+ * must never block legitimate users (the right tradeoff for coach/ingest, where
+ * availability beats a throttle). Security-critical routes pass `failClosed` so a
+ * limiter outage can't silently remove the only brute-force guard — the request
+ * is refused instead (rule #1).
  */
 export async function enforceRateLimit(
   route: RateLimitRoute,
   identifier: string,
+  failClosed = false,
 ): Promise<Response | null> {
   try {
     const result = await limiter().check(identifier, route, RATE_LIMITS[route]);
@@ -50,6 +55,10 @@ export async function enforceRateLimit(
     );
   } catch (err) {
     captureException(err);
+    if (failClosed) {
+      console.error({ err, route }, 'rate-limit check failed — failing closed');
+      return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+    }
     console.error({ err, route }, 'rate-limit check failed — failing open');
     return null;
   }
