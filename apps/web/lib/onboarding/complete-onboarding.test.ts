@@ -90,6 +90,9 @@ function makeDb(opts: { priorWelcome?: boolean } = {}) {
 
   return {
     database,
+    // The tx handed to the transaction callback — provisioning now runs against
+    // THIS (one atomic tx with consent), not the top-level db.
+    tx,
     updateFor: (table: unknown) => updates.find((u) => u.table === table)?.values,
     updateCount: (table: unknown) => updates.filter((u) => u.table === table).length,
     insertFor: (table: unknown) => inserts.find((i) => i.table === table)?.values,
@@ -126,10 +129,11 @@ describe('completeOnboarding', () => {
 
     expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
 
-    // Provisioning ran with the Phase-C child (the full DOB carried through; an
-    // unspecified-gender default and a null last name fill the optional fields).
+    // Provisioning ran inside the atomic tx (not the top-level db) with the
+    // Phase-C child (the full DOB carried through; an unspecified-gender default
+    // and a null last name fill the optional fields).
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(
-      s.database,
+      s.tx,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       [{ name: 'Robin', lastName: null, dateOfBirth: '2024-03-15', gender: 'unspecified' }],
     );
@@ -190,7 +194,7 @@ describe('completeOnboarding', () => {
 
     expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(
-      s.database,
+      s.tx,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       [
         { name: 'Robin', lastName: null, dateOfBirth: '2024-03-15', gender: 'unspecified' },
@@ -216,7 +220,7 @@ describe('completeOnboarding', () => {
     });
 
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(
-      s.database,
+      s.tx,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       [{ name: 'Robin', lastName: 'Stone', dateOfBirth: '2024-03-15', gender: 'girl' }],
     );
@@ -314,7 +318,7 @@ describe('completeOnboarding', () => {
     expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     // The edited name flows to provisioning (the family display name) ...
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(
-      s.database,
+      s.tx,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery Q' },
       [{ name: 'Robin', lastName: null, dateOfBirth: '2024-03-15', gender: 'unspecified' }],
     );

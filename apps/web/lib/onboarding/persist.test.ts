@@ -46,9 +46,10 @@ function builder(rows: unknown[]) {
 }
 
 /**
- * Fake Database whose .transaction(cb) runs cb against a tx stub. The users
- * re-select inside ensureUserRow resolves to `userRows`; the families insert
- * .returning() yields NEW_FAMILY_ID. Records every inserted table.
+ * Fake executor (transaction handle) provisionAndWriteChildren now runs directly
+ * against — the caller owns the transaction boundary. The users re-select inside
+ * ensureUserRow resolves to `userRows`; the families insert .returning() yields
+ * NEW_FAMILY_ID. Records every inserted table.
  */
 function stubDb(userRows: Array<{ id: string }>) {
   const insertedTables: string[] = [];
@@ -70,12 +71,8 @@ function stubDb(userRows: Array<{ id: string }>) {
     select: vi.fn(() => builder(userRows)),
   };
 
-  const database = {
-    transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
-  } as unknown as Database;
-
   return {
-    database,
+    executor: tx as unknown as Database,
     inserts: (table: string) => insertedTables.filter((t) => t === table).length,
     insertedTables: () => insertedTables,
     txInsert: () => tx.insert,
@@ -83,12 +80,12 @@ function stubDb(userRows: Array<{ id: string }>) {
 }
 
 describe('provisionAndWriteChildren', () => {
-  it('creates a family, a primary_parent membership, an audit row, and the children in one transaction', async () => {
+  it('creates a family, a primary_parent membership, an audit row, and the children on the given executor', async () => {
     // ensureUserRow finds no existing user first, then resolves the inserted one.
     const s = stubDb([{ id: NEW_USER_ID }]);
 
     const result = await provisionAndWriteChildren(
-      s.database,
+      s.executor,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       CHILDREN,
     );
@@ -121,7 +118,7 @@ describe('provisionAndWriteChildren', () => {
     const s = stubDb([{ id: NEW_USER_ID }]);
 
     await provisionAndWriteChildren(
-      s.database,
+      s.executor,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery Stone' },
       CHILDREN,
     );
@@ -136,7 +133,7 @@ describe('provisionAndWriteChildren', () => {
     const s = stubDb([{ id: NEW_USER_ID }]);
 
     await provisionAndWriteChildren(
-      s.database,
+      s.executor,
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: null },
       CHILDREN,
     );

@@ -1,6 +1,6 @@
 'use server';
 
-import { schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { type PlanTier, parseIntents } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { auth } from '~/auth';
@@ -114,22 +114,6 @@ export async function completeOnboarding(
   };
 
   const existingFamilyId = await resolveFamilyForUser(externalAuthId, database);
-  const familyId =
-    existingFamilyId ??
-    (
-      await provisionAndWriteChildren(
-        database,
-        identity,
-        validated.map((child) => ({
-          name: child.name,
-          lastName: child.lastName,
-          dateOfBirth: child.dateOfBirth,
-          gender: child.gender,
-        })),
-      )
-    ).familyId;
-
-  const userId = await ensureUserRow(identity, database);
   const location = normalizeLocation(input.location ?? {});
   const intents = parseIntents(input.intents ?? []);
   const familyUpdate = {
@@ -142,11 +126,31 @@ export async function completeOnboarding(
     intents: intents.length > 0 ? intents : null,
   };
 
-  await database.transaction(async (tx) => {
-    await tx
-      .update(schema.families)
-      .set(familyUpdate)
-      .where(eq(schema.families.id, familyId));
+  // One atomic transaction. Provisioning (the child PII, incl. DOB) and the
+  // consent records commit together — a crash anywhere rolls back BOTH, so a
+  // child's data can never be left in the DB without its consent row (rule #1,
+  // rule #6). The consents reference the family id, so they are recorded once the
+  // family exists (the FK is immediate); a crash before COMMIT discards both.
+  const { familyId, userId } = await database.transaction(async (tx) => {
+    const executor = tx as unknown as Database;
+    const familyId =
+      existingFamilyId ??
+      (
+        await provisionAndWriteChildren(
+          executor,
+          identity,
+          validated.map((child) => ({
+            name: child.name,
+            lastName: child.lastName,
+            dateOfBirth: child.dateOfBirth,
+            gender: child.gender,
+          })),
+        )
+      ).familyId;
+
+    const userId = await ensureUserRow(identity, executor);
+
+    await tx.update(schema.families).set(familyUpdate).where(eq(schema.families.id, familyId));
 
     if (parentName && parentName.length > 0) {
       await tx
@@ -171,6 +175,8 @@ export async function completeOnboarding(
     for (const consentType of CONSENTS_AT_SIGNUP) {
       await recordConsent(tx, { userId, familyId, consentType, granted: true });
     }
+
+    return { familyId, userId };
   });
 
   // The one-time welcome email, fired now that the family + children exist (so it
