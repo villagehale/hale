@@ -2,9 +2,10 @@
  * The hero's "your village" scene: a low Spruce hill, a small cluster of homes
  * (the Village — more than one house, because a village is the point), an
  * Apricot sun on a slow 30s ambient arc, a Sky cloud drifting, and the Hale sea
- * turtle resting among the houses. The sun's arc is the only continuous motion —
- * the brand's heartbeat — and it is fully suppressed under prefers-reduced-motion
- * (resolving to a static mid-day frame, handled in globals.css).
+ * turtle resting among the houses with a slow, barely-there bob. These three
+ * gentle loops are the brand's heartbeat — and all are fully suppressed under
+ * prefers-reduced-motion (resolving to a static mid-day frame, handled in
+ * globals.css).
  *
  * It mirrors the app's image-forward public share surface (apps/web
  * public-surface.tsx PublicHero): a warm apricot-tint band, flat shapes, the
@@ -49,12 +50,14 @@ export function HeroScene() {
         style={{ bottom: '15%', left: '7%', width: 'clamp(220px, 56vw, 420px)', height: 'auto' }}
       />
 
-      {/* the Hale turtle, resting among the houses */}
-      <SeaTurtle
-        age="adult"
-        className="absolute"
-        style={{ bottom: '12%', right: '6%', width: 'clamp(96px, 18vw, 156px)', height: 'auto' }}
-      />
+      {/* the Hale turtle, resting among the houses — a slow, barely-there bob */}
+      <div className="absolute" style={{ bottom: '12%', right: '6%', willChange: 'transform' }}>
+        <SeaTurtle
+          age="adult"
+          className="turtle-bob"
+          style={{ width: 'clamp(96px, 18vw, 156px)', height: 'auto' }}
+        />
+      </div>
     </div>
   );
 }
