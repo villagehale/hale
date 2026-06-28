@@ -466,6 +466,27 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── 9 · The name — how to say Hale ──────────────────────────────── */}
+      <section className="shell pb-24 lg:pb-32">
+        <div className="panel-oat px-8 py-12 sm:px-14 sm:py-16 text-center rise rise-1">
+          <span className="eyebrow">the name</span>
+          <p className="mt-4 flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1">
+            <span className="font-display text-5xl font-semibold sm:text-6xl">Hale</span>
+            <span className="font-mono text-lg" style={{ color: 'var(--color-apricot-deep)' }}>
+              /ˈhɑːleɪ/
+            </span>
+            <span className="meta text-base">&ldquo;HAH-lay&rdquo;</span>
+          </p>
+          <p
+            className="mt-6 font-display text-xl sm:text-2xl"
+            style={{ color: 'var(--color-spruce)', letterSpacing: 'var(--tracking-display)' }}
+          >
+            Hawaiian for <span className="accent">home</span>.
+          </p>
+          <p className="mt-3 meta">A house big enough for your whole village.</p>
+        </div>
+      </section>
+
       <SiteFooter />
     </main>
   );
