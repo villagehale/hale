@@ -6,22 +6,34 @@ import { APP_URL } from '~/lib/app-url';
 
 /**
  * The marketing header: the turtle LogoMark beside the "Hale" wordmark on the
- * left, the Log in link and the Light / Dark / System ThemeToggle on the right.
- * Client component — the toggle reads and writes localStorage.
+ * left; on the right, "How it works" orientation, the value-first "See what
+ * Hale finds" primary CTA (mirrors the hero), a quieter "Log in" for returning
+ * parents, and the Light / Dark / System ThemeToggle. No Pricing — everything
+ * is free right now. Client component — the toggle reads and writes localStorage.
  */
 export function SiteHeader() {
   return (
-    <header className="shell flex items-center justify-between gap-4 pt-6 pb-2">
-      <a href="/#top" className="flex items-center gap-3" aria-label="Hale, home">
+    <header className="shell flex items-center justify-between gap-3 pt-6 pb-2">
+      <a href="/#top" className="flex shrink-0 items-center gap-3" aria-label="Hale, home">
         <LogoMark size={36} />
         <span className="font-display text-2xl leading-none font-semibold">Hale</span>
       </a>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 sm:gap-4">
+        <a
+          href="/#how"
+          className="hidden text-sm font-medium opacity-80 transition-opacity hover:opacity-100 sm:inline"
+        >
+          How it works
+        </a>
         <a
           href={`${APP_URL}/sign-in`}
-          className="text-sm font-medium opacity-80 transition-opacity hover:opacity-100"
+          className="hidden text-sm font-medium opacity-80 transition-opacity hover:opacity-100 sm:inline"
         >
           Log in
+        </a>
+        <a href={`${APP_URL}/preview`} className="btn-primary btn-compact shrink-0 whitespace-nowrap">
+          <span className="sm:hidden">What Hale finds</span>
+          <span className="hidden sm:inline">See what Hale finds</span>
         </a>
         <ThemeToggle />
       </div>

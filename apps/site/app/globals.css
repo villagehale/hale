@@ -306,6 +306,14 @@ strong { font-weight: 700; }
 
 .btn-primary[disabled] { opacity: 0.6; cursor: progress; }
 
+/* Header-density variant: same primary button, tighter padding + type so it
+ * sits in the nav bar without crowding. Sized to clear 390px with the logo +
+ * ThemeToggle on one line; eases up to the roomier size once there's space. */
+.btn-compact { padding: 0.5rem 0.75rem; font-size: 0.8125rem; }
+@media (min-width: 640px) {
+  .btn-compact { padding: 0.55rem 1rem; font-size: 0.9rem; }
+}
+
 .btn-secondary {
   display: inline-flex;
   align-items: center;
@@ -413,14 +421,22 @@ strong { font-weight: 700; }
   100% { transform: translateX(-24px); opacity: 0.85; }
 }
 
+@keyframes turtle-bob {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(-5px); }
+  100% { transform: translateY(0); }
+}
+
 .sun-arc { animation: sun-arc 30s linear infinite; }
 .cloud-drift { animation: cloud-drift 34s var(--ease-breathe) infinite; }
+.turtle-bob { animation: turtle-bob 7s var(--ease-breathe) infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; opacity: 1; transform: none; }
   /* hero resolves to a static mid-day frame */
   .sun-arc { animation: none; transform: translate(96px, -34px); }
   .cloud-drift { animation: none; transform: translateX(28px); opacity: 1; }
+  .turtle-bob { animation: none; transform: none; }
 }
 
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
