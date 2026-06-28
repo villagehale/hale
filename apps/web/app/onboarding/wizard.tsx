@@ -432,7 +432,7 @@ export function OnboardingWizard({
                       placeholder="your name"
                       autoComplete="name"
                     />
-                    <p className="meta mt-2">from your Google account — edit it if you&rsquo;d like.</p>
+                    <p className="meta mt-2">how you&rsquo;ll appear to your family — edit anytime.</p>
                   </div>
                 </div>
 
