@@ -1,6 +1,6 @@
 import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
-import { ParentAndHouse, Village } from '~/components/illos';
+import { Village } from '~/components/illos';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
@@ -15,7 +15,6 @@ const SOCIALS = [
   { label: 'LinkedIn', href: 'https://www.linkedin.com/in/anzhe-dong/' },
   { label: 'X', href: 'https://x.com/therealbossdong' },
   { label: 'GitHub', href: 'https://github.com/donganzh' },
-  { label: 'anzhe.xyz', href: 'https://anzhe.xyz' },
 ] as const;
 
 export default function AboutPage() {
@@ -70,59 +69,35 @@ export default function AboutPage() {
       </section>
 
       <section className="shell pb-16 lg:pb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-start">
-          <div className="lg:col-span-7 rise rise-1">
-            <span className="eyebrow">The founder</span>
-            <h2 className="mt-3">Built by a parent, far from his village.</h2>
-            <p
-              className="mt-5 text-lg"
-              style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-            >
-              Hale is built by Anzhe Dong — an AI agent engineer who builds
-              production agentic systems for a living. He started it raising a kid
-              far from the village his own parents had: no elders down the street,
-              no one who just knew which class was worth it. The trust was still out
-              there, in what other parents told each other; it just couldn’t reach
-              him. So he built a way to put it online.
-            </p>
-            <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-3">
-              {SOCIALS.map((social) => (
-                <li key={social.href}>
-                  <a
-                    href={social.href}
-                    target="_blank"
-                    rel="me noreferrer"
-                    className="link inline-flex items-center gap-1.5"
-                  >
-                    {social.label}
-                    <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="lg:col-span-5 rise rise-2">
-            <span className="eyebrow">The company</span>
-            <h2 className="mt-3">Village Hale Technologies Inc.</h2>
-            <p
-              className="mt-5 text-lg"
-              style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-            >
-              Incorporated in Ontario and based in Georgetown, ON. We handle
-              newborn and childhood data — among the most sensitive there is — so
-              your family’s data stays in Canada, and Hale never acts on its own.
-              PIPEDA, Quebec Law 25, and CASL compliant by default.
-            </p>
-            <p className="mt-6">
-              <a href="/contact" className="link">
-                Get in touch
-              </a>
-            </p>
-            <div className="mt-10 flex justify-center lg:justify-start">
-              <ParentAndHouse style={{ width: 'clamp(140px, 22vw, 180px)', height: 'auto' }} />
-            </div>
-          </div>
+        <div className="max-w-2xl rise rise-1">
+          <span className="eyebrow">The founder</span>
+          <h2 className="mt-3">Built by a parent, far from his village.</h2>
+          <p
+            className="mt-5 text-lg"
+            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
+          >
+            Hale is built by Anzhe Dong — an AI agent engineer who builds
+            production agentic systems for a living. He started it raising a kid
+            far from the village his own parents had: no elders down the street,
+            no one who just knew which class was worth it. The trust was still out
+            there, in what other parents told each other; it just couldn’t reach
+            him. So he built a way to put it online.
+          </p>
+          <ul className="mt-7 flex flex-wrap gap-x-6 gap-y-3">
+            {SOCIALS.map((social) => (
+              <li key={social.href}>
+                <a
+                  href={social.href}
+                  target="_blank"
+                  rel="me noreferrer"
+                  className="link inline-flex items-center gap-1.5"
+                >
+                  {social.label}
+                  <ArrowUpRight size={14} strokeWidth={2.25} aria-hidden="true" />
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
