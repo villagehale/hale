@@ -4,5 +4,7 @@
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.villagehale.com';
 
 // The marketing site's own canonical origin — used for metadataBase, canonical
-// links, sitemap, and robots. Overridable per env.
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://villagehale.com';
+// links, sitemap, and robots. MUST be the served URL: the apex (villagehale.com)
+// 308-redirects to www, so www is canonical — pointing canonical at the apex
+// would target a redirecting URL. Overridable per env.
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.villagehale.com';

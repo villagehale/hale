@@ -6,10 +6,11 @@ import { APP_URL } from '~/lib/app-url';
 
 /**
  * The marketing header: the turtle LogoMark beside the "Hale" wordmark on the
- * left; on the right, "How it works" orientation, the value-first "See what
- * Hale finds" primary CTA (mirrors the hero), a quieter "Log in" for returning
- * parents, and the Light / Dark / System ThemeToggle. No Pricing — everything
- * is free right now. Client component — the toggle reads and writes localStorage.
+ * left; on the right, the value-first "See what Hale finds" CTA (restrained
+ * outline — the hero carries the loud ask; the header stays calm), a quieter
+ * "Log in" for returning parents, and the Light / Dark / System ThemeToggle.
+ * No Pricing — everything is free right now. No "How it works" — the page below
+ * is the explanation. Client component — the toggle reads/writes localStorage.
  */
 export function SiteHeader() {
   return (
@@ -20,18 +21,12 @@ export function SiteHeader() {
       </a>
       <div className="flex items-center gap-3 sm:gap-4">
         <a
-          href="/#how"
-          className="hidden text-sm font-medium opacity-80 transition-opacity hover:opacity-100 sm:inline"
-        >
-          How it works
-        </a>
-        <a
           href={`${APP_URL}/sign-in`}
           className="hidden text-sm font-medium opacity-80 transition-opacity hover:opacity-100 sm:inline"
         >
           Log in
         </a>
-        <a href={`${APP_URL}/preview`} className="btn-primary btn-compact shrink-0 whitespace-nowrap">
+        <a href={`${APP_URL}/preview`} className="btn-secondary btn-compact shrink-0 whitespace-nowrap">
           <span className="sm:hidden">What Hale finds</span>
           <span className="hidden sm:inline">See what Hale finds</span>
         </a>
