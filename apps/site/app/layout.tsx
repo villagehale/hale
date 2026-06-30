@@ -2,6 +2,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
+import { SITE_URL } from '~/lib/app-url';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
 
@@ -20,9 +21,26 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'Hale · the village every parent needs',
   description:
-    "Hale is the trusted parent network for your neighborhood — find what families like yours actually do near you, and share what you love, across every stage of childhood. A calm AI concierge finds and organizes it; the village is the point. Your family's data stays in Canada.",
+    'Hale is the trusted parent network for your neighborhood — find what families near you actually do, and share what you love. Your data stays in Canada.',
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Hale',
+    url: SITE_URL,
+    title: 'Hale · the village every parent needs',
+    description:
+      'Find what families near you actually do, and share what you love — across every stage of childhood. Your data stays in Canada.',
+    locale: 'en_CA',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Hale · the village every parent needs',
+    description:
+      'Find what families near you actually do, and share what you love. Your data stays in Canada.',
+  },
 };
 
 export const viewport: Viewport = {
