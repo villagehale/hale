@@ -1,14 +1,13 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Hale",
+    "slug": "hale",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "hale",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "family.villagehale.app",
       "buildNumber": "1",
       "infoPlist": {
@@ -35,7 +34,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#01204F",
+          "backgroundColor": "#021E4E",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76,
           "android": {
