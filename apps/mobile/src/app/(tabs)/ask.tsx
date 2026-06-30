@@ -21,6 +21,7 @@ import {
 } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { useTypewriter } from '@/lib/use-typewriter';
+import { useVoiceInput } from '@/lib/use-voice-input';
 
 type Message = { id: string; role: 'user' | 'hale'; text: string; source?: SourceCard };
 
@@ -100,6 +101,7 @@ export default function AskScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const placeholderColor = useMeadowColor('ink3');
   const inputColor = useMeadowColor('ink');
+  const voice = useVoiceInput(setDraft);
 
   const send = (text: string) => {
     const q = text.trim();
@@ -154,13 +156,13 @@ export default function AskScreen() {
 
         <View className="border-t border-rule bg-card px-5 pb-3 pt-3">
           <AppText variant="meta" className="mb-1.5 uppercase tracking-eyebrow text-ink-3">
-            Ask a question
+            {voice.listening ? 'Listening…' : 'Ask a question'}
           </AppText>
           <View className="flex-row items-end gap-2">
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Type, or hold the mic to talk"
+              placeholder="Type, or tap the mic to talk"
               placeholderTextColor={placeholderColor}
               accessibilityLabel="Ask Hale a question"
               multiline
@@ -177,9 +179,19 @@ export default function AskScreen() {
                 className="bg-raised"
               />
             ) : (
-              <IconButton icon="mic" accessibilityLabel="Ask Hale by voice" className="bg-raised" />
+              <IconButton
+                icon={voice.listening ? 'stop.fill' : 'mic'}
+                accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Hale by voice'}
+                onPress={voice.toggle}
+                className="bg-raised"
+              />
             )}
           </View>
+          {voice.error ? (
+            <AppText variant="meta" className="mt-1.5 text-berry" accessibilityLiveRegion="polite">
+              {voice.error}
+            </AppText>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

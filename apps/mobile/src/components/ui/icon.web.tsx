@@ -17,6 +17,7 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   ellipsis: 'ellipsis-horizontal',
   mic: 'mic-outline',
   'mic.fill': 'mic',
+  'stop.fill': 'stop',
   'arrow.up': 'arrow-up',
   'chevron.left': 'chevron-back',
   'chevron.right': 'chevron-forward',

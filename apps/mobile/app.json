@@ -2,13 +2,20 @@
   "expo": {
     "name": "mobile",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "family.villagehale.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Hale uses the camera to capture milestone photos.",
+        "NSMicrophoneUsageDescription": "Hale uses the microphone for voice — asking and logging by speaking.",
+        "NSSpeechRecognitionUsageDescription": "Hale transcribes your voice to text."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -28,14 +35,19 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#01204F",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76,
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-speech-recognition"
     ],
     "experiments": {
       "typedRoutes": true,
