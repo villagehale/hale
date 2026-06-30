@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
-import { IconButton, MicButton } from '@/components/ui/icon-button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tag } from '@/components/ui/tag';
 import {
   PLACEHOLDER_REPLY,
@@ -177,7 +177,7 @@ export default function AskScreen() {
                 className="bg-raised"
               />
             ) : (
-              <MicButton accessibilityLabel="Ask Hale by voice" />
+              <IconButton icon="mic" accessibilityLabel="Ask Hale by voice" className="bg-raised" />
             )}
           </View>
         </View>

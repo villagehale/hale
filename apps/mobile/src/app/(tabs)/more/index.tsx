@@ -1,15 +1,15 @@
 import { type Href, router } from 'expo-router';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
 
 type MenuItem = {
   label: string;
   detail: string;
-  icon: SymbolViewProps['name'];
+  icon: IconName;
   href?: Href;
 };
 
@@ -51,14 +51,14 @@ function MenuRow({ item, last }: { item: MenuItem; last: boolean }) {
         last ? '' : 'border-rule border-b'
       }`}
     >
-      <SymbolView name={item.icon} size={20} tintColor={icon} />
+      <Icon name={item.icon} size={20} color={icon} />
       <View className="flex-1">
         <AppText variant="body" className="text-ink">
           {item.label}
         </AppText>
         {item.detail ? <AppText variant="meta">{item.detail}</AppText> : null}
       </View>
-      {item.href ? <SymbolView name="chevron.right" size={14} tintColor={chevron} /> : null}
+      {item.href ? <Icon name="chevron.right" size={14} color={chevron} /> : null}
     </Pressable>
   );
 }

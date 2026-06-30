@@ -3,13 +3,12 @@ import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
-import { MicButton } from '@/components/ui/icon-button';
+import { Icon } from '@/components/ui/icon';
 import { Pill } from '@/components/ui/pill';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
 import { PLACEHOLDER } from '@/constants/placeholder-data';
 import { timeGreeting } from '@/lib/greeting';
-import { SymbolView } from 'expo-symbols';
 
 export default function HomeScreen() {
   const { rightNow, village, children } = PLACEHOLDER;
@@ -43,14 +42,13 @@ export default function HomeScreen() {
         <Pill label="Feed" icon="drop.fill" className="flex-1" />
         <Pill label="Nap" icon="moon.fill" className="flex-1" />
         <Pill label="Milestone" icon="star.fill" className="flex-1" />
-        <MicButton />
       </View>
 
       <Card onPress={() => router.push('/ask')} className="flex-row items-center justify-between">
         <AppText variant="body" className="text-ink-3">
           Ask Hale anything
         </AppText>
-        <SymbolView name="mic" size={20} tintColor={askIconColor} />
+        <Icon name="mic" size={20} color={askIconColor} />
       </Card>
 
       <View className="gap-2">

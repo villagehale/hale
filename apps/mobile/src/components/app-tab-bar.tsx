@@ -1,26 +1,29 @@
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { APPROVAL_ACTIONS } from '@/constants/approvals-data';
 import { useMeadowColor } from '@/constants/meadow';
 
-type TabMeta = { label: string; icon: SymbolViewProps['name']; center?: boolean };
+type TabMeta = { label: string; icon: IconName };
 
 const TABS: Record<string, TabMeta> = {
   index: { label: 'Home', icon: 'house.fill' },
   companion: { label: 'Companion', icon: 'figure.2.and.child.holdinghands' },
-  ask: { label: 'Ask', icon: 'sparkles', center: true },
+  ask: { label: 'Ask', icon: 'sparkles' },
   village: { label: 'Village', icon: 'map.fill' },
   more: { label: 'More', icon: 'ellipsis' },
 };
+
+const PENDING_APPROVALS = APPROVAL_ACTIONS.length;
 
 export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeTint = useMeadowColor('ink');
   const inactiveTint = useMeadowColor('ink3');
-  const centerTint = useMeadowColor('canvas');
+  const badgeTextColor = useMeadowColor('canvas');
 
   return (
     <View
@@ -31,6 +34,7 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
         const meta = TABS[route.name];
         if (!meta) return null;
         const isFocused = state.index === index;
+        const badge = route.name === 'more' && PENDING_APPROVALS > 0 ? PENDING_APPROVALS : 0;
 
         const onPress = () => {
           const event = navigation.emit({
@@ -43,40 +47,29 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
           }
         };
 
-        if (meta.center) {
-          return (
-            <Pressable
-              key={route.key}
-              accessibilityRole="button"
-              accessibilityLabel={meta.label}
-              accessibilityState={isFocused ? { selected: true } : {}}
-              onPress={onPress}
-              className="flex-1 items-center justify-end"
-            >
-              <View className="-mt-6 h-14 w-14 items-center justify-center rounded-full bg-accent-fill active:opacity-90">
-                <SymbolView name={meta.icon} size={24} tintColor={centerTint} />
-              </View>
-              <AppText variant="meta" className="mt-1 text-[11px] text-ink-2">
-                {meta.label}
-              </AppText>
-            </Pressable>
-          );
-        }
-
         return (
           <Pressable
             key={route.key}
             accessibilityRole="button"
-            accessibilityLabel={meta.label}
+            accessibilityLabel={badge ? `${meta.label}, ${badge} pending approvals` : meta.label}
             accessibilityState={isFocused ? { selected: true } : {}}
             onPress={onPress}
             className="flex-1 items-center justify-end gap-1 pb-1 active:opacity-80"
           >
-            <SymbolView
-              name={meta.icon}
-              size={22}
-              tintColor={isFocused ? activeTint : inactiveTint}
-            />
+            <View>
+              <Icon name={meta.icon} size={22} color={isFocused ? activeTint : inactiveTint} />
+              {badge ? (
+                <View className="absolute -right-2.5 -top-1.5 h-4 min-w-4 items-center justify-center rounded-full bg-berry px-1">
+                  <AppText
+                    variant="meta"
+                    className="text-[10px] leading-[14px]"
+                    style={{ color: badgeTextColor }}
+                  >
+                    {badge}
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
             <AppText
               variant="meta"
               className={`text-[11px] ${isFocused ? 'text-ink' : 'text-ink-3'}`}

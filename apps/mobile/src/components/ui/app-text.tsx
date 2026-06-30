@@ -18,7 +18,7 @@ const VARIANT_FAMILY: Record<AppTextVariant, string> = {
 
 const VARIANT_CLASS: Record<AppTextVariant, string> = {
   display: 'text-[32px] leading-[38px] tracking-display text-ink',
-  title: 'text-[20px] leading-[26px] text-ink',
+  title: 'text-[20px] leading-[26px] tracking-display text-ink',
   body: 'text-[16px] leading-[24px] text-ink-2',
   meta: 'text-[13px] leading-[18px] text-ink-3',
   mono: 'text-[14px] leading-[20px] text-ink-2',

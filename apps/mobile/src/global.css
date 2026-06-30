@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Web only: match the web app's antialiasing so Inter doesn't render heavier
+ * in the RN-web preview than it does in apps/web. No effect on native. */
+html,
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /*
  * Hale Mobile — "Meadow" design system, mirrored from apps/web/app/globals.css.
  * Same token ROLES so the app reads as the same product. Dark mode follows the
