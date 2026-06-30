@@ -1,9 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Hale Mobile — "Meadow" design system, mirrored from apps/web/app/globals.css.
+ * Same token ROLES so the app reads as the same product. Dark mode follows the
+ * device (prefers-color-scheme) — brand-ANCHORED charcoal-Prussian canvas, not
+ * brand-flooded. Apricot #c8622d is FILL ONLY; apricot-deep is the text-safe
+ * accent. Tone meaning by label + shape, never color alone.
+ */
+
 :root {
-  --font-display:
-    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
-    Segoe UI Symbol, Noto Color Emoji;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+  /* type — Inter (display/body) + JetBrains Mono (data), mirroring web */
+  --font-display: Inter, system-ui, sans-serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* canvas / surfaces */
+  --color-canvas: #f6f1e7; /* linen */
+  --color-card: #efe7d6; /* oat */
+  --color-raised: #fffdf8; /* raised card lift (light) */
+  /* ink */
+  --color-ink: #01204f; /* spruce — primary */
+  --color-ink-2: #33486b; /* slate-green — secondary */
+  --color-ink-3: #5b6b86; /* faded-sage — meta */
+  /* accent — apricot family */
+  --color-accent: #a84e20; /* apricot-deep — TEXT-SAFE accent */
+  --color-accent-fill: #c8622d; /* apricot — FILL/large-graphic only */
+  --color-accent-tint: #f5dcc6;
+  /* secondary tones */
+  --color-sea: #0a3d62; /* turtle / brand accent */
+  --color-sage: #4a5a3c; /* done/handled */
+  --color-sage-tint: #dde4d2;
+  --color-berry: #9c3b54; /* needs-you */
+  --color-berry-tint: #f3d7dd;
+  --color-sky: #2f6f86; /* coach tone */
+  --color-sky-tint: #cfe3e7;
+  /* hairline */
+  --color-rule: rgba(1, 32, 79, 0.1);
+  --color-rule-strong: rgba(1, 32, 79, 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0b1626; /* calm desaturated deep Prussian-charcoal */
+    --color-card: #13233a; /* one notch above canvas */
+    --color-raised: #1d3150; /* two notches up */
+    --color-chrome: #021e4e; /* exact logo Prussian — app frame */
+    --color-ink: #f6f1e7; /* cream */
+    --color-ink-2: #c7d3e6;
+    --color-ink-3: #9bb0d0;
+    --color-accent: #e8915c; /* text-safe on dark */
+    --color-accent-fill: #e8915c;
+    --color-accent-tint: #2e2331;
+    --color-sea: #6fb3c9;
+    --color-sage: #a9c49a;
+    --color-sage-tint: #18301f;
+    --color-berry: #e09aaa;
+    --color-berry-tint: #3a1f29;
+    --color-sky: #8fc1d1;
+    --color-sky-tint: #142b48;
+    --color-rule: rgba(246, 241, 231, 0.12);
+    --color-rule-strong: rgba(246, 241, 231, 0.24);
+  }
 }
