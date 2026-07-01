@@ -38,7 +38,7 @@ const PACKS_DIR = join(WORKER_ROOT, 'prompts', 'packs');
 // declaring one stage gets that stage's pack appended under the same header
 // the runtime uses, so the eval prompt matches production for that stage.
 const PACK_HEADER = '## Stage-aware context';
-const CLIENT_PATH = join(WORKER_ROOT, 'src', 'anthropic', 'client.ts');
+const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
 const ORCHESTRATOR_PATH = join(WORKER_ROOT, 'src', 'orchestrator', 'index.ts');
 const FIXTURE_DIR = join(HERE, 'fixtures', 'classifier');
 const HOLDOUT_DIR = join(FIXTURE_DIR, 'holdout');
@@ -55,9 +55,9 @@ const ATTRIBUTION_BAR = 0.85;
 // --- read the single sources of truth from worker source -------------------
 
 async function readModelId() {
-  const src = await readFile(CLIENT_PATH, 'utf8');
+  const src = await readFile(MODEL_TS_PATH, 'utf8');
   const m = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${CLIENT_PATH}`);
+  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
   return m[1];
 }
 

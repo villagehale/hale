@@ -5,8 +5,9 @@ import {
   firstUnsatisfiedCheck,
   type ReviewerToolName,
 } from '@hale/tools-contracts';
+import { pickModel } from '@hale/agent';
 import type { DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
-import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
+import { anthropicClient } from '../anthropic/client.js';
 import { invokeReviewerTool } from '../tools/registry.js';
 import { loadChildNames } from '../services/memory-writer.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
@@ -73,6 +74,7 @@ export async function runReviewer(
   // loop; caching the system block once lets each turn read the stable
   // tools+system prefix instead of reprocessing it.
   const system = cachedSystem(await loadPrompt('reviewer'));
+  const model = pickModel('review');
   const collected: ToolResult[] = [];
 
   // The model cannot know the family's child names; check_pii_leak needs them to
@@ -92,7 +94,7 @@ export async function runReviewer(
     verdict,
     runMetrics: metricsFromUsage(
       'reviewer',
-      SONNET_MODEL,
+      model,
       {
         input_tokens: promptTokens,
         output_tokens: completionTokens,
@@ -122,7 +124,7 @@ export async function runReviewer(
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const response = await client.messages.create({
-      model: SONNET_MODEL,
+      model,
       max_tokens: 4096,
       system,
       tools,

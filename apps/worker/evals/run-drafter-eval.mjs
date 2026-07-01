@@ -31,7 +31,7 @@ import Anthropic from '@anthropic-ai/sdk';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'drafter.md');
-const CLIENT_PATH = join(WORKER_ROOT, 'src', 'anthropic', 'client.ts');
+const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
 const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
 const CACHE_DIR = join(HERE, 'cache');
 
@@ -58,11 +58,11 @@ const PLACEHOLDER_PATTERNS = [
 // --- read the single sources of truth from worker source -------------------
 
 async function readModelIds() {
-  const src = await readFile(CLIENT_PATH, 'utf8');
+  const src = await readFile(MODEL_TS_PATH, 'utf8');
   const sonnet = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${CLIENT_PATH}`);
-  if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${CLIENT_PATH}`);
+  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${MODEL_TS_PATH}`);
+  if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
   return { drafter: sonnet[1], judge: haiku[1] };
 }
 

@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",
+    "@hale/agent": "workspace:*",
     "@hale/db": "workspace:*",
     "@hale/tools-contracts": "workspace:*",
     "@hale/types": "workspace:*",

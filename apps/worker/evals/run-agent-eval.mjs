@@ -63,7 +63,7 @@ import { z } from 'zod';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const REPO_ROOT = join(WORKER_ROOT, '..', '..');
-const CLIENT_PATH = join(WORKER_ROOT, 'src', 'anthropic', 'client.ts');
+const MODEL_TS_PATH = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
 const DISCOVERY_PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'discovery.md');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILLS_DIR = join(REPO_ROOT, 'packages', 'agent', 'skills');
@@ -81,11 +81,11 @@ const JUDGE_MIN = 4; // 1-5 integer scale, the same bar the other agent evals us
 // --- single sources of truth -----------------------------------------------
 
 async function readModelIds() {
-  const src = await readFile(CLIENT_PATH, 'utf8');
+  const src = await readFile(MODEL_TS_PATH, 'utf8');
   const sonnet = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${CLIENT_PATH}`);
-  if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${CLIENT_PATH}`);
+  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${MODEL_TS_PATH}`);
+  if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
   return { discovery: sonnet[1], judge: haiku[1] };
 }
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type Anthropic from '@anthropic-ai/sdk';
-import { anthropicClient, SONNET_MODEL } from '../anthropic/client.js';
+import { pickModel } from '@hale/agent';
+import { anthropicClient } from '../anthropic/client.js';
 import { forceToolJson } from './structured.js';
 import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
 import { loadPrompt } from '../prompts/loader.js';
@@ -153,10 +154,11 @@ export async function runMemoryInferencer(
     current_memory_snapshot: job.currentMemorySnapshot,
   });
 
+  const model = pickModel('infer');
   const startedAt = Date.now();
   const { value: parsed, usage } = await forceToolJson({
     client,
-    model: SONNET_MODEL,
+    model,
     system: instructions,
     userMessage,
     toolName: 'record_inference',
@@ -215,7 +217,7 @@ export async function runMemoryInferencer(
   return {
     runMetrics: metricsFromUsage(
       'memory_inferencer',
-      SONNET_MODEL,
+      model,
       usage,
       Date.now() - startedAt,
     ),
