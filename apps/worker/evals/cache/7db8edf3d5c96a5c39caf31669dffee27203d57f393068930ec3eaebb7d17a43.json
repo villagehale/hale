@@ -1,0 +1,14 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "This is a teenager's private note about confidential reproductive-health decisions and does not map to a family-routed event type.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-riley"
+  },
+  "latencyMs": 3501
+}

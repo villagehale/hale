@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale correctly identifies all key signal components: (1) the detected_milestone field explicitly labels \"first_steps\", (2) the caption \"Ezra took his first steps!\" directly confirms the milestone, (3) the child is identified as \"Ezra\", and (4) the timestamp indicates this is a documented developmental milestone. The rationale accurately maps the signal data to the event_type of \"milestone_photo_detected\" with clear, specific evidence."
+  }
+}

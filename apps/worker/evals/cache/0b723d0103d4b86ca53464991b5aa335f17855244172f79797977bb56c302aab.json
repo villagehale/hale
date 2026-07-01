@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale correctly identifies this as a legal/administrative milestone (G1 licence eligibility) and accurately matches the signal content. The classifier properly recognizes the Ontario government notification as indicating an important legal/bureaucratic requirement that the teen must now complete. The event type \"legal_milestone_due\" is clearly justified and appropriate for this driver's licence eligibility notice."
+  }
+}

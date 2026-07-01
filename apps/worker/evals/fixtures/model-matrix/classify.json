@@ -1,6 +1,6 @@
 {
   "role": "classify",
-  "note": "Representative inbound signals with a reference event_type derived from the signal content (not model output). Mix of easy (automated reminder) and harder (ambiguous office message vs request; a teen-content signal) so model tiers can separate.",
+  "note": "Representative inbound signals with a reference event_type derived from the signal content (not model output). Mix of easy (automated reminder) and harder (ambiguous office message vs request; teen-content signals) so model tiers can separate. The teenContent cases are BALANCED in both directions (rule #1): positives are a 13+ child's own sensitive content that must be redacted from a parent; negatives are ordinary household / younger-child logistics that must NOT be flagged, including a teen-present-but-parent-managed legal milestone (the over-flagging trap, per the classifier prompt's legal_milestone carve-out). All cases synthetic.",
   "cases": [
     {
       "id": "pediatric-reminder",
@@ -73,6 +73,96 @@
         "familyContextSlice": { "childrenAgesMonths": [18], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
       },
       "expect": { "eventType": "unclassified" }
+    },
+    {
+      "id": "teen-journal-private",
+      "input": {
+        "source": "notes_sync",
+        "rawContent": "Journal — Maya (private)\n\nI can't stop comparing myself to everyone at school. Some days I don't even want to get out of bed. I haven't told anyone how bad it's gotten. Writing it down here so at least it's somewhere.",
+        "familyContextSlice": { "childrenAgesMonths": [172], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-maya", "name": "Maya", "ageInMonths": 172 }] }
+      },
+      "expect": { "eventType": "unclassified", "teenContent": true }
+    },
+    {
+      "id": "teen-counsellor-mentalhealth",
+      "input": {
+        "source": "email",
+        "rawContent": "From: wellness@northviewhs.ca\nSubject: Following up on Devon\n\nDevon came to the wellness office today after a panic attack during second period and asked to speak with me privately about some anxiety they've been dealing with. I wanted you to be aware.",
+        "familyContextSlice": { "childrenAgesMonths": [190], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-devon", "name": "Devon", "ageInMonths": 190 }] }
+      },
+      "expect": { "eventType": "school_communication", "teenContent": true }
+    },
+    {
+      "id": "teen-peer-message-relationship",
+      "input": {
+        "source": "message_sync",
+        "rawContent": "From Sam (age 15) to a friend:\n\nhonestly I think Alex and I are done. we had a huge fight after the dance and they haven't texted back in two days. I feel awful and I don't want my parents asking about it.",
+        "familyContextSlice": { "childrenAgesMonths": [186], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-sam", "name": "Sam", "ageInMonths": 186 }] }
+      },
+      "expect": { "eventType": "unclassified", "teenContent": true }
+    },
+    {
+      "id": "teen-sensitive-health-note",
+      "input": {
+        "source": "notes_sync",
+        "rawContent": "note to self — Riley\n\nask the clinic on Monday about birth control options, and whether they can keep it confidential from my parents. also need to figure out how to get there after school without anyone knowing.",
+        "familyContextSlice": { "childrenAgesMonths": [200], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-riley", "name": "Riley", "ageInMonths": 200 }] }
+      },
+      "expect": { "eventType": "unclassified", "teenContent": true }
+    },
+    {
+      "id": "teen-diary-substance",
+      "input": {
+        "source": "notes_sync",
+        "rawContent": "Kai — private\n\nWent to Jesse's party Saturday and tried vaping for the first time, and had a couple drinks too. Feeling weird about it. Definitely not telling mom and dad.",
+        "familyContextSlice": { "childrenAgesMonths": [178], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-kai", "name": "Kai", "ageInMonths": 178 }] }
+      },
+      "expect": { "eventType": "unclassified", "teenContent": true }
+    },
+    {
+      "id": "newborn-feed-log",
+      "input": {
+        "source": "app_log",
+        "rawContent": "{\"type\":\"feed\",\"child\":\"Noa\",\"method\":\"bottle\",\"amount_ml\":90,\"started_at\":\"2026-06-24T03:10:00-04:00\",\"duration_min\":18}",
+        "familyContextSlice": { "childrenAgesMonths": [3], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "feeding_pattern_signal", "teenContent": false }
+    },
+    {
+      "id": "toddler-milestone-photo",
+      "input": {
+        "source": "photo_metadata",
+        "rawContent": "{\"caption\":\"Ezra took his first steps!\",\"child\":\"Ezra\",\"detected_milestone\":\"first_steps\",\"taken_at\":\"2026-06-20T17:42:00-04:00\"}",
+        "familyContextSlice": { "childrenAgesMonths": [13], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "milestone_photo_detected", "teenContent": false }
+    },
+    {
+      "id": "young-child-pediatric-reminder",
+      "input": {
+        "source": "email",
+        "rawContent": "From: reminders@brightkids-peds.ca\nSubject: Upcoming visit\n\nReminder: Leo has his 4-year checkup on Thursday July 9 at 9:00 AM with Dr. Nguyen. No action needed.",
+        "familyContextSlice": { "childrenAgesMonths": [48], "province": "ON", "timezone": "America/Toronto", "knownClinics": ["Bright Kids Peds"], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "pediatric_appointment_reminder", "teenContent": false }
+    },
+    {
+      "id": "household-delivery-update",
+      "input": {
+        "source": "email",
+        "rawContent": "From: shipping@babycove.example\nSubject: Your order is on its way\n\nGood news! Your order (2 packs of size 3 diapers, 1 box of wipes) has shipped and is expected to arrive tomorrow by 8 PM.",
+        "familyContextSlice": { "childrenAgesMonths": [10], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [] }
+      },
+      "expect": { "eventType": "delivery_update", "teenContent": false }
+    },
+    {
+      "id": "teen-legal-milestone-logistics",
+      "input": {
+        "source": "email",
+        "rawContent": "From: no-reply@ontario.ca\nSubject: G1 knowledge test eligibility\n\nYour teen is now eligible to book a G1 driver's licence knowledge test. Appointments can be scheduled online at a DriveTest centre.",
+        "familyContextSlice": { "childrenAgesMonths": [192], "province": "ON", "timezone": "America/Toronto", "knownClinics": [], "knownDaycares": [], "children": [{ "id": "child-theo", "name": "Theo", "ageInMonths": 192 }] }
+      },
+      "expect": { "eventType": "legal_milestone_due", "teenContent": false }
     }
   ]
 }

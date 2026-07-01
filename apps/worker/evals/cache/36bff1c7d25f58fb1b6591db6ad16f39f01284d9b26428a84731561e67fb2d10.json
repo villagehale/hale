@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.4,
+    "rationale": "This is a teenager's private journal entry expressing personal emotional distress, not a classifiable family-logistics signal, and it is sensitive private content that should not be processed or surfaced.",
+    "payload": {
+      "note": "Private teen journal entry from notes_sync; content is deeply personal and not a family operational signal. Flagged as private/sensitive teen content — should not be surfaced in a family digest without human judgment."
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-maya"
+  },
+  "latencyMs": 4425
+}

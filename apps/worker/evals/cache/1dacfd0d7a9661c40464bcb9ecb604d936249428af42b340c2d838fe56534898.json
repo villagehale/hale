@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.97,
+    "rationale": "This is a private peer-to-peer message from the teenager expressing personal distress about a relationship; it contains no actionable family signal and Sam has explicitly indicated they do not want parental involvement.",
+    "payload": {
+      "note": "Private message between Sam and a friend. No family logistics, appointments, or actionable signal present."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-sam",
+    "teen_content": true
+  },
+  "latencyMs": 4765
+}

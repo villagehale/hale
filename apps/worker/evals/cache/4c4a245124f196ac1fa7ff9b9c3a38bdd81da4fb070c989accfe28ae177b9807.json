@@ -1,0 +1,21 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.15,
+    "rationale": "This is a private teen-to-peer message about a relationship conflict, not a signal to the family that warrants family-wide action or routing.",
+    "payload": {
+      "source": "message_sync",
+      "sender": "Sam (age 15)",
+      "recipient_type": "friend",
+      "content_type": "private_peer_communication",
+      "topic": "relationship_conflict",
+      "teen_content_detected": true
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null,
+    "teen_content": true
+  },
+  "latencyMs": 2896
+}

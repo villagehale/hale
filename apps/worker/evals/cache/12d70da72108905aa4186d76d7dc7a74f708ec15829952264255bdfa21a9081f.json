@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The rationale correctly identifies the key elements of a delivery update: the order has shipped from a known supplier (babycove.example) with a clear delivery timeline (tomorrow by 8 PM). The specific order details (2 packs of size 3 diapers, 1 box of wipes) confirm this is a legitimate shipping notification. The only minor weakness is that it doesn't mention the email coming from an official shipping address, which adds credibility. Overall, this is a clear and accurate rationale that matches the signal content."
+  }
+}

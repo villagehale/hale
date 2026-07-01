@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The rationale is circular and vague. It describes what the entry contains (teen journal, sensitive content) without clearly explaining WHY this warrants the \"unclassified\" event type. A strong rationale would specifically identify that this signal contains substance use by a minor (vaping and alcohol consumption) which could represent a safety concern requiring action, rather than dismissing it as \"just personal journal content.\" The statement \"should not be surfaced or acted on\" contradicts responsible safeguarding—potentially concerning teen behavior like substance experimentation typically should trigger some form of appropriate intervention or monitoring. The rationale fails to address the actual event classification logic."
+  }
+}

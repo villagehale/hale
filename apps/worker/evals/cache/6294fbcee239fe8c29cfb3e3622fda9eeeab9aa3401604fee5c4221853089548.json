@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The rationale is vague and circular. It states what the message IS (a peer-to-peer message about relationship distress) without providing a clear reason WHY it should be classified as \"unclassified\" rather than another event type. The phrase \"no actionable family signal\" is imprecise and subjective—it doesn't explain what specific criteria were used to determine this. The rationale also relies on a circular argument: \"it contains no actionable signal\" is essentially restating that it's unclassified without substantiating that claim. A stronger rationale would explicitly address whether this meets thresholds for concern categories (safety risk, crisis indicators, etc.) and why it falls outside them."
+  }
+}

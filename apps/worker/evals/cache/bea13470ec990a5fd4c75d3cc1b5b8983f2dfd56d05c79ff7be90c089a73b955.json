@@ -1,0 +1,17 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "Signal is a personal note about teen reproductive health concerns; it does not classify as a medical appointment (no clinic initiated contact) and involves sensitive teen content that requires human judgment on whether/how to surface it.",
+    "payload": {
+      "raw_content": "note to self — Riley\n\nask the clinic on Monday about birth control options, and whether they can keep it confidential from my parents. also need to figure out how to get there after school without anyone knowing.",
+      "context": "Personal teen note regarding confidential healthcare access"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-riley",
+    "teen_content": true
+  },
+  "latencyMs": 2842
+}

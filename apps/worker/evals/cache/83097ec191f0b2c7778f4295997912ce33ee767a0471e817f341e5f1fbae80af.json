@@ -1,0 +1,14 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.95,
+    "rationale": "This is a teen's private message to a friend about a personal relationship, not a family logistics or care signal, and explicitly not meant for parents.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-sam"
+  },
+  "latencyMs": 4036
+}

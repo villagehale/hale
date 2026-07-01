@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.45,
+    "rationale": "This is a private personal journal/note written by the teen themselves — not an inbound family signal, appointment, or communication from an external party — and contains sensitive, private teen content that Hale should not surface, act on, or relay to parents.",
+    "payload": {
+      "note": "Private personal note authored by teen. Contains sensitive disclosures. Not an actionable external signal."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-kai",
+    "teen_content": true
+  },
+  "latencyMs": 5498
+}

@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.72,
+    "rationale": "A high-school wellness office is notifying the parent about Devon's anxiety and panic attack, a sensitive relationship-and-health matter a human should handle.",
+    "payload": {
+      "sender": "wellness@northviewhs.ca",
+      "school": "Northview HS",
+      "subject": "Following up on Devon",
+      "topic": "student wellness / mental health notice",
+      "summary": "Wellness office reports Devon had a panic attack and disclosed ongoing anxiety."
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-devon"
+  },
+  "latencyMs": 4932
+}

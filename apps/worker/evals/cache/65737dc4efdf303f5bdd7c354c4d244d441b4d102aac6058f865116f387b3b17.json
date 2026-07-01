@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.55,
+    "rationale": "This is a private personal note written by a teenager (Riley, ~16 years old) to themselves about a sensitive, confidential health matter — it is not an inbound signal directed at the family or a parent-managed event, and surfacing or acting on it would violate the teen's reasonable expectation of privacy.",
+    "payload": {
+      "note": "Private personal note authored by teen. Content withheld — teen health/confidentiality concern."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-riley",
+    "teen_content": true
+  },
+  "latencyMs": 5883
+}

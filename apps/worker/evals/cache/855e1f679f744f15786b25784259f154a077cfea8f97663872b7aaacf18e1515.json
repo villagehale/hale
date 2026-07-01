@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the signal as a delivery update event. It accurately describes the core content (order has shipped, expected arrival tomorrow by 8 PM), correctly categorizes it as a one-way notification from a shipping service, and properly matches the event_type \"delivery_update\". The rationale is specific, not vague, and directly evidenced by the signal content."
+  }
+}

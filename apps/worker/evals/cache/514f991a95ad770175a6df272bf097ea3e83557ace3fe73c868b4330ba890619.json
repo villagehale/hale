@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "This is a private teen journal entry expressing distress, not a family logistics or service signal Hale should act on or surface.",
+    "payload": {
+      "note": "Private journal entry from a teenager expressing self-comparison and low mood; not an actionable family/logistics event."
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-maya"
+  },
+  "latencyMs": 3707
+}

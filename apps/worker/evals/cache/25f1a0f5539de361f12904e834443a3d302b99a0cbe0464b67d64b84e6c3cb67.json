@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.75,
+    "rationale": "A school wellness office is informing the parent about a private conversation regarding their teen's mental health, a sensitive one-way notice.",
+    "payload": {
+      "sender": "wellness@northviewhs.ca",
+      "subject": "Following up on Devon",
+      "summary": "School wellness office reports Devon had a panic attack and spoke privately about anxiety they've been dealing with."
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-devon"
+  },
+  "latencyMs": 4187
+}

@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.55,
+    "rationale": "This is a teen's private personal journal entry with no actionable family logistics, and it involves sensitive teen content that should not be surfaced or acted on.",
+    "payload": {
+      "note": "Private teen note synced from notes; contains sensitive personal content and no family-actionable event."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-kai"
+  },
+  "latencyMs": 3999
+}
