@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and accurately identifies this as federal Employment Insurance (EI) correspondence from Service Canada regarding a maternity benefits claim. It correctly identifies the key elements: the official sender (noreply@canada.ca), the specific benefit type (maternity), the action taken (claim processed), and the relevant detail (payment timing). The event_type \"ei_correspondence\" matches the signal content perfectly."
+  }
+}

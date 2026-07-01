@@ -13,7 +13,7 @@ import { config } from '../config.js';
  * re-export them here so existing worker importers keep their import path.
  */
 
-export { HAIKU_MODEL, SONNET_MODEL, OPUS_MODEL } from '@hale/agent';
+export { HAIKU_MODEL, SONNET_MODEL, SONNET5_MODEL, OPUS_MODEL } from '@hale/agent';
 
 let client: Anthropic | undefined;
 

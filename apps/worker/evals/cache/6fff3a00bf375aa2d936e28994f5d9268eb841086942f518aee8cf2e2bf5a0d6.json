@@ -1,0 +1,15 @@
+{
+  "value": {
+    "payload": {
+      "item": "size 4 diapers",
+      "vendor": "DiaperCo",
+      "quantity": 1,
+      "unit_price": "42.99",
+      "reason": "running low, about 1 day of supply left"
+    },
+    "confidence": 0.55,
+    "rationale": "Low-stock signal shows only 1 day of size 4 diapers left, so I'm drafting a reorder from the usual vendor, but quantity isn't specified so I defaulted to 1.",
+    "recipient_visibility": "internal_only"
+  },
+  "latencyMs": 4752
+}

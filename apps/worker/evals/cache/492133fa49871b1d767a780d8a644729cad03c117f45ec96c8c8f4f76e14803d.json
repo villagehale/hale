@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.92,
+    "rationale": "Maple Grove Childcare is responding to a waitlisted application with an offer that requires confirmation and deposit within a deadline.",
+    "payload": {
+      "daycareName": "Maple Grove Childcare",
+      "offerType": "spot_available",
+      "deposit": "$200",
+      "deadline": "5 business days",
+      "room": "infant room",
+      "term": "September"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4062,
+    "output": 287
+  }
+}

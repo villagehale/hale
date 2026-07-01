@@ -1,0 +1,19 @@
+{
+  "value": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.9,
+    "rationale": "Diaper inventory is nearly depleted (1 day remaining), warranting a reorder action.",
+    "payload": {
+      "item": "size 4 diapers",
+      "on_hand": 6,
+      "daily_use": 7,
+      "days_remaining": 1
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "place_supply_order"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2861
+}

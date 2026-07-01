@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.45,
+    "rationale": "The email is vague and jumbles multiple unclear items (open house, a form, a fee, a pending date) without enough context to confidently classify or attribute institution type.",
+    "payload": {
+      "sender": "contact@brightpath-family.ca",
+      "subject": "A few things",
+      "summary": "Mentions a rescheduled open house, an outstanding form needed back, a possible fee depending on an unspecified option, and a date to be confirmed pending another location."
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4044,
+    "output": 303
+  }
+}

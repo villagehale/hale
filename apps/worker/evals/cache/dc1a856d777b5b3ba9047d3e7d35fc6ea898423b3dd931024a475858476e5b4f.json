@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "ei_correspondence",
+    "confidence": 0.97,
+    "rationale": "This is a federal Service Canada notice confirming processed EI parental benefits with a payment deposit date, a one-way informational notice.",
+    "payload": {
+      "sender": "servicecanada.gc.ca",
+      "benefitType": "EI maternity/parental benefits",
+      "paymentAmount": 668,
+      "paymentDate": "2026-06-19",
+      "referenceNumber": "EI-2026-0042189"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4065,
+    "output": 292
+  }
+}

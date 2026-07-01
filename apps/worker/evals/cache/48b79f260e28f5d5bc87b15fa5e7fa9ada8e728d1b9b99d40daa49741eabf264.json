@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the specific trigger: diaper inventory will be depleted in 1 day (6 units on hand ÷ 7 daily use = ~1 day remaining). It directly matches the signal data and appropriately justifies the \"supply_low_signal\" event type by explaining the urgency for reordering."
+  }
+}

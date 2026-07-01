@@ -1,0 +1,16 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.1,
+    "rationale": "The forwarded email has no discernible sender, subject, or content to classify.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4009,
+    "output": 193
+  }
+}

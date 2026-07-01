@@ -30,6 +30,9 @@ const CONTEXT_TS = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 export const PRICE = {
   'claude-haiku-4-5': { input: 1.0, output: 5.0 },
   'claude-sonnet-4-6': { input: 3.0, output: 15.0 },
+  // Sonnet 5 list price; intro pricing ($2/$10) applies through 2026-08-31, so
+  // the entry stays correct once list pricing resumes.
+  'claude-sonnet-5': { input: 3.0, output: 15.0 },
   'claude-opus-4-8': { input: 15.0, output: 75.0 },
 };
 
@@ -45,7 +48,12 @@ export async function readModelIds() {
     if (!m) throw new Error(`could not parse ${name} from ${MODEL_TS}`);
     return m[1];
   };
-  return { haiku: grab('HAIKU_MODEL'), sonnet: grab('SONNET_MODEL'), opus: grab('OPUS_MODEL') };
+  return {
+    haiku: grab('HAIKU_MODEL'),
+    sonnet: grab('SONNET_MODEL'),
+    sonnet5: grab('SONNET5_MODEL'),
+    opus: grab('OPUS_MODEL'),
+  };
 }
 
 // The bounded memory_slice limits the live coach actually applies, read straight

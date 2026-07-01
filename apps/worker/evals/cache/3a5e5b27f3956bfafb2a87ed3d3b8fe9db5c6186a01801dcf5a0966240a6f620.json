@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "reject",
+    "rationale": "check_pii_leak returned ok:false — the draft email includes a sensitive health card number being sent to an external third party (daycare admissions). This is a clear policy violation (sensitive PII exposure) regardless of recipient/sender allowlist status, so it must be rejected rather than merely flagged.",
+    "remediation": "Remove the health card number from the email body entirely. If the daycare genuinely requires the health card number, it should be provided through a secure, dedicated channel (e.g., a form/portal or in-person), not plain email, and only after explicit parent confirmation of what sensitive data to share."
+  },
+  "latencyMs": 3280
+}

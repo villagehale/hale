@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "daycare_communication",
+    "confidence": 0.9,
+    "rationale": "Routine daycare notice about bringing home and returning nap-mat sheets for Mia.",
+    "payload": {
+      "daycare_name": "Maple Grove Childcare",
+      "child_name": "Mia",
+      "request": "Bring nap-mat sheets home Friday, return clean Monday"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "11111111-1111-1111-1111-111111111111"
+  },
+  "usage": {
+    "input": 4810,
+    "output": 271
+  }
+}

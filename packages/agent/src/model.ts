@@ -9,9 +9,14 @@
 
 export const HAIKU_MODEL = 'claude-haiku-4-5';
 export const SONNET_MODEL = 'claude-sonnet-4-6';
+export const SONNET5_MODEL = 'claude-sonnet-5';
 export const OPUS_MODEL = 'claude-opus-4-8';
 
-export type ModelId = typeof HAIKU_MODEL | typeof SONNET_MODEL | typeof OPUS_MODEL;
+export type ModelId =
+  | typeof HAIKU_MODEL
+  | typeof SONNET_MODEL
+  | typeof SONNET5_MODEL
+  | typeof OPUS_MODEL;
 
 /**
  * A skill declares the KIND of work it does, not a model id. The harness picks
@@ -20,8 +25,9 @@ export type ModelId = typeof HAIKU_MODEL | typeof SONNET_MODEL | typeof OPUS_MOD
  *
  * Tiers (per the user's subagent-tiering policy + this package's brief):
  *  - simple-lookup → Haiku  (cheap, mechanical)
- *  - classify / converse / draft / review / infer / discover → Sonnet
- *    (classify carries teen_content — a rule-#1 safety call Haiku misses; eval VIL-143)
+ *  - classify / review → Sonnet 5  (eval-proven; classify carries teen_content —
+ *    a rule-#1 safety call, gated on teenAccuracy ≥ Sonnet-4.6 in the model matrix)
+ *  - converse / draft / infer / discover → Sonnet (4.6)
  *  - high-stakes-judgment → Opus  (run-rarely, judgment-dense)
  */
 export type AgentTask =
@@ -35,11 +41,11 @@ export type AgentTask =
   | 'high-stakes-judgment';
 
 const TASK_MODEL: Record<AgentTask, ModelId> = {
-  classify: SONNET_MODEL,
+  classify: SONNET5_MODEL,
   'simple-lookup': HAIKU_MODEL,
   converse: SONNET_MODEL,
   draft: SONNET_MODEL,
-  review: SONNET_MODEL,
+  review: SONNET5_MODEL,
   infer: SONNET_MODEL,
   discover: SONNET_MODEL,
   'high-stakes-judgment': OPUS_MODEL,

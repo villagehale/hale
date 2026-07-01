@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "family_share_request",
+    "confidence": 0.9,
+    "rationale": "Grandmother is directly asking for recent photos of the baby to be shared, a clear photo-share request.",
+    "payload": {
+      "requester_name": "Grandma Ruth",
+      "requester_contact": "grandma.ruth@gmail.com",
+      "request_text": "Could you send some recent photos when you get a chance?"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "share_photos_with_family"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4049,
+    "output": 279
+  }
+}

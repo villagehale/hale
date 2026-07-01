@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The answer faithfully captures the reference guidance. Both politely request missing context (which child, what symptom/behavior), acknowledge the limitation of not having details, and invite the user to provide specifics so help can be offered. The answer also appropriately signals deference to the pediatric office for medical concerns, staying safely in scope as a parenting assistant. No fabricated details, doses, or contradictions present."
+  }
+}

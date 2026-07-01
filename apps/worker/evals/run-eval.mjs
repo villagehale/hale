@@ -11,10 +11,11 @@
 // apps/worker/dist/ is STALE (it still references the removed Mastra layer:
 // ../mastra/model.js and a date-suffixed model id), so importing the compiled
 // path would test dead code. We therefore REPLICATE the exact request shape:
-// same prompt file (apps/worker/prompts/classifier.md), same model id
-// (HAIKU_MODEL, read from src/anthropic/client.ts), and the same tool-forced
-// JSON output schema and tool_choice that src/agents/structured.ts uses. The
-// autonomy threshold is read from src/orchestrator/index.ts so this harness has
+// same prompt file (apps/worker/prompts/classifier.md), same tool-forced JSON
+// output schema and tool_choice that src/agents/structured.ts uses. The model id
+// comes from the classify skill's own pickModel('classify') (@hale/agent source,
+// via tsx), so the gate tests the model production classifies with, and the
+// autonomy threshold is read from src/orchestrator/index.ts — this harness has
 // no second source of truth for any of those values.
 //
 // Run from repo root:
@@ -29,6 +30,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
+import { tsImport } from 'tsx/esm/api';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -38,7 +40,7 @@ const PACKS_DIR = join(WORKER_ROOT, 'prompts', 'packs');
 // declaring one stage gets that stage's pack appended under the same header
 // the runtime uses, so the eval prompt matches production for that stage.
 const PACK_HEADER = '## Stage-aware context';
-const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
+const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const ORCHESTRATOR_PATH = join(WORKER_ROOT, 'src', 'orchestrator', 'index.ts');
 const FIXTURE_DIR = join(HERE, 'fixtures', 'classifier');
 const HOLDOUT_DIR = join(FIXTURE_DIR, 'holdout');
@@ -54,11 +56,13 @@ const ATTRIBUTION_BAR = 0.85;
 
 // --- read the single sources of truth from worker source -------------------
 
+// The gate must test the model production actually classifies with. runClassifier
+// (src/agents/classifier.ts) resolves it via pickModel('classify'), so we call the
+// same function from @hale/agent source (via tsx, not the stale committed dist) —
+// a TASK_MODEL re-tier is picked up here with no eval edit.
 async function readModelId() {
-  const src = await readFile(MODEL_TS_PATH, 'utf8');
-  const m = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
-  return m[1];
+  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
+  return pickModel('classify');
 }
 
 async function readAutonomyThreshold() {

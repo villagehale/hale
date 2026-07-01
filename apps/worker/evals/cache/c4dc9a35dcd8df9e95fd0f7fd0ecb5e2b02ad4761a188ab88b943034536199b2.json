@@ -1,0 +1,7 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "The draft action is a reply to an email from an untrusted, unverified sender/recipient not on the family's allowlist. Two verification tools returned failures: check_recipient_allowlist (recipient not on allowlist, unverifiable) and check_sender_allowlist (sender origin not trusted). While this could be treated as a straightforward reject (recipient not on allowlist is listed as a rejection criterion), the content of the reply ('Sure, that sounds fine.') suggests this may be agreeing to something substantive on the user's behalf without knowing what was actually agreed to - this is ambiguous and risky content to send to an unverified, untrusted party. Given the compounding ambiguity (unknown intent behind 'that sounds fine', unverified recipient, untrusted sender), this should be escalated to a human rather than auto-rejected, since a human may want to review the actual email thread content to determine if this is a legitimate correspondence that just needs allowlist addition, or a phishing/spam scenario. Per policy, ambiguity defaults to flag_for_human, and this case has significant ambiguity beyond a simple clear-cut policy violation."
+  },
+  "latencyMs": 6483
+}

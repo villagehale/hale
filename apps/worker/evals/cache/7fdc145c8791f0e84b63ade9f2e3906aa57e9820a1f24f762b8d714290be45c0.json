@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "This is a medical communication (confirming a pediatric appointment for a child, referencing child's name 'Mira'). Per policy, medical or legal communications must never be sent without explicit per-action user approval, regardless of allowlist/idempotency/PII checks all passing. Also, no tool call was made to check_calendar_conflict to confirm Tuesday June 23 at 5:30 PM is actually free on the family's calendar, nor check_action_time_window to confirm this falls within the family's allowed send window. These should be verified, and even if they pass, explicit parent sign-off is required before sending since this commits the family to a specific medical appointment time.",
+    "remediation": "Obtain explicit user approval confirming intent to send this exact reply, and run check_calendar_conflict for Tuesday June 23 5:30 PM plus check_action_time_window before resubmitting."
+  },
+  "latencyMs": 4928
+}

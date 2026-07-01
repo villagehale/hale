@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The rationale is vague and circular. It simply labels the message as \"generic marketing spam\" without clearly explaining why it warrants the \"unclassified\" event type. The statement \"no family-relevant content\" is unclear - what makes content family-relevant or not? The rationale doesn't specifically address what characteristics of the signal led to this classification or why it couldn't fit into a more specific category like \"promotional\" or \"marketing.\" A stronger rationale would explain the actual criteria used for the \"unclassified\" determination."
+  }
+}

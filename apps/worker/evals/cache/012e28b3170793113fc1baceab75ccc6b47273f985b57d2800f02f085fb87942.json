@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.93,
+    "rationale": "Clinic is asking the parent to confirm a new time for Mia's rescheduled checkup, requiring a reply.",
+    "payload": {
+      "childName": "Mia",
+      "originalDate": "2024-07-09",
+      "proposedNewDate": "2024-07-11",
+      "proposedNewTime": "15:30",
+      "clinic": "Little Sprout Pediatrics",
+      "reason": "Doctor unexpectedly away",
+      "appointmentType": "2-year checkup"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4754,
+    "output": 327
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "verdict": "flag_for_human",
+    "rationale": "The action creates a calendar event for a medical appointment (Mira's 18-month pediatric visit with Dr. Okafor). While the tool checks for time window and idempotency both passed, this is a medical-related action. Per policy, medical or legal communications/actions require explicit per-action user approval regardless of allowlist or other automated checks, and there is no indication in the draft that the parent explicitly approved this specific calendar event creation. Additionally, no check_calendar_conflict tool was run to confirm the 10:15am slot on 2026-06-23 doesn't conflict with existing events, and no check_pii_leak was run despite the event containing a child's name and medical provider details (recipient_visibility is internal_only, which mitigates this, but should still be verified). Given the medical nature of this event and lack of explicit confirmation of parent approval plus missing calendar conflict verification, this should be flagged for a human to confirm before committing.",
+    "remediation": "Before approving: (1) run check_calendar_conflict for the proposed time slot, (2) run check_pii_leak given child's name and medical details are included in the payload, and (3) obtain explicit parent confirmation that this specific medical appointment event should be added to the calendar."
+  },
+  "latencyMs": 5061
+}

@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.9,
+    "rationale": "Clinic asks parent to actively schedule/pick a slot for the 6-month checkup, requiring a reply or booking action.",
+    "payload": {
+      "clinicName": "Little Sprout Pediatrics",
+      "subject": "Please confirm your 6-month visit",
+      "appointmentReason": "6-month checkup",
+      "availableWindows": "Mon-Thu mornings, next two weeks"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4075,
+    "output": 307
+  }
+}

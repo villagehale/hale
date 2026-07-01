@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "subscription_renewal_due",
+    "confidence": 0.92,
+    "rationale": "This is a one-way automatic renewal notice for a diaper subscription, not a request needing a reply.",
+    "payload": {
+      "vendor": "everydaybaby.ca",
+      "item": "Size 2 diapers",
+      "amount": 42.99,
+      "currency": "CAD",
+      "renewalDate": "2024-06-15"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4046,
+    "output": 265
+  }
+}

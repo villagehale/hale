@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.93,
+    "rationale": "Sunny Daycare is offering an accepted spot for Mira and requires a reply by Friday to accept.",
+    "payload": {
+      "daycareName": "Sunny Daycare",
+      "childName": "Mira",
+      "room": "toddler room",
+      "startDate": "September",
+      "replyDeadline": "Friday"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2760
+}

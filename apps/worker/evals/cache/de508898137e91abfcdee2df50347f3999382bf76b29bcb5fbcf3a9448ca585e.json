@@ -1,0 +1,21 @@
+{
+  "parsed": {
+    "event_type": "provincial_leave_correspondence",
+    "confidence": 0.95,
+    "rationale": "Notice from Quebec's RQAP confirming parental benefits acceptance is a provincial leave correspondence.",
+    "payload": {
+      "program": "RQAP",
+      "status": "accepted",
+      "firstPaymentDate": "2024-06-20",
+      "sender": "rqap.gouv.qc.ca"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4079,
+    "output": 265
+  }
+}
