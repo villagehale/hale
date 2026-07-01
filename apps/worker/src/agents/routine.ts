@@ -1,6 +1,7 @@
 import type { FamilyStage } from '@hale/types';
 import { z } from 'zod';
-import { SONNET_MODEL, anthropicClient } from '../anthropic/client.js';
+import { pickModel } from '@hale/agent';
+import { anthropicClient } from '../anthropic/client.js';
 import { loadPrompt } from '../prompts/loader.js';
 import type { DiscoveredCandidate } from './discovery-providers/types.js';
 import { forceToolJson } from './structured.js';
@@ -102,7 +103,7 @@ export async function runRoutine(input: RoutineRunInput): Promise<RoutineRunOutp
 
   const { value: parsed } = await forceToolJson({
     client: anthropicClient(),
-    model: SONNET_MODEL,
+    model: pickModel('draft'),
     system: instructions,
     userMessage,
     toolName: 'submit_routine',

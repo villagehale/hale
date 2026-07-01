@@ -2,16 +2,18 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 
 /**
- * Raw Anthropic SDK client + pinned model ids.
+ * Raw Anthropic SDK client.
  *
  * Replaces the former Mastra / Vercel-AI-SDK provider abstraction. We call
  * `messages.create` directly so the raw `tool_use` blocks stay visible — hard
  * rule #3 (Reviewer must COUNT the verification tools it actually invoked)
  * needs them, and Mastra's structuredOutput hid them.
+ *
+ * Model ids live in @hale/agent (the single source + task→model routing); we
+ * re-export them here so existing worker importers keep their import path.
  */
 
-export const HAIKU_MODEL = 'claude-haiku-4-5';
-export const SONNET_MODEL = 'claude-sonnet-4-6';
+export { HAIKU_MODEL, SONNET_MODEL, OPUS_MODEL } from '@hale/agent';
 
 let client: Anthropic | undefined;
 

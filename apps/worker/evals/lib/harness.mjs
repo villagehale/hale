@@ -22,7 +22,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const WORKER_ROOT = join(HERE, '..', '..');
 export const REPO_ROOT = join(WORKER_ROOT, '..', '..');
 export const CACHE_DIR = join(HERE, '..', 'cache');
-const CLIENT_PATH = join(WORKER_ROOT, 'src', 'anthropic', 'client.ts');
 const MODEL_TS = join(REPO_ROOT, 'packages', 'agent', 'src', 'model.ts');
 const CONTEXT_TS = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'context.ts');
 
@@ -35,9 +34,9 @@ export const PRICE = {
 };
 
 // --- single sources of truth ------------------------------------------------
-// Model ids: prefer packages/agent/src/model.ts (where the codebase now centralizes
-// them); fall back to the worker client.ts the older evals parse. Reading them
-// rather than hardcoding means a model bump can't silently desync the eval.
+// Model ids come from packages/agent/src/model.ts, where the codebase centralizes
+// them. Reading them rather than hardcoding means a model bump can't silently
+// desync the eval.
 
 export async function readModelIds() {
   const src = await readFile(MODEL_TS, 'utf8');
@@ -63,9 +62,9 @@ export async function readMemoryLimits() {
 }
 
 export async function readJudgeModel() {
-  const src = await readFile(CLIENT_PATH, 'utf8');
+  const src = await readFile(MODEL_TS, 'utf8');
   const m = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${CLIENT_PATH}`);
+  if (!m) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS}`);
   return m[1];
 }
 
