@@ -27,10 +27,12 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
+import { tsImport } from 'tsx/esm/api';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'drafter.md');
+const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
 const FIXTURE_DIR = join(HERE, 'fixtures', 'drafter');
 const CACHE_DIR = join(HERE, 'cache');
@@ -58,12 +60,11 @@ const PLACEHOLDER_PATTERNS = [
 // --- read the single sources of truth from worker source -------------------
 
 async function readModelIds() {
+  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
   const src = await readFile(MODEL_TS_PATH, 'utf8');
-  const sonnet = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${MODEL_TS_PATH}`);
   if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
-  return { drafter: sonnet[1], judge: haiku[1] };
+  return { drafter: pickModel('draft'), judge: haiku[1] };
 }
 
 // The tool-forced JSON schema MUST mirror drafterOutputJsonSchema in

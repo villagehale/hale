@@ -27,11 +27,12 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
+import { tsImport } from 'tsx/esm/api';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'memory-inferencer.md');
-const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
+const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const FIXTURE_DIR = join(HERE, 'fixtures', 'memory-inferencer');
 const CACHE_DIR = join(HERE, 'cache');
 
@@ -59,10 +60,8 @@ const SWEEPING_PATTERNS = [
 // --- read the single source of truth from worker source --------------------
 
 async function readModelId() {
-  const src = await readFile(MODEL_TS_PATH, 'utf8');
-  const sonnet = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
-  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${MODEL_TS_PATH}`);
-  return sonnet[1];
+  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
+  return pickModel('infer');
 }
 
 // The tool-forced JSON schema MUST mirror inferencerOutputJsonSchema in

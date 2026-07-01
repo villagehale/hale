@@ -48,6 +48,7 @@ import { tsImport } from 'tsx/esm/api';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
 const ROUTINE_PROMPT_PATH = join(WORKER_ROOT, 'prompts', 'routine.md');
+const AGENT_SRC = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'index.ts');
 const MODEL_TS_PATH = join(WORKER_ROOT, '..', '..', 'packages', 'agent', 'src', 'model.ts');
 const FAKE_PROVIDER_PATH = join(WORKER_ROOT, 'src', 'agents', 'discovery-providers', 'fake.ts');
 const FIXTURE_DIR = join(HERE, 'fixtures', 'village');
@@ -66,12 +67,11 @@ const JUDGE_MIN = 4;
 // --- read the single sources of truth from worker source -------------------
 
 async function readModelIds() {
+  const { pickModel } = await tsImport(AGENT_SRC, import.meta.url);
   const src = await readFile(MODEL_TS_PATH, 'utf8');
-  const sonnet = src.match(/SONNET_MODEL\s*=\s*'([^']+)'/);
   const haiku = src.match(/HAIKU_MODEL\s*=\s*'([^']+)'/);
-  if (!sonnet) throw new Error(`could not parse SONNET_MODEL from ${MODEL_TS_PATH}`);
   if (!haiku) throw new Error(`could not parse HAIKU_MODEL from ${MODEL_TS_PATH}`);
-  return { routine: sonnet[1], judge: haiku[1] };
+  return { routine: pickModel('discover'), judge: haiku[1] };
 }
 
 // The tool-forced JSON schema MUST mirror routineOutputJsonSchema in
