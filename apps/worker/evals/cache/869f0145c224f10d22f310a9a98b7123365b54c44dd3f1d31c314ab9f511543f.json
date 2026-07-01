@@ -1,0 +1,19 @@
+{
+  "value": {
+    "event_type": "feeding_pattern_signal",
+    "confidence": 0.88,
+    "rationale": "App log records a routine bottle feeding event for a 3-month-old infant.",
+    "payload": {
+      "child": "Noa",
+      "method": "bottle",
+      "amount_ml": 90,
+      "started_at": "2026-06-24T03:10:00-04:00",
+      "duration_min": 18
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2501
+}

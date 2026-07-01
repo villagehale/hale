@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "age_stage_milestone_due",
+    "confidence": 0.85,
+    "rationale": "Internal scheduler flagged the 6-month developmental milestone window, a one-way informational cue for the single infant in the family.",
+    "payload": {
+      "stage": "6_month",
+      "child_age_months": 6,
+      "note": "6-month developmental window opened; solids introduction and feeding milestones typically reviewed now"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4058,
+    "output": 267
+  }
+}

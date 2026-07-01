@@ -1,0 +1,14 @@
+{
+  "value": {
+    "payload": {
+      "action_type": "reply_to_email",
+      "to": "frontdesk@riverdale-peds.ca",
+      "subject": "Re: Confirm visit",
+      "body": "hi,\n\ntuesday june 23 at 5:30pm works for us — please book it.\n\nthanks!"
+    },
+    "confidence": 0.7,
+    "rationale": "Event provides a clear appointment slot needing simple confirmation with no conflicting info, but no calendar context confirms actual availability.",
+    "recipient_visibility": "public"
+  },
+  "latencyMs": 4661
+}

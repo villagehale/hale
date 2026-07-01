@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "family_event_invite",
+    "confidence": 0.9,
+    "rationale": "A cousin's email invites the family to Leo's 1st birthday party and asks for an RSVP.",
+    "payload": {
+      "eventName": "Leo's 1st Birthday",
+      "date": "2025-07-12",
+      "time": "14:00",
+      "location": "cousin's place",
+      "host": "cousin.mei@gmail.com",
+      "rsvpRequested": true
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4064,
+    "output": 287
+  }
+}

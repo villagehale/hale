@@ -1,0 +1,14 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.1,
+    "rationale": "Private personal note from teen about substance experimentation; not a family signal, request, or event requiring classification or routing.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null,
+    "teen_content": true
+  },
+  "latencyMs": 2052
+}

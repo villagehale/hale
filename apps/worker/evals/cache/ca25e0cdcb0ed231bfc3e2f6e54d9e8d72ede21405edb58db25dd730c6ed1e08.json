@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.97,
+    "rationale": "This is generic marketing spam with no family-relevant content.",
+    "payload": {
+      "sender": "deals@randommarketing.example",
+      "subject": "50% OFF EVERYTHING!!!"
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2951
+}

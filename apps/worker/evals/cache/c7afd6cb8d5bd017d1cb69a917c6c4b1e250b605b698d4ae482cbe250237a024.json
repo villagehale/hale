@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "sleep_pattern_signal",
+    "confidence": 0.88,
+    "rationale": "Tracker data shows a clear week-over-week regression in a 4-month-old's night wakeups and sleep stretch, fitting the infant sleep-pattern signal type.",
+    "payload": {
+      "metric": "sleep",
+      "window_days": 7,
+      "avg_night_wakeups": 4.6,
+      "avg_longest_stretch_min": 95,
+      "trend": "regressing",
+      "note": "night wakeups up from 2.1 last week"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4054,
+    "output": 304
+  }
+}

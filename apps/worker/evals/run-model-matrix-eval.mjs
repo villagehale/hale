@@ -2,11 +2,12 @@
 // Model-per-role comparison (VIL-143, launch question #2).
 //
 // THE QUESTION: which Claude model is the right tier for each agent role? The
-// codebase routes simple-lookup -> Haiku, classify/draft/review/converse -> Sonnet
-// (model.ts's TASK_MODEL). This eval RE-TESTS those assignments empirically: it runs the SAME
-// representative inputs for each role across claude-haiku-4-5, claude-sonnet-4-6,
-// and claude-opus-4-8, and scores quality (reference + LLM-judge), latency, and
-// cost — then prints a recommendation table (best model per role with the tradeoff).
+// codebase routes simple-lookup -> Haiku, classify/review -> Sonnet 5,
+// draft/converse -> Sonnet 4.6 (model.ts's TASK_MODEL). This eval RE-TESTS those
+// assignments empirically: it runs the SAME representative inputs for each role
+// across claude-haiku-4-5, claude-sonnet-4-6, claude-sonnet-5, and claude-opus-4-8,
+// and scores quality (reference + LLM-judge), latency, and cost — then prints a
+// recommendation table (best model per role with the tradeoff).
 //
 // HOW IT'S FAITHFUL: each role REPLICATES its real request shape — the same prompt
 // (loaded from apps/worker/prompts/*.md) or skill (ask-hale.md), the same tool-
@@ -50,7 +51,7 @@ const ROLES = ['classify', 'draft', 'review', 'coach'];
 
 // The tier each role is CURRENTLY routed to (packages/agent/src/model.ts). The
 // recommendation table compares the empirical best against this baseline.
-const CURRENT_TIER = { classify: 'sonnet', draft: 'sonnet', review: 'sonnet', coach: 'sonnet' };
+const CURRENT_TIER = { classify: 'sonnet5', draft: 'sonnet', review: 'sonnet5', coach: 'sonnet' };
 
 // --- role request shapes (replicated) ---------------------------------------
 
@@ -153,7 +154,7 @@ const COACH_JUDGE = [
   'Reply with the score tool.',
 ].join(' ');
 
-const MODEL_KEYS = ['haiku', 'sonnet', 'opus'];
+const MODEL_KEYS = ['haiku', 'sonnet', 'sonnet5', 'opus'];
 
 // --- per-role runners -------------------------------------------------------
 
@@ -445,7 +446,7 @@ const RUNNERS = { classify: runClassify, draft: runDraft, review: runReview, coa
 // Pick the cheapest model whose quality is within a small epsilon of the best
 // quality for the role — i.e. don't pay for Opus if Sonnet (or Haiku) ties it.
 // "Cheaper" is ranked haiku < sonnet < opus by input list price.
-const TIER_RANK = { haiku: 0, sonnet: 1, opus: 2 };
+const TIER_RANK = { haiku: 0, sonnet: 1, sonnet5: 2, opus: 3 };
 const QUALITY_EPS = 0.03;
 
 function recommend(rows) {
@@ -499,7 +500,7 @@ async function main() {
   const ctx = { cachedOnly, getClient, cost, judge };
 
   console.log(
-    `model-matrix-eval | ${broken ? 'BROKEN (calibration)' : cachedOnly ? 'cached-only' : 'live'} | haiku=${models.haiku} sonnet=${models.sonnet} opus=${models.opus} | judge=${judgeModel}`,
+    `model-matrix-eval | ${broken ? 'BROKEN (calibration)' : cachedOnly ? 'cached-only' : 'live'} | haiku=${models.haiku} sonnet=${models.sonnet} sonnet5=${models.sonnet5} opus=${models.opus} | judge=${judgeModel}`,
   );
   console.log('');
 

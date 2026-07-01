@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "milestone_photo_detected",
+    "confidence": 0.95,
+    "rationale": "Photo metadata explicitly marks a first-steps milestone for a 13-month-old child named Ezra with caption confirmation.",
+    "payload": {
+      "milestone": "first_steps",
+      "child_name": "Ezra",
+      "photo_taken_at": "2026-06-20T17:42:00-04:00",
+      "caption": "Ezra took his first steps!"
+    },
+    "concerns_child_id": null,
+    "suggested_action": {
+      "kind": "surface_only"
+    }
+  },
+  "latencyMs": 3280
+}

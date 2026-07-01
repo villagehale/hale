@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale directly and accurately explains why this signal was classified as a milestone_photo_detected event. It correctly identifies that: (1) the photo metadata contains an explicit milestone detection tag, (2) the specific milestone is \"first_steps,\" and (3) it is associated with the child \"Ezra.\" The rationale is clear, specific, and precisely matches the signal content without being circular or vague."
+  }
+}

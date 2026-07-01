@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "school_communication",
+    "confidence": 0.92,
+    "rationale": "This is a one-way welfare notice from a high school wellness office about Devon's panic attack and anxiety — a sensitive school communication requiring no reply action from Hale, but important to surface to the parent.",
+    "payload": {
+      "sender": "wellness@northviewhs.ca",
+      "school": "Northview High School",
+      "subject": "Following up on Devon",
+      "summary": "Devon visited the school wellness office after a panic attack during second period and spoke privately with staff about anxiety they have been experiencing.",
+      "welfare_concern": true
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": "child-devon",
+    "teen_content": true
+  },
+  "latencyMs": 5612
+}

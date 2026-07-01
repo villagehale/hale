@@ -1,0 +1,25 @@
+{
+  "parsed": {
+    "event_type": "order_confirmation",
+    "confidence": 0.95,
+    "rationale": "This is a one-way order confirmation email requiring no action from the family.",
+    "payload": {
+      "orderNumber": "EB-88213",
+      "items": [
+        "2x Size 2 diapers",
+        "1x wipes refill"
+      ],
+      "total": 58.2,
+      "currency": "CAD",
+      "merchant": "everydaybaby.ca"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4050,
+    "output": 261
+  }
+}

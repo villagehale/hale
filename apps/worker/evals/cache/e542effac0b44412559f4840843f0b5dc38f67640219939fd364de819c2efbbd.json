@@ -1,0 +1,27 @@
+{
+  "parsed": {
+    "event_type": "calendar_conflict_detected",
+    "confidence": 0.9,
+    "rationale": "A newly added Toddler Swim event for Mia overlaps with the existing Daycare pickup event on the same day.",
+    "payload": {
+      "added_event": {
+        "title": "Toddler Swim — Mia",
+        "start": "2026-09-10T16:30:00-04:00",
+        "end": "2026-09-10T17:00:00-04:00"
+      },
+      "conflicting_event": {
+        "title": "Daycare pickup",
+        "start": "2026-09-10T16:00:00-04:00",
+        "end": "2026-09-10T16:45:00-04:00"
+      }
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4798,
+    "output": 338
+  }
+}

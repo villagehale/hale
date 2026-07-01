@@ -1,0 +1,22 @@
+{
+  "parsed": {
+    "event_type": "supply_low_signal",
+    "confidence": 0.88,
+    "rationale": "Subscription supplier flags low diaper stock and asks whether to ship the next box early, an actionable reorder request.",
+    "payload": {
+      "item": "Size 2 diapers",
+      "daysUntilOutOfStock": 5,
+      "hasSubscriptionOnFile": true,
+      "sender": "subscriptions@everydaybaby.ca"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "place_supply_order"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4042,
+    "output": 288
+  }
+}

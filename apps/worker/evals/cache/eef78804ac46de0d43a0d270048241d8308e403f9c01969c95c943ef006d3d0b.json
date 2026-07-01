@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale correctly identifies the signal as a routine infant feeding log with all relevant details: the child's name (Noa), feeding method (bottle), precise volume (90 ml), and duration (18 minutes). It accurately characterizes this as a standard newborn/infant feeding tracking signal, which matches the structured data content and event_type classification perfectly. The rationale is clear, specific, and directly supported by the signal content."
+  }
+}

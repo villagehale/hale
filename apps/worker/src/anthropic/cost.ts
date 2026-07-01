@@ -1,10 +1,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { HAIKU_MODEL, SONNET_MODEL } from './client.js';
+import { HAIKU_MODEL, SONNET5_MODEL, SONNET_MODEL } from './client.js';
 
 /**
  * Per-model token rates, USD per million tokens.
- * Source: Anthropic pricing (claude-api skill model table, cached 2026-06-04):
- * Sonnet 4.6 $3 in / $15 out per 1M; Haiku 4.5 $1 in / $5 out per 1M.
+ * Source: Anthropic pricing (platform.claude.com/docs models overview):
+ * Sonnet 4.6 $3 in / $15 out; Sonnet 5 $3 in / $15 out list ($2/$10 intro
+ * through 2026-08-31); Haiku 4.5 $1 in / $5 out.
  * Hardcoded by design — billing accuracy is a point-in-time estimate, not a
  * live lookup; rotate these constants when public pricing changes.
  */
@@ -15,6 +16,7 @@ interface ModelRate {
 
 const RATES: Record<string, ModelRate> = {
   [SONNET_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
+  [SONNET5_MODEL]: { inputPerMTok: 3, outputPerMTok: 15 },
   [HAIKU_MODEL]: { inputPerMTok: 1, outputPerMTok: 5 },
 };
 

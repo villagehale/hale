@@ -1,0 +1,23 @@
+{
+  "parsed": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.93,
+    "rationale": "The clinic is asking the parent to confirm or propose a new time due to a scheduling conflict, requiring a reply.",
+    "payload": {
+      "clinic": "Little Sprout Pediatrics",
+      "originalReason": "Dr. Okafor out on June 23",
+      "proposedNewDate": "2024-06-25",
+      "proposedNewTime": "2:00 PM",
+      "childAgeMonths": 4
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4073,
+    "output": 308
+  }
+}

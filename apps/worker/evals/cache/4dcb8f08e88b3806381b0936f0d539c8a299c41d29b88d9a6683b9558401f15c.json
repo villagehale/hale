@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale correctly identifies this as a legal_milestone_due event. It accurately describes the specific milestone (G1 learner's permit knowledge test eligibility), identifies the authoritative source (ontario.ca government email), specifies the target person (teen/Theo at 16 years old), and explains why this is a legal/administrative milestone that requires family action. The rationale is clear, specific, and directly matches both the signal content and the event type classification."
+  }
+}

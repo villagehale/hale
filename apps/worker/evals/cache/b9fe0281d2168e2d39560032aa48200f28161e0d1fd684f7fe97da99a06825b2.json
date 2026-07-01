@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "This is a private personal journal entry written by a teenager (Maya, ~14 years old) expressing significant emotional distress — social comparison, withdrawal, and concealment of her struggles — which does not map to any standard family logistics event type, and requires sensitive human judgment rather than any automated action.",
+    "payload": {
+      "source": "notes_sync",
+      "author": "Maya",
+      "ageInMonths": 172,
+      "summary": "Private journal entry expressing emotional distress: social comparison, difficulty getting out of bed, and deliberate concealment of struggles from others.",
+      "wellbeing_flag": true
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-maya",
+    "teen_content": true
+  },
+  "latencyMs": 6098
+}

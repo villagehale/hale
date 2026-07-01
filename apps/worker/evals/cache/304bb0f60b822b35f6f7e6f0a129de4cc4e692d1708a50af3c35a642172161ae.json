@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.9,
+    "rationale": "Ontario government notice that the teen is now eligible for a G1 licence knowledge test, a legal/administrative milestone.",
+    "payload": {
+      "milestone": "G1 driver's licence knowledge test eligibility",
+      "province": "ON",
+      "source": "ontario.ca"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-theo"
+  },
+  "latencyMs": 2591
+}

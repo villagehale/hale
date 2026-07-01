@@ -1,0 +1,24 @@
+{
+  "parsed": {
+    "event_type": "daycare_application_response",
+    "confidence": 0.93,
+    "rationale": "Sunny Days Daycare is offering an enrolment spot and requires confirmation plus a deposit within a deadline, which is a formal application response requiring action.",
+    "payload": {
+      "daycareName": "Sunny Days Daycare",
+      "offerType": "toddler_room_spot",
+      "startDate": "2024-09-02",
+      "depositAmount": 300,
+      "depositCurrency": "CAD",
+      "responseDeadlineDays": 5
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4744,
+    "output": 314
+  }
+}

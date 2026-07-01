@@ -1,0 +1,20 @@
+{
+  "parsed": {
+    "event_type": "activity_signup_open",
+    "confidence": 0.85,
+    "rationale": "Notice that fall parent-and-baby program registration opens on a specific date/time, relevant given the family's 5-month-old.",
+    "payload": {
+      "program": "Fall parent-and-baby programs (Aquatots, Baby Music, Infant Massage)",
+      "registrationOpens": "2025-06-18T09:00:00-04:00",
+      "sender": "programs@cityrec.ca"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4062,
+    "output": 290
+  }
+}

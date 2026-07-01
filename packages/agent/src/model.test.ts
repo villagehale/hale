@@ -3,6 +3,7 @@ import {
   type AgentTask,
   HAIKU_MODEL,
   OPUS_MODEL,
+  SONNET5_MODEL,
   SONNET_MODEL,
   isAgentTask,
   pickModel,
@@ -10,11 +11,11 @@ import {
 
 describe('pickModel', () => {
   it.each<[AgentTask, string]>([
-    ['classify', SONNET_MODEL],
+    ['classify', SONNET5_MODEL],
     ['simple-lookup', HAIKU_MODEL],
     ['converse', SONNET_MODEL],
     ['draft', SONNET_MODEL],
-    ['review', SONNET_MODEL],
+    ['review', SONNET5_MODEL],
     ['infer', SONNET_MODEL],
     ['discover', SONNET_MODEL],
     ['high-stakes-judgment', OPUS_MODEL],
@@ -22,9 +23,10 @@ describe('pickModel', () => {
     expect(pickModel(task)).toBe(expected);
   });
 
-  it('pins the three model ids', () => {
+  it('pins the model ids', () => {
     expect(HAIKU_MODEL).toBe('claude-haiku-4-5');
     expect(SONNET_MODEL).toBe('claude-sonnet-4-6');
+    expect(SONNET5_MODEL).toBe('claude-sonnet-5');
     expect(OPUS_MODEL).toBe('claude-opus-4-8');
   });
 

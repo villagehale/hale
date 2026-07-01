@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "milestone_photo_detected",
+    "confidence": 0.93,
+    "rationale": "Photo metadata captions Ezra's first steps and flags a detected milestone, a one-way detected event to surface.",
+    "payload": {
+      "child": "Ezra",
+      "milestone": "first_steps",
+      "caption": "Ezra took his first steps!",
+      "taken_at": "2026-06-20T17:42:00-04:00"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 3782
+}

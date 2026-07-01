@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_reminder",
+    "confidence": 0.95,
+    "rationale": "A pediatric clinic sends a one-way reminder about an existing appointment with no action requested from the parent.",
+    "payload": {
+      "clinic_name": "Bright Kids Peds",
+      "child_name": "Leo",
+      "appointment_type": "4-year checkup",
+      "provider_name": "Dr. Nguyen",
+      "scheduled_datetime": "2025-07-09T09:00:00",
+      "timezone": "America/Toronto"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2217
+}

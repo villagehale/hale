@@ -1,0 +1,19 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.2,
+    "rationale": "This is a private journal entry expressing emotional distress; it is not an external signal requesting family action and raises safeguarding concerns that require human judgment.",
+    "payload": {
+      "source": "notes_sync",
+      "content_summary": "Private journal entry from Maya (age 14) describing social comparison anxiety, depressed mood, and isolation",
+      "age_in_months": 172,
+      "child_name": "Maya"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": "child-maya",
+    "teen_content": true
+  },
+  "latencyMs": 2993
+}

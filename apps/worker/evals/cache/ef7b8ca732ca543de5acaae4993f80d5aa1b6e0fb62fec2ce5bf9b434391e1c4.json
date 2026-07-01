@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "This is a teen's private personal note, not a family-logistics signal, and should not be surfaced or acted upon.",
+    "payload": {
+      "note": "Private personal journal entry from a teenager; contains sensitive personal disclosures not intended for parents."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-kai",
+    "teen_content": true
+  },
+  "latencyMs": 4148
+}

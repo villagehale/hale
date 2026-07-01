@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This is a supply order, not a family message. The task is to score a \"drafted family message\" for tone and appropriateness to a recipient. This appears to be an internal logistics/procurement note, not a message intended for family communication. It contains no greeting, recipient, or interpersonal tone elements to evaluate."
+  }
+}

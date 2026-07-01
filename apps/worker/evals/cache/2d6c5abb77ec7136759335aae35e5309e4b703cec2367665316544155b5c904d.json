@@ -1,0 +1,17 @@
+{
+  "value": {
+    "event_type": "milestone_photo_detected",
+    "confidence": 0.92,
+    "rationale": "Photo metadata explicitly tags a detected first-steps milestone for Ezra.",
+    "payload": {
+      "child": "Ezra",
+      "milestone": "first_steps",
+      "taken_at": "2026-06-20T17:42:00-04:00"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4914
+}

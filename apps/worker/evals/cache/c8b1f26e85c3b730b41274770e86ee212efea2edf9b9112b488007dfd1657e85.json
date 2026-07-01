@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.2,
+    "rationale": "Vague personal email lacking any concrete family-relevant detail to classify.",
+    "payload": {
+      "sender": "j.reeve@outlook.com",
+      "subject": "hey"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4010,
+    "output": 218
+  }
+}

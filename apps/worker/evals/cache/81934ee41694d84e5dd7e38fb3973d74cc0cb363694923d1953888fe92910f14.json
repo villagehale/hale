@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The rationale correctly identifies that the signal contains a milestone photo with explicit caption and detected milestone field matching \"first_steps\", and accurately describes it as a one-way detected event to surface. However, it could be more specific about why this particular combination of photo caption + detected_milestone field + child name constitutes the milestone_photo_detected event type."
+  }
+}

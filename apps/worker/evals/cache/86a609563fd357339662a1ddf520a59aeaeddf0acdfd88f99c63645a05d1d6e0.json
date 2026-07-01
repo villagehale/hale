@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The rationale correctly identifies the core event type (lab results notification) and accurately describes the signal's key characteristic (one-way notification from clinic portal about bloodwork availability). The explanation is clear and directly matches the signal content. However, it could be slightly more specific about what makes this a legitimate lab results ready event versus other notification types."
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.9,
+    "rationale": "This is a private teenager-to-friend message about personal relationships that carries no family logistics signal and explicitly wants to stay private.",
+    "payload": {},
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "teen_content": true,
+    "concerns_child_id": "child-sam"
+  },
+  "latencyMs": 3242
+}

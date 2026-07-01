@@ -1,0 +1,20 @@
+{
+  "value": {
+    "event_type": "pediatric_appointment_request",
+    "confidence": 0.92,
+    "rationale": "Clinic is proposing a specific slot and asking the parent to confirm, requiring a reply.",
+    "payload": {
+      "childName": "Mira",
+      "clinic": "Riverdale Peds",
+      "proposedDate": "2024-06-23",
+      "proposedTime": "17:30",
+      "visitType": "18-month visit"
+    },
+    "suggested_action": {
+      "kind": "autonomous_action",
+      "actionType": "reply_to_email"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 2870
+}

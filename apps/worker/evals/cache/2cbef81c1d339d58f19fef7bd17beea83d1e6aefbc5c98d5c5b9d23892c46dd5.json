@@ -1,0 +1,26 @@
+{
+  "parsed": {
+    "event_type": "legal_milestone_due",
+    "confidence": 0.9,
+    "rationale": "Ontario government notice about G1 learner's permit eligibility is a legal/administrative milestone for the teen, to be surfaced not actioned autonomously.",
+    "payload": {
+      "jurisdiction": "ON",
+      "milestone": "G1 learner's permit eligibility",
+      "requirements": [
+        "vision test",
+        "knowledge test",
+        "two pieces of ID"
+      ],
+      "location": "DriveTest centre",
+      "appointmentRequired": false
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4885,
+    "output": 300
+  }
+}

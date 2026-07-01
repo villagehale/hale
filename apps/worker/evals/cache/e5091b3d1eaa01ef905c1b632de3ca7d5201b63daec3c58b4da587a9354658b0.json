@@ -1,0 +1,18 @@
+{
+  "value": {
+    "event_type": "milestone_photo_detected",
+    "confidence": 0.97,
+    "rationale": "Photo metadata explicitly captures a first-steps milestone for Ezra (13 months, a developmentally expected age for first steps), with a clear caption and detected_milestone tag — a textbook milestone photo signal.",
+    "payload": {
+      "caption": "Ezra took his first steps!",
+      "child": "Ezra",
+      "detected_milestone": "first_steps",
+      "taken_at": "2026-06-20T17:42:00-04:00"
+    },
+    "suggested_action": {
+      "kind": "surface_only"
+    },
+    "concerns_child_id": null
+  },
+  "latencyMs": 4826
+}

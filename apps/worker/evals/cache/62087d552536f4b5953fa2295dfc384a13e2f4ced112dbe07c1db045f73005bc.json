@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The rationale clearly and correctly identifies the event as a pediatric appointment reminder. It accurately describes the key characteristics of the signal: (1) it's automated and one-way, (2) it concerns an existing well-baby visit, (3) it provides specific appointment details (date, time, provider), and (4) it only requires opt-out action, not confirmation or engagement. The rationale directly matches the signal content and appropriately justifies the event_type classification."
+  }
+}

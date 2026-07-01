@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event_type": "unclassified",
+    "confidence": 0.3,
+    "rationale": "A teen's private personal note about confidential medical care is not a family logistics signal Hale should surface or act on.",
+    "payload": {
+      "note": "Personal note-to-self from a teenager regarding private medical matters and confidentiality from parents."
+    },
+    "suggested_action": {
+      "kind": "ignore"
+    },
+    "concerns_child_id": "child-riley",
+    "teen_content": true
+  },
+  "latencyMs": 4289
+}

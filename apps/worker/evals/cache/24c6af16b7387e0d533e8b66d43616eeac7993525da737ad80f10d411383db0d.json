@@ -1,0 +1,19 @@
+{
+  "parsed": {
+    "event_type": "unclassified",
+    "confidence": 0.65,
+    "rationale": "Sleep pattern signals don't apply to a 9-year-old school-age child, so this trigger has no valid event type in this stage.",
+    "payload": {
+      "child_age_months": 108,
+      "note": "logged shorter overnight sleep and later bedtimes across the past two weeks for the 9-year-old"
+    },
+    "suggested_action": {
+      "kind": "needs_human"
+    },
+    "concerns_child_id": null
+  },
+  "usage": {
+    "input": 4732,
+    "output": 259
+  }
+}
