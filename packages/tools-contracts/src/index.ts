@@ -394,7 +394,8 @@ export function coverageSatisfiedWithResults(
   actionType: ActionType,
   results: { tool: string; ok: boolean }[],
 ): boolean {
-  const okByTool = new Map(results.map((r) => [r.tool, r.ok]));
+  const okByTool = new Map<string, boolean>();
+  for (const r of results) okByTool.set(r.tool, (okByTool.get(r.tool) ?? true) && r.ok);
   return REQUIRED_CHECKS[actionType].every((check) => okByTool.get(check) === true);
 }
 
@@ -407,6 +408,7 @@ export function firstUnsatisfiedCheck(
   actionType: ActionType,
   results: { tool: string; ok: boolean }[],
 ): string | null {
-  const okByTool = new Map(results.map((r) => [r.tool, r.ok]));
+  const okByTool = new Map<string, boolean>();
+  for (const r of results) okByTool.set(r.tool, (okByTool.get(r.tool) ?? true) && r.ok);
   return REQUIRED_CHECKS[actionType].find((check) => okByTool.get(check) !== true) ?? null;
 }
