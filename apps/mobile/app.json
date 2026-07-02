@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "family.villagehale.app",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "infoPlist": {
         "NSCameraUsageDescription": "Hale uses the camera to capture milestone photos.",
         "NSMicrophoneUsageDescription": "Hale uses the microphone for voice — asking and logging by speaking.",
@@ -61,7 +61,7 @@
       "eas": {
         "projectId": "f8eba851-1254-4fba-8320-a517eeef7434"
       },
-      "apiBase": "https://www.villagehale.com",
+      "apiBase": "https://app.villagehale.com",
       "google": {
         "iosClientId": "65507972660-aqt1spng7qnphkt3oe50dkqs5gumn67r.apps.googleusercontent.com"
       }
