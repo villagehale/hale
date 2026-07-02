@@ -64,3 +64,34 @@ export function isOverAllowance(
 ): boolean {
   return spentUsd > monthlyAllowanceUsd(planTier, childCount);
 }
+
+/**
+ * How far over the soft allowance a family must be before the HARD ceiling trips
+ * (3× — well clear of the soft over-allowance valve's own trip point, so a normal
+ * over-allowance family keeps getting drafts instead of being cut off cold). The
+ * single source for both the trip check and the ceiling value written to audits.
+ */
+export const HARD_CEILING_MULTIPLIER = 3;
+
+/** The HARD ceiling in USD for a family (allowance × the multiplier). Pure. */
+export function hardCeilingUsd(planTier: PlanTier, childCount: number): number {
+  return monthlyAllowanceUsd(planTier, childCount) * HARD_CEILING_MULTIPLIER;
+}
+
+/**
+ * The distinct HARD ceiling — a runaway breaker, NOT the soft autonomy valve.
+ * `isOverAllowance` throttles AUTONOMY (holds actions for approval) after the LLM
+ * stages have already spent; this breaker short-circuits the pipeline BEFORE any
+ * billable stage runs, so a family that has blown far past its budget stops
+ * costing money entirely instead of paying for three LLM calls per event forever.
+ * The `multiplier` defaults to HARD_CEILING_MULTIPLIER. Boundary is OVER, not at.
+ * Pure — no I/O.
+ */
+export function isOverHardCeiling(
+  spentUsd: number,
+  planTier: PlanTier,
+  childCount: number,
+  multiplier = HARD_CEILING_MULTIPLIER,
+): boolean {
+  return spentUsd > monthlyAllowanceUsd(planTier, childCount) * multiplier;
+}

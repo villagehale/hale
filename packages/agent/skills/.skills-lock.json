@@ -1,0 +1,42 @@
+{
+  "ask-hale.md": {
+    "file": "ask-hale.md",
+    "sha256": "0f768599ee0d6153a25dc6a60e12d90d15677b2f2ae54bc6a19f3564727d3fc7"
+  },
+  "classify-event.md": {
+    "file": "classify-event.md",
+    "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
+  },
+  "curate-shortlist.md": {
+    "file": "curate-shortlist.md",
+    "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"
+  },
+  "daily-brief.md": {
+    "file": "daily-brief.md",
+    "sha256": "8c98201b6bd881d3c9af145d8a3ab57f137caa910dbb0d8e528178ede6534968"
+  },
+  "draft-action.md": {
+    "file": "draft-action.md",
+    "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
+  },
+  "find-activities.md": {
+    "file": "find-activities.md",
+    "sha256": "ae7851375ce913f6a66a552922cc1411c4733be83369cf082e0e0f1cc7c166fb"
+  },
+  "infer-memory.md": {
+    "file": "infer-memory.md",
+    "sha256": "e59396e8e8de4ccd095c5740ef8d79d911b9d21f77ad751cbdd97d3f37c1adb2"
+  },
+  "log-care.md": {
+    "file": "log-care.md",
+    "sha256": "7e026f111a88cd15b0a6c06ad3692fff9f27cfa907a837cb46976c0d9a55f5db"
+  },
+  "rank-recommendations.md": {
+    "file": "rank-recommendations.md",
+    "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"
+  },
+  "review-action.md": {
+    "file": "review-action.md",
+    "sha256": "6be3a6b4b11e656aa76977090280dff7431d60d3b07079d41aa388d056ce3d1c"
+  }
+}

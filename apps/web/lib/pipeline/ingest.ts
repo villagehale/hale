@@ -1,11 +1,24 @@
 import { type AgentClient, HAIKU_MODEL, SONNET_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { type ActionType, deriveStage } from '@hale/types';
-import { and, eq } from 'drizzle-orm';
+import {
+  type ActionType,
+  type PlanTier,
+  deriveStage,
+  hardCeilingUsd,
+  isOverHardCeiling,
+} from '@hale/types';
+import { and, count, eq, sql } from 'drizzle-orm';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { classifyEvent } from './classify';
 import { draftAction } from './draft';
-import { dedupHashFor, recordDraft, recordEvent, recordVerdict, writeAutonomyGate } from './record';
+import {
+  dedupHashFor,
+  recordDraft,
+  recordEvent,
+  recordVerdict,
+  writeAutonomyGate,
+  writeSpendCeilingDrop,
+} from './record';
 import { reviewAction } from './review';
 
 /**
@@ -68,15 +81,81 @@ export type IngestOutcome =
   | { status: 'duplicate'; eventId: string }
   | { status: 'surfaced_only'; eventId: string; eventType: string }
   | { status: 'drafted_for_approval'; eventId: string; actionId: string; verdict: string }
-  | { status: 'dropped'; eventId: string; reason: string };
+  | { status: 'dropped'; eventId: string | null; reason: string };
+
+/** The three inputs the HARD cost ceiling is computed from — read together so a
+ * test injects a single fake instead of stubbing the DB (rule #8: the point is to
+ * NOT reach the model, no LLM stub needed). */
+export interface CeilingInputs {
+  spentUsd: number;
+  planTier: PlanTier;
+  childCount: number;
+}
+
+export type ReadCeilingInputs = (database: Database, familyId: string) => Promise<CeilingInputs>;
+
+/**
+ * Default reader for the HARD ceiling. Sums the family's month-to-date
+ * `agent_runs.cost_usd` (mirroring the worker's loadFamilyMonthToDateCostUsd),
+ * reads the plan tier, and counts the family's children — no LLM call. A missing
+ * family row fails closed to the most restrictive state (free tier), so a family
+ * that cannot be read cannot spin billable stages.
+ */
+export const readCeilingInputs: ReadCeilingInputs = async (database, familyId) => {
+  const costRows = await database
+    .select({ total: sql<string>`COALESCE(SUM(${schema.agentRuns.costUsd}), 0)` })
+    .from(schema.agentRuns)
+    .where(
+      sql`${schema.agentRuns.familyId} = ${familyId} AND ${schema.agentRuns.startedAt} >= date_trunc('month', now())`,
+    );
+
+  const familyRows = await database
+    .select({ planTier: schema.families.planTier })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+
+  const childRows = await database
+    .select({ value: count() })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+
+  return {
+    spentUsd: Number(costRows[0]?.total ?? 0),
+    planTier: familyRows[0]?.planTier ?? 'free',
+    childCount: childRows[0]?.value ?? 0,
+  };
+};
 
 export async function ingestEvent(
   input: IngestInput,
   database: Database,
   client: AgentClient,
   now: Date = new Date(),
+  readCeiling: ReadCeilingInputs = readCeilingInputs,
 ): Promise<IngestOutcome> {
   const familyId = input.familyId;
+
+  // HARD monthly LLM-cost ceiling — the runaway breaker. This engine never
+  // executes, but it DOES pay for classify → draft → review on every event, so a
+  // family far past its budget still burns three LLM calls per event forever with
+  // nothing to stop it. Short-circuit BEFORE the first billable stage: no event
+  // row exists yet, so we write only the family-scoped audit (rule #6) and drop.
+  const ceiling = await readCeiling(database, familyId);
+  if (isOverHardCeiling(ceiling.spentUsd, ceiling.planTier, ceiling.childCount)) {
+    const ceilingUsd = hardCeilingUsd(ceiling.planTier, ceiling.childCount);
+    await writeSpendCeilingDrop(database, {
+      familyId,
+      detail: {
+        planTier: ceiling.planTier,
+        childCount: ceiling.childCount,
+        monthToDateCostUsd: ceiling.spentUsd,
+        ceilingUsd,
+      },
+    });
+    return { status: 'dropped', eventId: null, reason: 'spend_ceiling' };
+  }
+
   const rawContent = JSON.stringify({
     subject: input.subject,
     body: input.body,

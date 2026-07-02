@@ -46,6 +46,9 @@ jobs:
       - name: Prompt lockfile check
         run: pnpm --filter @hale/worker prompts:check
 
+      - name: Skill lockfile check
+        run: pnpm --filter @hale/agent skills:check
+
       - name: Classifier eval (cached-only)
         run: pnpm --filter @hale/worker eval:classifier
 

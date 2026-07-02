@@ -2,8 +2,6 @@ import type PgBoss from 'pg-boss';
 import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hale/tools-contracts';
 import { logger } from '../logger.js';
 import { executeApprovedAction, runOrchestrator } from '../orchestrator/index.js';
-import { runMemoryInferencer } from '../agents/memory-inferencer.js';
-import { loadInferencerJob } from '../services/memory-writer.js';
 import { runDailyDigest } from '../services/daily-digest.js';
 import { runVillageDiscovery } from '../services/village-discovery.js';
 
@@ -86,16 +84,6 @@ export async function registerConsumers(boss: PgBoss): Promise<void> {
     await handleApprovedAction(job.id, job.data);
   });
 
-  // Nightly inference batch. The scheduled job carries only {familyId, windowDays};
-  // the loader assembles the real input (recent events + actions + memory snapshot)
-  // at this boundary before the inferencer derives + writes facts/episodes.
-  await boss.work('memory.inference.due', async ([job]) => {
-    if (!job) return;
-    const { familyId, windowDays } = job.data as { familyId: string; windowDays: number };
-    const input = await loadInferencerJob({ familyId, windowDays });
-    await runMemoryInferencer(input);
-  });
-
   // Daily digest generator.
   await boss.work('digest.daily.due', async ([job]) => {
     if (!job) return;
@@ -109,6 +97,6 @@ export async function registerConsumers(boss: PgBoss): Promise<void> {
   });
 
   logger.info(
-    'consumers registered: events.ingested, actions.approved, memory.inference.due, digest.daily.due, village.discovery.due',
+    'consumers registered: events.ingested, actions.approved, digest.daily.due, village.discovery.due',
   );
 }
