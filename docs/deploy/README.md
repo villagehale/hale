@@ -139,15 +139,14 @@ vercel link            # → choose/create the web project
 cat .vercel/project.json   # → orgId, projectId  → VERCEL_ORG_ID, VERCEL_PROJECT_ID_*
 ```
 
-- Web project uses `infra/vercel.json` (`--filter=@hale/web`, output `apps/web/.next`).
-- Site project uses `infra/vercel.site.json` (`--filter=@hale/site`, output `apps/site/.next`).
-- Both pin functions to `yyz1`.
+- Web project (`hale-web`, rootDirectory=`apps/web`) uses `apps/web/vercel.json` — functions pinned to `yul1`, crons included. Deploy with a plain `vercel deploy --prod` (no `--local-config`).
+- Site project is GitHub-connected and auto-deploys on main pushes (not part of deploy.yml).
 
 #### Scheduled agents (cron)
 
 The passive agentic engine runs in production as **Vercel Cron → API routes** on
 the `@hale/agent` harness — no separate worker needed in prod (the pg-boss worker
-stays for local/durable). The schedule lives in `infra/vercel.json` under
+stays for local/durable). The schedule lives in `apps/web/vercel.json` under
 `crons`; the handlers are Node-runtime routes under `apps/web/app/api/cron/*`.
 
 | Route | Schedule (UTC) | Toronto local | Cadence | Does |
@@ -317,7 +316,7 @@ crash is purely the package-entrypoint defect.
 |---|---|---|
 | `infra/fly.toml` | TOML parses; correct non-HTTP poller shape (no `http_service`, `restart=always`, `yyz`) | `fly config validate` (needs `fly auth login`) |
 | Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Runtime needs B2 fixed + secrets |
-| `infra/vercel.json` / `infra/vercel.site.json` | Valid JSON; CLI loads config + build command; `yyz1` pinned | `vercel build/deploy` (needs token + linked project) |
+| `apps/web/vercel.json` | Valid JSON; `yul1` pinned; crons defined | `vercel deploy --prod` (needs token + linked project) |
 | Migration provisioning | `drizzle-kit push` → 14 tables/12 enums on scratch DB; baseline-first `migrate` proven | Real run needs Supabase + B1 fixed |
 | `.github/workflows/deploy.yml` | YAML valid; **actionlint clean (0 findings)**; secret-gating logic | Real run needs the GitHub secrets above |
 

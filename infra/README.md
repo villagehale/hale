@@ -6,7 +6,7 @@ Deployment configuration for Hale.
 
 | Service | Host | Region | Config |
 |---|---|---|---|
-| Web app (`apps/web`) | Vercel | iad1 + yyz1 edge | `infra/vercel.json` |
+| Web app (`apps/web`) | Vercel | yul1 functions | `apps/web/vercel.json` (project rootDirectory=`apps/web`) |
 | Agent Worker (`apps/worker`) | Fly.io | YYZ (Toronto) | `infra/fly.toml` + `apps/worker/Dockerfile` |
 | Postgres | Supabase | ca-central-1 (Toronto) | `infra/supabase/config.toml` (local emulator) |
 | Object storage | Supabase Storage | ca-central-1 | Configured in Supabase dashboard |
@@ -34,7 +34,7 @@ vercel env pull .env.local         # pulls secrets
 vercel --prod                       # deploys
 ```
 
-The `infra/vercel.json` configures Toronto edge region (`yyz1`) and Turbo-based build.
+The operative config is `apps/web/vercel.json` (picked up via the project's rootDirectory) — Montreal functions (`yul1`), Turbo-based build, and the cron schedule.
 
 ### 3. Fly.io worker
 
