@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -195,9 +196,23 @@ export default function AskScreen() {
             )}
           </View>
           {voice.error ? (
-            <AppText variant="meta" className="mt-1.5 text-berry" accessibilityLiveRegion="polite">
-              {voice.error}
-            </AppText>
+            <View className="mt-1.5 flex-row items-baseline gap-2">
+              <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
+                {voice.error}
+              </AppText>
+              {voice.permissionBlocked ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Settings to enable the microphone"
+                  onPress={() => Linking.openSettings()}
+                  className="active:opacity-80"
+                >
+                  <AppText variant="meta" className="text-accent underline">
+                    Open Settings
+                  </AppText>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
         </View>
       </KeyboardAvoidingView>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 type VoiceInput = {
   listening: boolean;
   error: string | null;
+  permissionBlocked: boolean;
   toggle: () => Promise<void>;
 };
 
@@ -16,6 +17,7 @@ type VoiceInput = {
 export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permissionBlocked, setPermissionBlocked] = useState(false);
 
   useSpeechRecognitionEvent('result', (event) => {
     const transcript = event.results?.[0]?.transcript;
@@ -35,12 +37,14 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     }
     const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!perm.granted) {
+      setPermissionBlocked(!perm.canAskAgain);
       setError('Microphone permission is needed for voice.');
       return;
     }
+    setPermissionBlocked(false);
     ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: true });
     setListening(true);
   };
 
-  return { listening, error, toggle };
+  return { listening, error, permissionBlocked, toggle };
 }
