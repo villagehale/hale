@@ -24,14 +24,17 @@ const googleReady = !!googleConfig.iosClientId || !!googleConfig.webClientId;
 
 function GoogleButton({ onError }: { onError: (message: string) => void }) {
   const { signIn } = useAuth();
-  const [, response, promptGoogle] = Google.useAuthRequest({
+  // useIdTokenAuthRequest asks Google for an OpenID id_token (response.params.
+  // id_token) — the credential /api/mobile/auth/google verifies — rather than the
+  // access token useAuthRequest returns.
+  const [, response, promptGoogle] = Google.useIdTokenAuthRequest({
     iosClientId: googleConfig.iosClientId,
     webClientId: googleConfig.webClientId,
   });
 
   useEffect(() => {
     if (response?.type !== 'success') return;
-    const idToken = response.authentication?.idToken;
+    const idToken = response.params?.id_token;
     if (!idToken) return;
     exchangeGoogleIdToken(idToken)
       .then(({ token }) => signIn(token))

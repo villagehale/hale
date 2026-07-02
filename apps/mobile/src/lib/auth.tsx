@@ -1,8 +1,7 @@
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { tokenStorage } from './token-storage';
-
-const TOKEN_KEY = 'hale.session.token';
+import { registerOnUnauthorized } from './api-client';
+import { TOKEN_KEY, tokenStorage } from './token-storage';
 
 type AuthState = {
   token: string | null;
@@ -22,6 +21,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .get(TOKEN_KEY)
       .then(setToken)
       .finally(() => setIsLoading(false));
+  }, []);
+
+  // A 401 from any API call clears the session (the client already dropped the
+  // stored token); dropping in-memory state trips useProtectedRoute → /sign-in.
+  useEffect(() => {
+    registerOnUnauthorized(() => setToken(null));
   }, []);
 
   const value = useMemo<AuthState>(

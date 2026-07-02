@@ -10,20 +10,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
-import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
-import { Tag } from '@/components/ui/tag';
-import {
-  PLACEHOLDER_REPLY,
-  PLACEHOLDER_SOURCE,
-  STARTER_CHIPS,
-  type SourceCard,
-} from '@/constants/ask-data';
+import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
+import { ApiError } from '@/lib/api-client';
+import { askHale } from '@/lib/coach-api';
 import { useTypewriter } from '@/lib/use-typewriter';
 import { useVoiceInput } from '@/lib/use-voice-input';
 
-type Message = { id: string; role: 'user' | 'hale'; text: string; source?: SourceCard };
+type Message = { id: string; role: 'user' | 'hale'; text: string };
 
 function UserBubble({ text }: { text: string }) {
   return (
@@ -32,18 +27,6 @@ function UserBubble({ text }: { text: string }) {
         {text}
       </AppText>
     </View>
-  );
-}
-
-function SourceBlock({ source }: { source: SourceCard }) {
-  return (
-    <Card raised className="mt-2 gap-1">
-      <Tag label={`Source · ${source.framework}`} tone="coach" />
-      <AppText variant="title" className="mt-1">
-        {source.title}
-      </AppText>
-      <AppText variant="meta">{source.summary}</AppText>
-    </Card>
   );
 }
 
@@ -65,7 +48,6 @@ function HaleBubble({ message, streaming }: { message: Message; streaming: boole
           ) : null}
         </AppText>
       </View>
-      {message.source && !isStreaming ? <SourceBlock source={message.source} /> : null}
     </View>
   );
 }
@@ -98,26 +80,39 @@ export default function AskScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const conversationId = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const placeholderColor = useMeadowColor('ink3');
   const inputColor = useMeadowColor('ink');
   const voice = useVoiceInput(setDraft);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const q = text.trim();
-    if (!q) return;
+    if (!q || pending) return;
     const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: q };
-    const replyId = `h-${Date.now()}`;
-    const haleMsg: Message = {
-      id: replyId,
-      role: 'hale',
-      text: PLACEHOLDER_REPLY,
-      source: PLACEHOLDER_SOURCE,
-    };
-    setMessages((prev) => [...prev, userMsg, haleMsg]);
-    setStreamingId(replyId);
+    setMessages((prev) => [...prev, userMsg]);
     setDraft('');
+    setPending(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+
+    try {
+      const { answer, conversationId: nextId } = await askHale({
+        question: q,
+        ...(conversationId.current ? { conversationId: conversationId.current } : {}),
+      });
+      conversationId.current = nextId;
+      const replyId = `h-${Date.now()}`;
+      setMessages((prev) => [...prev, { id: replyId, role: 'hale', text: answer }]);
+      setStreamingId(replyId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      const replyId = `h-err-${Date.now()}`;
+      setMessages((prev) => [...prev, { id: replyId, role: 'hale', text: (e as Error).message }]);
+    } finally {
+      setPending(false);
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    }
   };
 
   const empty = messages.length === 0;
@@ -151,6 +146,18 @@ export default function AskScreen() {
                 <HaleBubble key={m.id} message={m} streaming={m.id === streamingId} />
               ),
             )}
+            {pending ? (
+              <View className="mb-3 max-w-[92%] self-start">
+                <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
+                  Hale
+                </AppText>
+                <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
+                  <AppText variant="body" className="text-ink-3">
+                    Thinking…
+                  </AppText>
+                </View>
+              </View>
+            ) : null}
           </ScrollView>
         )}
 

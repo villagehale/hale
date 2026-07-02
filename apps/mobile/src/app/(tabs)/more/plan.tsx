@@ -1,86 +1,116 @@
-import { Share, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
-import { IconButton } from '@/components/ui/icon-button';
+import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { Tag, type TagTone } from '@/components/ui/tag';
-import { PLAN_WEEK, type PlanItem, type PlanItemKind } from '@/constants/plan-data';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
+import { Tag } from '@/components/ui/tag';
+import type { MobilePlanResponse } from '@/lib/api-types';
+import { useApi } from '@/lib/use-api';
 
-const KIND_LABEL: Record<PlanItemKind, string> = {
-  activity: 'Village',
-  routine: 'Routine',
-  checkup: 'Checkup',
-  immunization: 'Immunization',
-  milestone: 'Milestone',
-};
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+      {children}
+    </AppText>
+  );
+}
 
-const KIND_TONE: Record<PlanItemKind, TagTone> = {
-  activity: 'coach',
-  routine: 'neutral',
-  checkup: 'coach',
-  immunization: 'attention',
-  milestone: 'coach',
-};
+function PlanBody({ data }: { data: MobilePlanResponse }) {
+  const { addedActivities, routine, childItems, hasPlan } = data;
 
-function ItemRow({ item }: { item: PlanItem }) {
-  const shareRoutine = () =>
-    Share.share({ message: `Our routine with Hale: ${item.title} — ${item.detail}` });
+  if (!hasPlan) {
+    return (
+      <Card className="mt-2 items-center gap-2 py-10">
+        <AppText variant="title">A quiet week ahead</AppText>
+        <AppText variant="meta" className="text-center">
+          Nothing is scheduled yet. Add activities in Village and check back here.
+        </AppText>
+      </Card>
+    );
+  }
 
   return (
-    <Card className="gap-1">
-      <View className="flex-row items-start justify-between gap-3">
-        <Tag label={KIND_LABEL[item.kind]} tone={KIND_TONE[item.kind]} />
-        {item.kind === 'routine' ? (
-          <IconButton
-            icon="square.and.arrow.up"
-            accessibilityLabel="Share this routine"
-            size={16}
-            onPress={shareRoutine}
-            className="h-9 w-9 bg-raised"
-          />
-        ) : item.child ? (
-          <AppText variant="mono" className="text-ink-3">
-            {item.child}
+    <>
+      {addedActivities.length > 0 ? (
+        <View className="gap-2">
+          <SectionTitle>Added to your week</SectionTitle>
+          <View className="gap-3">
+            {addedActivities.map((activity) => (
+              <Card key={activity.id} className="gap-1">
+                <Tag label={activity.kind} tone="coach" />
+                <AppText variant="title" className="mt-1">
+                  {activity.title}
+                </AppText>
+              </Card>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {routine && routine.items.length > 0 ? (
+        <View className="gap-2">
+          <SectionTitle>A gentle routine</SectionTitle>
+          <AppText variant="meta" className="-mt-1">
+            Week of {routine.weekOf}
           </AppText>
-        ) : null}
-      </View>
-      <AppText variant="title" className="mt-1">
-        {item.title}
-      </AppText>
-      <AppText variant="meta">{item.detail}</AppText>
-    </Card>
+          <View className="gap-3">
+            {routine.items.map((item, i) => (
+              <Card key={`${item.kind}-${i}`} className="gap-1">
+                <Tag label={item.kind} tone="neutral" />
+                <AppText variant="title" className="mt-1">
+                  {item.title}
+                </AppText>
+                {item.stageNote ? <AppText variant="meta">{item.stageNote}</AppText> : null}
+              </Card>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {childItems.length > 0 ? (
+        <View className="gap-2">
+          <SectionTitle>Coming up for your kids</SectionTitle>
+          <View className="gap-3">
+            {childItems.map((item) => (
+              <Card key={item.key} className="gap-1">
+                <View className="flex-row items-center justify-between">
+                  <Tag label={item.kindLabel} tone="coach" />
+                  <AppText variant="mono" className="text-ink-3">
+                    {item.childName}
+                  </AppText>
+                </View>
+                <AppText variant="title" className="mt-1">
+                  {item.what}
+                </AppText>
+                <AppText variant="meta">{item.when}</AppText>
+              </Card>
+            ))}
+          </View>
+          <AppText variant="meta" className="mt-1 text-center">
+            Timing is the standard Canadian schedule — confirm with your provider.
+          </AppText>
+        </View>
+      ) : null}
+    </>
   );
 }
 
 export default function PlanScreen() {
+  const { status, data, error, refreshing, reload, refresh } =
+    useApi<MobilePlanResponse>('/api/mobile/plan');
+
   return (
-    <Screen scroll className="gap-5">
+    <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
       <ScreenHeader title="Plan" back />
       <AppText variant="meta" className="-mt-2">
         The week ahead — endorsed activities, your routine, and what's coming up per child.
       </AppText>
-
-      {PLAN_WEEK.map((day) => (
-        <View key={day.id} className="gap-2">
-          <View className="flex-row items-baseline gap-2">
-            <AppText variant="title">{day.label}</AppText>
-            <AppText variant="mono" className="text-ink-3">
-              {day.date}
-            </AppText>
-          </View>
-          <View className="gap-3">
-            {day.items.map((item) => (
-              <ItemRow key={item.id} item={item} />
-            ))}
-          </View>
-        </View>
-      ))}
-
-      <AppText variant="meta" className="mt-1 text-center">
-        Always confirm health and milestones with your provider.
-      </AppText>
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && data ? <PlanBody data={data} /> : null}
     </Screen>
   );
 }
