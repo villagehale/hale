@@ -22,6 +22,10 @@ export const runtime = 'nodejs';
  * approve/decline routes — never a fabricated family.
  */
 export async function POST(req: Request): Promise<Response> {
+  if (!process.env.DATABASE_URL) {
+    return NextResponse.json({ error: 'no_database' }, { status: 503 });
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });

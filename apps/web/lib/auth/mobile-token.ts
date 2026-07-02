@@ -37,7 +37,7 @@ export const MOBILE_SESSION_MAX_AGE_S = 7 * 24 * 60 * 60;
  */
 export async function mintMobileSessionToken(input: {
   sub: string;
-  email: string;
+  email?: string;
   secureRequest: boolean;
 }): Promise<string> {
   const secret = process.env.AUTH_SECRET;
@@ -49,7 +49,7 @@ export async function mintMobileSessionToken(input: {
     secret,
     salt: input.secureRequest ? SECURE_SALT : INSECURE_SALT,
     maxAge: MOBILE_SESSION_MAX_AGE_S,
-    token: { sub: input.sub, email: input.email },
+    token: input.email ? { sub: input.sub, email: input.email } : { sub: input.sub },
   });
 }
 

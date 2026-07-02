@@ -42,7 +42,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const token = await mintMobileSessionToken({
     sub: identity.sub,
-    email: identity.email ?? '',
+    email: identity.email,
     secureRequest: requestIsSecure(req.headers),
   });
   return NextResponse.json({ token }, { status: 200 });

@@ -73,6 +73,18 @@ describe('POST /api/mobile/companion/log', () => {
     vi.unstubAllEnvs();
   });
 
+  it('returns 503 with no DATABASE_URL and never resolves a family or writes', async () => {
+    vi.stubEnv('DATABASE_URL', '');
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({ kind: 'feed', childId: CHILD_ID, amountMl: 120 });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'no_database' });
+    expect(currentFamilyIdMock).not.toHaveBeenCalled();
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+
   it('returns 401 for a signed-out caller and never writes', async () => {
     authMock.mockResolvedValue(null);
 

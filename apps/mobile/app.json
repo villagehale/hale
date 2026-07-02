@@ -63,8 +63,7 @@
       },
       "apiBase": "https://www.villagehale.com",
       "google": {
-        "iosClientId": "65507972660-aqt1spng7qnphkt3oe50dkqs5gumn67r.apps.googleusercontent.com",
-        "webClientId": ""
+        "iosClientId": "65507972660-aqt1spng7qnphkt3oe50dkqs5gumn67r.apps.googleusercontent.com"
       }
     },
     "owner": "villagehale"

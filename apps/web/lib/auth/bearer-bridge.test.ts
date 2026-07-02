@@ -173,6 +173,15 @@ describe('bridgeBearerToSessionCookie', () => {
     });
   });
 
+  // This proves the bridged cookie decodes through getToken(). The middleware's
+  // downstream loaders instead go through auth()'s getSession(), which we cannot
+  // exercise here: building the real NextAuth(authConfig) instance in vitest fails
+  // because next-auth's internal `next/server` import isn't resolvable under the
+  // pnpm-hoisted layout (a genuine attempt hit `Cannot find module .../next/server`).
+  // getToken() and getSession() share ONE decode primitive (@auth/core jwt decode:
+  // salt = cookie name, same secret), so this round-trip is the standing proof of
+  // the contract — but that equivalence is a property of the next-auth@5.0.0-beta.25
+  // pin and MUST be re-verified on any next-auth/@auth/core bump.
   it('round-trips a real minted token: the bridged cookie is exactly what getToken reads', async () => {
     const sub = 'credentials:round-trip-1';
     const token = await mintMobileSessionToken({

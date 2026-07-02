@@ -53,6 +53,22 @@ describe('mintMobileSessionToken', () => {
     expect(decoded?.email).toBe('plain@hale.test');
   });
 
+  it('omits the email claim entirely when no email is provided (sub still round-trips)', async () => {
+    const token = await mintMobileSessionToken({
+      sub: 'google-oauth-sub-no-email',
+      secureRequest: true,
+    });
+
+    const decoded = await getToken({
+      req: bearerRequest('https://x/api/anything', token),
+      secret: TEST_SECRET,
+      secureCookie: true,
+    });
+
+    expect(decoded?.sub).toBe('google-oauth-sub-no-email');
+    expect(decoded).not.toHaveProperty('email');
+  });
+
   it('fails to decode across salts (secure mint, insecure read)', async () => {
     const token = await mintMobileSessionToken({
       sub: 'credentials:test-cred-1',

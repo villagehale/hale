@@ -94,6 +94,26 @@ describe('POST /api/mobile/auth/google', () => {
     expect(decoded?.email).toBe(GOOGLE_EMAIL);
   });
 
+  it('omits the email claim when the Google identity has no email', async () => {
+    verifyMock.mockResolvedValue({ sub: GOOGLE_SUB, email: undefined });
+
+    const res = await callPost({ idToken: 'a.b.c' }, { 'x-forwarded-proto': 'https' });
+
+    expect(res.status).toBe(200);
+    const { token } = (await res.json()) as { token: string };
+
+    const decoded = await getToken({
+      req: new Request('https://x/api/anything', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      secret: TEST_SECRET,
+      secureCookie: true,
+    });
+
+    expect(decoded?.sub).toBe(GOOGLE_SUB);
+    expect(decoded).not.toHaveProperty('email');
+  });
+
   it('returns 401 with a generic body when verification throws a jose error', async () => {
     verifyMock.mockRejectedValue(new errors.JWTExpired('token expired', {}));
 
