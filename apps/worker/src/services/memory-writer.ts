@@ -482,6 +482,38 @@ export async function recordDrop(
   }, database);
 }
 
+interface RecordSpendCeilingDropInput {
+  familyId: string;
+  detail: Record<string, unknown>;
+}
+
+/**
+ * Records the HARD monthly LLM-cost ceiling short-circuit: the pipeline stopped
+ * BEFORE any billable stage ran because the family is far past its budget (the
+ * runaway breaker, distinct from the soft over-allowance autonomy valve). No event
+ * row exists yet — the classifier never fired — so this writes only the immutable,
+ * family-scoped audit row (hard rule #6). The audit targets the family; there is no
+ * event/action to update.
+ */
+export async function recordSpendCeilingDrop(
+  input: RecordSpendCeilingDropInput,
+  database: Database = db(),
+): Promise<void> {
+  await recordTransition(async () => {
+    return {
+      value: undefined,
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: 'event.dropped.spend_ceiling',
+        targetTable: 'families',
+        targetId: input.familyId,
+        after: input.detail,
+      },
+    };
+  }, database);
+}
+
 /**
  * Records a Reviewer non-approval (reject / flag_for_human) at the orchestrator
  * gate. recordReviewerVerdict already audited the verdict against the action;

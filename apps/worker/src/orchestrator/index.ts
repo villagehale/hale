@@ -11,6 +11,7 @@ import {
   recordReviewerVerdict,
   recordExecution,
   recordDrop,
+  recordSpendCeilingDrop,
   recordReviewerRejection,
   recordEntitlementGate,
   recordActionGate,
@@ -33,6 +34,8 @@ import {
   hasEntitlement,
   entitlementRequiredFor,
   isOverAllowance,
+  isOverHardCeiling,
+  hardCeilingUsd,
   monthlyAllowanceUsd,
   stageFromAgeInMonths,
   type DraftedAction,
@@ -199,6 +202,30 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       teenContent: resume.teenContent,
     };
   } else {
+    // HARD monthly LLM-cost ceiling — the runaway breaker, distinct from the soft
+    // over-allowance autonomy valve below (line ~458). That valve only downgrades
+    // autonomy AFTER classify/draft/review have already spent; a family far past
+    // its budget would keep paying for three LLM calls per event forever. This
+    // short-circuits BEFORE the first billable stage: no event row exists yet, so
+    // we write only the family-scoped audit (hard rule #6) and return. Loaded once
+    // here for the fresh path only — a resume never reaches this branch, so
+    // committed in-flight work is never stranded.
+    const ceilingPlanTier = await loadFamilyPlanTier(familyId);
+    const childCount = familyContext.stages.length;
+    const monthToDateCostUsd = await loadFamilyMonthToDateCostUsd(familyId);
+    if (isOverHardCeiling(monthToDateCostUsd, ceilingPlanTier, childCount)) {
+      const ceilingUsd = hardCeilingUsd(ceilingPlanTier, childCount);
+      logger.warn(
+        { familyId, planTier: ceilingPlanTier, childCount, monthToDateCostUsd, ceilingUsd },
+        'orchestrator: family over HARD monthly LLM-cost ceiling — dropping before classify (no billable stage run)',
+      );
+      await recordSpendCeilingDrop({
+        familyId,
+        detail: { planTier: ceilingPlanTier, childCount, monthToDateCostUsd, ceilingUsd },
+      });
+      return;
+    }
+
     const isAcceptedVillageItem =
       job.source === VILLAGE_SOURCE && job.payload.event_type === VILLAGE_ACCEPT_EVENT_TYPE;
     const fresh = isAcceptedVillageItem

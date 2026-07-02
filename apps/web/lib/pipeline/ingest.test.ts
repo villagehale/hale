@@ -355,3 +355,59 @@ describe('ingestEvent — classify → draft → review → drafted_for_approval
     expect(capture.agentRuns.map((r) => r.agentName)).toEqual(['classifier']);
   });
 });
+
+describe('ingestEvent — hard monthly LLM-cost ceiling short-circuits before any billable stage', () => {
+  const freshCapture = (): Capture => ({
+    events: [],
+    actions: [],
+    agentRuns: [],
+    audit: [],
+    actionUpdates: [],
+    eventUpdates: [],
+  });
+
+  it('over the ceiling → NO LLM call, drops with reason spend_ceiling, writes the family-scoped audit', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const create = vi.fn();
+    const client = { messages: { create } } as unknown as AgentClient;
+    // free, 1 child → $2 allowance → $6 hard ceiling. $20 is well over.
+    const readCeiling = vi.fn(async () => ({ spentUsd: 20.0, planTier: 'free' as const, childCount: 1 }));
+
+    const outcome = await ingestEvent(baseInput, db, client, NOW, readCeiling);
+
+    // The whole point: the model is NEVER reached.
+    expect(create).not.toHaveBeenCalled();
+    expect(outcome).toEqual({ status: 'dropped', eventId: null, reason: 'spend_ceiling' });
+    // No event / action / agent_run was created — pure short-circuit.
+    expect(capture.events).toHaveLength(0);
+    expect(capture.actions).toHaveLength(0);
+    expect(capture.agentRuns).toHaveLength(0);
+    // Rule #6: the drop is on the immutable audit trail, family-scoped, with the numbers.
+    const ceilingAudit = capture.audit.find((a) => a.actionTaken === 'event.dropped.spend_ceiling');
+    expect(ceilingAudit).toMatchObject({
+      familyId: FAMILY_ID,
+      targetTable: 'families',
+      targetId: FAMILY_ID,
+      after: { planTier: 'free', childCount: 1, monthToDateCostUsd: 20.0, ceilingUsd: 6.0 },
+    });
+  });
+
+  it('under the ceiling → pipeline proceeds exactly as before (classifier runs, draft produced)', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture, { familyCreatedAt: new Date('2026-01-01T00:00:00Z'), allowlisted: true });
+    const client = scriptedClient([{ content: REVIEWER_CHECKS }, SUBMIT('approve', 'all green')]);
+    // free, 1 child → $6 ceiling. $4 is over the soft $2 allowance but under the hard ceiling.
+    const readCeiling = vi.fn(async () => ({ spentUsd: 4.0, planTier: 'free' as const, childCount: 1 }));
+
+    const outcome = await ingestEvent(baseInput, db, client, NOW, readCeiling);
+
+    expect(outcome.status).toBe('drafted_for_approval');
+    expect(capture.agentRuns.map((r) => r.agentName).sort()).toEqual([
+      'classifier',
+      'drafter',
+      'reviewer',
+    ]);
+    expect(capture.audit.map((a) => a.actionTaken)).not.toContain('event.dropped.spend_ceiling');
+  });
+});
