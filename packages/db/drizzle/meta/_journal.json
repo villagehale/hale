@@ -169,6 +169,13 @@
       "when": 1781461080000,
       "tag": "0023_credentials_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781461140000,
+      "tag": "0024_push_tokens",
+      "breakpoints": true
     }
   ]
 }
