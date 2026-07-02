@@ -4,11 +4,14 @@ import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
+import { api } from './api-client';
+
 /**
- * Requests notification permission and fetches the Expo push token at app start,
- * then logs it. Storing the token server-side + sending pushes is a TODO (needs
- * a backend token-store endpoint + Apple APNs certs in EAS). Runs once when the
- * user is authenticated.
+ * Requests notification permission, fetches the Expo push token at app start, and
+ * registers it with the backend token-store for the signed-in user. Runs once when
+ * the user is authenticated (`enabled`). The token is a device address, never
+ * logged (rule #1); a registration failure is swallowed (best-effort — a missing
+ * push token isn't worth surfacing an error to the user).
  */
 export function usePushRegistration(enabled: boolean) {
   useEffect(() => {
@@ -29,9 +32,19 @@ export function usePushRegistration(enabled: boolean) {
 
       const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
       if (cancelled) return;
-      // TODO(push): POST this token to the backend token-store for this user.
-      // biome-ignore lint/suspicious/noConsoleLog: scaffold placeholder — logs the token until the server store lands.
-      console.log('Expo push token:', token);
+
+      try {
+        await api('/api/push/register', {
+          method: 'POST',
+          body: JSON.stringify({
+            expoPushToken: token,
+            platform: Platform.OS === 'ios' ? 'ios' : 'android',
+          }),
+        });
+      } catch {
+        // Best-effort: a failed registration just means no pushes yet, not an error
+        // worth surfacing. The token is never logged (rule #1).
+      }
     })();
 
     return () => {
