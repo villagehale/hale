@@ -30,9 +30,14 @@ export function registerOnUnauthorized(handler: () => void): void {
   onUnauthorized = handler;
 }
 
-async function handleUnauthorized(): Promise<never> {
+/** Clear the persisted token and drop in-memory session state → useProtectedRoute bounces to /sign-in. */
+export async function signalUnauthorized(): Promise<void> {
   await tokenStorage.remove(TOKEN_KEY);
   onUnauthorized?.();
+}
+
+async function handleUnauthorized(): Promise<never> {
+  await signalUnauthorized();
   throw new ApiError(401, 'Your session has expired. Please sign in again.');
 }
 
