@@ -15,7 +15,9 @@
     "build": "tsc -b",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "skills:seed": "node scripts/check-skills.mjs seed",
+    "skills:check": "node scripts/check-skills.mjs check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",

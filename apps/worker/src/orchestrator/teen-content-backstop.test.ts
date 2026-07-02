@@ -69,6 +69,10 @@ vi.mock('../services/memory-writer.js', () => ({
     return { eventId: 'evt-1', duplicate: false };
   }),
   recordDrop: vi.fn(async () => {}),
+  // Pre-classify hard-ceiling read — under ceiling so the fresh path runs.
+  loadFamilyPlanTier: vi.fn(async () => 'free' as const),
+  loadFamilyMonthToDateCostUsd: vi.fn(async () => 0),
+  recordSpendCeilingDrop: vi.fn(async () => {}),
 }));
 
 const { runOrchestrator } = await import('./index.js');

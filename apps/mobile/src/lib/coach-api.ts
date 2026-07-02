@@ -1,4 +1,4 @@
-import { API_BASE, ApiError } from './api-client';
+import { API_BASE, ApiError, signalUnauthorized } from './api-client';
 import { TOKEN_KEY, tokenStorage } from './token-storage';
 
 /**
@@ -52,7 +52,7 @@ export async function askHale(req: AskHaleRequest): Promise<CoachAnswer> {
   }
 
   if (res.status === 401) {
-    await tokenStorage.remove(TOKEN_KEY);
+    await signalUnauthorized();
     throw new ApiError(401, 'Your session has expired. Please sign in again.');
   }
   if (res.status === 429) {

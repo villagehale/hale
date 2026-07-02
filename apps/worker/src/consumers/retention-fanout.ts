@@ -5,11 +5,10 @@ import { db } from '../db.js';
 import { logger } from '../logger.js';
 
 /**
- * Retention scheduler — the closing leg of the retention loop. The three periodic
- * jobs (daily digest, village discovery, memory inference) have consumers but
- * nothing ever enqueued them. This module schedules cron "fan-out" jobs and, on
- * each fire, lists the active families and enqueues the existing per-family job
- * for each one.
+ * Retention scheduler — the closing leg of the retention loop. The periodic jobs
+ * (daily digest, village discovery) have consumers but nothing ever enqueued them.
+ * This module schedules cron "fan-out" jobs and, on each fire, lists the active
+ * families and enqueues the existing per-family job for each one.
  *
  * pg-boss notes (v10): a queue must exist before `send()` will insert into it —
  * `send` to an unknown queue silently no-ops (its INSERT joins on the queue
@@ -23,19 +22,14 @@ import { logger } from '../logger.js';
 
 export const DIGEST_FANOUT_QUEUE = 'digest.daily.fanout';
 export const DISCOVERY_FANOUT_QUEUE = 'village.discovery.fanout';
-export const INFERENCE_FANOUT_QUEUE = 'memory.inference.fanout';
 
 const DEFAULT_TIMEZONE = 'America/Toronto';
 
-/** Nightly memory-inference window. */
-const INFERENCE_WINDOW_DAYS = 1;
-
 /**
  * Cron cadences (timezone-pinned via ScheduleOptions.tz). Daily digest at 6am,
- * memory inference nightly at 2am, village discovery weekly on Monday at 7am.
+ * village discovery weekly on Monday at 7am.
  */
 const DIGEST_CRON = '0 6 * * *';
-const INFERENCE_CRON = '0 2 * * *';
 const DISCOVERY_CRON = '0 7 * * 1';
 
 const isoDateFormatter = new Map<string, Intl.DateTimeFormat>();
@@ -125,34 +119,17 @@ export async function handleDiscoveryFanout(deps: FanoutDeps): Promise<void> {
   deps.log.info({ count: familyIds.length, weekOf }, 'discovery fan-out: enqueued per-family jobs');
 }
 
-/** Fan out memory inference: one `memory.inference.due` job per active family. */
-export async function handleInferenceFanout(deps: FanoutDeps): Promise<void> {
-  const familyIds = await selectActiveFamilyIds(deps.database);
-  for (const familyId of familyIds) {
-    await deps.boss.send('memory.inference.due', {
-      familyId,
-      windowDays: INFERENCE_WINDOW_DAYS,
-    });
-  }
-  deps.log.info(
-    { count: familyIds.length, windowDays: INFERENCE_WINDOW_DAYS },
-    'inference fan-out: enqueued per-family jobs',
-  );
-}
-
 /** Queues that must exist for `send()` / scheduled fires to insert (see header). */
 const ALL_QUEUES = [
   DIGEST_FANOUT_QUEUE,
   DISCOVERY_FANOUT_QUEUE,
-  INFERENCE_FANOUT_QUEUE,
   'digest.daily.due',
   'village.discovery.due',
-  'memory.inference.due',
 ] as const;
 
 /**
  * Create the retention queues, register the fan-out consumers, and upsert the
- * three cron schedules. Idempotent: createQueue and schedule both upsert by name.
+ * cron schedules. Idempotent: createQueue and schedule both upsert by name.
  */
 export async function registerRetentionSchedules(boss: PgBoss): Promise<void> {
   for (const queue of ALL_QUEUES) {
@@ -167,17 +144,12 @@ export async function registerRetentionSchedules(boss: PgBoss): Promise<void> {
     if (!job) return;
     await handleDiscoveryFanout(defaultDeps(boss));
   });
-  await boss.work(INFERENCE_FANOUT_QUEUE, async ([job]) => {
-    if (!job) return;
-    await handleInferenceFanout(defaultDeps(boss));
-  });
 
   await boss.schedule(DIGEST_FANOUT_QUEUE, DIGEST_CRON, {}, { tz: DEFAULT_TIMEZONE });
-  await boss.schedule(INFERENCE_FANOUT_QUEUE, INFERENCE_CRON, {}, { tz: DEFAULT_TIMEZONE });
   await boss.schedule(DISCOVERY_FANOUT_QUEUE, DISCOVERY_CRON, {}, { tz: DEFAULT_TIMEZONE });
 
   logger.info(
     { tz: DEFAULT_TIMEZONE },
-    'retention schedules registered: digest.daily.fanout, memory.inference.fanout, village.discovery.fanout',
+    'retention schedules registered: digest.daily.fanout, village.discovery.fanout',
   );
 }

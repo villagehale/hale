@@ -271,6 +271,28 @@ export async function recordVerdict(
 }
 
 /**
+ * Audit-only record of the HARD monthly LLM-cost ceiling short-circuit: the
+ * pipeline stopped BEFORE the classifier ran because the family is far past its
+ * budget (the runaway breaker, distinct from the soft over-allowance valve). No
+ * event row exists — the classifier never fired — so the audit is family-scoped
+ * (targets `families`), mirroring the worker's event.dropped.spend_ceiling
+ * without acting. Immutable audit row per rule #6.
+ */
+export async function writeSpendCeilingDrop(
+  database: Database,
+  input: { familyId: string; detail: Record<string, unknown> },
+): Promise<void> {
+  await writeAudit(database, {
+    familyId: input.familyId,
+    actor: 'system',
+    actionTaken: 'event.dropped.spend_ceiling',
+    targetTable: 'families',
+    targetId: input.familyId,
+    after: input.detail,
+  });
+}
+
+/**
  * Audit-only record that an autonomy gate held the action back (rule #4). The
  * pipeline never executes, so the action is already at drafted_for_approval; this
  * row makes the REASON observable on the trail (e.g. the 7-day observe window),

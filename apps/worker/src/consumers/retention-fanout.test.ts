@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   handleDigestFanout,
   handleDiscoveryFanout,
-  handleInferenceFanout,
   localIsoDate,
   weekMonday,
 } from './retention-fanout.js';
@@ -82,22 +81,6 @@ describe('handleDiscoveryFanout', () => {
       expect(deps.boss.send).toHaveBeenCalledWith('village.discovery.due', {
         familyId,
         weekOf: '2026-06-15',
-      });
-    }
-  });
-});
-
-describe('handleInferenceFanout', () => {
-  it('enqueues one memory.inference.due per active family with a 1-day window', async () => {
-    const deps = makeDeps(FAMILY_IDS, new Date('2026-06-17T16:00:00.000Z'));
-
-    await handleInferenceFanout(deps);
-
-    expect(deps.boss.send).toHaveBeenCalledTimes(3);
-    for (const familyId of FAMILY_IDS) {
-      expect(deps.boss.send).toHaveBeenCalledWith('memory.inference.due', {
-        familyId,
-        windowDays: 1,
       });
     }
   });
