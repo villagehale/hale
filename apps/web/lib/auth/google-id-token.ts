@@ -61,6 +61,12 @@ export async function verifyGoogleIdToken(
   if (!sub) {
     throw new Error('Google id_token has no subject');
   }
-  const email = typeof payload.email === 'string' ? payload.email : undefined;
+  // Only trust the email when Google asserts it's verified; an unverified (or
+  // unclaimed) email could be attacker-controlled, so drop it rather than let it
+  // resolve an identity.
+  const email =
+    payload.email_verified === true && typeof payload.email === 'string'
+      ? payload.email
+      : undefined;
   return { sub, email };
 }

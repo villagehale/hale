@@ -28,11 +28,15 @@ afterEach(() => {
 async function signIdToken(claims: {
   sub: string;
   email?: string;
+  emailVerified?: boolean;
   iss?: string;
   aud?: string;
   expiresIn?: string | number;
 }): Promise<string> {
-  const jwt = new SignJWT(claims.email ? { email: claims.email } : {})
+  const payload: Record<string, unknown> = {};
+  if (claims.email) payload.email = claims.email;
+  if (claims.emailVerified !== undefined) payload.email_verified = claims.emailVerified;
+  const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
     .setSubject(claims.sub)
     .setIssuer(claims.iss ?? GOOGLE_ISS)
@@ -43,9 +47,13 @@ async function signIdToken(claims: {
 }
 
 describe('verifyGoogleIdToken', () => {
-  it('returns sub and email for a valid Google id_token', async () => {
+  it('returns sub and email for a valid, email-verified Google id_token', async () => {
     vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', CLIENT_ID);
-    const token = await signIdToken({ sub: 'google-user-123', email: 'kid.parent@gmail.com' });
+    const token = await signIdToken({
+      sub: 'google-user-123',
+      email: 'kid.parent@gmail.com',
+      emailVerified: true,
+    });
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
@@ -57,6 +65,7 @@ describe('verifyGoogleIdToken', () => {
     const token = await signIdToken({
       sub: 'google-user-123',
       email: 'p@gmail.com',
+      emailVerified: true,
       iss: 'accounts.google.com',
     });
 
@@ -74,12 +83,35 @@ describe('verifyGoogleIdToken', () => {
     expect(result).toEqual({ sub: 'google-user-123', email: undefined });
   });
 
+  it('drops the email when email_verified is false', async () => {
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', CLIENT_ID);
+    const token = await signIdToken({
+      sub: 'google-user-123',
+      email: 'unverified@gmail.com',
+      emailVerified: false,
+    });
+
+    const result = await verifyGoogleIdToken(token, { jwks });
+
+    expect(result).toEqual({ sub: 'google-user-123', email: undefined });
+  });
+
+  it('drops the email when email_verified is absent (present email, no claim)', async () => {
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', CLIENT_ID);
+    const token = await signIdToken({ sub: 'google-user-123', email: 'no-claim@gmail.com' });
+
+    const result = await verifyGoogleIdToken(token, { jwks });
+
+    expect(result).toEqual({ sub: 'google-user-123', email: undefined });
+  });
+
   it('accepts a token whose aud is the iOS client id when both ids are configured', async () => {
     vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', CLIENT_ID);
     vi.stubEnv('GOOGLE_OAUTH_IOS_CLIENT_ID', '222-ios.apps.googleusercontent.com');
     const token = await signIdToken({
       sub: 'google-user-123',
       email: 'p@gmail.com',
+      emailVerified: true,
       aud: '222-ios.apps.googleusercontent.com',
     });
 

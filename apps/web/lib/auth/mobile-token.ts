@@ -22,7 +22,11 @@ const SECURE_SALT = '__Secure-authjs.session-token';
 /** Auth.js default session-cookie name over HTTP — doubles as the JWT salt. */
 const INSECURE_SALT = 'authjs.session-token';
 
-/** Mobile session lifetime: 7 days, matching the web JWT session maxAge. */
+/**
+ * Mobile session lifetime: 7 days — deliberately SHORTER than the web session
+ * default (30 days; @auth/core lib/init.js maxAge). A long-lived Bearer token on
+ * a device is a bigger exposure than a browser cookie, so it expires sooner.
+ */
 export const MOBILE_SESSION_MAX_AGE_S = 7 * 24 * 60 * 60;
 
 /**

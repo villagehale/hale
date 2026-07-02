@@ -16,6 +16,19 @@ vi.mock('~/lib/auth/rate-limit', () => ({
 }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 
+// Poison the DB connection factory (repo convention, rule #1): this route must
+// never construct a database handle regardless of env. Spread importActual so real
+// schema/types still resolve; only createDb throws.
+vi.mock('@hale/db', async (importActual) => {
+  const actual = await importActual<typeof import('@hale/db')>();
+  return {
+    ...actual,
+    createDb: () => {
+      throw new Error('mobile password route must NOT touch the database (rule #1)');
+    },
+  };
+});
+
 const TEST_SECRET = 'test-auth-secret-mobile-password-route-0123456789';
 
 // Derived from the credentials contract (lib/auth/credentials.ts:

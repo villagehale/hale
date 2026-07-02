@@ -1,10 +1,8 @@
 import { errors } from 'jose';
 import { NextResponse } from 'next/server';
 import { verifyGoogleIdToken } from '~/lib/auth/google-id-token';
-import {
-  mintMobileSessionToken,
-  requestIsSecure,
-} from '~/lib/auth/mobile-token';
+import { mintMobileSessionToken, requestIsSecure } from '~/lib/auth/mobile-token';
+import { authRateLimited } from '~/lib/auth/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +24,10 @@ export async function POST(req: Request): Promise<Response> {
   const idToken = typeof body?.idToken === 'string' ? body.idToken : '';
   if (!idToken) {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
+  }
+
+  if (await authRateLimited()) {
+    return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
   }
 
   let identity: { sub: string; email: string | undefined };

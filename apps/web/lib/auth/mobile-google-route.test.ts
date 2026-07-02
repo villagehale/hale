@@ -6,9 +6,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // directly in google-id-token.test); here we stub it to exercise the route's
 // mapping: a verified identity → a minted session token, a jose failure → 401.
 const verifyMock = vi.fn();
+const rateLimitedMock = vi.fn();
 vi.mock('~/lib/auth/google-id-token', () => ({
   verifyGoogleIdToken: (...args: unknown[]) => verifyMock(...args),
 }));
+vi.mock('~/lib/auth/rate-limit', () => ({
+  authRateLimited: () => rateLimitedMock(),
+}));
+
+// Poison the DB connection factory (repo convention, rule #1): this route must
+// never construct a database handle regardless of env. Spread importActual so real
+// schema/types still resolve; only createDb throws.
+vi.mock('@hale/db', async (importActual) => {
+  const actual = await importActual<typeof import('@hale/db')>();
+  return {
+    ...actual,
+    createDb: () => {
+      throw new Error('mobile google route must NOT touch the database (rule #1)');
+    },
+  };
+});
 
 const TEST_SECRET = 'test-auth-secret-mobile-google-route-0123456789ab';
 
@@ -32,6 +49,8 @@ describe('POST /api/mobile/auth/google', () => {
   beforeEach(() => {
     vi.resetModules();
     verifyMock.mockReset();
+    rateLimitedMock.mockReset();
+    rateLimitedMock.mockResolvedValue(false);
     vi.stubEnv('AUTH_SECRET', TEST_SECRET);
   });
 
@@ -43,6 +62,15 @@ describe('POST /api/mobile/auth/google', () => {
     const res = await callPost({});
 
     expect(res.status).toBe(400);
+    expect(verifyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 429 when the per-IP rate limit is tripped, without verifying the token', async () => {
+    rateLimitedMock.mockResolvedValue(true);
+
+    const res = await callPost({ idToken: 'a.b.c' });
+
+    expect(res.status).toBe(429);
     expect(verifyMock).not.toHaveBeenCalled();
   });
 
