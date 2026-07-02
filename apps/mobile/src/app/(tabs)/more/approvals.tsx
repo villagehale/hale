@@ -4,21 +4,22 @@ import { View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
-import { APPROVAL_ACTIONS, type ApprovalAction } from '@/constants/approvals-data';
+import type { ApprovalView, MobileApprovalsResponse } from '@/lib/api-types';
+import { api, ApiError } from '@/lib/api-client';
+import { useApi } from '@/lib/use-api';
 
-function PayloadBlock({ action }: { action: ApprovalAction }) {
-  if (action.teenRedacted) {
+function PayloadBlock({ action }: { action: ApprovalView }) {
+  if (action.payload === null) {
     return (
       <View className="gap-1.5 rounded-md border border-rule bg-canvas p-3">
         <Tag label="Redacted · teen privacy" tone="attention" />
         <AppText variant="meta" className="mt-1">
-          Category: {action.category}
-        </AppText>
-        <AppText variant="meta">
-          Raw content is hidden by default. Maya can grant time-limited access if you ask.
+          Raw content is hidden by default. Your teen can grant time-limited access if you ask.
         </AppText>
       </View>
     );
@@ -26,7 +27,7 @@ function PayloadBlock({ action }: { action: ApprovalAction }) {
   return (
     <View className="rounded-md border border-rule bg-canvas p-3">
       <AppText variant="mono" className="text-ink-3">
-        {action.payload}
+        {JSON.stringify(action.payload)}
       </AppText>
     </View>
   );
@@ -36,19 +37,29 @@ function ActionCard({
   action,
   onResolve,
 }: {
-  action: ApprovalAction;
-  onResolve: () => void;
+  action: ApprovalView;
+  onResolve: (id: string) => void;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const act = async (verb: 'approve' | 'decline') => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/actions/${action.id}/${verb}`, { method: 'POST' });
+      onResolve(action.id);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+
   return (
     <Card className="gap-2">
       <View className="flex-row items-start justify-between gap-3">
-        <Tag
-          label={action.verdict === 'approve' ? 'Reviewer: approve' : 'Reviewer: needs review'}
-          tone={action.verdict === 'approve' ? 'done' : 'coach'}
-        />
-        <AppText variant="mono" className="text-ink-3">
-          {action.subject}
-        </AppText>
+        <Tag label={`Reviewer: ${action.verdict}`} tone="coach" />
       </View>
 
       <AppText variant="title" className="mt-1">
@@ -58,26 +69,42 @@ function ActionCard({
 
       <PayloadBlock action={action} />
 
-      <AppText variant="meta">{action.reviewerNote}</AppText>
+      <AppText variant="meta">{action.summary}</AppText>
+
+      {error ? (
+        <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
+          {error}
+        </AppText>
+      ) : null}
 
       <View className="mt-1 flex-row gap-2">
-        <Button label="Approve" onPress={onResolve} className="flex-1" />
-        <Button label="Dismiss" variant="secondary" onPress={onResolve} className="flex-1" />
+        <Button
+          label={busy ? 'Working…' : 'Approve'}
+          onPress={() => act('approve')}
+          className="flex-1"
+        />
+        <Button
+          label="Dismiss"
+          variant="secondary"
+          onPress={() => act('decline')}
+          className="flex-1"
+        />
       </View>
     </Card>
   );
 }
 
-export default function ApprovalsScreen() {
-  const [queue, setQueue] = useState<ApprovalAction[]>(APPROVAL_ACTIONS);
-
-  const resolve = (id: string) => setQueue((prev) => prev.filter((a) => a.id !== id));
-
+function ApprovalsBody({
+  data,
+  onResolve,
+}: {
+  data: MobileApprovalsResponse;
+  onResolve: (id: string) => void;
+}) {
+  const { approvals } = data;
   return (
-    <Screen scroll className="gap-5">
-      <ScreenHeader title="Approvals" back />
-
-      {queue.length === 0 ? (
+    <>
+      {approvals.length === 0 ? (
         <Card className="mt-2 items-center gap-2 py-10">
           <AppText variant="title">You're all caught up</AppText>
           <AppText variant="meta" className="text-center">
@@ -87,11 +114,11 @@ export default function ApprovalsScreen() {
       ) : (
         <View className="gap-3">
           <AppText variant="meta" className="-mt-2">
-            {queue.length} action{queue.length === 1 ? '' : 's'} waiting for your okay. Nothing
-            happens without it.
+            {approvals.length} action{approvals.length === 1 ? '' : 's'} waiting for your okay.
+            Nothing happens without it.
           </AppText>
-          {queue.map((action) => (
-            <ActionCard key={action.id} action={action} onResolve={() => resolve(action.id)} />
+          {approvals.map((action) => (
+            <ActionCard key={action.id} action={action} onResolve={onResolve} />
           ))}
         </View>
       )}
@@ -104,6 +131,31 @@ export default function ApprovalsScreen() {
           automatically — still logged, still reversible.
         </AppText>
       </Card>
+    </>
+  );
+}
+
+export default function ApprovalsScreen() {
+  const { status, data, error, refreshing, reload, refresh } = useApi<MobileApprovalsResponse>(
+    '/api/mobile/approvals',
+  );
+  const [resolved, setResolved] = useState<Set<string>>(new Set());
+
+  const visible = data
+    ? { approvals: data.approvals.filter((a) => !resolved.has(a.id)) }
+    : null;
+
+  return (
+    <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
+      <ScreenHeader title="Approvals" back />
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && visible ? (
+        <ApprovalsBody
+          data={visible}
+          onResolve={(id) => setResolved((prev) => new Set(prev).add(id))}
+        />
+      ) : null}
     </Screen>
   );
 }

@@ -5,12 +5,14 @@ import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
+import { useAuth } from '@/lib/auth';
 
 type MenuItem = {
   label: string;
   detail: string;
   icon: IconName;
   href?: Href;
+  action?: 'signOut';
 };
 
 const SECTIONS: { items: MenuItem[] }[] = [
@@ -34,19 +36,24 @@ const SECTIONS: { items: MenuItem[] }[] = [
   {
     items: [
       { label: 'Settings', detail: 'Notifications, privacy', icon: 'gearshape' },
-      { label: 'Sign out', detail: '', icon: 'rectangle.portrait.and.arrow.right' },
+      {
+        label: 'Sign out',
+        detail: '',
+        icon: 'rectangle.portrait.and.arrow.right',
+        action: 'signOut',
+      },
     ],
   },
 ];
 
-function MenuRow({ item, last }: { item: MenuItem; last: boolean }) {
+function MenuRow({ item, last, onPress }: { item: MenuItem; last: boolean; onPress: () => void }) {
   const icon = useMeadowColor('ink2');
   const chevron = useMeadowColor('ink3');
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={item.label}
-      onPress={() => item.href && router.push(item.href)}
+      onPress={onPress}
       className={`flex-row items-center gap-3 px-4 py-4 active:opacity-80 ${
         last ? '' : 'border-rule border-b'
       }`}
@@ -64,6 +71,16 @@ function MenuRow({ item, last }: { item: MenuItem; last: boolean }) {
 }
 
 export default function MoreScreen() {
+  const { signOut } = useAuth();
+
+  const activate = (item: MenuItem) => {
+    if (item.action === 'signOut') {
+      signOut();
+      return;
+    }
+    if (item.href) router.push(item.href);
+  };
+
   return (
     <Screen scroll className="gap-5">
       <AppText variant="display" className="pt-2">
@@ -75,7 +92,12 @@ export default function MoreScreen() {
           className="overflow-hidden rounded-lg border border-rule bg-card"
         >
           {section.items.map((item, i) => (
-            <MenuRow key={item.label} item={item} last={i === section.items.length - 1} />
+            <MenuRow
+              key={item.label}
+              item={item}
+              last={i === section.items.length - 1}
+              onPress={() => activate(item)}
+            />
           ))}
         </View>
       ))}

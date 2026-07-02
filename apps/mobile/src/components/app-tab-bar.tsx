@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { APPROVAL_ACTIONS } from '@/constants/approvals-data';
 import { useMeadowColor } from '@/constants/meadow';
 
 type TabMeta = { label: string; icon: IconName };
@@ -17,13 +16,10 @@ const TABS: Record<string, TabMeta> = {
   more: { label: 'More', icon: 'ellipsis' },
 };
 
-const PENDING_APPROVALS = APPROVAL_ACTIONS.length;
-
 export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeTint = useMeadowColor('ink');
   const inactiveTint = useMeadowColor('ink3');
-  const badgeTextColor = useMeadowColor('canvas');
 
   return (
     <View
@@ -34,7 +30,6 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
         const meta = TABS[route.name];
         if (!meta) return null;
         const isFocused = state.index === index;
-        const badge = route.name === 'more' && PENDING_APPROVALS > 0 ? PENDING_APPROVALS : 0;
 
         const onPress = () => {
           const event = navigation.emit({
@@ -51,24 +46,13 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
           <Pressable
             key={route.key}
             accessibilityRole="button"
-            accessibilityLabel={badge ? `${meta.label}, ${badge} pending approvals` : meta.label}
+            accessibilityLabel={meta.label}
             accessibilityState={isFocused ? { selected: true } : {}}
             onPress={onPress}
             className="flex-1 items-center justify-end gap-1 pb-1 active:opacity-80"
           >
             <View>
               <Icon name={meta.icon} size={22} color={isFocused ? activeTint : inactiveTint} />
-              {badge ? (
-                <View className="absolute -right-2.5 -top-1.5 h-4 min-w-4 items-center justify-center rounded-full bg-berry px-1">
-                  <AppText
-                    variant="meta"
-                    className="text-[10px] leading-[14px]"
-                    style={{ color: badgeTextColor }}
-                  >
-                    {badge}
-                  </AppText>
-                </View>
-              ) : null}
             </View>
             <AppText
               variant="meta"

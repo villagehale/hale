@@ -60,6 +60,11 @@
       "router": {},
       "eas": {
         "projectId": "f8eba851-1254-4fba-8320-a517eeef7434"
+      },
+      "apiBase": "https://www.villagehale.com",
+      "google": {
+        "iosClientId": "65507972660-aqt1spng7qnphkt3oe50dkqs5gumn67r.apps.googleusercontent.com",
+        "webClientId": ""
       }
     },
     "owner": "villagehale"

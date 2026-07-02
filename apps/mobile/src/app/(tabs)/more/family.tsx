@@ -1,13 +1,32 @@
-import { Share, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Field } from '@/components/ui/field';
+import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
-import { FAMILY } from '@/constants/family-data';
+import type { FamilyLocationView, MemberView, MobileFamilyResponse } from '@/lib/api-types';
+import { useApi } from '@/lib/use-api';
+
+const ROLE_LABEL: Record<string, string> = {
+  primary_parent: 'You',
+  co_parent: 'Co-parent',
+};
+
+// Mirrored from @hale/types ONBOARDING_INTENTS — the intents come back as their
+// stored values; show the same labels the web wizard/settings use.
+const INTENT_LABEL: Record<string, string> = {
+  activities: 'Activities & classes',
+  childcare: 'Childcare',
+  milestones: 'Milestones & development',
+  planning: 'Weekly planning & routine',
+  sitter: 'Trusted sitter/nanny',
+  health: 'Health & specialists',
+  community: 'Meeting other families',
+  exploring: 'Just exploring',
+};
 
 function SectionTitle({ children }: { children: string }) {
   return (
@@ -17,91 +36,104 @@ function SectionTitle({ children }: { children: string }) {
   );
 }
 
-export default function FamilyScreen() {
-  const shareInvite = () =>
-    Share.share({ message: `Join our family on Hale: https://${FAMILY.inviteLink}` });
+function coarseArea(location: FamilyLocationView): string {
+  const parts = [location.city, location.province, location.postalCode].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : 'Not set';
+}
 
+function ParentRow({ member }: { member: MemberView }) {
   return (
-    <Screen scroll className="gap-6">
-      <ScreenHeader title="Family" back />
+    <View className="flex-row items-center justify-between">
+      <View className="flex-1">
+        <AppText variant="body" className="text-ink">
+          {member.name ?? member.email}
+        </AppText>
+        <AppText variant="meta">{member.email}</AppText>
+      </View>
+      <Tag label={ROLE_LABEL[member.role] ?? member.role} tone="neutral" />
+    </View>
+  );
+}
 
+function FamilyBody({ data }: { data: MobileFamilyResponse }) {
+  const { members, basics } = data;
+  return (
+    <>
       <View className="gap-2">
         <SectionTitle>Parents</SectionTitle>
         <Card className="gap-3">
-          {FAMILY.parents.map((parent) => (
-            <View key={parent.id} className="flex-row items-center justify-between">
-              <View>
-                <AppText variant="body" className="text-ink">
-                  {parent.name}
-                </AppText>
-                <AppText variant="meta">{parent.email}</AppText>
-              </View>
-              <Tag label={parent.role} tone="neutral" />
+          {members.primary ? <ParentRow member={members.primary} /> : null}
+          {members.coParent ? (
+            <ParentRow member={members.coParent} />
+          ) : (
+            <View className="border-t border-rule pt-3">
+              <AppText variant="meta">
+                Co-parent invite pending — a second parent can join to share this household.
+              </AppText>
             </View>
-          ))}
-          <View className="gap-1.5 border-t border-rule pt-3">
-            <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-              Co-parent invite link
-            </AppText>
-            <AppText variant="mono" className="text-ink-2">
-              {FAMILY.inviteLink}
-            </AppText>
-            <Button
-              label="Share invite"
-              variant="secondary"
-              onPress={shareInvite}
-              className="mt-1 self-start"
-            />
-          </View>
+          )}
         </Card>
       </View>
 
       <View className="gap-2">
         <SectionTitle>Children</SectionTitle>
-        {FAMILY.children.map((child) => (
-          <Card key={child.id} className="gap-3">
-            <Field label="Name" defaultValue={child.name} autoCapitalize="words" />
-            <Field
-              label="Birthday"
-              defaultValue={child.birthday}
-              placeholder="YYYY-MM-DD"
-              keyboardType="numbers-and-punctuation"
-            />
-            <Field
-              label="Stage"
-              defaultValue={child.stage}
-              editable={false}
-              hint="Set from birthday"
-            />
-            <Field label="Interests" defaultValue={child.interests} autoCapitalize="sentences" />
+        {basics.children.length === 0 ? (
+          <Card>
+            <AppText variant="meta">No children added yet.</AppText>
           </Card>
-        ))}
+        ) : (
+          basics.children.map((child) => (
+            <Card key={child.id} className="flex-row items-center justify-between">
+              <View>
+                <AppText variant="body" className="text-ink">
+                  {child.name}
+                </AppText>
+                <AppText variant="meta">{child.dateOfBirth}</AppText>
+              </View>
+              <Tag label={child.stageLabel} tone="coach" />
+            </Card>
+          ))
+        )}
       </View>
 
       <View className="gap-2">
         <SectionTitle>Your area</SectionTitle>
-        <Card className="gap-3">
-          <Field
-            label="Postal code"
-            defaultValue={FAMILY.postalCode}
-            autoCapitalize="characters"
-            keyboardType="default"
-            hint="Drives local discovery using a coarse area only — never your exact address."
-          />
+        <Card className="gap-1">
+          <AppText variant="body" className="text-ink">
+            {coarseArea(basics.location)}
+          </AppText>
+          <AppText variant="meta">
+            Drives local discovery using a coarse area only — never your exact address.
+          </AppText>
         </Card>
       </View>
 
-      <View className="gap-2">
-        <SectionTitle>What you're hoping for</SectionTitle>
-        <Card className="gap-3">
-          <View className="flex-row flex-wrap gap-2">
-            {FAMILY.intents.map((intent) => (
-              <Tag key={intent} label={intent} tone="coach" />
-            ))}
-          </View>
-          <Button label="Add an intent" variant="secondary" className="self-start" />
-        </Card>
-      </View>
+      {basics.intents.length > 0 ? (
+        <View className="gap-2">
+          <SectionTitle>What you're hoping for</SectionTitle>
+          <Card>
+            <View className="flex-row flex-wrap gap-2">
+              {basics.intents.map((intent) => (
+                <Tag key={intent} label={INTENT_LABEL[intent] ?? intent} tone="coach" />
+              ))}
+            </View>
+          </Card>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+export default function FamilyScreen() {
+  const { status, data, error, refreshing, reload, refresh } =
+    useApi<MobileFamilyResponse>('/api/mobile/family');
+
+  return (
+    <Screen scroll className="gap-6" refreshControl={useTintedRefresh(refreshing, refresh)}>
+      <ScreenHeader title="Family" back />
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && data ? <FamilyBody data={data} /> : null}
     </Screen>
   );
 }

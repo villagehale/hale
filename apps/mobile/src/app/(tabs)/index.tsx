@@ -5,17 +5,33 @@ import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { Pill } from '@/components/ui/pill';
+import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { useMeadowColor } from '@/constants/meadow';
-import { PLACEHOLDER } from '@/constants/placeholder-data';
+import type { ChildCompanionView, MobileHomeResponse, VillageCandidateView } from '@/lib/api-types';
+import { agePhrase } from '@/lib/format';
 import { timeGreeting } from '@/lib/greeting';
+import { useApi } from '@/lib/use-api';
 
-export default function HomeScreen() {
-  const { rightNow, village, children } = PLACEHOLDER;
+function nextForChild(child: ChildCompanionView): string {
+  const health = child.nextHealth[0];
+  if (health) return health.dueInWeeks <= 0 ? `${health.what} — due now` : health.what;
+  const milestone = child.milestones.find((m) => m.timing === 'in_window') ?? child.milestones[0];
+  if (milestone) return `${milestone.what} — worth watching`;
+  return child.whatsNext;
+}
+
+function firstVillageRec(candidates: VillageCandidateView[]): VillageCandidateView | null {
+  return candidates.find((c) => !c.teenAttributed) ?? null;
+}
+
+function HomeBody({ data }: { data: MobileHomeResponse }) {
   const askIconColor = useMeadowColor('ink3');
+  const rec = firstVillageRec(data.village.candidates);
 
   return (
-    <Screen scroll className="gap-5">
+    <>
       <View className="flex-row items-center justify-between pt-2">
         <AppText variant="display">{timeGreeting()}</AppText>
         <AppText variant="title" className="text-sea">
@@ -23,25 +39,15 @@ export default function HomeScreen() {
         </AppText>
       </View>
 
-      <Card raised className="gap-1">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-          Right now
-        </AppText>
-        <View className="mt-1 flex-row items-baseline gap-2">
-          <AppText variant="title">{rightNow.label}</AppText>
-          <AppText variant="mono" className="text-accent">
-            {rightNow.time}
-          </AppText>
-        </View>
-        <AppText variant="meta" className="mt-1">
-          {rightNow.detail}
-        </AppText>
-      </Card>
-
       <View className="flex-row items-center gap-2">
-        <Pill label="Feed" icon="drop.fill" className="flex-1" />
-        <Pill label="Nap" icon="moon.fill" className="flex-1" />
-        <Pill label="Milestone" icon="star.fill" className="flex-1" />
+        <Pill label="Feed" icon="drop.fill" className="flex-1" onPress={() => router.push('/companion')} />
+        <Pill label="Nap" icon="moon.fill" className="flex-1" onPress={() => router.push('/companion')} />
+        <Pill
+          label="Milestone"
+          icon="star.fill"
+          className="flex-1"
+          onPress={() => router.push('/companion')}
+        />
       </View>
 
       <Card onPress={() => router.push('/ask')} className="flex-row items-center justify-between">
@@ -51,45 +57,64 @@ export default function HomeScreen() {
         <Icon name="mic" size={20} color={askIconColor} />
       </Card>
 
-      <View className="gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-          From the village
-        </AppText>
-        <Card onPress={() => router.push('/village')} className="gap-1">
-          <AppText variant="title">{village.title}</AppText>
-          <AppText variant="mono" className="text-ink-3">
-            {village.meta}
+      {rec ? (
+        <View className="gap-2">
+          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+            From the village
           </AppText>
-          <AppText variant="body" className="mt-1">
-            {village.blurb}
-          </AppText>
-        </Card>
-      </View>
-
-      <View className="gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-          Companion
-        </AppText>
-        <View className="flex-row gap-3">
-          {children.map((child) => (
-            <Card
-              key={child.name}
-              onPress={() => router.push('/companion')}
-              className="flex-1 gap-1"
-            >
-              <View className="flex-row items-baseline justify-between">
-                <AppText variant="title">{child.name}</AppText>
-                <AppText variant="mono" className="text-ink-3">
-                  {child.ageLabel}
-                </AppText>
-              </View>
-              <AppText variant="meta" className="mt-1">
-                {child.next}
-              </AppText>
-            </Card>
-          ))}
+          <Card onPress={() => router.push('/village')} className="gap-1">
+            <AppText variant="title">{rec.title}</AppText>
+            <AppText variant="mono" className="text-ink-3">
+              {rec.kind}
+              {rec.endorsementCount > 0 ? ` · endorsed by ${rec.endorsementCount} families` : ''}
+            </AppText>
+            <AppText variant="body" className="mt-1">
+              {rec.summary}
+            </AppText>
+          </Card>
         </View>
-      </View>
+      ) : null}
+
+      {data.children.length > 0 ? (
+        <View className="gap-2">
+          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+            Companion
+          </AppText>
+          <View className="flex-row flex-wrap gap-3">
+            {data.children.map((child) => (
+              <Card
+                key={child.id}
+                onPress={() => router.push('/companion')}
+                className="min-w-[45%] flex-1 gap-1"
+              >
+                <View className="flex-row items-baseline justify-between">
+                  <AppText variant="title">{child.name ?? 'Your child'}</AppText>
+                  <AppText variant="mono" className="text-ink-3">
+                    {agePhrase(child.ageMonths)}
+                  </AppText>
+                </View>
+                <AppText variant="meta" className="mt-1">
+                  {nextForChild(child)}
+                </AppText>
+              </Card>
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+export default function HomeScreen() {
+  const { status, data, error, refreshing, reload, refresh } = useApi<MobileHomeResponse>(
+    '/api/mobile/home',
+  );
+
+  return (
+    <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && data ? <HomeBody data={data} /> : null}
     </Screen>
   );
 }

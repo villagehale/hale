@@ -1,6 +1,10 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
+/** Storage key for the persisted session token — the single source of truth
+ * shared by the auth provider and the API client. */
+export const TOKEN_KEY = 'hale.session.token';
+
 /**
  * Session-token persistence. Native uses the Keychain/Keystore via
  * expo-secure-store; that module has no web implementation, so on web (the dev
