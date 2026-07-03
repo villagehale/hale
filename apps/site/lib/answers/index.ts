@@ -28,7 +28,7 @@ const ANSWERS: AnswerPage[] = [
         heading: 'What cluster feeding is',
         body: [
           'Cluster feeding is when a baby feeds several times in close succession over a few hours, most often in the evening, instead of spacing feeds evenly through the day. It is common in the newborn weeks and usually comes and goes.',
-          'The Canadian Paediatric Society notes that newborns feed often and irregularly, and that frequent feeding in the early weeks is expected rather than a warning sign. Counting wet and dirty diapers and steady weight gain — tracked with your provider — are the signals of adequate intake, not the spacing of feeds.',
+          'The Canadian Paediatric Society notes that in the first few weeks babies breastfeed 8 to 12 times a day, on demand rather than on a fixed schedule, so frequent feeding in the early weeks is expected rather than a warning sign. Counting wet and dirty diapers and steady weight gain — tracked with your provider — are the signals of adequate intake, not the spacing of feeds.',
         ],
       },
       {
@@ -49,9 +49,9 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'cps',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — "Feeding your baby in the first year" (caringforkids.cps.ca)',
+          'Canadian Paediatric Society, Caring for Kids — "Breastfeeding" (caringforkids.cps.ca/handouts/pregnancy-and-babies/breastfeeding)',
         excerpt:
-          'Newborns feed frequently and on no fixed schedule; wet/dirty diapers and weight gain are the signs of adequate intake.',
+          'In the first few weeks babies breastfeed 8 to 12 times a day and are fed on demand, not on a fixed schedule; six or more wet diapers a day and steady weight gain are signs a baby is feeding well.',
       },
       {
         framework: 'karp',
@@ -74,7 +74,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['newborn-sleep-fragmented', 'newborn-safe-sleep-basics'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'newborn-sleep-fragmented',
@@ -141,7 +141,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['newborn-cluster-feeding', 'newborn-safe-sleep-basics'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'newborn-safe-sleep-basics',
@@ -208,7 +208,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['newborn-sleep-fragmented', 'newborn-cluster-feeding'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'introducing-peanuts-to-baby',
@@ -245,9 +245,23 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'cps',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — "Preventing food allergy in babies and young children" (caringforkids.cps.ca)',
+          'Canadian Paediatric Society, Caring for Kids — "Food allergy vs. food intolerance: What is the difference and can I prevent them?" (caringforkids.cps.ca/handouts/healthy-living/food_allergies_and_intolerances)',
         excerpt:
-          'Introduce common allergens around six months; delaying does not prevent allergy and earlier introduction may reduce risk.',
+          'There is no evidence that avoiding certain foods prevents allergy; common food allergens can be introduced around six months of age, but not before four months.',
+      },
+      {
+        framework: 'cps',
+        reference:
+          'Canadian Paediatric Society, Caring for Kids — "Feeding your baby in the first year" (caringforkids.cps.ca/handouts/feeding_your_baby_in_the_first_year)',
+        excerpt:
+          'Mix a little smooth peanut butter with water, breast milk, or a purée the baby has had before, or offer a peanut puff product; whole peanuts and thick globs are choking hazards.',
+      },
+      {
+        framework: 'cps',
+        reference:
+          'Canadian Paediatric Society, position statement — "Timing of introduction of allergenic solids for infants at high risk" (cps.ca/en/documents/position/allergenic-solids)',
+        excerpt:
+          'For infants at high risk of food allergy, consider introducing allergenic solids such as peanut around six months, and not before four months.',
       },
       {
         framework: 'aap',
@@ -271,22 +285,22 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['starting-solids-when-ready', 'newborn-cluster-feeding'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'starting-solids-when-ready',
     question: 'When is my baby ready to start solid foods?',
     title: 'Signs your baby is ready for solid foods',
     description:
-      'Solids usually start around six months, once a baby can sit up with support, has good head control, and shows interest in food. The readiness signs and Canadian guidance.',
+      'Solids usually start around six months, once a baby can sit up without support, has good head and neck control, and shows interest in food. The readiness signs and Canadian guidance.',
     stage: 'newborn',
     answer:
-      'Most babies are ready to start solid foods around six months of age, when they can sit up with support and hold their head steady, have lost the reflex that pushes food out of their mouth, and show interest in what others are eating. Breast milk or formula continues alongside solids.',
+      'Most babies are ready to start solid foods around six months of age, when they can sit up without support and have good control of their neck muscles, have lost the reflex that pushes food out of their mouth, and show interest in what others are eating. Breast milk or formula continues alongside solids.',
     sections: [
       {
         heading: 'The readiness signs',
         body: [
-          'The Canadian Paediatric Society describes starting solids at around six months, and lists developmental readiness signs rather than a fixed date: good head and neck control, the ability to sit up with support, showing interest in food, and being able to move food to the back of the mouth and swallow rather than pushing it out.',
+          'The Canadian Paediatric Society describes starting solids at around six months, and lists developmental readiness signs rather than a fixed date: being able to sit up without support, lean forward, and have good control of the neck muscles; showing interest in food; and holding food in the mouth without pushing it out with the tongue right away.',
           'Iron-rich first foods — such as iron-fortified infant cereal, well-cooked meats, or legumes — are emphasized because a baby\'s iron stores start to run low around this age.',
         ],
       },
@@ -307,9 +321,9 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'cps',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — "Feeding your baby in the first year" (caringforkids.cps.ca)',
+          'Canadian Paediatric Society, Caring for Kids — "Feeding your baby in the first year" (caringforkids.cps.ca/handouts/feeding_your_baby_in_the_first_year)',
         excerpt:
-          'Start solids around six months based on developmental readiness signs; begin with iron-rich foods.',
+          'Around six months, look for readiness signs — can sit up without support, lean forward, and has good control of the neck muscles; begin with iron-rich foods.',
       },
       {
         framework: 'health_canada',
@@ -332,7 +346,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['introducing-peanuts-to-baby', 'newborn-cluster-feeding'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-tantrums-how-to-handle',
@@ -398,7 +412,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-biting-what-to-do', 'toddler-separation-anxiety-daycare'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-biting-what-to-do',
@@ -413,7 +427,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'Why toddlers bite',
         body: [
-          'Toddlers have big feelings and few words. The Canadian Paediatric Society describes biting as a common toddler behaviour that often reflects frustration, teething, tiredness, or a need for attention rather than intent to harm. Seeing it as communication, not cruelty, changes how you respond.',
+          'Toddlers have big feelings and few words. The American Academy of Pediatrics notes that a young child often lacks the self-control to express anger peacefully and may lash out — hitting or biting in frustration — rather than intending to harm. Seeing it as communication, not cruelty, changes how you respond.',
         ],
       },
       {
@@ -432,10 +446,11 @@ const ANSWERS: AnswerPage[] = [
     ],
     citations: [
       {
-        framework: 'cps',
+        framework: 'aap',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — toddler behaviour and biting (caringforkids.cps.ca)',
-        excerpt: 'Biting is a common toddler behaviour driven by frustration, teething, or unmet needs.',
+          'American Academy of Pediatrics, HealthyChildren.org — "10 Tips to Prevent Aggressive Behavior in Young Children" (healthychildren.org/English/ages-stages/toddler/Pages/Aggressive-Behavior.aspx)',
+        excerpt:
+          'A young child often lacks the self-control to express anger peacefully and may lash out — hitting or biting in frustration — so teach words for feelings rather than punishing.',
       },
       {
         framework: 'lansbury',
@@ -462,7 +477,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-tantrums-how-to-handle', 'toddler-separation-anxiety-daycare'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-separation-anxiety-daycare',
@@ -477,7 +492,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'Separation anxiety is normal and healthy',
         body: [
-          'The Canadian Paediatric Society describes separation anxiety as a normal developmental phase for young children — a reflection of the attachment bond, which peaks in the toddler years and eases with time. Distress at goodbye is not evidence of a problem with the child or the daycare.',
+          'The Canadian Paediatric Society describes separation anxiety as a normal developmental phase for young children — a reflection of the attachment bond, which is still common in the toddler years and eases with time. Distress at goodbye is not evidence of a problem with the child or the daycare.',
         ],
       },
       {
@@ -498,8 +513,9 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'cps',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — separation anxiety and attachment (caringforkids.cps.ca)',
-        excerpt: 'Separation anxiety is a normal developmental phase reflecting a healthy attachment bond.',
+          'Canadian Paediatric Society, Caring for Kids — "Helping children deal with their fears" (caringforkids.cps.ca/handouts/behavior-and-development/children_and_fears)',
+        excerpt:
+          'Fears and separation anxiety are a normal part of a young child\'s development and ease with time as a child is reassured and supported.',
       },
       {
         framework: 'markham',
@@ -536,12 +552,12 @@ const ANSWERS: AnswerPage[] = [
       'Potty training goes best when it follows a child’s readiness signs rather than a fixed age. The physical and behavioural cues, and a low-pressure approach.',
     stage: 'toddler',
     answer:
-      'Potty training tends to go best when it follows a child\'s readiness rather than a set age — most children show signs somewhere between about 18 months and 3 years. Readiness is a mix of physical signs (staying dry longer, predictable bowel movements) and behavioural ones (interest in the toilet, being able to follow simple instructions, and telling you they need to go).',
+      'Potty training tends to go best when it follows a child\'s readiness rather than a set age — some children are ready as young as 18 months, but most start between 2 and 4 years. Readiness is a mix of physical signs (staying dry in their diaper for several hours in a row, predictable bowel movements) and behavioural ones (interest in the toilet, being able to follow simple instructions, and telling you they need to go).',
     sections: [
       {
         heading: 'The readiness signs',
         body: [
-          'The Canadian Paediatric Society describes potty training as best started when a child shows readiness signs, not at a fixed birthday. Physical signs include staying dry for a couple of hours and having regular, predictable bowel movements. Developmental and behavioural signs include being able to walk to and sit on a potty, pull clothing up and down with help, follow simple directions, show interest in the toilet, and communicate the need to go.',
+          'The Canadian Paediatric Society describes potty training as best started when a child shows readiness signs, not at a fixed birthday — some children are ready as young as 18 months, but most start between 2 and 4 years. Physical signs include being dry in their diaper for several hours in a row and having regular, predictable bowel movements. Developmental and behavioural signs include being able to walk to and sit on a potty, pull clothing up and down with help, follow simple directions, show interest in the toilet, and communicate the need to go.',
         ],
       },
       {
@@ -562,9 +578,9 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'cps',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — "Toilet learning" (caringforkids.cps.ca)',
+          'Canadian Paediatric Society, Caring for Kids — "Toilet learning" (caringforkids.cps.ca/handouts/behavior-and-development/toilet_learning)',
         excerpt:
-          'Start when the child shows physical and behavioural readiness signs; keep it low-pressure.',
+          'Some children are ready as young as 18 months, but most start between 2 and 4 years; begin when the child shows readiness signs, such as being dry in their diaper for several hours in a row, and keep it low-pressure.',
       },
       {
         framework: 'markham',
@@ -576,7 +592,7 @@ const ANSWERS: AnswerPage[] = [
       {
         question: 'What age should my child be potty trained?',
         answer:
-          'There is no single right age. Most children show readiness between about 18 months and 3 years, and following the child\'s cues works better than a deadline.',
+          'There is no single right age. Some children are ready as young as 18 months, but most start between 2 and 4 years, and following the child\'s cues works better than a deadline.',
       },
       {
         question: 'My child was trained and started having accidents again — why?',
@@ -586,17 +602,17 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-tantrums-how-to-handle', 'toddler-separation-anxiety-daycare'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-screen-time-guidelines',
     question: 'How much screen time is okay for a toddler?',
     title: 'Screen time for toddlers: what the guidelines say',
     description:
-      'Canadian guidance recommends little to no screen time under two, and no more than an hour a day for ages two to four. The numbers and the reasoning.',
+      'Canadian guidance recommends little to no screen time under two, and no more than an hour a day for ages two to five. The numbers and the reasoning.',
     stage: 'toddler',
     answer:
-      'Canadian guidance recommends no screen time for children under two (other than video-chatting with family), and no more than one hour a day of good-quality screen time for children aged two to four — with less being better. Just as important as the amount is co-viewing, keeping screens out of the bedroom, and protecting time for sleep, play, and interaction.',
+      'Canadian guidance recommends no screen time for children under two (other than video-chatting with family), and no more than one hour a day of good-quality screen time for children aged two to five — with less being better. Just as important as the amount is co-viewing, keeping screens out of the bedroom, and protecting time for sleep, play, and interaction.',
     sections: [
       {
         heading: 'The numbers',
@@ -645,7 +661,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-tantrums-how-to-handle', 'child-homework-battles'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'child-homework-battles',
@@ -705,7 +721,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['child-managing-screen-time', 'child-sibling-fighting'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'child-sibling-fighting',
@@ -763,7 +779,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['child-homework-battles', 'child-managing-screen-time'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'child-managing-screen-time',
@@ -779,6 +795,7 @@ const ANSWERS: AnswerPage[] = [
         heading: 'From hour-caps to a family plan',
         body: [
           'The Canadian Paediatric Society and the American Academy of Pediatrics both shift, for school-age children, from a strict daily number toward ensuring screens do not displace the essentials: enough sleep, daily physical activity, in-person time, and homework. The AAP encourages a family media plan that fits your household.',
+          'One caveat if your child is a young preschooler: for children under about five, the CPS and AAP still recommend limiting routine screen time to about an hour a day. The move away from a fixed hour-cap describes older, school-age children — so for a four- or five-year-old, keep the preschool one-hour-a-day guidance in view.',
         ],
       },
       {
@@ -826,7 +843,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['child-homework-battles', 'toddler-screen-time-guidelines'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'teen-mental-health-warning-signs',
@@ -866,7 +883,7 @@ const ANSWERS: AnswerPage[] = [
           'Duration, intensity, and impact separate typical teen moods from a concern; act on lasting or severe changes.',
       },
       {
-        framework: 'siegel',
+        framework: 'siegel_brainstorm',
         reference: 'Daniel Siegel, Brainstorm: The Power and Purpose of the Teenage Brain',
         excerpt: 'Adolescence is a period of essential brain development; staying connected matters.',
       },
@@ -885,7 +902,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['teen-setting-boundaries-autonomy'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'teen-setting-boundaries-autonomy',
@@ -919,7 +936,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     citations: [
       {
-        framework: 'siegel',
+        framework: 'siegel_brainstorm',
         reference: 'Daniel Siegel, Brainstorm: The Power and Purpose of the Teenage Brain',
         excerpt:
           'Adolescent autonomy is developmentally driven; involving teens in limits and staying connected builds influence.',
@@ -927,8 +944,9 @@ const ANSWERS: AnswerPage[] = [
       {
         framework: 'cps',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — communicating with your teen (caringforkids.cps.ca)',
-        excerpt: 'Clear, consistent, respectfully explained limits inside an open relationship work best with teens.',
+          'Canadian Paediatric Society, Caring for Kids — "How to talk with your teen" (caringforkids.cps.ca/handouts/behavior-and-development/talk_with_your_teen)',
+        excerpt:
+          'Listen to your teen with patience and acceptance, acknowledge your differences without judging, respect their privacy, and step away to stay calm if a conversation heats up.',
       },
     ],
     faqs: [
@@ -945,7 +963,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['teen-mental-health-warning-signs'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
 ];
 

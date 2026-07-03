@@ -157,10 +157,10 @@ export default async function AnswerRoute({ params }: PageProps) {
                       style={{
                         color: 'var(--color-slate-green)',
                         lineHeight: 1.55,
-                        fontStyle: 'italic',
                       }}
                     >
-                      “{citation.excerpt}”
+                      <span className="meta">In summary: </span>
+                      {citation.excerpt}
                     </p>
                   )}
                 </li>

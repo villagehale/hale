@@ -1,4 +1,14 @@
 import type { FamilyStage, FrameworkCitation } from '@hale/types';
+import type { AnswerSourceKey } from './frameworks';
+
+/**
+ * A citation on an answer page. Same shape as the Coach's `FrameworkCitation`,
+ * but `framework` is widened to `AnswerSourceKey` so a page can resolve to a
+ * specific work (e.g. Siegel's Brainstorm on teen pages) via the source registry.
+ */
+export interface AnswerCitation extends Omit<FrameworkCitation, 'framework'> {
+  framework: AnswerSourceKey;
+}
 
 /** One heading + body block in an answer's main text. */
 export interface AnswerSection {
@@ -34,7 +44,7 @@ export interface AnswerPage {
   answer: string;
   sections: AnswerSection[];
   /** Every claim's grounding. Rendered as the "Sources" list and Article JSON-LD. */
-  citations: FrameworkCitation[];
+  citations: AnswerCitation[];
   faqs: AnswerFaq[];
   /** Slugs of related answers, for internal linking. */
   related: string[];
