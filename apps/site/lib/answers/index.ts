@@ -141,7 +141,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['newborn-cluster-feeding', 'newborn-safe-sleep-basics'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'newborn-safe-sleep-basics',
@@ -208,7 +208,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['newborn-sleep-fragmented', 'newborn-cluster-feeding'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'introducing-peanuts-to-baby',
@@ -398,7 +398,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-biting-what-to-do', 'toddler-separation-anxiety-daycare'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-biting-what-to-do',
@@ -705,7 +705,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['child-managing-screen-time', 'child-sibling-fighting'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'child-sibling-fighting',
@@ -763,7 +763,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['child-homework-battles', 'child-managing-screen-time'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'child-managing-screen-time',

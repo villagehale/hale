@@ -6,9 +6,20 @@ import { answerJsonLd } from './structured-data';
 /**
  * The answer corpus is YMYL health content, so the invariants tested here are
  * the trust/safety ones, not cosmetics: every page is grounded in the permitted
- * frameworks, ships as a review-ready draft (unpublished), and the sitemap/index
- * see only published pages. Expected values are derived from those rules.
+ * frameworks, the reviewed set (and only that set) is published, and the
+ * sitemap/index see only published pages. Expected values are derived from those
+ * rules.
  */
+
+// The pages a human has reviewed and cleared for indexing. Everything else must
+// stay a noindex draft, out of the sitemap.
+const PUBLISHED_SLUGS = [
+  'newborn-sleep-fragmented',
+  'newborn-safe-sleep-basics',
+  'toddler-tantrums-how-to-handle',
+  'child-homework-battles',
+  'child-sibling-fighting',
+];
 
 describe('answer corpus', () => {
   it('ships ~15 curated pages', () => {
@@ -23,9 +34,18 @@ describe('answer corpus', () => {
     }
   });
 
-  it('ships every page as an unpublished review draft (review-before-index gate)', () => {
-    expect(allAnswers.every((a) => a.published === false)).toBe(true);
-    expect(publishedAnswers.length).toBe(0);
+  it('publishes exactly the human-reviewed set; every other page stays a draft (review-before-index gate)', () => {
+    const published = publishedAnswers.map((a) => a.slug).sort();
+    expect(published).toEqual([...PUBLISHED_SLUGS].sort());
+    for (const page of allAnswers) {
+      expect(page.published).toBe(PUBLISHED_SLUGS.includes(page.slug));
+    }
+  });
+
+  it('grounds every published page in at least two citations, so nothing indexable is thinly sourced', () => {
+    for (const page of publishedAnswers) {
+      expect(page.citations.length).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('grounds every page in at least one permitted framework with a real reference', () => {

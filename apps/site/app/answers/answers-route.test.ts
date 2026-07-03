@@ -55,4 +55,12 @@ describe('answers/[slug] route', () => {
     expect(meta.robots).toMatchObject({ index: false });
     expect(meta.alternates?.canonical).toBe(`/answers/${SLUG}`);
   });
+
+  it('leaves a published (reviewed) page index-able', async () => {
+    const published = 'newborn-sleep-fragmented';
+    expect(getAnswer(published)?.published).toBe(true);
+    const meta = await generateMetadata({ params: Promise.resolve({ slug: published }) });
+    expect(meta.robots).toBeUndefined();
+    expect(meta.alternates?.canonical).toBe(`/answers/${published}`);
+  });
 });

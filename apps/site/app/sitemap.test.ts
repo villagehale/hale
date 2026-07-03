@@ -5,10 +5,18 @@ import sitemap from './sitemap.js';
 
 /**
  * The sitemap is the index gate's enforcement point: only human-reviewed
- * (published) answer pages may appear. Because the shipped corpus is entirely
- * unpublished drafts, no /answers/* URL may be present yet — flipping a page's
- * `published` flag is the single action that lets it in.
+ * (published) answer pages may appear. The reviewed set below rides in (behind
+ * the /answers index); every other page stays a noindex draft and out of the
+ * sitemap. Flipping a page's `published` flag is the single action that lets it in.
  */
+
+const PUBLISHED_SLUGS = [
+  'newborn-sleep-fragmented',
+  'newborn-safe-sleep-basics',
+  'toddler-tantrums-how-to-handle',
+  'child-homework-battles',
+  'child-sibling-fighting',
+];
 
 describe('sitemap', () => {
   const entries = sitemap();
@@ -20,16 +28,26 @@ describe('sitemap', () => {
     expect(urls).toContain(`${SITE_URL}/contact`);
   });
 
-  it('excludes every unpublished answer page', () => {
-    for (const page of allAnswers) {
+  it('lists exactly the published answer slugs (and the /answers index)', () => {
+    const answerUrls = urls
+      .filter((u) => u.startsWith(`${SITE_URL}/answers`))
+      .sort();
+    const expected = [
+      `${SITE_URL}/answers`,
+      ...PUBLISHED_SLUGS.map((slug) => `${SITE_URL}/answers/${slug}`),
+    ].sort();
+    expect(answerUrls).toEqual(expected);
+  });
+
+  it('excludes every held (unpublished) answer page', () => {
+    for (const page of allAnswers.filter((a) => !a.published)) {
       expect(urls).not.toContain(`${SITE_URL}/answers/${page.slug}`);
     }
   });
 
-  it('would list an answer page only once it is published', () => {
-    const published = allAnswers.filter((a) => a.published);
-    for (const page of published) {
-      const entry = entries.find((e) => e.url === `${SITE_URL}/answers/${page.slug}`);
+  it('gives each published answer page weekly/0.6 sitemap metadata', () => {
+    for (const slug of PUBLISHED_SLUGS) {
+      const entry = entries.find((e) => e.url === `${SITE_URL}/answers/${slug}`);
       expect(entry).toBeDefined();
       expect(entry?.changeFrequency).toBe('weekly');
       expect(entry?.priority).toBe(0.6);
