@@ -149,7 +149,7 @@ describe('history timeline masks each entry summary + detail', () => {
  * The approvals row is inline JSX on the server page (it loads its drafts from the
  * DB, so it can't be rendered with a fixture without standing up the query layer).
  * Guard it at the source instead: the row's PII-bearing expressions — the human
- * preview, the verdict summary, and the raw drafted payload dump — must each sit
+ * preview, the verdict summary, and the drafted-payload detail — must each sit
  * after a `data-hale-pii` marker so the replay masks the row body. This fails if a
  * future edit moves any of these fields out of the tagged container.
  */
@@ -163,7 +163,7 @@ describe('approvals page source tags the row body PII', () => {
     '{approval.preview}',
     'detail={approval.summary}',
     '{approval.summary}',
-    'JSON.stringify(approval.payload',
+    'payload={approval.payload}',
   ];
 
   it('each row-body PII field appears after the data-hale-pii marker', () => {
