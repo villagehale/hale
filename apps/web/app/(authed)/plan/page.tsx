@@ -1,19 +1,38 @@
 import { ArrowRight } from 'lucide-react';
+import { AddPlan } from '~/components/hale/add-plan';
+import type { ScopeChild } from '~/components/hale/child-scope';
+import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
+import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
 import { type PlanChildItem, planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function PlanPage() {
-  const [village, children] = await Promise.all([loadVillage(), loadCompanion()]);
+  const [village, children, authoredPlans] = await Promise.all([
+    loadVillage(),
+    loadCompanion(),
+    loadAuthoredPlans(),
+  ]);
   const { routine } = village;
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
-  const hasPlan = hasRoutine || childItems.length > 0 || addedActivities.length > 0;
+  const hasPlan =
+    hasRoutine ||
+    childItems.length > 0 ||
+    addedActivities.length > 0 ||
+    authoredPlans.length > 0;
+
+  // A teen's given name is withheld from the parent-facing scope chip (rule #1);
+  // ChildScope renders "your teen" for a null label.
+  const scopeChildren: ScopeChild[] = children.map((child) => ({
+    id: child.id,
+    label: child.stage === 'teenager' ? null : child.name,
+  }));
 
   return (
     <div>
@@ -41,6 +60,36 @@ export default async function PlanPage() {
           </div>
         </div>
       </header>
+
+      {/* ── Add a plan ──────────────────────────────────────────────────── */}
+      <section className="rise rise-2 mb-16 lg:mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
+          <div className="lg:col-span-3">
+            <span className="eyebrow text-spruce">your own plans</span>
+            <p className="meta mt-2">a private note for your week</p>
+          </div>
+          <div className="lg:col-span-9">
+            <AddPlan kids={scopeChildren} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Plans you've written ────────────────────────────────────────── */}
+      {authoredPlans.length > 0 ? (
+        <section className="rise rise-2 mb-16 lg:mb-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
+            <div className="lg:col-span-3">
+              <span className="eyebrow text-spruce">plans you&rsquo;ve written</span>
+              <p className="meta mt-2">private to your family</p>
+            </div>
+            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {authoredPlans.map((plan) => (
+                <AuthoredPlanCard key={plan.id} plan={plan} />
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* ── Added to your week ──────────────────────────────────────────── */}
       {addedActivities.length > 0 ? (
@@ -152,6 +201,35 @@ export default async function PlanPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
+  const scope = plan.childId === null ? 'whole family' : (plan.childName ?? 'your teen');
+  const when = plan.scheduledFor
+    ? new Date(plan.scheduledFor).toLocaleDateString('en-CA', {
+        month: 'short',
+        day: 'numeric',
+      })
+    : null;
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <span className="eyebrow text-spruce">
+          <span data-hale-pii>{scope}</span>
+          {when ? ` · ${when}` : null}
+        </span>
+        <DeletePlanButton planId={plan.id} />
+      </div>
+      <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
+        {plan.title}
+      </p>
+      {plan.notes ? (
+        <p className="meta mt-1 text-slate-green" data-hale-pii>
+          {plan.notes}
+        </p>
+      ) : null}
+    </Card>
   );
 }
 

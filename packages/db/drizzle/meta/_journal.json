@@ -176,6 +176,13 @@
       "when": 1781461140000,
       "tag": "0024_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1781461200000,
+      "tag": "0025_plans",
+      "breakpoints": true
     }
   ]
 }
