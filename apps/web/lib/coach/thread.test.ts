@@ -81,11 +81,13 @@ describe('loadThreadShellForRequest', () => {
     expect(seed.conversationId).toBe('conv-9');
     expect(seed.timeline).toHaveLength(1);
 
-    // Focus chips: the toddler carries a label; the teen's label is withheld (rule #1).
+    // Focus chips carry each child by NAME — including the teen (policy 1: the
+    // parent named them, and two teens must never both read "your teen"). The
+    // teenRedacted flag still marks the teen for downstream CONTENT gating.
     const tot = seed.children.find((c) => c.id === 'tot');
     const teen = seed.children.find((c) => c.id === 'teen');
     expect(tot?.label).toBe('Mara');
-    expect(teen?.label).toBeNull();
+    expect(teen?.label).toBe('Eli');
     expect(teen?.teenRedacted).toBe(true);
 
     // Stage-aware suggestions: a per-child group exists for each child + a family default.

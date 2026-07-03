@@ -14,7 +14,10 @@ const readLogsPageMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
-vi.mock('~/lib/family', () => ({ resolveFamilyForUser: vi.fn(async () => 'fam-1') }));
+vi.mock('~/lib/family', () => ({
+  resolveFamilyForUser: vi.fn(async () => 'fam-1'),
+  resolveUserIdForUser: vi.fn(async () => 'user-1'),
+}));
 vi.mock('~/lib/companion/logs-page', () => ({
   readLogsPage: (...a: unknown[]) => readLogsPageMock(...a),
 }));
@@ -85,12 +88,14 @@ describe('GET /api/companion/logs — auth + family gating', () => {
     expect(body.logs).toHaveLength(1);
     expect(body.nextCursor).toBe('2026-06-29T00:00:00.000Z');
 
-    const [, familyId, opts] = readLogsPageMock.mock.calls[0] as [
+    const [, familyId, requestingUserId, opts] = readLogsPageMock.mock.calls[0] as [
       unknown,
       string,
+      string | null,
       Record<string, unknown>,
     ];
     expect(familyId).toBe('fam-1');
+    expect(requestingUserId).toBe('user-1');
     expect(opts).toMatchObject({ childId: CHILD_ID, before: '2026-06-30T00:00:00.000Z' });
   });
 });

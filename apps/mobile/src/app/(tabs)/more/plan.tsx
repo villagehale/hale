@@ -74,20 +74,31 @@ function PlanBody({ data }: { data: MobilePlanResponse }) {
         <View className="gap-2">
           <SectionTitle>Coming up for your kids</SectionTitle>
           <View className="gap-3">
-            {childItems.map((item) => (
-              <Card key={item.key} className="gap-1">
-                <View className="flex-row items-center justify-between">
-                  <Tag label={item.kindLabel} tone="coach" />
-                  <AppText variant="mono" className="text-ink-3">
-                    {item.childName}
+            {childItems.map((item) =>
+              item.teenRedacted ? (
+                // Rule #1 (policy 3): one locked line for a 13+ teen — no name, no
+                // content, no "when"; the parent sees THAT a plan exists.
+                <Card key={item.key} className="gap-1">
+                  <Tag label="private" tone="attention" />
+                  <AppText variant="title" className="mt-1">
+                    {item.what}
                   </AppText>
-                </View>
-                <AppText variant="title" className="mt-1">
-                  {item.what}
-                </AppText>
-                <AppText variant="meta">{item.when}</AppText>
-              </Card>
-            ))}
+                </Card>
+              ) : (
+                <Card key={item.key} className="gap-1">
+                  <View className="flex-row items-center justify-between">
+                    <Tag label={item.kindLabel} tone="coach" />
+                    <AppText variant="mono" className="text-ink-3">
+                      {item.childName}
+                    </AppText>
+                  </View>
+                  <AppText variant="title" className="mt-1">
+                    {item.what}
+                  </AppText>
+                  <AppText variant="meta">{item.when}</AppText>
+                </Card>
+              ),
+            )}
           </View>
           <AppText variant="meta" className="mt-1 text-center">
             Timing is the standard Canadian schedule — confirm with your provider.

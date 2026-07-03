@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, currentUserId } from '~/lib/family';
 import {
   type LogsPage,
   nextCursorFrom,
@@ -33,6 +33,7 @@ export type { LogView, LogsPage, LogDayGroup } from './logs-view.js';
 export async function readLogsPage(
   database: Database,
   familyId: string,
+  requestingUserId: string | null,
   opts: { childId?: string; before?: string; limit?: number } = {},
 ): Promise<LogsPage> {
   const limit = opts.limit ?? PAGE_LIMIT;
@@ -57,6 +58,7 @@ export async function readLogsPage(
     .select({
       id: schema.familyMemoryEpisodes.id,
       childId: schema.familyMemoryEpisodes.childId,
+      authoredBy: schema.familyMemoryEpisodes.authoredBy,
       episodeType: schema.familyMemoryEpisodes.episodeType,
       summary: schema.familyMemoryEpisodes.summary,
       occurredAt: schema.familyMemoryEpisodes.occurredAt,
@@ -73,7 +75,7 @@ export async function readLogsPage(
     limit,
   );
 
-  const logs = recentInternal.dropTeenEpisodes(rows, children).map((row) => ({
+  const logs = recentInternal.dropTeenEpisodes(rows, children, requestingUserId).map((row) => ({
     id: row.id,
     childId: row.childId,
     episodeType: row.episodeType,
@@ -96,5 +98,6 @@ export async function loadLogsPage(
   const database = defaultDb();
   const familyId = await currentFamilyId(database);
   if (!familyId) return { logs: [], nextCursor: null };
-  return readLogsPage(database, familyId, opts);
+  const requestingUserId = await currentUserId(database);
+  return readLogsPage(database, familyId, requestingUserId, opts);
 }

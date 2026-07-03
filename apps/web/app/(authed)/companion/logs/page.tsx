@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { ScopeChild } from '~/components/hale/child-scope';
+import { scopeChildren } from '~/components/hale/child-scope';
 import { LogsBrowser } from '~/components/hale/logs-browser';
 import { PageCorner } from '~/components/hale/page-corner';
 import { loadCompanion } from '~/lib/companion/queries';
@@ -9,16 +9,13 @@ import { loadLogsPage } from '~/lib/companion/logs-page';
  * The dedicated, scalable logs surface — the full history of the family's
  * quick-logs, day-grouped and load-more paginated, filterable per child. Distinct
  * from the 8-row companion widget (a quick glance); this is where logs live as
- * they accumulate. A teen's given name is withheld from the filter (rule #1):
- * stage 'teenager' → label null → "your teen".
+ * they accumulate. The per-child filter shows each child by NAME (policy 1) via
+ * scopeChildren; a teen's LOG CONTENT is redacted upstream by loadLogsPage.
  */
 export default async function CompanionLogsPage() {
   const [initial, children] = await Promise.all([loadLogsPage(), loadCompanion()]);
 
-  const kids: ScopeChild[] = children.map((child) => ({
-    id: child.id,
-    label: child.stage === 'teenager' ? null : child.name,
-  }));
+  const kids = scopeChildren(children);
 
   return (
     <div>

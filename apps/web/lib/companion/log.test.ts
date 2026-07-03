@@ -14,7 +14,11 @@ const revalidateMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
-vi.mock('~/lib/family', () => ({ currentFamilyId: () => familyMock(), resolveUserIdForUser: vi.fn() }));
+vi.mock('~/lib/family', () => ({
+  currentFamilyId: () => familyMock(),
+  currentUserId: vi.fn().mockResolvedValue('user-1'),
+  resolveUserIdForUser: vi.fn(),
+}));
 vi.mock('next/cache', () => ({ revalidatePath: (p: string) => revalidateMock(p) }));
 vi.mock('./log-write.js', async () => {
   const actual = await vi.importActual<typeof import('./log-write.js')>('./log-write.js');

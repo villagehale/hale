@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
+import { currentFamilyId, currentUserId, resolveUserIdForUser } from '~/lib/family';
 import {
   type DeleteResult,
   type EditResult,
@@ -64,7 +64,11 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
     return { status: 'forbidden' };
   }
 
-  await writeEpisode(database, buildEpisodeInsert(parsed.data, familyId, occurredAt.date));
+  const authoredBy = await currentUserId(database);
+  await writeEpisode(
+    database,
+    buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy),
+  );
 
   revalidatePath('/companion');
   revalidatePath('/home');

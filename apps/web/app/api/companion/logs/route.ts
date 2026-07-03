@@ -4,7 +4,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { readLogsPage } from '~/lib/companion/logs-page';
 import { db } from '~/lib/db';
-import { resolveFamilyForUser } from '~/lib/family';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 
 // Node runtime: readLogsPage uses the Drizzle client.
 export const runtime = 'nodejs';
@@ -52,7 +52,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
 
-  const page = await readLogsPage(database, familyId, {
+  const requestingUserId = await resolveUserIdForUser(externalAuthId, database);
+  const page = await readLogsPage(database, familyId, requestingUserId, {
     childId: parsed.data.child,
     before: parsed.data.before,
   });

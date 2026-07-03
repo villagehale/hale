@@ -17,6 +17,10 @@ export const consentRecords = pgTable(
     granted: boolean('granted').notNull(),
     grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    /** When a time-limited consent lapses. NULL for open-ended consents (ToS,
+     * privacy). Set for a teen_content_access grant — the read side honours a grant
+     * only while now < expires_at (rule #1 named exception: time-limited). */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
     policyVersion: text('policy_version').notNull(),
     ip: text('ip'),
     userAgent: text('user_agent'),

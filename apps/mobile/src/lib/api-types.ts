@@ -96,10 +96,12 @@ export interface VillageData {
 
 export interface PlanChildItem {
   key: string;
-  childName: string;
+  childName: string | null;
   kindLabel: string;
   what: string;
   when: string;
+  /** True on the single locked line standing in for a 13+ teen's items (rule #1). */
+  teenRedacted?: boolean;
 }
 
 // ── family + approvals (from apps/web lib/dashboard) ──────────────────────────
@@ -144,6 +146,8 @@ export interface ApprovalView {
   payload: Record<string, unknown> | null;
   verdict: string;
   draftedAt: string;
+  /** True when the draft's content is redacted for a 13+ teen (rule #1). */
+  teenRedacted: boolean;
 }
 
 // ── the endpoint response envelopes (from apps/web/app/api/mobile/types.ts) ───
