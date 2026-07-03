@@ -56,9 +56,9 @@ describe('milestones/[age] route', () => {
     expect(html).not.toContain('role="progressbar"');
   });
 
-  it('wires the "Start free with your family" CTA to the app sign-in', async () => {
+  it('wires the "Start free with your family" CTA to the app sign-up', async () => {
     const html = await render(AGE);
-    expect(html).toContain(`${APP_URL}/sign-in`);
+    expect(html).toContain(`${APP_URL}/sign-up`);
     expect(html).toContain('Start free with your family');
   });
 

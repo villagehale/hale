@@ -44,9 +44,9 @@ describe('answers/[slug] route', () => {
     expect(html.toLowerCase()).toContain('not medical advice');
   });
 
-  it('wires the "Ask Hale about your child" CTA to the app sign-in', async () => {
+  it('wires the "Ask Hale about your child" CTA to the app sign-up', async () => {
     const html = await render(SLUG);
-    expect(html).toContain(`${APP_URL}/sign-in`);
+    expect(html).toContain(`${APP_URL}/sign-up`);
     expect(html).toContain('Ask Hale about your child');
   });
 

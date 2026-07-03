@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { type SignUpState, signUpAction } from '~/lib/auth/auth-actions';
 import { MIN_PASSWORD_LENGTH } from '~/lib/auth/constants';
+import { ResendVerificationButton } from '~/components/hale/resend-verification-button';
 
 /**
  * Email + password sign-up form. On success the action returns 'check_email' (the
@@ -15,18 +16,28 @@ export function EmailSignUpForm() {
   const [state, formAction] = useActionState<SignUpState, FormData>(signUpAction, {
     status: 'idle',
   });
+  // Retain the submitted address so the check-email confirmation can echo it and
+  // the resend affordance can act without re-typing. Client-only, never logged.
+  const [email, setEmail] = useState('');
   const capture = useAnalytics();
 
   if (state.status === 'check_email') {
     return (
-      <output className="meta max-w-sm text-center block">
-        Check your inbox for a confirmation link to finish setting up your account.
-      </output>
+      <div className="flex max-w-sm flex-col gap-3 text-center">
+        <output className="meta block">
+          We sent a link to <strong>{email}</strong>. Click it to finish setting up your account.
+        </output>
+        <ResendVerificationButton email={email} label="Didn't get it? Resend the link" />
+        <button type="button" onClick={() => window.location.reload()} className="btn-ghost self-center">
+          Wrong address? Start over
+        </button>
+      </div>
     );
   }
 
   // Coarse funnel signal on submit — method only, never the email entered (rule #1).
   function submit(formData: FormData) {
+    setEmail(String(formData.get('email') ?? ''));
     capture('signup_completed', { method: 'email' });
     formAction(formData);
   }

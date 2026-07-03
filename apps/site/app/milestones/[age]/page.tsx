@@ -335,7 +335,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
             Free to start, private by design, built in Canada.
           </p>
           <div className="mt-8">
-            <a href={`${APP_URL}/sign-in`} className="btn-primary">
+            <a href={`${APP_URL}/sign-up`} className="btn-primary">
               Start free with your family
             </a>
           </div>
