@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ThreadSeed } from '~/lib/coach/thread';
 import { AskBox } from './ask-box';
 import { ConciergeAsk } from './concierge-ask';
+
+// The Ask Hale tree reaches the input-intent widget, which calls the
+// logQuickEpisode 'use server' action. Stub the action module so this markup-only
+// test doesn't pull the server/auth graph (next-auth → next/server) through it.
+vi.mock('~/lib/companion/log', () => ({
+  logQuickEpisode: vi.fn(),
+  logBookingRequested: vi.fn(),
+}));
 
 /**
  * Ask Hale stays present as the village CONCIERGE — not the hero. The concierge

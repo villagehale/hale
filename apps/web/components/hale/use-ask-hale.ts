@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
+import { detectInputIntents, type InputIntent } from '~/lib/coach/action-intent';
 import type { ThreadSeed } from '~/lib/coach/thread';
+
+export type { InputIntent, QuickLogParse } from '~/lib/coach/action-intent';
 
 export type AskStatus = 'idle' | 'pending' | 'error';
 
@@ -23,6 +26,8 @@ export interface Turn {
   topic: string | null;
   /** Gated action chips on an assistant turn (only on the just-received answer). */
   actionIntents?: ActionIntent[];
+  /** Command widgets detected from the parent's OWN instruction (on a user turn). */
+  inputIntents?: InputIntent[];
 }
 
 /**
@@ -214,9 +219,20 @@ export function useAskHale(
     setStatus('pending');
     setStreamingId(null);
     const scopedChild = focusedChildId;
+    // Deterministic, regex-only detection of a command in the parent's OWN
+    // instruction (no LLM on the hot path — rule #2). A match surfaces a confirm
+    // widget under the user turn; a miss is the common case and adds nothing.
+    const inputIntents = detectInputIntents(trimmed);
     setTurns((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: 'user', body: trimmed, childId: scopedChild, topic: null },
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        body: trimmed,
+        childId: scopedChild,
+        topic: null,
+        ...(inputIntents.length > 0 ? { inputIntents } : {}),
+      },
     ]);
     setDraft('');
     capture('ask_hale', { scoped: scopedChild !== null });

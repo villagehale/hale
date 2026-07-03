@@ -3,6 +3,7 @@
 import { ArrowRight, ArrowUp, Search, X } from 'lucide-react';
 import { useId, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
+import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
 import {
   type AskStatus,
@@ -331,11 +332,13 @@ function Timeline({
   turns,
   childLabelOf,
   focusedChildId,
+  kids,
   layout = 'quote',
 }: {
   turns: Turn[];
   childLabelOf: (id: string | null) => string;
   focusedChildId: string | null;
+  kids: TimelineChild[];
   layout?: 'quote' | 'chat';
 }) {
   const chat = layout === 'chat';
@@ -354,20 +357,30 @@ function Timeline({
               </p>
             ) : null}
             {turn.role === 'user' ? (
-              chat ? (
-                <div className="flex justify-end">
-                  <p className="chat-bubble-you w-fit max-w-[85%] sm:max-w-prose" data-hale-pii>
-                    {turn.body}
+              <>
+                {chat ? (
+                  <div className="flex justify-end">
+                    <p className="chat-bubble-you w-fit max-w-[85%] sm:max-w-prose" data-hale-pii>
+                      {turn.body}
+                    </p>
+                  </div>
+                ) : (
+                  <p
+                    className="max-w-prose font-display text-[1.15rem] leading-snug text-spruce"
+                    data-hale-pii
+                  >
+                    &ldquo;{turn.body}&rdquo;
                   </p>
-                </div>
-              ) : (
-                <p
-                  className="max-w-prose font-display text-[1.15rem] leading-snug text-spruce"
-                  data-hale-pii
-                >
-                  &ldquo;{turn.body}&rdquo;
-                </p>
-              )
+                )}
+                {turn.inputIntents && turn.inputIntents.length > 0 ? (
+                  <InputIntentWidgets
+                    intents={turn.inputIntents}
+                    focusedChildId={turn.childId}
+                    question={turn.body}
+                    kids={kids}
+                  />
+                ) : null}
+              </>
             ) : (
               <article
                 className={
@@ -518,6 +531,7 @@ function CompactSurface({
             turns={visibleTurns}
             childLabelOf={childLabelOf}
             focusedChildId={focusedChildId}
+            kids={seed.children}
           />
           <div ref={threadEndRef} />
         </div>
@@ -596,6 +610,7 @@ function FullSurface({
               turns={visibleTurns}
               childLabelOf={childLabelOf}
               focusedChildId={focusedChildId}
+              kids={seed.children}
               layout="chat"
             />
           )}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectActionIntents } from './action-intent';
+import { detectActionIntents, detectInputIntents } from './action-intent';
 
 /**
  * The inline-action thesis: when an answer IMPLIES a real Hale action, the UI
@@ -50,5 +50,83 @@ describe('detectActionIntents', () => {
       'find activities near you — there are lots of activities to find!',
     );
     expect(intents.filter((i) => i.kind === 'find_activities')).toHaveLength(1);
+  });
+});
+
+/**
+ * Input-side detection: the parent's INSTRUCTION (not Hale's answer) implies a
+ * command. The same closed-set, regex-only discipline as detectActionIntents —
+ * no LLM on the hot path (rule #2 untouched). Hale-acts kinds (book/remind/find)
+ * carry an actionType and route through the approval engine (rule #4); quick_log
+ * is the parent's OWN data — no approval gate, best-effort parsed sub-shape. These
+ * assert phrasing→kind from the spec, and [] for an ordinary question.
+ */
+describe('detectInputIntents', () => {
+  it('detects a book-a-check-up instruction from imperative phrasing', () => {
+    const [intent, ...rest] = detectInputIntents('book a check-up for Mira next week');
+    expect(rest).toEqual([]);
+    expect(intent?.category).toBe('action');
+    expect(intent?.kind).toBe('book_checkup');
+    if (intent?.category === 'action') expect(intent.actionType).toBe('create_calendar_event');
+  });
+
+  it('detects a set-reminder instruction', () => {
+    const kinds = detectInputIntents('remind me to give the vitamin drops tonight').map(
+      (i) => i.kind,
+    );
+    expect(kinds).toContain('set_reminder');
+  });
+
+  it('detects a find-activities instruction', () => {
+    const kinds = detectInputIntents('find activities for the twins this weekend').map(
+      (i) => i.kind,
+    );
+    expect(kinds).toContain('find_activities');
+  });
+
+  it('detects a quick_log feed with a parsed time', () => {
+    const intent = detectInputIntents('Noah had a bottle at 3pm')[0];
+    expect(intent?.category).toBe('log');
+    expect(intent?.kind).toBe('quick_log');
+    if (intent?.category === 'log') {
+      expect(intent.parsed.episode).toBe('feed');
+      expect(intent.parsed.timeHint).toBe('3pm');
+      expect(intent.parsed.childName).toBe('Noah');
+    }
+  });
+
+  it('detects a quick_log nap', () => {
+    const intent = detectInputIntents('she took a nap this afternoon')[0];
+    expect(intent?.category).toBe('log');
+    if (intent?.category === 'log') expect(intent.parsed.episode).toBe('nap');
+  });
+
+  it('detects a quick_log milestone with the milestone text', () => {
+    const intent = detectInputIntents('Ava hit a milestone: first steps today')[0];
+    expect(intent?.category).toBe('log');
+    if (intent?.category === 'log') {
+      expect(intent.parsed.episode).toBe('milestone');
+      expect(intent.parsed.milestone).toBe('first steps today');
+    }
+  });
+
+  it('returns [] for an ordinary question with no instruction', () => {
+    expect(detectInputIntents('is it normal for a toddler to skip a nap?')).toEqual([]);
+    expect(detectInputIntents('how much should a 6-month-old eat?')).toEqual([]);
+  });
+
+  it('does not create_plan — that kind belongs to another branch', () => {
+    const kinds = detectInputIntents('add this to our week plan and pin it to the routine').map(
+      (i) => i.kind,
+    );
+    expect(kinds).not.toContain('add_to_plan');
+    expect(kinds).not.toContain('create_plan');
+  });
+
+  it('dedups: one instruction surfaces each kind at most once', () => {
+    const logs = detectInputIntents('log a feed — he had a feed earlier').filter(
+      (i) => i.kind === 'quick_log',
+    );
+    expect(logs).toHaveLength(1);
   });
 });

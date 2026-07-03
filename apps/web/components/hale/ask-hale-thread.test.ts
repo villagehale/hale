@@ -1,8 +1,16 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ThreadSeed } from '~/lib/coach/thread';
 import { AskHaleThread } from './ask-hale-thread';
+
+// The input-intent widget (reachable from the thread) calls the logQuickEpisode
+// 'use server' action. Stub the action module so this markup-only test doesn't
+// pull the server/auth graph (next-auth → next/server) through the import.
+vi.mock('~/lib/companion/log', () => ({
+  logQuickEpisode: vi.fn(),
+  logBookingRequested: vi.fn(),
+}));
 
 /**
  * The /coach Ask Hale surface — a contained chat. These tests render to static
