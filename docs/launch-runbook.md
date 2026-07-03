@@ -25,3 +25,6 @@ Hale is public (2026-06-27). This is the operational checklist for deploys, moni
 ## Auth
 - Google OAuth + email/password (Auth.js Credentials, argon2id). `AUTH_SECRET` is runtime-only.
 - Email verification required by default (`REQUIRE_EMAIL_VERIFICATION` — escape hatch only).
+
+## One-off data corrections
+- **Wrong activity "register / view details" links**: candidates discovered before the source-url fix stored the model-guessed url. Correct the persisted rows once (re-run until `updated` is 0 — each run is capped at 50): `DATABASE_URL=... GOOGLE_MAPS_API_KEY=... pnpm --filter @hale/web backfill:source-urls`. Hand-run only — `force` re-checks every candidate through Places, so it is deliberately not on the discovery cron.

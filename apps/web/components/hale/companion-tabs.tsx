@@ -18,6 +18,21 @@ const TIMING_LABEL: Record<ChildCompanionView['milestones'][number]['timing'], s
   watch: 'worth asking',
 };
 
+/**
+ * Roving-tablist keyboard model: given the pressed key, the active index, and the
+ * tab count, return the index to move to — or null for keys the tablist ignores.
+ * Arrow keys wrap around both ends; Home/End jump to the ends. Pure so the
+ * wraparound/edge behaviour is testable without a DOM.
+ */
+export function nextTabIndex(key: string, active: number, count: number): number | null {
+  const last = count - 1;
+  if (key === 'ArrowRight' || key === 'ArrowDown') return active === last ? 0 : active + 1;
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return active === 0 ? last : active - 1;
+  if (key === 'Home') return 0;
+  if (key === 'End') return last;
+  return null;
+}
+
 function agePhrase(ageMonths: number): string {
   if (ageMonths < 24) return `${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
   const years = Math.floor(ageMonths / 12);
@@ -92,7 +107,9 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
               ))}
             </ul>
           )}
-          <p className="meta mt-4 text-slate-green">standard Canadian schedule — confirm with your provider.</p>
+          <p className="meta mt-4 text-slate-green">
+            standard Canadian schedule — confirm with your provider.
+          </p>
         </div>
       </div>
 
@@ -188,13 +205,8 @@ export function CompanionTabs({ kids }: { kids: ChildCompanionView[] }) {
   if (!activeChild) return null;
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const last = kids.length - 1;
-    let next = active;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = active === last ? 0 : active + 1;
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = active === 0 ? last : active - 1;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = last;
-    else return;
+    const next = nextTabIndex(event.key, active, kids.length);
+    if (next === null) return;
     event.preventDefault();
     setActive(next);
     tabRefs.current[next]?.focus();
@@ -223,8 +235,8 @@ export function CompanionTabs({ kids }: { kids: ChildCompanionView[] }) {
               aria-controls={`${baseId}-panel-${idx}`}
               tabIndex={isActive ? 0 : -1}
               onClick={() => setActive(idx)}
-              className={`inline-flex min-h-[44px] items-center gap-2 px-4 rounded-[var(--r-full)] text-sm font-semibold cursor-pointer touch-manipulation transition-colors ${
-                isActive ? 'bg-linen text-spruce' : 'text-faded-sage hover:text-spruce'
+              className={`inline-flex min-h-[44px] items-center gap-2 px-4 rounded-[var(--r-full)] text-sm font-semibold cursor-pointer touch-manipulation transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] ${
+                isActive ? 'bg-linen text-spruce' : 'text-slate-green hover:text-spruce'
               }`}
             >
               <span data-hale-pii>{child.name ?? 'your child'}</span>
