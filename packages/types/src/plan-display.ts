@@ -7,8 +7,9 @@ import type { PlanTier } from './entitlements.js';
  * ENFORCEMENT lives in entitlements.ts (PLAN_ENTITLEMENTS) and is unchanged here.
  *
  * Pre-PMF the free tier (Free) is fully functional and the active default;
- * paid tiers are surfaced with soft CTAs (billing isn't wired). Prices are USD.
- * Annual is the better value — `annualPriceUsd / 12` works out to roughly two
+ * paid tiers are surfaced with soft CTAs (billing isn't wired). Prices are CAD
+ * (Canada-first) — `formatPlanPrice` renders them with an explicit CAD label.
+ * Annual is the better value — `annualPriceCad / 12` works out to roughly two
  * months free versus paying monthly.
  */
 export interface PlanDisplay {
@@ -16,10 +17,10 @@ export interface PlanDisplay {
   readonly name: string;
   /** One-line promise of what the tier does, sentence case. */
   readonly tagline: string;
-  /** Monthly price in USD. 0 for the free tier. */
-  readonly monthlyPriceUsd: number;
-  /** Annual price in USD (billed yearly). 0 for the free tier. */
-  readonly annualPriceUsd: number;
+  /** Monthly price in CAD. 0 for the free tier. */
+  readonly monthlyPriceCad: number;
+  /** Annual price in CAD (billed yearly). 0 for the free tier. */
+  readonly annualPriceCad: number;
   /** What the tier includes, as plain reader-facing lines. */
   readonly features: readonly string[];
 }
@@ -33,8 +34,8 @@ export const PLAN_DISPLAY = {
   free: {
     name: 'Free',
     tagline: 'Everything to get started — free for every family.',
-    monthlyPriceUsd: 0,
-    annualPriceUsd: 0,
+    monthlyPriceCad: 0,
+    annualPriceCad: 0,
     features: [
       'Your village feed + trusted recommendations from families near you',
       'Ask Hale, anything, any time',
@@ -47,26 +48,24 @@ export const PLAN_DISPLAY = {
   plus: {
     name: 'Plus',
     tagline: 'More automation and booking, on your approval.',
-    monthlyPriceUsd: 9,
-    annualPriceUsd: 79,
+    monthlyPriceCad: 9,
+    annualPriceCad: 79,
     features: [
       'Everything in Free',
       'Hale acts on the things you approve',
       'Reminders + booking, on your approval',
       'Calendar + integrations, rolling out',
-      'Multi-child households',
     ],
   },
   family: {
     name: 'Family',
     tagline: 'The full experience for your whole household.',
-    monthlyPriceUsd: 19,
-    annualPriceUsd: 159,
+    monthlyPriceCad: 19,
+    annualPriceCad: 159,
     features: [
       'Everything in Plus',
       'Full autonomy, earned task by task',
       'Commerce + booking, as integrations roll out',
-      'Co-parent shared across the household',
       'Concierge + priority support',
     ],
   },
@@ -79,15 +78,16 @@ export const PLAN_TIERS_ORDERED = ['free', 'plus', 'family'] as const satisfies 
 export type BillingPeriod = 'monthly' | 'annual';
 
 /**
- * The price to show for a tier in a given period as a display string, e.g. "$9/mo"
- * or "$79/yr". The free tier always reads "Free" regardless of period. Pure — no I/O.
+ * The price to show for a tier in a given period as a display string, e.g.
+ * "$9 CAD/mo" or "$79 CAD/yr" — the CAD label is explicit (Canada-first). The
+ * free tier always reads "Free" regardless of period. Pure — no I/O.
  */
 export function formatPlanPrice(tier: PlanTier, period: BillingPeriod): string {
   const plan = PLAN_DISPLAY[tier];
-  if (plan.monthlyPriceUsd === 0 && plan.annualPriceUsd === 0) {
+  if (plan.monthlyPriceCad === 0 && plan.annualPriceCad === 0) {
     return 'Free';
   }
   return period === 'annual'
-    ? `$${plan.annualPriceUsd}/yr`
-    : `$${plan.monthlyPriceUsd}/mo`;
+    ? `$${plan.annualPriceCad} CAD/yr`
+    : `$${plan.monthlyPriceCad} CAD/mo`;
 }

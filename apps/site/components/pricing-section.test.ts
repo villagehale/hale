@@ -19,10 +19,10 @@ describe('PricingSection (landing pricing)', () => {
   });
 
   it('shows both monthly and annual prices for the paid tiers', () => {
-    expect(html).toContain('$9/mo');
-    expect(html).toContain('$79/yr');
-    expect(html).toContain('$19/mo');
-    expect(html).toContain('$159/yr');
+    expect(html).toContain('$9 CAD/mo');
+    expect(html).toContain('$79 CAD/yr');
+    expect(html).toContain('$19 CAD/mo');
+    expect(html).toContain('$159 CAD/yr');
   });
 
   it('leads with the village being free', () => {

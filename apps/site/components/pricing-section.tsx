@@ -16,7 +16,7 @@ const TIER_PRESENTATION = {
   },
   family: {
     panel: 'panel-sky-tint',
-    line: 'For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, co-parent shared, concierge and priority support.',
+    line: 'For when you want Hale to handle it: full autonomy on your approval, commerce and booking as they roll out, concierge and priority support.',
   },
 } as const satisfies Record<PlanTier, { panel: string; line: string }>;
 

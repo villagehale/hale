@@ -27,8 +27,8 @@ describe('OnboardingPlanPicker', () => {
   it('shows the confirmed monthly prices (toggle defaults to monthly)', () => {
     const html = render();
     expect(html).toContain('Free');
-    expect(html).toContain('$9/mo');
-    expect(html).toContain('$19/mo');
+    expect(html).toContain('$9 CAD/mo');
+    expect(html).toContain('$19 CAD/mo');
   });
 
   it('offers a monthly and an annual billing period', () => {
