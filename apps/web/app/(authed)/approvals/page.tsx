@@ -1,6 +1,7 @@
 import { ApprovalsHeader } from '~/components/hale/approvals-header';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { DismissButton } from '~/components/hale/dismiss-button';
+import { DraftDetail } from '~/components/hale/draft-detail';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ToneLabel } from '~/components/hale/tone';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
@@ -44,14 +45,7 @@ export default async function ApprovalsPage() {
                   <p className="meta mt-2 text-slate-green">{approval.summary}</p>
                 )}
                 <p className="meta mt-2 text-slate-green">drafted {approval.draftedAt}</p>
-                {approval.payload ? (
-                  <details className="mt-3">
-                    <summary className="meta text-slate-green cursor-pointer">view details</summary>
-                    <pre className="meta mt-2 whitespace-pre-wrap break-words text-faded-sage">
-                      {JSON.stringify(approval.payload, null, 2)}
-                    </pre>
-                  </details>
-                ) : null}
+                <DraftDetail actionType={approval.actionType} payload={approval.payload} />
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <DismissButton actionId={approval.id} />
