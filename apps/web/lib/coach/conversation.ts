@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 
 /**
@@ -109,7 +109,9 @@ export async function loadLatestThread(
   return { conversationId, timeline };
 }
 
-/** Loads a conversation's transcript in chronological order. */
+/** Loads a conversation's transcript in chronological order. Soft-deleted turns
+ * (deleted_at stamped) are excluded so a removed turn never re-enters the agent's
+ * context (rule #6 soft-delete: the row survives for audit, the read drops it). */
 export async function loadTranscript(
   conversationId: string,
   database: Database,
@@ -117,7 +119,12 @@ export async function loadTranscript(
   const rows = await database
     .select({ role: schema.messages.role, content: schema.messages.content })
     .from(schema.messages)
-    .where(eq(schema.messages.conversationId, conversationId))
+    .where(
+      and(
+        eq(schema.messages.conversationId, conversationId),
+        isNull(schema.messages.deletedAt),
+      ),
+    )
     .orderBy(asc(schema.messages.createdAt));
 
   return rows.map((r) => ({ role: r.role, content: r.content }));
@@ -161,7 +168,12 @@ export async function loadTimeline(
       createdAt: schema.messages.createdAt,
     })
     .from(schema.messages)
-    .where(eq(schema.messages.conversationId, conversationId))
+    .where(
+      and(
+        eq(schema.messages.conversationId, conversationId),
+        isNull(schema.messages.deletedAt),
+      ),
+    )
     .orderBy(asc(schema.messages.createdAt));
 
   return rows.map((r) => ({

@@ -124,6 +124,9 @@ const VERBS: Record<string, Verb> = {
     family: 'awaiting',
   },
   family_deleted: { sentence: 'your account was deleted', family: 'done' },
+  share_link_revoked: { sentence: 'you turned off a shared link', family: 'done' },
+  coach_turn_deleted: { sentence: 'you removed a message from Ask Hale', family: 'done' },
+  coach_conversation_erased: { sentence: 'you erased your Ask Hale conversation', family: 'done' },
 };
 
 const NEUTRAL: Verb = { sentence: 'recorded an action', family: 'neutral' };

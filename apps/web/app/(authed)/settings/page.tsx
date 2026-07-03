@@ -3,6 +3,7 @@ import { FamilyParent } from '~/components/hale/family-parent';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { ExportDataButton } from '~/components/hale/export-data-button';
+import { SharedLinks } from '~/components/hale/shared-links';
 import { DeleteAccountButton } from '~/components/hale/delete-account-button';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 
@@ -140,6 +141,15 @@ export default async function SettingsPage() {
                 rules you already see.
               </p>
               <ExportDataButton />
+            </div>
+
+            <div className="flex flex-col gap-y-3 border-t border-rule pt-8">
+              <span className="eyebrow text-spruce">links you have shared</span>
+              <p className="text-spruce leading-relaxed max-w-md">
+                Public links you&rsquo;ve created for a week plan or a local pick. Revoke one any
+                time — the page it points to goes quiet immediately.
+              </p>
+              <SharedLinks />
             </div>
 
             <div className="flex flex-col gap-y-3 border-t border-rule pt-8">

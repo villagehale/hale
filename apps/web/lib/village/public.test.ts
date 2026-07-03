@@ -271,6 +271,18 @@ describe('loadSharedWeekPlan', () => {
     expect(Object.keys(result ?? {}).sort()).toEqual(['activities', 'areaCoarse', 'weekOf']);
   });
 
+  it('fails closed after revoke: a nulled token matches no proposal row, so the loader returns null', async () => {
+    // Revoke nulls routine_proposals.share_token. The loader resolves WHERE
+    // share_token = :token; a nulled token equals no row, so the proposal select
+    // resolves empty — exactly the unknown-token path — and the page shows its
+    // "no longer active" state. This is the revocation guarantee at the read seam.
+    const { db } = fakeDb([[]]);
+
+    const result = await loadSharedWeekPlan('a-token-that-was-revoked', db);
+
+    expect(result).toBeNull();
+  });
+
   it('bounds the public candidate query to the 24 most recent (FIX 4)', async () => {
     const { db, limitSpy, orderBySpy } = fakeDb([
       [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],

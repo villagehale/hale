@@ -1,7 +1,7 @@
 'use client';
 
-import { ArrowRight, ArrowUp, Search, X } from 'lucide-react';
-import { useId, useState } from 'react';
+import { ArrowRight, ArrowUp, Search, Trash2, X } from 'lucide-react';
+import { useId, useMemo, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
@@ -155,6 +155,64 @@ function Suggestions({
  * is a thin strip with a hairline foot — not a panel — so the transcript stays the
  * hero.
  */
+/**
+ * Erase the whole conversation (rule #6, soft-delete). A destructive action, so it
+ * is confirm-gated: the trash pill reveals an inline confirm before it calls the
+ * audited /api/coach/delete. On success the timeline clears; a failure surfaces a
+ * calm note rather than a silent no-op.
+ */
+function EraseConversationControl({ onErase }: { onErase: () => Promise<boolean> }) {
+  const [state, setState] = useState<'idle' | 'confirm' | 'erasing' | 'error'>('idle');
+
+  async function erase() {
+    setState('erasing');
+    const ok = await onErase();
+    setState(ok ? 'idle' : 'error');
+  }
+
+  if (state === 'confirm' || state === 'erasing') {
+    return (
+      <span className="flex items-center gap-2 shrink-0" aria-live="polite">
+        <span className="meta text-slate-green">erase this conversation?</span>
+        <button
+          type="button"
+          className="link cursor-pointer"
+          onClick={erase}
+          disabled={state === 'erasing'}
+        >
+          {state === 'erasing' ? 'erasing…' : 'yes'}
+        </button>
+        <button
+          type="button"
+          className="meta cursor-pointer text-slate-green"
+          onClick={() => setState('idle')}
+          disabled={state === 'erasing'}
+        >
+          no
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-2 shrink-0">
+      <button
+        type="button"
+        onClick={() => setState('confirm')}
+        aria-label="erase this conversation"
+        className="pill pill-action cursor-pointer hover:text-berry"
+      >
+        <Trash2 aria-hidden size={16} />
+      </button>
+      {state === 'error' ? (
+        <span className="meta text-berry" role="alert">
+          couldn&rsquo;t erase — try again.
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function ConversationHeader({
   kids,
   focusedChildId,
@@ -164,6 +222,7 @@ function ConversationHeader({
   setTopicFilter,
   search,
   setSearch,
+  onErase,
 }: {
   kids: TimelineChild[];
   focusedChildId: string | null;
@@ -173,6 +232,8 @@ function ConversationHeader({
   setTopicFilter: (t: string | null) => void;
   search: string;
   setSearch: (q: string) => void;
+  /** Erase the whole conversation (soft-delete every turn, rule #6). */
+  onErase: () => Promise<boolean>;
 }) {
   const searchId = useId();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -208,6 +269,7 @@ function ConversationHeader({
           >
             {searchOpen ? <X aria-hidden size={16} /> : <Search aria-hidden size={16} />}
           </button>
+          <EraseConversationControl onErase={onErase} />
         </div>
 
         {searchOpen ? (
@@ -334,11 +396,16 @@ function Timeline({
   childLabelOf,
   kids,
   layout = 'quote',
+  deletableIds,
+  onDeleteTurn,
 }: {
   turns: Turn[];
   childLabelOf: (id: string | null) => string;
   kids: TimelineChild[];
   layout?: 'quote' | 'chat';
+  /** Ids of persisted turns a parent may remove (rule #6). Absent = no delete. */
+  deletableIds?: ReadonlySet<string>;
+  onDeleteTurn?: (id: string) => Promise<boolean>;
 }) {
   const chat = layout === 'chat';
   let lastScope: string | null | undefined;
@@ -348,8 +415,9 @@ function Timeline({
         const scopeKey = `${turn.childId ?? 'family'}`;
         const showScope = scopeKey !== lastScope;
         lastScope = scopeKey;
+        const canDelete = Boolean(onDeleteTurn && deletableIds?.has(turn.id));
         return (
-          <div key={turn.id} className={`space-y-2 ${chat ? 'rise' : ''}`}>
+          <div key={turn.id} className={`group space-y-2 ${chat ? 'rise' : ''}`}>
             {showScope ? (
               <p className={`eyebrow text-faded-sage ${chat ? 'text-center' : ''}`}>
                 <span data-hale-pii>{childLabelOf(turn.childId)}</span>
@@ -406,9 +474,83 @@ function Timeline({
                 ) : null}
               </article>
             )}
+            {canDelete && onDeleteTurn ? (
+              <TurnDeleteControl
+                align={turn.role === 'user' ? 'end' : 'start'}
+                onDelete={() => onDeleteTurn(turn.id)}
+              />
+            ) : null}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Per-turn removal (rule #6, soft-delete): a quiet trash affordance that reveals an
+ * inline confirm, then calls the audited /api/coach/delete. Hidden until the turn is
+ * hovered/focused (group-hover) so it never clutters the read; on failure it surfaces
+ * a calm inline note rather than silently doing nothing.
+ */
+function TurnDeleteControl({
+  align,
+  onDelete,
+}: {
+  align: 'start' | 'end';
+  onDelete: () => Promise<boolean>;
+}) {
+  const [state, setState] = useState<'idle' | 'confirm' | 'deleting' | 'error'>('idle');
+
+  async function remove() {
+    setState('deleting');
+    const ok = await onDelete();
+    // Success drops the turn from the timeline (the row unmounts); only a failure
+    // remains here to be shown.
+    if (!ok) setState('error');
+  }
+
+  const justify = align === 'end' ? 'justify-end' : 'justify-start';
+
+  if (state === 'confirm' || state === 'deleting') {
+    return (
+      <div className={`flex items-center gap-2 ${justify}`} aria-live="polite">
+        <span className="meta text-slate-green">remove this message?</span>
+        <button
+          type="button"
+          className="link cursor-pointer"
+          onClick={remove}
+          disabled={state === 'deleting'}
+        >
+          {state === 'deleting' ? 'removing…' : 'yes'}
+        </button>
+        <button
+          type="button"
+          className="meta cursor-pointer text-slate-green"
+          onClick={() => setState('idle')}
+          disabled={state === 'deleting'}
+        >
+          no
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex items-center gap-2 ${justify}`}>
+      <button
+        type="button"
+        onClick={() => setState('confirm')}
+        aria-label="remove this message"
+        className="p-1 text-faded-sage opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:text-berry cursor-pointer"
+      >
+        <Trash2 aria-hidden size={14} />
+      </button>
+      {state === 'error' ? (
+        <span className="meta text-berry" role="alert">
+          couldn&rsquo;t remove — try again.
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -559,9 +701,18 @@ function FullSurface({
     topicsInUse,
     inputRef,
     threadEndRef,
+    deleteTurn,
+    eraseConversation,
   } = chat;
   const childLabelOf = useChildLabel(seed.children);
   const isEmpty = turns.length === 0;
+  // Only PERSISTED turns (present in the server-rehydrated seed) carry a real
+  // message id the audited delete can resolve; an in-session turn's client id would
+  // 404. So the delete affordance is offered on the seeded set only.
+  const deletableIds = useMemo(
+    () => new Set(seed.timeline.map((m) => m.id)),
+    [seed.timeline],
+  );
 
   // `.coach-surface` turns the stage into a non-scrolling flex column (globals.css
   // `:has`): this surface fills the remaining height, and the TRANSCRIPT scrolls
@@ -581,6 +732,7 @@ function FullSurface({
           setTopicFilter={setTopicFilter}
           search={search}
           setSearch={setSearch}
+          onErase={eraseConversation}
         />
       ) : null}
 
@@ -608,6 +760,8 @@ function FullSurface({
               childLabelOf={childLabelOf}
               kids={seed.children}
               layout="chat"
+              deletableIds={deletableIds}
+              onDeleteTurn={deleteTurn}
             />
           )}
 
