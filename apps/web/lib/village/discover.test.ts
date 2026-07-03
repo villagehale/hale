@@ -141,7 +141,7 @@ const SAMPLE_CANDIDATES = [
   {
     title: 'Neighbourhood park and playground',
     description: 'Unstructured outdoor play at a local park.',
-    sourceUrl: 'https://example.org/park',
+    sourceUrl: 'https://toronto.ca/parks',
     confidence: 0.8,
     coverageNote: 'public parks exist in essentially every area.',
   },
@@ -204,7 +204,8 @@ describe('discoverForFamily', () => {
         childId: null,
         title: 'Neighbourhood park and playground',
         kind: 'activity',
-        sourceUrl: 'https://example.org/park',
+        // No Places website in this test → the sane model url is kept.
+        sourceUrl: 'https://toronto.ca/parks',
       }),
     ]);
 
@@ -393,7 +394,7 @@ describe('discoverForFamily', () => {
     expect(biasArgs).toEqual([undefined, undefined]);
   });
 
-  it('fills source_url from the venue website ONLY when the model gave none — never overwriting an LLM url', async () => {
+  it('prefers the verified Places website over a model-supplied url (the model url is often a guess)', async () => {
     const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
     const db = fakeDb({
       areaCoarse: 'L7G',
@@ -402,14 +403,15 @@ describe('discoverForFamily', () => {
     });
     const c = fakeClient([
       {
-        // No sourceUrl from the model → should adopt the Places website.
+        // No sourceUrl from the model → adopts the Places website.
         title: 'Toddler swim',
         description: 'a class at a municipal pool',
         confidence: 0.5,
         coverageNote: 'serves your area',
       },
       {
-        // The model supplied a url → it must win over the Places website.
+        // The model supplied a url, BUT Places resolved the real venue site →
+        // the verified Places site must win (the model url is often hallucinated).
         title: 'Neighbourhood park',
         description: 'outdoor play',
         sourceUrl: 'https://example.org/park',
@@ -431,8 +433,53 @@ describe('discoverForFamily', () => {
     const rows = capture.villageCandidates as Record<string, unknown>[];
     // No LLM url → adopts the Places website.
     expect(rows[0]?.sourceUrl).toBe('https://places.example/Toddler%20swim');
-    // LLM url present → preserved, NOT overwritten by the Places website.
-    expect(rows[1]?.sourceUrl).toBe('https://example.org/park');
+    // LLM url present but Places has the real site → Places WINS (not the model url).
+    expect(rows[1]?.sourceUrl).toBe('https://places.example/Neighbourhood%20park');
+  });
+
+  it('adopts a model url only when Places has no website AND the url passes a sanity check', async () => {
+    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      {
+        // Valid absolute https url + no Places website → kept as-is.
+        title: 'Real venue',
+        description: 'x',
+        sourceUrl: 'https://realvenue.ca/register',
+        confidence: 0.6,
+        coverageNote: 'serves your area',
+      },
+      {
+        // A placeholder host the model guessed + no Places website → rejected → null
+        // (register link falls back to a coarse-area Google search, correct-by-construction).
+        title: 'Guessed venue',
+        description: 'y',
+        sourceUrl: 'https://example.com/activity',
+        confidence: 0.4,
+        coverageNote: 'serves your area',
+      },
+      {
+        // Not an absolute http(s) url → rejected → null.
+        title: 'Bare host',
+        description: 'z',
+        sourceUrl: 'realvenue.ca/register',
+        confidence: 0.4,
+        coverageNote: 'serves your area',
+      },
+    ]);
+    // No venue resolves a Places website (coords only, or none).
+    const geocode: DiscoverDeps['geocode'] = async () => null;
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
+
+    const rows = capture.villageCandidates as Record<string, unknown>[];
+    expect(rows[0]?.sourceUrl).toBe('https://realvenue.ca/register');
+    expect(rows[1]?.sourceUrl ?? null).toBeNull();
+    expect(rows[2]?.sourceUrl ?? null).toBeNull();
   });
 
   it('leaves source_url null when the model gave none and the venue has no website (Google-search fallback)', async () => {

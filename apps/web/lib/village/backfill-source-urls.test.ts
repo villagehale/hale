@@ -18,13 +18,15 @@ const VENUE_WEBSITE = 'https://www.torontopubliclibrary.ca/riverdale';
 /** Capture the (id, fields) of every update the backfill issues. */
 function fakeDb(rows: Array<{ id: string; title: string; areaCoarse: string | null }>) {
   const updates: Array<{ id: string; set: Record<string, unknown> }> = [];
+  const whereArgs: unknown[] = [];
   const db = {
     select: () => ({
       from: () => ({
         innerJoin: () => ({
-          where: () => ({
-            limit: async () => rows,
-          }),
+          where: (cond: unknown) => {
+            whereArgs.push(cond);
+            return { limit: async () => rows };
+          },
         }),
       }),
     }),
@@ -38,7 +40,7 @@ function fakeDb(rows: Array<{ id: string; title: string; areaCoarse: string | nu
       }),
     }),
   } as never;
-  return { db, updates };
+  return { db, updates, whereArgs };
 }
 
 function fakeGeocode(impl: (title: string, area: string) => Promise<GeocodeResult | null>) {
@@ -52,7 +54,9 @@ function fakeGeocode(impl: (title: string, area: string) => Promise<GeocodeResul
 
 describe('backfillCandidateSourceUrls', () => {
   it('sets source_url from the resolved venue website', async () => {
-    const { db, updates } = fakeDb([{ id: 'c1', title: 'Riverdale Library', areaCoarse: 'M4K' }]);
+    const { db, updates, whereArgs } = fakeDb([
+      { id: 'c1', title: 'Riverdale Library', areaCoarse: 'M4K' },
+    ]);
     const { geocode, calls } = fakeGeocode(async () => ({
       lat: 43.6,
       lng: -79.3,
@@ -67,6 +71,8 @@ describe('backfillCandidateSourceUrls', () => {
     expect(updates).toEqual([{ id: 'c1', set: { sourceUrl: VENUE_WEBSITE } }]);
     // Only the title + coarse area reach Places — never a precise location (rule #1).
     expect(calls).toEqual([{ title: 'Riverdale Library', area: 'M4K' }]);
+    // Default (no force): the select is filtered to rows still lacking a url.
+    expect(whereArgs[0]).toBeDefined();
   });
 
   it('leaves a candidate untouched when the venue has no website (Google-search fallback stays)', async () => {
@@ -116,5 +122,43 @@ describe('backfillCandidateSourceUrls', () => {
     await backfillCandidateSourceUrls(db, { geocode });
 
     expect(updateSpy).toHaveBeenCalledWith(schema.villageCandidates);
+  });
+
+  it('with force, scans ALL rows (no url filter) and replaces a model-supplied url with the Places website', async () => {
+    // The row already has a url — a model guess. force drops the null-only filter
+    // (where receives undefined), so the row is scanned; Places has the real site,
+    // so it overwrites. Idempotent: a second run resolves the same website.
+    const { db, updates, whereArgs } = fakeDb([
+      { id: 'c1', title: 'Riverdale Library', areaCoarse: 'M4K' },
+    ]);
+    const { geocode } = fakeGeocode(async () => ({
+      lat: 43.6,
+      lng: -79.3,
+      venueName: 'Riverdale Library',
+      venueAddress: '370 Broadview Ave',
+      website: VENUE_WEBSITE,
+    }));
+
+    const result = await backfillCandidateSourceUrls(db, { geocode }, { force: true });
+
+    expect(result).toEqual({ scanned: 1, updated: 1 });
+    expect(updates).toEqual([{ id: 'c1', set: { sourceUrl: VENUE_WEBSITE } }]);
+    // force means no url filter — every row is re-checked against Places.
+    expect(whereArgs).toEqual([undefined]);
+  });
+
+  it('with force, leaves an existing url untouched when Places has no website (never blanks a working url)', async () => {
+    const { db, updates } = fakeDb([{ id: 'c1', title: 'A park', areaCoarse: 'M4K' }]);
+    const { geocode } = fakeGeocode(async () => ({
+      lat: 43.6,
+      lng: -79.3,
+      venueName: 'A park',
+      venueAddress: '1 Park Lane',
+    }));
+
+    const result = await backfillCandidateSourceUrls(db, { geocode }, { force: true });
+
+    expect(result).toEqual({ scanned: 1, updated: 0 });
+    expect(updates).toEqual([]);
   });
 });
