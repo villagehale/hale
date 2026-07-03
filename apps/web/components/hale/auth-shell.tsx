@@ -28,7 +28,7 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
           <span className="font-display text-2xl font-semibold text-on-spruce">Hale</span>
         </Link>
         <div className="max-w-md">
-          <p className="eyebrow text-on-spruce-soft">For your family</p>
+          <p className="eyebrow text-on-spruce-soft">For your neighborhood</p>
           <p className="mt-4 font-display text-[clamp(2.4rem,3.4vw,3.4rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-on-spruce text-balance">
             The <span className="text-apricot-deep">village</span> every parent needs.
           </p>
@@ -44,6 +44,9 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
         <div className="flex w-full max-w-sm flex-col gap-6">
           <h2 className="font-display text-3xl font-semibold leading-tight">{heading}</h2>
           {children}
+          <p className="meta">
+            Your family&rsquo;s data stays in Canada. Nothing is shared until you say so.
+          </p>
         </div>
       </section>
     </main>

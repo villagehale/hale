@@ -5,15 +5,25 @@ import { APP_URL } from '~/lib/app-url.js';
 import LandingPage from './page.js';
 
 /**
- * At public launch the landing CTAs lead into the app's sign-in (then onboarding),
- * not a waitlist form. Rendered to static markup to assert the go-live wiring.
+ * At public launch the landing CTAs lead into the app's account-creation funnel
+ * (sign-up → onboarding), not a waitlist form. Rendered to static markup to assert
+ * the go-live wiring.
  */
 const html = renderToStaticMarkup(createElement(LandingPage));
 
 describe('LandingPage (go-live funnel)', () => {
-  it('points the "Join the village" CTAs at the app sign-in', () => {
-    expect(html).toContain(`href="${APP_URL}/sign-in"`);
+  it('points every "Join the village" CTA at the app sign-up (not sign-in)', () => {
     expect(html).toContain('Join the village');
+    expect(html).toContain(`href="${APP_URL}/sign-up"`);
+    // Every "Join the village" anchor lands on sign-up — no join CTA drops into
+    // sign-in. (The header "Log in" still points at sign-in; that is not a join.)
+    const joinHrefs = [...html.matchAll(/href="([^"]*)"[^>]*>\s*Join the village/g)].map(
+      (m) => m[1],
+    );
+    expect(joinHrefs.length).toBeGreaterThan(0);
+    for (const href of joinHrefs) {
+      expect(href).toBe(`${APP_URL}/sign-up`);
+    }
   });
 
   it('leads the hero with the pre-auth value preview CTA', () => {

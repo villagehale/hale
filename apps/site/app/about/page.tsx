@@ -116,7 +116,7 @@ export default function AboutPage() {
             Your village starts the day you join — one family, then a street, then a
             neighborhood.
           </p>
-          <a href={`${APP_URL}/sign-in`} className="btn-primary shrink-0">
+          <a href={`${APP_URL}/sign-up`} className="btn-primary shrink-0">
             Join the village
           </a>
         </div>

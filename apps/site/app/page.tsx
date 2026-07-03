@@ -164,7 +164,7 @@ export default function LandingPage() {
               </LandingCta>
               <LandingCta
                 event="landing_cta_signin"
-                href={`${APP_URL}/sign-in`}
+                href={`${APP_URL}/sign-up`}
                 className="btn-secondary"
               >
                 Join the village
@@ -245,7 +245,7 @@ export default function LandingPage() {
               <div className="mt-8">
                 <LandingCta
                   event="landing_cta_signin"
-                  href={`${APP_URL}/sign-in`}
+                  href={`${APP_URL}/sign-up`}
                   className="btn-primary"
                 >
                   Join the village
@@ -285,7 +285,7 @@ export default function LandingPage() {
                     </div>
                   ))}
                 </div>
-                <a href={`${APP_URL}/sign-in`} className="btn-primary self-start">
+                <a href={`${APP_URL}/sign-up`} className="btn-primary self-start">
                   Join the village
                 </a>
               </div>

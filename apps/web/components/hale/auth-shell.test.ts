@@ -34,4 +34,9 @@ describe('AuthShell — the two-panel auth frame', () => {
     expect(html).toContain('Welcome back');
     expect(html).toContain('FORM_SLOT');
   });
+
+  it('carries a warm data-residency trust line (Canada, nothing shared unasked)', () => {
+    expect(html).toContain('stays in Canada');
+    expect(html).toContain('Nothing is shared until you say so');
+  });
 });
