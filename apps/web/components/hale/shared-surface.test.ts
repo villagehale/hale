@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AskBox } from './ask-box';
 import { CoachConversation } from './coach-conversation';
 import { AskHaleThread } from './ask-hale-thread';
+
+// The Ask Hale tree reaches the input-intent widget, which calls the
+// logQuickEpisode 'use server' action. Stub the action module so this markup-only
+// test doesn't pull the server/auth graph (next-auth → next/server) through it.
+vi.mock('~/lib/companion/log', () => ({
+  logQuickEpisode: vi.fn(),
+  logBookingRequested: vi.fn(),
+}));
 
 /**
  * Both Ask Hale surfaces are unified onto the ONE shared component: the Home hero

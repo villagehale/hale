@@ -1172,6 +1172,66 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
 }
 
+/* Voice mic — a second trailing control, same size/shape as .composer-send but
+   transparent by default; it fills to spruce while listening. */
+.composer-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-slate-green);
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.composer-mic:hover { color: var(--color-spruce); background: var(--color-oat); }
+
+.composer-mic:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* Active listening — filled, with a breathing ring so the state is visible. */
+.composer-mic-live {
+  background: var(--color-spruce);
+  color: var(--color-on-spruce);
+  animation: mic-listening 2s var(--ease-breathe) infinite;
+}
+
+@keyframes mic-listening {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(1 32 79 / 0.35); }
+  50% { box-shadow: 0 0 0 6px rgb(1 32 79 / 0); }
+}
+
+/* One-time voice consent — a small popover above the mic (rule #1). */
+.voice-consent {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.5rem);
+  z-index: 20;
+  width: min(20rem, 78vw);
+  padding: 0.85rem 1rem;
+  background: var(--color-linen);
+  border: 1.5px solid var(--color-rule-strong);
+  border-radius: var(--r-lg);
+  box-shadow: 0 10px 30px rgb(1 32 79 / 0.14);
+}
+
+.voice-note {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-mic-live { animation: none; }
+}
+
 /* The "Hale is thinking" bubble — three dots that breathe in sequence. */
 .typing-dots { display: inline-flex; align-items: center; gap: 0.3rem; }
 .typing-dots span {
