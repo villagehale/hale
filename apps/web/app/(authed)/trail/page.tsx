@@ -11,7 +11,6 @@ export default async function TrailPage() {
     { label: 'recorded', value: String(entries.length), detail: 'actions' },
     { label: 'by Hale', value: String(byHale), detail: 'autonomous' },
     { label: 'by a parent', value: String(byParent), detail: 'decisions' },
-    { label: 'reverted', value: '0', detail: 'this view' },
   ];
 
   return (
@@ -36,11 +35,11 @@ export default async function TrailPage() {
 
       {/* ── Tally ──────────────────────────────────────────────────────── */}
       <section className="rise rise-2 mb-12 lg:mb-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 border-y border-rule">
+        <div className="grid grid-cols-1 sm:grid-cols-3 border-y border-rule">
           {stats.map((stat, idx) => (
             <div
               key={stat.label}
-              className={`py-7 px-5 ${idx > 0 ? 'md:border-l border-rule' : ''} ${idx > 1 ? 'border-t md:border-t-0' : ''} ${idx % 2 === 1 ? 'border-l' : ''}`}
+              className={`py-7 px-5 ${idx > 0 ? 'sm:border-l border-t sm:border-t-0 border-rule' : ''}`}
             >
               <span className="eyebrow">{stat.label}</span>
               <p className="font-display text-[2.5rem] mt-1 tabular leading-none">

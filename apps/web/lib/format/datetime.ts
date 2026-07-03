@@ -40,6 +40,40 @@ function isOtherYear(date: Date, timeZone: string, now: Date): boolean {
   return yearIn(date, timeZone) !== yearIn(now, timeZone);
 }
 
+/**
+ * A stable `YYYY-MM-DD` key for the calendar day `iso` falls on IN `timeZone` —
+ * so the trail groups rows by the family's local day, and a 1am-ET row near the
+ * UTC boundary groups under its local day, not UTC's. `en-CA` renders ISO order.
+ */
+export function dayKeyOf(iso: string | Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone,
+  }).format(new Date(iso));
+}
+
+/**
+ * `Thursday, Jun 11` — the human heading for a trail day-group, in the family's
+ * zone, with the year on other-year days. Also the trail CSV's date column, so an
+ * exported row carries its full day, not just the time.
+ */
+export function formatDayHeading(
+  iso: string | Date,
+  timeZone: string,
+  now: Date = new Date(),
+): string {
+  const date = new Date(iso);
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: isOtherYear(date, timeZone, now) ? 'numeric' : undefined,
+    timeZone,
+  }).format(date);
+}
+
 /** `HH:MM`, 24-hour, in the family's zone. Trail row time-stamp. */
 export function formatTime(iso: string | Date, timeZone: string): string {
   return new Intl.DateTimeFormat(LOCALE, {

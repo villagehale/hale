@@ -117,31 +117,35 @@ describe('account chip (every authed page) masks the parent + family identity', 
   });
 });
 
-describe('history timeline masks each entry summary + detail', () => {
+describe('history timeline masks each entry summary + child name', () => {
   const entries: TrailView[] = [
     {
       id: 'e1',
       time: '14:30',
-      category: 'actions',
+      date: 'Thursday, Jun 11',
+      dayKey: '2026-06-11',
       tone: 'done',
       actor: 'hale',
-      summary: 'Replied to Dr. Chen confirming Maya’s 4-month checkup',
-      detail: 'actions · 0c9f1d2e-1111-2222-3333-444455556666',
+      summary: 'carried out the action for Maya',
+      noun: 'draft',
+      link: '/approvals',
+      childLabel: 'Maya',
     },
   ];
 
   const html = renderToStaticMarkup(h(TrailTimeline, { entries }));
 
   it('renders the entry text at all (guards against a vacuous pass)', () => {
-    expect(html).toContain('Dr. Chen');
-    expect(html).toContain('0c9f1d2e-1111-2222-3333-444455556666');
+    expect(html).toContain('Maya');
   });
 
-  it('keeps the entry summary and detail inside a [data-hale-pii] subtree', () => {
+  it('keeps the entry summary and the child name inside a [data-hale-pii] subtree', () => {
     const residue = stripMaskedSubtrees(html);
-    expect(residue).not.toContain('Dr. Chen');
+    // The summary sentence and the attributed child's name are both masked.
     expect(residue).not.toContain('Maya');
-    expect(residue).not.toContain('0c9f1d2e-1111-2222-3333-444455556666');
+    // The non-PII frame — day heading, the deep link — survives the strip.
+    expect(residue).toContain('Thursday, Jun 11');
+    expect(residue).toContain('view this draft');
   });
 });
 

@@ -1,7 +1,8 @@
 import type { schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import type { EntryTone } from '~/components/hale/tone';
-import { formatTime } from '~/lib/format/datetime';
+import { dayKeyOf, formatDayHeading, formatTime } from '~/lib/format/datetime';
+import { targetLink, targetNoun, trailVerb, verbTone } from '~/lib/trail/verbs';
 
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
 
@@ -11,14 +12,36 @@ export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
  * rows in.
  */
 
+export type TrailActor = 'hale' | 'you' | 'co-parent';
+
+/**
+ * Resolves a stored `audit_log.actor` — `'system'`, an agent-run uuid, or a user
+ * uuid — to the timeline's actor. Built server-side from the family's member set
+ * (queries.ts) and injected so the mapper stays pure. The HARD rule lives in the
+ * resolver, not the mapper: only a uuid that MATCHES a family member is a human;
+ * `'system'`, an agent-run uuid, and any UNKNOWN uuid all read as Hale — an
+ * unknown id is NEVER defaulted to a human (which would misattribute Hale's own
+ * work, or a departed user's, to the parent reading the trail).
+ */
+export type ActorResolver = (actor: string) => TrailActor;
+
 export interface TrailView {
   id: string;
+  /** `HH:MM` in the family's zone — the row's time within its day group. */
   time: string;
-  category: string;
+  /** `Thursday, Jun 11` (year on other-year) — the day-group heading + CSV date. */
+  date: string;
+  /** `YYYY-MM-DD` in the family's zone — the stable grouping key. */
+  dayKey: string;
   tone: EntryTone;
-  actor: 'hale' | 'you' | 'co-parent';
+  actor: TrailActor;
   summary: string;
-  detail: string;
+  /** The record's domain noun (`draft`, `plan`, …) — never the raw table name. */
+  noun: string;
+  /** A deep link to the surface where the record is viewable, or null. */
+  link: string | null;
+  /** The teen-safe child label, or null for a whole-family / unattributed row. */
+  childLabel: string | null;
 }
 
 /**
@@ -56,37 +79,38 @@ export function effectiveTeenContent(
   return familyHasTeen;
 }
 
-/** audit_log.actor is 'system' | agent_run uuid | user uuid; the timeline only
- * distinguishes Hale vs. a parent. A non-system actor is a human ("you"); the
- * co-parent distinction needs the acting user's role, which the audit row alone
- * doesn't carry — so human actors read as "you" until that join is wired. */
-function actorOf(entry: AuditLogEntry): TrailView['actor'] {
-  return entry.actor === 'system' ? 'hale' : 'you';
-}
-
 /**
- * Teen-content trail rows (rule #1) keep the non-sensitive frame — time, category
- * (target_table), actor, and the id-only detail — but `actionTaken` is redacted to
- * the placeholder. `actionTaken` is Hale's own phrasing, but it can quote the
- * teen (e.g. an email subject), so it is redacted conservatively whenever the row
- * resolves to teen_content. Rows the query layer cannot tie to teen_content (e.g.
- * non-`actions` targets) keep their summary — see loadTrail for that join.
+ * Teen-content trail rows (rule #1) keep the non-sensitive frame — time, day,
+ * actor, the domain noun, and the deep link — but the SUMMARY is redacted to the
+ * placeholder. The verb sentence is Hale's own phrasing, but the row can concern
+ * a teen, so it is redacted conservatively whenever the row resolves to
+ * teen_content. Rows the query layer cannot tie to teen_content (e.g. non-`actions`
+ * targets) keep their sentence — see loadTrail for that join.
  *
- * `timeZone` is the family's zone (loadFamilyTimezone), so the time-stamp reads in
- * the family's clock, not the server's.
+ * `timeZone` is the family's zone (loadFamilyTimezone), so the stamps read in the
+ * family's clock, not the server's. `resolveActor` maps the stored actor to
+ * hale/you/co-parent from the family's member set (an unknown id → hale, never a
+ * human). The `now` seam keeps the other-year day heading testable.
  */
 export function toTrailView(
   entry: AuditLogEntry,
   teenContent: boolean,
   timeZone: string,
+  resolveActor: ActorResolver,
+  childLabel: string | null = null,
+  now: Date = new Date(),
 ): TrailView {
+  const { sentence, family } = trailVerb(entry.actionTaken);
   return {
     id: entry.id,
     time: formatTime(entry.occurredAt, timeZone),
-    category: entry.targetTable ?? 'action',
-    tone: 'done',
-    actor: actorOf(entry),
-    summary: teenContent ? TEEN_REDACTED_PLACEHOLDER : entry.actionTaken,
-    detail: entry.targetId ? `${entry.targetTable ?? 'record'} · ${entry.targetId}` : 'recorded',
+    date: formatDayHeading(entry.occurredAt, timeZone, now),
+    dayKey: dayKeyOf(entry.occurredAt, timeZone),
+    tone: verbTone(family),
+    actor: resolveActor(entry.actor),
+    summary: teenContent ? TEEN_REDACTED_PLACEHOLDER : sentence,
+    noun: targetNoun(entry.targetTable),
+    link: targetLink(entry.targetTable, entry.targetId),
+    childLabel,
   };
 }

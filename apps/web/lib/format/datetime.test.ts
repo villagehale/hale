@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_TIMEZONE,
+  dayKeyOf,
   formatCalendarDate,
   formatDateTime,
+  formatDayHeading,
   formatLongDate,
   formatTime,
   formatWhenPhrase,
@@ -110,6 +112,50 @@ describe('formatLongDate', () => {
       day: '31',
       year: '2025',
     });
+  });
+});
+
+describe('dayKeyOf — a stable calendar-day key in the render zone', () => {
+  it('keys by the LOCAL calendar day, so the same instant keys differently across zones', () => {
+    // 2026-06-11 14:05 UTC is Jun 11 in Toronto but Jun 11 in Vancouver too; use a
+    // late-evening UTC instant to expose the zone: 2026-06-12 02:00 UTC is still
+    // Jun 11 (10pm) in Toronto but Jun 11 (7pm) in Vancouver — both Jun 11 — so
+    // pick 2026-06-12 05:00 UTC: Jun 12 (1am) Toronto vs Jun 11 (10pm) Vancouver.
+    expect(dayKeyOf('2026-06-12T05:00:00Z', 'America/Toronto')).toBe('2026-06-12');
+    expect(dayKeyOf('2026-06-12T05:00:00Z', 'America/Vancouver')).toBe('2026-06-11');
+  });
+
+  it('groups two instants on the same local day under one key', () => {
+    expect(dayKeyOf('2026-06-11T13:00:00Z', 'America/Toronto')).toBe(
+      dayKeyOf('2026-06-11T23:00:00Z', 'America/Toronto'),
+    );
+  });
+});
+
+describe('formatDayHeading — the human day heading for a grouped section', () => {
+  const NOW = new Date('2026-07-03T15:00:00Z');
+
+  it('reads weekday + month + day in the render zone, no year within this year', () => {
+    // 2026-06-11 14:05 UTC is Thursday Jun 11 in Toronto.
+    expect(formatDayHeading('2026-06-11T14:05:00Z', 'America/Toronto', NOW)).toBe(
+      'Thursday, Jun 11',
+    );
+  });
+
+  it('carries the year on an other-year day', () => {
+    expect(formatDayHeading('2025-06-11T14:05:00Z', 'America/Toronto', NOW)).toBe(
+      'Wednesday, Jun 11, 2025',
+    );
+  });
+
+  it('honours the render zone near the UTC boundary — 1am ET is the local day', () => {
+    // 2026-06-12 05:00 UTC is Jun 12 (1am) in Toronto but Jun 11 in Vancouver.
+    expect(formatDayHeading('2026-06-12T05:00:00Z', 'America/Toronto', NOW)).toBe(
+      'Friday, Jun 12',
+    );
+    expect(formatDayHeading('2026-06-12T05:00:00Z', 'America/Vancouver', NOW)).toBe(
+      'Thursday, Jun 11',
+    );
   });
 });
 

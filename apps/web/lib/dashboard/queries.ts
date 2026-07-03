@@ -8,7 +8,12 @@ import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import { type ApprovalView, toApprovalView } from './approvals';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import { type TrailView, effectiveTeenContent, toTrailView } from './mappers';
+import {
+  type ActorResolver,
+  type TrailView,
+  effectiveTeenContent,
+  toTrailView,
+} from './mappers';
 
 /**
  * The remaining family-scoped reads (the family band, the Family page, and the
@@ -173,6 +178,31 @@ async function familyHasTeenager(database: Database, familyId: string): Promise<
   return rows.some((c) => deriveStage(c.dateOfBirth) === 'teenager');
 }
 
+/**
+ * Builds the trail's actor resolver from the family's member set: a stored
+ * `audit_log.actor` uuid that MATCHES a member resolves to that member's role
+ * ('you' for the primary, 'co-parent' otherwise); `'system'`, an agent-run uuid,
+ * and any UNKNOWN uuid all resolve to Hale. This is the structural guardrail for
+ * the actor rule — an id the family doesn't own is NEVER attributed to a human,
+ * so Hale's own (agent-run) work and a departed user's actions can't masquerade
+ * as the parent reading the trail.
+ */
+async function buildActorResolver(
+  database: Database,
+  familyId: string,
+): Promise<ActorResolver> {
+  const members = await database
+    .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  const roleByUser = new Map(members.map((m) => [m.userId, m.role]));
+  return (actor) => {
+    const role = roleByUser.get(actor);
+    if (role === undefined) return 'hale';
+    return role === 'primary_parent' ? 'you' : 'co-parent';
+  };
+}
+
 export function loadTrail(): Promise<TrailView[]> {
   return readForFamily(async (database, familyId) => {
     // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
@@ -196,15 +226,17 @@ export function loadTrail(): Promise<TrailView[]> {
     // an event (non-`actions` targets — teen_content null) keep the documented trail
     // boundary and render in full, so e.g. a consent/family-settings audit isn't
     // blanket-redacted just because the family has a teenager.
-    const [familyHasTeen, timeZone] = await Promise.all([
+    const [familyHasTeen, timeZone, resolveActor] = await Promise.all([
       familyHasTeenager(database, familyId),
       readFamilyTimezone(database, familyId),
+      buildActorResolver(database, familyId),
     ]);
     const rows = await database
       .select({
         entry: schema.auditLog,
         teenContent: schema.events.teenContent,
         childDob: schema.children.dateOfBirth,
+        childName: schema.children.name,
       })
       .from(schema.auditLog)
       .leftJoin(
@@ -221,6 +253,12 @@ export function loadTrail(): Promise<TrailView[]> {
       .limit(50);
     return rows.map((row) => {
       const resolvedToEvent = row.teenContent !== null;
+      // The child tag names the attributed child, but a 13+ child's given name is
+      // withheld (rule #1): withhold iff the attributed child is a teenager,
+      // derived live from its DOB — never the classifier flag. A row with no
+      // attributed child (non-`actions` target, family-wide event) reads null.
+      const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
+      const childLabel = teenChild ? null : (row.childName ?? null);
       return toTrailView(
         row.entry,
         effectiveTeenContent(
@@ -229,6 +267,8 @@ export function loadTrail(): Promise<TrailView[]> {
           resolvedToEvent && familyHasTeen,
         ),
         timeZone,
+        resolveActor,
+        childLabel,
       );
     });
   }, []);
