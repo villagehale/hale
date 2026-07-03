@@ -7,6 +7,8 @@ import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
+import { formatCalendarDate } from '~/lib/format/datetime';
+import { villageKindLabel } from '~/lib/format/labels';
 import { loadCompanion } from '~/lib/companion/queries';
 import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
 import { type PlanChildItem, planChildItems } from '~/lib/plan/week';
@@ -96,16 +98,21 @@ export default async function PlanPage() {
               <p className="meta mt-2">activities you&rsquo;ve chosen</p>
             </div>
             <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {addedActivities.map((candidate) => (
+              {addedActivities.map((candidate) => {
+                const kindLabel = villageKindLabel(candidate.kind);
+                return (
                 <Card key={candidate.id} href="/village">
-                  <span className="eyebrow text-spruce">{candidate.kind}</span>
+                  {kindLabel ? (
+                    <span className="eyebrow text-spruce">{kindLabel}</span>
+                  ) : null}
                   <p className="text-lg text-spruce leading-relaxed mt-3">{candidate.title}</p>
                   <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
                     open in village
                     <Icon as={ArrowRight} size={14} />
                   </span>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -123,9 +130,13 @@ export default async function PlanPage() {
               </div>
             </div>
             <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {routine.items.map((item, idx) => (
+              {routine.items.map((item, idx) => {
+                const kindLabel = villageKindLabel(item.kind);
+                return (
                 <Card key={`${item.kind}-${idx}`} href="/village">
-                  <span className="eyebrow text-spruce">{item.kind}</span>
+                  {kindLabel ? (
+                    <span className="eyebrow text-spruce">{kindLabel}</span>
+                  ) : null}
                   <div data-hale-pii>
                     <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
                     {item.stageNote ? (
@@ -137,7 +148,8 @@ export default async function PlanPage() {
                     <Icon as={ArrowRight} size={14} />
                   </span>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -201,12 +213,7 @@ export default async function PlanPage() {
 }
 
 function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
-  const when = plan.scheduledFor
-    ? new Date(plan.scheduledFor).toLocaleDateString('en-CA', {
-        month: 'short',
-        day: 'numeric',
-      })
-    : null;
+  const when = plan.scheduledFor ? formatCalendarDate(plan.scheduledFor) : null;
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">

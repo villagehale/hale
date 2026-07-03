@@ -1,9 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { trailToCsv } from '~/lib/trail/csv';
-import { Folio } from '~/components/hale/folio';
+import { ChildTag } from '~/components/hale/child-tag';
 import { ToneLabel } from '~/components/hale/tone';
 
 const ACTOR_LABEL: Record<TrailView['actor'], string> = {
@@ -32,6 +33,28 @@ function matchesFilter(entry: TrailView, filter: Filter): boolean {
   return entry.actor !== 'hale';
 }
 
+interface TrailDay {
+  key: string;
+  date: string;
+  rows: TrailView[];
+}
+
+/** Buckets the (already time-ordered) rows into contiguous day groups by dayKey,
+ * preserving order — so the timeline reads as dated sections, each headed by its
+ * full day, rather than a flat wall of times. */
+function groupByDay(rows: TrailView[]): TrailDay[] {
+  const days: TrailDay[] = [];
+  for (const row of rows) {
+    const last = days[days.length - 1];
+    if (last?.key === row.dayKey) {
+      last.rows.push(row);
+    } else {
+      days.push({ key: row.dayKey, date: row.date, rows: [row] });
+    }
+  }
+  return days;
+}
+
 /**
  * The History timeline with its working filter + CSV export. The server page
  * loads the (teen-redacted) rows and hands them in; this owns the client-side
@@ -45,6 +68,7 @@ export function TrailTimeline({ entries }: { entries: TrailView[] }) {
     () => entries.filter((entry) => matchesFilter(entry, filter)),
     [entries, filter],
   );
+  const days = useMemo(() => groupByDay(visible), [visible]);
 
   function exportCsv(): void {
     const blob = new Blob([trailToCsv(visible)], { type: 'text/csv;charset=utf-8' });
@@ -91,37 +115,49 @@ export function TrailTimeline({ entries }: { entries: TrailView[] }) {
           <p className="meta mt-4 text-slate-green">try a different filter above.</p>
         </section>
       ) : (
-        <section>
-          {visible.map((entry, idx) => {
-            const delay = `rise-${Math.min(idx + 4, 7)}`;
-            return (
-              <article
-                key={entry.id}
-                className={`rise ${delay} py-8 lg:py-10 border-t border-rule first:border-t-0`}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-y-3 md:gap-x-8">
-                  <div className="md:col-span-2">
-                    <Folio index={idx + 1} />
-                    <p className="meta tabular mt-2">{entry.time}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className={`eyebrow ${ACTOR_TONE[entry.actor]}`}>
-                      {ACTOR_LABEL[entry.actor]}
-                    </span>
-                    <p className="meta mt-1">{entry.category}</p>
-                  </div>
-                  <div className="md:col-span-8">
-                    <ToneLabel tone={entry.tone} />
-                    <div data-hale-pii>
-                      <p className="mt-3 text-lg text-spruce leading-relaxed">{entry.summary}</p>
-                      <p className="mt-2 meta italic">— {entry.detail}</p>
+        <div>
+          {days.map((day, dayIdx) => (
+            <section key={day.key} className={`rise rise-${Math.min(dayIdx + 4, 7)} mt-10 first:mt-2`}>
+              <h2 className="eyebrow sticky top-0 bg-linen py-3 border-b border-rule z-10">
+                {day.date}
+              </h2>
+              {day.rows.map((entry) => (
+                <article
+                  key={entry.id}
+                  className="py-8 lg:py-10 border-b border-rule last:border-b-0"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-y-3 md:gap-x-8">
+                    <div className="md:col-span-2">
+                      <p className="meta tabular">{entry.time}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className={`eyebrow ${ACTOR_TONE[entry.actor]}`}>
+                        {ACTOR_LABEL[entry.actor]}
+                      </span>
+                      <p className="meta mt-1">{entry.noun}</p>
+                    </div>
+                    <div className="md:col-span-8">
+                      <ToneLabel tone={entry.tone} />
+                      <div data-hale-pii>
+                        <p className="mt-3 text-lg text-spruce leading-relaxed">{entry.summary}</p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                        {entry.childLabel !== null ? (
+                          <ChildTag childId="child" label={entry.childLabel} />
+                        ) : null}
+                        {entry.link !== null ? (
+                          <Link href={entry.link} className="btn-ghost">
+                            view this {entry.noun}
+                          </Link>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </article>
-            );
-          })}
-        </section>
+                </article>
+              ))}
+            </section>
+          ))}
+        </div>
       )}
     </>
   );

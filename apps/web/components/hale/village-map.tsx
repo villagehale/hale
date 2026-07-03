@@ -3,6 +3,7 @@
 import { MapPin } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Icon } from '~/components/ui/icon';
+import { villageKindLabel } from '~/lib/format/labels';
 import { loadMapsLibrary } from '~/lib/onboarding/load-places';
 import { type LatLng, buildVillageMapModel } from '~/lib/village/map-model';
 import type { VillageCandidateView } from '~/lib/village/mappers';
@@ -180,7 +181,7 @@ export function VillageMap({
       {selected && !selected.teenAttributed ? (
         <section id={panelId} className="panel bg-raised flex flex-col gap-4">
           <div className="flex items-baseline justify-between gap-4">
-            <p className="eyebrow text-spruce">{selected.kind}</p>
+            <p className="eyebrow text-spruce">{villageKindLabel(selected.kind) ?? ''}</p>
             <button
               type="button"
               className="btn-ghost"

@@ -1,3 +1,5 @@
+import { formatDateTime } from '~/lib/format/datetime';
+import { actionTypeLabel } from '~/lib/format/labels';
 import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
 
 /**
@@ -47,15 +49,6 @@ export interface ApprovalView {
   verdict: string;
   draftedAt: string;
 }
-
-const DRAFTED_DATE = new Intl.DateTimeFormat('en-CA', {
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-  timeZone: 'America/Toronto',
-});
 
 const VERDICT_SUMMARY: Record<string, string> = {
   approved: 'verified by the reviewer — ready for your approval',
@@ -113,11 +106,11 @@ function derivePreview(actionType: string, payload: Record<string, unknown>): st
     case 'add_to_routine':
       return 'Pin to your routine';
     default:
-      return actionType.replaceAll('_', ' ');
+      return actionTypeLabel(actionType);
   }
 }
 
-export function toApprovalView(row: PendingApprovalRow): ApprovalView {
+export function toApprovalView(row: PendingApprovalRow, timeZone: string): ApprovalView {
   const summary = VERDICT_SUMMARY[row.reviewerVerdict] ?? 'awaiting your approval';
   return {
     id: row.id,
@@ -130,6 +123,6 @@ export function toApprovalView(row: PendingApprovalRow): ApprovalView {
     childId: row.childId,
     childLabel: row.childLabel,
     verdict: row.reviewerVerdict,
-    draftedAt: DRAFTED_DATE.format(row.draftedAt),
+    draftedAt: formatDateTime(row.draftedAt, timeZone),
   };
 }

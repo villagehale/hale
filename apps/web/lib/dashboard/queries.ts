@@ -7,7 +7,13 @@ import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import { type ApprovalView, toApprovalView } from './approvals';
-import { type TrailView, effectiveTeenContent, toTrailView } from './mappers';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import {
+  type ActorResolver,
+  type TrailView,
+  effectiveTeenContent,
+  toTrailView,
+} from './mappers';
 
 /**
  * The remaining family-scoped reads (the family band, the Family page, and the
@@ -133,6 +139,32 @@ export function loadFamilyName(): Promise<string | null> {
 }
 
 /**
+ * The family's display timezone — the primary parent's `users.timezone` — for the
+ * time layer, so every stored instant renders in the family's zone rather than the
+ * server's (Vercel = UTC). Falls back to DEFAULT_TIMEZONE (the schema default) when
+ * there's no DB, no resolved family, or no primary parent yet. Mirrors the digest's
+ * recipient join (role = 'primary_parent').
+ */
+async function readFamilyTimezone(database: Database, familyId: string): Promise<string> {
+  const [row] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+  return row?.timezone ?? DEFAULT_TIMEZONE;
+}
+
+export function loadFamilyTimezone(): Promise<string> {
+  return readForFamily(readFamilyTimezone, DEFAULT_TIMEZONE);
+}
+
+/**
  * Whether the family has any child currently in the teenager stage (deriveStage
  * boundary 156mo). Used as the rule-#1 double-miss fallback on the parent-facing
  * surfaces: when a row resolves to no child, redact its raw content if the family
@@ -144,6 +176,31 @@ async function familyHasTeenager(database: Database, familyId: string): Promise<
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   return rows.some((c) => deriveStage(c.dateOfBirth) === 'teenager');
+}
+
+/**
+ * Builds the trail's actor resolver from the family's member set: a stored
+ * `audit_log.actor` uuid that MATCHES a member resolves to that member's role
+ * ('you' for the primary, 'co-parent' otherwise); `'system'`, an agent-run uuid,
+ * and any UNKNOWN uuid all resolve to Hale. This is the structural guardrail for
+ * the actor rule — an id the family doesn't own is NEVER attributed to a human,
+ * so Hale's own (agent-run) work and a departed user's actions can't masquerade
+ * as the parent reading the trail.
+ */
+async function buildActorResolver(
+  database: Database,
+  familyId: string,
+): Promise<ActorResolver> {
+  const members = await database
+    .select({ userId: schema.familyMembers.userId, role: schema.familyMembers.role })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.familyId, familyId));
+  const roleByUser = new Map(members.map((m) => [m.userId, m.role]));
+  return (actor) => {
+    const role = roleByUser.get(actor);
+    if (role === undefined) return 'hale';
+    return role === 'primary_parent' ? 'you' : 'co-parent';
+  };
 }
 
 export function loadTrail(): Promise<TrailView[]> {
@@ -169,12 +226,17 @@ export function loadTrail(): Promise<TrailView[]> {
     // an event (non-`actions` targets — teen_content null) keep the documented trail
     // boundary and render in full, so e.g. a consent/family-settings audit isn't
     // blanket-redacted just because the family has a teenager.
-    const familyHasTeen = await familyHasTeenager(database, familyId);
+    const [familyHasTeen, timeZone, resolveActor] = await Promise.all([
+      familyHasTeenager(database, familyId),
+      readFamilyTimezone(database, familyId),
+      buildActorResolver(database, familyId),
+    ]);
     const rows = await database
       .select({
         entry: schema.auditLog,
         teenContent: schema.events.teenContent,
         childDob: schema.children.dateOfBirth,
+        childName: schema.children.name,
       })
       .from(schema.auditLog)
       .leftJoin(
@@ -191,6 +253,12 @@ export function loadTrail(): Promise<TrailView[]> {
       .limit(50);
     return rows.map((row) => {
       const resolvedToEvent = row.teenContent !== null;
+      // The child tag names the attributed child, but a 13+ child's given name is
+      // withheld (rule #1): withhold iff the attributed child is a teenager,
+      // derived live from its DOB — never the classifier flag. A row with no
+      // attributed child (non-`actions` target, family-wide event) reads null.
+      const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
+      const childLabel = teenChild ? null : (row.childName ?? null);
       return toTrailView(
         row.entry,
         effectiveTeenContent(
@@ -198,6 +266,9 @@ export function loadTrail(): Promise<TrailView[]> {
           row.childDob ?? null,
           resolvedToEvent && familyHasTeen,
         ),
+        timeZone,
+        resolveActor,
+        childLabel,
       );
     });
   }, []);
@@ -218,7 +289,10 @@ export function loadTrail(): Promise<TrailView[]> {
  */
 export function loadPendingApprovals(): Promise<ApprovalView[]> {
   return readForFamily(async (database, familyId) => {
-    const familyHasTeen = await familyHasTeenager(database, familyId);
+    const [familyHasTeen, timeZone] = await Promise.all([
+      familyHasTeenager(database, familyId),
+      readFamilyTimezone(database, familyId),
+    ]);
     const rows = await database
       .select({
         id: schema.actions.id,
@@ -247,16 +321,19 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       // withheld (rule #1): withhold iff the attributed child is a teenager, derived
       // live from its DOB — never the classifier flag (which can fire family-wide).
       const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
-      return toApprovalView({
-        id: row.id,
-        actionType: row.actionType,
-        payload: row.payload,
-        reviewerVerdict: row.reviewerVerdict,
-        draftedAt: row.draftedAt,
-        teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
-        childId: row.childId ?? null,
-        childLabel: teenChild ? null : (row.childName ?? null),
-      });
+      return toApprovalView(
+        {
+          id: row.id,
+          actionType: row.actionType,
+          payload: row.payload,
+          reviewerVerdict: row.reviewerVerdict,
+          draftedAt: row.draftedAt,
+          teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+          childId: row.childId ?? null,
+          childLabel: teenChild ? null : (row.childName ?? null),
+        },
+        timeZone,
+      );
     });
   }, []);
 }
