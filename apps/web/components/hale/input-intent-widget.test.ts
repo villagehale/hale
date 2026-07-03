@@ -11,7 +11,6 @@ import { InputIntentWidgets } from './input-intent-widget';
 // its boundary so rendering stays pure — the write path is covered in log.test.
 vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
-  logBookingRequested: vi.fn(),
 }));
 
 /**

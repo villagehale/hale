@@ -86,19 +86,35 @@ export function resolveOccurredAt(
   return { ok: true, date };
 }
 
-export const bookingSchema = z.object({
-  childId: z.string().uuid().optional(),
-  what: z.string().trim().min(1).max(280),
+/** Edit of an existing logged episode from the dedicated logs view. A parent may
+ * revise the two human-facing fields the list shows — the one-liner summary and
+ * when it happened. id scopes the row; family scoping is enforced server-side. */
+export const editEpisodeSchema = z.object({
+  id: z.string().uuid(),
+  summary: z.string().trim().min(1).max(280),
+  occurredAt: occurredAtField,
 });
+
+/** Soft-delete of an existing logged episode. Only the row id — family scoping is
+ * enforced server-side (rule #1). */
+export const deleteEpisodeSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export type EditResult =
+  | { status: 'edited' }
+  | { status: 'preview' }
+  | { status: 'invalid'; error: string }
+  | { status: 'forbidden' };
+
+export type DeleteResult =
+  | { status: 'deleted' }
+  | { status: 'preview' }
+  | { status: 'invalid'; error: string }
+  | { status: 'forbidden' };
 
 export type LogResult =
   | { status: 'logged' }
   | { status: 'preview'; reason: 'no_database' | 'no_auth' }
-  | { status: 'invalid'; error: string }
-  | { status: 'forbidden' };
-
-export type BookingResult =
-  | { status: 'requested' }
-  | { status: 'preview' }
   | { status: 'invalid'; error: string }
   | { status: 'forbidden' };

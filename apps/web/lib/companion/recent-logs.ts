@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 
@@ -70,7 +70,12 @@ async function readRecentLogs(database: Database, familyId: string): Promise<Rec
       occurredAt: schema.familyMemoryEpisodes.occurredAt,
     })
     .from(schema.familyMemoryEpisodes)
-    .where(eq(schema.familyMemoryEpisodes.familyId, familyId))
+    .where(
+      and(
+        eq(schema.familyMemoryEpisodes.familyId, familyId),
+        isNull(schema.familyMemoryEpisodes.deletedAt),
+      ),
+    )
     .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
     .limit(RECENT_LIMIT);
 

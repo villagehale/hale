@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { CompanionTabs } from '~/components/hale/companion-tabs';
 import { PageCorner } from '~/components/hale/page-corner';
 import { QuickLog } from '~/components/hale/quick-log';
@@ -74,6 +75,9 @@ export default async function CompanionPage() {
             <div className="lg:col-span-3">
               <span className="eyebrow">recent logs</span>
               <p className="meta mt-2 text-slate-green">feeds · naps · milestones</p>
+              <Link href="/companion/logs" className="link mt-4 inline-block">
+                see all logs →
+              </Link>
             </div>
             <div className="lg:col-span-9 space-y-8">
               <RecentLogs logs={recentLogs} />

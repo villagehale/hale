@@ -63,9 +63,16 @@ export const familyMemoryEpisodes = pgTable(
     sourceEventId: uuid('source_event_id'),
     sentimentScore: doublePrecision('sentiment_score'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // Soft delete (rule #6 / #9): a parent-removed episode is stamped, not erased,
+    // so the audit trail that references it stays intact. NULL = live.
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
     familyTimeIdx: index('memory_episodes_family_time_idx').on(table.familyId, table.occurredAt),
+    familyDeletedIdx: index('memory_episodes_family_deleted_idx').on(
+      table.familyId,
+      table.deletedAt,
+    ),
   }),
 );
 

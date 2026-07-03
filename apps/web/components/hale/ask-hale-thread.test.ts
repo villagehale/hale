@@ -9,7 +9,6 @@ import { AskHaleThread } from './ask-hale-thread';
 // pull the server/auth graph (next-auth → next/server) through the import.
 vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
-  logBookingRequested: vi.fn(),
 }));
 
 /**
