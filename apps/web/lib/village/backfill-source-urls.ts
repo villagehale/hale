@@ -3,18 +3,27 @@ import { eq, isNull, or } from 'drizzle-orm';
 import { type GeocodeResult, geocodeVenue } from './geocode';
 
 /**
- * One-off backfill of source_url for EXISTING village candidates discovered before
- * we captured the venue website from Places. For each candidate whose source_url
- * is null/empty, re-run the Places lookup (the SAME inputs geocodeVenue uses — the
- * candidate title + the family's COARSE area, rule #1) and adopt the resolved
- * venue website. A venue with no website is left null (the register link's
- * Google-search fallback stays correct for the rare truly-no-website case).
+ * One-off backfill of source_url for EXISTING village candidates. Two modes:
  *
- * Idempotent: the query only selects candidates that still lack a url, so a
- * second run skips everything the first run filled; an LLM-supplied url is never
- * touched. Best-effort: geocodeVenue never throws (rule #8 boundary), and a
- * candidate whose family has no coarse area is skipped (we can't disambiguate
- * without it, and the precise home is never used — rule #1).
+ *  - default: fill candidates whose source_url is null/empty by re-running the
+ *    Places lookup and adopting the resolved venue website — for rows discovered
+ *    before we captured the website from Places.
+ *  - force: scan EVERY candidate (including rows that already have a url) and,
+ *    when Places resolves a real venue website, REPLACE the stored url with it.
+ *    This corrects rows whose current url is a model-supplied guess (discovery
+ *    used to prefer the model url over the verified Places site). Run by hand,
+ *    not on the cron, because re-checking every row multiplies Places call volume.
+ *
+ * Both use the SAME inputs geocodeVenue uses — the candidate title + the family's
+ * COARSE area (rule #1) — and never blank an existing url: a venue with no website
+ * leaves the row unchanged (its register link keeps its current url or the
+ * Google-search fallback).
+ *
+ * Idempotent: force re-resolves the same Places website each run, so a second run
+ * sets the same value; default only selects rows still lacking a url. Best-effort:
+ * geocodeVenue never throws (rule #8 boundary), and a candidate whose family has
+ * no coarse area is skipped (we can't disambiguate without it, and the precise
+ * home is never used — rule #1).
  */
 
 /** Hard cap on Places lookups per backfill run — the Places call blast-radius. */
@@ -28,6 +37,13 @@ export function defaultBackfillSourceUrlDeps(): BackfillSourceUrlDeps {
   return { geocode: (title, areaCoarse) => geocodeVenue(title, areaCoarse) };
 }
 
+export interface BackfillSourceUrlOptions {
+  /** Also re-resolve rows that already have a url and replace it with the verified
+   * Places website (to correct model-guessed urls). Off by default so the cheap
+   * fill-only path stays the default. */
+  force?: boolean;
+}
+
 export interface BackfillSourceUrlResult {
   scanned: number;
   updated: number;
@@ -36,7 +52,10 @@ export interface BackfillSourceUrlResult {
 export async function backfillCandidateSourceUrls(
   database: Database,
   deps: BackfillSourceUrlDeps = defaultBackfillSourceUrlDeps(),
+  options: BackfillSourceUrlOptions = {},
 ): Promise<BackfillSourceUrlResult> {
+  const { force = false } = options;
+
   const rows = await database
     .select({
       id: schema.villageCandidates.id,
@@ -46,7 +65,9 @@ export async function backfillCandidateSourceUrls(
     .from(schema.villageCandidates)
     .innerJoin(schema.families, eq(schema.villageCandidates.familyId, schema.families.id))
     .where(
-      or(isNull(schema.villageCandidates.sourceUrl), eq(schema.villageCandidates.sourceUrl, '')),
+      force
+        ? undefined
+        : or(isNull(schema.villageCandidates.sourceUrl), eq(schema.villageCandidates.sourceUrl, '')),
     )
     .limit(MAX_BACKFILL_PER_RUN);
 

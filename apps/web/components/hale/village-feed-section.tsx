@@ -16,7 +16,10 @@ export async function HomeVillageFeed() {
     <>
       <VillageFeedHeader area={feed.areaCoarse} />
       {feed.candidates.length > 0 ? (
-        <VillageFeed candidates={feed.candidates} area={feed.areaCoarse} />
+        <>
+          <VillageFeed candidates={feed.candidates} area={feed.areaCoarse} />
+          <FindMoreFooter />
+        </>
       ) : (
         <div className="panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
@@ -54,11 +57,28 @@ export async function VillageCandidates() {
     );
   }
   return (
-    <VillageSearch
-      candidates={feed.candidates}
-      coarseCenter={feed.coarseCenter}
-      area={feed.areaCoarse}
-    />
+    <>
+      <VillageSearch
+        candidates={feed.candidates}
+        coarseCenter={feed.coarseCenter}
+        area={feed.areaCoarse}
+      />
+      <FindMoreFooter />
+    </>
+  );
+}
+
+/**
+ * The quiet re-search at the foot of a populated feed — the same re-runnable
+ * discovery as the empty state, styled as a secondary action so it gathers more
+ * without competing with the ranked picks above it.
+ */
+function FindMoreFooter() {
+  return (
+    <div className="mt-16 lg:mt-20 pt-10 border-t border-rule flex flex-col items-center gap-3 text-center">
+      <p className="meta text-slate-green">seen these already?</p>
+      <FindActivitiesButton variant="secondary" label="find more near you" />
+    </div>
   );
 }
 

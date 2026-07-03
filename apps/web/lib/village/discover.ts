@@ -45,6 +45,32 @@ const CANDIDATE_KIND = 'activity';
  * worker provider's `llm_only` source value. */
 const SOURCE = 'llm_only';
 
+/** Hosts the model reaches for when it has no real URL — adopting one sends a
+ * parent to a placeholder, not the venue. Reject them so the register link falls
+ * back to a coarse-area search instead. */
+const PLACEHOLDER_HOSTS = new Set(['example.com', 'example.org', 'example.net', 'localhost']);
+
+/**
+ * A model-supplied source URL is a fallback we adopt ONLY when Places has no
+ * verified website. It's often guessed, so we keep it only when it's an absolute
+ * http(s) URL whose host isn't an obvious placeholder; anything else becomes null
+ * (the register link then uses its coarse-area Google-search fallback). We never
+ * synthesize a URL.
+ */
+export function sanitizeModelUrl(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  if (PLACEHOLDER_HOSTS.has(parsed.hostname.toLowerCase())) return null;
+  return trimmed;
+}
+
 /** Max candidates the model is asked for; matches the worker's DEFAULT_LIMIT. */
 export const DISCOVERY_LIMIT = 8;
 
@@ -260,10 +286,14 @@ export async function discoverForFamily(
         await tx.insert(schema.villageCandidates).values(
           candidates.map((c, i) => {
             const coords = geocoded[i];
-            // The LLM-supplied url always wins; only when it gave none do we adopt
-            // the venue's real website from Places (so the card links to the venue
-            // rather than a Google search). No website → null → search fallback.
-            const sourceUrl = c.sourceUrl?.trim() || coords?.website || null;
+            // The VERIFIED Places website wins over the model-supplied url — the
+            // latter is often a guess (see coverage_note "not individually
+            // confirmed"), so a real venue site resolved from Places is the
+            // trustworthy register target. We adopt the model url only when Places
+            // has no website AND it survives a cheap sanity check; otherwise null →
+            // the register link's coarse-area Google-search fallback (correct by
+            // construction). We never invent a url.
+            const sourceUrl = coords?.website ?? sanitizeModelUrl(c.sourceUrl);
             return {
               familyId,
               childId: null,

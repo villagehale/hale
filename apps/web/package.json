@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
+    "backfill:source-urls": "tsx scripts/backfill-source-urls.ts",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
@@ -51,6 +52,7 @@
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^3.2.6"
   }
