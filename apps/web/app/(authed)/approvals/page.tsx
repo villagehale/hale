@@ -6,6 +6,7 @@ import { DraftDetail } from '~/components/hale/draft-detail';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ToneLabel } from '~/components/hale/tone';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
+import { actionTypeLabel } from '~/lib/format/labels';
 import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
 
 /**
@@ -38,7 +39,7 @@ export default async function ApprovalsPage() {
               <div className="min-w-0" data-hale-pii>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2">
                   <ChildTag childId={approval.childId} label={approval.childLabel} />
-                  <span className="eyebrow">{approval.actionType.replaceAll('_', ' ')}</span>
+                  <span className="eyebrow">{actionTypeLabel(approval.actionType)}</span>
                 </div>
                 <p className="font-display text-[1.25rem] mt-1 text-spruce">{approval.preview}</p>
                 {NEEDS_YOU_VERDICTS.has(approval.verdict) ? (

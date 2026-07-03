@@ -9,6 +9,7 @@ import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
+import { villageKindLabel } from '~/lib/format/labels';
 import type { LatLng } from '~/lib/village/map-model';
 import { type VillageCandidateView, filterCandidatesByScope } from '~/lib/village/mappers';
 
@@ -135,7 +136,9 @@ export function VillageSearch({
               >
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
                   <div className="md:col-span-2">
-                    <p className="eyebrow text-spruce">{candidate.kind}</p>
+                    {villageKindLabel(candidate.kind) ? (
+                      <p className="eyebrow text-spruce">{villageKindLabel(candidate.kind)}</p>
+                    ) : null}
                   </div>
 
                   {candidate.teenAttributed ? (

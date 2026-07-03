@@ -1,3 +1,4 @@
+import { actionTypeLabel } from '~/lib/format/labels';
 import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
 
 /**
@@ -113,7 +114,7 @@ function derivePreview(actionType: string, payload: Record<string, unknown>): st
     case 'add_to_routine':
       return 'Pin to your routine';
     default:
-      return actionType.replaceAll('_', ' ');
+      return actionTypeLabel(actionType);
   }
 }
 

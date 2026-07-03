@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PageCorner } from '~/components/hale/page-corner';
 import { VillageCandidates, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
+import { villageKindLabel } from '~/lib/format/labels';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function VillagePage() {
@@ -41,12 +42,16 @@ export default async function VillagePage() {
               <p className="meta mt-2">week of {routine.weekOf}</p>
             </div>
             <div className="lg:col-span-9 space-y-5">
-              {routine.items.map((item, idx) => (
+              {routine.items.map((item, idx) => {
+                const kindLabel = villageKindLabel(item.kind);
+                return (
                 <div
                   key={`${item.kind}-${idx}`}
                   className="flex items-baseline gap-4 border-t border-rule pt-5 first:border-t-0 first:pt-0"
                 >
-                  <span className="eyebrow text-spruce shrink-0">{item.kind}</span>
+                  {kindLabel ? (
+                    <span className="eyebrow text-spruce shrink-0">{kindLabel}</span>
+                  ) : null}
                   <div data-hale-pii>
                     <p className="text-lg text-spruce leading-relaxed">{item.title}</p>
                     {item.stageNote ? (
@@ -54,7 +59,8 @@ export default async function VillagePage() {
                     ) : null}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

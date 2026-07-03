@@ -5,6 +5,7 @@ import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
 import { Icon } from '~/components/ui/icon';
+import { villageKindLabel } from '~/lib/format/labels';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 
 /**
@@ -54,12 +55,14 @@ function VillageFeedCard({
   delay: string;
   area: string | null;
 }) {
+  const kindLabel = villageKindLabel(candidate.kind);
+
   if (candidate.teenAttributed) {
     return (
       <article className={`rise ${delay} panel bg-raised flex items-center gap-3`}>
         <Icon as={Lock} size={18} className="shrink-0 text-slate-green" />
         <div>
-          <p className="eyebrow text-spruce">{candidate.kind}</p>
+          {kindLabel ? <p className="eyebrow text-spruce">{kindLabel}</p> : null}
           <p className="meta mt-1 text-slate-green">{candidate.title}</p>
         </div>
       </article>
@@ -69,7 +72,7 @@ function VillageFeedCard({
   return (
     <article className={`rise ${delay} panel bg-raised flex flex-col gap-4`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <p className="eyebrow text-spruce">{candidate.kind}</p>
+        {kindLabel ? <p className="eyebrow text-spruce">{kindLabel}</p> : null}
         <CadenceChip cadence={candidate.cadence} />
       </div>
 

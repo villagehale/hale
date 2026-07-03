@@ -1,6 +1,7 @@
 import { Heart } from 'lucide-react';
 import { RegisterLink } from '~/components/hale/register-link';
 import { Cloud, Hill, SeaTurtle, Sun } from '~/components/illos';
+import { villageKindLabel } from '~/lib/format/labels';
 import type { PublicActivity } from '~/lib/village/public';
 import { endorsementLabel } from '~/lib/village/social-proof';
 
@@ -88,7 +89,7 @@ export function PublicActivityCard({
   return (
     <article className="panel bg-raised flex flex-col gap-4">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="eyebrow text-spruce">{activity.kind}</p>
+        <p className="eyebrow text-spruce">{villageKindLabel(activity.kind) ?? ''}</p>
         {typeof index === 'number' ? (
           <span className="tabular text-sm text-faded-sage">
             {String(index).padStart(2, '0')}

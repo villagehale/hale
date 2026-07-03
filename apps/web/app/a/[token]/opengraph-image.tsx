@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og';
+import { villageKindLabel } from '~/lib/format/labels';
 import { db } from '~/lib/db';
 import { loadSharedActivity } from '~/lib/village/public-activity';
 
@@ -59,6 +60,7 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
   const data = await loadSafe(token);
 
   const headline = data ? data.title.slice(0, OG_TITLE_MAX) : 'a genuinely good local thing for families';
+  const kindLabel = data ? villageKindLabel(data.kind) : null;
   const lovedBy = data && data.count >= 2 ? `loved by ${data.count} families · ` : '';
   const place = data?.area ? `${data.area} · ` : '';
   const subline = `${lovedBy}${place}villagehale.com`;
@@ -84,9 +86,9 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {data ? (
+        {kindLabel ? (
           <span style={{ color: APRICOT, fontSize: 30, fontWeight: 600, marginBottom: 16 }}>
-            {data.kind}
+            {kindLabel}
           </span>
         ) : null}
         <span style={{ color: LINEN, fontSize: 68, fontWeight: 700, lineHeight: 1.05 }}>
