@@ -19,6 +19,15 @@ const PUBLISHED_SLUGS = [
   'toddler-tantrums-how-to-handle',
   'child-homework-battles',
   'child-sibling-fighting',
+  'newborn-cluster-feeding',
+  'introducing-peanuts-to-baby',
+  'starting-solids-when-ready',
+  'toddler-biting-what-to-do',
+  'potty-training-readiness-signs',
+  'toddler-screen-time-guidelines',
+  'child-managing-screen-time',
+  'teen-mental-health-warning-signs',
+  'teen-setting-boundaries-autonomy',
 ];
 
 describe('answer corpus', () => {

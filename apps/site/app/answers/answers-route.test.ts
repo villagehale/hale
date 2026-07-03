@@ -51,9 +51,11 @@ describe('answers/[slug] route', () => {
   });
 
   it('noindexes an unpublished (unreviewed) page', async () => {
-    const meta = await generateMetadata({ params: Promise.resolve({ slug: SLUG }) });
+    const held = 'toddler-separation-anxiety-daycare';
+    expect(getAnswer(held)?.published).toBe(false);
+    const meta = await generateMetadata({ params: Promise.resolve({ slug: held }) });
     expect(meta.robots).toMatchObject({ index: false });
-    expect(meta.alternates?.canonical).toBe(`/answers/${SLUG}`);
+    expect(meta.alternates?.canonical).toBe(`/answers/${held}`);
   });
 
   it('leaves a published (reviewed) page index-able', async () => {

@@ -74,7 +74,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['newborn-sleep-fragmented', 'newborn-safe-sleep-basics'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'newborn-sleep-fragmented',
@@ -285,7 +285,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['starting-solids-when-ready', 'newborn-cluster-feeding'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'starting-solids-when-ready',
@@ -346,7 +346,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['introducing-peanuts-to-baby', 'newborn-cluster-feeding'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-tantrums-how-to-handle',
@@ -477,7 +477,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-tantrums-how-to-handle', 'toddler-separation-anxiety-daycare'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-separation-anxiety-daycare',
@@ -602,7 +602,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-tantrums-how-to-handle', 'toddler-separation-anxiety-daycare'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'toddler-screen-time-guidelines',
@@ -661,7 +661,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['toddler-tantrums-how-to-handle', 'child-homework-battles'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'child-homework-battles',
@@ -843,7 +843,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['child-homework-battles', 'toddler-screen-time-guidelines'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'teen-mental-health-warning-signs',
@@ -902,7 +902,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['teen-setting-boundaries-autonomy'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
   {
     slug: 'teen-setting-boundaries-autonomy',
@@ -963,7 +963,7 @@ const ANSWERS: AnswerPage[] = [
     ],
     related: ['teen-mental-health-warning-signs'],
     updated: '2026-07-02',
-    published: false,
+    published: true,
   },
 ];
 
