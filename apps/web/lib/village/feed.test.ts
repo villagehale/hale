@@ -64,6 +64,7 @@ function view(id: string): VillageCandidateView {
     childId: null,
     title: `t-${id}`,
     kind: 'class',
+    cadence: null,
     summary: '',
     coverageNote: null,
     sourceUrl: null,

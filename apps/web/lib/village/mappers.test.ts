@@ -20,6 +20,7 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     childId: 'child-teen',
     title: RAW_TITLE,
     kind: 'support_group',
+    cadence: 'ongoing',
     summary: RAW_SUMMARY,
     sourceUrl: RAW_SOURCE_URL,
     source: 'web_grounded',
@@ -64,6 +65,8 @@ describe('toVillageCandidateView', () => {
     expect(view.coverageNote).toBeNull();
     expect(view.sourceUrl).toBeNull();
     expect(view.kind).toBe('support_group');
+    // Cadence is dropped on a teen card so no per-child recurrence signal leaks.
+    expect(view.cadence).toBeNull();
     // Rule #1: a teen-attributed candidate is never plottable — coords drop to
     // null so the map can never surface a teen's activity location.
     expect(view.lat).toBeNull();
@@ -88,6 +91,7 @@ describe('toVillageCandidateView', () => {
     expect(view.coverageNote).toBe(RAW_COVERAGE);
     expect(view.sourceUrl).toBe(RAW_SOURCE_URL);
     expect(view.kind).toBe('support_group');
+    expect(view.cadence).toBe('ongoing');
     // Public venue coords pass through for the map pin (a public place, not the
     // family's location — rule #1).
     expect(view.lat).toBe(43.6777);

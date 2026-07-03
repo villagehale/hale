@@ -20,6 +20,7 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
     childId: null,
     title: `title-${overrides.id}`,
     kind: 'class',
+    cadence: null,
     summary: `summary-${overrides.id}`,
     coverageNote: null,
     sourceUrl: null,

@@ -115,12 +115,46 @@ describe('detectInputIntents', () => {
     expect(detectInputIntents('how much should a 6-month-old eat?')).toEqual([]);
   });
 
-  it('does not create_plan — that kind belongs to another branch', () => {
+  it('detects a create_plan instruction and parses its title + child', () => {
+    const intent = detectInputIntents('create a plan for swimming lessons for Mira')[0];
+    expect(intent?.category).toBe('plan');
+    expect(intent?.kind).toBe('create_plan');
+    if (intent?.category === 'plan') {
+      expect(intent.parsed.title).toBe('swimming lessons');
+      expect(intent.parsed.childName).toBe('Mira');
+    }
+  });
+
+  it('detects a "plan … for <child>" instruction', () => {
+    const intent = detectInputIntents('plan a picnic for Noah on Saturday')[0];
+    expect(intent?.category).toBe('plan');
+    if (intent?.category === 'plan') {
+      expect(intent.parsed.title).toBe('a picnic on Saturday');
+      expect(intent.parsed.childName).toBe('Noah');
+    }
+  });
+
+  it('detects an "add a plan" instruction with no parsed detail', () => {
+    const intent = detectInputIntents('add a plan')[0];
+    expect(intent?.category).toBe('plan');
+    if (intent?.category === 'plan') {
+      expect(intent.parsed.title).toBeUndefined();
+      expect(intent.parsed.childName).toBeUndefined();
+    }
+  });
+
+  it('does not create_plan for an add_to_plan (pin-to-routine) instruction', () => {
+    // "add this to our week plan" pins Hale's suggestion to the routine (approval
+    // engine) — it is NOT the parent authoring a private plan from scratch.
     const kinds = detectInputIntents('add this to our week plan and pin it to the routine').map(
       (i) => i.kind,
     );
-    expect(kinds).not.toContain('add_to_plan');
     expect(kinds).not.toContain('create_plan');
+  });
+
+  it('returns [] for an ordinary question that merely mentions a plan', () => {
+    // "what's your plan" reads as conversation, not a create-plan command.
+    expect(detectInputIntents('what should the plan be for teething this week?')).toEqual([]);
   });
 
   it('dedups: one instruction surfaces each kind at most once', () => {

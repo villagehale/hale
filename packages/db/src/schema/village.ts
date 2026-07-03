@@ -32,6 +32,10 @@ export const villageCandidates = pgTable(
     title: text('title').notNull(),
     /** Free-text category (e.g. "class", "playgroup", "drop_in"); not a DB enum. */
     kind: text('kind').notNull(),
+    /** How the activity recurs — "seasonal" | "one-time" | "ongoing". Nullable:
+     * pre-cadence rows and unclassified candidates stay null (no chip). Free text
+     * (not a DB enum) so the model's label lands without a migration to extend. */
+    cadence: text('cadence'),
     summary: text('summary').notNull(),
     sourceUrl: text('source_url'),
     /** Which discovery provider produced this row (e.g. "fake", "web_grounded"). */

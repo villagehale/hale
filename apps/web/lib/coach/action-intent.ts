@@ -13,7 +13,12 @@ import type { ActionType } from '@hale/types';
  * DRAFT a parent must approve, so the cost of a loose match is bounded by rule #4.
  */
 
-export type ActionIntentKind = 'find_activities' | 'add_to_plan' | 'book_checkup' | 'set_reminder';
+export type ActionIntentKind =
+  | 'find_activities'
+  | 'add_to_plan'
+  | 'book_checkup'
+  | 'set_reminder'
+  | 'create_plan';
 
 export interface ActionIntent {
   kind: ActionIntentKind;
@@ -86,11 +91,14 @@ export function actionTypeForIntent(kind: string): ActionType | null {
  * (rule #2 untouched). A miss just means no widget; a false positive only ever
  * shows a confirm the parent can dismiss — bounded cost.
  *
- * Two categories, because they route differently:
+ * Three categories, because they route differently:
  *  - 'action' (book/remind/find): reuses a Hale-acts kind + its ActionType, routes
  *    through the EXISTING approval engine (held for approval — rule #4).
  *  - 'log' (quick_log): the parent's OWN household data — no approval gate. Carries
  *    a best-effort parsed sub-shape the widget pre-fills and the parent can edit.
+ *  - 'plan' (create_plan): the parent AUTHORS a private plan for their week — their
+ *    OWN data, private-by-default, no approval gate. Carries a best-effort parsed
+ *    sub-shape the widget pre-fills and the parent can edit before confirming.
  */
 
 export type QuickLogEpisode = 'feed' | 'nap' | 'milestone';
@@ -105,9 +113,18 @@ export interface QuickLogParse {
   milestone?: string;
 }
 
+export interface PlanLogParse {
+  /** The plan title lifted from the instruction ("swimming registration"), or
+   * undefined (the parent types it). */
+  title?: string;
+  /** A capitalised name that reads as the child, or undefined (parent picks). */
+  childName?: string;
+}
+
 export type InputIntent =
   | { category: 'action'; kind: ActionIntentKind; label: string; actionType: ActionType }
-  | { category: 'log'; kind: 'quick_log'; label: string; parsed: QuickLogParse };
+  | { category: 'log'; kind: 'quick_log'; label: string; parsed: QuickLogParse }
+  | { category: 'plan'; kind: 'create_plan'; label: string; parsed: PlanLogParse };
 
 /** Imperative phrasings that map an instruction to a Hale-acts kind. Distinct from
  * INTENT_RULES (which read Hale's SUGGESTION copy): here the parent is commanding. */
@@ -149,6 +166,27 @@ const QUICK_LOG_EPISODE_RULES: readonly { episode: QuickLogEpisode; patterns: re
     },
   ];
 
+/** Author-a-plan phrasings: the parent writes their OWN private plan. Distinct
+ * from add_to_plan (which pins Hale's suggestion to the routine via the approval
+ * engine): here the parent starts a plan from scratch. Two shapes:
+ *  - a "plan" NOUN: "create/add/start/make/note a plan …".
+ *  - "plan" as the LEADING imperative VERB: "plan a picnic for Noah". Anchored to
+ *    the start (an imperative), so conversational "…what the plan is…" never
+ *    matches. */
+const PLAN_RULES: readonly RegExp[] = [
+  /\b(?:create|add|start|make|note)\s+(?:a|an|another)\s+plan\b/i,
+  /^\s*plan\s+\w+/i,
+];
+
+/** The plan title: the text after "a plan for/to", or after a leading imperative
+ * "plan …". The "for <Child>" tail is stripped separately so it doesn't read as
+ * part of the title. */
+const PLAN_TITLE_NOUN_RE =
+  /\b(?:create|add|start|make|note)\s+(?:a|an|another)\s+plan(?:\s+(?:for|to)\s+(.+))?$/i;
+const PLAN_TITLE_VERB_RE = /^\s*plan\s+(.+)$/i;
+/** A "for <Child>" tail — a capitalised token that reads as the child the plan is for. */
+const PLAN_CHILD_RE = /\bfor\s+([A-Z][a-z]+)\b/;
+
 /** A leading "<Name> had/took/hit …" — a capitalised token that reads as the child. */
 const CHILD_NAME_RE = /^\s*([A-Z][a-z]+)\b/;
 /** A clock or coarse time phrase to pre-fill "when". Best-effort — the parent edits. */
@@ -170,10 +208,25 @@ function parseQuickLog(question: string, episode: QuickLogEpisode): QuickLogPars
   return parsed;
 }
 
+/** Best-effort parse of an authored-plan instruction — a title to pre-fill and a
+ * child the plan is for. Both optional: the parent edits the confirm card. The
+ * "for <Child>" tail is stripped from the title so it doesn't read as part of it. */
+function parsePlan(question: string): PlanLogParse {
+  const parsed: PlanLogParse = {};
+  const childMatch = question.match(PLAN_CHILD_RE);
+  if (childMatch) parsed.childName = childMatch[1];
+
+  const rawTitle =
+    question.match(PLAN_TITLE_NOUN_RE)?.[1] ?? question.match(PLAN_TITLE_VERB_RE)?.[1];
+  const title = rawTitle?.replace(PLAN_CHILD_RE, '').replace(/\s{2,}/g, ' ').trim();
+  if (title) parsed.title = title;
+  return parsed;
+}
+
 /**
  * Detect the command intents a parent's QUESTION implies, deduped by kind. Returns
  * [] for an ordinary question (the common case). At most one quick_log per send
- * (the first matching episode wins).
+ * (the first matching episode wins), and at most one create_plan.
  */
 export function detectInputIntents(question: string): InputIntent[] {
   const intents: InputIntent[] = [];
@@ -196,6 +249,15 @@ export function detectInputIntents(question: string): InputIntent[] {
       kind: 'quick_log',
       label: 'Log this',
       parsed: parseQuickLog(question, episode.episode),
+    });
+  }
+
+  if (PLAN_RULES.some((p) => p.test(question))) {
+    intents.push({
+      category: 'plan',
+      kind: 'create_plan',
+      label: 'Add to your plan',
+      parsed: parsePlan(question),
     });
   }
 

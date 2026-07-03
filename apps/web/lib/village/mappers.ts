@@ -18,6 +18,9 @@ export interface VillageCandidateView {
   childId: string | null;
   title: string;
   kind: string;
+  /** How the activity recurs — "seasonal" | "one-time" | "ongoing" — or null when
+   * the discovery run didn't classify it (no chip). Null on a teen-redacted card. */
+  cadence: string | null;
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
@@ -110,6 +113,7 @@ export function toVillageCandidateView(
       childId: candidate.childId,
       title: TEEN_REDACTED_PLACEHOLDER,
       kind: candidate.kind,
+      cadence: null,
       summary: '',
       coverageNote: null,
       sourceUrl: null,
@@ -131,6 +135,7 @@ export function toVillageCandidateView(
     childId: candidate.childId,
     title: candidate.title,
     kind: candidate.kind,
+    cadence: candidate.cadence,
     summary: candidate.summary,
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,

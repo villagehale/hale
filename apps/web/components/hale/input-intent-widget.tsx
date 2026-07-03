@@ -2,7 +2,8 @@
 
 import { useId, useState } from 'react';
 import { Field } from '~/components/ui/field';
-import type { InputIntent, QuickLogParse } from '~/components/hale/use-ask-hale';
+import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
+import type { InputIntent, PlanLogParse, QuickLogParse } from '~/components/hale/use-ask-hale';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
   FEED_EPISODE,
@@ -12,6 +13,7 @@ import {
   type QuickLogInput,
 } from '~/lib/companion/log-types';
 import type { TimelineChild } from '~/lib/coach/thread';
+import { createPlan } from '~/lib/plan/plan-actions';
 
 /**
  * The input-side command widgets — the parent's OWN instruction, detected on send
@@ -56,23 +58,36 @@ export function InputIntentWidgets({
 }) {
   return (
     <div className="mt-3 space-y-3">
-      {intents.map((intent) =>
-        intent.category === 'action' ? (
-          <ActionConfirmCard
-            key={intent.kind}
-            intent={intent}
-            focusedChildId={focusedChildId}
-            question={question}
-          />
-        ) : (
+      {intents.map((intent) => {
+        if (intent.category === 'action') {
+          return (
+            <ActionConfirmCard
+              key={intent.kind}
+              intent={intent}
+              focusedChildId={focusedChildId}
+              question={question}
+            />
+          );
+        }
+        if (intent.category === 'plan') {
+          return (
+            <CreatePlanCard
+              key={intent.kind}
+              parsed={intent.parsed}
+              focusedChildId={focusedChildId}
+              kids={kids}
+            />
+          );
+        }
+        return (
           <QuickLogCard
             key={intent.kind}
             parsed={intent.parsed}
             focusedChildId={focusedChildId}
             kids={kids}
           />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -384,6 +399,191 @@ function QuickLogCard({
         ) : status.kind === 'preview' ? (
           <span className="text-slate-green">
             development preview — sign-in isn’t configured, so this log wasn’t saved.
+          </span>
+        ) : (
+          ''
+        )}
+      </output>
+    </section>
+  );
+}
+
+type PlanState =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'saved' }
+  | { kind: 'preview' }
+  | { kind: 'error'; message: string }
+  | { kind: 'dismissed' };
+
+/** The TimelineChild scope shape → the ChildScope option shape. A teen's given
+ * name is already withheld upstream (label null — rule #1), so this only forwards. */
+function toScopeChildren(kids: TimelineChild[]): ScopeChild[] {
+  return kids.map((c) => ({ id: c.id, label: c.label }));
+}
+
+/** Pre-select the plan's scope: a parsed child name (a teen's label is null, so a
+ * name match only lands on a non-teen), else the focused child, else whole family
+ * (null) — matching AddPlan's default. Family-scoped: only this family's kids. */
+function preselectPlanChild(
+  kids: TimelineChild[],
+  focusedChildId: string | null,
+  childName: string | undefined,
+): string | null {
+  if (childName) {
+    const byName = kids.find((c) => c.label?.toLowerCase() === childName.toLowerCase());
+    if (byName) return byName.id;
+  }
+  if (focusedChildId && kids.some((c) => c.id === focusedChildId)) return focusedChildId;
+  return null;
+}
+
+/**
+ * The plan-authoring confirm card — the parent's OWN private plan, no approval
+ * gate (unlike the Hale-acts ActionConfirmCard). Pre-filled from the parsed
+ * instruction (title + child) and EDITABLE before Confirm, which calls the shared
+ * createPlan action (private-by-default, family-scoped, one audit row — rule #6).
+ * Same panel-oat treatment + aria-live announcements as QuickLogCard; the honest
+ * preview copy mirrors it when sign-in isn't configured.
+ */
+function CreatePlanCard({
+  parsed,
+  focusedChildId,
+  kids,
+}: {
+  parsed: PlanLogParse;
+  focusedChildId: string | null;
+  kids: TimelineChild[];
+}) {
+  const headingId = useId();
+  const whenId = useId();
+  const [title, setTitle] = useState(parsed.title ?? '');
+  const [scheduledFor, setScheduledFor] = useState('');
+  const [childId, setChildId] = useState<string | null>(() =>
+    preselectPlanChild(kids, focusedChildId, parsed.childName),
+  );
+  const [status, setStatus] = useState<PlanState>({ kind: 'idle' });
+
+  async function confirm() {
+    if (!title.trim()) {
+      setStatus({ kind: 'error', message: 'enter what the plan is before saving' });
+      return;
+    }
+    setStatus({ kind: 'saving' });
+    const result = await createPlan({
+      title,
+      notes: null,
+      scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : null,
+      childId,
+    });
+    switch (result.status) {
+      case 'created':
+        setStatus({ kind: 'saved' });
+        break;
+      case 'preview':
+        setStatus({ kind: 'preview' });
+        break;
+      case 'foreign_child':
+        setStatus({ kind: 'error', message: 'that child is not in your family' });
+        break;
+      case 'not_found':
+        setStatus({ kind: 'error', message: 'couldn’t find your family — try again' });
+        break;
+      case 'invalid':
+        setStatus({
+          kind: 'error',
+          message:
+            result.error === 'title_required'
+              ? 'enter what the plan is before saving'
+              : 'that date didn’t look right — adjust it',
+        });
+        break;
+    }
+  }
+
+  if (status.kind === 'dismissed') return null;
+
+  if (status.kind === 'saved') {
+    return (
+      <section aria-labelledby={headingId} className="panel-oat px-5 py-4 max-w-prose">
+        <p id={headingId} className="field-label">
+          Add to your plan
+        </p>
+        <output className="meta italic text-spruce block" aria-live="polite">
+          added to your week.
+        </output>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-labelledby={headingId} className="panel-oat px-5 py-4 space-y-4 max-w-prose">
+      <p id={headingId} className="field-label">
+        Add to your plan
+      </p>
+
+      <Field
+        label="what's the plan"
+        type="text"
+        required
+        value={title}
+        onChange={(e) => {
+          setTitle(e.currentTarget.value);
+          if (status.kind === 'error') setStatus({ kind: 'idle' });
+        }}
+        placeholder="swimming registration"
+      />
+
+      <div className="field-group">
+        <label htmlFor={whenId} className="field-label">
+          when
+        </label>
+        <input
+          id={whenId}
+          type="date"
+          className="field"
+          value={scheduledFor}
+          onChange={(e) => setScheduledFor(e.currentTarget.value)}
+        />
+      </div>
+
+      <div className="field-group">
+        <span className="field-label">who is this for</span>
+        <ChildScope
+          variant="select"
+          legend="who is this plan for"
+          kids={toScopeChildren(kids)}
+          value={childId}
+          onChange={setChildId}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={confirm}
+          disabled={status.kind === 'saving'}
+        >
+          {status.kind === 'saving' ? 'saving…' : 'Confirm'}
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => setStatus({ kind: 'dismissed' })}
+        >
+          Not now
+        </button>
+      </div>
+
+      <output className="meta italic block" aria-live="polite">
+        {status.kind === 'error' ? (
+          <span className="text-apricot-deep" role="alert">
+            {status.message}
+          </span>
+        ) : status.kind === 'preview' ? (
+          <span className="text-slate-green">
+            development preview — sign-in isn’t configured, so this plan wasn’t saved.
           </span>
         ) : (
           ''
