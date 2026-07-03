@@ -30,9 +30,9 @@ describe('milestone checkpoints', () => {
     }
   });
 
-  it('ships every checkpoint unpublished (review-before-index gate)', () => {
-    expect(allCheckpoints.every((c) => c.published === false)).toBe(true);
-    expect(publishedCheckpoints).toHaveLength(0);
+  it('ships all 12 checkpoints published (review gate passed)', () => {
+    expect(allCheckpoints.every((c) => c.published === true)).toBe(true);
+    expect(publishedCheckpoints).toHaveLength(12);
   });
 
   it('gives every checkpoint all four CDC domains with real milestone copy', () => {

@@ -28,7 +28,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'newborn',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/2-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -67,7 +67,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'newborn',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/4-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -114,7 +114,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'newborn',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/6-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -160,7 +160,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'newborn',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/9-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -207,7 +207,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'toddler',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/1-year.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -249,7 +249,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'toddler',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/15-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -296,7 +296,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'toddler',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/18-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -345,7 +345,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'toddler',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/2-years.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -392,7 +392,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'toddler',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/30-months.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -441,7 +441,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'toddler',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/3-years.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -487,7 +487,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'child',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/4-years.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',
@@ -538,7 +538,7 @@ const CHECKPOINTS: MilestoneCheckpoint[] = [
     stage: 'child',
     sourceUrl: 'https://www.cdc.gov/act-early/milestones/5-years.html',
     updated: '2026-07-03',
-    published: false,
+    published: true,
     domains: [
       {
         domain: 'social-emotional',

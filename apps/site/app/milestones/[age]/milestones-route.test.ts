@@ -62,9 +62,11 @@ describe('milestones/[age] route', () => {
     expect(html).toContain('Start free with your family');
   });
 
-  it('noindexes an unpublished (unreviewed) age page', async () => {
+  it('is indexable for a published age page (no noindex robots override)', async () => {
     const meta = await generateMetadata({ params: Promise.resolve({ age: AGE }) });
-    expect(meta.robots).toMatchObject({ index: false });
+    // Published checkpoints emit robots: undefined, which Next.js treats as indexable.
+    // A noindex gate would set { index: false } — assert that is absent.
+    expect(meta.robots).toBeUndefined();
     expect(meta.alternates?.canonical).toBe(`/milestones/${AGE}`);
     expect(meta.openGraph?.locale).toBe('en_CA');
   });

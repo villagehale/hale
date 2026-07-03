@@ -64,10 +64,37 @@ describe('sitemap', () => {
     }
   });
 
-  it('excludes every unpublished milestone age page and the hub', () => {
-    expect(urls).not.toContain(`${SITE_URL}/milestones`);
+  it('includes the /milestones hub and all 12 published checkpoint pages', () => {
+    const milestoneUrls = urls
+      .filter((u) => u.startsWith(`${SITE_URL}/milestones`))
+      .sort();
+    const expectedMilestoneSlugs = [
+      '2-months',
+      '4-months',
+      '6-months',
+      '9-months',
+      '12-months',
+      '15-months',
+      '18-months',
+      '2-years',
+      '30-months',
+      '3-years',
+      '4-years',
+      '5-years',
+    ];
+    const expected = [
+      `${SITE_URL}/milestones`,
+      ...expectedMilestoneSlugs.map((slug) => `${SITE_URL}/milestones/${slug}`),
+    ].sort();
+    expect(milestoneUrls).toEqual(expected);
+  });
+
+  it('gives each published milestone page monthly/0.6 sitemap metadata', () => {
     for (const checkpoint of allCheckpoints) {
-      expect(urls).not.toContain(`${SITE_URL}/milestones/${checkpoint.slug}`);
+      const entry = entries.find((e) => e.url === `${SITE_URL}/milestones/${checkpoint.slug}`);
+      expect(entry).toBeDefined();
+      expect(entry?.changeFrequency).toBe('monthly');
+      expect(entry?.priority).toBe(0.6);
     }
   });
 });
