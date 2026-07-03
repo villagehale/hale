@@ -27,6 +27,10 @@ export const families = pgTable('families', {
    * (see OnboardingIntent in @hale/types). Nullable: a family that picks none is
    * stored as null. Nothing else keys off this yet; it is captured for tailoring. */
   intents: text('intents').array(),
+  /** When set, the family is scheduled for erasure (PIPEDA/Law 25) and the worker
+   * hard-deletes it once now() passes this. NULL = not scheduled; clearing it
+   * before the worker fires cancels the deletion (reversible by grace). */
+  scheduledDeletionAt: timestamp('scheduled_deletion_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

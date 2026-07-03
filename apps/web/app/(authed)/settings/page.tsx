@@ -2,6 +2,8 @@ import { PageCorner } from '~/components/hale/page-corner';
 import { FamilyParent } from '~/components/hale/family-parent';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+import { ExportDataButton } from '~/components/hale/export-data-button';
+import { DeleteAccountButton } from '~/components/hale/delete-account-button';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 
 /**
@@ -117,7 +119,7 @@ export default async function SettingsPage() {
             <span className="eyebrow text-spruce">privacy &amp; data</span>
             <p className="meta mt-2">where your data lives, and who can see it</p>
           </div>
-          <div className="lg:col-span-9">
+          <div className="lg:col-span-9 flex flex-col gap-y-8">
             <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
               {[
                 "your family's data stays in canada · pipeda",
@@ -128,6 +130,21 @@ export default async function SettingsPage() {
                   {note}
                 </span>
               ))}
+            </div>
+
+            <div className="flex flex-col gap-y-3">
+              <span className="eyebrow text-spruce">your data</span>
+              <p className="text-spruce leading-relaxed max-w-md">
+                Download a structured copy of everything Hale holds about your family — your
+                history, your children, and your settings. Teen content follows the same privacy
+                rules you already see.
+              </p>
+              <ExportDataButton />
+            </div>
+
+            <div className="flex flex-col gap-y-3 border-t border-rule pt-8">
+              <span className="eyebrow text-berry">delete account</span>
+              <DeleteAccountButton />
             </div>
           </div>
         </div>

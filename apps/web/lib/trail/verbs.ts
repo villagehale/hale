@@ -118,6 +118,12 @@ const VERBS: Record<string, Verb> = {
   'village.discovery.recorded': { sentence: 'found a village activity', family: 'done' },
   'village.routine.recorded': { sentence: 'pinned an activity to your routine', family: 'done' },
   plan_created: { sentence: 'you added a plan', family: 'done' },
+  data_exported: { sentence: 'you exported a copy of your data', family: 'done' },
+  account_deletion_scheduled: {
+    sentence: 'you scheduled your account for deletion',
+    family: 'awaiting',
+  },
+  family_deleted: { sentence: 'your account was deleted', family: 'done' },
 };
 
 const NEUTRAL: Verb = { sentence: 'recorded an action', family: 'neutral' };

@@ -218,6 +218,13 @@
       "when": 1781461500000,
       "tag": "0030_teen_content_access",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781461560000,
+      "tag": "0031_family_scheduled_deletion",
+      "breakpoints": true
     }
   ]
 }

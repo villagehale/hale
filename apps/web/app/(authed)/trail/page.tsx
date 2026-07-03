@@ -1,5 +1,6 @@
 import { PageCorner } from '~/components/hale/page-corner';
 import { TrailTimeline } from '~/components/hale/trail-timeline';
+import { ExportDataButton } from '~/components/hale/export-data-button';
 import { loadTrail } from '~/lib/dashboard/queries';
 
 export default async function TrailPage() {
@@ -66,9 +67,9 @@ export default async function TrailPage() {
         <TrailTimeline entries={entries} />
       )}
 
-      <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
-        <p className="meta">end of trail</p>
-        <p className="meta">earlier entries available on request</p>
+      <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+        <p className="meta text-faded-sage">end of trail</p>
+        <ExportDataButton />
       </section>
     </div>
   );
