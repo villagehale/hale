@@ -11,6 +11,7 @@ import {
   type UseAskHale,
   useAskHale,
 } from '~/components/hale/use-ask-hale';
+import { VoiceMicButton } from '~/components/hale/voice-mic-button';
 import { Button } from '~/components/ui/button';
 import type { SuggestionGroup, ThreadSeed, TimelineChild } from '~/lib/coach/thread';
 
@@ -510,13 +511,16 @@ function CompactSurface({
 
       <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-6">
         <ComposerNote />
-        <Button
-          icon={ArrowRight}
-          onClick={() => ask(draft)}
-          disabled={status === 'pending' || draft.trim().length === 0}
-        >
-          {status === 'pending' ? 'thinking…' : 'ask Hale'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <VoiceMicButton onTranscript={setDraft} />
+          <Button
+            icon={ArrowRight}
+            onClick={() => ask(draft)}
+            disabled={status === 'pending' || draft.trim().length === 0}
+          >
+            {status === 'pending' ? 'thinking…' : 'ask Hale'}
+          </Button>
+        </div>
       </div>
 
       {status === 'error' ? (
@@ -709,6 +713,7 @@ function Composer({
         className="composer-input"
         autoComplete="off"
       />
+      <VoiceMicButton onTranscript={setDraft} />
       <button
         type="button"
         onClick={() => ask(draft)}
