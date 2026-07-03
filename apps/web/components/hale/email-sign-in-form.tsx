@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { type SignInState, signInAction } from '~/lib/auth/auth-actions';
+import { ResendVerificationButton } from '~/components/hale/resend-verification-button';
 
 /**
  * Email + password sign-in form. The server action verifies the credential and
@@ -49,11 +51,22 @@ export function EmailSignInForm({
           required
           className="field"
         />
+        <Link href="/forgot-password" className="btn-ghost self-start">
+          Forgot your password?
+        </Link>
       </div>
       {state.status === 'error' ? (
         <p className="field-error" role="alert">
           {state.message}
         </p>
+      ) : null}
+      {state.status === 'unverified' ? (
+        <output className="flex flex-col gap-2">
+          <p className="meta">
+            Check your inbox to confirm your email first — that unlocks your account.
+          </p>
+          <ResendVerificationButton email={state.email} label="Resend confirmation link" />
+        </output>
       ) : null}
       <SubmitButton label="Sign in" secondary={secondary} />
     </form>

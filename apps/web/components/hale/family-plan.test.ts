@@ -38,14 +38,14 @@ describe('FamilyPlanView (settings plan section)', () => {
   it('shows the confirmed monthly prices in the monthly period', () => {
     const html = render({ period: 'monthly' });
     expect(html).toContain('Free');
-    expect(html).toContain('$9/mo');
-    expect(html).toContain('$19/mo');
+    expect(html).toContain('$9 CAD/mo');
+    expect(html).toContain('$19 CAD/mo');
   });
 
   it('shows the confirmed annual prices in the annual period', () => {
     const html = render({ period: 'annual' });
-    expect(html).toContain('$79/yr');
-    expect(html).toContain('$159/yr');
+    expect(html).toContain('$79 CAD/yr');
+    expect(html).toContain('$159 CAD/yr');
   });
 
   it('offers a monthly and an annual billing period', () => {

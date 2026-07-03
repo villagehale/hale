@@ -77,7 +77,7 @@ export default function AnswersIndexPage() {
               your own child — with their age and your family in mind — is to ask Hale.
             </p>
             <div className="mt-8">
-              <a href={`${APP_URL}/sign-in`} className="btn-primary">
+              <a href={`${APP_URL}/sign-up`} className="btn-primary">
                 Ask Hale about your child
               </a>
             </div>

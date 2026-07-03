@@ -202,7 +202,7 @@ export default async function AnswerRoute({ params }: PageProps) {
             Have a question about your own child? Hale answers with your child’s age and your family
             in mind.
           </p>
-          <a href={`${APP_URL}/sign-in`} className="btn-primary shrink-0">
+          <a href={`${APP_URL}/sign-up`} className="btn-primary shrink-0">
             Ask Hale about your child
           </a>
         </div>

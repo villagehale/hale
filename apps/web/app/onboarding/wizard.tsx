@@ -18,10 +18,12 @@ import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { OnboardingPlanPicker } from '~/components/hale/onboarding-plan-picker';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+import { TosAgreement } from '~/components/hale/tos-agreement';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { LocationInput } from '~/lib/family/location-input';
 import { validateChild } from '~/lib/onboarding/children';
 import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
+import { describeCompleteOnboardingError } from '~/lib/onboarding/complete-onboarding-copy';
 import {
   type IntakeDraft,
   clearIntakeDraft,
@@ -185,6 +187,14 @@ export function OnboardingWizard({
 
   const canFinish = setupChildren.length > 0 && everyChildValid && tosAccepted;
 
+  // A plain reason for a disabled finish, so the button is never a silent
+  // dead-end. Children first (the top of the form), then the ToS gate.
+  const finishBlockedReason = !everyChildValid
+    ? "add each child's name and date of birth to finish."
+    : !tosAccepted
+      ? 'agree to the Terms of Service and Privacy Policy to finish.'
+      : '';
+
   function updateSetupChild(id: string, patch: Partial<SetupChild>) {
     setSetupChildren((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
@@ -230,7 +240,7 @@ export function OnboardingWizard({
     }
     setSetupState({
       kind: 'error',
-      message: `couldn't finish: ${result.error.replace(/_/g, ' ')}`,
+      message: describeCompleteOnboardingError(result.error),
     });
   }
 
@@ -593,6 +603,19 @@ export function OnboardingWizard({
                   </span>
                 </label>
 
+                {/* The email cohort reaches Phase C without passing through the
+                    Phase-B account step, so the ToS agreement lives here too. Once
+                    accepted (via Phase B or here) the row collapses. */}
+                {tosAccepted ? null : (
+                  <TosAgreement
+                    checked={tosAccepted}
+                    onChange={(checked) => {
+                      setTosAccepted(checked);
+                      persistDraft({ tosAccepted: checked });
+                    }}
+                  />
+                )}
+
                 {setupState.kind === 'error' ? (
                   <p className="meta text-apricot-deep" role="alert">
                     {setupState.message}
@@ -600,6 +623,9 @@ export function OnboardingWizard({
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
+                  {canFinish ? null : (
+                    <p className="meta">{finishBlockedReason}</p>
+                  )}
                   <button
                     type="button"
                     className="btn-primary ml-auto"
@@ -672,25 +698,7 @@ export function AccountStep({
         )}
       </p>
 
-      <label className="flex items-start gap-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={tosAccepted}
-          onChange={(e) => onToggleTos(e.currentTarget.checked)}
-          className="mt-1 h-4 w-4 cursor-pointer accent-spruce"
-        />
-        <span className="text-slate-green leading-relaxed">
-          I agree to the{' '}
-          <Link href="/terms" className="link" target="_blank" rel="noopener noreferrer">
-            Terms of Service
-          </Link>{' '}
-          &amp;{' '}
-          <Link href="/privacy" className="link" target="_blank" rel="noopener noreferrer">
-            Privacy Policy
-          </Link>
-          .
-        </span>
-      </label>
+      <TosAgreement checked={tosAccepted} onChange={onToggleTos} />
 
       {signedIn ? (
         <div className="flex flex-wrap items-center gap-5 pt-2">
