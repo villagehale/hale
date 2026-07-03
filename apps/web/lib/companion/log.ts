@@ -9,12 +9,15 @@ import {
   type DeleteResult,
   type EditResult,
   type LogResult,
+  type MarkDoneResult,
   deleteEpisodeSchema,
   editEpisodeSchema,
+  markDoneSchema,
   quickLogSchema,
   resolveOccurredAt,
 } from './log-types.js';
 import {
+  buildDoneEpisodeInsert,
   buildEpisodeInsert,
   childBelongsToFamily,
   softDeleteEpisode,
@@ -73,6 +76,50 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
   revalidatePath('/companion');
   revalidatePath('/home');
   return { status: 'logged' };
+}
+
+/**
+ * Marks a curated companion item (a milestone or a health checkup) done from the
+ * companion view. Reuses the quick-log write path (writeEpisode) — a milestone done
+ * writes the SAME episode row a quick-log milestone writes; a health done writes a
+ * 'health_done' episode — so each produces an immutable audit_log row in one
+ * transaction (rule #6). Same family/child gating as logQuickEpisode (rule #1): a
+ * parent may only mark their own child's item, and the write degrades to a preview
+ * (never a write, never a crash) with no DATABASE_URL / no auth / no family. The
+ * time is the server clock — a done-tap records "confirmed done", not a backdate.
+ */
+export async function markCompanionItemDone(
+  raw: unknown,
+  now: Date = new Date(),
+): Promise<MarkDoneResult> {
+  const parsed = markDoneSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { status: 'invalid', error: parsed.error.issues[0]?.message ?? 'invalid input' };
+  }
+
+  if (!process.env.DATABASE_URL) {
+    return { status: 'preview' };
+  }
+  if (!authConfigured()) {
+    return { status: 'preview' };
+  }
+
+  const database = defaultDb();
+  const familyId = await currentFamilyId(database);
+  if (!familyId) {
+    return { status: 'preview' };
+  }
+
+  if (!(await childBelongsToFamily(database, familyId, parsed.data.childId))) {
+    return { status: 'forbidden' };
+  }
+
+  const authoredBy = await currentUserId(database);
+  await writeEpisode(database, buildDoneEpisodeInsert(parsed.data, familyId, now, authoredBy));
+
+  revalidatePath('/companion');
+  revalidatePath('/home');
+  return { status: 'done' };
 }
 
 /**

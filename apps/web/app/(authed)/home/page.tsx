@@ -136,7 +136,7 @@ export default async function HomePage() {
           kids={scopeChildren(children)}
           sections={children.map((child, idx) => {
             const milestone = milestoneInWindow(child);
-            const nextHealth = child.nextHealth[0] ?? null;
+            const nextHealth = child.todayHealth;
             const whatsNow = child.whatsNow[0] ?? null;
             const delay = `rise-${Math.min(idx + 4, 7)}`;
             return {

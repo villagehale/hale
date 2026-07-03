@@ -33,6 +33,17 @@ export interface HealthItem {
   note: string;
 }
 
+/**
+ * Stable identifier for a curated health item, `${ageMonths}-${kind}`. Used as the
+ * React list key AND as the join key between a health-done episode's payload and
+ * the derived item — so a "done" tap and the re-derived view agree on which item
+ * was completed. Two items share an age (e.g. the 4-month visit and shots), so kind
+ * is part of the key.
+ */
+export function healthItemKey(item: Pick<HealthItem, 'ageMonths' | 'kind'>): string {
+  return `${item.ageMonths}-${item.kind}`;
+}
+
 const HEALTH_TIMELINE: readonly HealthItem[] = [
   { ageMonths: 0, kind: 'well_child_visit', what: 'Newborn / 1–2 week check' },
   { ageMonths: 2, kind: 'well_child_visit', what: '2-month well-baby visit' },
@@ -147,16 +158,22 @@ const GUIDANCE_BY_STAGE: Record<FamilyStage, StageGuidance> = {
 export interface MilestoneStatus extends Milestone {
   /** Before the window, inside it, or past the typical upper bound. */
   timing: 'upcoming' | 'in_window' | 'watch';
+  /** True when a matching milestone has been logged/marked done for this child. */
+  done: boolean;
 }
 
 /** A health item annotated with how soon it is due relative to the child's age. */
 export interface UpcomingHealthItem extends HealthItem {
+  /** Stable id for this item, `${ageMonths}-${kind}` (see healthItemKey). */
+  key: string;
   /**
    * Whole weeks until the item is due. Negative when the scheduled age has
    * passed; ~0 when due about now. Computed from completed-month age, so it is a
    * coarse planning signal, not a precise countdown.
    */
   dueInWeeks: number;
+  /** True when this item has been marked done for this child. */
+  done: boolean;
 }
 
 export interface CompanionView {
@@ -166,12 +183,50 @@ export interface CompanionView {
   name: string | null;
   /** Health items at or after the child's current age, soonest first. */
   nextHealth: readonly UpcomingHealthItem[];
+  /**
+   * The single upcoming health item worth leading a "today" surface with, or null.
+   * The soonest not-done item, gated to within HEALTH_HORIZON_MONTHS — so a card
+   * never leads with a checkup that is years away (e.g. a 20-month-old's next
+   * routine item is the 4–6 year set).
+   */
+  todayHealth: UpcomingHealthItem | null;
+  /**
+   * Health items whose scheduled age has recently passed and that are NOT marked
+   * done — surfaced as "was due at X — done?" so a missed checkup doesn't silently
+   * vanish. Bounded to RECENT_PASSED_MONTHS back; a done item drops out here.
+   */
+  recentlyPassedHealth: readonly UpcomingHealthItem[];
   milestones: readonly MilestoneStatus[];
   whatsNow: readonly string[];
   whatsNext: string;
 }
 
+/**
+ * Which curated items a child has already completed, so the derived view can flip
+ * them to a "done" state. Keys are milestone `what` strings and health-item keys
+ * (healthItemKey). Sourced from logged done/quick-log episodes upstream; empty by
+ * default so a caller with no persistence still gets a coherent view.
+ */
+export interface CompanionDone {
+  milestones: ReadonlySet<string>;
+  health: ReadonlySet<string>;
+}
+
+const NO_DONE: CompanionDone = { milestones: new Set(), health: new Set() };
+
 const WEEKS_PER_MONTH = 4.345;
+
+/**
+ * How far ahead a health item may be and still lead a "today" surface. Beyond this
+ * the next routine item is a planning entry for the health list, not the headline.
+ */
+export const HEALTH_HORIZON_MONTHS = 6;
+
+/**
+ * How far back a passed-but-not-done health item keeps surfacing as "was due — done?".
+ * Past this the missed item drops (the schedule has moved on).
+ */
+export const RECENT_PASSED_MONTHS = 3;
 
 function classifyMilestone(milestone: Milestone, ageMonths: number): MilestoneStatus['timing'] {
   const [from, to] = milestone.typicalWindowMonths;
@@ -180,30 +235,59 @@ function classifyMilestone(milestone: Milestone, ageMonths: number): MilestoneSt
   return 'watch';
 }
 
+function toUpcoming(item: HealthItem, months: number, done: CompanionDone): UpcomingHealthItem {
+  const key = healthItemKey(item);
+  return {
+    ...item,
+    key,
+    dueInWeeks: Math.round((item.ageMonths - months) * WEEKS_PER_MONTH),
+    done: done.health.has(key),
+  };
+}
+
 /**
- * The companion view for one child, derived purely from date of birth. No I/O,
- * deterministic given `now`. Health items already passed are dropped; the rest
- * are returned soonest-first with a coarse weeks-until estimate. Milestones are
- * the child's current stage, each tagged with where they sit in the typical
- * window (rule #1: "watch" means worth asking, never "delayed").
+ * The companion view for one child, derived purely from date of birth (plus an
+ * optional set of items the child has already completed). No I/O, deterministic
+ * given `now`.
+ *
+ * Health splits three ways off the child's age: `nextHealth` is items at or after
+ * their age (soonest first); `recentlyPassedHealth` is items whose age passed
+ * within RECENT_PASSED_MONTHS and are NOT done — so a missed checkup surfaces as
+ * "was due — done?" instead of vanishing; `todayHealth` is the soonest not-done
+ * upcoming item within HEALTH_HORIZON_MONTHS, or null, so a "today" card never
+ * leads with something years away. Each item carries `done` from `done.health`.
+ *
+ * Milestones are the child's current stage, tagged with where they sit in the
+ * typical window (rule #1: "watch" means worth asking, never "delayed") and
+ * `done` from `done.milestones`.
  */
 export function companionForChild(
   child: { dateOfBirth: string | Date; name?: string | null },
   now: Date = new Date(),
+  done: CompanionDone = NO_DONE,
 ): CompanionView {
   const months = ageInMonths(child.dateOfBirth, now);
   const stage = stageFromAgeInMonths(months);
 
   const nextHealth = HEALTH_TIMELINE.filter((item) => item.ageMonths >= months)
-    .map((item) => ({
-      ...item,
-      dueInWeeks: Math.round((item.ageMonths - months) * WEEKS_PER_MONTH),
-    }))
+    .map((item) => toUpcoming(item, months, done))
     .sort((a, b) => a.ageMonths - b.ageMonths);
+
+  const recentlyPassedHealth = HEALTH_TIMELINE.filter(
+    (item) => item.ageMonths < months && item.ageMonths >= months - RECENT_PASSED_MONTHS,
+  )
+    .map((item) => toUpcoming(item, months, done))
+    .filter((item) => !item.done)
+    .sort((a, b) => b.ageMonths - a.ageMonths);
+
+  const todayHealth =
+    nextHealth.find((item) => !item.done && item.ageMonths - months <= HEALTH_HORIZON_MONTHS) ??
+    null;
 
   const milestones = MILESTONES_BY_STAGE[stage].map((milestone) => ({
     ...milestone,
     timing: classifyMilestone(milestone, months),
+    done: done.milestones.has(milestone.what),
   }));
 
   const guidance = GUIDANCE_BY_STAGE[stage];
@@ -213,6 +297,8 @@ export function companionForChild(
     ageMonths: months,
     name: child.name ?? null,
     nextHealth,
+    todayHealth,
+    recentlyPassedHealth,
     milestones,
     whatsNow: guidance.whatsNow,
     whatsNext: guidance.whatsNext,

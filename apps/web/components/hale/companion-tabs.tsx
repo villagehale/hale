@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import type { ChildCompanionView } from '~/lib/companion/queries';
 import { BookButton } from './book-button';
+import { DoneButton } from './done-button';
 
 const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
   newborn: 'newborn',
@@ -47,11 +48,22 @@ function duePhrase(dueInWeeks: number): string {
   return `in ~${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
-/** The one thing worth doing next — the soonest health item, phrased as a lead. */
+/** "was due at 4 months" — the age a passed health item was scheduled for. */
+function passedAtPhrase(ageMonths: number): string {
+  if (ageMonths < 24) return `was due at ${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
+  const years = Math.floor(ageMonths / 12);
+  return `was due at ${years} ${years === 1 ? 'year' : 'years'}`;
+}
+
+/**
+ * The one thing worth leading with. Horizon-gated: only the soonest health item
+ * within the horizon (todayHealth) leads — never a checkup years away. With nothing
+ * in the horizon, fall back to the standing periodic-visits note.
+ */
 function leadLine(child: ChildCompanionView): string {
-  const soonest = child.nextHealth[0];
+  const soonest = child.todayHealth;
   if (soonest) return `${soonest.what} — ${duePhrase(soonest.dueInWeeks)}.`;
-  return 'No routine health items left on the standard schedule — keep up periodic visits.';
+  return 'Nothing on the standard schedule right now — keep up periodic visits.';
 }
 
 function ChildPanel({ child }: { child: ChildCompanionView }) {
@@ -72,6 +84,41 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
         </div>
       </div>
 
+      {/* Recently passed — surfaced, not silently dropped */}
+      {child.recentlyPassedHealth.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-3 lg:gap-x-12 border-t border-rule pt-8">
+          <div className="lg:col-span-3">
+            <span className="eyebrow">recently passed</span>
+            <p className="meta mt-2 text-slate-green">already had these?</p>
+          </div>
+          <div className="lg:col-span-9">
+            <ul className="space-y-4">
+              {child.recentlyPassedHealth.map((item) => (
+                <li
+                  key={item.key}
+                  className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-t border-rule pt-4 first:border-t-0 first:pt-0"
+                >
+                  <span className="shrink-0 w-28">
+                    <span className="eyebrow text-slate-green">
+                      {passedAtPhrase(item.ageMonths)}
+                    </span>
+                  </span>
+                  <span className="text-lg text-spruce leading-relaxed" data-hale-pii>
+                    {item.what}
+                  </span>
+                  <span className="basis-full pl-32">
+                    <DoneButton
+                      item={{ target: 'health', childId: child.id, what: item.what, healthKey: item.key }}
+                      alreadyDone={false}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+
       {/* Next health items */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-3 lg:gap-x-12 border-t border-rule pt-8">
         <div className="lg:col-span-3">
@@ -87,7 +134,7 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
             <ul className="space-y-4">
               {child.nextHealth.slice(0, 3).map((item) => (
                 <li
-                  key={`${item.ageMonths}-${item.kind}`}
+                  key={item.key}
                   className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-rule pt-4 first:border-t-0 first:pt-0"
                 >
                   <span className="shrink-0 w-28">
@@ -100,8 +147,12 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
                   <span className="text-lg text-spruce leading-relaxed" data-hale-pii>
                     {item.what}
                   </span>
-                  <span className="basis-full pl-32">
-                    <BookButton what={item.what} childId={child.id} />
+                  <span className="basis-full pl-32 flex flex-wrap items-center gap-4">
+                    {item.done ? null : <BookButton what={item.what} childId={child.id} />}
+                    <DoneButton
+                      item={{ target: 'health', childId: child.id, what: item.what, healthKey: item.key }}
+                      alreadyDone={item.done}
+                    />
                   </span>
                 </li>
               ))}
@@ -124,7 +175,7 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
             {child.milestones.map((milestone) => (
               <li
                 key={milestone.what}
-                className="flex items-baseline gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-t border-rule pt-4 first:border-t-0 first:pt-0"
               >
                 <span className="shrink-0 w-28">
                   {milestone.timing === 'in_window' ? (
@@ -135,6 +186,12 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
                 </span>
                 <span className="text-lg text-spruce leading-relaxed" data-hale-pii>
                   {milestone.what}
+                </span>
+                <span className="basis-full pl-32">
+                  <DoneButton
+                    item={{ target: 'milestone', childId: child.id, what: milestone.what }}
+                    alreadyDone={milestone.done}
+                  />
                 </span>
               </li>
             ))}

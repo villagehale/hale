@@ -1,9 +1,14 @@
 import { companionForChild } from '@hale/types';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChildCompanionView } from '~/lib/companion/queries';
-import { CompanionTabs, nextTabIndex } from './companion-tabs';
+
+// done-button (imported by companion-tabs) statically imports the 'use server'
+// log module; stub the action so a static render doesn't pull the auth/db chain.
+vi.mock('~/lib/companion/log', () => ({ markCompanionItemDone: vi.fn() }));
+
+const { CompanionTabs, nextTabIndex } = await import('./companion-tabs');
 
 /**
  * The companion renders a plain panel for one child and an accessible roving
@@ -49,6 +54,55 @@ describe('CompanionTabs DOM structure', () => {
     expect(panel).toContain('Ava');
     expect(panel).not.toContain('Ben');
     expect(panel).not.toContain('Cy');
+  });
+});
+
+describe('CompanionTabs done + recently-passed affordances', () => {
+  // Fixed clock so the derivation is deterministic in the render.
+  const NOW = new Date(2026, 5, 15); // 2026-06-15
+
+  function viewFor(
+    dateOfBirth: string,
+    done?: { milestones: Set<string>; health: Set<string> },
+  ): ChildCompanionView {
+    return { id: 'c-1', ...companionForChild({ dateOfBirth, name: 'Ari' }, NOW, done) };
+  }
+
+  it('renders a recently-passed health item with a done affordance instead of hiding it', () => {
+    // Born 2026-01-15 → 5mo: the 4-month set passed ~1mo ago and is not done, so it
+    // must appear (not vanish) with the "was due at 4 months" phrasing + a done tap.
+    const view = viewFor('2026-01-15');
+    expect(view.recentlyPassedHealth.some((h) => h.ageMonths === 4)).toBe(true);
+
+    const html = render([view]);
+    expect(html).toContain('recently passed');
+    expect(html).toContain('was due at 4 months');
+    expect(html).toContain('4-month well-baby visit');
+    // The done affordance (button) is present for the passed item.
+    expect(html).toContain('mark done');
+  });
+
+  it('renders a done milestone as a settled sage pill, not a tappable "mark done"', () => {
+    // 13mo toddler with "Walks independently" marked done → that row shows the done
+    // pill; an undone milestone still shows the tappable affordance.
+    const done = { milestones: new Set(['Walks independently']), health: new Set<string>() };
+    const html = render([viewFor('2025-05-15', done)]);
+
+    expect(html).toContain('Walks independently');
+    // Some milestone is still tappable (the undone ones) …
+    expect(html).toContain('mark done');
+    // … and the done pill is rendered (pill-sage) for the completed one.
+    expect(html).toContain('pill-sage');
+  });
+
+  it('leads with the horizon note rather than a checkup years away', () => {
+    // Born 2024-10-15 → 20mo: next real item is the 4–6y set (out of horizon), so
+    // the lead must NOT surface it and must fall back to the periodic-visits note.
+    const view = viewFor('2024-10-15');
+    expect(view.todayHealth).toBeNull();
+    const html = render([view]);
+    expect(html).toContain('keep up periodic visits');
+    expect(html).not.toContain('4–6 year (pre-school) immunizations —');
   });
 });
 
