@@ -25,6 +25,8 @@ const APPROVAL_ROW = {
   reviewerVerdict: 'approved',
   draftedAt: new Date('2026-06-20T10:00:00Z'),
   teenContent: false,
+  childId: null,
+  childName: null,
   childDob: null,
 };
 

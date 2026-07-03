@@ -61,6 +61,7 @@ const { orderCandidates, loadVillageFeed } = await import('./feed');
 function view(id: string): VillageCandidateView {
   return {
     id,
+    childId: null,
     title: `t-${id}`,
     kind: 'class',
     summary: '',

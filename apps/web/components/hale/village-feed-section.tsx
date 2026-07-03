@@ -1,4 +1,6 @@
+import { loadCompanion } from '~/lib/companion/queries';
 import { loadVillageFeed } from '~/lib/village/feed';
+import { scopeChildren } from './child-scope';
 import { FindActivitiesButton } from './find-activities-button';
 import { VillageFeed, VillageFeedHeader } from './village-feed';
 import { VillageSearch } from './village-search';
@@ -39,7 +41,7 @@ export async function HomeVillageFeed() {
 }
 
 export async function VillageCandidates() {
-  const feed = await loadVillageFeed();
+  const [feed, children] = await Promise.all([loadVillageFeed(), loadCompanion()]);
   if (feed.candidates.length === 0) {
     return (
       <section className="panel-oat px-6 py-12 lg:py-16 text-center">
@@ -62,6 +64,7 @@ export async function VillageCandidates() {
         candidates={feed.candidates}
         coarseCenter={feed.coarseCenter}
         area={feed.areaCoarse}
+        kids={scopeChildren(children)}
       />
       <FindMoreFooter />
     </>

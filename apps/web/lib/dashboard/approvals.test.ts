@@ -9,6 +9,8 @@ const BASE: PendingApprovalRow = {
   reviewerVerdict: 'approved',
   draftedAt: new Date('2026-06-17T15:00:00.000Z'),
   teenContent: false,
+  childId: null,
+  childLabel: null,
 };
 
 describe('toApprovalView — human preview (A1)', () => {
@@ -68,5 +70,30 @@ describe('toApprovalView — human preview (A1)', () => {
     expect(view.payload).toBeNull();
     expect(JSON.stringify(view)).not.toContain('Maya');
     expect(JSON.stringify(view)).not.toContain('Coach Ramirez');
+  });
+});
+
+describe('toApprovalView — which child the draft is about (rule #1)', () => {
+  const CHILD = '44444444-4444-4444-8444-444444444444';
+
+  it('carries a whole-family draft through as childId null (no child attributed)', () => {
+    const view = toApprovalView(BASE);
+    expect(view.childId).toBeNull();
+    expect(view.childLabel).toBeNull();
+  });
+
+  it('carries a non-teen child id + given name through unchanged', () => {
+    const view = toApprovalView({ ...BASE, childId: CHILD, childLabel: 'Nadia' });
+    expect(view.childId).toBe(CHILD);
+    expect(view.childLabel).toBe('Nadia');
+  });
+
+  it('never surfaces a teen name — the withheld label arrives as null (childId set)', () => {
+    // The query withholds a 13+ child's given name before the row reaches the
+    // mapper (rule #1): childId identifies the draft's child, childLabel is null.
+    const view = toApprovalView({ ...BASE, childId: CHILD, childLabel: null, teenContent: true });
+    expect(view.childId).toBe(CHILD);
+    expect(view.childLabel).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('Maya');
   });
 });

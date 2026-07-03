@@ -227,6 +227,8 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         reviewerVerdict: schema.actions.reviewerVerdict,
         draftedAt: schema.actions.draftedAt,
         teenContent: schema.events.teenContent,
+        childId: schema.events.childId,
+        childName: schema.children.name,
         childDob: schema.children.dateOfBirth,
       })
       .from(schema.actions)
@@ -240,15 +242,21 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       )
       .orderBy(desc(schema.actions.draftedAt))
       .limit(50);
-    return rows.map((row) =>
-      toApprovalView({
+    return rows.map((row) => {
+      // The child tag names the attributed child, but a 13+ child's given name is
+      // withheld (rule #1): withhold iff the attributed child is a teenager, derived
+      // live from its DOB — never the classifier flag (which can fire family-wide).
+      const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
+      return toApprovalView({
         id: row.id,
         actionType: row.actionType,
         payload: row.payload,
         reviewerVerdict: row.reviewerVerdict,
         draftedAt: row.draftedAt,
         teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
-      }),
-    );
+        childId: row.childId ?? null,
+        childLabel: teenChild ? null : (row.childName ?? null),
+      });
+    });
   }, []);
 }

@@ -12,6 +12,10 @@ export type RoutineProposal = typeof schema.routineProposals.$inferSelect;
 
 export interface VillageCandidateView {
   id: string;
+  /** The child this candidate was discovered for, or null for a family-wide pick.
+   * An opaque id (never a name), kept on teen-attributed cards too so the scope
+   * filter can narrow to that child — the teen's name is withheld at the chip. */
+  childId: string | null;
   title: string;
   kind: string;
   summary: string;
@@ -103,6 +107,7 @@ export function toVillageCandidateView(
   if (teenAttributed) {
     return {
       id: candidate.id,
+      childId: candidate.childId,
       title: TEEN_REDACTED_PLACEHOLDER,
       kind: candidate.kind,
       summary: '',
@@ -123,6 +128,7 @@ export function toVillageCandidateView(
   }
   return {
     id: candidate.id,
+    childId: candidate.childId,
     title: candidate.title,
     kind: candidate.kind,
     summary: candidate.summary,
@@ -139,6 +145,20 @@ export function toVillageCandidateView(
     venueName: candidate.venueName,
     teenAttributed: false,
   };
+}
+
+/**
+ * Narrow the feed to a chosen scope: whole family (`null`) shows every candidate;
+ * a child id shows that child's candidates AND the family-wide ones (childId null),
+ * since a family-wide pick applies to everyone. Pure over the already-loaded views
+ * — the scope filter never issues a request (rule #1: no new location signal).
+ */
+export function filterCandidatesByScope(
+  candidates: VillageCandidateView[],
+  scope: string | null,
+): VillageCandidateView[] {
+  if (scope === null) return candidates;
+  return candidates.filter((c) => c.childId === scope || c.childId === null);
 }
 
 /**

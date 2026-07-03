@@ -19,6 +19,11 @@ export interface PendingApprovalRow {
   reviewerVerdict: string;
   draftedAt: Date;
   teenContent: boolean;
+  /** The child the draft is about, or null for a whole-family / unattributed draft. */
+  childId: string | null;
+  /** The attributed child's given name, or null for a whole-family draft OR a 13+
+   * child whose name the query withholds (rule #1) — never the raw teen name. */
+  childLabel: string | null;
 }
 
 export interface ApprovalView {
@@ -35,6 +40,10 @@ export interface ApprovalView {
   preview: string;
   /** The drafted payload, or null when redacted for teen privacy (rule #1). */
   payload: Record<string, unknown> | null;
+  /** The child the draft is about (null = whole family), for the row's child tag. */
+  childId: string | null;
+  /** The tag's given name, or null for whole family / a name-withheld teen (rule #1). */
+  childLabel: string | null;
   verdict: string;
   draftedAt: string;
 }
@@ -118,6 +127,8 @@ export function toApprovalView(row: PendingApprovalRow): ApprovalView {
       ? TEEN_REDACTED_PLACEHOLDER
       : derivePreview(row.actionType, row.payload),
     payload: row.teenContent ? null : row.payload,
+    childId: row.childId,
+    childLabel: row.childLabel,
     verdict: row.reviewerVerdict,
     draftedAt: DRAFTED_DATE.format(row.draftedAt),
   };

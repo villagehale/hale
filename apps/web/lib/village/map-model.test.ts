@@ -14,6 +14,7 @@ import type { VillageCandidateView } from './mappers.js';
 
 function view(overrides: Partial<VillageCandidateView> & { id: string }): VillageCandidateView {
   return {
+    childId: null,
     title: `title-${overrides.id}`,
     kind: 'class',
     summary: '',
