@@ -236,6 +236,16 @@ function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
 }
 
 function PlanItemCard({ item }: { item: PlanChildItem }) {
+  // Rule #1 (policy 3): the single locked line for a 13+ teen — the parent sees
+  // THAT a plan exists, but no content, no name, and no deep link into it.
+  if (item.teenRedacted) {
+    return (
+      <Card>
+        <span className="eyebrow text-slate-green">private</span>
+        <p className="text-lg text-spruce leading-relaxed mt-3">{item.what}</p>
+      </Card>
+    );
+  }
   return (
     <Card href="/companion">
       <span className="eyebrow text-spruce">{item.kindLabel}</span>

@@ -64,4 +64,36 @@ describe('planChildItems', () => {
   it('returns no items for an empty family', () => {
     expect(planChildItems([])).toEqual([]);
   });
+
+  it('collapses a 13+ teen to exactly ONE locked line that counts, carrying no name (rule #1, policy 3)', () => {
+    // Born 2011-05-15 → ~15y on NOW → teenager. Their real health/milestone items
+    // must NOT surface (that content is private); the parent still sees THAT a plan
+    // exists — one locked line, never a silent drop, never a double placeholder.
+    const items = planChildItems([child('teen1', '2011-05-15', 'Maya')]);
+    const teenItems = items.filter((i) => i.key.startsWith('teen1'));
+    expect(teenItems).toHaveLength(1);
+    const [locked] = teenItems;
+    expect(locked?.teenRedacted).toBe(true);
+    expect(locked?.what).toBe('a plan for your teen — private');
+    // The teen's given name never rides along on this line.
+    expect(JSON.stringify(locked)).not.toContain('Maya');
+    // It still counts toward the week — the parent knows something is there.
+    expect(items.length).toBeGreaterThan(0);
+    // No leaked health/milestone keys for the teen.
+    expect(items.some((i) => i.key === 'teen1-health')).toBe(false);
+    expect(items.some((i) => i.key === 'teen1-milestone')).toBe(false);
+  });
+
+  it('keeps non-teen children fully itemized alongside a teen sibling', () => {
+    const items = planChildItems([
+      child('teen1', '2011-05-15', 'Maya'),
+      child('tot1', '2025-05-15', 'Ada'),
+    ]);
+    // The toddler's milestone line is present and named as before.
+    const totMilestone = items.find((i) => i.key === 'tot1-milestone');
+    expect(totMilestone?.childName).toBe('Ada');
+    expect(totMilestone?.teenRedacted).toBeFalsy();
+    // Exactly one teen line.
+    expect(items.filter((i) => i.key.startsWith('teen1'))).toHaveLength(1);
+  });
 });

@@ -4,6 +4,7 @@ import { ChildTag } from '~/components/hale/child-tag';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { DraftDetail } from '~/components/hale/draft-detail';
 import { PageCorner } from '~/components/hale/page-corner';
+import { RequestTeenAccessButton } from '~/components/hale/request-teen-access-button';
 import { ToneLabel } from '~/components/hale/tone';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
 import { actionTypeLabel } from '~/lib/format/labels';
@@ -62,7 +63,12 @@ export default async function ApprovalsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <DismissButton actionId={approval.id} />
-                {approval.verdict === APPROVED_VERDICT ? (
+                {approval.teenRedacted ? (
+                  // Policy 4: never a decision on invisible content — the parent
+                  // requests time-limited access (audited, teen notified) instead
+                  // of approving a draft they cannot see.
+                  <RequestTeenAccessButton actionId={approval.id} />
+                ) : approval.verdict === APPROVED_VERDICT ? (
                   <ApproveButton actionId={approval.id} />
                 ) : null}
               </div>

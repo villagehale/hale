@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // is stubbed to a sentinel so we can assert it's the handle passed downstream.
 const authMock = vi.fn();
 const currentFamilyIdMock = vi.fn();
+const resolveUserIdMock = vi.fn();
 const childBelongsMock = vi.fn();
 const writeEpisodeMock = vi.fn();
 const DB_HANDLE = { __db: true };
@@ -16,6 +17,7 @@ vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => DB_HANDLE }));
 vi.mock('~/lib/family', () => ({
   currentFamilyId: (...a: unknown[]) => currentFamilyIdMock(...a),
+  resolveUserIdForUser: (...a: unknown[]) => resolveUserIdMock(...a),
 }));
 vi.mock('~/lib/companion/log-write', async (importActual) => {
   const actual = await importActual<typeof import('~/lib/companion/log-write')>();
@@ -37,6 +39,7 @@ vi.mock('@hale/db', async (importActual) => {
 });
 
 const FAMILY_ID = 'fam-1';
+const AUTHOR_ID = 'user-1';
 const CHILD_ID = '11111111-1111-1111-1111-111111111111';
 // Fixed clock so occurredAt (defaulted to "now") is deterministic in the assert.
 const NOW = new Date('2026-07-02T12:00:00.000Z');
@@ -59,11 +62,13 @@ describe('POST /api/mobile/companion/log', () => {
     vi.setSystemTime(NOW);
     authMock.mockReset();
     currentFamilyIdMock.mockReset();
+    resolveUserIdMock.mockReset();
     childBelongsMock.mockReset();
     writeEpisodeMock.mockReset();
     vi.stubEnv('DATABASE_URL', 'postgres://test');
     vi.stubEnv('AUTH_SECRET', 'test-secret-mobile-log-route-0123456789abcdef');
     currentFamilyIdMock.mockResolvedValue(FAMILY_ID);
+    resolveUserIdMock.mockResolvedValue(AUTHOR_ID);
     childBelongsMock.mockResolvedValue(true);
     writeEpisodeMock.mockResolvedValue(undefined);
   });
@@ -127,12 +132,16 @@ describe('POST /api/mobile/companion/log', () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ status: 'logged' });
     expect(childBelongsMock).toHaveBeenCalledWith(DB_HANDLE, FAMILY_ID, CHILD_ID);
+    // The acting parent is resolved from the session's external id and stamped as
+    // authoredBy — the rule-#1 parent-authored exemption for teen logs.
+    expect(resolveUserIdMock).toHaveBeenCalledWith('ext-1', DB_HANDLE);
     // Derived from buildEpisodeInsert's feed branch + the audited-write contract
     // (episodeType drives the audit row's actionTaken=quick_log_feed), NOT copied
     // from route output.
     expect(writeEpisodeMock).toHaveBeenCalledWith(DB_HANDLE, {
       familyId: FAMILY_ID,
       childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
       occurredAt: NOW,
       episodeType: 'feed',
       summary: 'Fed 120 ml (bottle)',

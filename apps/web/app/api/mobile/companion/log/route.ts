@@ -3,7 +3,7 @@ import { auth } from '~/auth';
 import { quickLogSchema, resolveOccurredAt } from '~/lib/companion/log-types';
 import { buildEpisodeInsert, childBelongsToFamily, writeEpisode } from '~/lib/companion/log-write';
 import { db } from '~/lib/db';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
 import type { MobileLogResponse } from '../../types';
 
 export const runtime = 'nodejs';
@@ -55,7 +55,11 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  await writeEpisode(database, buildEpisodeInsert(parsed.data, familyId, occurredAt.date));
+  const authoredBy = await resolveUserIdForUser(session.user.id, database);
+  await writeEpisode(
+    database,
+    buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy),
+  );
 
   const body: MobileLogResponse = { status: 'logged' };
   return NextResponse.json(body, { status: 201 });

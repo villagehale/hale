@@ -44,10 +44,14 @@ export interface ApprovalView {
   payload: Record<string, unknown> | null;
   /** The child the draft is about (null = whole family), for the row's child tag. */
   childId: string | null;
-  /** The tag's given name, or null for whole family / a name-withheld teen (rule #1). */
+  /** The tag's given name, or null for whole family (policy 1: a teen's name shows). */
   childLabel: string | null;
   verdict: string;
   draftedAt: string;
+  /** True when the draft's content is redacted for a 13+ teen (rule #1). Drives the
+   * page's single locked line + the request-access affordance (never a decision on
+   * invisible content), instead of the approve button. */
+  teenRedacted: boolean;
 }
 
 const VERDICT_SUMMARY: Record<string, string> = {
@@ -110,12 +114,18 @@ function derivePreview(actionType: string, payload: Record<string, unknown>): st
   }
 }
 
+/** The redacted row's summary — the DECIDABILITY path (policy 4), distinct from
+ * the placeholder "what" so the parent never sees the private line twice, and is
+ * never asked to decide on invisible content: they can request time-limited access. */
+const TEEN_REQUEST_ACCESS_SUMMARY =
+  'content is private — request your teen’s okay to see it before deciding';
+
 export function toApprovalView(row: PendingApprovalRow, timeZone: string): ApprovalView {
   const summary = VERDICT_SUMMARY[row.reviewerVerdict] ?? 'awaiting your approval';
   return {
     id: row.id,
     actionType: row.actionType,
-    summary: row.teenContent ? TEEN_REDACTED_PLACEHOLDER : summary,
+    summary: row.teenContent ? TEEN_REQUEST_ACCESS_SUMMARY : summary,
     preview: row.teenContent
       ? TEEN_REDACTED_PLACEHOLDER
       : derivePreview(row.actionType, row.payload),
@@ -124,5 +134,6 @@ export function toApprovalView(row: PendingApprovalRow, timeZone: string): Appro
     childLabel: row.childLabel,
     verdict: row.reviewerVerdict,
     draftedAt: formatDateTime(row.draftedAt, timeZone),
+    teenRedacted: row.teenContent,
   };
 }

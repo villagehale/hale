@@ -56,6 +56,12 @@ export const familyMemoryEpisodes = pgTable(
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
     childId: uuid('child_id').references(() => children.id, { onDelete: 'cascade' }),
+    // Who wrote this episode. A parent quick-log stamps the acting parent's user
+    // id; content that arrives via the inbound pipeline (teen-authored) leaves it
+    // NULL. The teen-redaction read filter (rule #1) EXEMPTS a row authored BY the
+    // requesting parent — a parent's own log about their teen is their own content
+    // (policy: parent-authored is exempt), never dropped from that parent.
+    authoredBy: uuid('authored_by').references(() => users.id, { onDelete: 'set null' }),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     episodeType: text('episode_type').notNull(),
     summary: text('summary').notNull(),

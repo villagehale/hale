@@ -111,6 +111,11 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'llm_processing',
   'integration_specific',
   'autonomous_action_class',
+  // A parent's explicit, time-limited request to see a 13+ teen's redacted content
+  // (rule #1 named exception). Written as a REQUEST (granted=false) with an expiry;
+  // the teen is notified. The consume side (approving the request → granted=true,
+  // and honouring an active grant on read) is a follow-up.
+  'teen_content_access',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft

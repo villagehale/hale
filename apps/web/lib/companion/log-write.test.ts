@@ -5,15 +5,17 @@ import { buildEpisodeInsert, writeEpisode } from './log-write.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const CHILD_ID = '33333333-3333-4333-8333-333333333333';
+const AUTHOR_ID = '55555555-5555-4555-8555-555555555555';
 const NOW = new Date('2026-06-18T12:00:00Z');
 
 describe('buildEpisodeInsert', () => {
-  it('shapes a feed episode with amountMl in the payload and a numeric summary', () => {
+  it('shapes a feed episode with amountMl in the payload, a numeric summary, and the author stamped', () => {
     const input: QuickLogInput = { kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 120 };
 
-    expect(buildEpisodeInsert(input, FAMILY_ID, NOW)).toEqual({
+    expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID)).toEqual({
       familyId: FAMILY_ID,
       childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
       occurredAt: NOW,
       episodeType: 'feed',
       summary: 'Fed 120 ml',
@@ -24,7 +26,7 @@ describe('buildEpisodeInsert', () => {
   it('shapes a nap episode with durationMin in the payload', () => {
     const input: QuickLogInput = { kind: NAP_EPISODE, childId: CHILD_ID, durationMin: 45 };
 
-    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW);
+    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID);
 
     expect(episode.episodeType).toBe('nap');
     expect(episode.summary).toBe('Napped 45 min');
@@ -38,7 +40,7 @@ describe('buildEpisodeInsert', () => {
       milestone: 'rolled over',
     };
 
-    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW);
+    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID);
 
     expect(episode.episodeType).toBe('milestone');
     expect(episode.summary).toBe('rolled over');
@@ -53,7 +55,7 @@ describe('buildEpisodeInsert', () => {
       note: 'spit up a little',
     };
 
-    expect(buildEpisodeInsert(input, FAMILY_ID, NOW).payload).toEqual({
+    expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID).payload).toEqual({
       amountMl: 90,
       note: 'spit up a little',
     });
@@ -106,7 +108,12 @@ describe('writeEpisode', () => {
 
     await writeEpisode(
       s.database,
-      buildEpisodeInsert({ kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 100 }, FAMILY_ID, NOW),
+      buildEpisodeInsert(
+        { kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 100 },
+        FAMILY_ID,
+        NOW,
+        AUTHOR_ID,
+      ),
     );
 
     expect(s.insertedTables()).toEqual(['family_memory_episodes', 'audit_log']);
@@ -114,6 +121,7 @@ describe('writeEpisode', () => {
     expect(valuesFor(s, schema.familyMemoryEpisodes)).toMatchObject({
       familyId: FAMILY_ID,
       childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
       episodeType: 'feed',
       summary: 'Fed 100 ml',
       payload: { amountMl: 100 },

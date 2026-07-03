@@ -22,7 +22,7 @@ const NADIA = '11111111-1111-4111-8111-111111111111';
 const OMAR = '22222222-2222-4222-8222-222222222222';
 const KIDS: ScopeChild[] = [
   { id: NADIA, label: 'Nadia' },
-  { id: OMAR, label: null }, // teen — name withheld (rule #1)
+  { id: OMAR, label: 'Omar' }, // teen — NAME shown on the chip (policy 1)
 ];
 
 function render(variant: ChildScopeVariant, value: string | null): string {
@@ -49,9 +49,26 @@ describe('ChildScope — whole-family is always first', () => {
     },
   );
 
-  it('withholds a teen name — renders "your teen", never the given name', () => {
-    const html = render('filter', null);
-    expect(html).toContain('your teen');
+  it('shows each child by NAME on the chip — two teens are never both "your teen" (policy 1)', () => {
+    // Two teenagers whose names the parent entered must read as distinct chips —
+    // the scope selector disambiguates by name, not a shared "your teen" label.
+    const twoTeens: ScopeChild[] = [
+      { id: NADIA, label: 'Maya' },
+      { id: OMAR, label: 'Noah' },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(ChildScope, {
+        variant: 'filter',
+        legend: 'who is this for',
+        kids: twoTeens,
+        value: null,
+        onChange: vi.fn(),
+      }),
+    );
+    expect(html).toContain('Maya');
+    expect(html).toContain('Noah');
+    // Never the anonymous shared label when the names are known.
+    expect(html).not.toContain('your teen');
   });
 });
 
@@ -82,8 +99,10 @@ describe('ChildScope — correct ARIA role per variant', () => {
   });
 });
 
-describe('scopeChildren — teen-safe label derivation (rule #1)', () => {
-  it('keeps a non-teen name and withholds a teen name (label null)', () => {
+describe('scopeChildren — name-bearing chip label (policy 1)', () => {
+  it('carries every child by their given name — including a teen (parent entered it)', () => {
+    // Policy 1: the parent named their teen, so the scope chip shows that name.
+    // Two teens must be distinguishable — never two identical "your teen" chips.
     expect(
       scopeChildren([
         { id: NADIA, name: 'Nadia', stage: 'child' },
@@ -91,13 +110,19 @@ describe('scopeChildren — teen-safe label derivation (rule #1)', () => {
       ]),
     ).toEqual([
       { id: NADIA, label: 'Nadia' },
-      { id: OMAR, label: null },
+      { id: OMAR, label: 'Omar' },
     ]);
   });
 
-  it('preserves order and passes a null name through unchanged for a non-teen', () => {
-    expect(scopeChildren([{ id: NADIA, name: null, stage: 'newborn' }])).toEqual([
+  it('preserves order and passes a null name through as null (no name on file → "your teen" at render)', () => {
+    expect(
+      scopeChildren([
+        { id: NADIA, name: null, stage: 'newborn' },
+        { id: OMAR, name: null, stage: 'teenager' },
+      ]),
+    ).toEqual([
       { id: NADIA, label: null },
+      { id: OMAR, label: null },
     ]);
   });
 });

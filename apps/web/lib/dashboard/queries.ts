@@ -253,12 +253,12 @@ export function loadTrail(): Promise<TrailView[]> {
       .limit(50);
     return rows.map((row) => {
       const resolvedToEvent = row.teenContent !== null;
-      // The child tag names the attributed child, but a 13+ child's given name is
-      // withheld (rule #1): withhold iff the attributed child is a teenager,
-      // derived live from its DOB — never the classifier flag. A row with no
-      // attributed child (non-`actions` target, family-wide event) reads null.
-      const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
-      const childLabel = teenChild ? null : (row.childName ?? null);
+      // The child tag names the attributed child by NAME — including a teenager
+      // (policy 1: the parent entered it, and two teens must never both read "your
+      // teen"). This is the LABEL only; the row's CONTENT is separately redacted
+      // via effectiveTeenContent below. A row with no attributed child (non-`actions`
+      // target, family-wide event) reads null → "whole family".
+      const childLabel = row.childName ?? null;
       return toTrailView(
         row.entry,
         effectiveTeenContent(
@@ -317,10 +317,11 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       .orderBy(desc(schema.actions.draftedAt))
       .limit(50);
     return rows.map((row) => {
-      // The child tag names the attributed child, but a 13+ child's given name is
-      // withheld (rule #1): withhold iff the attributed child is a teenager, derived
-      // live from its DOB — never the classifier flag (which can fire family-wide).
-      const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
+      // The child tag names the attributed child by NAME — including a teenager
+      // (policy 1: the parent entered it, and two teen rows must never both read
+      // "your teen"). This is the LABEL only; the draft's CONTENT is redacted via
+      // effectiveTeenContent (the payload/preview placeholder), so the name never
+      // implies the content is visible.
       return toApprovalView(
         {
           id: row.id,
@@ -330,7 +331,7 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
           draftedAt: row.draftedAt,
           teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
           childId: row.childId ?? null,
-          childLabel: teenChild ? null : (row.childName ?? null),
+          childLabel: row.childName ?? null,
         },
         timeZone,
       );

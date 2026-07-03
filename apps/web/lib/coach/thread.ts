@@ -17,11 +17,12 @@ export type { SuggestionGroup } from './suggestions';
  * and start from the right prompt for whoever they're focused on.
  */
 
-/** A child the parent can focus the conversation on (the per-child chip). Teen
- * detail withheld at the source (rule #1): a teenager's label is null. */
+/** A child the parent can focus the conversation on (the per-child chip). The
+ * chip shows the child's NAME (policy 1) so two teens are distinct; teenRedacted
+ * marks a 13+ teen for downstream CONTENT gating (rule #1), not the label. */
 export interface TimelineChild {
   id: string;
-  /** Withheld for a teenager (rule #1). */
+  /** The child's given name, or null when none is on file (renders "your teen"). */
   label: string | null;
   teenRedacted: boolean;
 }
@@ -73,7 +74,10 @@ export async function loadThreadShellForRequest(): Promise<ThreadSeed> {
 
   const children: TimelineChild[] = childRows.map((c) => {
     const teen = deriveStage(c.dateOfBirth) === 'teenager';
-    return { id: c.id, label: teen ? null : c.name, teenRedacted: teen };
+    // Policy 1: the scope chip shows the child's NAME (the parent entered it) so
+    // two teens are distinct — never two identical "your teen" chips. teenRedacted
+    // still marks the teen for downstream CONTENT gating; only the LABEL is named.
+    return { id: c.id, label: c.name, teenRedacted: teen };
   });
 
   const suggestions = suggestionsForChildren(

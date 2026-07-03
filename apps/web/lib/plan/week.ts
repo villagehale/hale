@@ -15,13 +15,21 @@ import type { CompanionView, MilestoneStatus } from '@hale/types';
 export interface PlanChildItem {
   /** Stable list key. */
   key: string;
-  childName: string;
+  /** The child's given name, or null on a teen-redacted line (no name shown). */
+  childName: string | null;
   /** Short category label shown as the card eyebrow. */
   kindLabel: string;
   what: string;
-  /** Human "when" phrase, e.g. "this week" / "in ~3 months". */
+  /** Human "when" phrase, e.g. "this week" / "in ~3 months". Empty on a locked line. */
   when: string;
+  /** True on the single locked line that stands in for a 13+ teen's items (rule
+   * #1, policy 3): the parent sees THAT a plan exists, never its content, never a
+   * name — one locked line, never a silent drop. */
+  teenRedacted?: boolean;
 }
+
+/** The single locked line a 13+ teen collapses to — no name, no content, no "when". */
+const TEEN_PLAN_LOCKED_WHAT = 'a plan for your teen — private';
 
 interface NamedChild extends CompanionView {
   id: string;
@@ -50,6 +58,22 @@ export function planChildItems(children: ReadonlyArray<NamedChild>): PlanChildIt
   const items: PlanChildItem[] = [];
 
   for (const child of children) {
+    // Rule #1 (policy 3): a 13+ teen's health/milestone items are their private
+    // content — collapse to ONE locked line that still COUNTS toward the week, so
+    // the parent knows something is there without seeing it or the teen's name.
+    // Age-derived (deriveStage), never the classifier flag.
+    if (child.stage === 'teenager') {
+      items.push({
+        key: `${child.id}-teen`,
+        childName: null,
+        kindLabel: 'private',
+        what: TEEN_PLAN_LOCKED_WHAT,
+        when: '',
+        teenRedacted: true,
+      });
+      continue;
+    }
+
     const childName = child.name ?? 'your child';
 
     const health = child.nextHealth[0];

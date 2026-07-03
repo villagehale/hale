@@ -48,6 +48,23 @@ export async function currentFamilyId(database: Database = defaultDb()): Promise
 }
 
 /**
+ * Resolves the current request's internal user id (users.id) from the Auth.js
+ * session — the counterpart to currentFamilyId for surfaces that must know WHICH
+ * parent is asking (the teen-redaction parent-authored exemption: a parent's own
+ * quick-log about their teen is theirs to read). Degrades to null (never a fake id)
+ * when auth is unconfigured (dev preview — there is no signed-in parent) or the
+ * signed-in user has no mirrored `users` row yet. A null requester simply gets no
+ * exemption — the redaction fails closed (rule #1), never open.
+ */
+export async function currentUserId(database: Database = defaultDb()): Promise<string | null> {
+  if (!authConfigured()) return null;
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) return null;
+  return resolveUserIdForUser(externalAuthId, database);
+}
+
+/**
  * Dev-preview family resolution: the earliest-created family. Used only when auth
  * is unconfigured (local screenshots / demo), never in production.
  */

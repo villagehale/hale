@@ -27,7 +27,7 @@ import { type KeyboardEvent, useId, useRef } from 'react';
 
 export interface ScopeChild {
   id: string;
-  /** Given name, or null when withheld (teen — rule #1). */
+  /** Given name, or null when the child has no name on file (renders "your teen"). */
   label: string | null;
 }
 
@@ -39,16 +39,23 @@ export interface StagedChild {
 }
 
 /**
- * The single teen-safe derivation of a page's `ScopeChild[]` from its loaded
- * children: a 13+ child's given name is withheld (rule #1) so the chip reads
- * "your teen"; order is preserved. Every scope-bearing surface (Home, Village,
- * Approvals, Plan) derives its chips through this one function so the withholding
- * rule lives in exactly one place.
+ * The single derivation of a page's `ScopeChild[]` from its loaded children.
+ *
+ * Policy 1: the chip shows the child's NAME — the parent entered it, and two teens
+ * must never both read the anonymous "your teen" (a scope chip disambiguates WHICH
+ * child, so the name is exactly what the parent needs there). This is the chip
+ * LABEL only; a 13+ teen's CONTENT stays redacted at its own surfaces (the drop /
+ * placeholder / locked-card paths), age-derived via deriveStage — never here.
+ *
+ * `label` is null only when the child genuinely has no name on file; ChildScope
+ * then falls back to "your teen" at render. Order is preserved. Every scope-bearing
+ * surface (Home, Village, Approvals, Plan) derives its chips through this one
+ * function so the label rule lives in exactly one place.
  */
 export function scopeChildren(children: readonly StagedChild[]): ScopeChild[] {
   return children.map((child) => ({
     id: child.id,
-    label: child.stage === 'teenager' ? null : child.name,
+    label: child.name,
   }));
 }
 

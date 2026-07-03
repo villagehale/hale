@@ -93,6 +93,27 @@ describe('toApprovalView — human preview (A1)', () => {
     expect(JSON.stringify(view)).not.toContain('Maya');
     expect(JSON.stringify(view)).not.toContain('Coach Ramirez');
   });
+
+  it('marks the row teenRedacted and shows the private placeholder EXACTLY once (no double placeholder, policy 3)', () => {
+    const view = toApprovalView(
+      { ...BASE, actionType: 'reply_to_email', payload: { to: 'X' }, teenContent: true },
+      TZ,
+    );
+    expect(view.teenRedacted).toBe(true);
+    // The placeholder is the single locked "what" — the summary must NOT repeat it.
+    expect(view.preview).toBe(TEEN_REDACTED_PLACEHOLDER);
+    expect(view.summary).not.toBe(TEEN_REDACTED_PLACEHOLDER);
+    const occurrences = [view.preview, view.summary].filter(
+      (s) => s === TEEN_REDACTED_PLACEHOLDER,
+    ).length;
+    expect(occurrences).toBe(1);
+  });
+
+  it('leaves a non-teen row un-redacted (teenRedacted false, verdict summary intact)', () => {
+    const view = toApprovalView({ ...BASE, reviewerVerdict: 'approved' }, TZ);
+    expect(view.teenRedacted).toBe(false);
+    expect(view.summary).toBe('verified by the reviewer — ready for your approval');
+  });
 });
 
 describe('toApprovalView — which child the draft is about (rule #1)', () => {

@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, currentUserId } from '~/lib/family';
 
 /** A logged episode, flattened for the recent-logs list. */
 export interface RecentLogView {
@@ -19,34 +19,45 @@ const RECENT_LIMIT = 8;
 interface EpisodeRow {
   id: string;
   childId: string | null;
+  authoredBy: string | null;
   episodeType: string;
   summary: string;
   occurredAt: Date;
 }
 
 /**
- * Rule #1: drop any episode attributed to a 13+ child. The episodes table carries
- * NO teen flag, so this list would leak a teen's quick-log summary regardless of the
- * classifier — the teen set is derived LIVE from each child's DOB (deriveStage
- * boundary 156mo), mirroring search_memory in coach/tools.ts.
+ * Rule #1 teen redaction, with the parent-authored exemption (policy 2). The
+ * episodes table carries no teen flag, so the teen set is derived LIVE from each
+ * child's DOB (deriveStage boundary 156mo), mirroring search_memory.
  *
- * Double-miss (rule #1 "most restrictive"): an UNATTRIBUTED episode (childId null)
- * has no DOB to derive from, so it is ALSO dropped when the family has any teenager —
- * a family-wide quick-log could quote the teen. A family with no teen keeps every
- * unattributed and non-teen row (no over-redaction). Pure, no I/O.
+ * A row is EXEMPT — always kept — when the REQUESTING parent authored it
+ * (`authoredBy === requestingUserId`): a parent's own log about their 13+ teen is
+ * the parent's own content, not the teen's, so it must survive for its author
+ * (never confirmed "kept" then silently dropped). Quick-logs are the only writer of
+ * this table today, so a parent's own logs — attributed to the teen or family-wide
+ * — are theirs to see.
+ *
+ * Otherwise: a row attributed to a teen child is the teen's own content → dropped.
+ * An UNATTRIBUTED row (childId null) the requester did NOT author has no DOB to
+ * derive from and could quote the teen, so the rule-#1 "most restrictive" default
+ * drops it when the family has any teenager. A family with no teen keeps everything.
+ * Pure, no I/O.
  */
 function dropTeenEpisodes(
   episodes: EpisodeRow[],
   children: ReadonlyArray<{ id: string; dateOfBirth: string }>,
+  requestingUserId: string | null,
   now: Date = new Date(),
 ): EpisodeRow[] {
   const teenChildIds = new Set(
     children.filter((c) => deriveStage(c.dateOfBirth, now) === 'teenager').map((c) => c.id),
   );
   const familyHasTeen = teenChildIds.size > 0;
-  return episodes.filter((e) =>
-    e.childId === null ? !familyHasTeen : !teenChildIds.has(e.childId),
-  );
+  return episodes.filter((e) => {
+    if (requestingUserId !== null && e.authoredBy === requestingUserId) return true;
+    if (e.childId === null) return !familyHasTeen;
+    return !teenChildIds.has(e.childId);
+  });
 }
 
 /**
@@ -55,7 +66,11 @@ function dropTeenEpisodes(
  * and `familyId` are injected so the redaction is unit-testable without the
  * server-only auth chain; loadRecentLogs is the request wrapper.
  */
-async function readRecentLogs(database: Database, familyId: string): Promise<RecentLogView[]> {
+async function readRecentLogs(
+  database: Database,
+  familyId: string,
+  requestingUserId: string | null,
+): Promise<RecentLogView[]> {
   const children = await database
     .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
     .from(schema.children)
@@ -65,6 +80,7 @@ async function readRecentLogs(database: Database, familyId: string): Promise<Rec
     .select({
       id: schema.familyMemoryEpisodes.id,
       childId: schema.familyMemoryEpisodes.childId,
+      authoredBy: schema.familyMemoryEpisodes.authoredBy,
       episodeType: schema.familyMemoryEpisodes.episodeType,
       summary: schema.familyMemoryEpisodes.summary,
       occurredAt: schema.familyMemoryEpisodes.occurredAt,
@@ -79,7 +95,7 @@ async function readRecentLogs(database: Database, familyId: string): Promise<Rec
     .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
     .limit(RECENT_LIMIT);
 
-  return dropTeenEpisodes(rows, children).map((row) => ({
+  return dropTeenEpisodes(rows, children, requestingUserId).map((row) => ({
     id: row.id,
     childId: row.childId,
     episodeType: row.episodeType,
@@ -99,7 +115,8 @@ export async function loadRecentLogs(): Promise<RecentLogView[]> {
   const database = defaultDb();
   const familyId = await currentFamilyId(database);
   if (!familyId) return [];
-  return readRecentLogs(database, familyId);
+  const requestingUserId = await currentUserId(database);
+  return readRecentLogs(database, familyId, requestingUserId);
 }
 
 export const _internal = { dropTeenEpisodes };

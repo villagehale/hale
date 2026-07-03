@@ -11,6 +11,10 @@ import { FEED_EPISODE, MILESTONE_EPISODE, NAP_EPISODE, type QuickLogInput } from
 export interface EpisodeInsert {
   familyId: string;
   childId: string | null;
+  /** The parent who logged it (users.id), for the rule-#1 parent-authored
+   * exemption — a parent's own log about their teen survives the redaction read
+   * for its author. Null only in a preview with no resolved parent. */
+  authoredBy: string | null;
   occurredAt: Date;
   episodeType: string;
   summary: string;
@@ -21,14 +25,16 @@ export interface EpisodeInsert {
  * Pure: turns a validated quick-log input into the episode row to insert. The
  * summary is a plain-language one-liner; the structured fields live in payload so
  * the Coach and Memory Inferencer can read them (amountMl / durationMin /
- * milestone).
+ * milestone). `authoredBy` stamps the acting parent so the teen-redaction read can
+ * exempt a parent's own log about their teen (rule #1, policy: parent-authored).
  */
 export function buildEpisodeInsert(
   input: QuickLogInput,
   familyId: string,
   occurredAt: Date,
+  authoredBy: string | null,
 ): EpisodeInsert {
-  const base = { familyId, childId: input.childId, occurredAt };
+  const base = { familyId, childId: input.childId, authoredBy, occurredAt };
   switch (input.kind) {
     case FEED_EPISODE:
       return {

@@ -1,0 +1,11 @@
+-- Who authored a quick-log episode (additive only, rule #9). A parent quick-log
+-- (the ONLY writer of this table today — log-write.ts) stamps the acting parent's
+-- user id; content that later arrives via the inbound pipeline (teen-authored)
+-- leaves it NULL.
+--
+-- Rule #1 teen redaction reads this: a row authored BY the requesting parent is
+-- EXEMPT from the drop — a parent's own log about their 13+ teen is the parent's
+-- OWN content, not the teen's, so it must survive for its author (never confirmed
+-- "kept" then silently dropped). ON DELETE SET NULL so removing a parent's account
+-- doesn't cascade-delete the family's care log the audit trail references (rule #6).
+ALTER TABLE "family_memory_episodes" ADD COLUMN "authored_by" uuid REFERENCES "users"("id") ON DELETE SET NULL;
