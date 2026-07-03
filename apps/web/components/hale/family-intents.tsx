@@ -6,12 +6,14 @@ import type { OnboardingIntent } from '@hale/types';
 import { Button } from '~/components/ui/button';
 import { IntentChips } from '~/components/hale/intent-chips';
 import { setIntentsAction } from '~/lib/family/children-actions';
+import { PREVIEW_NOTE, SIGNED_OUT_NOTE } from '~/lib/family/form-copy';
 
 type State =
   | { kind: 'idle' }
   | { kind: 'saving' }
   | { kind: 'saved' }
   | { kind: 'preview' }
+  | { kind: 'signed_out' }
   | { kind: 'error' };
 
 /**
@@ -37,7 +39,15 @@ export function FamilyIntents({ intents }: { intents: OnboardingIntent[] }) {
       setState({ kind: 'saved' });
       return;
     }
-    setState(result.status === 'preview' ? { kind: 'preview' } : { kind: 'error' });
+    if (result.status === 'preview') {
+      setState({ kind: 'preview' });
+      return;
+    }
+    if (result.status === 'unauthenticated') {
+      setState({ kind: 'signed_out' });
+      return;
+    }
+    setState({ kind: 'error' });
   }
 
   return (
@@ -52,9 +62,10 @@ export function FamilyIntents({ intents }: { intents: OnboardingIntent[] }) {
         <output className="meta text-slate-green block">saved.</output>
       ) : null}
       {state.kind === 'preview' ? (
-        <output className="meta text-slate-green block">
-          sign-in isn&rsquo;t configured in this preview, so nothing was saved.
-        </output>
+        <output className="meta text-slate-green block">{PREVIEW_NOTE}</output>
+      ) : null}
+      {state.kind === 'signed_out' ? (
+        <output className="meta text-slate-green block">{SIGNED_OUT_NOTE}</output>
       ) : null}
       {state.kind === 'error' ? (
         <p className="field-error flex items-center gap-2" role="alert">

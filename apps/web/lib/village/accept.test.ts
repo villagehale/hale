@@ -107,10 +107,16 @@ describe('acceptVillageCandidate', () => {
   });
 });
 
+interface AcceptedRow {
+  candidateId: string | null;
+  userVisibleState: string;
+  reviewerVerdict: string;
+}
+
 /** Fakes the select(...).from(...).innerJoin(...).where(...) chain the accepted
- * lookup runs; resolves to the joined rows so the candidate-id extraction is the
- * only thing under test. */
-function fakeAcceptedDb(rows: Array<{ candidateId: string | null }>) {
+ * lookup runs; resolves to the joined rows so the honesty filter (live, non-rejected
+ * draft only) + candidate-id extraction are what's under test. */
+function fakeAcceptedDb(rows: AcceptedRow[]) {
   const where = vi.fn().mockResolvedValue(rows);
   const innerJoin = vi.fn().mockReturnValue({ where });
   const from = vi.fn().mockReturnValue({ innerJoin });
@@ -118,17 +124,51 @@ function fakeAcceptedDb(rows: Array<{ candidateId: string | null }>) {
   return { select } as never;
 }
 
+function acceptedRow(overrides: Partial<AcceptedRow> = {}): AcceptedRow {
+  return {
+    candidateId: 'cand-a',
+    userVisibleState: 'drafted_for_approval',
+    reviewerVerdict: 'approved',
+    ...overrides,
+  };
+}
+
 describe('listFamilyAcceptedCandidateIds', () => {
-  it('returns the set of candidate ids the family has a drafted action for', async () => {
-    const db = fakeAcceptedDb([{ candidateId: 'cand-a' }, { candidateId: 'cand-b' }]);
+  it('returns the set of candidate ids the family has a live drafted action for', async () => {
+    const db = fakeAcceptedDb([
+      acceptedRow({ candidateId: 'cand-a' }),
+      acceptedRow({ candidateId: 'cand-b', reviewerVerdict: 'flagged' }),
+    ]);
 
     const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
 
     expect(accepted).toEqual(new Set(['cand-a', 'cand-b']));
   });
 
+  it('excludes a candidate whose only draft the reviewer rejected (never "added")', async () => {
+    const db = fakeAcceptedDb([
+      acceptedRow({ candidateId: 'cand-a' }),
+      acceptedRow({ candidateId: 'cand-rejected', reviewerVerdict: 'rejected' }),
+    ]);
+
+    const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
+
+    expect(accepted).toEqual(new Set(['cand-a']));
+  });
+
+  it('excludes a candidate whose draft was declined / reverted by the parent', async () => {
+    const db = fakeAcceptedDb([
+      acceptedRow({ candidateId: 'cand-a' }),
+      acceptedRow({ candidateId: 'cand-reverted', userVisibleState: 'reverted' }),
+    ]);
+
+    const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
+
+    expect(accepted).toEqual(new Set(['cand-a']));
+  });
+
   it('drops a row whose joined event payload carries no candidate_id (non-village action)', async () => {
-    const db = fakeAcceptedDb([{ candidateId: 'cand-a' }, { candidateId: null }]);
+    const db = fakeAcceptedDb([acceptedRow({ candidateId: 'cand-a' }), acceptedRow({ candidateId: null })]);
 
     const accepted = await listFamilyAcceptedCandidateIds(db, FAMILY_ID);
 

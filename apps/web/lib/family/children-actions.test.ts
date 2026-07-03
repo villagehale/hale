@@ -175,6 +175,17 @@ describe('addChildAction', () => {
     expect(result).toEqual({ status: 'preview' });
     expect(transaction).not.toHaveBeenCalled();
   });
+
+  it('returns unauthenticated (NOT preview) when auth is configured but there is no session', async () => {
+    // A real signed-out user on a configured deploy must be told to sign in again,
+    // not shown the dev-preview message. The two boundaries are distinct.
+    authMock.mockResolvedValue(null);
+    const transaction = vi.fn();
+    fakeDbHandle = { transaction };
+    const result = await addChildAction({ name: 'Robin', dateOfBirth: '2024-01-01' });
+    expect(result).toEqual({ status: 'unauthenticated' });
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe('editChildAction', () => {

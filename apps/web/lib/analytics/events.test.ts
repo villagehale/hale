@@ -97,6 +97,12 @@ describe('buildEvent privacy gate', () => {
     expect(buildEvent('first_invite').properties).toEqual({});
   });
 
+  it('records a plan-notify request with its coarse tier (the interest the CTA promises)', () => {
+    const built = buildEvent('plan_notify_requested', { tier: 'plus' });
+    expect(built.event).toBe('plan_notify_requested');
+    expect(built.properties).toEqual({ tier: 'plus' });
+  });
+
   it('never lets a name/email/content field through under any casing', () => {
     const built = buildEvent('endorse', {
       ChildName: 'Maya',

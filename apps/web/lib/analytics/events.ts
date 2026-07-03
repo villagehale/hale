@@ -22,7 +22,8 @@ export type AnalyticsEvent =
   | 'add_to_week'
   | 'endorse'
   | 'share'
-  | 'ask_hale';
+  | 'ask_hale'
+  | 'plan_notify_requested';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

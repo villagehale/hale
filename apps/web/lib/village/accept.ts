@@ -93,13 +93,17 @@ export async function acceptVillageCandidate(
 }
 
 /**
- * The set of candidate ids THIS family has already accepted (added to their
- * week). An accept re-enters the spine as a village-sourced event carrying the
- * candidate_id in its payload, which the pipeline then drafts into an action; the
- * existence of that drafted action is the durable "added to your week" signal.
- * Sourcing it from SERVER data (rather than the button's optimistic local state)
- * is what lets the accept button render "added to your week" on load and survive
- * the streamed feed remounting it.
+ * The set of candidate ids THIS family has a candidate genuinely waiting on:
+ * accepting re-enters the spine as a village-sourced event carrying the
+ * candidate_id, which the pipeline drafts into an action held for approval — the
+ * durable "sent for your approval" signal. Sourcing it from SERVER data (rather
+ * than the button's optimistic local state) is what lets the accept button render
+ * that state on load and survive the streamed feed remounting it.
+ *
+ * Honesty filter: only a LIVE draft counts. A draft the reviewer rejected, or one
+ * the parent declined (reverted), is not something waiting for the parent — so it
+ * must never read as accepted. We therefore restrict to
+ * userVisibleState = 'drafted_for_approval' AND reviewerVerdict != 'rejected'.
  *
  * Joins actions → their originating event so we read candidate_id from the
  * already-stored village payload (rule #1: only the coarse candidate fields ever
@@ -111,14 +115,21 @@ export async function listFamilyAcceptedCandidateIds(
   familyId: string,
 ): Promise<Set<string>> {
   const rows = await database
-    .select({ candidateId: sql<string | null>`${schema.events.payload} ->> 'candidate_id'` })
+    .select({
+      candidateId: sql<string | null>`${schema.events.payload} ->> 'candidate_id'`,
+      userVisibleState: schema.actions.userVisibleState,
+      reviewerVerdict: schema.actions.reviewerVerdict,
+    })
     .from(schema.actions)
     .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
     .where(and(eq(schema.events.familyId, familyId), eq(schema.events.source, VILLAGE_SOURCE)));
 
   const ids = new Set<string>();
   for (const row of rows) {
-    if (row.candidateId) ids.add(row.candidateId);
+    if (!row.candidateId) continue;
+    if (row.userVisibleState !== 'drafted_for_approval') continue;
+    if (row.reviewerVerdict === 'rejected') continue;
+    ids.add(row.candidateId);
   }
   return ids;
 }

@@ -36,6 +36,7 @@ import { type LocationInput, normalizeLocation } from './location-input';
 export type AddChildResult =
   | { status: 'added' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'invalid'; error: ChildError };
 
 export async function addChildAction(input: ChildInput): Promise<AddChildResult> {
@@ -45,8 +46,8 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
   }
 
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -101,6 +102,7 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
 export type EditChildResult =
   | { status: 'updated' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'not_found' }
   | { status: 'invalid'; error: ChildError };
 
@@ -114,8 +116,8 @@ export async function editChildAction(
   }
 
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -165,12 +167,13 @@ export async function editChildAction(
 export type RemoveChildResult =
   | { status: 'removed' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'not_found' };
 
 export async function removeChildAction(childId: string): Promise<RemoveChildResult> {
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -218,14 +221,15 @@ export async function removeChildAction(childId: string): Promise<RemoveChildRes
 export type SetLocationResult =
   | { status: 'updated' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'not_found' };
 
 export async function setLocationAction(input: LocationInput): Promise<SetLocationResult> {
   const location = normalizeLocation(input);
 
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -289,6 +293,7 @@ function isPlanTier(value: string): value is PlanTier {
 export type SetPlanResult =
   | { status: 'updated' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'not_found' }
   | { status: 'invalid' };
 
@@ -298,8 +303,8 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
   }
 
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -339,6 +344,7 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
 export type SetIntentsResult =
   | { status: 'updated' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'not_found' };
 
 /**
@@ -351,8 +357,8 @@ export async function setIntentsAction(rawIntents: string[]): Promise<SetIntents
   const intents = parsed.length > 0 ? parsed : null;
 
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -392,6 +398,7 @@ export async function setIntentsAction(rawIntents: string[]): Promise<SetIntents
 export type SetParentNameResult =
   | { status: 'updated' }
   | { status: 'preview' }
+  | { status: 'unauthenticated' }
   | { status: 'not_found' }
   | { status: 'invalid' };
 
@@ -402,8 +409,8 @@ export async function setParentNameAction(rawName: string): Promise<SetParentNam
   }
 
   const ctx = await mutationContext();
-  if (ctx.status === 'preview') {
-    return { status: 'preview' };
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
   }
 
   const { database, identity } = ctx;
@@ -439,12 +446,18 @@ export async function setParentNameAction(rawName: string): Promise<SetParentNam
 
 type MutationContext =
   | { status: 'ready'; database: Database; identity: AuthIdentity }
-  | { status: 'preview' };
+  | { status: 'preview' }
+  | { status: 'unauthenticated' };
 
 /**
- * Resolves the signed-in parent's identity + a db handle for a mutation, or
- * `preview` at the two expected boundaries (no DATABASE_URL, auth unconfigured /
- * not signed in). Never fabricates an identity (rule #1).
+ * Resolves the signed-in parent's identity + a db handle for a mutation. The two
+ * failure boundaries are DISTINCT so the forms can tell the user the truth:
+ *  - `preview`: auth genuinely isn't configured here (no DATABASE_URL, or
+ *    !authConfigured()) — a dev/preview deploy where nothing can be saved.
+ *  - `unauthenticated`: auth IS configured but there's no valid session — a real
+ *    user who is signed out. They must be told to sign in again, NOT shown a
+ *    dev-preview message that implies their edit could never save.
+ * Never fabricates an identity (rule #1).
  */
 async function mutationContext(): Promise<MutationContext> {
   if (!process.env.DATABASE_URL || !authConfigured()) {
@@ -454,7 +467,7 @@ async function mutationContext(): Promise<MutationContext> {
   const externalAuthId = session?.user?.id;
   const email = session?.user?.email;
   if (!externalAuthId || !email) {
-    return { status: 'preview' };
+    return { status: 'unauthenticated' };
   }
   return {
     status: 'ready',
