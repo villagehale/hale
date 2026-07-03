@@ -11,8 +11,18 @@ type Message = { tone: 'note' | 'error'; text: string };
  * surfaced in place (never a silent success). On a successful discovery the
  * action revalidates /village, so the page re-renders with the new candidates;
  * the empty/edge outcomes are explained in plain words rather than swallowed.
+ *
+ * `variant`/`label` let the same re-runnable action read as the primary CTA on
+ * an empty surface and as a quiet "find more near you" at the foot of a
+ * populated feed — one entry point, so discovery is never a one-shot.
  */
-export function FindActivitiesButton() {
+export function FindActivitiesButton({
+  variant = 'primary',
+  label = 'find activities near you',
+}: {
+  variant?: 'primary' | 'secondary';
+  label?: string;
+}) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<Message | null>(null);
 
@@ -57,12 +67,12 @@ export function FindActivitiesButton() {
     <div className="flex flex-col items-center gap-3">
       <button
         type="button"
-        className="btn-primary"
+        className={variant === 'secondary' ? 'btn-secondary' : 'btn-primary'}
         onClick={find}
         disabled={pending}
         aria-live="polite"
       >
-        {pending ? 'gathering near you…' : 'find activities near you'}
+        {pending ? 'gathering near you…' : label}
       </button>
       {message ? (
         <p
