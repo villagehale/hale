@@ -50,11 +50,19 @@ export const messages = pgTable(
     /** Coarse topic tag (health/sleep/feeding/…) for timeline filtering; null when untagged. */
     topic: text('topic'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Soft delete (rule #6 / #9): a parent-removed turn is stamped, not erased, so
+     * the audit row that references it stays intact. NULL = live; the read path
+     * (loadTimeline/loadTranscript) filters a stamped row out. */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
     conversationTimeIdx: index('messages_conversation_time_idx').on(
       table.conversationId,
       table.createdAt,
+    ),
+    conversationDeletedIdx: index('messages_conversation_deleted_idx').on(
+      table.conversationId,
+      table.deletedAt,
     ),
     roleCheck: check('messages_role_check', sql`${table.role} IN ('user', 'assistant')`),
   }),

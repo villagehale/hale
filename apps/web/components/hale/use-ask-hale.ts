@@ -153,6 +153,13 @@ export interface UseAskHale {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   /** Attach to the end-of-thread sentinel so the newest turn scrolls into view. */
   threadEndRef: React.RefObject<HTMLDivElement | null>;
+  /** Soft-deletes one persisted turn (rule #6) and drops it from the timeline.
+   * Returns false when the turn isn't the family's or the request failed. A turn
+   * that hasn't been persisted yet (no server round-trip) can't be deleted. */
+  deleteTurn: (id: string) => Promise<boolean>;
+  /** Erases the whole conversation: soft-deletes every persisted turn and clears
+   * the timeline. Returns false when there is no conversation or the request failed. */
+  eraseConversation: () => Promise<boolean>;
 }
 
 /**
@@ -322,6 +329,37 @@ export function useAskHale(
     }
   }
 
+  async function deleteTurn(id: string): Promise<boolean> {
+    try {
+      const res = await fetch('/api/coach/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: id }),
+      });
+      if (res.status !== 200) return false;
+      setTurns((prev) => prev.filter((t) => t.id !== id));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function eraseConversation(): Promise<boolean> {
+    if (!conversationId) return false;
+    try {
+      const res = await fetch('/api/coach/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ conversationId }),
+      });
+      if (res.status !== 200) return false;
+      setTurns([]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     turns,
     visibleTurns,
@@ -339,5 +377,7 @@ export function useAskHale(
     topicsInUse,
     inputRef,
     threadEndRef,
+    deleteTurn,
+    eraseConversation,
   };
 }
