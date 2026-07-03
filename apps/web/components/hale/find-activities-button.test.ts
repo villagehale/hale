@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -37,5 +39,31 @@ describe('FindActivitiesButton — one re-runnable entry point, two voices', () 
       createElement(FindActivitiesButton, { variant: 'secondary', label: 'find more near you' }),
     );
     expect(html).not.toContain('disabled');
+  });
+});
+
+/**
+ * First-run guidance must be human and point at the REAL area editor (/family),
+ * not "settings" (which has no area field). The no-area copy is a result state we
+ * can't reach in a static render, so we assert against the source: the /family
+ * link is wired, and the banned engineer-voice tokens are gone.
+ */
+describe('FindActivitiesButton — first-run copy points at the real area editor', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('./find-activities-button.tsx', import.meta.url)),
+    'utf8',
+  );
+
+  it('links the no-area guidance to the family page (where the area lives)', () => {
+    expect(source).toContain("href: '/family'");
+    expect(source).toContain('add your area on the family page');
+  });
+
+  it('bans engineer-voice tokens from the user copy', () => {
+    expect(source).not.toContain('coarse area');
+    expect(source).not.toContain('stage-appropriate');
+    expect(source).not.toContain('(in settings)');
+    // No standalone lowercase "i" as a pronoun in user copy (e.g. "i can gather").
+    expect(source).not.toMatch(/\bi can\b/);
   });
 });

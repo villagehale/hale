@@ -31,9 +31,11 @@ export type ApproveResult =
  * execution — this only records the human's consent and hands it off.
  *
  * Order matters: cross-family is a 403 (it exists but isn't yours), a missing
- * action is 404, and a wrong-state action is 409 (no enqueue). No event is sent
- * unless every precondition holds — an approval must never fire a real action
- * the caller isn't entitled to (hard rule #4).
+ * action is 404, and a wrong-state OR non-approved-verdict action is 409 (no
+ * enqueue). No event is sent unless every precondition holds — an approval must
+ * never fire a real action the caller isn't entitled to (hard rule #4), and a
+ * draft the reviewer did not approve is never executable by a parent's click
+ * (hard rule #3): the reviewer's verdict is a structural gate, not advisory.
  */
 export async function approveDraftedAction(
   database: Database,
@@ -45,6 +47,7 @@ export async function approveDraftedAction(
       id: schema.actions.id,
       familyId: schema.actions.familyId,
       userVisibleState: schema.actions.userVisibleState,
+      reviewerVerdict: schema.actions.reviewerVerdict,
     })
     .from(schema.actions)
     .where(eq(schema.actions.id, args.actionId))
@@ -59,6 +62,9 @@ export async function approveDraftedAction(
   }
   if (action.userVisibleState !== 'drafted_for_approval') {
     return { status: 409, error: 'action_not_awaiting_approval' };
+  }
+  if (action.reviewerVerdict !== 'approved') {
+    return { status: 409, error: 'action_not_reviewer_approved' };
   }
 
   const payload: ApprovedActionPayload = approvedActionPayloadSchema.parse({

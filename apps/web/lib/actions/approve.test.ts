@@ -8,7 +8,14 @@ const APPROVER = 'user_clerk_abc';
 
 /** Fakes the single select(...).from(...).where(...).limit(1) chain the
  * precondition lookup runs. Returns whatever `rows` is given — no real db. */
-function fakeDb(rows: Array<{ id: string; familyId: string; userVisibleState: string }>) {
+function fakeDb(
+  rows: Array<{
+    id: string;
+    familyId: string;
+    userVisibleState: string;
+    reviewerVerdict: string;
+  }>,
+) {
   const limit = vi.fn().mockResolvedValue(rows);
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
@@ -23,7 +30,12 @@ function fakeQueue(): ApproveQueue & { send: ReturnType<typeof vi.fn> } {
 describe('approveDraftedAction', () => {
   it('enqueues actions.approved with the approver stamped, returns 202', async () => {
     const db = fakeDb([
-      { id: ACTION_ID, familyId: FAMILY_ID, userVisibleState: 'drafted_for_approval' },
+      {
+        id: ACTION_ID,
+        familyId: FAMILY_ID,
+        userVisibleState: 'drafted_for_approval',
+        reviewerVerdict: 'approved',
+      },
     ]);
     const queue = fakeQueue();
 
@@ -51,7 +63,14 @@ describe('approveDraftedAction', () => {
   });
 
   it('returns 409 and does NOT enqueue when the action is not awaiting approval', async () => {
-    const db = fakeDb([{ id: ACTION_ID, familyId: FAMILY_ID, userVisibleState: 'autonomous' }]);
+    const db = fakeDb([
+      {
+        id: ACTION_ID,
+        familyId: FAMILY_ID,
+        userVisibleState: 'autonomous',
+        reviewerVerdict: 'approved',
+      },
+    ]);
     const queue = fakeQueue();
 
     const result = await approveDraftedAction(db, queue, {
@@ -64,9 +83,37 @@ describe('approveDraftedAction', () => {
     expect(queue.send).not.toHaveBeenCalled();
   });
 
+  it('returns 409 and does NOT enqueue when the reviewer verdict is not approved (rule #3)', async () => {
+    for (const reviewerVerdict of ['pending', 'flagged', 'rejected'] as const) {
+      const db = fakeDb([
+        {
+          id: ACTION_ID,
+          familyId: FAMILY_ID,
+          userVisibleState: 'drafted_for_approval',
+          reviewerVerdict,
+        },
+      ]);
+      const queue = fakeQueue();
+
+      const result = await approveDraftedAction(db, queue, {
+        actionId: ACTION_ID,
+        familyId: FAMILY_ID,
+        approvedBy: APPROVER,
+      });
+
+      expect(result.status).toBe(409);
+      expect(queue.send).not.toHaveBeenCalled();
+    }
+  });
+
   it('returns 403 and does NOT enqueue when the action belongs to another family', async () => {
     const db = fakeDb([
-      { id: ACTION_ID, familyId: OTHER_FAMILY, userVisibleState: 'drafted_for_approval' },
+      {
+        id: ACTION_ID,
+        familyId: OTHER_FAMILY,
+        userVisibleState: 'drafted_for_approval',
+        reviewerVerdict: 'approved',
+      },
     ]);
     const queue = fakeQueue();
 

@@ -34,10 +34,10 @@ export interface VillageCandidateView {
   endorsementCount: number;
   /** Whether THIS family has already endorsed — drives the button's state. */
   endorsedByFamily: boolean;
-  /** Whether THIS family has already accepted (added to their week) — drives the
-   * accept button's "added to your week" state from SERVER data so it survives the
-   * streamed feed remounting the button (it would otherwise reset its optimistic
-   * local state on every re-render). */
+  /** Whether THIS family already accepted this candidate into a LIVE draft — drives
+   * the accept button's "sent for your approval" state from SERVER data so it
+   * survives the streamed feed remounting the button (it would otherwise reset its
+   * optimistic local state on every re-render). */
   accepted: boolean;
   /** PUBLIC venue coordinates for the map pin (a YMCA, a library) — null for an
    * online / no-venue activity or an unresolved geocode (list-only, no pin). These

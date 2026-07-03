@@ -332,13 +332,11 @@ function EmptyState({
 function Timeline({
   turns,
   childLabelOf,
-  focusedChildId,
   kids,
   layout = 'quote',
 }: {
   turns: Turn[];
   childLabelOf: (id: string | null) => string;
-  focusedChildId: string | null;
   kids: TimelineChild[];
   layout?: 'quote' | 'chat';
 }) {
@@ -400,7 +398,7 @@ function Timeline({
                       <ActionChip
                         key={intent.kind}
                         intent={intent}
-                        focusedChildId={focusedChildId}
+                        focusedChildId={turn.childId}
                         sourceAnswer={turn.body}
                       />
                     ))}
@@ -531,12 +529,7 @@ function CompactSurface({
 
       {visibleTurns.length > 0 ? (
         <div className="rise rise-1">
-          <Timeline
-            turns={visibleTurns}
-            childLabelOf={childLabelOf}
-            focusedChildId={focusedChildId}
-            kids={seed.children}
-          />
+          <Timeline turns={visibleTurns} childLabelOf={childLabelOf} kids={seed.children} />
           <div ref={threadEndRef} />
         </div>
       ) : null}
@@ -613,7 +606,6 @@ function FullSurface({
             <Timeline
               turns={visibleTurns}
               childLabelOf={childLabelOf}
-              focusedChildId={focusedChildId}
               kids={seed.children}
               layout="chat"
             />

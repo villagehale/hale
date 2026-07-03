@@ -10,6 +10,7 @@ import {
   editChildAction,
   removeChildAction,
 } from '~/lib/family/children-actions';
+import { PREVIEW_NOTE, SIGNED_OUT_NOTE } from '~/lib/family/form-copy';
 import type { ChildError } from '~/lib/family/children-input';
 
 /** One child as the Family page already renders it, plus the DOB so edits prefill. */
@@ -27,9 +28,6 @@ const ERROR_COPY: Record<ChildError, string> = {
   dob_future: "that's in the future — check the year.",
   dob_too_old: 'Hale is for children under eighteen.',
 };
-
-const PREVIEW_NOTE =
-  "sign-in isn't configured in this preview, so nothing was saved.";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -105,6 +103,7 @@ type FormState =
   | { kind: 'idle' }
   | { kind: 'saving' }
   | { kind: 'preview' }
+  | { kind: 'signed_out' }
   | { kind: 'error'; message: string };
 
 function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
@@ -130,6 +129,10 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
       setState({ kind: 'preview' });
       return;
     }
+    if (result.status === 'unauthenticated') {
+      setState({ kind: 'signed_out' });
+      return;
+    }
     if (result.status === 'not_found') {
       setState({ kind: 'error', message: 'that child is no longer in your family.' });
       return;
@@ -149,6 +152,10 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
     }
     if (result.status === 'preview') {
       setState({ kind: 'preview' });
+      return;
+    }
+    if (result.status === 'unauthenticated') {
+      setState({ kind: 'signed_out' });
       return;
     }
     setState({ kind: 'error', message: 'that child is no longer in your family.' });
@@ -219,6 +226,9 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
         ) : null}
         {state.kind === 'preview' ? (
           <output className="meta text-slate-green block">{PREVIEW_NOTE}</output>
+        ) : null}
+        {state.kind === 'signed_out' ? (
+          <output className="meta text-slate-green block">{SIGNED_OUT_NOTE}</output>
         ) : null}
 
         <div className="flex flex-wrap items-center gap-4">

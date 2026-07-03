@@ -1,9 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { type FindActivitiesResult, findActivitiesAction } from '~/lib/village/discover-action';
 
-type Message = { tone: 'note' | 'error'; text: string };
+type Message = {
+  tone: 'note' | 'error';
+  text: string;
+  /** An optional inline link appended after the text (e.g. to the family page
+   * where the area is set) — so first-run guidance points at the real editor. */
+  link?: { href: string; label: string };
+};
 
 /**
  * Triggers on-demand village discovery via the findActivitiesAction Server
@@ -35,12 +42,13 @@ export function FindActivitiesButton({
       case 'no_area':
         return {
           tone: 'note',
-          text: 'tell me your coarse area first (in settings) and i can gather what is near you.',
+          text: 'tell Hale where you are — add your area on the family page and Hale can gather what is near you.',
+          link: { href: '/family', label: 'add your area' },
         };
       case 'no_non_teen_children':
         return {
           tone: 'note',
-          text: 'add a child under thirteen and i can gather stage-appropriate activities.',
+          text: 'add a child under thirteen and Hale can gather activities to suit their age.',
         };
       case 'no_family':
         return { tone: 'note', text: 'finish setting up your family first.' };
@@ -80,6 +88,14 @@ export function FindActivitiesButton({
           role={message.tone === 'error' ? 'alert' : undefined}
         >
           {message.text}
+          {message.link ? (
+            <>
+              {' '}
+              <Link href={message.link.href} className="link">
+                {message.link.label}
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : null}
     </div>

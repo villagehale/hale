@@ -8,6 +8,7 @@ import {
   type PlanTier,
   formatPlanPrice,
 } from '@hale/types';
+import { PREVIEW_NOTE, SIGNED_OUT_NOTE } from '~/lib/family/form-copy';
 import { BillingToggle } from './billing-toggle';
 
 /** The plan-section render state, owned by the stateful FamilyPlan wrapper. */
@@ -17,6 +18,7 @@ export type FamilyPlanState =
   | { kind: 'saved' }
   | { kind: 'notified'; tier: PlanTier }
   | { kind: 'preview' }
+  | { kind: 'signed_out' }
   | { kind: 'error' };
 
 /**
@@ -124,9 +126,10 @@ export function FamilyPlanView({
         </output>
       ) : null}
       {state.kind === 'preview' ? (
-        <output className="meta text-slate-green block">
-          sign-in isn&rsquo;t configured in this preview, so nothing was saved.
-        </output>
+        <output className="meta text-slate-green block">{PREVIEW_NOTE}</output>
+      ) : null}
+      {state.kind === 'signed_out' ? (
+        <output className="meta text-slate-green block">{SIGNED_OUT_NOTE}</output>
       ) : null}
       {state.kind === 'error' ? (
         <p className="field-error flex items-center gap-2" role="alert">

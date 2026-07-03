@@ -18,6 +18,14 @@ import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries'
  * actions.approved); dismissing posts to the decline route — the "no" the consent
  * queue requires, which records its own audit_log row (rule #6).
  */
+/**
+ * Only a reviewer-APPROVED draft offers "approve & send" — the approve route
+ * refuses any other verdict with 409 (rule #3), so surfacing that button on a
+ * flagged / rejected / still-pending row would promise an action the server will
+ * reject. Those rows get a review-first treatment: the reviewer's concern is
+ * shown, and the only real action offered is to dismiss the draft.
+ */
+const APPROVED_VERDICT = 'approved';
 const NEEDS_YOU_VERDICTS = new Set(['flagged', 'rejected']);
 
 export default async function ApprovalsPage() {
@@ -54,7 +62,9 @@ export default async function ApprovalsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <DismissButton actionId={approval.id} />
-                <ApproveButton actionId={approval.id} />
+                {approval.verdict === APPROVED_VERDICT ? (
+                  <ApproveButton actionId={approval.id} />
+                ) : null}
               </div>
             </li>
           ))}
