@@ -3,13 +3,14 @@
 import { useId, useMemo, useState } from 'react';
 import { List, Lock, Map as MapIcon, Search } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
+import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
 import { EndorseButton } from '~/components/hale/endorse-button';
 import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
 import type { LatLng } from '~/lib/village/map-model';
-import type { VillageCandidateView } from '~/lib/village/mappers';
+import { type VillageCandidateView, filterCandidatesByScope } from '~/lib/village/mappers';
 
 /**
  * Client-side search/filter over the already-loaded village candidates, with a
@@ -28,23 +29,39 @@ export function VillageSearch({
   candidates,
   coarseCenter,
   area = null,
+  kids = [],
 }: {
   candidates: VillageCandidateView[];
   coarseCenter: LatLng | null;
   area?: string | null;
+  kids?: ScopeChild[];
 }) {
   const inputId = useId();
   const [query, setQuery] = useState('');
+  const [scope, setScope] = useState<string | null>(null);
   const [view, setView] = useState<View>('list');
 
   const filtered = useMemo(() => {
+    const scoped = filterCandidatesByScope(candidates, scope);
     const q = query.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter((c) => `${c.title} ${c.kind} ${c.summary}`.toLowerCase().includes(q));
-  }, [candidates, query]);
+    if (!q) return scoped;
+    return scoped.filter((c) => `${c.title} ${c.kind} ${c.summary}`.toLowerCase().includes(q));
+  }, [candidates, query, scope]);
 
   return (
     <div>
+      {kids.length > 1 ? (
+        <div className="mb-6">
+          <ChildScope
+            variant="filter"
+            legend="show activities for"
+            kids={kids}
+            value={scope}
+            onChange={setScope}
+          />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-end justify-between gap-4 mb-10 lg:mb-12">
         <div className="field-group max-w-xl flex-1 min-w-[12rem]">
           <label htmlFor={inputId} className="field-label">
@@ -103,7 +120,9 @@ export function VillageSearch({
       <div className={view === 'map' ? 'hidden' : undefined}>
         {filtered.length === 0 ? (
         <output className="meta italic text-slate-green block">
-          nothing matches “{query.trim()}” this week.
+          {query.trim()
+            ? `nothing matches “${query.trim()}” this week.`
+            : 'nothing for this child this week — try whole family.'}
         </output>
       ) : (
         <section>

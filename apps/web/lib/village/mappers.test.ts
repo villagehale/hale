@@ -3,6 +3,7 @@ import { TEEN_REDACTED_PLACEHOLDER } from '../dashboard/mappers.js';
 import {
   type RoutineProposal,
   type VillageCandidate,
+  filterCandidatesByScope,
   toRoutineProposalView,
   toVillageCandidateView,
 } from './mappers.js';
@@ -19,6 +20,7 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     childId: 'child-teen',
     title: RAW_TITLE,
     kind: 'support_group',
+    cadence: 'ongoing',
     summary: RAW_SUMMARY,
     sourceUrl: RAW_SOURCE_URL,
     source: 'web_grounded',
@@ -55,11 +57,16 @@ describe('toVillageCandidateView', () => {
     // Rule #1: only the category survives. The title carries the one redaction
     // line; summary is empty so the renderer states the why exactly once.
     expect(view.teenAttributed).toBe(true);
+    // The child attribution (an opaque id, never a name) is kept so the scope
+    // filter can still narrow to this child — the name is withheld at the chip.
+    expect(view.childId).toBe('child-teen');
     expect(view.title).toBe(TEEN_REDACTED_PLACEHOLDER);
     expect(view.summary).toBe('');
     expect(view.coverageNote).toBeNull();
     expect(view.sourceUrl).toBeNull();
     expect(view.kind).toBe('support_group');
+    // Cadence is dropped on a teen card so no per-child recurrence signal leaks.
+    expect(view.cadence).toBeNull();
     // Rule #1: a teen-attributed candidate is never plottable — coords drop to
     // null so the map can never surface a teen's activity location.
     expect(view.lat).toBeNull();
@@ -78,11 +85,13 @@ describe('toVillageCandidateView', () => {
     const view = toVillageCandidateView(candidate(), false, NO_ENGAGEMENT);
 
     expect(view.teenAttributed).toBe(false);
+    expect(view.childId).toBe('child-teen');
     expect(view.title).toBe(RAW_TITLE);
     expect(view.summary).toBe(RAW_SUMMARY);
     expect(view.coverageNote).toBe(RAW_COVERAGE);
     expect(view.sourceUrl).toBe(RAW_SOURCE_URL);
     expect(view.kind).toBe('support_group');
+    expect(view.cadence).toBe('ongoing');
     // Public venue coords pass through for the map pin (a public place, not the
     // family's location — rule #1).
     expect(view.lat).toBe(43.6777);
@@ -112,6 +121,27 @@ describe('toVillageCandidateView', () => {
 
     expect(open.accepted).toBe(true);
     expect(notAccepted.accepted).toBe(false);
+  });
+});
+
+describe('filterCandidatesByScope', () => {
+  const forChild = (id: string, childId: string | null) =>
+    toVillageCandidateView(candidate({ id, childId }), false, NO_ENGAGEMENT);
+
+  const NADIA = 'child-nadia';
+  const OMAR = 'child-omar';
+  const nadiaPick = forChild('c-nadia', NADIA);
+  const omarPick = forChild('c-omar', OMAR);
+  const familyPick = forChild('c-family', null);
+
+  it('whole family (null scope) returns every candidate, order preserved', () => {
+    const all = [nadiaPick, omarPick, familyPick];
+    expect(filterCandidatesByScope(all, null)).toEqual(all);
+  });
+
+  it("a child scope keeps that child's picks AND the family-wide picks, drops other children", () => {
+    const result = filterCandidatesByScope([nadiaPick, omarPick, familyPick], NADIA);
+    expect(result.map((c) => c.id)).toEqual(['c-nadia', 'c-family']);
   });
 });
 

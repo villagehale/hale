@@ -5,7 +5,7 @@ import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { detectInputIntents, type InputIntent } from '~/lib/coach/action-intent';
 import type { ThreadSeed } from '~/lib/coach/thread';
 
-export type { InputIntent, QuickLogParse } from '~/lib/coach/action-intent';
+export type { InputIntent, PlanLogParse, QuickLogParse } from '~/lib/coach/action-intent';
 
 export type AskStatus = 'idle' | 'pending' | 'error';
 

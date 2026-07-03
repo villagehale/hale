@@ -9,6 +9,10 @@ import { ConciergeAsk } from './concierge-ask';
 vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
 }));
+// Same reason: the create_plan widget calls createPlan ('use server').
+vi.mock('~/lib/plan/plan-actions', () => ({
+  createPlan: vi.fn(),
+}));
 
 /**
  * Ask Hale stays present as the village CONCIERGE — not the hero. The concierge

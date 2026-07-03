@@ -68,7 +68,10 @@ function VillageFeedCard({
 
   return (
     <article className={`rise ${delay} panel bg-raised flex flex-col gap-4`}>
-      <p className="eyebrow text-spruce">{candidate.kind}</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="eyebrow text-spruce">{candidate.kind}</p>
+        <CadenceChip cadence={candidate.cadence} />
+      </div>
 
       <h3 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight text-spruce">
         {candidate.title}
@@ -101,6 +104,24 @@ function VillageFeedCard({
       </div>
     </article>
   );
+}
+
+/** The three recognised cadences → their static-pill treatment. Tone by LABEL +
+ * shape (a colour tint, never colour alone — the text carries the meaning), no
+ * emoji. `seasonal` reads as time-boxed (apricot), `one-time` as a single event
+ * (sky), `ongoing` as a standing option (the base oat pill). */
+const CADENCE_PILL: Record<string, { label: string; className: string }> = {
+  seasonal: { label: 'seasonal', className: 'pill pill-apricot' },
+  'one-time': { label: 'one-time', className: 'pill pill-sky' },
+  ongoing: { label: 'ongoing', className: 'pill' },
+};
+
+/** A static cadence label on a card. Null cadence (pre-cadence rows, unclassified
+ * candidates, teen-redacted cards) or an unrecognised value renders nothing. */
+function CadenceChip({ cadence }: { cadence: string | null }) {
+  const pill = cadence ? CADENCE_PILL[cadence] : undefined;
+  if (!pill) return null;
+  return <span className={pill.className}>{pill.label}</span>;
 }
 
 /** The feed's section header — names the trust ("your village + families like

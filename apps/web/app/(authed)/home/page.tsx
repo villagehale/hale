@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { ActivationPanel } from '~/components/hale/activation-panel';
 import { BookButton } from '~/components/hale/book-button';
+import { scopeChildren } from '~/components/hale/child-scope';
 import { ConciergeAsk } from '~/components/hale/concierge-ask';
+import { HomeChildFilter } from '~/components/hale/home-child-filter';
 import { LongDate } from '~/components/hale/long-date';
 import { QuickLog } from '~/components/hale/quick-log';
 import { HomeVillageFeed, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
@@ -129,67 +131,73 @@ export default async function HomePage() {
       </section>
 
       {/* ── Today, per child (the quiet Companion — distinct from the village) ─ */}
-      <section className="space-y-12 lg:space-y-16">
-        {children.map((child, idx) => {
-          const milestone = milestoneInWindow(child);
-          const nextHealth = child.nextHealth[0] ?? null;
-          const whatsNow = child.whatsNow[0] ?? null;
-          const delay = `rise-${Math.min(idx + 4, 7)}`;
-          return (
-            <article key={child.id} className={`rise ${delay}`}>
-              <div className="flex items-center gap-3 border-b border-rule pb-4 mb-6">
-                <Icon as={Baby} size={20} className="text-apricot-deep" />
-                <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight">
-                  today for <span data-hale-pii>{child.name ?? 'your child'}</span>
-                </h2>
-              </div>
+      <section>
+        <HomeChildFilter
+          kids={scopeChildren(children)}
+          sections={children.map((child, idx) => {
+            const milestone = milestoneInWindow(child);
+            const nextHealth = child.nextHealth[0] ?? null;
+            const whatsNow = child.whatsNow[0] ?? null;
+            const delay = `rise-${Math.min(idx + 4, 7)}`;
+            return {
+              childId: child.id,
+              node: (
+                <article className={`rise ${delay}`}>
+                  <div className="flex items-center gap-3 border-b border-rule pb-4 mb-6">
+                    <Icon as={Baby} size={20} className="text-apricot-deep" />
+                    <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight">
+                      today for <span data-hale-pii>{child.name ?? 'your child'}</span>
+                    </h2>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {nextHealth ? (
-                  <Card>
-                    <span className="eyebrow text-apricot-deep">
-                      {duePhrase(nextHealth.dueInWeeks)}
-                    </span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
-                      {nextHealth.what}
-                    </p>
-                    <p className="meta mt-3 text-slate-green" data-hale-pii>
-                      {nextHealth.note}
-                    </p>
-                    <div className="mt-4">
-                      <BookButton what={nextHealth.what} childId={child.id} />
-                    </div>
-                  </Card>
-                ) : whatsNow ? (
-                  <Card href="/companion">
-                    <span className="eyebrow">what matters now</span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
-                      {whatsNow}
-                    </p>
-                    <span className="link mt-4 inline-block">
-                      see <span data-hale-pii>{child.name ?? 'your child'}</span> →
-                    </span>
-                  </Card>
-                ) : null}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {nextHealth ? (
+                      <Card>
+                        <span className="eyebrow text-apricot-deep">
+                          {duePhrase(nextHealth.dueInWeeks)}
+                        </span>
+                        <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
+                          {nextHealth.what}
+                        </p>
+                        <p className="meta mt-3 text-slate-green" data-hale-pii>
+                          {nextHealth.note}
+                        </p>
+                        <div className="mt-4">
+                          <BookButton what={nextHealth.what} childId={child.id} />
+                        </div>
+                      </Card>
+                    ) : whatsNow ? (
+                      <Card href="/companion">
+                        <span className="eyebrow">what matters now</span>
+                        <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
+                          {whatsNow}
+                        </p>
+                        <span className="link mt-4 inline-block">
+                          see <span data-hale-pii>{child.name ?? 'your child'}</span> →
+                        </span>
+                      </Card>
+                    ) : null}
 
-                {milestone ? (
-                  <Card href="/companion">
-                    <span className="eyebrow">around this age</span>
-                    <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
-                      {milestone.what}
-                    </p>
-                    <p className="meta mt-3 text-slate-green">
-                      most kids, around this stage — never a verdict.
-                    </p>
-                    <span className="link mt-4 inline-block">
-                      see <span data-hale-pii>{child.name ?? 'your child'}</span> →
-                    </span>
-                  </Card>
-                ) : null}
-              </div>
-            </article>
-          );
-        })}
+                    {milestone ? (
+                      <Card href="/companion">
+                        <span className="eyebrow">around this age</span>
+                        <p className="font-display text-[1.25rem] mt-2 leading-snug" data-hale-pii>
+                          {milestone.what}
+                        </p>
+                        <p className="meta mt-3 text-slate-green">
+                          most kids, around this stage — never a verdict.
+                        </p>
+                        <span className="link mt-4 inline-block">
+                          see <span data-hale-pii>{child.name ?? 'your child'}</span> →
+                        </span>
+                      </Card>
+                    ) : null}
+                  </div>
+                </article>
+              ),
+            };
+          })}
+        />
       </section>
 
       {/* ── Quick-log ───────────────────────────────────────────────────── */}

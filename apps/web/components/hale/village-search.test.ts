@@ -17,8 +17,10 @@ import { VillageSearch } from './village-search';
 
 function view(overrides: Partial<VillageCandidateView> & { id: string }): VillageCandidateView {
   return {
+    childId: null,
     title: `title-${overrides.id}`,
     kind: 'class',
+    cadence: null,
     summary: `summary-${overrides.id}`,
     coverageNote: null,
     sourceUrl: null,

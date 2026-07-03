@@ -297,6 +297,7 @@ describe('discoverForFamily', () => {
       {
         title: 'Toddler swim',
         description: 'a class at a municipal pool',
+        cadence: 'seasonal',
         confidence: 0.5,
         coverageNote: 'serves your area',
       },
@@ -318,6 +319,7 @@ describe('discoverForFamily', () => {
       // for a child DOB or the precise family home (rule #1).
       expect(Object.keys(row).sort()).toEqual(
         [
+          'cadence',
           'childId',
           'confidence',
           'coverageNote',
@@ -338,6 +340,12 @@ describe('discoverForFamily', () => {
       expect(row.lat).toBe(43.6);
       expect(row.venueName).toBe('Public Pool');
     }
+
+    // The model's cadence persists as-is (the chip's source of truth).
+    const persistedCadences = (capture.villageCandidates as Record<string, unknown>[]).map(
+      (r) => r.cadence,
+    );
+    expect(persistedCadences).toEqual(['seasonal']);
 
     // The geocode received ONLY the candidate title + the coarse area — no precise
     // location ever leaves the server (rule #1).

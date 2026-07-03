@@ -10,6 +10,10 @@ import { AskHaleThread } from './ask-hale-thread';
 vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
 }));
+// Same reason: the create_plan widget calls createPlan ('use server').
+vi.mock('~/lib/plan/plan-actions', () => ({
+  createPlan: vi.fn(),
+}));
 
 /**
  * The /coach Ask Hale surface — a contained chat. These tests render to static

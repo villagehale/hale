@@ -81,6 +81,7 @@ export const candidatesSchema = z.object({
     z.object({
       title: z.string(),
       description: z.string(),
+      cadence: z.enum(['seasonal', 'one-time', 'ongoing']).optional(),
       sourceUrl: z.string().optional(),
       confidence: z.number().min(0).max(1),
       coverageNote: z.string(),
@@ -98,6 +99,7 @@ export const candidatesJsonSchema = {
         properties: {
           title: { type: 'string' },
           description: { type: 'string' },
+          cadence: { type: 'string', enum: ['seasonal', 'one-time', 'ongoing'] },
           sourceUrl: { type: 'string' },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           coverageNote: { type: 'string' },
@@ -299,6 +301,7 @@ export async function discoverForFamily(
               childId: null,
               title: c.title,
               kind: CANDIDATE_KIND,
+              cadence: c.cadence ?? null,
               summary: c.description,
               sourceUrl,
               source: SOURCE,

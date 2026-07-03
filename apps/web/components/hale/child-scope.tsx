@@ -1,5 +1,6 @@
 'use client';
 
+import type { FamilyStage } from '@hale/types';
 import { Check } from 'lucide-react';
 import { type KeyboardEvent, useId, useRef } from 'react';
 
@@ -28,6 +29,27 @@ export interface ScopeChild {
   id: string;
   /** Given name, or null when withheld (teen — rule #1). */
   label: string | null;
+}
+
+/** The minimal per-child shape every scope-bearing page already loads. */
+export interface StagedChild {
+  id: string;
+  name: string | null;
+  stage: FamilyStage;
+}
+
+/**
+ * The single teen-safe derivation of a page's `ScopeChild[]` from its loaded
+ * children: a 13+ child's given name is withheld (rule #1) so the chip reads
+ * "your teen"; order is preserved. Every scope-bearing surface (Home, Village,
+ * Approvals, Plan) derives its chips through this one function so the withholding
+ * rule lives in exactly one place.
+ */
+export function scopeChildren(children: readonly StagedChild[]): ScopeChild[] {
+  return children.map((child) => ({
+    id: child.id,
+    label: child.stage === 'teenager' ? null : child.name,
+  }));
 }
 
 export type ChildScopeVariant = 'filter' | 'tabs' | 'select';

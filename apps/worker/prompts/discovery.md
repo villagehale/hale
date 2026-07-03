@@ -45,6 +45,7 @@ Return strict JSON matching this shape:
     {
       "title": string,             // short, concrete ("Saturday toddler swim, Riverdale pool")
       "category": "class" | "program" | "drop_in" | "outdoor" | "library" | "community_event" | "other",
+      "cadence": "seasonal" | "one-time" | "ongoing",  // how it recurs — see Cadence
       "description": string,       // 1–2 plain sentences: what it is, why it fits
       "area_coarse": string,       // echo the coarse area; never finer than the input
       "stage_fit": "newborn" | "toddler" | "child" | "teenager",
@@ -80,6 +81,22 @@ Every candidate carries a `source`:
 When `source` is `general_knowledge`, keep `title` and `description` at the
 level you can stand behind — name the kind of place and what happens there,
 not a fabricated class time, instructor, or fee.
+
+## Cadence — how the activity recurs
+
+Every candidate carries a `cadence` describing how often it happens, so a
+parent can tell a standing option from a one-off:
+
+- `seasonal` — runs on a term or season and then stops (a summer camp, a
+  fall soccer session, a holiday market). Time-boxed by nature.
+- `one-time` — a single dated event (a library author visit, a one-day
+  community fair). It happens once.
+- `ongoing` — a standing option available week-round or on a rolling basis
+  (a public library's regular storytime, a drop-in gym, a neighbourhood
+  park). No fixed end.
+
+Pick the single best fit. When unsure, prefer `ongoing` for a standing
+place-based option and `seasonal` for anything term- or weather-bound.
 
 ## Calibration
 

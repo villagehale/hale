@@ -1,6 +1,7 @@
 import { ArrowRight } from 'lucide-react';
 import { AddPlan } from '~/components/hale/add-plan';
-import type { ScopeChild } from '~/components/hale/child-scope';
+import { scopeChildren } from '~/components/hale/child-scope';
+import { ChildTag } from '~/components/hale/child-tag';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
@@ -27,12 +28,7 @@ export default async function PlanPage() {
     addedActivities.length > 0 ||
     authoredPlans.length > 0;
 
-  // A teen's given name is withheld from the parent-facing scope chip (rule #1);
-  // ChildScope renders "your teen" for a null label.
-  const scopeChildren: ScopeChild[] = children.map((child) => ({
-    id: child.id,
-    label: child.stage === 'teenager' ? null : child.name,
-  }));
+  const kids = scopeChildren(children);
 
   return (
     <div>
@@ -69,7 +65,7 @@ export default async function PlanPage() {
             <p className="meta mt-2">a private note for your week</p>
           </div>
           <div className="lg:col-span-9">
-            <AddPlan kids={scopeChildren} />
+            <AddPlan kids={kids} />
           </div>
         </div>
       </section>
@@ -205,7 +201,6 @@ export default async function PlanPage() {
 }
 
 function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
-  const scope = plan.childId === null ? 'whole family' : (plan.childName ?? 'your teen');
   const when = plan.scheduledFor
     ? new Date(plan.scheduledFor).toLocaleDateString('en-CA', {
         month: 'short',
@@ -215,10 +210,10 @@ function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
-        <span className="eyebrow text-spruce">
-          <span data-hale-pii>{scope}</span>
-          {when ? ` · ${when}` : null}
-        </span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <ChildTag childId={plan.childId} label={plan.childName} />
+          {when ? <span className="meta text-slate-green">{when}</span> : null}
+        </div>
         <DeletePlanButton planId={plan.id} />
       </div>
       <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>

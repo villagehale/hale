@@ -9,6 +9,10 @@ import { AskHaleThread } from './ask-hale-thread';
 vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
 }));
+// Same reason: the create_plan widget calls createPlan ('use server').
+vi.mock('~/lib/plan/plan-actions', () => ({
+  createPlan: vi.fn(),
+}));
 
 /**
  * Both Ask Hale surfaces are unified onto the ONE shared component: the Home hero

@@ -12,8 +12,15 @@ export type RoutineProposal = typeof schema.routineProposals.$inferSelect;
 
 export interface VillageCandidateView {
   id: string;
+  /** The child this candidate was discovered for, or null for a family-wide pick.
+   * An opaque id (never a name), kept on teen-attributed cards too so the scope
+   * filter can narrow to that child — the teen's name is withheld at the chip. */
+  childId: string | null;
   title: string;
   kind: string;
+  /** How the activity recurs — "seasonal" | "one-time" | "ongoing" — or null when
+   * the discovery run didn't classify it (no chip). Null on a teen-redacted card. */
+  cadence: string | null;
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
@@ -103,8 +110,10 @@ export function toVillageCandidateView(
   if (teenAttributed) {
     return {
       id: candidate.id,
+      childId: candidate.childId,
       title: TEEN_REDACTED_PLACEHOLDER,
       kind: candidate.kind,
+      cadence: null,
       summary: '',
       coverageNote: null,
       sourceUrl: null,
@@ -123,8 +132,10 @@ export function toVillageCandidateView(
   }
   return {
     id: candidate.id,
+    childId: candidate.childId,
     title: candidate.title,
     kind: candidate.kind,
+    cadence: candidate.cadence,
     summary: candidate.summary,
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,
@@ -139,6 +150,20 @@ export function toVillageCandidateView(
     venueName: candidate.venueName,
     teenAttributed: false,
   };
+}
+
+/**
+ * Narrow the feed to a chosen scope: whole family (`null`) shows every candidate;
+ * a child id shows that child's candidates AND the family-wide ones (childId null),
+ * since a family-wide pick applies to everyone. Pure over the already-loaded views
+ * — the scope filter never issues a request (rule #1: no new location signal).
+ */
+export function filterCandidatesByScope(
+  candidates: VillageCandidateView[],
+  scope: string | null,
+): VillageCandidateView[] {
+  if (scope === null) return candidates;
+  return candidates.filter((c) => c.childId === scope || c.childId === null);
 }
 
 /**

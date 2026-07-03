@@ -13,6 +13,12 @@ vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
 }));
 
+// The create_plan card calls createPlan (a 'use server' action) on Confirm. Same
+// reasoning: stub it at its boundary so this markup-only render stays pure.
+vi.mock('~/lib/plan/plan-actions', () => ({
+  createPlan: vi.fn(),
+}));
+
 /**
  * The input-side confirm widgets render to static HTML (the repo's render idiom —
  * no jsdom, no server-action call). These guard the accessibility contract that
@@ -83,5 +89,34 @@ describe('InputIntentWidgets', () => {
     // Real Confirm/Not-now buttons.
     expect(html).toMatch(/<button[^>]*>Confirm<\/button>/);
     expect(html).toMatch(/<button[^>]*>Not now<\/button>/);
+  });
+
+  it('renders a create_plan confirm pre-filled with the parsed title + scope selector', () => {
+    const html = render(
+      [
+        {
+          category: 'plan',
+          kind: 'create_plan',
+          label: 'Add to your plan',
+          parsed: { title: 'swimming registration', childName: 'Noah' },
+        },
+      ],
+      'create a plan for swimming registration for Noah',
+    );
+
+    const labelledById = html.match(/aria-labelledby="([^"]+)"/)?.[1];
+    expect(labelledById).toBeTruthy();
+    expect(html).toContain(`id="${labelledById}"`);
+    // The parsed title pre-fills the editable title field.
+    expect(html).toContain('value="swimming registration"');
+    // The parent picks the scope via the shared ChildScope (radiogroup) — whole
+    // family is always the first option.
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toContain('whole family');
+    // Real Confirm/Not-now buttons.
+    expect(html).toMatch(/<button[^>]*>Confirm<\/button>/);
+    expect(html).toMatch(/<button[^>]*>Not now<\/button>/);
+    // NOT an approval-gated action — no "held for your approval" copy.
+    expect(html).not.toContain('held for your approval');
   });
 });

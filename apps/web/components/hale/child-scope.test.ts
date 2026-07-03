@@ -1,7 +1,13 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ChildScope, type ChildScopeVariant, type ScopeChild, optionValues } from './child-scope';
+import {
+  ChildScope,
+  type ChildScopeVariant,
+  type ScopeChild,
+  optionValues,
+  scopeChildren,
+} from './child-scope';
 
 /**
  * ChildScope — the shared per-child scope selector. The repo's render idiom is
@@ -73,6 +79,26 @@ describe('ChildScope — correct ARIA role per variant', () => {
     expect(html).toContain('role="radiogroup"');
     expect(html).toContain('role="radio"');
     expect(html).toContain('aria-checked="true"');
+  });
+});
+
+describe('scopeChildren — teen-safe label derivation (rule #1)', () => {
+  it('keeps a non-teen name and withholds a teen name (label null)', () => {
+    expect(
+      scopeChildren([
+        { id: NADIA, name: 'Nadia', stage: 'child' },
+        { id: OMAR, name: 'Omar', stage: 'teenager' },
+      ]),
+    ).toEqual([
+      { id: NADIA, label: 'Nadia' },
+      { id: OMAR, label: null },
+    ]);
+  });
+
+  it('preserves order and passes a null name through unchanged for a non-teen', () => {
+    expect(scopeChildren([{ id: NADIA, name: null, stage: 'newborn' }])).toEqual([
+      { id: NADIA, label: null },
+    ]);
   });
 });
 

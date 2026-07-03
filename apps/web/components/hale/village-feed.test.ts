@@ -16,8 +16,10 @@ import { VillageFeed, VillageFeedHeader } from './village-feed';
 
 function view(overrides: Partial<VillageCandidateView> & { id: string }): VillageCandidateView {
   return {
+    childId: null,
     title: `title-${overrides.id}`,
     kind: 'class',
+    cadence: null,
     summary: `summary-${overrides.id}`,
     coverageNote: null,
     sourceUrl: null,
@@ -63,6 +65,26 @@ describe('VillageFeed — renders the agent-ranked, social-proof-rich feed', () 
     expect(html).toContain('i love this'); // EndorseButton
     expect(html).toContain('share this pick'); // ShareButton
     expect(html).toContain('add to my week'); // AcceptButton
+  });
+
+  it('renders a cadence chip labelled by value, absent when the cadence is null', () => {
+    // Each recognised cadence surfaces its label as a static chip; a null cadence
+    // (pre-cadence rows, unclassified candidates) renders none of the labels.
+    const seasonal = renderFeed([view({ id: 's', cadence: 'seasonal' })]);
+    expect(seasonal).toContain('seasonal');
+    expect(seasonal).toContain('pill-apricot');
+
+    const oneTime = renderFeed([view({ id: 'o', cadence: 'one-time' })]);
+    expect(oneTime).toContain('one-time');
+    expect(oneTime).toContain('pill-sky');
+
+    const ongoing = renderFeed([view({ id: 'g', cadence: 'ongoing' })]);
+    expect(ongoing).toContain('ongoing');
+
+    const none = renderFeed([view({ id: 'n', cadence: null })]);
+    expect(none).not.toContain('seasonal');
+    expect(none).not.toContain('one-time');
+    expect(none).not.toContain('>ongoing<');
   });
 
   it('renders a teen-attributed card locked — never its raw text or actions (rule #1)', () => {

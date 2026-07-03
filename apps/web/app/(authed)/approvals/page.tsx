@@ -1,5 +1,6 @@
 import { ApprovalsHeader } from '~/components/hale/approvals-header';
 import { ApproveButton } from '~/components/hale/approve-button';
+import { ChildTag } from '~/components/hale/child-tag';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { DraftDetail } from '~/components/hale/draft-detail';
 import { PageCorner } from '~/components/hale/page-corner';
@@ -35,7 +36,10 @@ export default async function ApprovalsPage() {
               className="py-7 border-b border-rule flex flex-wrap items-start justify-between gap-y-4 gap-x-8"
             >
               <div className="min-w-0" data-hale-pii>
-                <span className="eyebrow">{approval.actionType.replaceAll('_', ' ')}</span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2">
+                  <ChildTag childId={approval.childId} label={approval.childLabel} />
+                  <span className="eyebrow">{approval.actionType.replaceAll('_', ' ')}</span>
+                </div>
                 <p className="font-display text-[1.25rem] mt-1 text-spruce">{approval.preview}</p>
                 {NEEDS_YOU_VERDICTS.has(approval.verdict) ? (
                   <p className="mt-2">
