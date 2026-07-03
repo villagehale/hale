@@ -6,13 +6,14 @@ import { RecentLogs } from '~/components/hale/recent-logs';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadRecentLogs } from '~/lib/companion/recent-logs';
-import { loadFamilyBasics } from '~/lib/dashboard/queries';
+import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
 
 export default async function CompanionPage() {
-  const [children, recentLogs, basics] = await Promise.all([
+  const [children, recentLogs, basics, timeZone] = await Promise.all([
     loadCompanion(),
     loadRecentLogs(),
     loadFamilyBasics(),
+    loadFamilyTimezone(),
   ]);
 
   return (
@@ -80,7 +81,7 @@ export default async function CompanionPage() {
               </Link>
             </div>
             <div className="lg:col-span-9 space-y-8">
-              <RecentLogs logs={recentLogs} />
+              <RecentLogs logs={recentLogs} timeZone={timeZone} />
               <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
             </div>
           </div>

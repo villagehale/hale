@@ -8,6 +8,7 @@ import {
   NAP_EPISODE,
 } from '~/lib/companion/log-types';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
+import { formatWhenPhrase } from '~/lib/format/datetime';
 
 const ICON: Record<string, LucideIcon> = {
   [FEED_EPISODE]: Utensils,
@@ -16,21 +17,13 @@ const ICON: Record<string, LucideIcon> = {
   [BOOKING_EPISODE]: Stethoscope,
 };
 
-function whenPhrase(occurredAt: string): string {
-  return new Date(occurredAt).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 /**
  * The companion "recent logs" list. Reads from family_memory_episodes via
  * loadRecentLogs and renders the family's latest quick-logs. Fail-closed empty
- * state when nothing's been logged — never a fabricated row.
+ * state when nothing's been logged — never a fabricated row. `timeZone` is the
+ * family's zone so a "when" reads in the family's clock, not the server's (UTC).
  */
-export function RecentLogs({ logs }: { logs: RecentLogView[] }) {
+export function RecentLogs({ logs, timeZone }: { logs: RecentLogView[]; timeZone: string }) {
   if (logs.length === 0) {
     return (
       <p className="text-lg text-spruce leading-relaxed">
@@ -53,7 +46,9 @@ export function RecentLogs({ logs }: { logs: RecentLogView[] }) {
           <span className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
             {log.summary}
           </span>
-          <span className="eyebrow text-faded-sage shrink-0">{whenPhrase(log.occurredAt)}</span>
+          <span className="eyebrow text-faded-sage shrink-0">
+            {formatWhenPhrase(log.occurredAt, timeZone)}
+          </span>
         </li>
       ))}
     </ul>

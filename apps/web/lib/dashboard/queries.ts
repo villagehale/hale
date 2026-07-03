@@ -7,6 +7,7 @@ import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import { type ApprovalView, toApprovalView } from './approvals';
+import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**
@@ -133,6 +134,32 @@ export function loadFamilyName(): Promise<string | null> {
 }
 
 /**
+ * The family's display timezone — the primary parent's `users.timezone` — for the
+ * time layer, so every stored instant renders in the family's zone rather than the
+ * server's (Vercel = UTC). Falls back to DEFAULT_TIMEZONE (the schema default) when
+ * there's no DB, no resolved family, or no primary parent yet. Mirrors the digest's
+ * recipient join (role = 'primary_parent').
+ */
+async function readFamilyTimezone(database: Database, familyId: string): Promise<string> {
+  const [row] = await database
+    .select({ timezone: schema.users.timezone })
+    .from(schema.familyMembers)
+    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+  return row?.timezone ?? DEFAULT_TIMEZONE;
+}
+
+export function loadFamilyTimezone(): Promise<string> {
+  return readForFamily(readFamilyTimezone, DEFAULT_TIMEZONE);
+}
+
+/**
  * Whether the family has any child currently in the teenager stage (deriveStage
  * boundary 156mo). Used as the rule-#1 double-miss fallback on the parent-facing
  * surfaces: when a row resolves to no child, redact its raw content if the family
@@ -169,7 +196,10 @@ export function loadTrail(): Promise<TrailView[]> {
     // an event (non-`actions` targets — teen_content null) keep the documented trail
     // boundary and render in full, so e.g. a consent/family-settings audit isn't
     // blanket-redacted just because the family has a teenager.
-    const familyHasTeen = await familyHasTeenager(database, familyId);
+    const [familyHasTeen, timeZone] = await Promise.all([
+      familyHasTeenager(database, familyId),
+      readFamilyTimezone(database, familyId),
+    ]);
     const rows = await database
       .select({
         entry: schema.auditLog,
@@ -198,6 +228,7 @@ export function loadTrail(): Promise<TrailView[]> {
           row.childDob ?? null,
           resolvedToEvent && familyHasTeen,
         ),
+        timeZone,
       );
     });
   }, []);
@@ -218,7 +249,10 @@ export function loadTrail(): Promise<TrailView[]> {
  */
 export function loadPendingApprovals(): Promise<ApprovalView[]> {
   return readForFamily(async (database, familyId) => {
-    const familyHasTeen = await familyHasTeenager(database, familyId);
+    const [familyHasTeen, timeZone] = await Promise.all([
+      familyHasTeenager(database, familyId),
+      readFamilyTimezone(database, familyId),
+    ]);
     const rows = await database
       .select({
         id: schema.actions.id,
@@ -247,16 +281,19 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       // withheld (rule #1): withhold iff the attributed child is a teenager, derived
       // live from its DOB — never the classifier flag (which can fire family-wide).
       const teenChild = row.childDob !== null && deriveStage(row.childDob) === 'teenager';
-      return toApprovalView({
-        id: row.id,
-        actionType: row.actionType,
-        payload: row.payload,
-        reviewerVerdict: row.reviewerVerdict,
-        draftedAt: row.draftedAt,
-        teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
-        childId: row.childId ?? null,
-        childLabel: teenChild ? null : (row.childName ?? null),
-      });
+      return toApprovalView(
+        {
+          id: row.id,
+          actionType: row.actionType,
+          payload: row.payload,
+          reviewerVerdict: row.reviewerVerdict,
+          draftedAt: row.draftedAt,
+          teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+          childId: row.childId ?? null,
+          childLabel: teenChild ? null : (row.childName ?? null),
+        },
+        timeZone,
+      );
     });
   }, []);
 }

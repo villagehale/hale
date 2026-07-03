@@ -1,6 +1,7 @@
 import type { schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import type { EntryTone } from '~/components/hale/tone';
+import { formatTime } from '~/lib/format/datetime';
 
 export type AuditLogEntry = typeof schema.auditLog.$inferSelect;
 
@@ -63,13 +64,6 @@ function actorOf(entry: AuditLogEntry): TrailView['actor'] {
   return entry.actor === 'system' ? 'hale' : 'you';
 }
 
-const HH_MM = new Intl.DateTimeFormat('en-CA', {
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-  timeZone: 'America/Toronto',
-});
-
 /**
  * Teen-content trail rows (rule #1) keep the non-sensitive frame — time, category
  * (target_table), actor, and the id-only detail — but `actionTaken` is redacted to
@@ -77,11 +71,18 @@ const HH_MM = new Intl.DateTimeFormat('en-CA', {
  * teen (e.g. an email subject), so it is redacted conservatively whenever the row
  * resolves to teen_content. Rows the query layer cannot tie to teen_content (e.g.
  * non-`actions` targets) keep their summary — see loadTrail for that join.
+ *
+ * `timeZone` is the family's zone (loadFamilyTimezone), so the time-stamp reads in
+ * the family's clock, not the server's.
  */
-export function toTrailView(entry: AuditLogEntry, teenContent: boolean): TrailView {
+export function toTrailView(
+  entry: AuditLogEntry,
+  teenContent: boolean,
+  timeZone: string,
+): TrailView {
   return {
     id: entry.id,
-    time: HH_MM.format(entry.occurredAt),
+    time: formatTime(entry.occurredAt, timeZone),
     category: entry.targetTable ?? 'action',
     tone: 'done',
     actor: actorOf(entry),

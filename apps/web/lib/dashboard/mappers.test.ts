@@ -20,22 +20,32 @@ function auditEntry(overrides: Partial<AuditLogEntry>): AuditLogEntry {
 }
 
 describe('toTrailView', () => {
-  it('renders a system actor as hale with a Toronto-time stamp', () => {
+  it('stamps the time in the family zone it is given', () => {
     // 14:05 UTC is 10:05 in America/Toronto (EDT, UTC-4) on 2026-06-11.
-    const view = toTrailView(auditEntry({ actor: 'system' }), false);
+    const view = toTrailView(auditEntry({ actor: 'system' }), false, 'America/Toronto');
     expect(view.actor).toBe('hale');
     expect(view.time).toBe('10:05');
     expect(view.summary).toBe('sent rsvp to library');
     expect(view.detail).toBe('actions · act-9');
   });
 
+  it('honours a non-Toronto family zone — the zone is used, not hardcoded', () => {
+    // Same 14:05 UTC instant reads 07:05 in Vancouver (PDT, UTC-7).
+    const view = toTrailView(auditEntry({ actor: 'system' }), false, 'America/Vancouver');
+    expect(view.time).toBe('07:05');
+  });
+
   it('renders a non-system actor as a parent ("you")', () => {
-    const view = toTrailView(auditEntry({ actor: 'user-uuid-123' }), false);
+    const view = toTrailView(auditEntry({ actor: 'user-uuid-123' }), false, 'America/Toronto');
     expect(view.actor).toBe('you');
   });
 
   it('falls back to "recorded" detail when no target id is present', () => {
-    const view = toTrailView(auditEntry({ targetId: null, targetTable: null }), false);
+    const view = toTrailView(
+      auditEntry({ targetId: null, targetTable: null }),
+      false,
+      'America/Toronto',
+    );
     expect(view.detail).toBe('recorded');
     expect(view.category).toBe('action');
   });
@@ -58,6 +68,7 @@ describe('toTrailView — teen-content redaction', () => {
         targetId: 'act-teen',
       }),
       true,
+      'America/Toronto',
     );
     expect(JSON.stringify(view)).not.toContain(TEEN_BODY);
     expect(view.actor).toBe('hale');
@@ -67,7 +78,7 @@ describe('toTrailView — teen-content redaction', () => {
   });
 
   it('renders the full summary when NOT teen-content', () => {
-    const view = toTrailView(auditEntry({ actor: 'system' }), false);
+    const view = toTrailView(auditEntry({ actor: 'system' }), false, 'America/Toronto');
     expect(view.summary).toBe('sent rsvp to library');
   });
 });

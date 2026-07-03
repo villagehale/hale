@@ -60,6 +60,14 @@ function fakeDb(childrenDob: Array<{ dateOfBirth: string }>) {
     if (keys.length === 1 && keys[0] === 'dateOfBirth') {
       return { from: () => ({ where: async () => childrenDob }) };
     }
+    if (keys.length === 1 && keys[0] === 'timezone') {
+      // The time layer's primary-parent timezone read (loadFamilyTimezone).
+      return {
+        from: () => ({
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      };
+    }
     const node = () =>
       Object.assign(Promise.resolve(TRAIL_ROWS), {
         limit: () => Promise.resolve(TRAIL_ROWS),

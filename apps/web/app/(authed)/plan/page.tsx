@@ -7,6 +7,7 @@ import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
+import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { loadCompanion } from '~/lib/companion/queries';
 import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
@@ -212,12 +213,7 @@ export default async function PlanPage() {
 }
 
 function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
-  const when = plan.scheduledFor
-    ? new Date(plan.scheduledFor).toLocaleDateString('en-CA', {
-        month: 'short',
-        day: 'numeric',
-      })
-    : null;
+  const when = plan.scheduledFor ? formatCalendarDate(plan.scheduledFor) : null;
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">

@@ -39,6 +39,14 @@ function fakeDb(childrenDob: Array<{ dateOfBirth: string }>) {
     if (keys.length === 1 && keys[0] === 'dateOfBirth') {
       return { from: () => ({ where: async () => childrenDob }) };
     }
+    // The time layer's primary-parent timezone read (loadFamilyTimezone).
+    if (keys.length === 1 && keys[0] === 'timezone') {
+      return {
+        from: () => ({
+          innerJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+        }),
+      };
+    }
     // loadPendingApprovals join.
     const node = () =>
       Object.assign(Promise.resolve([APPROVAL_ROW]), {
