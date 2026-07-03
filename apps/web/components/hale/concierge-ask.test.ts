@@ -8,7 +8,6 @@ import { ConciergeAsk } from './concierge-ask';
 // test doesn't pull the server/auth graph (next-auth → next/server) through it.
 vi.mock('~/lib/companion/log', () => ({
   logQuickEpisode: vi.fn(),
-  logBookingRequested: vi.fn(),
 }));
 
 /**

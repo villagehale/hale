@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { FEED_EPISODE, MILESTONE_EPISODE, NAP_EPISODE, type QuickLogInput } from './log-types.js';
 
 /**
@@ -106,4 +106,149 @@ export async function writeEpisode(database: Database, episode: EpisodeInsert): 
       targetId: episodeId,
     });
   });
+}
+
+/** The editable fields of a logged episode. Only the columns a parent can revise
+ * from the logs view — the audit-relevant ones (when it happened, its summary,
+ * and the structured payload). id/family/type are fixed. */
+export interface EpisodePatch {
+  occurredAt?: Date;
+  summary?: string;
+  payload?: Record<string, unknown>;
+}
+
+/** The audit-relevant snapshot of an episode, used for the before/after rows. */
+interface EpisodeSnapshot {
+  occurredAt: Date;
+  summary: string;
+  payload: Record<string, unknown>;
+}
+
+const TARGET_TABLE = 'family_memory_episodes';
+
+/** The transaction handle passed to database.transaction's callback — narrower
+ * than Database (no $client), so a tx-scoped helper must take this, not Database. */
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/**
+ * Edits a parent's own logged episode. Family-scoped (rule #1): the row is read
+ * and updated WHERE id = ? AND family_id = ? — a foreign episode matches nothing,
+ * so the function returns false and writes nothing. On a match it snapshots the
+ * before-state, applies the patch, and writes ONE immutable audit_log row carrying
+ * before + after (rule #6) inside the same transaction as the update. The audit
+ * actor is the editing parent's user id.
+ */
+export async function updateEpisode(
+  database: Database,
+  id: string,
+  familyId: string,
+  patch: EpisodePatch,
+  actor: string,
+): Promise<boolean> {
+  return database.transaction(async (tx) => {
+    const before = await loadEpisodeSnapshot(tx, id, familyId);
+    if (!before) return false;
+
+    const updated = await tx
+      .update(schema.familyMemoryEpisodes)
+      .set(patch)
+      .where(
+        and(
+          eq(schema.familyMemoryEpisodes.id, id),
+          eq(schema.familyMemoryEpisodes.familyId, familyId),
+        ),
+      )
+      .returning({ id: schema.familyMemoryEpisodes.id });
+    if (updated.length === 0) return false;
+
+    const after: EpisodeSnapshot = {
+      occurredAt: patch.occurredAt ?? before.occurredAt,
+      summary: patch.summary ?? before.summary,
+      payload: patch.payload ?? before.payload,
+    };
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor,
+      actionTaken: 'quick_log_edited',
+      targetTable: TARGET_TABLE,
+      targetId: id,
+      before,
+      after,
+    });
+    return true;
+  });
+}
+
+/**
+ * Soft-deletes a parent's own logged episode: stamps deleted_at rather than
+ * issuing a DELETE, so the row the audit trail references stays intact (rules #6,
+ * #9). Family-scoped like updateEpisode — a foreign episode matches nothing and
+ * returns false with no write. Writes ONE audit_log row (before = the removed row,
+ * after = { deleted: true }) in the same transaction.
+ */
+export async function softDeleteEpisode(
+  database: Database,
+  id: string,
+  familyId: string,
+  actor: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  return database.transaction(async (tx) => {
+    const before = await loadEpisodeSnapshot(tx, id, familyId);
+    if (!before) return false;
+
+    const updated = await tx
+      .update(schema.familyMemoryEpisodes)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(schema.familyMemoryEpisodes.id, id),
+          eq(schema.familyMemoryEpisodes.familyId, familyId),
+        ),
+      )
+      .returning({ id: schema.familyMemoryEpisodes.id });
+    if (updated.length === 0) return false;
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor,
+      actionTaken: 'quick_log_deleted',
+      targetTable: TARGET_TABLE,
+      targetId: id,
+      before,
+      after: { deleted: true },
+    });
+    return true;
+  });
+}
+
+/**
+ * Reads the audit-relevant fields of a LIVE (not already-deleted) episode,
+ * family-scoped. Returns null when no such row belongs to the family — the family
+ * scope check that makes edit/delete reject a foreign episode (rule #1).
+ */
+async function loadEpisodeSnapshot(
+  tx: Tx,
+  id: string,
+  familyId: string,
+): Promise<EpisodeSnapshot | null> {
+  const rows = await tx
+    .select({
+      occurredAt: schema.familyMemoryEpisodes.occurredAt,
+      summary: schema.familyMemoryEpisodes.summary,
+      payload: schema.familyMemoryEpisodes.payload,
+    })
+    .from(schema.familyMemoryEpisodes)
+    .where(
+      and(
+        eq(schema.familyMemoryEpisodes.id, id),
+        eq(schema.familyMemoryEpisodes.familyId, familyId),
+        isNull(schema.familyMemoryEpisodes.deletedAt),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return { occurredAt: row.occurredAt, summary: row.summary, payload: row.payload };
 }

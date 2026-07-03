@@ -1,16 +1,9 @@
 import { companionForChild } from '@hale/types';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { ChildCompanionView } from '~/lib/companion/queries';
 import { CompanionTabs, nextTabIndex } from './companion-tabs';
-
-// BookButton (rendered inside each panel) imports a `'use server'` action module
-// that pulls in next-auth — unresolvable in this Node test env. Stub the action so
-// the real CompanionTabs tree renders; the booking flow is out of scope here.
-vi.mock('~/lib/companion/log', () => ({
-  logBookingRequested: async () => ({ ok: true }),
-}));
 
 /**
  * The companion renders a plain panel for one child and an accessible roving

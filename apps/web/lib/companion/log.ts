@@ -1,18 +1,26 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
 import {
-  BOOKING_EPISODE,
-  type BookingResult,
+  type DeleteResult,
+  type EditResult,
   type LogResult,
-  bookingSchema,
+  deleteEpisodeSchema,
+  editEpisodeSchema,
   quickLogSchema,
   resolveOccurredAt,
 } from './log-types.js';
-import { buildEpisodeInsert, childBelongsToFamily, writeEpisode } from './log-write.js';
+import {
+  buildEpisodeInsert,
+  childBelongsToFamily,
+  softDeleteEpisode,
+  updateEpisode,
+  writeEpisode,
+} from './log-write.js';
 
 /**
  * Quick-log server actions. A parent logging a feed, nap, or milestone — or
@@ -64,48 +72,87 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
 }
 
 /**
- * Behind the "we'll help you book" button on a health item. Hale cannot actually
- * book an external appointment, so this records the parent's INTENT as a
- * booking_requested episode (never a fake success) plus its audit row — the
- * worker pipeline can later turn it into a real drafted action. When a childId is
- * given it must belong to the family; family-wide intents carry a null childId.
+ * Edits a parent's own logged episode from the dedicated logs view. Family-scoped
+ * (rule #1): updateEpisode reconfirms the row belongs to this family and returns
+ * false otherwise → 'forbidden' (never a silent success). The audit actor is the
+ * acting parent (rule #6), so this resolves BOTH the family and the user id.
+ * Degrades to preview (never a write) with no DATABASE_URL / no auth / no family.
  */
-export async function logBookingRequested(
-  raw: unknown,
-  now: Date = new Date(),
-): Promise<BookingResult> {
-  const parsed = bookingSchema.safeParse(raw);
+export async function editQuickEpisode(raw: unknown, now: Date = new Date()): Promise<EditResult> {
+  const parsed = editEpisodeSchema.safeParse(raw);
   if (!parsed.success) {
     return { status: 'invalid', error: parsed.error.issues[0]?.message ?? 'invalid input' };
   }
 
-  if (!process.env.DATABASE_URL || !authConfigured()) {
-    return { status: 'preview' };
+  const occurredAt = resolveOccurredAt(parsed.data.occurredAt, now);
+  if (!occurredAt.ok) {
+    return { status: 'invalid', error: occurredAt.error };
   }
 
-  const database = defaultDb();
-  const familyId = await currentFamilyId(database);
-  if (!familyId) {
-    return { status: 'preview' };
-  }
+  const scope = await resolveWriteScope();
+  if (!scope) return { status: 'preview' };
 
-  if (
-    parsed.data.childId &&
-    !(await childBelongsToFamily(database, familyId, parsed.data.childId))
-  ) {
-    return { status: 'forbidden' };
-  }
-
-  await writeEpisode(database, {
-    familyId,
-    childId: parsed.data.childId ?? null,
-    occurredAt: now,
-    episodeType: BOOKING_EPISODE,
-    summary: `Asked Hale to help book: ${parsed.data.what}`,
-    payload: { what: parsed.data.what },
-  });
+  const ok = await updateEpisode(
+    scope.database,
+    parsed.data.id,
+    scope.familyId,
+    { summary: parsed.data.summary, occurredAt: occurredAt.date },
+    scope.actorUserId,
+  );
+  if (!ok) return { status: 'forbidden' };
 
   revalidatePath('/companion');
   revalidatePath('/home');
-  return { status: 'requested' };
+  return { status: 'edited' };
+}
+
+/**
+ * Soft-deletes a parent's own logged episode from the dedicated logs view. Same
+ * family scoping + audit-actor discipline as editQuickEpisode; softDeleteEpisode
+ * stamps deleted_at rather than erasing the row (rules #6, #9).
+ */
+export async function deleteQuickEpisode(
+  raw: unknown,
+  now: Date = new Date(),
+): Promise<DeleteResult> {
+  const parsed = deleteEpisodeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { status: 'invalid', error: parsed.error.issues[0]?.message ?? 'invalid input' };
+  }
+
+  const scope = await resolveWriteScope();
+  if (!scope) return { status: 'preview' };
+
+  const ok = await softDeleteEpisode(scope.database, parsed.data.id, scope.familyId, scope.actorUserId, now);
+  if (!ok) return { status: 'forbidden' };
+
+  revalidatePath('/companion');
+  revalidatePath('/home');
+  return { status: 'deleted' };
+}
+
+/**
+ * Resolves the family AND the acting parent's user id for an audited mutation, or
+ * null when the request is a preview (no DATABASE_URL / no auth / no session / no
+ * mirrored user). Fails closed — never fabricates a family or actor (rule #1).
+ */
+async function resolveWriteScope(): Promise<{
+  database: ReturnType<typeof defaultDb>;
+  familyId: string;
+  actorUserId: string;
+} | null> {
+  if (!process.env.DATABASE_URL || !authConfigured()) return null;
+
+  const database = defaultDb();
+  const familyId = await currentFamilyId(database);
+  if (!familyId) return null;
+
+  const session = await auth();
+  const externalAuthId = session?.user?.id;
+  if (!externalAuthId) return null;
+
+  const actorUserId = await resolveUserIdForUser(externalAuthId, database);
+  if (!actorUserId) return null;
+
+  return { database, familyId, actorUserId };
 }

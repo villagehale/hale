@@ -13,7 +13,8 @@ const writeEpisodeMock = vi.fn();
 const revalidateMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
-vi.mock('~/lib/family', () => ({ currentFamilyId: () => familyMock() }));
+vi.mock('~/auth', () => ({ auth: vi.fn() }));
+vi.mock('~/lib/family', () => ({ currentFamilyId: () => familyMock(), resolveUserIdForUser: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: (p: string) => revalidateMock(p) }));
 vi.mock('./log-write.js', async () => {
   const actual = await vi.importActual<typeof import('./log-write.js')>('./log-write.js');
@@ -198,44 +199,3 @@ describe('logQuickEpisode', () => {
   });
 });
 
-describe('logBookingRequested', () => {
-  beforeEach(() => {
-    vi.resetModules();
-    familyMock.mockReset();
-    childBelongsMock.mockReset();
-    writeEpisodeMock.mockReset();
-    revalidateMock.mockReset();
-    configureAuth(true);
-  });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('records a booking_requested episode (intent, not a fake booking) for a family-wide request', async () => {
-    familyMock.mockResolvedValue(FAMILY_ID);
-    writeEpisodeMock.mockResolvedValue(undefined);
-    const { logBookingRequested } = await import('./log.js');
-
-    const result = await logBookingRequested({ what: '6-month checkup' }, NOW);
-
-    expect(result.status).toBe('requested');
-    expect(writeEpisodeMock.mock.calls[0]?.[1]).toMatchObject({
-      familyId: FAMILY_ID,
-      childId: null,
-      episodeType: 'booking_requested',
-      summary: 'Asked Hale to help book: 6-month checkup',
-      payload: { what: '6-month checkup' },
-    });
-  });
-
-  it('forbids a booking against a child not in the family', async () => {
-    familyMock.mockResolvedValue(FAMILY_ID);
-    childBelongsMock.mockResolvedValue(false);
-    const { logBookingRequested } = await import('./log.js');
-
-    const result = await logBookingRequested({ what: 'checkup', childId: CHILD_ID });
-
-    expect(result.status).toBe('forbidden');
-    expect(writeEpisodeMock).not.toHaveBeenCalled();
-  });
-});
