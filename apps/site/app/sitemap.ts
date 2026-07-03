@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
+import { publishedCheckpoints } from '~/lib/milestones/index';
 
 // Static marketing routes. Add new public pages here as they ship.
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -33,5 +34,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
           })),
         ];
 
-  return [...staticRoutes, ...answerRoutes];
+  // Milestone age pages ride the same review-before-index gate: excluded until a
+  // human re-verifies an age's copy against its cited CDC URL and flips
+  // `published`. The /milestones hub enters with them.
+  const milestoneRoutes: MetadataRoute.Sitemap =
+    publishedCheckpoints.length === 0
+      ? []
+      : [
+          {
+            url: `${SITE_URL}/milestones`,
+            lastModified,
+            changeFrequency: 'monthly',
+            priority: 0.6,
+          },
+          ...publishedCheckpoints.map((checkpoint) => ({
+            url: `${SITE_URL}/milestones/${checkpoint.slug}`,
+            lastModified: new Date(checkpoint.updated),
+            changeFrequency: 'monthly' as const,
+            priority: 0.6,
+          })),
+        ];
+
+  return [...staticRoutes, ...answerRoutes, ...milestoneRoutes];
 }

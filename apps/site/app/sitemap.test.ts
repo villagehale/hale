@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allAnswers } from '~/lib/answers/index.js';
 import { SITE_URL } from '~/lib/app-url.js';
+import { allCheckpoints } from '~/lib/milestones/index.js';
 import sitemap from './sitemap.js';
 
 /**
@@ -60,6 +61,13 @@ describe('sitemap', () => {
       expect(entry).toBeDefined();
       expect(entry?.changeFrequency).toBe('weekly');
       expect(entry?.priority).toBe(0.6);
+    }
+  });
+
+  it('excludes every unpublished milestone age page and the hub', () => {
+    expect(urls).not.toContain(`${SITE_URL}/milestones`);
+    for (const checkpoint of allCheckpoints) {
+      expect(urls).not.toContain(`${SITE_URL}/milestones/${checkpoint.slug}`);
     }
   });
 });

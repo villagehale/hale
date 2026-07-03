@@ -30,7 +30,9 @@ export function SiteHeader() {
           <span className="sm:hidden">What Hale finds</span>
           <span className="hidden sm:inline">See what Hale finds</span>
         </a>
-        <ThemeToggle />
+        <div className="hidden sm:flex">
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

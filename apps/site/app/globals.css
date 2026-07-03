@@ -246,6 +246,8 @@ strong { font-weight: 700; }
 }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
+.panel-sage-tint { background: var(--color-sage-tint); border-radius: var(--r-xl); }
+.panel-berry-tint { background: var(--color-berry-tint); border-radius: var(--r-xl); }
 
 /* ── Card — a clean raised surface ─────────────────────────────────────── */
 
@@ -457,13 +459,13 @@ strong { font-weight: 700; }
 
 /* ── Theme switch — ease the color change, never the layout ─────────────── */
 
-html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .card, .field, .night {
+html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, .panel-berry-tint, .card, .field, .night {
   transition: background-color 280ms var(--ease-breathe), color 280ms var(--ease-breathe),
     border-color 280ms var(--ease-breathe);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .card, .field, .night {
+  html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, .panel-berry-tint, .card, .field, .night {
     transition: none;
   }
 }
