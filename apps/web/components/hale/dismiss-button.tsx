@@ -18,7 +18,7 @@ const LABEL: Record<State, string> = {
  * audit_log row (rule #6); this never executes the action. Honest states: pending
  * in flight, "dismissed" on 200, the error surfaced — never a silent success.
  */
-export function DismissButton({ actionId }: { actionId: string }) {
+export function DismissButton({ actionId, label }: { actionId: string; label?: string }) {
   const [state, setState] = useState<State>('idle');
 
   async function dismiss() {
@@ -38,6 +38,9 @@ export function DismissButton({ actionId }: { actionId: string }) {
       onClick={dismiss}
       disabled={state === 'pending' || state === 'dismissed'}
       aria-live="polite"
+      // In a list every row's button reads "dismiss draft" alike; the draft
+      // preview disambiguates which draft each button acts on for a screen reader.
+      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
     >
       {LABEL[state]}
     </button>

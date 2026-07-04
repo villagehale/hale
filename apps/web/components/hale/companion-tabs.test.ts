@@ -55,6 +55,12 @@ describe('CompanionTabs DOM structure', () => {
     expect(panel).not.toContain('Ben');
     expect(panel).not.toContain('Cy');
   });
+
+  it('makes the tabpanel programmatically focusable (ARIA requires tabIndex on a tabpanel)', () => {
+    const html = render([AVA, BEN, CY]);
+    const panelTag = html.slice(html.indexOf('role="tabpanel"'), html.indexOf('>', html.indexOf('role="tabpanel"')));
+    expect(panelTag).toContain('tabindex="-1"');
+  });
 });
 
 describe('CompanionTabs done + recently-passed affordances', () => {
@@ -70,13 +76,13 @@ describe('CompanionTabs done + recently-passed affordances', () => {
 
   it('renders a recently-passed health item with a done affordance instead of hiding it', () => {
     // Born 2026-01-15 → 5mo: the 4-month set passed ~1mo ago and is not done, so it
-    // must appear (not vanish) with the "was due at 4 months" phrasing + a done tap.
+    // must appear (not vanish) with the "scheduled at 4 months" phrasing + a done tap.
     const view = viewFor('2026-01-15');
     expect(view.recentlyPassedHealth.some((h) => h.ageMonths === 4)).toBe(true);
 
     const html = render([view]);
     expect(html).toContain('recently passed');
-    expect(html).toContain('was due at 4 months');
+    expect(html).toContain('scheduled at 4 months');
     expect(html).toContain('4-month well-baby visit');
     // The done affordance (button) is present for the passed item.
     expect(html).toContain('mark done');
@@ -103,6 +109,16 @@ describe('CompanionTabs done + recently-passed affordances', () => {
     const html = render([view]);
     expect(html).toContain('keep up periodic visits');
     expect(html).not.toContain('4–6 year (pre-school) immunizations —');
+  });
+
+  it('reads a newborn warmly ("under a month"), never the cold "0 months"', () => {
+    // Born 2026-06-01, NOW 2026-06-15 → 0 completed months. The clinical "0 months"
+    // is the exact cold phrasing the sweep bans.
+    const view = viewFor('2026-06-01');
+    expect(view.ageMonths).toBe(0);
+    const html = render([view]);
+    expect(html).toContain('under a month old');
+    expect(html).not.toContain('0 months old');
   });
 });
 

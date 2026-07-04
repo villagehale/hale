@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CompanionTabs } from '~/components/hale/companion-tabs';
 import { PageCorner } from '~/components/hale/page-corner';
+import { PrivacyNote } from '~/components/hale/privacy-note';
 import { QuickLog } from '~/components/hale/quick-log';
 import { RecentLogs } from '~/components/hale/recent-logs';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
@@ -45,15 +46,20 @@ export default async function CompanionPage() {
       </header>
 
       {children.length === 0 ? (
-        <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center">
+        <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
             no children added yet.
           </p>
-          <p className="meta mt-4 text-slate-green">
+          <p className="meta text-slate-green max-w-xl mx-auto">
             once a child’s birthday is on file, this page gathers their stage, the next routine
             checkups and immunizations, and the milestones worth watching for — all confirmed with
             your own provider.
           </p>
+          <div className="pt-2">
+            <Link href="/family" className="btn-primary">
+              add a child →
+            </Link>
+          </div>
         </section>
       ) : (
         <CompanionTabs kids={children} />
@@ -94,12 +100,12 @@ export default async function CompanionPage() {
           {[
             'supportive guidance, never a diagnosis',
             'always confirm health and milestones with your provider',
-            "your family's data stays in canada · pipeda",
           ].map((note) => (
             <span key={note} className="meta">
               {note}
             </span>
           ))}
+          <PrivacyNote />
         </div>
 
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">

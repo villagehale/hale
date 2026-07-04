@@ -35,6 +35,7 @@ export function nextTabIndex(key: string, active: number, count: number): number
 }
 
 function agePhrase(ageMonths: number): string {
+  if (ageMonths === 0) return 'under a month';
   if (ageMonths < 24) return `${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
   const years = Math.floor(ageMonths / 12);
   return `${years} ${years === 1 ? 'year' : 'years'}`;
@@ -48,11 +49,12 @@ function duePhrase(dueInWeeks: number): string {
   return `in ~${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
-/** "was due at 4 months" — the age a passed health item was scheduled for. */
+/** "scheduled at 4 months" — the age a passed health item was set for. Warm, not
+ * "overdue": a passed checkup is a gentle nudge, never a failing grade. */
 function passedAtPhrase(ageMonths: number): string {
-  if (ageMonths < 24) return `was due at ${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
+  if (ageMonths < 24) return `scheduled at ${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
   const years = Math.floor(ageMonths / 12);
-  return `was due at ${years} ${years === 1 ? 'year' : 'years'}`;
+  return `scheduled at ${years} ${years === 1 ? 'year' : 'years'}`;
 }
 
 /**
@@ -271,11 +273,14 @@ export function CompanionTabs({ kids }: { kids: ChildCompanionView[] }) {
 
   return (
     <section className="rise rise-2">
+      {/* The oat pill sizes to its tabs but can't exceed the column; on a narrow
+          phone three-plus children scroll horizontally inside it rather than
+          overflowing the viewport. */}
       <div
         role="tablist"
         aria-label="children"
         onKeyDown={onKeyDown}
-        className="inline-flex items-center gap-1 p-1 rounded-[var(--r-full)] bg-oat mb-8"
+        className="flex max-w-full items-center gap-1 p-1 rounded-[var(--r-full)] bg-oat mb-8 w-max overflow-x-auto"
       >
         {kids.map((child, idx) => {
           const isActive = idx === active;
@@ -292,7 +297,7 @@ export function CompanionTabs({ kids }: { kids: ChildCompanionView[] }) {
               aria-controls={`${baseId}-panel-${idx}`}
               tabIndex={isActive ? 0 : -1}
               onClick={() => setActive(idx)}
-              className={`inline-flex min-h-[44px] items-center gap-2 px-4 rounded-[var(--r-full)] text-sm font-semibold cursor-pointer touch-manipulation transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] ${
+              className={`inline-flex shrink-0 min-h-[44px] items-center gap-2 px-4 rounded-[var(--r-full)] text-sm font-semibold cursor-pointer touch-manipulation transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] ${
                 isActive ? 'bg-linen text-spruce' : 'text-slate-green hover:text-spruce'
               }`}
             >
@@ -307,6 +312,7 @@ export function CompanionTabs({ kids }: { kids: ChildCompanionView[] }) {
         role="tabpanel"
         id={`${baseId}-panel-${active}`}
         aria-labelledby={`${baseId}-tab-${active}`}
+        tabIndex={-1}
       >
         <div className="border-b border-rule pb-6 mb-8" data-hale-pii>
           <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">

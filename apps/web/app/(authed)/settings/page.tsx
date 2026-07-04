@@ -1,5 +1,6 @@
 import { PageCorner } from '~/components/hale/page-corner';
 import { FamilyParent } from '~/components/hale/family-parent';
+import { PrivacyNote } from '~/components/hale/privacy-note';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { ExportDataButton } from '~/components/hale/export-data-button';
@@ -123,7 +124,6 @@ export default async function SettingsPage() {
           <div className="lg:col-span-9 flex flex-col gap-y-8">
             <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
               {[
-                "your family's data stays in canada · pipeda",
                 'teen content is private from parents by default',
                 'nothing is shared with a third party unless you connect one',
               ].map((note) => (
@@ -131,6 +131,7 @@ export default async function SettingsPage() {
                   {note}
                 </span>
               ))}
+              <PrivacyNote />
             </div>
 
             <div className="flex flex-col gap-y-3">

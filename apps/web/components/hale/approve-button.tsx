@@ -18,7 +18,7 @@ const LABEL: Record<State, string> = {
  * does the actual send). Honest states: pending in flight, "approved" on 202, the
  * error surfaced — never a silent success.
  */
-export function ApproveButton({ actionId }: { actionId: string }) {
+export function ApproveButton({ actionId, label }: { actionId: string; label?: string }) {
   const [state, setState] = useState<State>('idle');
 
   async function approve() {
@@ -38,6 +38,9 @@ export function ApproveButton({ actionId }: { actionId: string }) {
       onClick={approve}
       disabled={state === 'pending' || state === 'approved'}
       aria-live="polite"
+      // In a list every row's button reads "approve & send" alike; the draft
+      // preview disambiguates which draft each button acts on for a screen reader.
+      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
     >
       {LABEL[state]}
     </button>

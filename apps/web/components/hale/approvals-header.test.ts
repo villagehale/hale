@@ -21,7 +21,10 @@ describe('ApprovalsHeader', () => {
     // The old, wrong copy dominated even the empty state — it must be gone here.
     expect(html).not.toContain('waiting for your yes');
     // The header carries the empty-state line, so no separate panel is needed.
-    expect(html).toContain('Hale parks it here for your approval');
+    expect(html).toContain('it parks it here for your yes');
+    // The empty state is not a dead end — it points to the record of what's done.
+    expect(html).toContain('href="/trail"');
+    expect(html).toContain('see what Hale has taken care of');
   });
 
   it('leads with the count as the hero when drafts are waiting', () => {

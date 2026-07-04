@@ -35,6 +35,10 @@ describe('AuthShell — the two-panel auth frame', () => {
     expect(html).toContain('FORM_SLOT');
   });
 
+  it('renders the page heading as the document h1 (the auth page had none)', () => {
+    expect(html).toMatch(/<h1[^>]*>\s*Welcome back\s*<\/h1>/);
+  });
+
   it('carries a warm data-residency trust line (Canada, nothing shared unasked)', () => {
     expect(html).toContain('stays in Canada');
     expect(html).toContain('Nothing is shared until you say so');

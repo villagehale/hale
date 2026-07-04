@@ -38,9 +38,10 @@
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
   --color-linen: #f6f1e7;       /* canvas — primary background, 11.96:1 with Spruce */
   --color-oat: #efe7d6;         /* card surface — secondary surface, soft panels */
+  --color-raised: #fdfbf6;      /* RAISED — lifted card, a warm near-white notch above oat */
   --color-spruce: #01204F;      /* primary ink / night-section fill — 11.96:1 */
   --color-slate-green: #33486b; /* secondary text, captions — 7.00:1 */
-  --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 4.81:1 */
+  --color-faded-sage: #525f7d;  /* tertiary / meta / disclaimers — 5.19:1 on Oat (AA on every surface: Linen 5.67, Raised 6.17) */
 
   --color-apricot: #c8622d;       /* FILL ONLY — 3.56:1, sun & large graphics */
   --color-apricot-deep: #a84e20;  /* text-safe accent: links, CTA fill — 4.94:1 */
@@ -85,7 +86,7 @@
   --r-sm: 8px;
   --r-md: 14px;
   --r-lg: 16px;
-  --r-xl: 18px;
+  --r-xl: 16px;
   --r-full: 9999px;
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
@@ -1225,7 +1226,10 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   position: absolute;
   right: 0;
   bottom: calc(100% + 0.4rem);
-  white-space: nowrap;
+  /* Bounded to the composer width and allowed to wrap: a long transcribing note
+   * on a narrow phone would otherwise run off the left edge of the viewport. */
+  max-width: min(20rem, calc(100vw - 2rem));
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
@@ -17,6 +17,7 @@ import { HomeAddress } from '~/components/hale/home-address';
 import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { OnboardingPlanPicker } from '~/components/hale/onboarding-plan-picker';
+import { PrivacyNote } from '~/components/hale/privacy-note';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { TosAgreement } from '~/components/hale/tos-agreement';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
@@ -88,6 +89,12 @@ export function OnboardingWizard({
   // straight in Phase C; otherwise intake starts at Phase A.
   const initialPhase: Phase = startAtSetup && signedIn ? 'C' : 'A';
   const [phase, setPhase] = useState<Phase>(initialPhase);
+  // The per-phase heading is the focus anchor on a phase change: advancing from
+  // "continue →" unmounts that button, so a keyboard/SR user would otherwise be
+  // stranded on a detached element. Moving focus to the new phase's heading lands
+  // them at the top of the freshly-rendered step. Skipped on first mount.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const didMountPhase = useRef(false);
 
   // Phase A — non-sensitive: first names only (no dates of birth), a coarse city,
   // and the optional intents (what the parent is hoping for). These survive the
@@ -145,6 +152,15 @@ export function OnboardingWizard({
       setSetupChildren(seeded);
     }
   }, [sessionName]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: phase is the intended trigger, not a value read in the body
+  useEffect(() => {
+    if (!didMountPhase.current) {
+      didMountPhase.current = true;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [phase]);
 
   const meta = PHASE_META[phase];
   const phaseIndex = phase === 'A' ? 1 : phase === 'B' ? 2 : 3;
@@ -277,7 +293,9 @@ export function OnboardingWizard({
           <div className="onboarding-hero lg:col-span-3">
             <span className="folio">{meta.folio}</span>
             <p className="meta mt-2">{meta.section}</p>
-            <h1 className="mt-6 font-display">{meta.title}</h1>
+            <h1 ref={headingRef} tabIndex={-1} className="mt-6 font-display outline-none">
+              {meta.title}
+            </h1>
           </div>
 
           <div className="lg:col-span-9 lg:col-start-4">
@@ -386,7 +404,7 @@ export function OnboardingWizard({
                     continue →
                   </button>
                 </div>
-                <p className="meta">pipeda · law 25 · casl compliant by default</p>
+                <PrivacyNote />
               </section>
             ) : null}
 
@@ -424,7 +442,7 @@ export function OnboardingWizard({
                   ) : null}
                   . Now each child&rsquo;s details and your home address, so I can tailor
                   precisely and find things nearby — this is the first thing that gets
-                  saved, encrypted, to your family. I keep only the coarse area for
+                  saved, encrypted, to your family. Hale uses only your neighbourhood for
                   discovery; the full address stays private for booking.
                 </p>
 

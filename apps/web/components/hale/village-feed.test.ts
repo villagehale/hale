@@ -55,9 +55,12 @@ describe('VillageFeed — renders the agent-ranked, social-proof-rich feed', () 
     expect(positions).toEqual([...positions].sort((x, y) => x - y));
   });
 
-  it('rides social proof on a well-endorsed card (loved by N families)', () => {
+  it('rides social proof on a well-endorsed card exactly once (no doubled count)', () => {
+    // One social-proof surface per card: the SocialProofBadge. The EndorseButton no
+    // longer repeats the aggregate, so "loved by N families near you" renders once —
+    // not once as the pill AND again under the heart button.
     const html = renderFeed([view({ id: 'a', title: 'card-a', endorsementCount: 5 })]);
-    expect(html).toContain('loved by 5 families near you');
+    expect(html.split('loved by 5 families near you')).toHaveLength(2);
   });
 
   it('shows the endorse + share + accept controls on a normal card', () => {

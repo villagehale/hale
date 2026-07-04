@@ -68,9 +68,12 @@ export function EmailSignUpForm() {
           autoComplete="new-password"
           required
           minLength={MIN_PASSWORD_LENGTH}
+          aria-describedby="signup-password-hint"
           className="field"
         />
-        <p className="field-hint">At least {MIN_PASSWORD_LENGTH} characters.</p>
+        <p id="signup-password-hint" className="field-hint">
+          At least {MIN_PASSWORD_LENGTH} characters.
+        </p>
       </div>
       {state.status === 'error' ? (
         <p className="field-error" role="alert">

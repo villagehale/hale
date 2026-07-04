@@ -1,15 +1,11 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { List, Lock, Map as MapIcon, Search } from 'lucide-react';
-import { AcceptButton } from '~/components/hale/accept-button';
+import { List, Map as MapIcon, Search } from 'lucide-react';
+import { ActivityCard } from '~/components/hale/activity-card';
 import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
-import { EndorseButton } from '~/components/hale/endorse-button';
-import { RegisterLink } from '~/components/hale/register-link';
-import { ShareButton } from '~/components/hale/share-button';
 import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
-import { villageKindLabel } from '~/lib/format/labels';
 import type { LatLng } from '~/lib/village/map-model';
 import { type VillageCandidateView, filterCandidatesByScope } from '~/lib/village/mappers';
 
@@ -127,68 +123,15 @@ export function VillageSearch({
         </output>
       ) : (
         <section>
-          {filtered.map((candidate, idx) => {
-            const delay = `rise-${Math.min(idx + 3, 7)}`;
-            return (
-              <article
-                key={candidate.id}
-                className={`rise ${delay} py-12 lg:py-14 border-t border-rule first:border-t-0`}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
-                  <div className="md:col-span-2">
-                    {villageKindLabel(candidate.kind) ? (
-                      <p className="eyebrow text-spruce">{villageKindLabel(candidate.kind)}</p>
-                    ) : null}
-                  </div>
-
-                  {candidate.teenAttributed ? (
-                    <div className="md:col-span-7">
-                      <p className="flex items-center gap-2 text-spruce leading-relaxed">
-                        <Icon as={Lock} size={18} className="shrink-0 text-slate-green" />
-                        {candidate.title}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="md:col-span-7 space-y-5">
-                      <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
-                        {candidate.title}
-                      </h2>
-                      <p className="text-lg text-spruce leading-relaxed">{candidate.summary}</p>
-
-                      {candidate.coverageNote ? (
-                        <p className="meta text-slate-green">{candidate.coverageNote}</p>
-                      ) : null}
-
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-2">
-                        <AcceptButton
-                          href={candidate.acceptHref}
-                          initiallyAccepted={candidate.accepted}
-                        />
-                        <RegisterLink
-                          sourceUrl={candidate.sourceUrl}
-                          title={candidate.title}
-                          area={area}
-                        />
-                        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
-                          <EndorseButton
-                            endpoint={candidate.endorseHref}
-                            initiallyEndorsed={candidate.endorsedByFamily}
-                            initialCount={candidate.endorsementCount}
-                          />
-                          <ShareButton
-                            endpoint={candidate.shareHref}
-                            label="share this pick"
-                            shareTitle={candidate.title}
-                            variant="ghost"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+          {filtered.map((candidate, idx) => (
+            <ActivityCard
+              key={candidate.id}
+              candidate={candidate}
+              variant="row"
+              area={area}
+              className={`rise rise-${Math.min(idx + 3, 7)}`}
+            />
+          ))}
         </section>
       )}
       </div>

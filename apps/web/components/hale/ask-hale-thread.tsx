@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRight, ArrowUp, Search, Trash2, X } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
@@ -351,9 +351,9 @@ function EmptyState({
   return (
     <div className="mx-auto flex max-w-[34rem] flex-col items-center gap-6 py-12 text-center sm:py-16">
       <div className="space-y-3">
-        <h1 className="font-display text-balance">
+        <p className="font-display text-balance text-[clamp(2.3rem,4.4vw,3.75rem)] font-semibold leading-[1.04] tracking-[-0.02em]">
           ask Hale <span className="text-apricot-deep">anything</span>
-        </h1>
+        </p>
         <p className="text-slate-green text-lg leading-relaxed">
           one ongoing conversation, grounded in your family. I answer in plain language and cite the
           source — never medical advice.
@@ -410,7 +410,7 @@ function Timeline({
   const chat = layout === 'chat';
   let lastScope: string | null | undefined;
   return (
-    <div className={chat ? 'space-y-6' : 'space-y-5'} aria-live="polite">
+    <div className={chat ? 'space-y-6' : 'space-y-5'}>
       {turns.map((turn) => {
         const scopeKey = `${turn.childId ?? 'family'}`;
         const showScope = scopeKey !== lastScope;
@@ -542,7 +542,7 @@ function TurnDeleteControl({
         type="button"
         onClick={() => setState('confirm')}
         aria-label="remove this message"
-        className="p-1 text-faded-sage opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:text-berry cursor-pointer"
+        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-faded-sage opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:text-berry cursor-pointer"
       >
         <Trash2 aria-hidden size={14} />
       </button>
@@ -569,6 +569,33 @@ function ComposerNote() {
       your conversation stays inside Hale — only your family&rsquo;s context is used. Hale drafts
       actions for your approval; it never acts on its own.
     </p>
+  );
+}
+
+/**
+ * The one discrete live region for the conversation. A polite live region must be a
+ * SMALL status node, not the whole growing transcript — otherwise every streamed
+ * token re-announces the entire visible thread. This announces only the state
+ * transitions: "Hale is thinking" when a request is in flight, then "Hale replied"
+ * once it resolves (only after a pending phase, so idle-on-mount stays silent). The
+ * answer text itself is read by the user navigating the transcript, not shouted.
+ */
+function AssistantLiveStatus({ status }: { status: AskStatus }) {
+  const [message, setMessage] = useState('');
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (status === 'pending') {
+      setMessage('Hale is thinking');
+      wasPending.current = true;
+    } else if (wasPending.current) {
+      setMessage(status === 'error' ? 'Hale could not reply' : 'Hale replied');
+      wasPending.current = false;
+    }
+  }, [status]);
+  return (
+    <output className="sr-only" aria-live="polite">
+      {message}
+    </output>
   );
 }
 
@@ -602,8 +629,7 @@ function CompactSurface({
           ask Hale anything.
         </p>
         <output className="dev-preview-banner">
-          Sign in to ask Hale. In development preview (auth not configured) the ask box is read-only
-          — no question is sent and no model is called.
+          Sign in to ask Hale. In this preview the ask box is read-only — no question is sent.
         </output>
       </div>
     );
@@ -720,6 +746,10 @@ function FullSurface({
   // real chat layout, not the whole page scrolling.
   return (
     <div className="coach-surface flex min-h-0 flex-1 flex-col">
+      {/* The page's sole heading. The empty state shows a large editorial invite,
+          but once the conversation starts that invite is gone — so /coach carries a
+          persistent visually-hidden h1 so the document is never headingless. */}
+      <h1 className="sr-only">ask Hale</h1>
       {/* Quiet header — the conversation's scope + a secondary search, never a box
           stacked above the chat. Hidden until there's history to scope or search. */}
       {!isEmpty ? (
@@ -766,14 +796,15 @@ function FullSurface({
           )}
 
           {status === 'pending' && streamingId === null ? (
-            <div className="rise mt-6 flex" aria-live="polite">
-              <p className="chat-bubble-hale typing-dots" aria-label="Hale is thinking">
+            <div className="rise mt-6 flex" aria-hidden>
+              <p className="chat-bubble-hale typing-dots">
                 <span />
                 <span />
                 <span />
               </p>
             </div>
           ) : null}
+          <AssistantLiveStatus status={status} />
           <div ref={threadEndRef} />
         </div>
       </div>
@@ -784,15 +815,12 @@ function FullSurface({
       <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
         <div className="mx-auto w-full max-w-[64rem]">
           {canAsk ? (
+            // The footer stays short so the transcript keeps the viewport on a
+            // narrow phone: the stage-aware suggestion chips live in the empty
+            // state's transcript (not stacked here), and the two-line privacy note
+            // collapses after the first send — once the parent is chatting, an
+            // error is the only thing worth the extra row.
             <div className="space-y-3">
-              {!isEmpty ? (
-                <Suggestions
-                  suggestions={seed.suggestions}
-                  focusedChildId={focusedChildId}
-                  onPick={ask}
-                  disabled={status === 'pending'}
-                />
-              ) : null}
               <Composer
                 inputRef={inputRef}
                 draft={draft}
@@ -804,14 +832,13 @@ function FullSurface({
                 <p className="meta italic text-apricot-deep" role="alert">
                   Couldn&rsquo;t reach Hale — try again in a moment.
                 </p>
-              ) : (
+              ) : isEmpty ? (
                 <ComposerNote />
-              )}
+              ) : null}
             </div>
           ) : (
             <output className="dev-preview-banner">
-              Sign in to ask Hale. In development preview (auth not configured) the thread is
-              read-only — no question is sent and no model is called.
+              Sign in to ask Hale. In this preview the thread is read-only — no question is sent.
             </output>
           )}
         </div>

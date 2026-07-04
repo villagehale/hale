@@ -49,8 +49,8 @@ export async function VillageCandidates() {
           a quiet week, for now.
         </p>
         <p className="meta mt-4 text-slate-green">
-          no data yet — tell me your area and what your kids love, and I&rsquo;ll gather the
-          classes, groups, and drop-ins near you worth a look.
+          tell Hale your area and what your kids love, and it&rsquo;ll gather the classes, groups,
+          and drop-ins near you worth a look.
         </p>
         <div className="mt-8">
           <FindActivitiesButton />
@@ -89,11 +89,9 @@ export function VillageFeedSkeleton() {
   return (
     <div className="space-y-5" aria-hidden>
       <div className="h-7 w-64 rounded bg-oat animate-pulse" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="panel bg-raised h-40 rounded-xl animate-pulse" />
-        ))}
-      </div>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="panel bg-raised h-40 animate-pulse" />
+      ))}
     </div>
   );
 }

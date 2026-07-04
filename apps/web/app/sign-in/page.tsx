@@ -23,9 +23,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
   if (!google && !credentials) {
     return (
       <AuthShell heading="Welcome back">
-        <p className="meta">
-          Sign-in isn&rsquo;t available in this preview — no auth provider is configured here.
-        </p>
+        <p className="meta">Sign-in isn&rsquo;t available in this preview yet.</p>
       </AuthShell>
     );
   }

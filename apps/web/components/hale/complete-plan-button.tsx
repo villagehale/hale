@@ -32,9 +32,11 @@ function DonePill() {
 export function CompletePlanButton({
   planId,
   alreadyDone,
+  label,
 }: {
   planId: string;
   alreadyDone: boolean;
+  label?: string;
 }) {
   const [state, setState] = useState<State>(alreadyDone ? 'done' : 'idle');
 
@@ -54,6 +56,9 @@ export function CompletePlanButton({
       onClick={onComplete}
       disabled={state === 'pending'}
       aria-live="polite"
+      // Per-row plans all carry an identical "mark done" control; naming the plan
+      // disambiguates which one a screen reader is about to complete.
+      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
     >
       <Check size={14} strokeWidth={2.5} aria-hidden="true" />
       {LABEL[state]}

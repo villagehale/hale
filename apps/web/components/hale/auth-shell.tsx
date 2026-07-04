@@ -42,7 +42,7 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
 
       <section className="flex min-h-[100dvh] flex-col items-center justify-center px-6 py-24 lg:min-h-0 lg:py-16">
         <div className="flex w-full max-w-sm flex-col gap-6">
-          <h2 className="font-display text-3xl font-semibold leading-tight">{heading}</h2>
+          <h1 className="font-display text-3xl font-semibold leading-tight">{heading}</h1>
           {children}
           <p className="meta">
             Your family&rsquo;s data stays in Canada. Nothing is shared until you say so.
