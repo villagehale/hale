@@ -90,6 +90,14 @@ export interface GuardDeps {
   ) => Promise<GuardResult>;
 }
 
+/**
+ * The `audit_log.action_taken` prefix every guarded tool invocation is written
+ * under (`tool:<name>`). These rows are internal agent SUB-STEPS of an Ask — the
+ * source of truth for identifying them downstream (e.g. excluding them from the
+ * parent-facing trail), so the marker lives here rather than as a magic string.
+ */
+export const AGENT_TOOL_ACTION_PREFIX = 'tool:';
+
 /** The shape written to audit_log. Mirrors packages/db audit_log columns (rule #6). */
 export interface AuditEntry {
   familyId: string;
@@ -160,7 +168,7 @@ export async function invokeTool<TInput, TOutput>(
   await deps.writeAudit({
     familyId: ctx.familyId,
     actor: ctx.actor,
-    actionTaken: `tool:${tool.name}`,
+    actionTaken: `${AGENT_TOOL_ACTION_PREFIX}${tool.name}`,
     after: input,
   });
 

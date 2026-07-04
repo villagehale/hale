@@ -7,22 +7,25 @@ import { type FamilyStage, deriveStage } from '@hale/types';
  * parent is focused on: a toddler's parent sees "tantrums at 2?", a teen's parent
  * sees teen-appropriate prompts. Pure, no I/O.
  *
- * Rule #1: a teenager's suggestions are generic to the stage and NEVER name the
- * child or carry age detail — the same redaction the agent context applies. The
- * whole-family group (childId null) is always present as the default scope.
+ * Rule #1 (content redaction): a teenager's PROMPTS are generic to the stage and
+ * NEVER name the child or carry age detail — the same redaction the agent context
+ * applies. The scope-chip LABEL is separate and shows the child's name (policy 1),
+ * so two teens are distinct. The whole-family group (childId null) is always
+ * present as the default scope.
  */
 
 export interface SuggestionChild {
   id: string;
   dateOfBirth: string;
-  /** Withheld in the rendered chip for a teenager; carried only to personalize non-teen copy. */
+  /** The child's given name — shown on the scope chip (policy 1) and used to personalize non-teen copy. */
   name: string | null;
 }
 
 export interface SuggestionGroup {
   /** The child this group scopes to, or null for the whole family (default). */
   childId: string | null;
-  /** Display name for the scope chip; null for the family and for a redacted teen. */
+  /** Display name for the scope chip: the child's name (incl. a teen, policy 1);
+   * null for the family group and when the child has no name on file. */
   label: string | null;
   /** The child's stage, or null for the family group. */
   stage: FamilyStage | null;
@@ -59,9 +62,10 @@ const STAGE_PROMPTS: Record<FamilyStage, readonly string[]> = {
 };
 
 /**
- * Build a suggestion group per child plus a whole-family default. Non-teen groups
- * personalize the label with the child's name; a teenager's label is withheld
- * (rule #1) and the prompts stay stage-generic.
+ * Build a suggestion group per child plus a whole-family default. Every group's
+ * label is the child's name (policy 1 — a teen included, so two teens are
+ * distinct); a teenager's PROMPTS stay stage-generic and never name the child
+ * (rule #1 content redaction).
  */
 export function suggestionsForChildren(
   children: readonly SuggestionChild[],
@@ -76,10 +80,14 @@ export function suggestionsForChildren(
 
   const perChild = children.map((child): SuggestionGroup => {
     const stage = deriveStage(child.dateOfBirth, now);
-    const redacted = stage === 'teenager';
+    // Policy 1: the scope chip shows the child's NAME — including a teenager (the
+    // parent entered it, and two teens must never both read "your teen"),
+    // consistent with scopeChildren/thread.ts. This is the LABEL only; a teen's
+    // CONTENT stays redacted — the prompts below stay stage-generic and never name
+    // the child.
     return {
       childId: child.id,
-      label: redacted ? null : child.name,
+      label: child.name,
       stage,
       prompts: [...STAGE_PROMPTS[stage]],
     };

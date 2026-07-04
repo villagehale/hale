@@ -42,6 +42,29 @@ describe('suggestionsForChildren', () => {
     expect(text).not.toContain('Eli');
   });
 
+  it('labels a teen scope group by NAME so two teens are distinct (policy 1), while keeping prompts redacted', () => {
+    // Two teenagers in one family: their scope-chip labels must be their given
+    // names (never two indistinguishable "your teen"), consistent with scopeChildren.
+    const out = suggestionsForChildren(
+      [child('c2', '2010-01-01', 'Eli'), child('c3', '2009-06-01', 'Nadia')],
+      NOW,
+    );
+
+    const eli = out.find((g) => g.childId === 'c2');
+    const nadia = out.find((g) => g.childId === 'c3');
+    expect(eli?.stage).toBe('teenager');
+    expect(nadia?.stage).toBe('teenager');
+
+    // Labels are the given NAMES — distinct, never collapsed to null → "your teen".
+    expect(eli?.label).toBe('Eli');
+    expect(nadia?.label).toBe('Nadia');
+    expect(eli?.label).not.toBe(nadia?.label);
+
+    // CONTENT stays redacted: the prompts remain stage-generic, never naming the teen.
+    expect(eli?.prompts.join(' ')).not.toContain('Eli');
+    expect(nadia?.prompts.join(' ')).not.toContain('Nadia');
+  });
+
   it('always includes a whole-family group as the default scope', () => {
     const out = suggestionsForChildren([child('c1', '2024-05-01', 'Mara')], NOW);
     const family = out.find((g) => g.childId === null);
