@@ -79,6 +79,25 @@ describe('toTrailView — the honest frame', () => {
     expect(trail({ actionTaken: 'action.execution_failed' }).tone).not.toBe('done');
     expect(trail({ actionTaken: 'event.dropped.spend_ceiling' }).tone).not.toBe('done');
   });
+
+  // The hard guarantee (defect: /trail leaked `families · family_created · <uuid>`):
+  // even a verb / table the registry has never seen, targeting a real UUID, must
+  // render with NO raw table name, NO snake_case/dotted token, and NO bare UUID
+  // anywhere in the view.
+  it('never leaks a raw table, a raw token, or a bare UUID — even for an unknown verb', () => {
+    const UUID = 'a1b2c3d4-e5f6-4789-abcd-0123456789ab';
+    const view = trail({
+      actionTaken: 'families.brand_new_internal.token',
+      targetTable: 'some_internal_table',
+      targetId: UUID,
+    });
+    const rendered = `${view.summary} ${view.noun} ${view.link ?? ''}`;
+    expect(rendered).not.toContain('families.brand_new_internal.token');
+    expect(rendered).not.toContain('some_internal_table');
+    expect(rendered).not.toContain(UUID);
+    expect(view.summary).not.toContain('.');
+    expect(view.summary).not.toContain('_');
+  });
 });
 
 // ── Actor resolution (rule: an unknown UUID is NEVER a human) ─────────────────

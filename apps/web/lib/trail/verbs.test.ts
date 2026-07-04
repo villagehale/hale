@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
+import { AUDIT_VERBS, targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
+
+/** No trail row may ever render a raw table name, a raw snake_case/dotted action
+ * token, or a bare UUID (defect: /trail leaked `families · family_created · <uuid>`).
+ * A verb sentence is clean iff it contains no `.`/`_` (the token separators) and is
+ * not the token itself. */
+const UUID = 'a1b2c3d4-e5f6-4789-abcd-0123456789ab';
+function assertCleanHuman(sentence: string, token: string): void {
+  expect(sentence).not.toBe(token);
+  expect(sentence).not.toContain('.');
+  expect(sentence).not.toContain('_');
+  expect(sentence).not.toContain(UUID);
+}
 
 /**
  * The verb registry's contract: a stored audit verb (memory-writer's
@@ -10,51 +22,14 @@ import { targetLink, targetNoun, trailVerb, verbTone } from './verbs.js';
  * record.ts tokens (+ plan-core's `plan_created`).
  */
 
-describe('trailVerb — every verb in the inventory maps to a human sentence', () => {
-  // The exhaustive inventory (apps/worker/src/services/memory-writer.ts +
-  // apps/web/lib/pipeline/record.ts + apps/web/lib/plan/plan-core.ts). Each must
-  // resolve to a curated sentence (never the raw token) and a real family.
-  const INVENTORY = [
-    'event.classified',
-    'action.drafted',
-    'action.drafted_duplicate_suppressed',
-    'action.reviewer.approved',
-    'action.reviewer.rejected',
-    'action.reviewer.flagged',
-    'action.reviewed.approve',
-    'action.reviewed.reject',
-    'action.reviewed.flag_for_human',
-    'action.executed',
-    'action.execution_failed',
-    'event.dropped.low_confidence',
-    'event.dropped.unknown_action_type',
-    'event.dropped.needs_human',
-    'event.dropped.spend_ceiling',
-    'action.surfaced_to_user',
-    'action.entitlement_gated',
-    'action.gated.observation_window',
-    'action.gated.streak',
-    'action.gated.cross_parent_consent',
-    'action.gated.teen_redaction',
-    'action.gated.over_allowance',
-    'action.send_skipped_duplicate',
-    'event.stage.classified',
-    'event.stage.drafted',
-    'event.stage.reviewed',
-    'event.stage.approved_pending_execute',
-    'event.stage.actioned',
-    'event.stage.failed',
-    'action.approved_by_human',
-    'village.discovery.recorded',
-    'village.routine.recorded',
-    'plan_created',
-  ] as const;
-
-  it.each(INVENTORY)('maps %s to a curated sentence, never the raw token', (verb) => {
+describe('trailVerb — every verb the app writes maps to a human sentence', () => {
+  // The inventory is DERIVED from AUDIT_VERBS (the source of truth beside the
+  // registry), not hand-copied — so it cannot drift from what VERBS covers. This
+  // is the test that would have caught the leak: family_created / tos_accepted /
+  // quick_log_* / village.* were written but absent from the registry.
+  it.each(AUDIT_VERBS)('maps %s to a curated sentence, never the raw token', (verb) => {
     const { sentence, family } = trailVerb(verb);
-    expect(sentence).not.toBe(verb);
-    expect(sentence).not.toContain('.');
-    expect(sentence).not.toContain('_');
+    assertCleanHuman(sentence, verb);
     expect(family).not.toBe('neutral');
   });
 
@@ -67,12 +42,11 @@ describe('trailVerb — every verb in the inventory maps to a human sentence', (
   });
 });
 
-describe('trailVerb — neutral fallback', () => {
-  it('degrades an unknown verb to a neutral sentence + the neutral family, never the raw token', () => {
-    const unknown = 'some.brand.new.token';
+describe('trailVerb — neutral fallback for an unknown verb still renders clean', () => {
+  it('degrades an unknown verb to a neutral human sentence, never the raw token', () => {
+    const unknown = 'families.some_brand_new.token';
     const { sentence, family } = trailVerb(unknown);
-    expect(sentence).not.toContain(unknown);
-    expect(sentence).not.toContain('.');
+    assertCleanHuman(sentence, unknown);
     expect(family).toBe('neutral');
   });
 });
