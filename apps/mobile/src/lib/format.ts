@@ -31,3 +31,20 @@ export function whenPhrase(occurredAt: string): string {
     minute: '2-digit',
   });
 }
+
+/** Day-grained "found …" freshness phrase for a discovery run (mirrors the web
+ * `foundStamp`): "found today" / "found yesterday" / "found N days ago". On-device
+ * the parent's local day IS the family's day, so the day count reads the device's
+ * local days; a future stamp (clock skew) reads "found today". */
+export function foundStamp(discoveredAt: string, now: Date = new Date()): string {
+  const dayKey = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const days = Math.floor(
+    (Date.parse(`${dayKey(now)}T00:00:00Z`) -
+      Date.parse(`${dayKey(new Date(discoveredAt))}T00:00:00Z`)) /
+      86_400_000,
+  );
+  if (days <= 0) return 'found today';
+  if (days === 1) return 'found yesterday';
+  return `found ${days} days ago`;
+}

@@ -59,7 +59,14 @@ function PlanBody({ data }: { data: MobilePlanResponse }) {
           <View className="gap-3">
             {routine.items.map((item, i) => (
               <Card key={`${item.kind}-${i}`} className="gap-1">
-                <Tag label={item.kind} tone="neutral" />
+                <View className="flex-row items-center justify-between">
+                  <Tag label={item.kind} tone="neutral" />
+                  {item.day ? (
+                    <AppText variant="mono" className="capitalize text-ink-3">
+                      {item.day}
+                    </AppText>
+                  ) : null}
+                </View>
                 <AppText variant="title" className="mt-1">
                   {item.title}
                 </AppText>

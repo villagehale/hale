@@ -17,7 +17,11 @@ export interface HealthItem {
 }
 
 export interface UpcomingHealthItem extends HealthItem {
+  /** Stable id `${ageMonths}-${kind}` — keys the list and matches "mark done". */
+  key: string;
   dueInWeeks: number;
+  /** True when this item has been marked done for this child (mirrors web). */
+  done: boolean;
 }
 
 export interface Milestone {
@@ -29,6 +33,8 @@ export interface Milestone {
 
 export interface MilestoneStatus extends Milestone {
   timing: 'upcoming' | 'in_window' | 'watch';
+  /** True when a matching milestone has been logged/marked done (mirrors web). */
+  done: boolean;
 }
 
 export interface CompanionView {
@@ -57,8 +63,19 @@ export interface RecentLogView {
 
 export interface VillageCandidateView {
   id: string;
+  /** Opaque child id this pick was discovered for, or null for a family-wide pick
+   * (mirrors web; an id, never a name — rule #1). */
+  childId: string | null;
   title: string;
   kind: string;
+  /** How the activity recurs — "seasonal" | "one-time" | "ongoing" — or null when
+   * unclassified / teen-redacted. Drives the cadence filter + card chip. */
+  cadence: string | null;
+  /** Seasons a seasonal activity runs (the server already applied the in-season
+   * gate); null on non-seasonal / teen-redacted rows. */
+  seasons: string[] | null;
+  /** ISO instant the discovery run happened — rendered as a "found N ago" stamp. */
+  discoveredAt: string;
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
@@ -78,6 +95,8 @@ export interface RoutineItemView {
   title: string;
   kind: string;
   stageNote: string;
+  /** Weekday the agent placed this item on ("monday"–"sunday"), or null (mirrors web). */
+  day: string | null;
   teenAttributed: boolean;
 }
 
@@ -144,6 +163,10 @@ export interface ApprovalView {
   summary: string;
   preview: string;
   payload: Record<string, unknown> | null;
+  /** Opaque child id the action is for, or null for a family-wide action (mirrors web). */
+  childId: string | null;
+  /** Child's display name for the "for Mia" tag, or null when family-wide (mirrors web). */
+  childLabel: string | null;
   verdict: string;
   draftedAt: string;
   /** True when the draft's content is redacted for a 13+ teen (rule #1). */

@@ -8,18 +8,21 @@ import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import type { MobileVillageResponse, VillageCandidateView } from '@/lib/api-types';
+import { foundStamp } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
+import {
+  CADENCE_OPTIONS,
+  type CadenceFilter,
+  cadenceChip,
+  filterByCadence,
+} from '@/lib/village-filter';
 
-const ALL = 'All';
-
-function FilterRow({
-  kinds,
-  selected,
+function CadenceRow({
+  value,
   onSelect,
 }: {
-  kinds: string[];
-  selected: string;
-  onSelect: (k: string) => void;
+  value: CadenceFilter;
+  onSelect: (c: CadenceFilter) => void;
 }) {
   return (
     <ScrollView
@@ -27,26 +30,38 @@ function FilterRow({
       showsHorizontalScrollIndicator={false}
       contentContainerClassName="gap-2 pr-5"
     >
-      {[ALL, ...kinds].map((kind) => {
-        const active = kind === selected;
+      {CADENCE_OPTIONS.map((option) => {
+        const active = option.value === value;
         return (
           <Pressable
-            key={kind}
+            key={option.value}
             accessibilityRole="button"
-            accessibilityLabel={`Filter: ${kind}`}
+            accessibilityLabel={`Filter: ${option.label}`}
             accessibilityState={active ? { selected: true } : {}}
-            onPress={() => onSelect(kind)}
+            onPress={() => onSelect(option.value)}
             className={`rounded-full border px-4 py-2 ${
               active ? 'border-ink bg-ink' : 'border-rule bg-card'
             }`}
           >
             <AppText variant="meta" className={active ? 'text-canvas' : 'text-ink-2'}>
-              {kind}
+              {option.label}
             </AppText>
           </Pressable>
         );
       })}
     </ScrollView>
+  );
+}
+
+function CadenceChip({ cadence }: { cadence: string | null }) {
+  const chip = cadenceChip(cadence);
+  if (!chip) return null;
+  return (
+    <View className={`self-start rounded-full px-2.5 py-1 ${chip.bg}`}>
+      <AppText variant="meta" className={`text-[11px] uppercase tracking-eyebrow ${chip.text}`}>
+        {chip.label}
+      </AppText>
+    </View>
   );
 }
 
@@ -69,6 +84,12 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
         </AppText>
         <Tag label={rec.kind} tone="coach" />
       </View>
+      <View className="flex-row flex-wrap items-center gap-2">
+        <CadenceChip cadence={rec.cadence} />
+        <AppText variant="meta" className="text-ink-3">
+          {foundStamp(rec.discoveredAt)}
+        </AppText>
+      </View>
       {rec.endorsementCount > 0 ? (
         <AppText variant="meta">Recommended by {rec.endorsementCount} families</AppText>
       ) : null}
@@ -85,12 +106,12 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
 }
 
 function VillageBody({ data }: { data: MobileVillageResponse }) {
-  const [kind, setKind] = useState(ALL);
-  const kinds = useMemo(
-    () => [...new Set(data.candidates.filter((c) => !c.teenAttributed).map((c) => c.kind))],
-    [data.candidates],
+  const [cadence, setCadence] = useState<CadenceFilter>('all');
+  const recs = useMemo(
+    () => filterByCadence(data.candidates, cadence),
+    [data.candidates, cadence],
   );
-  const recs = kind === ALL ? data.candidates : data.candidates.filter((c) => c.kind === kind);
+  const hasAny = data.candidates.length > 0;
 
   return (
     <>
@@ -98,13 +119,15 @@ function VillageBody({ data }: { data: MobileVillageResponse }) {
         <AppText variant="display">Village</AppText>
       </View>
 
-      {kinds.length > 0 ? <FilterRow kinds={kinds} selected={kind} onSelect={setKind} /> : null}
+      {hasAny ? <CadenceRow value={cadence} onSelect={setCadence} /> : null}
 
       {recs.length === 0 ? (
         <Card className="mt-2 items-center gap-2 py-8">
-          <AppText variant="title">Nothing here yet</AppText>
+          <AppText variant="title">{hasAny ? 'Nothing in this filter' : 'Fresh picks coming'}</AppText>
           <AppText variant="meta" className="text-center">
-            No spots to show right now. Check back as more families share.
+            {hasAny
+              ? 'No activities match this cadence right now — try "all".'
+              : 'Your village refreshes with current, in-season activities. Check back soon.'}
           </AppText>
         </Card>
       ) : (

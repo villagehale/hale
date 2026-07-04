@@ -60,6 +60,11 @@ function ActionCard({
     <Card className="gap-2">
       <View className="flex-row items-start justify-between gap-3">
         <Tag label={`Reviewer: ${action.verdict}`} tone="coach" />
+        {action.childLabel ? (
+          <AppText variant="mono" className="text-ink-3">
+            for {action.childLabel}
+          </AppText>
+        ) : null}
       </View>
 
       <AppText variant="title" className="mt-1">
