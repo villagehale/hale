@@ -117,9 +117,7 @@ function LogForm({ childId, onLogged }: { childId: string; onLogged: () => void 
 
   return (
     <Card raised className="gap-3">
-      <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-        Quick log
-      </AppText>
+      <AppText variant="section">Quick log</AppText>
       <View className="flex-row gap-2">
         {LOG_KINDS.map((k) => {
           const active = k.kind === kind;
@@ -225,9 +223,7 @@ function CompanionBody({
       ) : null}
 
       <Card className="gap-3">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-          Next health items
-        </AppText>
+        <AppText variant="section">Next health items</AppText>
         {child.nextHealth.length === 0 ? (
           <AppText variant="body">
             No routine items left on the standard schedule — keep up periodic visits.
@@ -252,9 +248,7 @@ function CompanionBody({
       </Card>
 
       <Card className="gap-3">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-          Milestones
-        </AppText>
+        <AppText variant="section">Milestones</AppText>
         <View className="gap-3">
           {child.milestones.map((milestone, i) => (
             <InfoRow
@@ -276,9 +270,7 @@ function CompanionBody({
       <LogForm childId={child.id} onLogged={onLogged} />
 
       <View className="gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-          Recent logs
-        </AppText>
+        <AppText variant="section">Recent logs</AppText>
         <Card className="gap-1">
           <RecentLogs logs={childLogs} />
         </Card>

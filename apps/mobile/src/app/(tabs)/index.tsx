@@ -59,9 +59,7 @@ function HomeBody({ data }: { data: MobileHomeResponse }) {
 
       {rec ? (
         <View className="gap-2">
-          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-            From the village
-          </AppText>
+          <AppText variant="section">From the village</AppText>
           <Card onPress={() => router.push('/village')} className="gap-1">
             <AppText variant="title">{rec.title}</AppText>
             <AppText variant="mono" className="text-ink-3">
@@ -77,9 +75,7 @@ function HomeBody({ data }: { data: MobileHomeResponse }) {
 
       {data.children.length > 0 ? (
         <View className="gap-2">
-          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-            Companion
-          </AppText>
+          <AppText variant="section">Companion</AppText>
           <View className="flex-row flex-wrap gap-3">
             {data.children.map((child) => (
               <Card

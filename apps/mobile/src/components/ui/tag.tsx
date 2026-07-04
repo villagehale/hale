@@ -15,7 +15,7 @@ export function Tag({ label, tone = 'neutral' }: { label: string; tone?: TagTone
   const t = TONE[tone];
   return (
     <View className={`self-start rounded-full px-2.5 py-1 ${t.bg}`}>
-      <AppText variant="meta" className={`text-[11px] uppercase tracking-eyebrow ${t.text}`}>
+      <AppText variant="meta" className={`text-[12px] leading-[16px] ${t.text}`}>
         {label}
       </AppText>
     </View>

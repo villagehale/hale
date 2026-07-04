@@ -29,11 +29,7 @@ const INTENT_LABEL: Record<string, string> = {
 };
 
 function SectionTitle({ children }: { children: string }) {
-  return (
-    <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-      {children}
-    </AppText>
-  );
+  return <AppText variant="section">{children}</AppText>;
 }
 
 function coarseArea(location: FamilyLocationView): string {

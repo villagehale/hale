@@ -25,50 +25,50 @@ body {
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* canvas / surfaces */
-  --color-canvas: #f6f1e7; /* linen */
-  --color-card: #efe7d6; /* oat */
-  --color-raised: #fffdf8; /* raised card lift (light) */
+  --color-canvas: #f6f6f4; /* crisp off-white */
+  --color-card: #ffffff; /* card surface */
+  --color-raised: #ffffff; /* raised card lift (light) */
   /* ink */
-  --color-ink: #01204f; /* spruce — primary */
-  --color-ink-2: #33486b; /* slate-green — secondary */
-  --color-ink-3: #5b6b86; /* faded-sage — meta */
-  /* accent — apricot family */
-  --color-accent: #a84e20; /* apricot-deep — TEXT-SAFE accent */
-  --color-accent-fill: #c8622d; /* apricot — FILL/large-graphic only */
-  --color-accent-tint: #f5dcc6;
+  --color-ink: #0c1626; /* primary */
+  --color-ink-2: #434c5c; /* secondary */
+  --color-ink-3: #737c89; /* meta */
+  /* accent — coral family */
+  --color-accent: #b84a2a; /* TEXT-SAFE accent */
+  --color-accent-fill: #e96a44; /* FILL/large-graphic only */
+  --color-accent-tint: #fbe9e2;
   /* secondary tones */
-  --color-sea: #0a3d62; /* turtle / brand accent */
-  --color-sage: #4a5a3c; /* done/handled */
-  --color-sage-tint: #dde4d2;
-  --color-berry: #9c3b54; /* needs-you */
-  --color-berry-tint: #f3d7dd;
-  --color-sky: #2f6f86; /* coach tone */
-  --color-sky-tint: #cfe3e7;
+  --color-sea: #01204f; /* brand Prussian */
+  --color-sage: #2f7d5b; /* done/handled */
+  --color-sage-tint: #e4f1ea;
+  --color-berry: #c23b57; /* needs-you */
+  --color-berry-tint: #fbe4e9;
+  --color-sky: #2d6e8e; /* coach tone */
+  --color-sky-tint: #e1eff4;
   /* hairline */
-  --color-rule: rgba(1, 32, 79, 0.1);
-  --color-rule-strong: rgba(1, 32, 79, 0.2);
+  --color-rule: rgba(12, 22, 38, 0.08);
+  --color-rule-strong: rgba(12, 22, 38, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #0b1626; /* calm desaturated deep Prussian-charcoal */
-    --color-card: #13233a; /* one notch above canvas */
-    --color-raised: #1d3150; /* two notches up */
-    --color-chrome: #021e4e; /* exact logo Prussian — app frame */
-    --color-ink: #f6f1e7; /* cream */
-    --color-ink-2: #c7d3e6;
-    --color-ink-3: #9bb0d0;
-    --color-accent: #e8915c; /* text-safe on dark */
-    --color-accent-fill: #e8915c;
-    --color-accent-tint: #2e2331;
-    --color-sea: #6fb3c9;
-    --color-sage: #a9c49a;
-    --color-sage-tint: #18301f;
-    --color-berry: #e09aaa;
-    --color-berry-tint: #3a1f29;
-    --color-sky: #8fc1d1;
-    --color-sky-tint: #142b48;
-    --color-rule: rgba(246, 241, 231, 0.12);
-    --color-rule-strong: rgba(246, 241, 231, 0.24);
+    --color-canvas: #0c1420; /* deep Prussian-charcoal */
+    --color-card: #151e2c; /* one notch above canvas */
+    --color-raised: #1c2636; /* two notches up */
+    --color-chrome: #01204f; /* logo Prussian — app frame */
+    --color-ink: #f4f5f7;
+    --color-ink-2: #aeb5c1;
+    --color-ink-3: #7b8390;
+    --color-accent: #f4835f; /* text-safe on dark */
+    --color-accent-fill: #f4835f;
+    --color-accent-tint: #2a211e;
+    --color-sea: #6fa8d8;
+    --color-sage: #7fc4a0;
+    --color-sage-tint: #14291f;
+    --color-berry: #e293a5;
+    --color-berry-tint: #301a22;
+    --color-sky: #84bbd6;
+    --color-sky-tint: #132838;
+    --color-rule: rgba(244, 245, 247, 0.10);
+    --color-rule-strong: rgba(244, 245, 247, 0.18);
   }
 }

@@ -58,7 +58,7 @@ function CadenceChip({ cadence }: { cadence: string | null }) {
   if (!chip) return null;
   return (
     <View className={`self-start rounded-full px-2.5 py-1 ${chip.bg}`}>
-      <AppText variant="meta" className={`text-[11px] uppercase tracking-eyebrow ${chip.text}`}>
+      <AppText variant="meta" className={`text-[12px] leading-[16px] ${chip.text}`}>
         {chip.label}
       </AppText>
     </View>

@@ -1,6 +1,6 @@
 import { Text, type TextProps } from 'react-native';
 
-export type AppTextVariant = 'display' | 'title' | 'body' | 'meta' | 'mono';
+export type AppTextVariant = 'display' | 'title' | 'section' | 'body' | 'meta' | 'mono';
 
 export type AppTextProps = TextProps & {
   variant?: AppTextVariant;
@@ -11,14 +11,16 @@ export type AppTextProps = TextProps & {
 const VARIANT_FAMILY: Record<AppTextVariant, string> = {
   display: 'Inter_600SemiBold',
   title: 'Inter_600SemiBold',
+  section: 'Inter_600SemiBold',
   body: 'Inter_400Regular',
   meta: 'Inter_500Medium',
   mono: 'JetBrainsMono_500Medium',
 };
 
 const VARIANT_CLASS: Record<AppTextVariant, string> = {
-  display: 'text-[32px] leading-[38px] tracking-display text-ink',
+  display: 'text-[34px] leading-[40px] tracking-display text-ink',
   title: 'text-[20px] leading-[26px] tracking-display text-ink',
+  section: 'text-[15px] leading-[20px] tracking-display text-ink',
   body: 'text-[16px] leading-[24px] text-ink-2',
   meta: 'text-[13px] leading-[18px] text-ink-3',
   mono: 'text-[14px] leading-[20px] text-ink-2',

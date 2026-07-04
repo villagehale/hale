@@ -36,37 +36,37 @@
 
 @theme {
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #f6f1e7;       /* canvas — primary background, 11.96:1 with Spruce */
-  --color-oat: #efe7d6;         /* card surface — secondary surface, soft panels */
-  --color-raised: #fdfbf6;      /* RAISED — lifted card, a warm near-white notch above oat */
-  --color-spruce: #01204F;      /* primary ink / night-section fill — 11.96:1 */
-  --color-slate-green: #33486b; /* secondary text, captions — 7.00:1 */
-  --color-faded-sage: #525f7d;  /* tertiary / meta / disclaimers — 5.19:1 on Oat (AA on every surface: Linen 5.67, Raised 6.17) */
+  --color-linen: #f6f6f4;       /* canvas — primary background, crisp off-white */
+  --color-oat: #ffffff;         /* card surface — secondary surface, soft panels */
+  --color-raised: #ffffff;      /* RAISED — lifted card */
+  --color-spruce: #0c1626;      /* primary ink / night-section fill */
+  --color-slate-green: #434c5c; /* secondary text, captions */
+  --color-faded-sage: #737c89;  /* tertiary / meta / disclaimers */
 
-  --color-apricot: #c8622d;       /* FILL ONLY — 3.56:1, sun & large graphics */
-  --color-apricot-deep: #a84e20;  /* text-safe accent: links, CTA fill — 4.94:1 */
-  --color-apricot-tint: #f5dcc6;  /* warm wash panel / pill — Spruce ink 10.22:1 */
+  --color-apricot: #e96a44;       /* FILL ONLY — coral, CTA & large graphics */
+  --color-apricot-deep: #b84a2a;  /* text-safe accent: links, CTA fill */
+  --color-apricot-tint: #fbe9e2;  /* warm wash panel / pill */
 
-  --color-sky: #7fb5c4;        /* calm secondary illustration — clouds, day fields */
-  --color-sky-deep: #2f6f86;   /* text-safe blue, coach tone — 4.99:1 */
-  --color-sky-tint: #cfe3e7;   /* color-block illustration wash — Spruce 10.13:1 */
+  --color-sky: #84bbd6;        /* calm secondary illustration — clouds, day fields */
+  --color-sky-deep: #2d6e8e;   /* text-safe blue, coach tone */
+  --color-sky-tint: #e1eff4;   /* color-block illustration wash */
 
-  --color-sea: #0a3d62;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
+  --color-sea: #01204f;        /* brand / turtle accent — Prussian */
 
-  --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
-  --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
+  --color-sage: #2f7d5b;       /* "done / handled" tone */
+  --color-sage-tint: #e4f1ea;  /* done-tone pill */
 
-  --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
-  --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
+  --color-berry: #c23b57;      /* "needs your eye" — sparing */
+  --color-berry-tint: #fbe4e9; /* soft attention pill */
 
-  /* Hairlines: warm spruce at low alpha */
-  --color-rule: rgb(1 32 79 / 0.10);
-  --color-rule-strong: rgb(1 32 79 / 0.20);
+  /* Hairlines: ink at low alpha */
+  --color-rule: rgb(12 22 38 / 0.08);
+  --color-rule-strong: rgb(12 22 38 / 0.14);
 
-  /* On-dark (Spruce night section) text alphas, Linen-based */
+  /* On-dark (Spruce night section) text alphas, ink-based */
   --color-on-spruce: #FEFEFE;
-  --color-on-spruce-soft: rgb(246 241 231 / 0.74);
-  --color-on-spruce-faint: rgb(246 241 231 / 0.50);
+  --color-on-spruce-soft: rgb(244 245 247 / 0.74);
+  --color-on-spruce-faint: rgb(244 245 247 / 0.50);
 
   /* ── Type — Inter for display + body, JetBrains Mono for data ─────────── *
    * --font-sans / --font-mono are injected by next/font in layout.tsx. */
@@ -110,36 +110,36 @@
  * Accents are lightened to hold AA on the dark ground (all text pairs verified
  * ≥ 4.5:1 against canvas, card, raised AND the Prussian chrome). */
 .dark {
-  --color-linen: #0b1626;        /* CANVAS — calm desaturated deep Prussian-charcoal */
-  --color-oat: #13233a;          /* CARD surface — one clear notch above canvas */
-  --color-raised: #1d3150;       /* RAISED — two notches up (interactive-card lift) */
-  --color-chrome: #021E4E;       /* CHROME ANCHOR — exact logo Prussian, app frame only */
-  --color-spruce: #f6f1e7;       /* primary ink — cream — 16.12:1 on canvas */
-  --color-slate-green: #c7d3e6;  /* secondary text — 12.00:1 on canvas */
-  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 8.22:1 on canvas */
+  --color-linen: #0c1420;        /* CANVAS — deep Prussian-charcoal */
+  --color-oat: #151e2c;          /* CARD surface — one clear notch above canvas */
+  --color-raised: #1c2636;       /* RAISED — two notches up (interactive-card lift) */
+  --color-chrome: #01204F;       /* CHROME ANCHOR — logo Prussian, app frame only */
+  --color-spruce: #f4f5f7;       /* primary ink */
+  --color-slate-green: #aeb5c1;  /* secondary text */
+  --color-faded-sage: #7b8390;   /* tertiary / meta */
 
-  --color-apricot: #e8915c;          /* large-graphic fill */
-  --color-apricot-deep: #e8915c;     /* text-safe accent — 7.46:1 on canvas, 5.37:1 on raised */
-  --color-apricot-tint: #2e2331;     /* warm-wash panel / active-nav ground (cream rides it) */
+  --color-apricot: #f4835f;          /* large-graphic fill */
+  --color-apricot-deep: #f4835f;     /* text-safe accent */
+  --color-apricot-tint: #2a211e;     /* warm-wash panel / active-nav ground */
 
-  --color-sky: #7fb5c4;
-  --color-sky-deep: #8fc1d1;     /* text-safe blue — 9.26:1 on canvas */
-  --color-sky-tint: #142b48;     /* illustration / pill wash */
+  --color-sky: #84bbd6;
+  --color-sky-deep: #84bbd6;     /* text-safe blue */
+  --color-sky-tint: #132838;     /* illustration / pill wash */
 
-  --color-sea: #6fb3c9;          /* turtle accent on dark */
+  --color-sea: #6fa8d8;          /* turtle accent on dark */
 
-  --color-sage: #a9c49a;         /* "done" tone — 9.55:1 on canvas */
-  --color-sage-tint: #18301f;
+  --color-sage: #7fc4a0;         /* "done" tone */
+  --color-sage-tint: #14291f;
 
-  --color-berry: #e09aaa;        /* "needs your eye" — 8.10:1 on canvas */
-  --color-berry-tint: #3a1f29;
+  --color-berry: #e293a5;        /* "needs your eye" */
+  --color-berry-tint: #301a22;
 
-  --color-rule: rgb(246 241 231 / 0.12);
-  --color-rule-strong: rgb(246 241 231 / 0.24);
+  --color-rule: rgb(244 245 247 / 0.10);
+  --color-rule-strong: rgb(244 245 247 / 0.18);
 
-  --color-on-spruce: #01204F;        /* "on ink" inverts to Prussian */
-  --color-on-spruce-soft: rgb(1 32 79 / 0.74);
-  --color-on-spruce-faint: rgb(1 32 79 / 0.50);
+  --color-on-spruce: #0c1420;        /* "on ink" inverts to canvas */
+  --color-on-spruce-soft: rgb(12 20 32 / 0.74);
+  --color-on-spruce-faint: rgb(12 20 32 / 0.50);
 
   color-scheme: dark;
 }

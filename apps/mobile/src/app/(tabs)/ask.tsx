@@ -36,7 +36,7 @@ function HaleBubble({ message, streaming }: { message: Message; streaming: boole
   const text = streaming ? shown : message.text;
   return (
     <View className="mb-3 max-w-[92%] self-start">
-      <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="meta" className="mb-1 text-ink-3">
         Hale
       </AppText>
       <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
@@ -149,7 +149,7 @@ export default function AskScreen() {
             )}
             {pending ? (
               <View className="mb-3 max-w-[92%] self-start">
-                <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
+                <AppText variant="meta" className="mb-1 text-ink-3">
                   Hale
                 </AppText>
                 <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
@@ -163,7 +163,7 @@ export default function AskScreen() {
         )}
 
         <View className="border-t border-rule bg-card px-5 pb-3 pt-3">
-          <AppText variant="meta" className="mb-1.5 uppercase tracking-eyebrow text-ink-3">
+          <AppText variant="meta" className="mb-1.5 text-ink-2">
             {voice.listening ? 'Listening…' : 'Ask a question'}
           </AppText>
           <View className="flex-row items-end gap-2">

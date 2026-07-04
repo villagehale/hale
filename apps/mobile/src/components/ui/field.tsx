@@ -14,7 +14,7 @@ export function Field({ label, hint, ...inputProps }: FieldProps) {
   const inputColor = useMeadowColor('ink');
   return (
     <View className="gap-1.5">
-      <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="meta" className="text-ink-2">
         {label}
       </AppText>
       <TextInput
