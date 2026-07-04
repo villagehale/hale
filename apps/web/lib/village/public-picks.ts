@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { type PublicActivity, toPublicActivity } from './public.js';
 import { visibleCandidates } from './visibility.js';
 
@@ -86,8 +87,10 @@ export async function loadSharedPicks(
     .limit(PUBLIC_PICKS_LIMIT);
 
   // Drop stale-run/past/out-of-season picks (matching the authed feed) before the
-  // family-wide filter + mapper — a shared page must not leak a passed event.
-  const activities = visibleCandidates(rows, new Date())
+  // family-wide filter + mapper — a shared page must not leak a passed event. The
+  // day-boundary/season use the SHARING family's own zone, not the server's (UTC).
+  const timeZone = await readFamilyTimezone(database, proposal.familyId);
+  const activities = visibleCandidates(rows, new Date(), timeZone)
     .filter((candidate) => candidate.childId === null)
     .map(toPublicActivity);
 

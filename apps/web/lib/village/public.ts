@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { visibleCandidates } from './visibility.js';
 
 /**
@@ -196,6 +197,10 @@ export async function loadSharedWeekPlan(
     .orderBy(desc(schema.villageCandidates.discoveredAt))
     .limit(PUBLIC_CANDIDATE_LIMIT);
 
+  // The day-boundary/season decisions use the SHARING family's own zone, so a
+  // shared page reads "today" in their local day, not the server's (UTC).
+  const timeZone = await readFamilyTimezone(database, proposal.proposalFamilyId);
+
   return toPublicWeekPlan({
     // Proposal jsonb items are never fetched on the public path — they carry
     // per-child stage notes (rule #1). The mapper surfaces only weekOf.
@@ -204,6 +209,6 @@ export async function loadSharedWeekPlan(
     // Drop superseded / stale-run / past / out-of-season picks before the mapper —
     // the same visibility contract the authed feed applies, so a shared page never
     // leaks last month's pile or an event that already happened.
-    candidates: visibleCandidates(candidates, new Date()),
+    candidates: visibleCandidates(candidates, new Date(), timeZone),
   });
 }

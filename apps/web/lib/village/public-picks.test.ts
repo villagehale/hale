@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadSharedPicks } from './public-picks.js';
 
 const FAMILY_ID = 'fam-uuid';
@@ -136,4 +136,26 @@ describe('loadSharedPicks — public endorsed shortlist (rule #1)', () => {
 
     expect(picks?.activities.map((a) => a.title)).toEqual(['Fresh endorsed swim']);
   });
+
+  it('applies the SHARING family timezone to the dated-event day boundary (not UTC/Toronto)', async () => {
+    // 01:30 Jul 4 in Toronto is still 22:30 Jul 3 in Vancouver: a Jul-3 event has
+    // passed under Toronto's local day but is "today" under Vancouver's — it
+    // survives ONLY because the sharing family's tz threads into visibleCandidates.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-04T05:30:00Z'));
+    const { db } = fakeDb([
+      [{ familyId: FAMILY_ID, areaCoarse: 'M4L' }],
+      [endorsedFamilyWide({ title: 'Vancouver Jul 3 fair', eventDate: '2026-07-03' })],
+      // the sharing family's timezone row (readFamilyTimezone's third select)
+      [{ timezone: 'America/Vancouver' }],
+    ]);
+
+    const picks = await loadSharedPicks(TOKEN, db);
+
+    expect(picks?.activities.map((a) => a.title)).toEqual(['Vancouver Jul 3 fair']);
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
