@@ -78,6 +78,14 @@ describe('VillageSearch — list↔map toggle', () => {
     expect(html).toContain('min-h-[44px]');
     expect(html).toContain('touch-action:manipulation');
   });
+
+  it('carries the same social-proof badge as the home feed on a list row', () => {
+    // The list row and the home card are ONE ActivityCard contract, so a
+    // well-endorsed row shows the aggregate badge the feed shows — the row is no
+    // longer the odd surface that drops it.
+    const html = render([view({ id: 'a', endorsementCount: 4 })]);
+    expect(html).toContain('loved by 4 families near you');
+  });
 });
 
 describe('the map never over-exposes a teen-redacted candidate (rule #1)', () => {

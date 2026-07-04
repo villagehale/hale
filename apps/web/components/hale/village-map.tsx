@@ -1,16 +1,12 @@
 'use client';
 
 import { MapPin } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '~/components/ui/icon';
-import { villageKindLabel } from '~/lib/format/labels';
 import { loadMapsLibrary } from '~/lib/onboarding/load-places';
 import { type LatLng, buildVillageMapModel } from '~/lib/village/map-model';
 import type { VillageCandidateView } from '~/lib/village/mappers';
-import { AcceptButton } from './accept-button';
-import { EndorseButton } from './endorse-button';
-import { RegisterLink } from './register-link';
-import { ShareButton } from './share-button';
+import { ActivityCard } from './activity-card';
 
 /**
  * The spatial companion to the agent-ranked village feed. Renders ONE Google Maps
@@ -77,7 +73,6 @@ export function VillageMap({
   const mapRef = useRef<MapInstance | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const panelId = useId();
 
   const model = useMemo(
     () => buildVillageMapModel(candidates, coarseCenter),
@@ -179,45 +174,12 @@ export function VillageMap({
       </p>
 
       {selected && !selected.teenAttributed ? (
-        <section id={panelId} className="panel bg-raised flex flex-col gap-4">
-          <div className="flex items-baseline justify-between gap-4">
-            <p className="eyebrow text-spruce">{villageKindLabel(selected.kind) ?? ''}</p>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => setSelectedId(null)}
-              aria-label="close activity"
-            >
-              close
-            </button>
-          </div>
-          <h3 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight text-spruce">
-            {selected.title}
-          </h3>
-          {selected.venueName ? (
-            <p className="meta text-slate-green">{selected.venueName}</p>
-          ) : null}
-          {selected.summary ? (
-            <p className="text-lg text-spruce leading-relaxed">{selected.summary}</p>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 pt-1">
-            <AcceptButton href={selected.acceptHref} initiallyAccepted={selected.accepted} />
-            <RegisterLink sourceUrl={selected.sourceUrl} title={selected.title} area={area} />
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
-              <EndorseButton
-                endpoint={selected.endorseHref}
-                initiallyEndorsed={selected.endorsedByFamily}
-                initialCount={selected.endorsementCount}
-              />
-              <ShareButton
-                endpoint={selected.shareHref}
-                label="share this pick"
-                shareTitle={selected.title}
-                variant="ghost"
-              />
-            </div>
-          </div>
-        </section>
+        <ActivityCard
+          candidate={selected}
+          variant="panel"
+          area={area}
+          onClose={() => setSelectedId(null)}
+        />
       ) : null}
     </div>
   );
