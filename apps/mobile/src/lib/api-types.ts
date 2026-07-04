@@ -57,8 +57,19 @@ export interface RecentLogView {
 
 export interface VillageCandidateView {
   id: string;
+  /** Opaque child id this pick was discovered for, or null for a family-wide pick
+   * (mirrors web; an id, never a name — rule #1). */
+  childId: string | null;
   title: string;
   kind: string;
+  /** How the activity recurs — "seasonal" | "one-time" | "ongoing" — or null when
+   * unclassified / teen-redacted. Drives the cadence filter + card chip. */
+  cadence: string | null;
+  /** Seasons a seasonal activity runs (the server already applied the in-season
+   * gate); null on non-seasonal / teen-redacted rows. */
+  seasons: string[] | null;
+  /** ISO instant the discovery run happened — rendered as a "found N ago" stamp. */
+  discoveredAt: string;
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
