@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { schema, type Database } from '@hale/db';
 import type {
   EventType,
@@ -1227,6 +1227,15 @@ export interface DiscoveryCandidateWrite {
   source: string;
   confidence: number;
   coverageNote?: string;
+  /** How the activity recurs — "seasonal" | "one-time" | "ongoing". Optional:
+   * a provider that does not classify cadence leaves it null (no chip). */
+  cadence?: string;
+  /** ISO YYYY-MM-DD of a dated one-time event, so the feed can drop past events.
+   * Null for ongoing/undated candidates — never fabricated. */
+  eventDate?: string;
+  /** Which seasons a seasonal activity runs, so the feed can hide out-of-season
+   * candidates. Null for one-time/ongoing. */
+  seasons?: string[];
   /** Null = family-wide; otherwise the attributed child (already validated). */
   childId: string | null;
 }
@@ -1252,6 +1261,19 @@ export async function recordDiscovery(
     return { insertedCount: 0 };
   }
   return recordTransition<{ insertedCount: number }>(async (tx) => {
+    // REPLACE, don't accumulate: soft-retire this family's prior active set so a
+    // fresh discovery run swaps in. Soft (not DELETE) so an endorsed / shared
+    // candidate survives for its public /a/:token page; the live feed filters
+    // superseded_at IS NULL. Sets ONLY superseded_at — never clears shareToken.
+    await tx
+      .update(schema.villageCandidates)
+      .set({ supersededAt: new Date() })
+      .where(
+        and(
+          eq(schema.villageCandidates.familyId, input.familyId),
+          isNull(schema.villageCandidates.supersededAt),
+        ),
+      );
     await tx.insert(schema.villageCandidates).values(
       input.candidates.map((c) => ({
         familyId: input.familyId,
@@ -1263,6 +1285,9 @@ export async function recordDiscovery(
         source: c.source,
         confidence: c.confidence,
         coverageNote: c.coverageNote,
+        cadence: c.cadence,
+        eventDate: c.eventDate,
+        seasons: c.seasons,
       })),
     );
     return {

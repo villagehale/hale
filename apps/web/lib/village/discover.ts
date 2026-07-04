@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type Database, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
@@ -76,12 +76,16 @@ export const DISCOVERY_LIMIT = 8;
 
 export const DISCOVERY_TOOL = 'submit_candidates';
 
+const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
+
 export const candidatesSchema = z.object({
   candidates: z.array(
     z.object({
       title: z.string(),
       description: z.string(),
       cadence: z.enum(['seasonal', 'one-time', 'ongoing']).optional(),
+      eventDate: z.string().optional(),
+      seasons: z.array(z.enum(SEASONS)).optional(),
       sourceUrl: z.string().optional(),
       confidence: z.number().min(0).max(1),
       coverageNote: z.string(),
@@ -100,6 +104,8 @@ export const candidatesJsonSchema = {
           title: { type: 'string' },
           description: { type: 'string' },
           cadence: { type: 'string', enum: ['seasonal', 'one-time', 'ongoing'] },
+          eventDate: { type: 'string' },
+          seasons: { type: 'array', items: { type: 'string', enum: [...SEASONS] } },
           sourceUrl: { type: 'string' },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           coverageNote: { type: 'string' },
@@ -285,6 +291,20 @@ export async function discoverForFamily(
       );
 
       await database.transaction(async (tx) => {
+        // REPLACE, don't accumulate: soft-retire this family's prior active set so
+        // "find fresh activities" swaps in the new run. A soft stamp (not DELETE)
+        // keeps endorsed / shared candidates alive for their public /a/:token page
+        // (rule #6 audit + the share token both survive); the live feed filters
+        // superseded_at IS NULL. Sets ONLY superseded_at — never clears shareToken.
+        await tx
+          .update(schema.villageCandidates)
+          .set({ supersededAt: new Date() })
+          .where(
+            and(
+              eq(schema.villageCandidates.familyId, familyId),
+              isNull(schema.villageCandidates.supersededAt),
+            ),
+          );
         await tx.insert(schema.villageCandidates).values(
           candidates.map((c, i) => {
             const coords = geocoded[i];
@@ -307,6 +327,8 @@ export async function discoverForFamily(
               source: SOURCE,
               confidence: c.confidence,
               coverageNote: c.coverageNote,
+              eventDate: c.eventDate ?? null,
+              seasons: c.seasons ?? null,
               lat: coords?.lat ?? null,
               lng: coords?.lng ?? null,
               venueName: coords?.venueName ?? null,

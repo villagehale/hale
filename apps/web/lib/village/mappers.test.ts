@@ -31,6 +31,9 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     venueName: 'Riverdale Community Centre',
     venueAddress: '123 Broadview Ave, Toronto, ON',
     shareToken: null,
+    eventDate: null,
+    seasons: null,
+    supersededAt: null,
     discoveredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
   };

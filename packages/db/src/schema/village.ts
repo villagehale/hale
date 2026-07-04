@@ -57,6 +57,19 @@ export const villageCandidates = pgTable(
      * opts to share this one pick. UNIQUE so the token alone resolves the row. It
      * carries no child or parent identity. */
     shareToken: text('share_token').unique(),
+    /** Calendar date of a one-time (or dated seasonal) event, so the feed can
+     * drop events already in the past. Null for ongoing options and anything the
+     * source did not date — the model never fabricates one (rule: honest sourcing). */
+    eventDate: date('event_date'),
+    /** Which seasons a seasonal activity runs — a set drawn from
+     * 'spring'|'summer'|'fall'|'winter' — so the feed can hide out-of-season
+     * candidates. Null for one-time/ongoing and unclassified rows. */
+    seasons: text('seasons').array(),
+    /** Stamped when a newer discovery run replaces this family's set: the row is
+     * soft-retired (the live feed filters superseded_at IS NULL) rather than
+     * hard-deleted, so an endorsed / shared candidate survives for its public
+     * /a/:token page. Null = still part of the active set. */
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
     discoveredAt: timestamp('discovered_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 import { listFamilyAcceptedCandidateIds } from './accept';
@@ -62,7 +62,12 @@ export async function readVillage(database: Database, familyId: string): Promise
   const candidateRows = await database
     .select()
     .from(schema.villageCandidates)
-    .where(eq(schema.villageCandidates.familyId, familyId))
+    .where(
+      and(
+        eq(schema.villageCandidates.familyId, familyId),
+        isNull(schema.villageCandidates.supersededAt),
+      ),
+    )
     .orderBy(
       desc(schema.villageCandidates.confidence),
       desc(schema.villageCandidates.discoveredAt),
