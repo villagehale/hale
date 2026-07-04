@@ -18,6 +18,8 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
     title: `title-${overrides.id}`,
     kind: 'class',
     cadence: null,
+    seasons: null,
+    discoveredAt: '2026-07-04T12:00:00.000Z',
     summary: '',
     coverageNote: null,
     sourceUrl: null,

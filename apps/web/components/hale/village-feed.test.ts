@@ -20,6 +20,8 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
     title: `title-${overrides.id}`,
     kind: 'class',
     cadence: null,
+    seasons: null,
+    discoveredAt: '2026-07-04T12:00:00.000Z',
     summary: `summary-${overrides.id}`,
     coverageNote: null,
     sourceUrl: null,
@@ -88,6 +90,14 @@ describe('VillageFeed — renders the agent-ranked, social-proof-rich feed', () 
     expect(none).not.toContain('seasonal');
     expect(none).not.toContain('one-time');
     expect(none).not.toContain('>ongoing<');
+  });
+
+  it('stamps each card with how fresh the run is ("found …")', () => {
+    // The freshness stamp lives on the card's discoveredAt, so the family reads how
+    // current the run is. Today's fixture → "found today".
+    const today = new Date().toISOString();
+    const html = renderFeed([view({ id: 'f', discoveredAt: today })]);
+    expect(html).toContain('found today');
   });
 
   it('renders a teen-attributed card locked — never its raw text or actions (rule #1)', () => {

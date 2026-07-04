@@ -21,6 +21,8 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
     title: `title-${overrides.id}`,
     kind: 'class',
     cadence: null,
+    seasons: null,
+    discoveredAt: '2026-07-04T12:00:00.000Z',
     summary: `summary-${overrides.id}`,
     coverageNote: null,
     sourceUrl: null,
@@ -85,6 +87,23 @@ describe('VillageSearch — list↔map toggle', () => {
     // longer the odd surface that drops it.
     const html = render([view({ id: 'a', endorsementCount: 4 })]);
     expect(html).toContain('loved by 4 families near you');
+  });
+});
+
+describe('VillageSearch — cadence filter', () => {
+  it('offers an all/one-time/seasonal/year-round filter over the feed', () => {
+    const html = render([view({ id: 'a', cadence: 'ongoing' })]);
+    const group =
+      html.match(/<fieldset[^>]*aria-label="filter activities by cadence"[\s\S]*?<\/fieldset>/)?.[0] ??
+      '';
+    expect(group).not.toBe('');
+    // The four chips, "all" pressed by default (no narrowing on first paint).
+    for (const label of ['all', 'one-time', 'seasonal', 'year-round']) {
+      expect(group).toContain(label);
+    }
+    const pressedAll = group.match(/aria-pressed="true"[\s\S]*?<\/button>/)?.[0] ?? '';
+    expect(pressedAll).toMatch(/all<\/button>$/);
+    expect(group.match(/aria-pressed="true"/g)?.length).toBe(1);
   });
 });
 

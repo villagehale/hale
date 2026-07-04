@@ -11,6 +11,7 @@ import {
   toRoutineProposalView,
   toVillageCandidateView,
 } from './mappers';
+import { orderByDate, visibleCandidates } from './visibility';
 
 /**
  * Mirrors dashboard/queries.ts: the village page runs both in a credential-less
@@ -59,7 +60,7 @@ export async function readVillage(database: Database, familyId: string): Promise
     children.filter((c) => deriveStage(c.dateOfBirth) === 'teenager').map((c) => c.id),
   );
 
-  const candidateRows = await database
+  const currentRunRows = await database
     .select()
     .from(schema.villageCandidates)
     .where(
@@ -72,6 +73,12 @@ export async function readVillage(database: Database, familyId: string): Promise
       desc(schema.villageCandidates.confidence),
       desc(schema.villageCandidates.discoveredAt),
     );
+
+  // Drop past dated events, out-of-season seasonal picks, and an expired (stale)
+  // run — all at the one visibility primitive — then float dated picks to the top
+  // soonest-first so a time-boxed event reads before the standing options. The
+  // confidence order the DB applied is preserved within each group (stable sort).
+  const candidateRows = orderByDate(visibleCandidates(currentRunRows, new Date()));
 
   const routineRows = await database
     .select()

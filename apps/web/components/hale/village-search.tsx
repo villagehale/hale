@@ -7,7 +7,12 @@ import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
 import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
 import type { LatLng } from '~/lib/village/map-model';
-import { type VillageCandidateView, filterCandidatesByScope } from '~/lib/village/mappers';
+import {
+  type CadenceFilter,
+  type VillageCandidateView,
+  filterCandidatesByCadence,
+  filterCandidatesByScope,
+} from '~/lib/village/mappers';
 
 /**
  * Client-side search/filter over the already-loaded village candidates, with a
@@ -36,14 +41,16 @@ export function VillageSearch({
   const inputId = useId();
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<string | null>(null);
+  const [cadence, setCadence] = useState<CadenceFilter>('all');
   const [view, setView] = useState<View>('list');
 
   const filtered = useMemo(() => {
-    const scoped = filterCandidatesByScope(candidates, scope);
+    const byCadence = filterCandidatesByCadence(candidates, cadence);
+    const scoped = filterCandidatesByScope(byCadence, scope);
     const q = query.trim().toLowerCase();
     if (!q) return scoped;
     return scoped.filter((c) => `${c.title} ${c.kind} ${c.summary}`.toLowerCase().includes(q));
-  }, [candidates, query, scope]);
+  }, [candidates, query, scope, cadence]);
 
   return (
     <div>
@@ -110,6 +117,8 @@ export function VillageSearch({
         </fieldset>
       </div>
 
+      <CadenceFilterChips value={cadence} onChange={setCadence} />
+
       {view === 'map' ? (
         <VillageMap candidates={filtered} coarseCenter={coarseCenter} area={area} />
       ) : null}
@@ -136,5 +145,51 @@ export function VillageSearch({
       )}
       </div>
     </div>
+  );
+}
+
+/** The four cadence selections, in feed order: everything, then the time-boxed
+ * shapes (one-time, seasonal) before the standing option (year-round, the human
+ * label for the stored `ongoing`). A stored token never renders raw (rule #1). */
+const CADENCE_OPTIONS: ReadonlyArray<{ value: CadenceFilter; label: string }> = [
+  { value: 'all', label: 'all' },
+  { value: 'one-time', label: 'one-time' },
+  { value: 'seasonal', label: 'seasonal' },
+  { value: 'year-round', label: 'year-round' },
+];
+
+/** Client-side cadence narrowing over the already-visibility-filtered feed — a
+ * display selector, no request and no new signal (rule #1). Matches the view
+ * toggle's segmented-control treatment (44px targets, active spruce fill). */
+function CadenceFilterChips({
+  value,
+  onChange,
+}: {
+  value: CadenceFilter;
+  onChange: (next: CadenceFilter) => void;
+}) {
+  return (
+    <fieldset
+      className="mb-10 lg:mb-12 flex flex-wrap gap-1 rounded-[var(--r-full)] border border-rule-strong p-1"
+      aria-label="filter activities by cadence"
+    >
+      {CADENCE_OPTIONS.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.value)}
+            className={`inline-flex min-h-[44px] items-center rounded-[var(--r-full)] px-4 cursor-pointer transition-colors ${
+              active ? 'bg-spruce text-on-spruce' : 'text-slate-green'
+            }`}
+            style={{ touchAction: 'manipulation' }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </fieldset>
   );
 }

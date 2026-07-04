@@ -32,7 +32,7 @@ export async function HomeVillageFeed() {
             and drop-ins near you worth a look — then rank them for your family.
           </p>
           <div className="pt-2">
-            <FindActivitiesButton />
+            <FindActivitiesButton label="find this week's activities" />
           </div>
         </div>
       )}
@@ -53,7 +53,7 @@ export async function VillageCandidates() {
           and drop-ins near you worth a look.
         </p>
         <div className="mt-8">
-          <FindActivitiesButton />
+          <FindActivitiesButton label="find this week's activities" />
         </div>
       </section>
     );

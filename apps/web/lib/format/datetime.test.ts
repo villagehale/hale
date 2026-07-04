@@ -8,6 +8,7 @@ import {
   formatLongDate,
   formatTime,
   formatWhenPhrase,
+  foundStamp,
 } from './datetime.js';
 
 /**
@@ -156,6 +157,31 @@ describe('formatDayHeading — the human day heading for a grouped section', () 
     expect(formatDayHeading('2026-06-12T05:00:00Z', 'America/Vancouver', NOW)).toBe(
       'Thursday, Jun 11',
     );
+  });
+});
+
+describe('foundStamp — a run-freshness phrase in local days', () => {
+  const NOW = new Date('2026-07-04T12:00:00Z'); // Toronto: 08:00 Jul 4
+
+  it('reads "found today" for a same-day run and for a future (skewed) stamp', () => {
+    expect(foundStamp('2026-07-04T13:00:00Z', 'America/Toronto', NOW)).toBe('found today');
+    expect(foundStamp('2026-07-05T00:00:00Z', 'America/Toronto', NOW)).toBe('found today');
+  });
+
+  it('reads "found yesterday" one local day back', () => {
+    expect(foundStamp('2026-07-03T18:00:00Z', 'America/Toronto', NOW)).toBe('found yesterday');
+  });
+
+  it('counts local days for older runs', () => {
+    expect(foundStamp('2026-06-24T12:00:00Z', 'America/Toronto', NOW)).toBe('found 10 days ago');
+  });
+
+  it('counts by the render zone, not UTC, near the day boundary', () => {
+    // 2026-07-03 03:30 UTC is Jul 2 (23:30) in Toronto but Jul 3 in UTC — the
+    // Toronto count is one day larger, proving the zone drives the day math.
+    const boundary = '2026-07-03T03:30:00Z';
+    expect(foundStamp(boundary, 'America/Toronto', NOW)).toBe('found 2 days ago');
+    expect(foundStamp(boundary, 'UTC', NOW)).toBe('found yesterday');
   });
 });
 
