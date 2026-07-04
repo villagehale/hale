@@ -8,7 +8,11 @@ import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { recordConsent } from '~/lib/consent';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
-import { type LocationInput, normalizeLocation } from '~/lib/family/location-input';
+import {
+  type LocationInput,
+  isOnboardingRegionSupported,
+  normalizeLocation,
+} from '~/lib/family/location-input';
 import { type ChildInput, type ValidatedChild, validateChild } from './children';
 import { provisionAndWriteChildren } from './persist';
 import { type WelcomeDeps, sendWelcomeEmail } from './send-welcome';
@@ -70,6 +74,7 @@ export interface CompleteOnboardingInput {
 export type CompleteOnboardingResult =
   | { status: 'completed'; familyId: string }
   | { status: 'preview' }
+  | { status: 'region_unavailable' }
   | { status: 'invalid'; error: string };
 
 export async function completeOnboarding(
@@ -117,6 +122,13 @@ export async function completeOnboarding(
 
   const existingFamilyId = await resolveFamilyForUser(externalAuthId, database);
   const location = normalizeLocation(input.location ?? {});
+  // Compliance gate (hard rule #1): Hale is cleared to onboard Canada only. An
+  // explicit non-Canadian country is blocked HERE — before any child PII (a full
+  // DOB) is persisted — until that market's GDPR/COPPA + data residency are in
+  // place. Broadening is a deliberate per-market program, never an assumption.
+  if (!isOnboardingRegionSupported(location.country)) {
+    return { status: 'region_unavailable' };
+  }
   const intents = parseIntents(input.intents ?? []);
   const familyUpdate = {
     planTier: input.planTier,

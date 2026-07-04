@@ -254,6 +254,14 @@ export function OnboardingWizard({
       });
       return;
     }
+    if (result.status === 'region_unavailable') {
+      setSetupState({
+        kind: 'error',
+        message:
+          "Hale isn't available in your region yet — we're expanding beyond Canada soon, and nothing was saved.",
+      });
+      return;
+    }
     setSetupState({
       kind: 'error',
       message: describeCompleteOnboardingError(result.error),

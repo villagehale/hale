@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeLocation } from './location-input.js';
+import { isOnboardingRegionSupported, normalizeLocation } from './location-input.js';
+
+describe('isOnboardingRegionSupported (Canada-only onboarding gate, hard rule #1)', () => {
+  it('accepts Canada by name/alias (case-insensitive) and a null (unspecified) country', () => {
+    for (const c of ['Canada', ' canada ', 'CA', 'can', 'CANADA', null]) {
+      expect(isOnboardingRegionSupported(c)).toBe(true);
+    }
+  });
+
+  it('blocks an explicit non-Canadian country until that market is cleared', () => {
+    for (const c of ['United States', 'USA', 'US', 'United Kingdom', 'Australia', 'France']) {
+      expect(isOnboardingRegionSupported(c)).toBe(false);
+    }
+  });
+});
 
 describe('normalizeLocation', () => {
   it('trims each field and derives areaCoarse from the Canadian FSA (rule #1: coarse)', () => {
