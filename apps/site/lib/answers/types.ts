@@ -42,6 +42,13 @@ export interface AnswerPage {
   stage: FamilyStage;
   /** The direct answer, shown up top and used as the FAQPage lead answer. */
   answer: string;
+  /**
+   * The "Key takeaways" block near the top of the page: 2–4 short, self-contained,
+   * attributed sentences that stand on their own out of context — written to be
+   * quoted verbatim by an answer engine (ChatGPT/Perplexity/AI Overviews) without
+   * needing the surrounding page. Each must trace to the page's cited sources.
+   */
+  keyTakeaways: string[];
   sections: AnswerSection[];
   /** Every claim's grounding. Rendered as the "Sources" list and Article JSON-LD. */
   citations: AnswerCitation[];

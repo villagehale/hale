@@ -92,6 +92,26 @@ export default async function AnswerRoute({ params }: PageProps) {
             General guidance, last reviewed {page.updated} — not medical advice.
           </p>
 
+          <section aria-labelledby="key-takeaways" className="panel-oat mt-8 px-6 py-6 sm:px-8 rise rise-2">
+            <h2 id="key-takeaways" className="eyebrow" style={{ marginBottom: 0 }}>
+              Key takeaways
+            </h2>
+            <ul className="mt-4 flex flex-col gap-3">
+              {page.keyTakeaways.map((takeaway) => (
+                <li
+                  key={takeaway.slice(0, 48)}
+                  className="flex gap-3"
+                  style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}
+                >
+                  <span aria-hidden="true" style={{ color: 'var(--color-apricot)' }}>
+                    —
+                  </span>
+                  <span>{takeaway}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
           <div className="mt-12 flex flex-col gap-12">
             {page.sections.map((section) => (
               <section key={section.heading} className="rise rise-2">
