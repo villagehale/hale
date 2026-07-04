@@ -49,8 +49,8 @@ export async function VillageCandidates() {
           a quiet week, for now.
         </p>
         <p className="meta mt-4 text-slate-green">
-          no data yet — tell me your area and what your kids love, and I&rsquo;ll gather the
-          classes, groups, and drop-ins near you worth a look.
+          tell Hale your area and what your kids love, and it&rsquo;ll gather the classes, groups,
+          and drop-ins near you worth a look.
         </p>
         <div className="mt-8">
           <FindActivitiesButton />

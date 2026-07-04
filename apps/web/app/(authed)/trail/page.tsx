@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { PageCorner } from '~/components/hale/page-corner';
 import { TrailTimeline } from '~/components/hale/trail-timeline';
 import { ExportDataButton } from '~/components/hale/export-data-button';
@@ -54,14 +55,19 @@ export default async function TrailPage() {
 
       {/* ── Filters + timeline ─────────────────────────────────────────── */}
       {entries.length === 0 ? (
-        <section className="rise rise-4 panel-oat px-6 py-12 lg:py-16 text-center">
+        <section className="rise rise-4 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
             nothing on the record yet.
           </p>
-          <p className="meta mt-4 text-slate-green">
-            no data yet — connect a data source and every action, by Hale or by
-            you, lands here in an unbroken, exportable line.
+          <p className="meta text-slate-green max-w-xl mx-auto">
+            connect a calendar or inbox and every action, by Hale or by you, lands here in an
+            unbroken, exportable line.
           </p>
+          <div className="pt-2">
+            <Link href="/settings" className="btn-primary">
+              connect a source →
+            </Link>
+          </div>
         </section>
       ) : (
         <TrailTimeline entries={entries} />

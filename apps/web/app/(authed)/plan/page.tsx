@@ -5,6 +5,7 @@ import { ChildTag } from '~/components/hale/child-tag';
 import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { PageCorner } from '~/components/hale/page-corner';
+import { PrivacyNote } from '~/components/hale/privacy-note';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
@@ -168,7 +169,7 @@ export default async function PlanPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
             <div className="lg:col-span-3">
               <span className="eyebrow text-spruce">a gentle routine</span>
-              <p className="meta mt-2">week of {routine.weekOf}</p>
+              <p className="meta mt-2">week of {formatCalendarDate(routine.weekOf)}</p>
               <div className="mt-5">
                 <ShareWeekButton />
               </div>
@@ -244,14 +245,8 @@ export default async function PlanPage() {
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
         <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
-          {[
-            'always confirm health and milestones with your provider',
-            "your family's data stays in canada · pipeda",
-          ].map((note) => (
-            <span key={note} className="meta">
-              {note}
-            </span>
-          ))}
+          <span className="meta">always confirm health and milestones with your provider</span>
+          <PrivacyNote />
         </div>
 
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">

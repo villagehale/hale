@@ -1,7 +1,9 @@
 import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PageCorner } from '~/components/hale/page-corner';
+import { PrivacyNote } from '~/components/hale/privacy-note';
 import { VillageCandidates, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
+import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -39,7 +41,7 @@ export default async function VillagePage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-8">
             <div className="lg:col-span-3">
               <span className="eyebrow">a gentle routine</span>
-              <p className="meta mt-2">week of {routine.weekOf}</p>
+              <p className="meta mt-2">week of {formatCalendarDate(routine.weekOf)}</p>
             </div>
             <div className="lg:col-span-9 space-y-5">
               {routine.items.map((item, idx) => {
@@ -76,14 +78,10 @@ export default async function VillagePage() {
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
         <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
-          {[
-            'only your coarse area is ever used · never a precise location',
-            "your family's data stays in canada · pipeda",
-          ].map((note) => (
-            <span key={note} className="meta">
-              {note}
-            </span>
-          ))}
+          <span className="meta">
+            Hale only ever uses your neighbourhood, never your exact address.
+          </span>
+          <PrivacyNote />
         </div>
 
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">

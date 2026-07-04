@@ -629,8 +629,7 @@ function CompactSurface({
           ask Hale anything.
         </p>
         <output className="dev-preview-banner">
-          Sign in to ask Hale. In development preview (auth not configured) the ask box is read-only
-          — no question is sent and no model is called.
+          Sign in to ask Hale. In this preview the ask box is read-only — no question is sent.
         </output>
       </div>
     );
@@ -839,8 +838,7 @@ function FullSurface({
             </div>
           ) : (
             <output className="dev-preview-banner">
-              Sign in to ask Hale. In development preview (auth not configured) the thread is
-              read-only — no question is sent and no model is called.
+              Sign in to ask Hale. In this preview the thread is read-only — no question is sent.
             </output>
           )}
         </div>

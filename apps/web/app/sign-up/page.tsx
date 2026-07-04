@@ -16,9 +16,7 @@ export default function SignUpPage() {
   if (!google && !credentials) {
     return (
       <AuthShell heading="Join the village">
-        <p className="meta">
-          Sign-up isn&rsquo;t available in this preview — no auth provider is configured here.
-        </p>
+        <p className="meta">Sign-up isn&rsquo;t available in this preview yet.</p>
       </AuthShell>
     );
   }

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 /**
  * The Approvals page header — state-adaptive, because the pending count IS the
  * information. With nothing pending it reads "all clear" and IS the empty state
@@ -32,8 +34,11 @@ export function ApprovalsHeader({ pendingCount }: { pendingCount: number }) {
                 all clear<span className="text-apricot-deep">.</span>
               </h1>
               <p className="meta mt-4 text-slate-green max-w-prose">
-                when a signal comes in, Hale parks it here for your approval.
+                Nothing is waiting on you. When Hale drafts something, it parks it here for your yes.
               </p>
+              <Link href="/trail" className="link mt-4 inline-block">
+                see what Hale has taken care of →
+              </Link>
             </>
           )}
         </div>

@@ -35,6 +35,7 @@ export function nextTabIndex(key: string, active: number, count: number): number
 }
 
 function agePhrase(ageMonths: number): string {
+  if (ageMonths === 0) return 'under a month';
   if (ageMonths < 24) return `${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
   const years = Math.floor(ageMonths / 12);
   return `${years} ${years === 1 ? 'year' : 'years'}`;
@@ -48,11 +49,12 @@ function duePhrase(dueInWeeks: number): string {
   return `in ~${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
-/** "was due at 4 months" — the age a passed health item was scheduled for. */
+/** "scheduled at 4 months" — the age a passed health item was set for. Warm, not
+ * "overdue": a passed checkup is a gentle nudge, never a failing grade. */
 function passedAtPhrase(ageMonths: number): string {
-  if (ageMonths < 24) return `was due at ${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
+  if (ageMonths < 24) return `scheduled at ${ageMonths} ${ageMonths === 1 ? 'month' : 'months'}`;
   const years = Math.floor(ageMonths / 12);
-  return `was due at ${years} ${years === 1 ? 'year' : 'years'}`;
+  return `scheduled at ${years} ${years === 1 ? 'year' : 'years'}`;
 }
 
 /**

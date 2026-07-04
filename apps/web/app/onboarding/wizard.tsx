@@ -17,6 +17,7 @@ import { HomeAddress } from '~/components/hale/home-address';
 import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { OnboardingPlanPicker } from '~/components/hale/onboarding-plan-picker';
+import { PrivacyNote } from '~/components/hale/privacy-note';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { TosAgreement } from '~/components/hale/tos-agreement';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
@@ -403,7 +404,7 @@ export function OnboardingWizard({
                     continue →
                   </button>
                 </div>
-                <p className="meta">pipeda · law 25 · casl compliant by default</p>
+                <PrivacyNote />
               </section>
             ) : null}
 
@@ -441,7 +442,7 @@ export function OnboardingWizard({
                   ) : null}
                   . Now each child&rsquo;s details and your home address, so I can tailor
                   precisely and find things nearby — this is the first thing that gets
-                  saved, encrypted, to your family. I keep only the coarse area for
+                  saved, encrypted, to your family. Hale uses only your neighbourhood for
                   discovery; the full address stays private for booking.
                 </p>
 

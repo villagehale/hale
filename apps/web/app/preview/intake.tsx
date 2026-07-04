@@ -166,7 +166,7 @@ export function PreviewIntake() {
               autoComplete="off"
             />
             <p className="meta mt-2">
-              just a coarse area — a city or postal prefix. never a precise address.
+              just your neighbourhood — a city or postal prefix. never a precise address.
             </p>
           </div>
 
@@ -193,7 +193,12 @@ export function PreviewIntake() {
             ← back
           </Link>
         </div>
-        <p className="meta">pipeda · law 25 · nothing saved until you create an account</p>
+        <p className="meta">
+          Built to Canada&rsquo;s privacy laws · nothing saved until you create an account.{' '}
+          <Link href="/privacy" className="link">
+            How Hale protects your data
+          </Link>
+        </p>
       </section>
 
       {result.kind === 'ready' ? (
