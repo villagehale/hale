@@ -299,7 +299,7 @@ function AuthoredPlanCard({ plan, settled }: { plan: AuthoredPlanView; settled?:
             <ChildTag childId={plan.childId} label={plan.childName} />
             {when ? <span className="meta text-slate-green">{when}</span> : null}
           </div>
-          <DeletePlanButton planId={plan.id} />
+          <DeletePlanButton planId={plan.id} label={plan.title} />
         </div>
         <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
           {plan.title}
@@ -312,7 +312,7 @@ function AuthoredPlanCard({ plan, settled }: { plan: AuthoredPlanView; settled?:
       </div>
       {!settled ? (
         <div className="mt-4">
-          <CompletePlanButton planId={plan.id} alreadyDone={done} />
+          <CompletePlanButton planId={plan.id} alreadyDone={done} label={plan.title} />
         </div>
       ) : null}
     </Card>

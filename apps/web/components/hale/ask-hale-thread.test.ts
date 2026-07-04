@@ -106,4 +106,41 @@ describe('AskHaleThread — full surface', () => {
     expect(html).toContain('one ongoing conversation, grounded in your family');
     expect(html).toContain('how are naps going?');
   });
+
+  it('announces via a discrete status node, not by making the transcript a live region', () => {
+    const html = render(
+      seed([
+        msg({ id: 'a', role: 'user', content: 'when do solids start?' }),
+        msg({ id: 'b', role: 'assistant', content: 'Around six months.' }),
+      ]),
+    );
+    // Exactly one polite live region — the sr-only <output> status node (an
+    // <output> has an implicit role=status) — and it is NOT the transcript wrapper
+    // (which would re-announce the whole thread on every streamed token).
+    expect((html.match(/aria-live="polite"/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/<output[^>]*aria-live="polite"[^>]*class="sr-only"|<output[^>]*class="sr-only"[^>]*aria-live="polite"/);
+    // The Hale answer bubble is inside the transcript, not inside a live region.
+    const liveIdx = html.indexOf('aria-live="polite"');
+    expect(html.indexOf('Around six months.')).toBeLessThan(liveIdx);
+  });
+
+  it('keeps the pinned footer short once chatting — no stacked suggestion chips', () => {
+    // Empty: the suggestion chip is offered (in the transcript's welcome).
+    expect(render(seed([]))).toContain('how are naps going?');
+    // Populated: the follow-up chips are retired from the footer so a 320px phone
+    // keeps the transcript, not a multi-line chip block above the composer.
+    const populated = render(seed([msg({ id: 'a', content: 'when do solids start?' })]));
+    expect(populated).not.toContain('how are naps going?');
+    // The two-line privacy note also collapses after the first send.
+    expect(populated).not.toContain('your conversation stays inside Hale');
+  });
+
+  it('carries a page heading in BOTH the empty and the populated state', () => {
+    // The h1 must survive the empty → populated transition (the editorial invite is
+    // replaced by the transcript, but the document must never lose its heading).
+    const h1 = /<h1[^>]*>/g;
+    expect((render(seed([])).match(h1) ?? []).length).toBe(1);
+    const populated = render(seed([msg({ id: 'a', content: 'when do solids start?' })]));
+    expect((populated.match(h1) ?? []).length).toBe(1);
+  });
 });

@@ -9,7 +9,7 @@ import { deletePlan } from '~/lib/plan/plan-actions';
  * revalidates /plan). Disabled while the delete is in flight so a double-click
  * can't fire twice.
  */
-export function DeletePlanButton({ planId }: { planId: string }) {
+export function DeletePlanButton({ planId, label }: { planId: string; label?: string }) {
   const [pending, setPending] = useState(false);
 
   async function onDelete() {
@@ -25,7 +25,9 @@ export function DeletePlanButton({ planId }: { planId: string }) {
       type="button"
       onClick={onDelete}
       disabled={pending}
-      aria-label="remove this plan"
+      // Per-row plans all carry an identical "remove" control; naming the plan
+      // disambiguates which one a screen reader is about to remove.
+      aria-label={label ? `remove plan: ${label}` : 'remove this plan'}
       className="pill pill-action cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
     >
       <X size={14} strokeWidth={2} aria-hidden="true" />

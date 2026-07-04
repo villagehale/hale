@@ -55,6 +55,12 @@ describe('CompanionTabs DOM structure', () => {
     expect(panel).not.toContain('Ben');
     expect(panel).not.toContain('Cy');
   });
+
+  it('makes the tabpanel programmatically focusable (ARIA requires tabIndex on a tabpanel)', () => {
+    const html = render([AVA, BEN, CY]);
+    const panelTag = html.slice(html.indexOf('role="tabpanel"'), html.indexOf('>', html.indexOf('role="tabpanel"')));
+    expect(panelTag).toContain('tabindex="-1"');
+  });
 });
 
 describe('CompanionTabs done + recently-passed affordances', () => {

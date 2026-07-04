@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
@@ -88,6 +88,12 @@ export function OnboardingWizard({
   // straight in Phase C; otherwise intake starts at Phase A.
   const initialPhase: Phase = startAtSetup && signedIn ? 'C' : 'A';
   const [phase, setPhase] = useState<Phase>(initialPhase);
+  // The per-phase heading is the focus anchor on a phase change: advancing from
+  // "continue →" unmounts that button, so a keyboard/SR user would otherwise be
+  // stranded on a detached element. Moving focus to the new phase's heading lands
+  // them at the top of the freshly-rendered step. Skipped on first mount.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const didMountPhase = useRef(false);
 
   // Phase A — non-sensitive: first names only (no dates of birth), a coarse city,
   // and the optional intents (what the parent is hoping for). These survive the
@@ -145,6 +151,15 @@ export function OnboardingWizard({
       setSetupChildren(seeded);
     }
   }, [sessionName]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: phase is the intended trigger, not a value read in the body
+  useEffect(() => {
+    if (!didMountPhase.current) {
+      didMountPhase.current = true;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [phase]);
 
   const meta = PHASE_META[phase];
   const phaseIndex = phase === 'A' ? 1 : phase === 'B' ? 2 : 3;
@@ -277,7 +292,9 @@ export function OnboardingWizard({
           <div className="onboarding-hero lg:col-span-3">
             <span className="folio">{meta.folio}</span>
             <p className="meta mt-2">{meta.section}</p>
-            <h1 className="mt-6 font-display">{meta.title}</h1>
+            <h1 ref={headingRef} tabIndex={-1} className="mt-6 font-display outline-none">
+              {meta.title}
+            </h1>
           </div>
 
           <div className="lg:col-span-9 lg:col-start-4">

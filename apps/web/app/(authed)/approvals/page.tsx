@@ -50,7 +50,9 @@ export default async function ApprovalsPage() {
                   <ChildTag childId={approval.childId} label={approval.childLabel} />
                   <span className="eyebrow">{actionTypeLabel(approval.actionType)}</span>
                 </div>
-                <p className="font-display text-[1.25rem] mt-1 text-spruce">{approval.preview}</p>
+                <p className="font-display text-[1.25rem] mt-1 text-spruce break-words">
+                  {approval.preview}
+                </p>
                 {NEEDS_YOU_VERDICTS.has(approval.verdict) ? (
                   <p className="mt-2">
                     <ToneLabel tone="needs-you" detail={approval.summary} />
@@ -62,14 +64,14 @@ export default async function ApprovalsPage() {
                 <DraftDetail actionType={approval.actionType} payload={approval.payload} />
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <DismissButton actionId={approval.id} />
+                <DismissButton actionId={approval.id} label={approval.preview} />
                 {approval.teenRedacted ? (
                   // Policy 4: never a decision on invisible content — the parent
                   // requests time-limited access (audited, teen notified) instead
                   // of approving a draft they cannot see.
                   <RequestTeenAccessButton actionId={approval.id} />
                 ) : approval.verdict === APPROVED_VERDICT ? (
-                  <ApproveButton actionId={approval.id} />
+                  <ApproveButton actionId={approval.id} label={approval.preview} />
                 ) : null}
               </div>
             </li>
