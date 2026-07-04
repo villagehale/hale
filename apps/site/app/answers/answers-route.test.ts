@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { APP_URL } from '~/lib/app-url.js';
-import { getAnswer } from '~/lib/answers/index.js';
+import { allAnswers, getAnswer } from '~/lib/answers/index.js';
 import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug]/page.js';
 
 /**
@@ -50,12 +50,13 @@ describe('answers/[slug] route', () => {
     expect(html).toContain('Ask Hale about your child');
   });
 
-  it('noindexes an unpublished (unreviewed) page', async () => {
-    const held = 'toddler-separation-anxiety-daycare';
-    expect(getAnswer(held)?.published).toBe(false);
-    const meta = await generateMetadata({ params: Promise.resolve({ slug: held }) });
-    expect(meta.robots).toMatchObject({ index: false });
-    expect(meta.alternates?.canonical).toBe(`/answers/${held}`);
+  it('noindexes every unpublished (unreviewed) page (review-before-index gate)', async () => {
+    const held = allAnswers.filter((a) => !a.published);
+    for (const page of held) {
+      const meta = await generateMetadata({ params: Promise.resolve({ slug: page.slug }) });
+      expect(meta.robots).toMatchObject({ index: false });
+      expect(meta.alternates?.canonical).toBe(`/answers/${page.slug}`);
+    }
   });
 
   it('leaves a published (reviewed) page index-able', async () => {

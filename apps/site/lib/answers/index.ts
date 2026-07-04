@@ -492,7 +492,7 @@ const ANSWERS: AnswerPage[] = [
       {
         heading: 'Separation anxiety is normal and healthy',
         body: [
-          'The Canadian Paediatric Society describes separation anxiety as a normal developmental phase for young children — a reflection of the attachment bond, which is still common in the toddler years and eases with time. Distress at goodbye is not evidence of a problem with the child or the daycare.',
+          'The American Academy of Pediatrics describes separation anxiety as an entirely normal behaviour and a sign of a meaningful attachment. It is common in the toddler years — many children start showing it around 15 to 18 months — and it eases with time, rarely persisting daily past the preschool years. Distress at goodbye is not evidence of a problem with the child or the daycare.',
         ],
       },
       {
@@ -511,11 +511,11 @@ const ANSWERS: AnswerPage[] = [
     ],
     citations: [
       {
-        framework: 'cps',
+        framework: 'aap',
         reference:
-          'Canadian Paediatric Society, Caring for Kids — "Helping children deal with their fears" (caringforkids.cps.ca/handouts/behavior-and-development/children_and_fears)',
+          'American Academy of Pediatrics, HealthyChildren.org — "How to Ease Your Child\'s Separation Anxiety" (healthychildren.org/English/ages-stages/toddler/Pages/Soothing-Your-Childs-Separation-Anxiety.aspx)',
         excerpt:
-          'Fears and separation anxiety are a normal part of a young child\'s development and ease with time as a child is reassured and supported.',
+          'Although it is an entirely normal behavior and a beautiful sign of a meaningful attachment, separation anxiety can be unsettling for us all.',
       },
       {
         framework: 'markham',
@@ -541,8 +541,8 @@ const ANSWERS: AnswerPage[] = [
       },
     ],
     related: ['toddler-tantrums-how-to-handle', 'toddler-biting-what-to-do'],
-    updated: '2026-07-02',
-    published: false,
+    updated: '2026-07-03',
+    published: true,
   },
   {
     slug: 'potty-training-readiness-signs',

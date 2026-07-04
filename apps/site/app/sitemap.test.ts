@@ -21,6 +21,7 @@ const PUBLISHED_SLUGS = [
   'introducing-peanuts-to-baby',
   'starting-solids-when-ready',
   'toddler-biting-what-to-do',
+  'toddler-separation-anxiety-daycare',
   'potty-training-readiness-signs',
   'toddler-screen-time-guidelines',
   'child-managing-screen-time',
