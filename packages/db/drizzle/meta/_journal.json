@@ -246,6 +246,13 @@
       "when": 1781461740000,
       "tag": "0034_village_freshness",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781461800000,
+      "tag": "0035_email_type_verification",
+      "breakpoints": true
     }
   ]
 }
