@@ -68,6 +68,18 @@ describe('answer corpus', () => {
     }
   });
 
+  it('gives every page 2–4 substantial, quotable key takeaways', () => {
+    for (const page of allAnswers) {
+      expect(page.keyTakeaways.length).toBeGreaterThanOrEqual(2);
+      expect(page.keyTakeaways.length).toBeLessThanOrEqual(4);
+      for (const takeaway of page.keyTakeaways) {
+        // Self-contained enough to quote out of context: a full sentence, not a fragment.
+        expect(takeaway.length).toBeGreaterThan(40);
+        expect(takeaway.trim()).toMatch(/[.!?]$/);
+      }
+    }
+  });
+
   it('points every related slug at a page that exists', () => {
     for (const page of allAnswers) {
       for (const related of page.related) {
@@ -84,20 +96,44 @@ describe('answerJsonLd', () => {
     '@graph': Array<Record<string, unknown>>;
   };
 
-  it('emits an Article and a FAQPage', () => {
+  const isArticle = (node: Record<string, unknown>): boolean => {
+    const type = node['@type'];
+    return Array.isArray(type) ? type.includes('Article') : type === 'Article';
+  };
+
+  it('emits a MedicalWebPage/Article and a FAQPage', () => {
+    const article = graph['@graph'].find(isArticle);
+    expect(article).toBeDefined();
+    expect(article?.['@type']).toContain('MedicalWebPage');
     const types = graph['@graph'].map((node) => node['@type']);
-    expect(types).toContain('Article');
     expect(types).toContain('FAQPage');
   });
 
   it('cites the page’s grounded frameworks in the Article node', () => {
-    const article = graph['@graph'].find((n) => n['@type'] === 'Article') as {
+    const article = graph['@graph'].find(isArticle) as {
       citation: Array<{ name: string }>;
     };
     expect(article.citation).toHaveLength(page.citations.length);
     const cited = article.citation.map((c) => c.name);
     for (const c of page.citations) {
       expect(cited).toContain(FRAMEWORK_SOURCES[c.framework].label);
+    }
+  });
+
+  it('carries the E-E-A-T signals: a named publisher, dateModified, and reviewed-by authorities', () => {
+    const article = graph['@graph'].find(isArticle) as {
+      publisher: { name: string; legalName: string; logo: { url: string } };
+      dateModified: string;
+      reviewedBy: Array<{ name: string }>;
+    };
+    expect(article.publisher.name).toBe('Hale');
+    expect(article.publisher.legalName).toBe('Village Hale Technologies Inc.');
+    expect(article.publisher.logo.url).toMatch(/\/icon\.png$/);
+    expect(article.dateModified).toBe(page.updated);
+    expect(article.reviewedBy).toHaveLength(page.citations.length);
+    const reviewers = article.reviewedBy.map((r) => r.name);
+    for (const c of page.citations) {
+      expect(reviewers).toContain(FRAMEWORK_SOURCES[c.framework].label);
     }
   });
 

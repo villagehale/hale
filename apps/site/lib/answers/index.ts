@@ -23,6 +23,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'newborn',
     answer:
       'Frequent, back-to-back feeds bunched into the evening — cluster feeding — are a normal newborn pattern in the early weeks, and on their own they are not a sign that a baby is underfed or that supply is low. It tends to ease as feeding rhythms settle over the first couple of months.',
+    keyTakeaways: [
+      'Cluster feeding — several feeds bunched close together, usually in the evening — is a normal newborn pattern in the early weeks and is not on its own a sign of low milk supply.',
+      'The Canadian Paediatric Society notes newborns feed 8 to 12 times a day on demand; adequate intake is judged by wet and dirty diapers and steady weight gain, not by how close together feeds are.',
+      'Cluster feeding typically eases as feeding rhythms settle over the first couple of months. Talk to your provider if the baby has few wet or dirty diapers, is not gaining weight, or is hard to wake.',
+    ],
     sections: [
       {
         heading: 'What cluster feeding is',
@@ -85,6 +90,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'newborn',
     answer:
       'Newborn sleep is naturally broken into short stretches spread across the day and night. That is how newborn sleep is built, not a sign anything is wrong, and it gradually consolidates over the first several months.',
+    keyTakeaways: [
+      'Short, fragmented sleep spread around the clock is how newborn sleep is built — the Canadian Paediatric Society describes newborn sleep as having no fixed day–night pattern at first.',
+      'Longer nighttime stretches develop gradually over the first several months; a newborn waking often to feed is part of the design of this stage, not a problem to fix.',
+      'Formal sleep training (such as Ferber\'s graduated checks) is aimed at older infants, commonly discussed from around 4–6 months — in the newborn stage the goal is soothing and safe sleep, not training.',
+    ],
     sections: [
       {
         heading: 'Short stretches are how newborn sleep works',
@@ -152,6 +162,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'newborn',
     answer:
       'The core safe-sleep guidance in Canada is to place a baby on their back, alone, on a firm flat surface in a crib, cradle or bassinet, with no soft bedding, and to share a room (not a bed) with the baby for the first months. Always confirm specifics with your provider.',
+    keyTakeaways: [
+      'Canada\'s core safe-sleep guidance: place a baby on their back for every sleep, on a firm flat surface in a crib, cradle or bassinet, with no pillows, bumpers, loose blankets, or soft toys.',
+      'The Public Health Agency of Canada and the Canadian Paediatric Society recommend room-sharing without bed-sharing for at least the first six months, in a smoke-free environment.',
+      'If a family swaddles, the baby is still placed on their back, and swaddling is stopped once the baby shows signs of rolling. Confirm current specifics with your provider.',
+    ],
     sections: [
       {
         heading: 'The widely recommended basics',
@@ -219,6 +234,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'newborn',
     answer:
       'Current Canadian guidance is that there is no reason to delay introducing common food allergens, including peanut, and that offering them around six months — once a baby is developmentally ready for solids — may help reduce the risk of developing a food allergy. If your baby has severe eczema or a known food allergy, talk to your provider before introducing peanut.',
+    keyTakeaways: [
+      'Current Canadian guidance is not to delay common allergens: the Canadian Paediatric Society advises introducing peanut around six months (and not before four months), once a baby is ready for solids, which may lower allergy risk.',
+      'Whole peanuts and thick globs of peanut butter are choking hazards — use smooth peanut butter thinned with water or mixed into a familiar food, or a peanut puff product, and offer one new allergen at a time.',
+      'Babies with severe eczema, a known food allergy, or a strong family history should be assessed by a provider before peanut is introduced.',
+    ],
     sections: [
       {
         heading: 'The shift toward earlier introduction',
@@ -296,6 +316,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'newborn',
     answer:
       'Most babies are ready to start solid foods around six months of age, when they can sit up without support and have good control of their neck muscles, have lost the reflex that pushes food out of their mouth, and show interest in what others are eating. Breast milk or formula continues alongside solids.',
+    keyTakeaways: [
+      'Most babies are ready for solids around six months. The Canadian Paediatric Society points to readiness signs — sitting up without support, good head and neck control, and interest in food — rather than a fixed date.',
+      'Iron-rich first foods (iron-fortified infant cereal, well-cooked meats, or legumes) are emphasized because a baby\'s iron stores start to run low around six months.',
+      'In the first year, breast milk or formula stays the main source of nutrition; solids are added alongside it, not as a replacement.',
+    ],
     sections: [
       {
         heading: 'The readiness signs',
@@ -357,6 +382,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'toddler',
     answer:
       'Tantrums are a normal, developmentally expected part of being a toddler — a young child overwhelmed by a big feeling they cannot yet manage or express. What helps most is staying calm, keeping your child safe, acknowledging the feeling, and reconnecting once the storm passes, rather than punishing or reasoning in the heat of it.',
+    keyTakeaways: [
+      'Tantrums are developmentally normal, not misbehaviour to punish: Siegel explains a toddler\'s "upstairs brain" for self-control is still developing, so big emotions flood faster than they can be regulated.',
+      'Markham\'s guidance is to regulate yourself first — a dysregulated child cannot be calmed by a dysregulated adult — then keep the child safe and name the feeling simply.',
+      'Lansbury\'s RIE approach shows a calm limit and empathy can coexist: you can hold the boundary ("we\'re not buying that today") while accepting the feeling. Reconnect once the child is calm rather than lecturing.',
+    ],
     sections: [
       {
         heading: 'Why tantrums happen',
@@ -423,6 +453,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'toddler',
     answer:
       'Biting is common in toddlers and usually comes from frustration, teething, over-excitement, or simply not yet having the words to express a need — not from meanness. The most effective response is calm, immediate, and consistent: stop the bite, tend to the child who was hurt, and calmly name the limit without shaming.',
+    keyTakeaways: [
+      'Toddler biting is common and usually about frustration, teething, over-excitement, or limited language — not aggression. The American Academy of Pediatrics frames young children lashing out as lacking self-control, not intending harm.',
+      'Respond calmly and immediately: Lansbury\'s RIE approach suggests a confident, unshaming limit ("I won\'t let you bite") while blocking the behaviour, then giving attention to the child who was hurt.',
+      'Big dramatic reactions can accidentally reinforce biting. Markham\'s advice is to stay regulated and get ahead of the trigger — offer words or a break before frustration peaks. Biting usually fades as language grows.',
+    ],
     sections: [
       {
         heading: 'Why toddlers bite',
@@ -488,6 +523,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'toddler',
     answer:
       'Tears at daycare drop-off are a normal sign of healthy attachment, not a sign you are doing something wrong. What helps most is a short, warm, predictable goodbye routine done with confidence: a consistent ritual, a genuine (not sneaked) goodbye, and trust that your child can be comforted by their caregiver.',
+    keyTakeaways: [
+      'Separation anxiety at drop-off is normal and healthy: the American Academy of Pediatrics calls it an entirely normal behaviour and a sign of a meaningful attachment, common from around 15 to 18 months.',
+      'A short, warm, predictable goodbye ritual done with confidence helps most — Markham notes children read a parent\'s anxiety, so staying calm matters.',
+      'Lansbury\'s RIE approach advises a genuine goodbye rather than sneaking out, which tends to increase anxiety next time. Most children settle within minutes once the parent leaves.',
+    ],
     sections: [
       {
         heading: 'Separation anxiety is normal and healthy',
@@ -553,6 +593,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'toddler',
     answer:
       'Potty training tends to go best when it follows a child\'s readiness rather than a set age — some children are ready as young as 18 months, but most start between 2 and 4 years. Readiness is a mix of physical signs (staying dry in their diaper for several hours in a row, predictable bowel movements) and behavioural ones (interest in the toilet, being able to follow simple instructions, and telling you they need to go).',
+    keyTakeaways: [
+      'Potty training goes best when it follows readiness signs, not a fixed age: the Canadian Paediatric Society notes some children are ready as young as 18 months, but most start between 2 and 4 years.',
+      'Look for physical signs (dry for several hours in a row, predictable bowel movements) and behavioural ones (interest in the toilet, following simple directions, telling you they need to go).',
+      'Keep it low-pressure — pushing before a child is ready or reacting strongly to accidents tends to backfire. Regression around a big change like a new sibling is common and usually temporary.',
+    ],
     sections: [
       {
         heading: 'The readiness signs',
@@ -613,6 +658,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'toddler',
     answer:
       'Canadian guidance recommends no screen time for children under two (other than video-chatting with family), and no more than one hour a day of good-quality screen time for children aged two to five — with less being better. Just as important as the amount is co-viewing, keeping screens out of the bedroom, and protecting time for sleep, play, and interaction.',
+    keyTakeaways: [
+      'The Canadian Paediatric Society recommends no screen time for children under two (video-chatting with family is an exception) and under one hour a day for ages two to five, with less being better.',
+      'How screens are used matters as much as the amount: co-view and talk about what you see, choose high-quality content, and keep screens away from meals and the hour before bed.',
+      'The main concern at this age is what screens displace — sleep, active play, and back-and-forth interaction that drives early development. Keep screens out of the bedroom.',
+    ],
     sections: [
       {
         heading: 'The numbers',
@@ -672,6 +722,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'child',
     answer:
       'Nightly homework standoffs are usually a power struggle, not a sign your child is lazy or defiant. The most effective shift is from enforcer to supporter: set a predictable routine, hand your child ownership of the work, and protect the relationship over any single assignment.',
+    keyTakeaways: [
+      'Nightly homework battles are usually a power struggle, not laziness. Siegel notes a stressed, cornered child goes into fight-or-flight and their reasoning brain goes offline — so pushing harder deepens resistance.',
+      'The effective shift is from enforcer to supporter: Markham suggests a predictable time and calm place, empathy for how hard it feels, and handing ownership of the work back to the child.',
+      'Let natural consequences at school do some of the teaching, and protect the relationship over any single assignment. Persistent, intense struggles can signal a learning, attention, or anxiety issue worth raising with the teacher or provider.',
+    ],
     sections: [
       {
         heading: 'Why the battle happens',
@@ -732,6 +787,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'child',
     answer:
       'Frequent squabbling between siblings is normal, and some conflict is actually how children learn to negotiate, share, and repair. The shift that helps is from referee to coach: stay neutral, resist taking sides, and teach the skills to work it out — stepping in firmly only when someone is being hurt.',
+    keyTakeaways: [
+      'Frequent sibling squabbling is normal, and some conflict is how children learn to negotiate, share, and repair. Markham notes that jumping in to judge who was right usually fuels rivalry.',
+      'Shift from referee to coach: stay neutral, describe what you see without blaming, and invite the children to solve it. Siegel adds that a flooded child cannot problem-solve — separate and calm first, then resolve.',
+      'Avoid comparisons and labels ("the responsible one"), which intensify rivalry. Step in firmly and immediately for physical harm or genuine cruelty; if conflict is relentless or one child is targeted, talk to your provider.',
+    ],
     sections: [
       {
         heading: 'Some conflict is normal — and useful',
@@ -790,6 +850,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'child',
     answer:
       'For school-age children, guidance moves away from a single hour-cap toward a family plan: screens should not crowd out sleep, physical activity, meals together, and unstructured play, and content and context matter as much as total minutes. A consistent, collaboratively set plan tends to work better than an arbitrary number.',
+    keyTakeaways: [
+      'For school-age children, the Canadian Paediatric Society and American Academy of Pediatrics move away from a single hour-cap toward a family media plan that keeps screens from displacing sleep, activity, meals, and in-person time.',
+      'A workable plan includes screen-free times (meals, the hour before bed) and zones (bedrooms), limits the child helped set, attention to content, and adult modelling. Protecting sleep is repeatedly emphasized.',
+      'The under-five, one-hour-a-day preschool guidance still applies to a four- or five-year-old — the shift away from a fixed cap describes older, school-age children. Markham notes limits land better inside a warm relationship.',
+    ],
     sections: [
       {
         heading: 'From hour-caps to a family plan',
@@ -854,6 +919,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'teenager',
     answer:
       'Some moodiness and pulling away is a normal part of adolescence, but a lasting change in mood, functioning, or behaviour deserves attention. Warning signs worth acting on include a persistent low or hopeless mood, withdrawal from friends and activities once enjoyed, big changes in sleep, appetite, or school performance, and — most urgently — any talk of self-harm or not wanting to be alive.',
+    keyTakeaways: [
+      'Some moodiness is normal in adolescence; the Canadian Paediatric Society points to duration, intensity, and impact to separate typical teen moods from a concern — changes lasting more than a couple of weeks, severe, or interfering with daily life.',
+      'Warning signs worth a professional conversation include persistent low or hopeless mood, withdrawal from friends and activities once enjoyed, marked changes in sleep or appetite, and falling grades.',
+      'Any mention of self-harm or suicide is an emergency: contact a crisis line, your provider, or emergency services right away and stay with your teen. Siegel\'s work stresses staying connected and approaching with calm curiosity, not interrogation.',
+    ],
     sections: [
       {
         heading: 'Normal adolescence vs. a warning sign',
@@ -913,6 +983,11 @@ const ANSWERS: AnswerPage[] = [
     stage: 'teenager',
     answer:
       'Teenagers need both real autonomy and clear limits — and the two are not in conflict. Boundaries land best when they are few, clearly reasoned, and set with your teen rather than dictated at them, inside a relationship where they feel heard. The goal is a firm limit and an open door, not control.',
+    keyTakeaways: [
+      'Teens need both real autonomy and clear limits, and the two are not in conflict. Siegel describes adolescent independence as driven by real brain development, not just defiance.',
+      'Keep the non-negotiables few and focused on safety and respect, explain the "why" rather than "because I said so," and negotiate the details with your teen to build ownership.',
+      'Staying connected matters most: the relationship keeps a teen talking, which is your best source of influence and your best early-warning system. If conflict is constant or a teen is repeatedly unsafe, seek support from your provider.',
+    ],
     sections: [
       {
         heading: 'Why autonomy and limits go together',

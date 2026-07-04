@@ -34,9 +34,20 @@ describe('answers/[slug] route', () => {
     expect(html).toContain(page.answer);
     expect(html).toContain('application/ld+json');
     expect(html).toContain('"@type":"FAQPage"');
-    expect(html).toContain('"@type":"Article"');
+    expect(html).toContain('"MedicalWebPage","Article"');
     // A grounded source must be surfaced on the page, not just in the graph.
     expect(html).toContain('Canadian Paediatric Society');
+  });
+
+  it('renders the marked Key takeaways block with the page’s takeaways verbatim', async () => {
+    const page = getAnswer(SLUG);
+    if (!page) throw new Error('fixture missing');
+    const html = await render(SLUG);
+
+    expect(html).toContain('Key takeaways');
+    for (const takeaway of page.keyTakeaways) {
+      expect(html).toContain(takeaway);
+    }
   });
 
   it('carries the "not medical advice" YMYL framing', async () => {
