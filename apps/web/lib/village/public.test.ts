@@ -13,7 +13,17 @@ const RAW_SOURCE_URL = 'https://example.org/riverdale-teen-group';
 const CHILD_ID = 'child-teen-uuid';
 const FAMILY_ID = 'fam-uuid';
 
-function familyWideCandidate(overrides: Partial<PublicCandidateRow> = {}): PublicCandidateRow {
+/** The loader-query row shape: the public-safe fields plus the visibility fields
+ * the freshness/temporal filter reads (never surfaced by the mapper). */
+type SharedCandidateRow = PublicCandidateRow & {
+  supersededAt: Date | null;
+  discoveredAt: Date;
+  eventDate: string | null;
+  cadence: string | null;
+  seasons: string[] | null;
+};
+
+function familyWideCandidate(overrides: Partial<SharedCandidateRow> = {}): SharedCandidateRow {
   return {
     childId: null,
     title: 'Saturday family swim drop-in',
@@ -21,6 +31,11 @@ function familyWideCandidate(overrides: Partial<PublicCandidateRow> = {}): Publi
     summary: 'Parent-and-child swim at the community centre.',
     sourceUrl: 'https://example.org/swim',
     coverageNote: 'serves your area',
+    supersededAt: null,
+    discoveredAt: new Date(),
+    eventDate: null,
+    cadence: null,
+    seasons: null,
     ...overrides,
   };
 }
@@ -293,5 +308,22 @@ describe('loadSharedWeekPlan', () => {
 
     expect(limitSpy).toHaveBeenCalledWith(24);
     expect(orderBySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('excludes superseded and out-of-window candidates from the shared plan (stale-pile fix)', async () => {
+    const { db } = fakeDb([
+      [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],
+      [
+        familyWideCandidate({ title: 'Fresh swim' }),
+        // a prior discovery run's pick, soft-retired — must never reach a shared page
+        familyWideCandidate({ title: 'Last month superseded pick', supersededAt: new Date() }),
+        // a one-time event whose day has already passed
+        familyWideCandidate({ title: 'Past festival', eventDate: '2020-01-01' }),
+      ],
+    ]);
+
+    const result = await loadSharedWeekPlan(SHARE_TOKEN, db);
+
+    expect(result?.activities.map((a) => a.title)).toEqual(['Fresh swim']);
   });
 });

@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { type PublicActivity, type PublicCandidateRow, toPublicActivity } from './public.js';
+import { type PublicActivity, toPublicActivity } from './public.js';
+import { visibleCandidates } from './visibility.js';
 
 /**
  * The PUBLIC, unauthenticated "village picks" artifact (rule #1): a family's
@@ -57,6 +58,13 @@ export async function loadSharedPicks(
         select count(*)::int from ${schema.villageEndorsements}
         where ${schema.villageEndorsements.candidateId} = ${schema.villageCandidates.id}
       )`,
+      // Visibility inputs (never surfaced by the mapper) so a shared shortlist shows
+      // only current, in-window endorsed picks — not a superseded or past one.
+      supersededAt: schema.villageCandidates.supersededAt,
+      discoveredAt: schema.villageCandidates.discoveredAt,
+      eventDate: schema.villageCandidates.eventDate,
+      cadence: schema.villageCandidates.cadence,
+      seasons: schema.villageCandidates.seasons,
     })
     .from(schema.villageCandidates)
     .innerJoin(
@@ -70,12 +78,16 @@ export async function loadSharedPicks(
         // Family-wide only — the public allow-list never surfaces a child-linked
         // row. Enforced in SQL AND again in the mapper (defence in depth).
         isNull(schema.villageCandidates.childId),
+        // Current run only — a soft-retired (superseded) endorsed pick never shares.
+        isNull(schema.villageCandidates.supersededAt),
       ),
     )
     .orderBy(desc(schema.villageCandidates.discoveredAt))
     .limit(PUBLIC_PICKS_LIMIT);
 
-  const activities = (rows as PublicCandidateRow[])
+  // Drop stale-run/past/out-of-season picks (matching the authed feed) before the
+  // family-wide filter + mapper — a shared page must not leak a passed event.
+  const activities = visibleCandidates(rows, new Date())
     .filter((candidate) => candidate.childId === null)
     .map(toPublicActivity);
 
