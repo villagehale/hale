@@ -29,6 +29,10 @@ export const familyPlans = pgTable(
     notes: text('notes'),
     scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
     private: boolean('private').notNull().default(true),
+    /** When the parent marked this plan done, or NULL while it's still open. The
+     * done tap also writes an immutable audit_log row (rule #6); this column is the
+     * read-side state the plan page dims/settles on. Additive, nullable (rule #9). */
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

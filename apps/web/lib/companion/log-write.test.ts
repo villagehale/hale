@@ -1,7 +1,14 @@
 import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { FEED_EPISODE, MILESTONE_EPISODE, NAP_EPISODE, type QuickLogInput } from './log-types.js';
-import { buildEpisodeInsert, writeEpisode } from './log-write.js';
+import {
+  FEED_EPISODE,
+  HEALTH_DONE_EPISODE,
+  type MarkDoneInput,
+  MILESTONE_EPISODE,
+  NAP_EPISODE,
+  type QuickLogInput,
+} from './log-types.js';
+import { buildDoneEpisodeInsert, buildEpisodeInsert, writeEpisode } from './log-write.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const CHILD_ID = '33333333-3333-4333-8333-333333333333';
@@ -58,6 +65,47 @@ describe('buildEpisodeInsert', () => {
     expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID).payload).toEqual({
       amountMl: 90,
       note: 'spit up a little',
+    });
+  });
+});
+
+describe('buildDoneEpisodeInsert', () => {
+  it('marks a milestone done as the SAME row a quick-log milestone writes', () => {
+    const input: MarkDoneInput = {
+      target: 'milestone',
+      childId: CHILD_ID,
+      what: 'Walks independently',
+    };
+
+    const done = buildDoneEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID);
+    const quickLog = buildEpisodeInsert(
+      { kind: MILESTONE_EPISODE, childId: CHILD_ID, milestone: 'Walks independently' },
+      FAMILY_ID,
+      NOW,
+      AUTHOR_ID,
+    );
+
+    expect(done).toEqual(quickLog);
+    expect(done.episodeType).toBe('milestone');
+    expect(done.payload).toEqual({ milestone: 'Walks independently' });
+  });
+
+  it('marks a health item done as a health_done episode carrying the stable key', () => {
+    const input: MarkDoneInput = {
+      target: 'health',
+      childId: CHILD_ID,
+      what: '4-month well-baby visit',
+      healthKey: '4-well_child_visit',
+    };
+
+    expect(buildDoneEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID)).toEqual({
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
+      occurredAt: NOW,
+      episodeType: HEALTH_DONE_EPISODE,
+      summary: '4-month well-baby visit — done',
+      payload: { healthKey: '4-well_child_visit', what: '4-month well-baby visit' },
     });
   });
 });
@@ -131,6 +179,34 @@ describe('writeEpisode', () => {
       familyId: FAMILY_ID,
       actor: FAMILY_ID,
       actionTaken: 'quick_log_feed',
+      targetTable: 'family_memory_episodes',
+      targetId: EPISODE_ROW_ID,
+    });
+  });
+
+  it('writes an audited health_done episode when marking a health item done (rule #6)', async () => {
+    const s = stubTxDb();
+
+    await writeEpisode(
+      s.database,
+      buildDoneEpisodeInsert(
+        {
+          target: 'health',
+          childId: CHILD_ID,
+          what: '4-month well-baby visit',
+          healthKey: '4-well_child_visit',
+        },
+        FAMILY_ID,
+        NOW,
+        AUTHOR_ID,
+      ),
+    );
+
+    expect(s.insertedTables()).toEqual(['family_memory_episodes', 'audit_log']);
+    expect(valuesFor(s, schema.auditLog)).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: FAMILY_ID,
+      actionTaken: 'quick_log_health_done',
       targetTable: 'family_memory_episodes',
       targetId: EPISODE_ROW_ID,
     });

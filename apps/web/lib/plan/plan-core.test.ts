@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { getTableColumns } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { insertPlanForFamily, validatePlan } from './plan-core';
+import { completePlanForFamily, insertPlanForFamily, validatePlan } from './plan-core';
 
 const FAMILY_ID = '33333333-3333-4333-8333-333333333333';
 const OTHER_FAMILY_ID = '44444444-4444-4444-8444-444444444444';
@@ -162,6 +162,97 @@ describe('private defaults true', () => {
     const columns = getTableColumns(schema.familyPlans);
     expect(columns.private.default).toBe(true);
     expect(columns.private.notNull).toBe(true);
+  });
+});
+
+/**
+ * Fake for completePlanForFamily's narrow tx surface:
+ *  - update(family_plans).set(...).where(marker).returning() → the family-scoped
+ *    stamp. `liveMatches` seeds which planIds resolve to a LIVE (not-yet-done) row
+ *    for the caller's family; a miss returns [] (foreign or already-done → no stamp).
+ *  - insert(audit_log).values(...) → recorded, not returned.
+ * Every insert's {table, values} and the update .set payload are captured.
+ */
+function completeFakeDb(liveMatches: string[]) {
+  const inserts: InsertRecord[] = [];
+  const updates: Array<{ set: Record<string, unknown> }> = [];
+
+  const tx = {
+    update: vi.fn(() => ({
+      set: (set: Record<string, unknown>) => ({
+        // The mocked `and` (top of file) maps a col==='id' clause to marker.childId,
+        // so the plan id arrives there; family_id → marker.familyId.
+        where: (marker: { childId?: string; familyId?: string }) => ({
+          returning: async () => {
+            const hit =
+              marker.childId !== undefined &&
+              marker.familyId === FAMILY_ID &&
+              liveMatches.includes(marker.childId);
+            if (hit) updates.push({ set });
+            return hit ? [{ id: marker.childId }] : [];
+          },
+        }),
+      }),
+    })),
+    insert: vi.fn((table: unknown) => ({
+      values: (values: Record<string, unknown>) => {
+        inserts.push({ table, values });
+        return Promise.resolve(undefined);
+      },
+    })),
+  };
+
+  const database = {
+    transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+  } as never;
+
+  return { database, inserts, updates };
+}
+
+const PLAN_ID = '88888888-8888-4888-8888-888888888888';
+const NOW = new Date('2026-07-03T12:00:00Z');
+
+describe('completePlanForFamily', () => {
+  it('stamps completed_at and writes ONE plan_completed audit row for an owned, open plan', async () => {
+    const { database, inserts, updates } = completeFakeDb([PLAN_ID]);
+
+    const result = await completePlanForFamily(database, {
+      familyId: FAMILY_ID,
+      userId: USER_ID,
+      planId: PLAN_ID,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ status: 'completed' });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.set.completedAt).toBe(NOW);
+
+    const auditInsert = inserts.find((i) => i.table === schema.auditLog);
+    expect(auditInsert?.values).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: USER_ID,
+      actionTaken: 'plan_completed',
+      targetTable: 'family_plans',
+      targetId: PLAN_ID,
+    });
+    // Exactly one write to audit_log — no second row.
+    expect(inserts.filter((i) => i.table === schema.auditLog)).toHaveLength(1);
+  });
+
+  it('returns not_found and writes nothing for a plan not live in this family (foreign or already done)', async () => {
+    // No live match → the family-scoped, completed_at-IS-NULL update stamps nothing.
+    const { database, inserts, updates } = completeFakeDb([]);
+
+    const result = await completePlanForFamily(database, {
+      familyId: FAMILY_ID,
+      userId: USER_ID,
+      planId: PLAN_ID,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ status: 'not_found' });
+    expect(updates).toHaveLength(0);
+    expect(inserts).toHaveLength(0);
   });
 });
 

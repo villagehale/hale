@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 /**
  * Pure + injectable core for parent-authored plans, kept OUT of the 'use server'
@@ -111,5 +111,51 @@ export async function insertPlanForFamily(
     });
 
     return { status: 'created', planId } as const;
+  });
+}
+
+export type CompletePlanResult = { status: 'completed' } | { status: 'not_found' };
+
+/**
+ * Marks a parent-authored plan done: stamps completed_at and writes ONE immutable
+ * audit_log row (action 'plan_completed', rule #6) in the same transaction.
+ * Family-scoped (rule #1): the update matches WHERE id = ? AND family_id = ?, so a
+ * planId from another family stamps nothing and returns not_found (never a silent
+ * success). Idempotent: the WHERE also requires completed_at IS NULL, so a
+ * double-tap on an already-done plan matches no live row and returns not_found
+ * rather than re-stamping or writing a second audit row.
+ */
+export async function completePlanForFamily(
+  database: Database,
+  args: { familyId: string; userId: string; planId: string; now: Date },
+): Promise<CompletePlanResult> {
+  const { familyId, userId, planId, now } = args;
+
+  return database.transaction(async (tx) => {
+    const updated = await tx
+      .update(schema.familyPlans)
+      .set({ completedAt: now })
+      .where(
+        and(
+          eq(schema.familyPlans.id, planId),
+          eq(schema.familyPlans.familyId, familyId),
+          isNull(schema.familyPlans.completedAt),
+        ),
+      )
+      .returning({ id: schema.familyPlans.id });
+    if (updated.length === 0) {
+      return { status: 'not_found' } as const;
+    }
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'plan_completed',
+      targetTable: 'family_plans',
+      targetId: planId,
+      after: { completedAt: now.toISOString() },
+    });
+
+    return { status: 'completed' } as const;
   });
 }

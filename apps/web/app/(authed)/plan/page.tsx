@@ -2,33 +2,43 @@ import { ArrowRight } from 'lucide-react';
 import { AddPlan } from '~/components/hale/add-plan';
 import { scopeChildren } from '~/components/hale/child-scope';
 import { ChildTag } from '~/components/hale/child-tag';
+import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { PageCorner } from '~/components/hale/page-corner';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
+import { loadCompanion } from '~/lib/companion/queries';
+import { loadFamilyTimezone } from '~/lib/dashboard/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
-import { loadCompanion } from '~/lib/companion/queries';
 import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
+import { type DayColumn, buildPlanSpine, groupRoutineByDay } from '~/lib/plan/spine';
 import { type PlanChildItem, planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
 
 export default async function PlanPage() {
-  const [village, children, authoredPlans] = await Promise.all([
+  const [village, children, authoredPlans, timeZone] = await Promise.all([
     loadVillage(),
     loadCompanion(),
     loadAuthoredPlans(),
+    loadFamilyTimezone(),
   ]);
   const { routine } = village;
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
+
+  const spine = buildPlanSpine(authoredPlans, new Date(), timeZone);
+  const spineHasDated = spine.days.some((d) => d.plans.length > 0);
+  const hasAuthored = spineHasDated || spine.undated.length > 0;
+
   const hasPlan =
     hasRoutine ||
     childItems.length > 0 ||
     addedActivities.length > 0 ||
-    authoredPlans.length > 0;
+    hasAuthored ||
+    spine.settled.length > 0;
 
   const kids = scopeChildren(children);
 
@@ -72,17 +82,51 @@ export default async function PlanPage() {
         </div>
       </section>
 
-      {/* ── Plans you've written ────────────────────────────────────────── */}
-      {authoredPlans.length > 0 ? (
+      {/* ── Plans you've written — a Mon–Sun week-spine ─────────────────── */}
+      {hasAuthored ? (
         <section className="rise rise-2 mb-16 lg:mb-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
             <div className="lg:col-span-3">
               <span className="eyebrow text-spruce">plans you&rsquo;ve written</span>
-              <p className="meta mt-2">private to your family</p>
+              <p className="meta mt-2">this week · private to your family</p>
+            </div>
+            <div className="lg:col-span-9 space-y-8">
+              {spineHasDated ? (
+                <div className="space-y-6">
+                  {spine.days
+                    .filter((day) => day.plans.length > 0)
+                    .map((day) => (
+                      <DaySpineRow key={day.dateKey} day={day} />
+                    ))}
+                </div>
+              ) : null}
+
+              {spine.undated.length > 0 ? (
+                <div>
+                  <span className="eyebrow text-slate-green">sometime this week</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+                    {spine.undated.map((plan) => (
+                      <AuthoredPlanCard key={plan.id} plan={plan} />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* ── Settled — completed or past-dated, rolled out of the active week ─ */}
+      {spine.settled.length > 0 ? (
+        <section className="rise rise-2 mb-16 lg:mb-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
+            <div className="lg:col-span-3">
+              <span className="eyebrow text-faded-sage">settled</span>
+              <p className="meta mt-2">done &amp; past — kept in your trail</p>
             </div>
             <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {authoredPlans.map((plan) => (
-                <AuthoredPlanCard key={plan.id} plan={plan} />
+              {spine.settled.map((plan) => (
+                <AuthoredPlanCard key={plan.id} plan={plan} settled />
               ))}
             </div>
           </div>
@@ -129,27 +173,34 @@ export default async function PlanPage() {
                 <ShareWeekButton />
               </div>
             </div>
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {routine.items.map((item, idx) => {
-                const kindLabel = villageKindLabel(item.kind);
-                return (
-                <Card key={`${item.kind}-${idx}`} href="/village">
-                  {kindLabel ? (
-                    <span className="eyebrow text-spruce">{kindLabel}</span>
-                  ) : null}
-                  <div data-hale-pii>
-                    <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
-                    {item.stageNote ? (
-                      <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
-                    ) : null}
+            <div className="lg:col-span-9 space-y-8">
+              {groupRoutineByDay(routine.items).map((strip) => (
+                <div key={strip.weekday ?? 'anytime'}>
+                  <span className="eyebrow text-slate-green">{strip.weekday ?? 'anytime'}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+                    {strip.items.map((item, idx) => {
+                      const kindLabel = villageKindLabel(item.kind);
+                      return (
+                        <Card key={`${strip.weekday ?? 'x'}-${item.kind}-${idx}`} href="/village">
+                          {kindLabel ? (
+                            <span className="eyebrow text-spruce">{kindLabel}</span>
+                          ) : null}
+                          <div data-hale-pii>
+                            <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
+                            {item.stageNote ? (
+                              <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
+                            ) : null}
+                          </div>
+                          <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
+                            open in village
+                            <Icon as={ArrowRight} size={14} />
+                          </span>
+                        </Card>
+                      );
+                    })}
                   </div>
-                  <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
-                    open in village
-                    <Icon as={ArrowRight} size={14} />
-                  </span>
-                </Card>
-                );
-              })}
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -212,24 +263,57 @@ export default async function PlanPage() {
   );
 }
 
-function AuthoredPlanCard({ plan }: { plan: AuthoredPlanView }) {
+/**
+ * A row of the week-spine: the weekday heading + the plans dropped on that day.
+ * Shown only for days that actually carry a plan (the page filters empties), so the
+ * spine stays scannable rather than seven mostly-empty columns.
+ */
+function DaySpineRow({ day }: { day: DayColumn }) {
+  return (
+    <div>
+      <span className="eyebrow text-slate-green">{day.weekday}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+        {day.plans.map((plan) => (
+          <AuthoredPlanCard key={plan.id} plan={plan} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A parent-authored plan card. An OPEN plan carries the soft "done" affordance
+ * (CompletePlanButton) and its delete control. A SETTLED plan (completed or
+ * past-dated) renders dimmed with no done affordance — it has left the active week
+ * and is kept for the record. The teen-name exemption still holds: a parent's own
+ * plan about their teen renders in full (policy 2), the tag shows the teen's name.
+ */
+function AuthoredPlanCard({ plan, settled }: { plan: AuthoredPlanView; settled?: boolean }) {
   const when = plan.scheduledFor ? formatCalendarDate(plan.scheduledFor) : null;
+  const done = plan.completedAt !== null;
   return (
     <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <ChildTag childId={plan.childId} label={plan.childName} />
-          {when ? <span className="meta text-slate-green">{when}</span> : null}
+      <div className={settled ? 'opacity-60' : undefined}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <ChildTag childId={plan.childId} label={plan.childName} />
+            {when ? <span className="meta text-slate-green">{when}</span> : null}
+          </div>
+          <DeletePlanButton planId={plan.id} />
         </div>
-        <DeletePlanButton planId={plan.id} />
-      </div>
-      <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
-        {plan.title}
-      </p>
-      {plan.notes ? (
-        <p className="meta mt-1 text-slate-green" data-hale-pii>
-          {plan.notes}
+        <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
+          {plan.title}
         </p>
+        {plan.notes ? (
+          <p className="meta mt-1 text-slate-green" data-hale-pii>
+            {plan.notes}
+          </p>
+        ) : null}
+      </div>
+      {!settled ? (
+        <div className="mt-4">
+          <CompletePlanButton planId={plan.id} alreadyDone={done} />
+        </div>
       ) : null}
     </Card>
   );

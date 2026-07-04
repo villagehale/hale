@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIRM_WITH_PROVIDER, companionForChild } from './index.js';
+import {
+  CONFIRM_WITH_PROVIDER,
+  HEALTH_HORIZON_MONTHS,
+  companionForChild,
+  healthItemKey,
+} from './index.js';
 
 /**
  * Expected values are derived from the curated schedule in companion.ts, not
@@ -128,5 +133,115 @@ describe('companionForChild — guidance and safety framing (rule #1)', () => {
   it('echoes a null name when none is provided', () => {
     const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
     expect(view.name).toBeNull();
+  });
+});
+
+describe('companionForChild — done marking', () => {
+  it('flips a milestone to done when its exact `what` is in the done set', () => {
+    // 13-month-old toddler: "Walks independently" is in-window. Marking it done
+    // must set done:true on that milestone and leave the others done:false.
+    const done = { milestones: new Set(['Walks independently']), health: new Set<string>() };
+    const view = companionForChild({ dateOfBirth: '2025-05-15' }, NOW, done);
+
+    const walk = view.milestones.find((m) => m.what === 'Walks independently');
+    const words = view.milestones.find((m) => m.what === 'Says first words');
+    expect(walk?.done).toBe(true);
+    expect(words?.done).toBe(false);
+    // Done never removes a milestone — it stays in the list, just flagged.
+    expect(view.milestones).toHaveLength(
+      companionForChild({ dateOfBirth: '2025-05-15' }, NOW).milestones.length,
+    );
+  });
+
+  it('defaults every item to not-done when no done set is passed', () => {
+    const view = companionForChild({ dateOfBirth: '2025-05-15' }, NOW);
+    expect(view.milestones.every((m) => m.done === false)).toBe(true);
+    expect(view.nextHealth.every((h) => h.done === false)).toBe(true);
+  });
+
+  it('carries a stable health key that matches healthItemKey and flips done for it', () => {
+    // 3-month-old: the soonest upcoming item is the 4-month well-baby visit.
+    const target = { ageMonths: 4, kind: 'well_child_visit' as const };
+    const key = healthItemKey(target);
+    const done = { milestones: new Set<string>(), health: new Set([key]) };
+    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW, done);
+
+    const visit = view.nextHealth.find((h) => h.key === key);
+    expect(visit?.what).toBe('4-month well-baby visit');
+    expect(visit?.done).toBe(true);
+    // The 4-month immunizations share the age but not the key → still not done.
+    const shots = view.nextHealth.find(
+      (h) => h.key === healthItemKey({ ageMonths: 4, kind: 'immunization' }),
+    );
+    expect(shots?.done).toBe(false);
+  });
+});
+
+describe('companionForChild — recently-passed health (not silently dropped)', () => {
+  it('surfaces a recently-passed, not-done item as a passed item with a negative dueInWeeks', () => {
+    // Born 2026-01-15 → 5mo on 2026-06-15. The 4-month set passed 1 month ago and
+    // is within RECENT_PASSED_MONTHS(3), so it surfaces in recentlyPassedHealth —
+    // NOT in nextHealth (which is at-or-after age only).
+    const view = companionForChild({ dateOfBirth: '2026-01-15' }, NOW);
+    expect(view.ageMonths).toBe(5);
+
+    const passedAges = view.recentlyPassedHealth.map((h) => h.ageMonths);
+    expect(passedAges).toContain(4);
+    // It's genuinely passed: negative weeks-until.
+    const fourMonthVisit = view.recentlyPassedHealth.find(
+      (h) => h.ageMonths === 4 && h.kind === 'well_child_visit',
+    );
+    expect(fourMonthVisit).toBeTruthy();
+    expect(fourMonthVisit?.dueInWeeks).toBeLessThan(0);
+    // And it is not double-counted into the upcoming list.
+    expect(view.nextHealth.some((h) => h.ageMonths === 4)).toBe(false);
+  });
+
+  it('drops a recently-passed item from recentlyPassedHealth once it is marked done', () => {
+    const key = healthItemKey({ ageMonths: 4, kind: 'well_child_visit' });
+    const done = { milestones: new Set<string>(), health: new Set([key]) };
+    const view = companionForChild({ dateOfBirth: '2026-01-15' }, NOW, done);
+    expect(view.recentlyPassedHealth.some((h) => h.key === key)).toBe(false);
+  });
+
+  it('does not resurface an item that passed longer ago than RECENT_PASSED_MONTHS', () => {
+    // Born 2025-11-15 → 7mo. The 2-month set passed 5 months ago (> 3) → gone; the
+    // 6-month set passed 1 month ago → surfaces.
+    const view = companionForChild({ dateOfBirth: '2025-11-15' }, NOW);
+    expect(view.ageMonths).toBe(7);
+    const passedAges = view.recentlyPassedHealth.map((h) => h.ageMonths);
+    expect(passedAges).toContain(6);
+    expect(passedAges).not.toContain(2);
+  });
+});
+
+describe('companionForChild — todayHealth horizon gate', () => {
+  it('leads with the soonest upcoming item when it is within the horizon', () => {
+    // 3-month-old: next is the 4-month set, ~1 month out (within horizon).
+    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW);
+    expect(view.todayHealth?.ageMonths).toBe(4);
+  });
+
+  it('returns null rather than leading with a checkup years away', () => {
+    // Born 2024-10-15 → 20mo. The 18-month set has passed; the next real routine
+    // item is the 4–6 year (60mo) set — 40 months out, far beyond the horizon.
+    const view = companionForChild({ dateOfBirth: '2024-10-15' }, NOW);
+    expect(view.ageMonths).toBe(20);
+    expect(view.nextHealth[0]?.ageMonths).toBe(60);
+    // The list still shows the far item, but the "today" lead is suppressed.
+    expect(view.nextHealth[0] && view.nextHealth[0].ageMonths - view.ageMonths).toBeGreaterThan(
+      HEALTH_HORIZON_MONTHS,
+    );
+    expect(view.todayHealth).toBeNull();
+  });
+
+  it('skips a done upcoming item when choosing the today lead', () => {
+    // 3-month-old whose 4-month visit is already done → the lead advances to the
+    // next not-done in-horizon item (the 4-month immunizations, same age).
+    const doneKey = healthItemKey({ ageMonths: 4, kind: 'well_child_visit' });
+    const done = { milestones: new Set<string>(), health: new Set([doneKey]) };
+    const view = companionForChild({ dateOfBirth: '2026-03-15' }, NOW, done);
+    expect(view.todayHealth?.done).toBe(false);
+    expect(view.todayHealth?.key).not.toBe(doneKey);
   });
 });

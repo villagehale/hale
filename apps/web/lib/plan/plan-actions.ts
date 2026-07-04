@@ -10,6 +10,7 @@ import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/fa
 import {
   type PlanInput,
   type PlanValidationError,
+  completePlanForFamily,
   insertPlanForFamily,
   validatePlan,
 } from './plan-core';
@@ -112,6 +113,44 @@ export async function deletePlan(planId: string): Promise<DeletePlanResult> {
   }
   revalidatePath('/plan');
   return { status: 'deleted' };
+}
+
+export type CompletePlanResult =
+  | { status: 'completed' }
+  | { status: 'preview' }
+  | { status: 'not_found' };
+
+/**
+ * Marks a parent-authored plan done (the soft "done" affordance on a plan card).
+ * Resolves the caller's family from the session, then completePlanForFamily
+ * family-scopes the stamp + writes the immutable audit_log row (rule #6). Degrades
+ * to preview (no write, never a crash) in a dev preview, exactly like deletePlan.
+ */
+export async function completePlan(planId: string): Promise<CompletePlanResult> {
+  const ctx = await mutationContext();
+  if (ctx.status === 'preview') {
+    return { status: 'preview' };
+  }
+
+  const { database, identity } = ctx;
+  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  if (!familyId) {
+    return { status: 'not_found' };
+  }
+  const userId = await ensureUserRow(identity, database);
+
+  const result = await completePlanForFamily(database, {
+    familyId,
+    userId,
+    planId,
+    now: new Date(),
+  });
+  if (result.status === 'not_found') {
+    return { status: 'not_found' };
+  }
+
+  revalidatePath('/plan');
+  return { status: 'completed' };
 }
 
 type MutationContext =

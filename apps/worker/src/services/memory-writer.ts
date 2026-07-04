@@ -1295,7 +1295,13 @@ export async function recordRoutineProposal(
   input: {
     familyId: string;
     weekOf: string;
-    items: Array<{ title: string; kind: string; childId: string | null; stageNote: string }>;
+    items: Array<{
+      title: string;
+      kind: string;
+      childId: string | null;
+      stageNote: string;
+      day?: string;
+    }>;
   },
   database: Database = db(),
 ): Promise<{ proposalId: string }> {

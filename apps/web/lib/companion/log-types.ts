@@ -11,6 +11,10 @@ export const FEED_EPISODE = 'feed';
 export const NAP_EPISODE = 'nap';
 export const MILESTONE_EPISODE = 'milestone';
 export const BOOKING_EPISODE = 'booking_requested';
+/** A completed curated health item (a checkup / immunization set the parent
+ * confirms is done). Distinct from the free-text quick-log kinds so the companion
+ * read can join it back to the curated schedule by payload.healthKey. */
+export const HEALTH_DONE_EPISODE = 'health_done';
 
 /** A feed's kind, surfaced in the timeline. 'unspecified' is the default when a
  * parent doesn't pick one (kept out of the summary). */
@@ -100,6 +104,42 @@ export const editEpisodeSchema = z.object({
 export const deleteEpisodeSchema = z.object({
   id: z.string().uuid(),
 });
+
+/**
+ * Marking a CURATED companion item done from the companion view. A done-tap is a
+ * one-shot write with no free-text: the client sends the item the parent tapped
+ * (identified by the curated `what`, and — for health — its stable healthKey), and
+ * the server maps it to the same episode write path a quick-log uses. A milestone
+ * done writes the SAME row a quick-log milestone writes (episodeType 'milestone',
+ * summary = what); a health done writes a 'health_done' episode carrying the key so
+ * the companion read can flip that item to done. `occurredAt` is server-clocked
+ * (now) — a done-tap records "confirmed done today", not a backdated entry.
+ */
+export const markMilestoneDoneSchema = z.object({
+  target: z.literal('milestone'),
+  childId: z.string().uuid(),
+  what: z.string().trim().min(1).max(280),
+});
+
+export const markHealthDoneSchema = z.object({
+  target: z.literal('health'),
+  childId: z.string().uuid(),
+  what: z.string().trim().min(1).max(280),
+  healthKey: z.string().trim().min(1).max(64),
+});
+
+export const markDoneSchema = z.discriminatedUnion('target', [
+  markMilestoneDoneSchema,
+  markHealthDoneSchema,
+]);
+
+export type MarkDoneInput = z.infer<typeof markDoneSchema>;
+
+export type MarkDoneResult =
+  | { status: 'done' }
+  | { status: 'preview' }
+  | { status: 'invalid'; error: string }
+  | { status: 'forbidden' };
 
 export type EditResult =
   | { status: 'edited' }

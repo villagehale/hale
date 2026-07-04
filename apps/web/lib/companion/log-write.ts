@@ -1,6 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
-import { FEED_EPISODE, MILESTONE_EPISODE, NAP_EPISODE, type QuickLogInput } from './log-types.js';
+import {
+  FEED_EPISODE,
+  HEALTH_DONE_EPISODE,
+  type MarkDoneInput,
+  MILESTONE_EPISODE,
+  NAP_EPISODE,
+  type QuickLogInput,
+} from './log-types.js';
 
 /**
  * Pure + db helpers behind the quick-log server action. Split out of the
@@ -67,6 +74,39 @@ export function buildEpisodeInsert(
         },
       };
   }
+}
+
+/**
+ * Pure: turns a done-tap on a curated companion item into the episode row to
+ * insert. A milestone done produces the SAME row a quick-log milestone writes
+ * (episodeType 'milestone', summary = what, payload.milestone = what) so the
+ * companion read flips it to done by matching that `what`. A health done produces
+ * a 'health_done' episode carrying the stable healthKey in its payload so the read
+ * joins it back to the curated schedule item. Both reuse writeEpisode downstream.
+ */
+export function buildDoneEpisodeInsert(
+  input: MarkDoneInput,
+  familyId: string,
+  occurredAt: Date,
+  authoredBy: string | null,
+): EpisodeInsert {
+  if (input.target === 'milestone') {
+    return buildEpisodeInsert(
+      { kind: MILESTONE_EPISODE, childId: input.childId, milestone: input.what },
+      familyId,
+      occurredAt,
+      authoredBy,
+    );
+  }
+  return {
+    familyId,
+    childId: input.childId,
+    authoredBy,
+    occurredAt,
+    episodeType: HEALTH_DONE_EPISODE,
+    summary: `${input.what} — done`,
+    payload: { healthKey: input.healthKey, what: input.what },
+  };
 }
 
 /**

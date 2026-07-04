@@ -203,3 +203,102 @@ describe('logQuickEpisode', () => {
   });
 });
 
+describe('markCompanionItemDone', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    familyMock.mockReset();
+    childBelongsMock.mockReset();
+    writeEpisodeMock.mockReset();
+    revalidateMock.mockReset();
+    configureAuth(true);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('writes an audited milestone episode and flips the item to done for its own child', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const { markCompanionItemDone } = await import('./log.js');
+
+    const result = await markCompanionItemDone(
+      { target: 'milestone', childId: CHILD_ID, what: 'Walks independently' },
+      NOW,
+    );
+
+    expect(result.status).toBe('done');
+    // The done-tap writes the SAME episode a quick-log milestone writes (rule #6
+    // audit is inside writeEpisode, exercised in log-write.test).
+    expect(writeEpisodeMock).toHaveBeenCalledTimes(1);
+    expect(writeEpisodeMock.mock.calls[0]?.[1]).toMatchObject({
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      episodeType: 'milestone',
+      summary: 'Walks independently',
+      payload: { milestone: 'Walks independently' },
+      occurredAt: NOW,
+    });
+    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+  });
+
+  it('writes a health_done episode carrying the key when marking a checkup done', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const { markCompanionItemDone } = await import('./log.js');
+
+    const result = await markCompanionItemDone(
+      {
+        target: 'health',
+        childId: CHILD_ID,
+        what: '4-month well-baby visit',
+        healthKey: '4-well_child_visit',
+      },
+      NOW,
+    );
+
+    expect(result.status).toBe('done');
+    expect(writeEpisodeMock.mock.calls[0]?.[1]).toMatchObject({
+      episodeType: 'health_done',
+      payload: { healthKey: '4-well_child_visit' },
+    });
+  });
+
+  it('forbids marking an item done for a child not in the family — never writes', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(false);
+    const { markCompanionItemDone } = await import('./log.js');
+
+    const result = await markCompanionItemDone({
+      target: 'milestone',
+      childId: CHILD_ID,
+      what: 'Walks independently',
+    });
+
+    expect(result.status).toBe('forbidden');
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+
+  it('returns preview without writing when no family resolves', async () => {
+    familyMock.mockResolvedValue(null);
+    const { markCompanionItemDone } = await import('./log.js');
+
+    const result = await markCompanionItemDone({
+      target: 'milestone',
+      childId: CHILD_ID,
+      what: 'Walks independently',
+    });
+
+    expect(result.status).toBe('preview');
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed done input before any write', async () => {
+    const { markCompanionItemDone } = await import('./log.js');
+    const result = await markCompanionItemDone({ target: 'milestone', childId: 'not-a-uuid' });
+    expect(result.status).toBe('invalid');
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+});
+

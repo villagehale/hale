@@ -113,6 +113,10 @@ export interface RoutineProposalItem {
   kind: string;
   childId: string | null;
   stageNote: string;
+  /** The weekday the routine agent placed this item on ("monday"–"sunday").
+   * Additive + optional: rows written before this field stay valid and read back
+   * as undefined (no day chip), so no data migration is needed (rule #9). */
+  day?: string;
 }
 
 /**
