@@ -45,9 +45,11 @@ export function HomeAddress({
         setStatus('manual');
         return;
       }
-      // Global: no country restriction — anyone who signs up can enter their
-      // address (the 5 focus markets matter for discovery quality, not entry).
-      element = new Ctor({});
+      // Canada-only entry (hard rule #1): Hale is compliance-cleared for Canada,
+      // so the address autocomplete is region-restricted to CA. Opening a new
+      // market is a deliberate program; the onboarding region gate enforces it
+      // server-side (this restriction is the matching UX guide).
+      element = new Ctor({ includedRegionCodes: ['ca'] });
       element.setAttribute('aria-label', 'search your home address');
       listener = (event: Event) => {
         const place = (
