@@ -60,20 +60,22 @@ function InfoRow({
   stamp,
   what,
   first,
+  done = false,
 }: {
   when: string;
   stamp: boolean;
   what: string;
   first: boolean;
+  done?: boolean;
 }) {
   return (
     <View
       className={`flex-row items-baseline gap-3 ${first ? '' : 'border-t border-rule pt-3'}`}
     >
       <View className="w-24 shrink-0">
-        <Tag label={when} tone={stamp ? 'attention' : 'neutral'} />
+        <Tag label={done ? 'done' : when} tone={done ? 'done' : stamp ? 'attention' : 'neutral'} />
       </View>
-      <AppText variant="body" className="flex-1">
+      <AppText variant="body" className={`flex-1 ${done ? 'text-ink-3' : ''}`}>
         {what}
       </AppText>
     </View>
@@ -234,11 +236,12 @@ function CompanionBody({
           <View className="gap-3">
             {child.nextHealth.slice(0, 3).map((item, i) => (
               <InfoRow
-                key={`${item.ageMonths}-${item.kind}`}
+                key={item.key}
                 when={duePhrase(item.dueInWeeks)}
                 stamp={item.dueInWeeks <= 0}
                 what={item.what}
                 first={i === 0}
+                done={item.done}
               />
             ))}
           </View>
@@ -260,6 +263,7 @@ function CompanionBody({
               stamp={milestone.timing === 'in_window'}
               what={milestone.what}
               first={i === 0}
+              done={milestone.done}
             />
           ))}
         </View>
