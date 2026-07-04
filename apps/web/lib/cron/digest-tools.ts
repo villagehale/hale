@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { companionForChild, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
 
@@ -98,6 +99,7 @@ export function buildDailyBriefTools(
         children.filter((c) => deriveStage(c.dateOfBirth, now) === 'teenager').map((c) => c.id),
       );
 
+      const timeZone = await readFamilyTimezone(database, ctx.familyId);
       const since = new Date(now.getTime() - WEEK_DAYS * 24 * 60 * 60 * 1000);
       const currentRunRows = await database
         .select()
@@ -115,7 +117,7 @@ export function buildDailyBriefTools(
         )
         .limit(WEEK_VILLAGE_LIMIT);
 
-      const candidates = visibleCandidates(currentRunRows, now)
+      const candidates = visibleCandidates(currentRunRows, now, timeZone)
         .map((row) =>
           toVillageCandidateView(row, row.childId !== null && teenChildIds.has(row.childId)),
         )

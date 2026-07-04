@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 import { listFamilyAcceptedCandidateIds } from './accept';
@@ -78,7 +79,9 @@ export async function readVillage(database: Database, familyId: string): Promise
   // run — all at the one visibility primitive — then float dated picks to the top
   // soonest-first so a time-boxed event reads before the standing options. The
   // confidence order the DB applied is preserved within each group (stable sort).
-  const candidateRows = orderByDate(visibleCandidates(currentRunRows, new Date()));
+  // The day-boundary/season decisions use the family's own zone, not the server's.
+  const timeZone = await readFamilyTimezone(database, familyId);
+  const candidateRows = orderByDate(visibleCandidates(currentRunRows, new Date(), timeZone));
 
   const routineRows = await database
     .select()

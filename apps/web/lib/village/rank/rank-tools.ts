@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { countEndorsementsForCandidates } from '~/lib/village/endorse';
 import { visibleCandidates } from '~/lib/village/visibility';
@@ -57,6 +58,7 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     inputSchema: z.object({}),
     handler: async (_input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+      const timeZone = await readFamilyTimezone(database, ctx.familyId);
       const currentRunRows = await database
         .select()
         .from(schema.villageCandidates)
@@ -69,7 +71,7 @@ export function buildRankTools(database: Database): RegisteredTool[] {
         .orderBy(desc(schema.villageCandidates.discoveredAt))
         .limit(CANDIDATE_LIMIT);
 
-      const rows = visibleCandidates(currentRunRows, new Date());
+      const rows = visibleCandidates(currentRunRows, new Date(), timeZone);
 
       const candidates = rows.map((row) => {
         const view = toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds));

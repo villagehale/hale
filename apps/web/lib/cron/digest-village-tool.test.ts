@@ -17,8 +17,10 @@ function fakeDb(candidates: Array<Record<string, unknown>>) {
   const build = (rows: unknown[]) => {
     const whereResult = Object.assign(Promise.resolve(rows), {
       orderBy: () => ({ limit: async () => rows }),
+      limit: async () => rows,
     });
-    return { where: () => whereResult };
+    const chain = { where: () => whereResult, innerJoin: () => chain };
+    return chain;
   };
   const db = {
     select: () => ({

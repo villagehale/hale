@@ -326,4 +326,26 @@ describe('loadSharedWeekPlan', () => {
 
     expect(result?.activities.map((a) => a.title)).toEqual(['Fresh swim']);
   });
+
+  it('applies the SHARING family timezone to the dated-event day boundary (not UTC/Toronto)', async () => {
+    // 01:30 Jul 4 in Toronto is still 22:30 Jul 3 in Vancouver. An event dated
+    // Jul 3 has passed under Toronto's local day but is still "today" under
+    // Vancouver's — so it survives ONLY because the sharing family's tz is threaded.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-04T05:30:00Z'));
+    try {
+      const { db } = fakeDb([
+        [{ proposalFamilyId: FAMILY_ID, weekOf: '2026-06-15', items: [], areaCoarse: 'M4L' }],
+        [familyWideCandidate({ title: 'Vancouver Jul 3 fair', eventDate: '2026-07-03' })],
+        // the sharing family's timezone row (readFamilyTimezone's third select)
+        [{ timezone: 'America/Vancouver' }],
+      ]);
+
+      const result = await loadSharedWeekPlan(SHARE_TOKEN, db);
+
+      expect(result?.activities.map((a) => a.title)).toEqual(['Vancouver Jul 3 fair']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

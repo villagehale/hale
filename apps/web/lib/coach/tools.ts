@@ -8,6 +8,7 @@ import {
   deriveStage,
   type FamilyStage,
 } from '@hale/types';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
 
@@ -239,6 +240,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     inputSchema: z.object({ query: z.string().optional() }),
     handler: async (input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+      const timeZone = await readFamilyTimezone(database, ctx.familyId);
 
       const currentRunRows = await database
         .select()
@@ -253,7 +255,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
         .limit(MEMORY_RESULT_LIMIT);
 
       const needle = input.query?.toLowerCase();
-      const candidates = visibleCandidates(currentRunRows, new Date())
+      const candidates = visibleCandidates(currentRunRows, new Date(), timeZone)
         .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
         .filter(
           (c) =>

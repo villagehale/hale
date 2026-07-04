@@ -25,12 +25,14 @@ function fakeDb(args: {
   const build = (rows: unknown[]) => {
     // `.where()` is both awaitable (the children/families/facts reads await it
     // directly) AND chainable into .limit/.orderBy/.groupBy (the candidate read).
+    // `.innerJoin()` is chainable so the timezone read's join resolves.
     const whereResult = Object.assign(Promise.resolve(rows), {
       limit: async () => rows.slice(0, 1),
       orderBy: () => ({ limit: async () => rows }),
       groupBy: async () => rows,
     });
-    return { where: () => whereResult };
+    const chain = { where: () => whereResult, innerJoin: () => chain };
+    return chain;
   };
   const db = {
     select: () => ({

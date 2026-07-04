@@ -19,7 +19,8 @@ function fakeDb(candidates: Array<Record<string, unknown>>) {
       limit: async () => rows,
       orderBy: () => ({ limit: async () => rows }),
     });
-    return { where: () => whereResult };
+    const chain = { where: () => whereResult, innerJoin: () => chain };
+    return chain;
   };
   const db = {
     select: () => ({
