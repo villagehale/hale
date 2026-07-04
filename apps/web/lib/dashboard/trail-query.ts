@@ -1,13 +1,19 @@
+import { AGENT_TOOL_ACTION_PREFIX } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, notLike, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
-import {
-  type ActorResolver,
-  type TrailView,
-  effectiveTeenContent,
-  toTrailView,
-} from './mappers';
+import { type ActorResolver, type TrailView, effectiveTeenContent, toTrailView } from './mappers';
+
+/**
+ * A `tool:<name>` audit row is an Ask Hale agent tool-call SUB-STEP (written by
+ * packages/agent), not a parent-facing action. It must never reach the trail —
+ * neither the timeline nor the tally. Excluded in the query (below) so the row
+ * window stays meaningful; this predicate is the shared definition.
+ */
+function isAgentToolStep(actionTaken: string): boolean {
+  return actionTaken.startsWith(AGENT_TOOL_ACTION_PREFIX);
+}
 
 /**
  * Family-scoped, auth-free reads for the History trail (and the data export that
@@ -124,27 +130,39 @@ export async function loadTrailForFamily(
     )
     .leftJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
     .leftJoin(schema.children, eq(schema.events.childId, schema.children.id))
-    .where(eq(schema.auditLog.familyId, familyId))
+    // Exclude the Ask Hale agent's internal tool-call sub-steps (action_taken
+    // `tool:<name>`, see packages/agent): they're not parent-facing actions, so they
+    // must neither render on the timeline nor inflate the tally. Filtered in the
+    // query so the 50-row window stays 50 MEANINGFUL rows (both callers — History
+    // and the right-to-access export — get the same parent-facing set).
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        notLike(schema.auditLog.actionTaken, `${AGENT_TOOL_ACTION_PREFIX}%`),
+      ),
+    )
     .orderBy(desc(schema.auditLog.occurredAt))
     .limit(50);
-  return rows.map((row) => {
-    const resolvedToEvent = row.teenContent !== null;
-    // The child tag names the attributed child by NAME — including a teenager
-    // (policy 1: the parent entered it, and two teens must never both read "your
-    // teen"). This is the LABEL only; the row's CONTENT is separately redacted
-    // via effectiveTeenContent below. A row with no attributed child (non-`actions`
-    // target, family-wide event) reads null → "whole family".
-    const childLabel = row.childName ?? null;
-    return toTrailView(
-      row.entry,
-      effectiveTeenContent(
-        row.teenContent ?? false,
-        row.childDob ?? null,
-        resolvedToEvent && familyHasTeen,
-      ),
-      timeZone,
-      resolveActor,
-      childLabel,
-    );
-  });
+  return rows
+    .filter((row) => !isAgentToolStep(row.entry.actionTaken))
+    .map((row) => {
+      const resolvedToEvent = row.teenContent !== null;
+      // The child tag names the attributed child by NAME — including a teenager
+      // (policy 1: the parent entered it, and two teens must never both read "your
+      // teen"). This is the LABEL only; the row's CONTENT is separately redacted
+      // via effectiveTeenContent below. A row with no attributed child (non-`actions`
+      // target, family-wide event) reads null → "whole family".
+      const childLabel = row.childName ?? null;
+      return toTrailView(
+        row.entry,
+        effectiveTeenContent(
+          row.teenContent ?? false,
+          row.childDob ?? null,
+          resolvedToEvent && familyHasTeen,
+        ),
+        timeZone,
+        resolveActor,
+        childLabel,
+      );
+    });
 }
