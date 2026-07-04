@@ -15,6 +15,11 @@ interface Row {
   sourceUrl: string | null;
   coverageNote: string | null;
   endorsementCount: number;
+  supersededAt: Date | null;
+  discoveredAt: Date;
+  eventDate: string | null;
+  cadence: string | null;
+  seasons: string[] | null;
 }
 
 function endorsedFamilyWide(overrides: Partial<Row> = {}): Row {
@@ -26,6 +31,11 @@ function endorsedFamilyWide(overrides: Partial<Row> = {}): Row {
     sourceUrl: 'https://example.org/swim',
     coverageNote: 'serves your area',
     endorsementCount: 4,
+    supersededAt: null,
+    discoveredAt: new Date(),
+    eventDate: null,
+    cadence: null,
+    seasons: null,
     ...overrides,
   };
 }
@@ -110,5 +120,20 @@ describe('loadSharedPicks — public endorsed shortlist (rule #1)', () => {
 
     const picks = await loadSharedPicks(TOKEN, db);
     expect(picks?.activities[0]?.sourceUrl).toBeNull();
+  });
+
+  it('excludes superseded and past endorsed picks from the shared shortlist (stale-pile fix)', async () => {
+    const { db } = fakeDb([
+      [{ familyId: FAMILY_ID, areaCoarse: 'M4L' }],
+      [
+        endorsedFamilyWide({ title: 'Fresh endorsed swim' }),
+        endorsedFamilyWide({ title: 'Superseded pick', supersededAt: new Date() }),
+        endorsedFamilyWide({ title: 'Past endorsed festival', eventDate: '2020-01-01' }),
+      ],
+    ]);
+
+    const picks = await loadSharedPicks(TOKEN, db);
+
+    expect(picks?.activities.map((a) => a.title)).toEqual(['Fresh endorsed swim']);
   });
 });

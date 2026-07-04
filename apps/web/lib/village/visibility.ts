@@ -53,6 +53,14 @@ export function isRunFresh(
   return ageMs <= freshDays * 24 * 60 * 60 * 1000;
 }
 
+/** The row fields the visibility contract actually reads — a structural subset of
+ * VillageCandidate, so a caller with a narrower projection (e.g. the public share
+ * queries) can be filtered without selecting every candidate column. */
+export type VisibilityFields = Pick<
+  VillageCandidate,
+  'supersededAt' | 'discoveredAt' | 'eventDate' | 'cadence' | 'seasons'
+>;
+
 /**
  * Whether a candidate should appear on the feed at `now`. Pure; see the module
  * doc for the full contract. `timeZone` is the family's zone so both the season
@@ -60,7 +68,7 @@ export function isRunFresh(
  * never the server's (UTC) day.
  */
 export function isVisibleNow(
-  candidate: VillageCandidate,
+  candidate: VisibilityFields,
   now: Date,
   timeZone: string = DEFAULT_TIMEZONE,
 ): boolean {
@@ -84,7 +92,7 @@ export function isVisibleNow(
 
 /** Keep only the candidates visible at `now` (see isVisibleNow). Preserves the
  * caller's order — the confidence order the DB already applied. */
-export function visibleCandidates<T extends VillageCandidate>(
+export function visibleCandidates<T extends VisibilityFields>(
   candidates: readonly T[],
   now: Date,
   timeZone: string = DEFAULT_TIMEZONE,

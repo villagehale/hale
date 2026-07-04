@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { visibleCandidates } from './visibility.js';
 
 /**
  * The PUBLIC, unauthenticated share view of a family's week plan (rule #1). This
@@ -177,9 +178,21 @@ export async function loadSharedWeekPlan(
       // Aggregate endorsement count via a correlated subquery — a COUNT only, no
       // join to families/users, so no identity is reachable (rule #1).
       endorsementCount: endorsementCountSubquery(),
+      // Visibility inputs (never surfaced by the mapper) so a shared page shows
+      // only the current, in-window run — not a superseded or already-past pick.
+      supersededAt: schema.villageCandidates.supersededAt,
+      discoveredAt: schema.villageCandidates.discoveredAt,
+      eventDate: schema.villageCandidates.eventDate,
+      cadence: schema.villageCandidates.cadence,
+      seasons: schema.villageCandidates.seasons,
     })
     .from(schema.villageCandidates)
-    .where(eq(schema.villageCandidates.familyId, proposal.proposalFamilyId))
+    .where(
+      and(
+        eq(schema.villageCandidates.familyId, proposal.proposalFamilyId),
+        isNull(schema.villageCandidates.supersededAt),
+      ),
+    )
     .orderBy(desc(schema.villageCandidates.discoveredAt))
     .limit(PUBLIC_CANDIDATE_LIMIT);
 
@@ -188,6 +201,9 @@ export async function loadSharedWeekPlan(
     // per-child stage notes (rule #1). The mapper surfaces only weekOf.
     proposal: { weekOf: proposal.weekOf, items: [] },
     areaCoarse: proposal.areaCoarse,
-    candidates,
+    // Drop superseded / stale-run / past / out-of-season picks before the mapper —
+    // the same visibility contract the authed feed applies, so a shared page never
+    // leaks last month's pile or an event that already happened.
+    candidates: visibleCandidates(candidates, new Date()),
   });
 }
