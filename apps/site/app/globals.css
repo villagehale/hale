@@ -224,6 +224,7 @@ strong { font-weight: 700; }
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--color-faded-sage);
+  overflow-wrap: anywhere;
 }
 
 /* The single hero accent word — text-safe warm coral. */
@@ -308,14 +309,6 @@ strong { font-weight: 700; }
 
 .btn-primary[disabled] { opacity: 0.6; cursor: progress; }
 
-/* Header-density variant: same primary button, tighter padding + type so it
- * sits in the nav bar without crowding. Sized to clear 390px with the logo +
- * ThemeToggle on one line; eases up to the roomier size once there's space. */
-.btn-compact { padding: 0.5rem 0.75rem; font-size: 0.8125rem; }
-@media (min-width: 640px) {
-  .btn-compact { padding: 0.55rem 1rem; font-size: 0.9rem; }
-}
-
 .btn-secondary {
   display: inline-flex;
   align-items: center;
@@ -339,6 +332,15 @@ strong { font-weight: 700; }
 .btn-secondary:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* Header-density variant: same button, tighter padding + type so it sits in the
+ * nav bar without crowding. Declared after .btn-primary/.btn-secondary so the
+ * compact padding wins over their roomier default on the header CTA (which
+ * carries both classes); eases up to the roomier size once there's space. */
+.btn-compact { padding: 0.5rem 0.75rem; font-size: 0.8125rem; }
+@media (min-width: 640px) {
+  .btn-compact { padding: 0.55rem 1rem; font-size: 0.9rem; }
 }
 
 /* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
