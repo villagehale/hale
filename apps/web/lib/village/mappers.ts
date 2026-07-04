@@ -21,6 +21,13 @@ export interface VillageCandidateView {
   /** How the activity recurs — "seasonal" | "one-time" | "ongoing" — or null when
    * the discovery run didn't classify it (no chip). Null on a teen-redacted card. */
   cadence: string | null;
+  /** Which seasons a seasonal activity runs — passed through for the client-side
+   * cadence filter; the server already applied the in-season gate. Null on a
+   * teen-redacted card (same treatment as cadence) and on non-seasonal rows. */
+  seasons: string[] | null;
+  /** When this candidate was discovered (ISO) — rendered as a "found N ago"
+   * freshness stamp so the family reads how current the run is. */
+  discoveredAt: string;
   summary: string;
   coverageNote: string | null;
   sourceUrl: string | null;
@@ -119,6 +126,8 @@ export function toVillageCandidateView(
       title: TEEN_REDACTED_PLACEHOLDER,
       kind: candidate.kind,
       cadence: null,
+      seasons: null,
+      discoveredAt: candidate.discoveredAt.toISOString(),
       summary: '',
       coverageNote: null,
       sourceUrl: null,
@@ -141,6 +150,8 @@ export function toVillageCandidateView(
     title: candidate.title,
     kind: candidate.kind,
     cadence: candidate.cadence,
+    seasons: candidate.seasons,
+    discoveredAt: candidate.discoveredAt.toISOString(),
     summary: candidate.summary,
     coverageNote: candidate.coverageNote,
     sourceUrl: candidate.sourceUrl,
@@ -169,6 +180,33 @@ export function filterCandidatesByScope(
 ): VillageCandidateView[] {
   if (scope === null) return candidates;
   return candidates.filter((c) => c.childId === scope || c.childId === null);
+}
+
+/** The cadence-filter selections the /village feed offers. "all" narrows nothing;
+ * "year-round" is the human label for the stored `ongoing` cadence — the UI never
+ * shows the raw token (rule #1: a stored value never renders raw). */
+export type CadenceFilter = 'all' | 'one-time' | 'seasonal' | 'year-round';
+
+const CADENCE_FILTER_MATCH: Record<Exclude<CadenceFilter, 'all'>, string> = {
+  'one-time': 'one-time',
+  seasonal: 'seasonal',
+  'year-round': 'ongoing',
+};
+
+/**
+ * Narrow the feed to one cadence — a display-only selector over the rows the
+ * server already visibility-filtered (no request, no new signal). "all" returns
+ * every candidate; any other selection keeps only rows whose stored cadence maps
+ * to it (so an unclassified null-cadence row is hidden under a specific filter,
+ * shown under "all").
+ */
+export function filterCandidatesByCadence(
+  candidates: VillageCandidateView[],
+  filter: CadenceFilter,
+): VillageCandidateView[] {
+  if (filter === 'all') return candidates;
+  const wanted = CADENCE_FILTER_MATCH[filter];
+  return candidates.filter((c) => c.cadence === wanted);
 }
 
 /**

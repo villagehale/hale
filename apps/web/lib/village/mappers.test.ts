@@ -3,6 +3,7 @@ import { TEEN_REDACTED_PLACEHOLDER } from '../dashboard/mappers.js';
 import {
   type RoutineProposal,
   type VillageCandidate,
+  filterCandidatesByCadence,
   filterCandidatesByScope,
   toRoutineProposalView,
   toVillageCandidateView,
@@ -31,6 +32,9 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     venueName: 'Riverdale Community Centre',
     venueAddress: '123 Broadview Ave, Toronto, ON',
     shareToken: null,
+    eventDate: null,
+    seasons: null,
+    supersededAt: null,
     discoveredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,
   };
@@ -65,8 +69,11 @@ describe('toVillageCandidateView', () => {
     expect(view.coverageNote).toBeNull();
     expect(view.sourceUrl).toBeNull();
     expect(view.kind).toBe('support_group');
-    // Cadence is dropped on a teen card so no per-child recurrence signal leaks.
+    // Cadence AND seasons are dropped on a teen card so no per-child recurrence
+    // signal leaks; the run-recency stamp (not raw content) survives.
     expect(view.cadence).toBeNull();
+    expect(view.seasons).toBeNull();
+    expect(view.discoveredAt).toBe('2026-06-11T10:00:00.000Z');
     // Rule #1: a teen-attributed candidate is never plottable — coords drop to
     // null so the map can never surface a teen's activity location.
     expect(view.lat).toBeNull();
@@ -92,11 +99,23 @@ describe('toVillageCandidateView', () => {
     expect(view.sourceUrl).toBe(RAW_SOURCE_URL);
     expect(view.kind).toBe('support_group');
     expect(view.cadence).toBe('ongoing');
+    // seasons + discoveredAt pass through for the cadence filter and freshness stamp.
+    expect(view.seasons).toBeNull();
+    expect(view.discoveredAt).toBe('2026-06-11T10:00:00.000Z');
     // Public venue coords pass through for the map pin (a public place, not the
     // family's location — rule #1).
     expect(view.lat).toBe(43.6777);
     expect(view.lng).toBe(-79.3534);
     expect(view.venueName).toBe('Riverdale Community Centre');
+  });
+
+  it('passes a seasonal candidate its seasons through to the view', () => {
+    const view = toVillageCandidateView(
+      candidate({ cadence: 'seasonal', seasons: ['summer', 'fall'] }),
+      false,
+      NO_ENGAGEMENT,
+    );
+    expect(view.seasons).toEqual(['summer', 'fall']);
   });
 
   it('folds the aggregate engagement (count + own-endorsed) into both teen and non-teen views', () => {
@@ -142,6 +161,30 @@ describe('filterCandidatesByScope', () => {
   it("a child scope keeps that child's picks AND the family-wide picks, drops other children", () => {
     const result = filterCandidatesByScope([nadiaPick, omarPick, familyPick], NADIA);
     expect(result.map((c) => c.id)).toEqual(['c-nadia', 'c-family']);
+  });
+});
+
+describe('filterCandidatesByCadence', () => {
+  const byCadence = (id: string, cadence: string | null) =>
+    toVillageCandidateView(candidate({ id, childId: null, cadence }), false, NO_ENGAGEMENT);
+
+  const oneTime = byCadence('c-once', 'one-time');
+  const seasonal = byCadence('c-season', 'seasonal');
+  const ongoing = byCadence('c-ongoing', 'ongoing');
+  const unclassified = byCadence('c-null', null);
+  const all = [oneTime, seasonal, ongoing, unclassified];
+
+  it('"all" narrows nothing', () => {
+    expect(filterCandidatesByCadence(all, 'all')).toEqual(all);
+  });
+
+  it('"year-round" keeps only the stored ongoing cadence (never renders the raw token)', () => {
+    expect(filterCandidatesByCadence(all, 'year-round').map((c) => c.id)).toEqual(['c-ongoing']);
+  });
+
+  it('a specific filter keeps only its cadence and drops the unclassified row', () => {
+    expect(filterCandidatesByCadence(all, 'one-time').map((c) => c.id)).toEqual(['c-once']);
+    expect(filterCandidatesByCadence(all, 'seasonal').map((c) => c.id)).toEqual(['c-season']);
   });
 });
 

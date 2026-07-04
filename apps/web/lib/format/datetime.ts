@@ -146,6 +146,25 @@ export interface LongDateParts {
   year: string;
 }
 
+/**
+ * Coarse "found …" freshness phrase for a discovery run, from its stored instant
+ * to `now`: "found today", "found yesterday", "found N days ago". Day-grained (a
+ * run's recency reads in days, not minutes), and a future stamp (clock skew) reads
+ * "found today". Zone-explicit so the day count is the family's local days, not
+ * UTC's — the same reason the rest of this layer takes a timezone.
+ */
+export function foundStamp(iso: string | Date, timeZone: string, now: Date = new Date()): string {
+  const then = new Date(iso);
+  const startKey = dayKeyOf(then, timeZone);
+  const nowKey = dayKeyOf(now, timeZone);
+  const days = Math.floor(
+    (Date.parse(`${nowKey}T00:00:00Z`) - Date.parse(`${startKey}T00:00:00Z`)) / 86_400_000,
+  );
+  if (days <= 0) return 'found today';
+  if (days === 1) return 'found yesterday';
+  return `found ${days} days ago`;
+}
+
 export function formatLongDate(date: Date, timeZone: string): LongDateParts {
   const parts = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',

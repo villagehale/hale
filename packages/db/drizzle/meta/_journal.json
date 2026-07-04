@@ -239,6 +239,13 @@
       "when": 1781461680000,
       "tag": "0033_family_plan_completed",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781461740000,
+      "tag": "0034_village_freshness",
+      "breakpoints": true
     }
   ]
 }

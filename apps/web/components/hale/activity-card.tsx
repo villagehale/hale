@@ -5,6 +5,7 @@ import { RegisterLink } from '~/components/hale/register-link';
 import { ShareButton } from '~/components/hale/share-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
 import { Icon } from '~/components/ui/icon';
+import { DEFAULT_TIMEZONE, foundStamp } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 
@@ -122,6 +123,7 @@ export function ActivityCard({
       {candidate.coverageNote ? (
         <p className="meta text-slate-green">{candidate.coverageNote}</p>
       ) : null}
+      <p className="meta text-faded-sage">{foundStamp(candidate.discoveredAt, DEFAULT_TIMEZONE)}</p>
       {proof}
       {actions}
     </article>

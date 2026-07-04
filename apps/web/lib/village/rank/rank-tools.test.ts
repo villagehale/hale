@@ -72,6 +72,7 @@ describe('list_village_candidates — teen-safe by construction (rule #1)', () =
         summary: 'A gentle weekly drop-in.',
         coverageNote: 'serves your area',
         sourceUrl: null,
+        discoveredAt: new Date('2026-07-04T12:00:00Z'),
       },
       {
         id: 'cand-teen',
@@ -81,6 +82,7 @@ describe('list_village_candidates — teen-safe by construction (rule #1)', () =
         summary: 'raw teen content that must not leak',
         coverageNote: 'serves your area',
         sourceUrl: null,
+        discoveredAt: new Date('2026-07-04T12:00:00Z'),
       },
     ];
     const db = fakeDb({

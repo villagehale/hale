@@ -12,7 +12,7 @@
   "discovery": {
     "name": "discovery",
     "version": null,
-    "sha256": "66396228c790b4586fe7bb22d3a35e0ba2ac399536a3127a7df8b7295ebf3226"
+    "sha256": "26e3bc45691eed019fc313ccc4642e01eaf2c8a5f3abe94ed26c7c0c17f27326"
   },
   "drafter": {
     "name": "drafter",

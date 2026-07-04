@@ -26,6 +26,10 @@ interface InsertCapture {
   villageCandidates: unknown[];
   auditLog: unknown[];
   agentRuns: Record<string, unknown>[];
+  /** Each supersede UPDATE run in the transaction, capturing its `.set(...)`
+   * payload so a test can assert the prior run was soft-retired (superseded_at
+   * stamped) and nothing else (shareToken never cleared). */
+  supersededUpdates: Record<string, unknown>[];
 }
 
 /**
@@ -79,6 +83,21 @@ function fakeDb(args: {
         args.capture[name].push(...list);
       },
     }),
+    // The supersede step: .update(villageCandidates).set({supersededAt}).where(...).
+    // Capture the `.set` payload; `.where` is a no-op thenable (nothing to delete
+    // in the fake — the point is to prove the prior set is SOFT-retired, not
+    // removed, so an endorsed/shared row would survive).
+    update: (table: unknown) => {
+      if (tableName(table) !== 'villageCandidates') {
+        throw new Error('unexpected update target');
+      }
+      return {
+        set: (payload: Record<string, unknown>) => {
+          args.capture.supersededUpdates.push(payload);
+          return { where: async () => undefined };
+        },
+      };
+    },
   };
 
   const transaction = vi.fn().mockImplementation(async (cb: (t: typeof tx) => Promise<void>) => {
@@ -172,7 +191,12 @@ describe('selectDiscoveryInputs — teen exclusion (rule #1)', () => {
 
 describe('discoverForFamily', () => {
   it('inserts candidates scoped to the family with the right shape + ONE audit row', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -233,8 +257,96 @@ describe('discoverForFamily', () => {
     expect(run.status).toBe('completed');
   });
 
+  it('REPLACES the active set: soft-supersedes the prior run BEFORE inserting the new one', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient(SAMPLE_CANDIDATES);
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    // Exactly one supersede UPDATE runs for the run, and it stamps ONLY
+    // superseded_at — never clears shareToken (rule: shared/endorsed rows keep
+    // their public /a/:token page alive) and never touches any other column.
+    expect(capture.supersededUpdates).toHaveLength(1);
+    const setPayload = capture.supersededUpdates[0] as Record<string, unknown>;
+    expect(Object.keys(setPayload)).toEqual(['supersededAt']);
+    expect(setPayload.supersededAt).toBeInstanceOf(Date);
+
+    // The new run's candidates land with superseded_at unset (they ARE the active
+    // set now) — the insert never carries a supersededAt value.
+    for (const row of capture.villageCandidates as Record<string, unknown>[]) {
+      expect(row).not.toHaveProperty('supersededAt');
+    }
+  });
+
+  it('persists event_date and seasons the model supplied (freshness fields), null when absent', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      {
+        // A dated one-time event → event_date set, seasons null.
+        title: 'Library author visit',
+        description: 'a one-day author reading',
+        cadence: 'one-time',
+        eventDate: '2026-09-12',
+        confidence: 0.7,
+        coverageNote: 'a grounded listing named the date',
+      },
+      {
+        // A seasonal activity → seasons set, event_date null.
+        title: 'Summer splash-pad drop-in',
+        description: 'outdoor water play in the warm months',
+        cadence: 'seasonal',
+        seasons: ['summer'],
+        confidence: 0.6,
+        coverageNote: 'splash pads run in summer',
+      },
+      {
+        // An ongoing option with neither → both null (graceful default).
+        title: 'Library storytime',
+        description: 'weekly rolling storytime',
+        cadence: 'ongoing',
+        confidence: 0.65,
+        coverageNote: 'libraries run rolling storytimes',
+      },
+    ]);
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    const rows = capture.villageCandidates as Record<string, unknown>[];
+    expect(rows[0]?.eventDate).toBe('2026-09-12');
+    expect(rows[0]?.seasons).toBeNull();
+    expect(rows[1]?.eventDate).toBeNull();
+    expect(rows[1]?.seasons).toEqual(['summer']);
+    expect(rows[2]?.eventDate).toBeNull();
+    expect(rows[2]?.seasons).toBeNull();
+  });
+
   it('records a FAILED agent_runs row and rethrows when the model returns no tool call (rule #8)', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -262,7 +374,12 @@ describe('discoverForFamily', () => {
   });
 
   it('passes the model ONLY the coarse area + stage + interests — no precise location, no DOB', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -287,7 +404,12 @@ describe('discoverForFamily', () => {
   });
 
   it('never stores the family location: coords are PUBLIC venue only, no DOB/precise-home field', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -323,10 +445,12 @@ describe('discoverForFamily', () => {
           'childId',
           'confidence',
           'coverageNote',
+          'eventDate',
           'familyId',
           'kind',
           'lat',
           'lng',
+          'seasons',
           'source',
           'sourceUrl',
           'summary',
@@ -353,7 +477,12 @@ describe('discoverForFamily', () => {
   });
 
   it('resolves the coarse-area centre ONCE and biases every venue lookup to it (rule #1)', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -382,7 +511,12 @@ describe('discoverForFamily', () => {
   });
 
   it('falls back to an undefined bias when the coarse-area centre can not be resolved', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -403,7 +537,12 @@ describe('discoverForFamily', () => {
   });
 
   it('prefers the verified Places website over a model-supplied url (the model url is often a guess)', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -446,7 +585,12 @@ describe('discoverForFamily', () => {
   });
 
   it('adopts a model url only when Places has no website AND the url passes a sanity check', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -491,7 +635,12 @@ describe('discoverForFamily', () => {
   });
 
   it('leaves source_url null when the model gave none and the venue has no website (Google-search fallback)', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -520,7 +669,12 @@ describe('discoverForFamily', () => {
   });
 
   it('leaves coords null for a candidate the geocode can not resolve (list-only, no pin)', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
@@ -545,7 +699,12 @@ describe('discoverForFamily', () => {
   });
 
   it('returns no_area and does NOT call the model when the family has no coarse area', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({ areaCoarse: null, children: [], capture });
     const c = fakeClient(SAMPLE_CANDIDATES);
 
@@ -558,7 +717,12 @@ describe('discoverForFamily', () => {
   });
 
   it('returns no_non_teen_children (no spend) for a teen-only family', async () => {
-    const capture: InsertCapture = { villageCandidates: [], auditLog: [], agentRuns: [] };
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
     const db = fakeDb({
       areaCoarse: 'L7G',
       children: [{ dateOfBirth: TEEN_DOB, interests: ['driving'] }],

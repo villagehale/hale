@@ -54,6 +54,13 @@ interface StubResult {
   database: Database;
   auditInserts: () => number;
   insertedTables: () => string[];
+  /** Rows passed to insert(village_candidates).values(...), so a test can assert
+   * the persisted freshness fields (cadence / event_date / seasons). */
+  candidateInserts: () => Record<string, unknown>[];
+  /** The `.set(...)` payloads of update(village_candidates) calls — the supersede
+   * step. Proves the prior set is SOFT-retired (superseded_at stamped), never
+   * hard-deleted (no .delete is ever called). */
+  candidateUpdates: () => Record<string, unknown>[];
 }
 
 /**
@@ -63,13 +70,39 @@ interface StubResult {
  */
 function stubDb(selectRows: unknown[] = [{ familyId }]): StubResult {
   const insertedTables: string[] = [];
+  const candidateInserts: Record<string, unknown>[] = [];
+  const candidateUpdates: Record<string, unknown>[] = [];
 
   const tx = {
     insert: vi.fn((table: unknown) => {
       insertedTables.push(table === schema.auditLog ? 'audit_log' : 'other');
+      if (table === schema.villageCandidates) {
+        const chain = builder([{ id: actionId }]);
+        (chain as { values: unknown }).values = vi.fn((rows: unknown) => {
+          const list = Array.isArray(rows) ? rows : [rows];
+          candidateInserts.push(...(list as Record<string, unknown>[]));
+          return chain;
+        });
+        return chain;
+      }
       return builder([{ id: actionId }]);
     }),
-    update: vi.fn(() => builder([])),
+    update: vi.fn((table: unknown) => {
+      const chain = builder([]);
+      if (table === schema.villageCandidates) {
+        (chain as { set: unknown }).set = vi.fn((payload: Record<string, unknown>) => {
+          candidateUpdates.push(payload);
+          return chain;
+        });
+      }
+      return chain;
+    }),
+    // A spy that must never fire: supersede is a SOFT stamp, so an endorsed /
+    // shared candidate is never hard-deleted (its endorsement + public token
+    // survive). A call here would throw the test red.
+    delete: vi.fn(() => {
+      throw new Error('recordDiscovery must never DELETE candidates (soft supersede)');
+    }),
     select: vi.fn(() => builder(selectRows)),
   };
 
@@ -81,6 +114,8 @@ function stubDb(selectRows: unknown[] = [{ familyId }]): StubResult {
     database,
     auditInserts: () => insertedTables.filter((t) => t === 'audit_log').length,
     insertedTables: () => insertedTables,
+    candidateInserts: () => candidateInserts,
+    candidateUpdates: () => candidateUpdates,
   };
 }
 
@@ -165,6 +200,55 @@ describe('recordTransition single-writer — exactly one audit row per transitio
 
     expect(s.database.transaction as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
     expect(s.auditInserts()).toBe(1);
+  });
+
+  it('recordDiscovery REPLACES: soft-supersedes the prior set and persists cadence/event_date/seasons', async () => {
+    const s = stubDb();
+    await recordDiscovery(
+      {
+        familyId,
+        areaCoarse: 'Toronto',
+        provider: 'eventbrite',
+        candidates: [
+          {
+            title: 'Summer camp',
+            kind: 'program',
+            summary: 'A seasonal day camp',
+            source: 'eventbrite',
+            confidence: 0.9,
+            cadence: 'seasonal',
+            seasons: ['summer'],
+            childId: null,
+          },
+          {
+            title: 'Author visit',
+            kind: 'library',
+            summary: 'A one-day author reading',
+            source: 'eventbrite',
+            confidence: 0.8,
+            cadence: 'one-time',
+            eventDate: '2026-09-12',
+            childId: null,
+          },
+        ],
+      },
+      s.database,
+    );
+
+    // The prior active set is soft-retired by exactly one update that stamps ONLY
+    // superseded_at — a shared/endorsed row survives (no hard delete, share token
+    // untouched).
+    const updates = s.candidateUpdates();
+    expect(updates).toHaveLength(1);
+    expect(Object.keys(updates[0] as Record<string, unknown>)).toEqual(['supersededAt']);
+    expect((updates[0] as Record<string, unknown>).supersededAt).toBeInstanceOf(Date);
+
+    // The freshness fields the provider supplied are persisted on the new rows.
+    const inserted = s.candidateInserts();
+    expect(inserted[0]).toMatchObject({ cadence: 'seasonal', seasons: ['summer'] });
+    expect(inserted[0]?.eventDate).toBeUndefined();
+    expect(inserted[1]).toMatchObject({ cadence: 'one-time', eventDate: '2026-09-12' });
+    expect(inserted[1]?.seasons).toBeUndefined();
   });
 
   it('recordDiscovery with no candidates writes zero candidate rows and zero audit rows', async () => {

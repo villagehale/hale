@@ -46,6 +46,8 @@ Return strict JSON matching this shape:
       "title": string,             // short, concrete ("Saturday toddler swim, Riverdale pool")
       "category": "class" | "program" | "drop_in" | "outdoor" | "library" | "community_event" | "other",
       "cadence": "seasonal" | "one-time" | "ongoing",  // how it recurs — see Cadence
+      "event_date": string | null,   // ISO YYYY-MM-DD for a dated one-time event ONLY when the source states a date; else null — see When
+      "seasons": string[] | null,    // subset of ["spring","summer","fall","winter"] for a seasonal activity; else null — see When
       "description": string,       // 1–2 plain sentences: what it is, why it fits
       "area_coarse": string,       // echo the coarse area; never finer than the input
       "stage_fit": "newborn" | "toddler" | "child" | "teenager",
@@ -97,6 +99,25 @@ parent can tell a standing option from a one-off:
 
 Pick the single best fit. When unsure, prefer `ongoing` for a standing
 place-based option and `seasonal` for anything term- or weather-bound.
+
+## When — the timing fields, derived ONLY from what you actually know
+
+Two optional fields let a parent tell a fresh option from a stale one. Both
+default to `null`; fill one only when you can do so honestly:
+
+- `event_date` — for a `one-time` event with a KNOWN calendar date, the ISO
+  `YYYY-MM-DD` of that date. Set it ONLY when a date is genuinely established
+  (a grounded listing that names the day). Never invent, estimate, or guess a
+  date to fill the field — a general-knowledge one-off with no known date stays
+  `null`. For `seasonal` and `ongoing` candidates leave it `null`.
+- `seasons` — for a `seasonal` activity, the subset of
+  `["spring","summer","fall","winter"]` it runs in (a summer camp → `["summer"]`;
+  a fall-and-spring soccer session → `["fall","spring"]`). Set it ONLY when the
+  season window is clear from the kind of activity. For `one-time` and `ongoing`
+  candidates leave it `null`.
+
+These are for honest freshness, not padding: an unknown date or an unclear
+season is `null`, never a fabricated value.
 
 ## Calibration
 
