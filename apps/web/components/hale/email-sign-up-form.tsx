@@ -2,7 +2,6 @@
 
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { type SignUpState, signUpAction } from '~/lib/auth/auth-actions';
 import { MIN_PASSWORD_LENGTH } from '~/lib/auth/constants';
 import { ResendVerificationButton } from '~/components/hale/resend-verification-button';
@@ -19,7 +18,6 @@ export function EmailSignUpForm() {
   // Retain the submitted address so the check-email confirmation can echo it and
   // the resend affordance can act without re-typing. Client-only, never logged.
   const [email, setEmail] = useState('');
-  const capture = useAnalytics();
 
   if (state.status === 'check_email') {
     return (
@@ -35,10 +33,11 @@ export function EmailSignUpForm() {
     );
   }
 
-  // Coarse funnel signal on submit — method only, never the email entered (rule #1).
+  // signup_completed is fired SERVER-SIDE on actual account creation (see
+  // signUpAction), not here on submit-intent, so cancelled/failed attempts aren't
+  // counted as conversions.
   function submit(formData: FormData) {
     setEmail(String(formData.get('email') ?? ''));
-    capture('signup_completed', { method: 'email' });
     formAction(formData);
   }
 

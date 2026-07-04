@@ -137,4 +137,6 @@ export const childGenderEnum = pgEnum('child_gender', [
 // non-transactional brief (CASL: needs an absent opt-out, sender id, working
 // unsubscribe). 'welcome' is the transactional one-time onboarding email; its
 // ledger row also keeps the send idempotent (one 'welcome' per user).
-export const emailTypeEnum = pgEnum('email_type', ['daily_digest', 'welcome']);
+// 'verification' is the transactional email-confirmation link sent at sign-up; its
+// ledger row makes the send auditable (PIPEDA right-to-access) like every stream.
+export const emailTypeEnum = pgEnum('email_type', ['daily_digest', 'welcome', 'verification']);

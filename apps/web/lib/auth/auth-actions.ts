@@ -16,6 +16,8 @@ import {
   requestPasswordReset,
   resendVerification,
 } from './reset';
+import { dispatchSignupSideEffects } from './signup-side-effects';
+import { defaultSignupSideEffectDeps } from './signup-side-effects.wiring';
 import { createVerificationEmailSender } from './verification-email';
 
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.villagehale.com';
@@ -85,19 +87,18 @@ export async function signUpAction(
   }
 
   const verifyUrl = `${APP_BASE}/verify?token=${encodeURIComponent(result.verificationToken)}`;
-  // Fire-and-forget the verification email to the NORMALIZED stored address. Not
-  // awaited on purpose: the response time must NOT depend on the Resend round-trip,
-  // so a new vs. already-registered signup can't be told apart by latency (rule #1
-  // — account-enumeration defense; the `email_taken` path above returns the same
-  // state). A send failure must not fail sign-up (boundary catch, CLAUDE.md #8).
-  void createVerificationEmailSender()
-    .sendVerification(result.email, verifyUrl)
-    .catch((err) => {
-      // Log only the message — a caught Resend error can carry the recipient
-      // address, and PII must not land in logs (rule #1).
-      const message = err instanceof Error ? err.message : 'unknown error';
-      console.error('verification email failed (signup unaffected)', { message });
-    });
+  // Fire-and-forget the post-creation side-effects (verification email + founder
+  // new-signup signal + server-side signup_completed analytics). Not awaited on
+  // purpose: the response time must NOT depend on the Resend/PostHog round-trips, so
+  // a new vs. already-registered signup can't be told apart by latency (rule #1 —
+  // account-enumeration defense; the `email_taken` path above returns the same
+  // state). Every effect is best-effort and swallowed inside the dispatcher, so a
+  // send failure never fails sign-up (boundary catch, CLAUDE.md #8).
+  const database = db() as Database;
+  void dispatchSignupSideEffects(
+    { db: database, email: result.email, verifyUrl },
+    defaultSignupSideEffectDeps(database, result.credentialId, result.email),
+  );
 
   // When verification isn't enforced, the account is usable now — sign the user
   // straight in. Otherwise tell them to confirm their email first.
