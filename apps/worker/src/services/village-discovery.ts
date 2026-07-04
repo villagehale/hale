@@ -133,6 +133,7 @@ export async function runVillageDiscovery(
       kind: item.category,
       childId: null,
       stageNote: item.stageFitRationale,
+      day: item.day,
     })),
   });
 

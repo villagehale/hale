@@ -181,4 +181,30 @@ describe('toRoutineProposalView', () => {
     expect(serialized).not.toContain(RAW_TITLE);
     expect(serialized).not.toContain(RAW_SUMMARY);
   });
+
+  it('carries the item day through the view (a weekday, not PII — survives teen redaction)', () => {
+    const view = toRoutineProposalView(
+      proposal({
+        items: [
+          { title: RAW_TITLE, kind: 'support_group', childId: 'child-teen', stageNote: RAW_SUMMARY, day: 'tuesday' },
+          { title: 'Saturday family swim', kind: 'activity', childId: null, stageNote: 'household', day: 'saturday' },
+        ],
+      }),
+      new Set(['child-teen']),
+    );
+
+    // The weekday is a placement label, not raw content: it survives even on the
+    // redacted teen item, so the week-strip can still show where an item sits.
+    expect(view.items[0]?.day).toBe('tuesday');
+    expect(view.items[0]?.teenAttributed).toBe(true);
+    expect(view.items[1]?.day).toBe('saturday');
+  });
+
+  it('reads a pre-day row (no day field) back as null, never undefined', () => {
+    const view = toRoutineProposalView(
+      proposal({ items: [{ title: 'Storytime', kind: 'library', childId: null, stageNote: 'toddler' }] }),
+      new Set(),
+    );
+    expect(view.items[0]?.day).toBeNull();
+  });
 });

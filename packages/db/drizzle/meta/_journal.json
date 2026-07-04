@@ -232,6 +232,13 @@
       "when": 1781461620000,
       "tag": "0032_message_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781461680000,
+      "tag": "0033_family_plan_completed",
+      "breakpoints": true
     }
   ]
 }

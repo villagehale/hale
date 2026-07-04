@@ -67,6 +67,11 @@ export interface RoutineItemView {
   title: string;
   kind: string;
   stageNote: string;
+  /** The weekday the agent placed this item on ("monday"–"sunday"), or null for a
+   * row written before the day was persisted. A weekday is a placement label, not
+   * PII, so it survives teen redaction — the week-strip can still show where a
+   * redacted item sits. */
+  day: string | null;
   teenAttributed: boolean;
 }
 
@@ -185,6 +190,7 @@ export function toRoutineProposalView(
         title: teenAttributed ? TEEN_REDACTED_PLACEHOLDER : item.title,
         kind: item.kind,
         stageNote: teenAttributed ? TEEN_REDACTED_PLACEHOLDER : item.stageNote,
+        day: item.day ?? null,
         teenAttributed,
       };
     }),
