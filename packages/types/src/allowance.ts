@@ -3,7 +3,7 @@ import type { PlanTier } from './entitlements.js';
 /**
  * Per-child fairness metering — the pricing "valve" (spec §1.5, §1.2 pricing).
  *
- * Pricing is family-level (Free / Plus $24 / Family $49 CAD); it does NOT scale
+ * Pricing is family-level (Free / Plus $9 / Family $19 CAD); it does NOT scale
  * with children. The fairness valve scales a monthly LLM-COST ALLOWANCE by child
  * count so a big family isn't unfairly throttled, and nudges/holds autonomy once
  * a family blows past it. The cost driver is event volume × autonomy, NOT child
@@ -11,12 +11,13 @@ import type { PlanTier } from './entitlements.js';
  * any per-event child attribution (events aren't reliably child-scoped).
  *
  * UNIT IS USD. The valve compares against summed `agent_runs.cost_usd`, which is
- * what `estimateCostUsd` records (Anthropic bills USD). The $24/$49 plan prices
+ * what `estimateCostUsd` records (Anthropic bills USD). The $9/$19 plan prices
  * are CAD revenue; these allowances are the USD cost (COGS) ceiling.
  *
  * BASIS for the numbers (spec §1.5 "≤ $5 / family / month at steady state"):
  *   - PAID base = $5.00 — the spec's stated 1-child steady-state target exactly.
- *     Against the $24 CAD Plus price this is ~21% COGS — a defensible margin.
+ *     The allowance is a COGS *ceiling* (a spend guardrail), independent of the
+ *     $9/$19 CAD display price — not a margin guarantee.
  *   - PER-ADDITIONAL-CHILD = $3.00 — a marginal child adds roughly proportional
  *     event volume, but shared family overhead (one daily digest, one nightly
  *     memory-inference batch, a shared system-prompt cache) is NOT re-paid per
