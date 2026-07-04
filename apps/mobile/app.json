@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "family.villagehale.app",
+<<<<<<< Updated upstream
       "buildNumber": "6",
+=======
+      "buildNumber": "5",
+>>>>>>> Stashed changes
       "infoPlist": {
         "NSCameraUsageDescription": "Hale uses the camera to capture milestone photos.",
         "NSMicrophoneUsageDescription": "Hale uses the microphone for voice — asking and logging by speaking.",
