@@ -9,6 +9,7 @@ import {
   type FamilyStage,
 } from '@hale/types';
 import { toVillageCandidateView } from '~/lib/village/mappers';
+import { visibleCandidates } from '~/lib/village/visibility';
 
 /**
  * The Ask Hale agent's tools — every one family-scoped (rule #1: a handler reads
@@ -239,15 +240,20 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     handler: async (input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
 
-      const candidateRows = await database
+      const currentRunRows = await database
         .select()
         .from(schema.villageCandidates)
-        .where(eq(schema.villageCandidates.familyId, ctx.familyId))
+        .where(
+          and(
+            eq(schema.villageCandidates.familyId, ctx.familyId),
+            isNull(schema.villageCandidates.supersededAt),
+          ),
+        )
         .orderBy(desc(schema.villageCandidates.confidence), desc(schema.villageCandidates.discoveredAt))
         .limit(MEMORY_RESULT_LIMIT);
 
       const needle = input.query?.toLowerCase();
-      const candidates = candidateRows
+      const candidates = visibleCandidates(currentRunRows, new Date())
         .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
         .filter(
           (c) =>

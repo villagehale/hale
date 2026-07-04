@@ -1,6 +1,6 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildRankTools } from './rank-tools';
 
 /**
@@ -62,7 +62,15 @@ function toolByName(database: import('@hale/db').Database, name: string) {
 }
 
 describe('list_village_candidates — teen-safe by construction (rule #1)', () => {
+  // The tool visibility-filters against the wall clock, so pin it to the fixtures'
+  // discovery day to keep both rows in the current, unexpired run.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('redacts a teen-attributed candidate to category only and audits the read', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-04T12:00:00Z'));
     const candidates = [
       {
         id: 'cand-toddler',
@@ -70,8 +78,12 @@ describe('list_village_candidates — teen-safe by construction (rule #1)', () =
         title: 'Storytime at the library',
         kind: 'class',
         summary: 'A gentle weekly drop-in.',
+        cadence: 'ongoing',
+        seasons: null,
+        eventDate: null,
         coverageNote: 'serves your area',
         sourceUrl: null,
+        supersededAt: null,
         discoveredAt: new Date('2026-07-04T12:00:00Z'),
       },
       {
@@ -80,8 +92,12 @@ describe('list_village_candidates — teen-safe by construction (rule #1)', () =
         title: 'A teen-only program with sensitive details',
         kind: 'program',
         summary: 'raw teen content that must not leak',
+        cadence: 'ongoing',
+        seasons: null,
+        eventDate: null,
         coverageNote: 'serves your area',
         sourceUrl: null,
+        supersededAt: null,
         discoveredAt: new Date('2026-07-04T12:00:00Z'),
       },
     ];
@@ -137,5 +153,84 @@ describe('get_family_fit_context — excludes teens from the fit signal (rule #1
 
     expect(result.childStages).toContain('toddler');
     expect(result.childStages).not.toContain('teenager');
+  });
+});
+
+describe('list_village_candidates — only surfaces the current, in-season, unexpired run', () => {
+  // A fixed "now": a fresh summer weekday (season = summer), matching the
+  // visibility test fixtures so the season/date gates are deterministic.
+  const NOW = new Date('2026-07-04T12:00:00Z');
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('drops a superseded, a past one-time, and an out-of-season seasonal candidate', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const candidates = [
+      {
+        id: 'live-ongoing',
+        childId: TODDLER_ID,
+        title: 'EarlyON drop-in',
+        kind: 'drop_in',
+        summary: 'A warm weekday drop-in.',
+        cadence: 'ongoing',
+        seasons: null,
+        eventDate: null,
+        supersededAt: null,
+        discoveredAt: NOW,
+      },
+      {
+        id: 'superseded',
+        childId: TODDLER_ID,
+        title: 'Replaced by a newer run',
+        kind: 'class',
+        summary: 'stale',
+        cadence: 'ongoing',
+        seasons: null,
+        eventDate: null,
+        supersededAt: new Date('2026-07-03T12:00:00Z'),
+        discoveredAt: NOW,
+      },
+      {
+        id: 'past-onetime',
+        childId: TODDLER_ID,
+        title: 'A workshop that already happened',
+        kind: 'event',
+        summary: 'over',
+        cadence: 'one-time',
+        seasons: null,
+        eventDate: '2026-07-03',
+        supersededAt: null,
+        discoveredAt: NOW,
+      },
+      {
+        id: 'winter-camp',
+        childId: TODDLER_ID,
+        title: 'Winter skating camp',
+        kind: 'class',
+        summary: 'out of season',
+        cadence: 'seasonal',
+        seasons: ['winter'],
+        eventDate: null,
+        supersededAt: null,
+        discoveredAt: NOW,
+      },
+    ];
+    const db = fakeDb({
+      children: [{ id: TODDLER_ID, dateOfBirth: TODDLER_DOB }],
+      candidates,
+    });
+    const audits: Array<{ actionTaken: string }> = [];
+
+    const result = (await invokeTool(
+      toolByName(db, 'list_village_candidates'),
+      {},
+      { familyId: FAMILY_ID, actor: 'system' },
+      captureGuardDeps(audits),
+    )) as { candidates: Array<{ id: string }> };
+
+    expect(result.candidates.map((c) => c.id)).toEqual(['live-ongoing']);
   });
 });

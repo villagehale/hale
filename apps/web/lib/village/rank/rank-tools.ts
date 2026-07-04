@@ -5,6 +5,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { countEndorsementsForCandidates } from '~/lib/village/endorse';
+import { visibleCandidates } from '~/lib/village/visibility';
 
 /**
  * The village-ranking agent's READ-ONLY tools — the three signals the
@@ -56,12 +57,19 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     inputSchema: z.object({}),
     handler: async (_input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      const rows = await database
+      const currentRunRows = await database
         .select()
         .from(schema.villageCandidates)
-        .where(eq(schema.villageCandidates.familyId, ctx.familyId))
+        .where(
+          and(
+            eq(schema.villageCandidates.familyId, ctx.familyId),
+            isNull(schema.villageCandidates.supersededAt),
+          ),
+        )
         .orderBy(desc(schema.villageCandidates.discoveredAt))
         .limit(CANDIDATE_LIMIT);
+
+      const rows = visibleCandidates(currentRunRows, new Date());
 
       const candidates = rows.map((row) => {
         const view = toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds));
