@@ -8,6 +8,7 @@ import {
 } from '~/components/hale/public-surface';
 import { db } from '~/lib/db';
 import { type PublicWeekPlan, loadSharedWeekPlan } from '~/lib/village/public';
+import { weekShareMeta } from '~/lib/village/share-meta';
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -25,10 +26,10 @@ async function load(token: string): Promise<PublicWeekPlan | null> {
   return loadSharedWeekPlan(token, db());
 }
 
-export const metadata: Metadata = {
-  title: 'this week with Hale · the village your family lost',
-  description: 'A handful of genuinely good local things to do this week, gathered by Hale.',
-};
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { token } = await params;
+  return weekShareMeta(await load(token));
+}
 
 export default async function SharedWeekPage({ params }: PageProps) {
   const { token } = await params;
