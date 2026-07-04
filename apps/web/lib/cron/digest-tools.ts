@@ -1,9 +1,10 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { companionForChild, deriveStage } from '@hale/types';
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { toVillageCandidateView } from '~/lib/village/mappers';
+import { visibleCandidates } from '~/lib/village/visibility';
 
 /**
  * The daily-brief agent's tools — every one family-scoped (rule #1: a handler
@@ -98,12 +99,13 @@ export function buildDailyBriefTools(
       );
 
       const since = new Date(now.getTime() - WEEK_DAYS * 24 * 60 * 60 * 1000);
-      const candidateRows = await database
+      const currentRunRows = await database
         .select()
         .from(schema.villageCandidates)
         .where(
           and(
             eq(schema.villageCandidates.familyId, ctx.familyId),
+            isNull(schema.villageCandidates.supersededAt),
             gte(schema.villageCandidates.discoveredAt, since),
           ),
         )
@@ -113,7 +115,7 @@ export function buildDailyBriefTools(
         )
         .limit(WEEK_VILLAGE_LIMIT);
 
-      const candidates = candidateRows
+      const candidates = visibleCandidates(currentRunRows, now)
         .map((row) =>
           toVillageCandidateView(row, row.childId !== null && teenChildIds.has(row.childId)),
         )
