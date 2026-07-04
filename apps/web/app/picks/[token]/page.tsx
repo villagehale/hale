@@ -8,6 +8,7 @@ import {
 } from '~/components/hale/public-surface';
 import { db } from '~/lib/db';
 import { type PublicPicks, loadSharedPicks } from '~/lib/village/public-picks';
+import { picksShareMeta } from '~/lib/village/share-meta';
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -22,10 +23,10 @@ async function load(token: string): Promise<PublicPicks | null> {
   return loadSharedPicks(token, db());
 }
 
-export const metadata: Metadata = {
-  title: "a family's village picks · Hale",
-  description: 'The local things families near here actually love — endorsed picks, gathered by Hale.',
-};
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { token } = await params;
+  return picksShareMeta(await load(token));
+}
 
 export default async function SharedPicksPage({ params }: PageProps) {
   const { token } = await params;

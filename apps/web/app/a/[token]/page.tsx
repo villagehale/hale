@@ -8,6 +8,7 @@ import {
 } from '~/components/hale/public-surface';
 import { db } from '~/lib/db';
 import { type PublicActivityCard as PublicActivityCardData, loadSharedActivity } from '~/lib/village/public-activity';
+import { activityShareMeta } from '~/lib/village/share-meta';
 
 interface PageProps {
   params: Promise<{ token: string }>;
@@ -23,10 +24,10 @@ async function load(token: string): Promise<PublicActivityCardData | null> {
   return loadSharedActivity(token, db());
 }
 
-export const metadata: Metadata = {
-  title: 'a local pick · Hale',
-  description: 'A genuinely good local thing for families, gathered by Hale.',
-};
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { token } = await params;
+  return activityShareMeta(await load(token));
+}
 
 export default async function SharedActivityPage({ params }: PageProps) {
   const { token } = await params;
