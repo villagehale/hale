@@ -21,19 +21,29 @@ export interface ActivityEvent {
   preview: string;
 }
 
+/** A gated action chip the answer implied — a DRAFT, never an auto-action (rule
+ * #4). Mirrors the web ActionIntent: kind/label/actionType only, and only `label`
+ * is ever rendered (rule #1: already content-safe, never the raw payload). */
+export interface ActionIntent {
+  kind: string;
+  label: string;
+  actionType: string;
+}
+
 type CoachEvent =
   | { type: 'step'; step: number }
   | { type: 'tool_call'; name: string }
   | { type: 'tool_result'; name: string; ok: boolean; preview: string }
   | { type: 'delta'; text: string }
   | { type: 'reset' }
-  | { type: 'done'; conversationId: string }
+  | { type: 'done'; conversationId: string; actionIntents?: ActionIntent[] }
   | { type: 'error' };
 
 export interface CoachFold {
   answer: string;
   conversationId: string | null;
   activity: ActivityEvent[];
+  actionIntents: ActionIntent[];
   failed: boolean;
 }
 
@@ -42,6 +52,7 @@ export function foldCoachStream(body: string): CoachFold {
   let conversationId: string | null = null;
   let failed = false;
   const activity: ActivityEvent[] = [];
+  let actionIntents: ActionIntent[] = [];
 
   for (const line of body.split('\n')) {
     const trimmed = line.trim();
@@ -49,11 +60,13 @@ export function foldCoachStream(body: string): CoachFold {
     const event = JSON.parse(trimmed) as CoachEvent;
     if (event.type === 'delta') answer += event.text;
     else if (event.type === 'reset') answer = '';
-    else if (event.type === 'done') conversationId = event.conversationId;
-    else if (event.type === 'tool_result') {
+    else if (event.type === 'done') {
+      conversationId = event.conversationId;
+      actionIntents = event.actionIntents ?? [];
+    } else if (event.type === 'tool_result') {
       activity.push({ name: event.name, ok: event.ok, preview: event.preview });
     } else if (event.type === 'error') failed = true;
   }
 
-  return { answer, conversationId, activity, failed };
+  return { answer, conversationId, activity, actionIntents, failed };
 }

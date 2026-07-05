@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ActionChip } from '@/components/hale/action-chip';
 import { ActivityTrail } from '@/components/hale/activity-trail';
 import { QuickLogCard } from '@/components/hale/quick-log-card';
 import { TypingDots } from '@/components/hale/typing-dots';
@@ -18,14 +19,20 @@ import { IconButton } from '@/components/ui/icon-button';
 import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
-import { type ActivityEvent, askHale } from '@/lib/coach-api';
-import { detectQuickLog, type QuickLogMatch } from '@/lib/quick-log-detect';
+import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
+import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
 import { useTypewriter } from '@/lib/use-typewriter';
 import { useVoiceInput } from '@/lib/use-voice-input';
 
 type Message =
   | { id: string; role: 'user'; text: string }
-  | { id: string; role: 'hale'; text: string; activity: ActivityEvent[] }
+  | {
+      id: string;
+      role: 'hale';
+      text: string;
+      activity: ActivityEvent[];
+      actionIntents: ActionIntent[];
+    }
   | { id: string; role: 'quicklog'; match: QuickLogMatch };
 
 function UserBubble({ text }: { text: string }) {
@@ -41,31 +48,44 @@ function UserBubble({ text }: { text: string }) {
 function HaleBubble({
   text,
   activity,
+  actionIntents,
+  answer,
   streaming,
 }: {
   text: string;
   activity: ActivityEvent[];
+  actionIntents: ActionIntent[];
+  answer: string;
   streaming: boolean;
 }) {
   const [shown, isStreaming] = useTypewriter(text, streaming);
   const body = streaming ? shown : text;
   return (
-    <View className="mb-3 max-w-[92%] self-start">
-      <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
-        Hale
-      </AppText>
-      <ActivityTrail activity={activity} />
-      <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-        <AppText variant="body">
-          {body}
-          {isStreaming ? (
-            <AppText variant="body" className="text-accent">
-              {' ▍'}
-            </AppText>
-          ) : null}
+    <>
+      <View className="mb-3 max-w-[92%] self-start">
+        <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
+          Hale
         </AppText>
+        <ActivityTrail activity={activity} />
+        <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
+          <AppText variant="body">
+            {body}
+            {isStreaming ? (
+              <AppText variant="body" className="text-accent">
+                {' ▍'}
+              </AppText>
+            ) : null}
+          </AppText>
+        </View>
       </View>
-    </View>
+      {/* Gated action chips settle once the answer stops streaming — each drafts a
+          DRAFT the parent must approve (rule #4). Rule #1: only intent.label. */}
+      {!streaming
+        ? actionIntents.map((intent) => (
+            <ActionChip key={intent.kind} intent={intent} sourceAnswer={answer} />
+          ))
+        : null}
+    </>
   );
 }
 
@@ -120,20 +140,24 @@ export default function AskScreen() {
         answer,
         conversationId: nextId,
         activity,
+        actionIntents,
       } = await askHale({
         question: q,
         ...(conversationId.current ? { conversationId: conversationId.current } : {}),
       });
       conversationId.current = nextId;
       const replyId = `h-${Date.now()}`;
-      setMessages((prev) => [...prev, { id: replyId, role: 'hale', text: answer, activity }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: replyId, role: 'hale', text: answer, activity, actionIntents },
+      ]);
       setStreamingId(replyId);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       const replyId = `h-err-${Date.now()}`;
       setMessages((prev) => [
         ...prev,
-        { id: replyId, role: 'hale', text: (e as Error).message, activity: [] },
+        { id: replyId, role: 'hale', text: (e as Error).message, activity: [], actionIntents: [] },
       ]);
     } finally {
       setPending(false);
@@ -173,6 +197,8 @@ export default function AskScreen() {
                   key={m.id}
                   text={m.text}
                   activity={m.activity}
+                  actionIntents={m.actionIntents}
+                  answer={m.text}
                   streaming={m.id === streamingId}
                 />
               );

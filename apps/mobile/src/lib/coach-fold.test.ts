@@ -81,4 +81,36 @@ describe('foldCoachStream', () => {
     );
     expect(result.failed).toBe(true);
   });
+
+  it('collects the gated action chips carried on the done event (kind/label/actionType)', () => {
+    const { actionIntents } = foldCoachStream(
+      [
+        { type: 'delta', text: 'You could email the clinic.' },
+        {
+          type: 'done',
+          conversationId: 'c-1',
+          actionIntents: [
+            { kind: 'draft_email', label: 'Email the clinic', actionType: 'send_email' },
+          ],
+        },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n'),
+    );
+    expect(actionIntents).toEqual([
+      { kind: 'draft_email', label: 'Email the clinic', actionType: 'send_email' },
+    ]);
+  });
+
+  it('returns an empty chip list when the done event carries no actionIntents', () => {
+    const { actionIntents } = foldCoachStream(
+      [
+        { type: 'delta', text: 'Naps get shorter around now.' },
+        { type: 'done', conversationId: 'c-2' },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n'),
+    );
+    expect(actionIntents).toEqual([]);
+  });
 });
