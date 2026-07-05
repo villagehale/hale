@@ -225,9 +225,11 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
 function VillageBody({
   data,
   searchSeason,
+  showFilter,
 }: {
   data: MobileVillageResponse;
   searchSeason: SeasonKey | null;
+  showFilter: boolean;
 }) {
   const [cadence, setCadence] = useState<CadenceFilter>('all');
   const recs = useMemo(() => filterByCadence(data.candidates, cadence), [data.candidates, cadence]);
@@ -235,7 +237,7 @@ function VillageBody({
 
   return (
     <>
-      {hasAny ? (
+      {hasAny && showFilter ? (
         <View className="gap-2">
           <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
             Filter
@@ -298,6 +300,9 @@ export default function VillageScreen() {
       const result = await api<DiscoverResult>('/api/mobile/village/search', {
         method: 'POST',
         body: JSON.stringify({ season }),
+        // A season search re-runs discovery (an LLM agent call) — far slower than
+        // the 15s default, so a working search must not be aborted early.
+        timeoutMs: 120_000,
       });
       const outcome = searchOutcomeFromResult(season, result);
       if (outcome.kind === 'search') setActiveSeason(outcome.season);
@@ -326,10 +331,21 @@ export default function VillageScreen() {
       />
 
       {searchError ? (
-        <Card className="items-center gap-2 py-6">
+        <Card className="items-center gap-3 py-6">
           <AppText variant="meta" className="text-center">
             {searchError}
           </AppText>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss and go back to your feed"
+            hitSlop={8}
+            onPress={clearToFeed}
+            className="rounded-full border border-rule bg-raised px-4 py-2 active:opacity-70"
+          >
+            <AppText variant="meta" className="text-ink-2">
+              Back to your feed
+            </AppText>
+          </Pressable>
         </Card>
       ) : null}
 
@@ -340,7 +356,7 @@ export default function VillageScreen() {
         <ErrorState message={error ?? ''} onRetry={reload} />
       ) : null}
       {!pendingSeason && status === 'ready' && data ? (
-        <VillageBody data={data} searchSeason={activeSeason} />
+        <VillageBody data={data} searchSeason={activeSeason} showFilter={activeSeason === null} />
       ) : null}
     </Screen>
   );

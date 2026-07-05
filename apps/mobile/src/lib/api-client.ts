@@ -41,23 +41,30 @@ async function handleUnauthorized(): Promise<never> {
   throw new ApiError(401, 'Your session has expired. Please sign in again.');
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<T> {
   if (!API_BASE) {
     throw new ApiError(0, 'API base URL is not configured.');
   }
 
+  // A per-call timeout override: most routes want the tight default, but a season
+  // search re-runs discovery (an LLM agent call) and legitimately needs longer than
+  // 15s — otherwise the client aborts a working request and reports "Network error".
+  const { timeoutMs, ...requestInit } = init ?? {};
   const token = await tokenStorage.get(TOKEN_KEY);
-  const headers = new Headers(init?.headers);
+  const headers = new Headers(requestInit.headers);
   headers.set('accept', 'application/json');
-  if (init?.body !== undefined) headers.set('content-type', 'application/json');
+  if (requestInit.body !== undefined) headers.set('content-type', 'application/json');
   if (token) headers.set('authorization', `Bearer ${token}`);
 
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      ...init,
+      ...requestInit,
       headers,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS),
     });
   } catch {
     throw new ApiError(0, 'Network error — check your connection and try again.');

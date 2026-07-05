@@ -4,6 +4,11 @@ import type { Season } from '~/lib/village/visibility';
 
 // Node runtime: the shared search core uses the Anthropic SDK + the Drizzle client.
 export const runtime = 'nodejs';
+// A season search triggers a FRESH discovery run (an Anthropic agent call), which
+// takes far longer than the platform's ~10s default. Match the discovery crons
+// (maxDuration 300) so the function isn't killed mid-run — a truncated function is
+// exactly the timeout the mobile client then reports as "Network error".
+export const maxDuration = 300;
 
 /**
  * POST /api/mobile/village/search — the native, HTTP-callable counterpart to the
