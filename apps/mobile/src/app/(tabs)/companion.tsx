@@ -72,7 +72,9 @@ function InfoRow({
 }) {
   return (
     <View className={`flex-row items-start gap-3 ${first ? '' : 'border-t border-rule pt-3'}`}>
-      <View className="w-[104px] shrink-0 pt-0.5">
+      {/* Wide enough for the longest stamp, "around now" (11px uppercase, 0.12em
+          tracking ≈ 103px pill) — at 104px it clipped to "AROUND N". */}
+      <View className="w-[124px] shrink-0 pt-0.5">
         {done ? (
           <Tag label="done" tone="done" />
         ) : stamp ? (
