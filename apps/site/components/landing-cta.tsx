@@ -15,7 +15,7 @@ export function LandingCta({
   className,
   children,
 }: {
-  event: Extract<AnalyticsEvent, 'landing_cta_preview' | 'landing_cta_signin'>;
+  event: AnalyticsEvent;
   href: string;
   className?: string;
   children: React.ReactNode;
