@@ -9,11 +9,12 @@ import type { FaqItem } from '~/lib/faq/index';
  * province-specific drop-in program, so a page is accurate rather than a thin
  * doorway.
  *
- * REVIEW-BEFORE-INDEX GATE (same as milestones/answers): every city ships
- * `published: false`. Provincial program names change (e.g. Alberta's Parent Link
- * Centres became Family Resource Networks; Quebec's halte-garderies vary by
- * borough) — a human verifies a city's `provincialProgram` against the current
- * official source, then flips `published: true` to let it into the sitemap.
+ * REVIEW-BEFORE-INDEX GATE (same as milestones/answers): a city ships
+ * `published: false` until its `provincialProgram` is verified against the current
+ * official source — program names change (e.g. Alberta's Parent Link Centres became
+ * Family Resource Networks in 2020). The cities below were fact-checked 2026-07-05
+ * (each province's active program + landmarks confirmed) and set `published: true`.
+ * A NEW city must default to `published: false` until it, too, is verified.
  */
 export interface ActivityIdea {
   title: string;
@@ -77,7 +78,7 @@ const CITIES: readonly ActivityCity[] = [
     province: 'Ontario',
     provinceCode: 'ON',
     updated: '2026-07-05',
-    published: false,
+    published: true,
     intro:
       'From the Beaches to Etobicoke, Toronto is full of free and low-cost things to do with a baby or toddler — you just have to know where families actually go.',
     landmark: 'High Park, the Toronto Islands, and the waterfront trails',
@@ -104,7 +105,7 @@ const CITIES: readonly ActivityCity[] = [
     province: 'Ontario',
     provinceCode: 'ON',
     updated: '2026-07-05',
-    published: false,
+    published: true,
     intro:
       'Ottawa families have an unusual amount of green space and free programming close at hand — from the canal paths to the neighbourhood family centres.',
     landmark: 'the Rideau Canal pathways and the riverside parks',
@@ -126,7 +127,7 @@ const CITIES: readonly ActivityCity[] = [
     province: 'British Columbia',
     provinceCode: 'BC',
     updated: '2026-07-05',
-    published: false,
+    published: true,
     intro:
       'Between the seawall, the community centres, and BC’s family programs, Vancouver makes it easy to get out with a little one whatever the weather.',
     landmark: 'the seawall, Stanley Park, and the neighbourhood beaches',
@@ -148,7 +149,7 @@ const CITIES: readonly ActivityCity[] = [
     province: 'Alberta',
     provinceCode: 'AB',
     updated: '2026-07-05',
-    published: false,
+    published: true,
     intro:
       'Calgary’s pathway network, libraries, and family resource centres add up to a lot of low-cost ways to fill a morning with a baby or toddler.',
     landmark: 'the river pathways, Prince’s Island Park, and Fish Creek',
@@ -170,7 +171,7 @@ const CITIES: readonly ActivityCity[] = [
     province: 'Quebec',
     provinceCode: 'QC',
     updated: '2026-07-05',
-    published: false,
+    published: true,
     intro:
       'Montreal’s neighbourhoods each have their own parks, libraries, and family houses — a walkable, low-cost world for parents with young kids.',
     landmark: 'Parc du Mont-Royal, Parc La Fontaine, and the borough parks',
@@ -182,7 +183,7 @@ const CITIES: readonly ActivityCity[] = [
       {
         question: 'Where can I find free activities for young children in Montreal?',
         answer:
-          'Montreal library story hours (l’heure du conte), a neighbourhood Maison de la famille for drop-in activities, and the city’s parks — Mont-Royal, La Fontaine, and borough parks — are all free.',
+          'Free options include Montreal library story hours (l’heure du conte) and the city’s parks — Mont-Royal, La Fontaine, and the borough parks. A neighbourhood Maison de la famille adds drop-in activities and parent support too (some programs are membership-based or low-cost).',
       },
     ],
   },
