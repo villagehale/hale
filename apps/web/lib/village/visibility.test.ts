@@ -138,6 +138,21 @@ describe('isVisibleNow', () => {
       const noSeasons = candidate({ cadence: 'seasonal', seasons: null });
       expect(isVisibleNow(noSeasons, NOW)).toBe(true);
     });
+
+    it('season-gates a row the model gave seasons but LEFT cadence null (derived seasonal)', () => {
+      // Its effective cadence is seasonal, so it is gated to its season like any
+      // seasonal row — matching the "seasonal" chip/filter the mapper now derives.
+      // Before the fix a null-cadence row fell through as unclassified and leaked
+      // year-round even though it named a season.
+      const summerButUnclassified = candidate({ cadence: null, seasons: ['summer'] });
+      expect(isVisibleNow(summerButUnclassified, NOW)).toBe(true); // July = summer
+      const sameRunWinter = candidate({
+        cadence: null,
+        seasons: ['summer'],
+        discoveredAt: new Date('2027-01-10T12:00:00Z'),
+      });
+      expect(isVisibleNow(sameRunWinter, WINTER)).toBe(false); // hidden out of season
+    });
   });
 
   describe('ongoing / unclassified', () => {

@@ -1,5 +1,5 @@
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
-import type { VillageCandidate } from './mappers';
+import { type VillageCandidate, effectiveCadence } from './mappers';
 
 /**
  * The feed's visibility contract, pure over a candidate row + a fixed `now`. It is
@@ -83,7 +83,13 @@ export function isVisibleNow(
     return candidate.eventDate >= dayKeyOf(now, timeZone);
   }
 
-  if (candidate.cadence === 'seasonal' && candidate.seasons !== null) {
+  // Use the EFFECTIVE cadence so a row the model gave seasons but left cadence null
+  // is still season-gated (and matches the "seasonal" chip/filter the mapper now
+  // derives for it) — otherwise it would leak year-round while reading as seasonal.
+  if (
+    effectiveCadence(candidate.cadence, candidate.eventDate, candidate.seasons) === 'seasonal' &&
+    candidate.seasons !== null
+  ) {
     return candidate.seasons.includes(seasonOf(now, timeZone));
   }
 

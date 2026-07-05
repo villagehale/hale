@@ -171,18 +171,24 @@ describe('filterCandidatesByCadence', () => {
   const oneTime = byCadence('c-once', 'one-time');
   const seasonal = byCadence('c-season', 'seasonal');
   const ongoing = byCadence('c-ongoing', 'ongoing');
-  const unclassified = byCadence('c-null', null);
-  const all = [oneTime, seasonal, ongoing, unclassified];
+  // A null-cadence row with no date/season DERIVES to ongoing (effectiveCadence), so
+  // it is filterable under year-round now instead of stranded under "all" only — the
+  // reported bug. Its derivation is unit-tested in cadence.test.ts.
+  const derivedOngoing = byCadence('c-null', null);
+  const all = [oneTime, seasonal, ongoing, derivedOngoing];
 
   it('"all" narrows nothing', () => {
     expect(filterCandidatesByCadence(all, 'all')).toEqual(all);
   });
 
-  it('"year-round" keeps only the stored ongoing cadence (never renders the raw token)', () => {
-    expect(filterCandidatesByCadence(all, 'year-round').map((c) => c.id)).toEqual(['c-ongoing']);
+  it('"year-round" keeps ongoing rows — stored AND derived-from-null (never renders the raw token)', () => {
+    expect(filterCandidatesByCadence(all, 'year-round').map((c) => c.id)).toEqual([
+      'c-ongoing',
+      'c-null',
+    ]);
   });
 
-  it('a specific filter keeps only its cadence and drops the unclassified row', () => {
+  it('a one-time / seasonal filter keeps only that cadence (a derived-ongoing null row does not match)', () => {
     expect(filterCandidatesByCadence(all, 'one-time').map((c) => c.id)).toEqual(['c-once']);
     expect(filterCandidatesByCadence(all, 'seasonal').map((c) => c.id)).toEqual(['c-season']);
   });
@@ -193,7 +199,12 @@ describe('toRoutineProposalView', () => {
     const view = toRoutineProposalView(
       proposal({
         items: [
-          { title: RAW_TITLE, kind: 'support_group', childId: 'child-teen', stageNote: RAW_SUMMARY },
+          {
+            title: RAW_TITLE,
+            kind: 'support_group',
+            childId: 'child-teen',
+            stageNote: RAW_SUMMARY,
+          },
           {
             title: 'Saturday family swim',
             kind: 'activity',
@@ -229,8 +240,20 @@ describe('toRoutineProposalView', () => {
     const view = toRoutineProposalView(
       proposal({
         items: [
-          { title: RAW_TITLE, kind: 'support_group', childId: 'child-teen', stageNote: RAW_SUMMARY, day: 'tuesday' },
-          { title: 'Saturday family swim', kind: 'activity', childId: null, stageNote: 'household', day: 'saturday' },
+          {
+            title: RAW_TITLE,
+            kind: 'support_group',
+            childId: 'child-teen',
+            stageNote: RAW_SUMMARY,
+            day: 'tuesday',
+          },
+          {
+            title: 'Saturday family swim',
+            kind: 'activity',
+            childId: null,
+            stageNote: 'household',
+            day: 'saturday',
+          },
         ],
       }),
       new Set(['child-teen']),
@@ -245,7 +268,9 @@ describe('toRoutineProposalView', () => {
 
   it('reads a pre-day row (no day field) back as null, never undefined', () => {
     const view = toRoutineProposalView(
-      proposal({ items: [{ title: 'Storytime', kind: 'library', childId: null, stageNote: 'toddler' }] }),
+      proposal({
+        items: [{ title: 'Storytime', kind: 'library', childId: null, stageNote: 'toddler' }],
+      }),
       new Set(),
     );
     expect(view.items[0]?.day).toBeNull();

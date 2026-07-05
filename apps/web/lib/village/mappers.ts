@@ -108,6 +108,28 @@ const NO_ENGAGEMENT: CandidateEngagement = {
   accepted: false,
 };
 
+/**
+ * The cadence a row is TREATED as when the discovery model left `cadence` null
+ * (the enum is `.optional()` in discovery, so an unclassified or pre-cadence row
+ * stores null). Derived from the same signals the visibility gate already reads,
+ * so an unclassified row is never stranded under "all" with no chip and no filter
+ * match: a dated event is `one-time`, a row that named seasons is `seasonal`, and
+ * an undated, season-less standing activity is `ongoing`. The model's own
+ * classification wins when it made one; this only fills the gap. The mapper (chip +
+ * filter) and the visibility gate (seasonal) both read it, so they can never
+ * disagree about an unclassified row.
+ */
+export function effectiveCadence(
+  cadence: string | null,
+  eventDate: string | null,
+  seasons: string[] | null,
+): string {
+  if (cadence !== null) return cadence;
+  if (eventDate !== null) return 'one-time';
+  if (seasons !== null && seasons.length > 0) return 'seasonal';
+  return 'ongoing';
+}
+
 export function toVillageCandidateView(
   candidate: VillageCandidate,
   teenAttributed: boolean,
@@ -149,7 +171,7 @@ export function toVillageCandidateView(
     childId: candidate.childId,
     title: candidate.title,
     kind: candidate.kind,
-    cadence: candidate.cadence,
+    cadence: effectiveCadence(candidate.cadence, candidate.eventDate, candidate.seasons),
     seasons: candidate.seasons,
     discoveredAt: candidate.discoveredAt.toISOString(),
     summary: candidate.summary,
