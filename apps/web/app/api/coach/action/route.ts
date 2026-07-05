@@ -8,6 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { actionTypeForIntent } from '~/lib/coach/action-intent';
 import { draftInlineAction } from '~/lib/coach/inline-action';
+import { pipelineClient } from '~/lib/pipeline/client';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
 
 // Node runtime: the inline-action engine uses node:crypto + the Drizzle client.
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
       sourceAnswer: parsed.data.sourceAnswer,
     },
     database,
+    pipelineClient(),
   );
 
   return NextResponse.json({ status: 'drafted_for_approval', actionId }, { status: 202 });
