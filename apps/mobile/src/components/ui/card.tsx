@@ -8,13 +8,15 @@ type CardProps = ViewProps & {
 };
 
 // White-on-off-white (light) needs real depth to separate; on dark, surfaces
-// separate by lightness and shadows don't render, so we drop it there.
+// separate by lightness and shadows don't render, so we drop it there. Tuned to
+// the web card lift (0 8px 24px rgb(1 32 79 / 0.12)) — a soft Prussian ambient
+// shadow, not a hard drop, so cards read as lifted paper.
 const LIGHT_SHADOW = {
-  shadowColor: '#0C1626',
-  shadowOpacity: 0.06,
-  shadowRadius: 12,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 2,
+  shadowColor: '#01204F',
+  shadowOpacity: 0.1,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 3,
 } as const;
 
 export function Card({ children, raised = false, onPress, className, style, ...rest }: CardProps) {
@@ -26,7 +28,7 @@ export function Card({ children, raised = false, onPress, className, style, ...r
     return (
       <Pressable
         onPress={onPress}
-        className={`${classes} active:opacity-80`}
+        className={`${classes} active:opacity-90`}
         style={[elevation, style]}
         {...(rest as object)}
       >

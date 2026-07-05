@@ -4,10 +4,12 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
+import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { MobileVillageResponse, VillageCandidateView } from '@/lib/api-types';
 import { foundStamp } from '@/lib/format';
@@ -20,9 +22,8 @@ import {
 } from '@/lib/village-filter';
 import {
   type DiscoverResult,
-  SEASON_OPTIONS,
+  SEASON_KEYS,
   type SeasonKey,
-  type SeasonSelection,
   searchOutcomeFromError,
   searchOutcomeFromResult,
   searchReadPath,
@@ -56,7 +57,7 @@ function CadenceRow({
               active ? 'border-ink bg-ink' : 'border-rule bg-card'
             }`}
           >
-            <AppText variant="meta" className={active ? 'text-canvas' : 'text-ink-2'}>
+            <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
               {option.label}
             </AppText>
           </Pressable>
@@ -66,66 +67,89 @@ function CadenceRow({
   );
 }
 
-function SeasonRow({
-  value,
-  onSelect,
+/**
+ * The Village's ONE source control: a search bar for season discovery. Tapping it
+ * discloses the four seasons; picking one runs a season-scoped discovery and the
+ * bar collapses to show the active season with a clear (×) back to the feed.
+ * This replaces the old second chip row — search reads as search (a field with a
+ * magnifier), leaving the cadence chips below as the single, visually-distinct
+ * FILTER. The two rows no longer look like duplicates of each other.
+ */
+function SeasonSearch({
+  activeSeason,
+  onSearch,
+  onClear,
   disabled,
 }: {
-  value: SeasonSelection;
-  onSelect: (s: SeasonSelection) => void;
+  activeSeason: SeasonKey | null;
+  onSearch: (s: SeasonKey) => void;
+  onClear: () => void;
   disabled: boolean;
 }) {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerClassName="gap-2 pr-5"
-    >
-      {SEASON_OPTIONS.map((option) => {
-        const active = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            accessibilityRole="button"
-            accessibilityLabel={
-              option.value === 'feed' ? 'Your standing feed' : `Search ${option.label} activities`
-            }
-            accessibilityState={{ selected: active, disabled }}
-            disabled={disabled}
-            onPress={() => onSelect(option.value)}
-            className={`rounded-full border px-4 py-2 active:opacity-80 ${
-              active ? 'border-accent bg-accent-tint' : 'border-rule bg-card'
-            } ${disabled ? 'opacity-50' : ''}`}
-          >
-            <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-2'}>
-              {option.label}
-            </AppText>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
-}
+  const [open, setOpen] = useState(false);
+  const iconColor = useMeadowColor('ink3');
+  const accentIcon = useMeadowColor('accentFill');
 
-function SearchHeader({ season, onClear }: { season: SeasonKey; onClear: () => void }) {
-  return (
-    <View className="flex-row flex-wrap items-center gap-2 rounded-lg border border-rule bg-raised px-3 py-2.5">
-      <AppText variant="meta" className="text-ink-2">
-        Showing: {season}
-      </AppText>
-      <AppText variant="meta" className="text-ink-3">
-        ·
-      </AppText>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back to your feed"
-        onPress={onClear}
-        className="active:opacity-80"
-      >
-        <AppText variant="meta" className="text-accent">
-          back to your feed
+  if (activeSeason) {
+    return (
+      <View className="flex-row items-center gap-2 rounded-full border border-accent bg-accent-tint px-4 py-2.5">
+        <Icon name="magnifyingglass" size={15} color={accentIcon} />
+        <AppText variant="meta" className="flex-1 capitalize text-ink">
+          {activeSeason} activities
         </AppText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Clear season search, back to your feed"
+          hitSlop={8}
+          onPress={onClear}
+          className="active:opacity-70"
+        >
+          <Icon name="xmark.circle.fill" size={18} color={iconColor} />
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View className="gap-2">
+      <Pressable
+        accessibilityRole="search"
+        accessibilityLabel="Search activities by season"
+        accessibilityState={{ expanded: open, disabled }}
+        disabled={disabled}
+        onPress={() => setOpen((o) => !o)}
+        className={`h-12 flex-row items-center gap-2.5 rounded-full border border-rule bg-card px-4 active:opacity-80 ${
+          disabled ? 'opacity-50' : ''
+        }`}
+      >
+        <Icon name="magnifyingglass" size={16} color={iconColor} />
+        <AppText variant="body" className="flex-1 text-ink-3">
+          Search activities by season
+        </AppText>
+        <Icon name={open ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
       </Pressable>
+
+      {open ? (
+        <View className="flex-row flex-wrap gap-2 px-1">
+          {SEASON_KEYS.map((season) => (
+            <Pressable
+              key={season}
+              accessibilityRole="button"
+              accessibilityLabel={`Search ${season} activities`}
+              disabled={disabled}
+              onPress={() => {
+                setOpen(false);
+                onSearch(season);
+              }}
+              className="rounded-full border border-rule bg-raised px-4 py-2 active:opacity-80"
+            >
+              <AppText variant="meta" className="capitalize text-ink-2">
+                {season}
+              </AppText>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -211,7 +235,14 @@ function VillageBody({
 
   return (
     <>
-      {hasAny ? <CadenceRow value={cadence} onSelect={setCadence} /> : null}
+      {hasAny ? (
+        <View className="gap-2">
+          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+            Filter
+          </AppText>
+          <CadenceRow value={cadence} onSelect={setCadence} />
+        </View>
+      ) : null}
 
       {recs.length === 0 ? (
         <Card className="mt-2 items-center gap-2 py-8">
@@ -281,25 +312,18 @@ export default function VillageScreen() {
     }
   }, []);
 
-  const onSelect = useCallback(
-    (s: SeasonSelection) => {
-      if (s === 'feed') clearToFeed();
-      else runSearch(s);
-    },
-    [clearToFeed, runSearch],
-  );
-
-  const selection: SeasonSelection = pendingSeason ?? activeSeason ?? 'feed';
-
   return (
     <Screen scroll className="gap-4" refreshControl={useTintedRefresh(refreshing, refresh)}>
       <View className="flex-row items-end justify-between pt-2">
         <AppText variant="display">Village</AppText>
       </View>
 
-      <SeasonRow value={selection} onSelect={onSelect} disabled={pendingSeason !== null} />
-
-      {activeSeason ? <SearchHeader season={activeSeason} onClear={clearToFeed} /> : null}
+      <SeasonSearch
+        activeSeason={activeSeason}
+        onSearch={runSearch}
+        onClear={clearToFeed}
+        disabled={pendingSeason !== null}
+      />
 
       {searchError ? (
         <Card className="items-center gap-2 py-6">
