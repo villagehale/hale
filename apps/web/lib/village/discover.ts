@@ -1,13 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type Database, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { loadDiscoveryPrompt } from './discovery-prompt';
 import { type GeocodeResult, type LatLng, geocodeArea, geocodeVenue } from './geocode';
+import type { Season } from './visibility';
 
 /**
  * Web-side, on-demand village discovery. The scheduled worker job
@@ -168,6 +169,18 @@ function defaultLoadModel(): Promise<string> {
 }
 
 /**
+ * Optional scoping for a discovery run. Absent → a STANDING run: the weekly feed
+ * (run_type 'standing'). Present → a SEARCH run scoped to `searchSeason`: rows are
+ * tagged run_type 'search' + the season, `season_hint` is passed to the model (the
+ * discovery prompt already documents that input — rule #2, no prompt change), and
+ * the supersession is scoped so a search run never soft-retires the standing feed
+ * (and a standing run never soft-retires a search) — the two coexist.
+ */
+export interface DiscoverOptions {
+  searchSeason?: Season;
+}
+
+/**
  * Runs on-demand discovery for one family and persists the result. Returns a
  * status the caller surfaces in the UI; never throws on the two expected
  * boundaries (no coarse area, no non-teen children) — those are valid states,
@@ -177,7 +190,10 @@ export async function discoverForFamily(
   familyId: string,
   database: Database,
   deps: DiscoverDeps,
+  options?: DiscoverOptions,
 ): Promise<DiscoverResult> {
+  const searchSeason = options?.searchSeason ?? null;
+  const runType = searchSeason ? 'search' : 'standing';
   const familyRows = await database
     .select({ areaCoarse: schema.families.areaCoarse })
     .from(schema.families)
@@ -214,6 +230,10 @@ export async function discoverForFamily(
     stage: primaryStage,
     interests,
     limit: DISCOVERY_LIMIT,
+    // The discovery prompt documents season_hint as an optional input used only to
+    // avoid out-of-season picks (rule #2: no prompt change). Present ONLY for a
+    // season-scoped search run; a standing run omits it entirely.
+    ...(searchSeason ? { season_hint: searchSeason } : {}),
   });
 
   // Trace the single discovery call: a scheduled/on-demand run (userId 'system'),
@@ -291,11 +311,22 @@ export async function discoverForFamily(
       );
 
       await database.transaction(async (tx) => {
-        // REPLACE, don't accumulate: soft-retire this family's prior active set so
-        // "find fresh activities" swaps in the new run. A soft stamp (not DELETE)
-        // keeps endorsed / shared candidates alive for their public /a/:token page
-        // (rule #6 audit + the share token both survive); the live feed filters
-        // superseded_at IS NULL. Sets ONLY superseded_at — never clears shareToken.
+        // REPLACE within THIS run type, don't accumulate: soft-retire this family's
+        // prior active set of the SAME run type so a re-run swaps in the new one. A
+        // soft stamp (not DELETE) keeps endorsed / shared candidates alive for their
+        // public /a/:token page (rule #6 audit + the share token both survive); the
+        // live feed filters superseded_at IS NULL. Sets ONLY superseded_at.
+        //
+        // Scoped by run type so the two feeds COEXIST: a search run supersedes only
+        // prior SEARCH rows (never the standing weekly feed), and a standing run
+        // supersedes only STANDING rows (run_type 'standing' OR legacy null, which
+        // the migration backfilled to 'standing') — so neither clobbers the other.
+        const runTypeScope = searchSeason
+          ? eq(schema.villageCandidates.runType, 'search')
+          : or(
+              eq(schema.villageCandidates.runType, 'standing'),
+              isNull(schema.villageCandidates.runType),
+            );
         await tx
           .update(schema.villageCandidates)
           .set({ supersededAt: new Date() })
@@ -303,6 +334,7 @@ export async function discoverForFamily(
             and(
               eq(schema.villageCandidates.familyId, familyId),
               isNull(schema.villageCandidates.supersededAt),
+              runTypeScope,
             ),
           );
         await tx.insert(schema.villageCandidates).values(
@@ -333,6 +365,10 @@ export async function discoverForFamily(
               lng: coords?.lng ?? null,
               venueName: coords?.venueName ?? null,
               venueAddress: coords?.venueAddress ?? null,
+              // Which run produced this row, so a search run and the standing feed
+              // coexist and each is superseded only by its own kind (see above).
+              runType,
+              searchSeason,
             };
           }),
         );

@@ -21,7 +21,7 @@ const VILLAGE = { candidates: [{ id: 'cand-1', teenAttributed: false }], routine
 
 async function callGet(): Promise<Response> {
   const { GET } = await import('~/app/api/mobile/village/route');
-  return GET();
+  return GET(new Request('http://localhost/api/mobile/village'));
 }
 
 describe('GET /api/mobile/village', () => {
