@@ -14,8 +14,11 @@ const TONE: Record<TagTone, { bg: string; text: string }> = {
 export function Tag({ label, tone = 'neutral' }: { label: string; tone?: TagTone }) {
   const t = TONE[tone];
   return (
-    <View className={`self-start rounded-full px-2.5 py-1 ${t.bg}`}>
-      <AppText variant="meta" className={`text-[11px] uppercase tracking-eyebrow ${t.text}`}>
+    <View className={`h-6 min-w-6 items-center justify-center self-start rounded-full px-2.5 ${t.bg}`}>
+      <AppText
+        variant="meta"
+        className={`text-[11px] uppercase leading-none tracking-eyebrow ${t.text}`}
+      >
         {label}
       </AppText>
     </View>

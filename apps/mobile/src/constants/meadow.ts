@@ -13,6 +13,7 @@ const MEADOW = {
     ink3: '#5b6b86',
     canvas: '#f6f1e7',
     accentFill: '#c8622d',
+    onAccent: '#01204f',
   },
   dark: {
     ink: '#f6f1e7',
@@ -20,6 +21,7 @@ const MEADOW = {
     ink3: '#9bb0d0',
     canvas: '#0b1626',
     accentFill: '#e8915c',
+    onAccent: '#01204f',
   },
 } as const;
 

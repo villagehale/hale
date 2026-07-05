@@ -203,3 +203,56 @@ export interface MobileFamilyResponse {
 export interface MobileApprovalsResponse {
   approvals: ApprovalView[];
 }
+
+// ── family write (POST /api/mobile/family) ────────────────────────────────────
+
+export interface EditChildRequest {
+  action: 'editChild';
+  childId: string;
+  name: string;
+  /** Date-only `YYYY-MM-DD`. */
+  dateOfBirth: string;
+}
+
+export interface SetLocationRequest {
+  action: 'setLocation';
+  country?: string;
+  province?: string;
+  city?: string;
+  postalCode?: string;
+}
+
+export interface SetParentNameRequest {
+  action: 'setParentName';
+  name: string;
+}
+
+export type MobileFamilyUpdateRequest =
+  | EditChildRequest
+  | SetLocationRequest
+  | SetParentNameRequest;
+
+export interface MobileFamilyUpdateResponse {
+  status: 'updated';
+}
+
+// ── settings (GET + POST /api/mobile/settings) ────────────────────────────────
+
+export type NotificationPref = 'dailyBriefEmail';
+
+export interface NotificationPrefsView {
+  dailyBriefEmail: boolean;
+}
+
+export interface MobileSettingsResponse {
+  notifications: NotificationPrefsView;
+}
+
+export interface MobileSettingsUpdateRequest {
+  pref: NotificationPref;
+  enabled: boolean;
+}
+
+export interface MobileSettingsUpdateResponse {
+  status: 'updated';
+}

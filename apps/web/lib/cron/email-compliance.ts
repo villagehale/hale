@@ -100,6 +100,27 @@ export async function recordOptOut(
     });
 }
 
+/**
+ * Clears a recipient's opt-out (re-subscribe): the counterpart to recordOptOut,
+ * used by the in-app notification settings where a parent can turn a stream back
+ * on. Idempotent — deleting a row that isn't there is a no-op, so toggling on
+ * when already on never errors.
+ */
+export async function recordOptIn(
+  database: Database,
+  userId: string,
+  emailType: EmailType,
+): Promise<void> {
+  await database
+    .delete(schema.emailOptOuts)
+    .where(
+      and(
+        eq(schema.emailOptOuts.userId, userId),
+        eq(schema.emailOptOuts.emailType, emailType),
+      ),
+    );
+}
+
 /** Records one accepted send in the ledger (CASL: who + when). Written only
  * after the provider accepts the send. */
 export async function recordEmailSend(

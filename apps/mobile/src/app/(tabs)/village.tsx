@@ -57,8 +57,13 @@ function CadenceChip({ cadence }: { cadence: string | null }) {
   const chip = cadenceChip(cadence);
   if (!chip) return null;
   return (
-    <View className={`self-start rounded-full px-2.5 py-1 ${chip.bg}`}>
-      <AppText variant="meta" className={`text-[11px] uppercase tracking-eyebrow ${chip.text}`}>
+    <View
+      className={`h-6 min-w-6 items-center justify-center self-start rounded-full px-2.5 ${chip.bg}`}
+    >
+      <AppText
+        variant="meta"
+        className={`text-[11px] uppercase leading-none tracking-eyebrow ${chip.text}`}
+      >
         {chip.label}
       </AppText>
     </View>
@@ -95,8 +100,8 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
       ) : null}
       <AppText variant="body">{rec.summary}</AppText>
       {rec.accepted ? (
-        <View className="mt-1 self-start rounded-full bg-sage-tint px-3 py-1.5">
-          <AppText variant="meta" className="text-sage">
+        <View className="mt-1 h-7 items-center justify-center self-start rounded-full bg-sage-tint px-3">
+          <AppText variant="meta" className="leading-none text-sage">
             Added to your week
           </AppText>
         </View>

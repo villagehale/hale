@@ -176,8 +176,13 @@ export default function AskScreen() {
               multiline
               returnKeyType="send"
               onSubmitEditing={() => send(draft)}
-              style={{ color: inputColor, fontFamily: 'Inter_400Regular', maxHeight: 120 }}
-              className="min-h-11 flex-1 rounded-lg border border-rule bg-canvas px-4 py-3 text-[16px] leading-[22px]"
+              style={{
+                color: inputColor,
+                fontFamily: 'Inter_400Regular',
+                minHeight: 44,
+                maxHeight: 120,
+              }}
+              className="flex-1 rounded-lg border border-rule bg-canvas px-4 py-2.5 text-[16px] leading-[22px]"
             />
             {draft.trim() ? (
               <IconButton
