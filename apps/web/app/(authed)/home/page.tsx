@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { ActivationPanel } from '~/components/hale/activation-panel';
 import { BookButton } from '~/components/hale/book-button';
-import { scopeChildren } from '~/components/hale/child-scope';
+import { scopeChildren } from '~/components/hale/child-scope-core';
 import { ConciergeAsk } from '~/components/hale/concierge-ask';
 import { HomeChildFilter } from '~/components/hale/home-child-filter';
 import { LongDate } from '~/components/hale/long-date';
