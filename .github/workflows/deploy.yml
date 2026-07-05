@@ -1,18 +1,17 @@
 # Deployment pipeline — runs ONLY after the CI workflow ("CI") succeeds on main.
 # Keeps deploy concerns out of ci.yml (CI gates correctness; this gates release).
 #
-# THREE independent legs, each gated on ITS secret being present:
+# TWO independent legs, each gated on ITS secret being present:
 #   - migrate : DB migrations against Supabase Toronto     (needs DATABASE_DIRECT_URL)
-#   - vercel  : apps/web to Vercel                         (needs VERCEL_* )
 #   - fly     : apps/worker to Fly.io yyz                  (needs FLY_API_TOKEN)
 #
-# apps/site is NOT deployed here — the `site` Vercel project is GitHub-connected
-# and auto-deploys on main pushes. The web project (hale-web) deploys via CLI
-# using its PROJECT SETTINGS (rootDirectory=apps/web) + apps/web/vercel.json
-# (regions yul1 + the operative cron schedule — verified against the live
-# deployment 2026-07-02). Never pass --local-config here: the old
-# infra/vercel.json conflicted with rootDirectory (doubled apps/web/apps/web
-# output path) and carried a stale cron list.
+# VERCEL IS NOT DEPLOYED HERE. Both `site` (marketing) and `hale-web` (the app)
+# are GitHub-connected Vercel projects that auto-deploy on main pushes via the
+# native Vercel integration — verified 2026-07-05: vercel[bot] creates the
+# Production deployment on every main merge. The old CLI-based `vercel` leg here
+# was a redundant SECOND prod deploy that failed on a stale VERCEL_TOKEN, so
+# every Deploy run went red for a step that did nothing; removed 2026-07-05.
+# (Manual redeploy if ever needed: `vercel deploy --prod` with a valid token.)
 #
 # GATING CONTRACT (see preflight job):
 #   - A leg whose secret is ABSENT is SKIPPED with a notice — the pipeline stays
@@ -20,8 +19,8 @@
 #   - A leg that DOES run but finds its required secret empty FAILS LOUD (the
 #     in-step assertion `exit 1`) — we never silently deploy without auth.
 #
-# ORDER: migrate runs first (schema must exist before web/worker hit it), then
-# vercel + fly run in parallel. A failed migration blocks both deploys.
+# ORDER: migrate runs first (schema must exist before the worker hits it), then
+# fly deploys. A failed migration blocks the worker deploy.
 #
 # ROLLBACK (manual — see docs/deploy/README.md for full procedure):
 #   - Vercel : `vercel promote <previous-prod-url> --token=$VERCEL_TOKEN`
@@ -54,29 +53,19 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_db: ${{ steps.check.outputs.has_db }}
-      has_vercel: ${{ steps.check.outputs.has_vercel }}
       has_fly: ${{ steps.check.outputs.has_fly }}
     steps:
       - id: check
         env:
           DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           set -euo pipefail
-          db=false; vercel=false; fly=false
+          db=false; fly=false
           [ -n "$DATABASE_DIRECT_URL" ] && db=true || echo "::notice::DATABASE_DIRECT_URL absent — DB migration leg will be SKIPPED."
-          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID_WEB" ]; then
-            vercel=true
-          else
-            echo "::notice::VERCEL_* secrets incomplete — Vercel leg will be SKIPPED."
-          fi
           [ -n "$FLY_API_TOKEN" ] && fly=true || echo "::notice::FLY_API_TOKEN absent — Fly worker leg will be SKIPPED."
           {
             echo "has_db=$db"
-            echo "has_vercel=$vercel"
             echo "has_fly=$fly"
           } >> "$GITHUB_OUTPUT"
 
@@ -111,38 +100,6 @@ jobs:
             echo "::error::migrate leg ran without DATABASE_DIRECT_URL — refusing to proceed."; exit 1
           fi
           pnpm --filter @hale/db migrate
-
-  # ── Web → Vercel (yul1 functions via apps/web/vercel.json) ────────────────
-  vercel:
-    name: Vercel deploy (web)
-    needs: [preflight, migrate]
-    # Run if Vercel is credentialled AND the migrate leg either succeeded or was
-    # skipped (no DB secret) — but NOT if migrate failed.
-    if: |
-      always() &&
-      needs.preflight.outputs.has_vercel == 'true' &&
-      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      # Remote build on Vercel using the hale-web project settings
-      # (rootDirectory=apps/web) + apps/web/vercel.json — the same shape as a
-      # manual `vercel deploy --prod`, proven against the live deployment.
-      # vercel@54: the project's Node runtime (24.x setting) is rejected by
-      # older CLIs (48 errors "invalid Node.js Version").
-      - name: Deploy web to Vercel (production)
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
-        run: |
-          set -euo pipefail
-          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ]; then
-            echo "::error::Vercel web leg ran without required secrets — refusing to proceed."; exit 1
-          fi
-          npx vercel@54 deploy --prod --yes --token="$VERCEL_TOKEN"
 
   # ── Worker → Fly.io Toronto (yyz) ─────────────────────────────────────────
   fly:
