@@ -25,9 +25,9 @@ body {
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* canvas / surfaces */
-  --color-canvas: #f6f1e7; /* linen */
-  --color-card: #efe7d6; /* oat */
-  --color-raised: #fffdf8; /* raised card lift (light) */
+  --color-canvas: #f6f6f4; /* crisp off-white */
+  --color-card: #ffffff; /* card surface */
+  --color-raised: #ffffff; /* raised card lift (light) */
   /* ink */
   --color-ink: #01204f; /* spruce — primary */
   --color-ink-2: #33486b; /* slate-green — secondary */
@@ -51,9 +51,9 @@ body {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #0b1626; /* calm desaturated deep Prussian-charcoal */
-    --color-card: #13233a; /* one notch above canvas */
-    --color-raised: #1d3150; /* two notches up */
+    --color-canvas: #0c1420; /* deep Prussian-charcoal */
+    --color-card: #151e2c; /* one notch above canvas */
+    --color-raised: #1c2636; /* two notches up */
     --color-chrome: #021e4e; /* exact logo Prussian — app frame */
     --color-ink: #f6f1e7; /* cream */
     --color-ink-2: #c7d3e6;
