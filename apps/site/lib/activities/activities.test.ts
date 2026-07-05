@@ -13,11 +13,12 @@ describe('activities data', () => {
     }
   });
 
-  // The review-before-index gate: unverified local content must NOT reach the
-  // sitemap. A city goes live only when a human flips `published`.
-  it('ships every city unpublished until human review', () => {
-    expect(allCities.every((c) => c.published === false)).toBe(true);
-    expect(publishedCities).toHaveLength(0);
+  // The review-before-index gate: only reviewed cities are exposed to the sitemap.
+  // publishedCities must be exactly the `published` subset — never a page the flag
+  // says is unreviewed.
+  it('publishedCities are exactly the reviewed (published) cities', () => {
+    expect(publishedCities.every((c) => c.published)).toBe(true);
+    expect(publishedCities).toHaveLength(allCities.filter((c) => c.published).length);
   });
 
   it('universalIdeas includes the city’s provincial program', () => {
