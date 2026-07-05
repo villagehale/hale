@@ -11,8 +11,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionChip } from '@/components/hale/action-chip';
-import { ActivityTrail } from '@/components/hale/activity-trail';
+import {
+  ActivityTrail,
+  LiveActivityTrail,
+  type TrailEntry,
+} from '@/components/hale/activity-trail';
 import { QuickLogCard } from '@/components/hale/quick-log-card';
+import { StreamingCursor } from '@/components/hale/streaming-cursor';
 import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
@@ -22,18 +27,25 @@ import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
-import { useTypewriter } from '@/lib/use-typewriter';
 import { useVoiceInput } from '@/lib/use-voice-input';
+
+/** A streaming Concierge turn. `text` grows as deltas arrive; `trail` is the live
+ * step list (with the in-flight tool pulsing); once `streaming` is false the trail
+ * folds to the settled `activity` and the text renders as markdown. */
+interface HaleTurn {
+  id: string;
+  role: 'hale';
+  text: string;
+  trail: TrailEntry[];
+  activity: ActivityEvent[];
+  actionIntents: ActionIntent[];
+  streaming: boolean;
+  errored: boolean;
+}
 
 type Message =
   | { id: string; role: 'user'; text: string }
-  | {
-      id: string;
-      role: 'hale';
-      text: string;
-      activity: ActivityEvent[];
-      actionIntents: ActionIntent[];
-    }
+  | HaleTurn
   | { id: string; role: 'quicklog'; match: QuickLogMatch };
 
 function UserBubble({ text }: { text: string }) {
@@ -46,49 +58,52 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-function HaleBubble({
-  text,
-  activity,
-  actionIntents,
-  answer,
-  streaming,
-}: {
-  text: string;
-  activity: ActivityEvent[];
-  actionIntents: ActionIntent[];
-  answer: string;
-  streaming: boolean;
-}) {
-  const [shown, isStreaming] = useTypewriter(text, streaming);
-  const body = streaming ? shown : text;
+function HaleBubble({ turn }: { turn: HaleTurn }) {
+  const { text, trail, activity, actionIntents, streaming } = turn;
+  // While streaming with no answer text yet: the trail carries the progress if a
+  // tool is running; otherwise the typing dots keep the "working" signal alive so
+  // the turn is never a blank Hale label (e.g. between the first step and the first
+  // token, or after a reset that ran no tools).
+  const showBubble = text.length > 0 || !streaming;
+  const showDots = streaming && text.length === 0 && trail.length === 0;
   return (
     <>
       <View className="mb-3 max-w-[92%] self-start">
         <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
           Hale
         </AppText>
-        <ActivityTrail activity={activity} />
-        <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-          {/* Reveal raw text word-by-word while streaming, then render markdown once
-              settled so the reply reads as formatted text instead of leaking raw
-              **asterisks** and - dashes. */}
-          {isStreaming ? (
-            <AppText variant="body">
-              {body}
-              <AppText variant="body" className="text-accent">
-                {' ▍'}
+        {/* Live while working (each step reveals with a breathing dot), then folds
+            to "▸ Explored N steps" above the settled answer. */}
+        {streaming ? (
+          <LiveActivityTrail entries={trail} />
+        ) : (
+          <ActivityTrail activity={activity} />
+        )}
+        {showBubble ? (
+          <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
+            {/* While streaming, render raw text token-by-token with a live cursor so
+                the answer reads as it arrives; on settle, render real markdown (bold,
+                lists, headings) with no leftover cursor bar. */}
+            {streaming ? (
+              <AppText variant="body">
+                {text}
+                <StreamingCursor />
               </AppText>
-            </AppText>
-          ) : (
-            <Markdown>{body}</Markdown>
-          )}
-        </View>
+            ) : (
+              <Markdown>{text}</Markdown>
+            )}
+          </View>
+        ) : showDots ? (
+          <View className="self-start rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
+            <TypingDots />
+          </View>
+        ) : null}
       </View>
       {/* Gated action chips settle once the answer stops streaming — each drafts a
           DRAFT the parent must approve (rule #4). Rule #1: only intent.label. */}
       {!streaming
         ? actionIntents.map((intent) => (
-            <ActionChip key={intent.kind} intent={intent} sourceAnswer={answer} />
+            <ActionChip key={intent.kind} intent={intent} sourceAnswer={text} />
           ))
         : null}
     </>
@@ -122,7 +137,6 @@ function StarterChips({ onPick }: { onPick: (q: string) => void }) {
 export default function AskScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
-  const [streamingId, setStreamingId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const conversationId = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -142,32 +156,106 @@ export default function AskScreen() {
     setPending(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
 
-    try {
-      const {
-        answer,
-        conversationId: nextId,
-        activity,
-        actionIntents,
-      } = await askHale({
-        question: q,
-        ...(conversationId.current ? { conversationId: conversationId.current } : {}),
-      });
-      conversationId.current = nextId;
-      const replyId = `h-${Date.now()}`;
-      setMessages((prev) => [
-        ...prev,
-        { id: replyId, role: 'hale', text: answer, activity, actionIntents },
-      ]);
-      setStreamingId(replyId);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-      const replyId = `h-err-${Date.now()}`;
-      setMessages((prev) => [
-        ...prev,
-        { id: replyId, role: 'hale', text: (e as Error).message, activity: [], actionIntents: [] },
-      ]);
-    } finally {
+    // The assistant turn the stream fills. Created lazily on the FIRST event so the
+    // typing dots hold until Hale actually starts working, then the live turn grows.
+    const replyId = `h-${Date.now()}`;
+    let created = false;
+    const ensureTurn = () => {
+      if (created) return;
+      created = true;
       setPending(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: replyId,
+          role: 'hale',
+          text: '',
+          trail: [],
+          activity: [],
+          actionIntents: [],
+          streaming: true,
+          errored: false,
+        },
+      ]);
+    };
+    const patch = (fn: (t: HaleTurn) => HaleTurn) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === replyId && m.role === 'hale' ? fn(m) : m)),
+      );
+    };
+
+    try {
+      await askHale(
+        { question: q, ...(conversationId.current ? { conversationId: conversationId.current } : {}) },
+        {
+          onStep: () => ensureTurn(),
+          onToolCall: (name) => {
+            ensureTurn();
+            // The in-flight tool: a breathing pending line until its result lands.
+            patch((t) => ({ ...t, trail: [...t.trail, { kind: 'pending', name }] }));
+          },
+          onToolResult: (event) => {
+            ensureTurn();
+            // Settle the pending line for this tool into a result; keep the order.
+            patch((t) => {
+              const idx = t.trail.findIndex(
+                (e) => e.kind === 'pending' && e.name === event.name,
+              );
+              const settled: TrailEntry = { kind: 'result', ...event };
+              const trail =
+                idx === -1
+                  ? [...t.trail, settled]
+                  : t.trail.map((e, i) => (i === idx ? settled : e));
+              return { ...t, trail, activity: [...t.activity, event] };
+            });
+          },
+          onDelta: (delta) => {
+            ensureTurn();
+            patch((t) => ({ ...t, text: t.text + delta }));
+          },
+          onReset: () => {
+            // An intermediate tool turn streamed text that is NOT the answer — clear
+            // it. The trail is real completed work, so it survives.
+            patch((t) => ({ ...t, text: '' }));
+          },
+          onActionIntents: (intents) => {
+            ensureTurn();
+            patch((t) => ({ ...t, actionIntents: intents }));
+          },
+          onDone: (nextId) => {
+            conversationId.current = nextId;
+            patch((t) => ({ ...t, streaming: false }));
+          },
+        },
+      );
+      // A stream that ended without ever creating a turn (no events) still needs to
+      // clear the typing dots. And if the stream closed without a `done` event (a
+      // truncated response), force-settle the turn so a cursor is never left blinking
+      // forever — settling by construction, not by hoping `done` always arrives.
+      if (!created) setPending(false);
+      else patch((t) => (t.streaming ? { ...t, streaming: false } : t));
+    } catch (e) {
+      setPending(false);
+      if (e instanceof ApiError && e.status === 401) return;
+      const message = (e as Error).message;
+      if (created) {
+        patch((t) => ({ ...t, streaming: false, errored: true, text: t.text || message }));
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: replyId,
+            role: 'hale',
+            text: message,
+            trail: [],
+            activity: [],
+            actionIntents: [],
+            streaming: false,
+            errored: true,
+          },
+        ]);
+      }
+    } finally {
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
   };
@@ -199,16 +287,7 @@ export default function AskScreen() {
             {messages.map((m) => {
               if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
               if (m.role === 'quicklog') return <QuickLogCard key={m.id} match={m.match} />;
-              return (
-                <HaleBubble
-                  key={m.id}
-                  text={m.text}
-                  activity={m.activity}
-                  actionIntents={m.actionIntents}
-                  answer={m.text}
-                  streaming={m.id === streamingId}
-                />
-              );
+              return <HaleBubble key={m.id} turn={m} />;
             })}
             {pending ? (
               <View className="mb-3 max-w-[92%] self-start">
