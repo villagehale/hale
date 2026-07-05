@@ -1,8 +1,13 @@
 'use client';
 
-import type { FamilyStage } from '@hale/types';
 import { Check } from 'lucide-react';
 import { type KeyboardEvent, useId, useRef } from 'react';
+import { type ChildScopeVariant, type ScopeChild, optionValues } from './child-scope-core';
+
+// Pure derivations + types live in the server-safe ./child-scope-core so server
+// components can call scopeChildren(). Types are re-exported here so existing
+// `import { ChildScope, type ScopeChild } from './child-scope'` sites keep working.
+export type { ChildScopeVariant, ScopeChild, StagedChild } from './child-scope-core';
 
 /**
  * The shared per-child scope selector — one control, three shapes. "whole family"
@@ -25,42 +30,6 @@ import { type KeyboardEvent, useId, useRef } from 'react';
  * and, in `select`, a SHAPE (the checkmark), never by colour alone.
  */
 
-export interface ScopeChild {
-  id: string;
-  /** Given name, or null when the child has no name on file (renders "your teen"). */
-  label: string | null;
-}
-
-/** The minimal per-child shape every scope-bearing page already loads. */
-export interface StagedChild {
-  id: string;
-  name: string | null;
-  stage: FamilyStage;
-}
-
-/**
- * The single derivation of a page's `ScopeChild[]` from its loaded children.
- *
- * Policy 1: the chip shows the child's NAME — the parent entered it, and two teens
- * must never both read the anonymous "your teen" (a scope chip disambiguates WHICH
- * child, so the name is exactly what the parent needs there). This is the chip
- * LABEL only; a 13+ teen's CONTENT stays redacted at its own surfaces (the drop /
- * placeholder / locked-card paths), age-derived via deriveStage — never here.
- *
- * `label` is null only when the child genuinely has no name on file; ChildScope
- * then falls back to "your teen" at render. Order is preserved. Every scope-bearing
- * surface (Home, Village, Approvals, Plan) derives its chips through this one
- * function so the label rule lives in exactly one place.
- */
-export function scopeChildren(children: readonly StagedChild[]): ScopeChild[] {
-  return children.map((child) => ({
-    id: child.id,
-    label: child.name,
-  }));
-}
-
-export type ChildScopeVariant = 'filter' | 'tabs' | 'select';
-
 interface ChildScopeProps {
   kids: ScopeChild[];
   value: string | null;
@@ -71,16 +40,6 @@ interface ChildScopeProps {
 }
 
 const WHOLE_FAMILY_LABEL = 'whole family';
-
-/**
- * The ordered option values every variant renders and hands to `onChange` by
- * index: whole-family (null) always first, then each child in order. Exported so
- * the "whole-family first / onChange value" contract is unit-testable without a
- * DOM.
- */
-export function optionValues(children: ScopeChild[]): Array<string | null> {
-  return [null, ...children.map((c) => c.id)];
-}
 
 /** The rendered options in order: whole-family (null) first, then each child. */
 function scopeOptions(children: ScopeChild[]): Array<ScopeChild | null> {

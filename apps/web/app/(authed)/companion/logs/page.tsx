@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { scopeChildren } from '~/components/hale/child-scope';
+import { scopeChildren } from '~/components/hale/child-scope-core';
 import { LogsBrowser } from '~/components/hale/logs-browser';
 import { PageCorner } from '~/components/hale/page-corner';
 import { loadCompanion } from '~/lib/companion/queries';

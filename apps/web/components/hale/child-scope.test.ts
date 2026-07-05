@@ -1,13 +1,13 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { ChildScope } from './child-scope';
 import {
-  ChildScope,
   type ChildScopeVariant,
   type ScopeChild,
   optionValues,
   scopeChildren,
-} from './child-scope';
+} from './child-scope-core';
 
 /**
  * ChildScope — the shared per-child scope selector. The repo's render idiom is

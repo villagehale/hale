@@ -3,7 +3,7 @@ import { loadCompanion } from '~/lib/companion/queries';
 import { loadVillageFeed } from '~/lib/village/feed';
 import { loadVillage } from '~/lib/village/queries';
 import type { Season } from '~/lib/village/visibility';
-import { scopeChildren } from './child-scope';
+import { scopeChildren } from './child-scope-core';
 import { FindActivitiesButton } from './find-activities-button';
 import { VillageFeed, VillageFeedHeader } from './village-feed';
 import { VillageSearch } from './village-search';

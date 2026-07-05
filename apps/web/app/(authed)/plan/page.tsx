@@ -1,6 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import { AddPlan } from '~/components/hale/add-plan';
-import { scopeChildren } from '~/components/hale/child-scope';
+import { scopeChildren } from '~/components/hale/child-scope-core';
 import { ChildTag } from '~/components/hale/child-tag';
 import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
