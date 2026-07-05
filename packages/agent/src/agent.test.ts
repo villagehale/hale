@@ -332,4 +332,112 @@ describe('runAgentStreaming', () => {
       },
     ]);
   });
+
+  it('fires onStep/onToolCall/onToolResult in order, name+ok+preview only, NEVER raw args or output (rule #1)', async () => {
+    // The tool_use carries a real childId in its args, and the tool HANDLER returns a
+    // child's name — both are teen-sensitive. The step/tool events must expose the
+    // tool NAME, the outcome, and a content-free preview, and NOTHING drawn from the
+    // args or the handler's output (rule #1).
+    const SENSITIVE_CHILD_ID = 'kid-secret-42';
+    const nameLeakingTool = defineTool({
+      name: 'get_child_profile',
+      description: 'Read a child profile.',
+      inputSchema: z.object({ childId: z.string() }),
+      handler: async (input: { childId: string }) => ({
+        childId: input.childId,
+        // A teen's real name in the tool OUTPUT — must never reach a stream event.
+        name: 'Priya',
+      }),
+    });
+    const client = fakeStreamingClient([
+      {
+        chunks: ['thinking'],
+        final: toolUseMessage(
+          'tu-1',
+          'get_child_profile',
+          { childId: SENSITIVE_CHILD_ID },
+          usage(100, 20),
+        ),
+      },
+      {
+        chunks: ['all ', 'good.'],
+        final: textMessage('all good.', usage(120, 30)),
+      },
+    ]);
+    const { deps } = guardDeps();
+    // One ordered log across every hook, so we assert the emission SEQUENCE.
+    const events: Array<Record<string, unknown>> = [];
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'is my teen ok?' },
+      tools: [nameLeakingTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+      onStep: (step) => events.push({ hook: 'step', step }),
+      onToolCall: (e) => events.push({ hook: 'tool_call', ...e }),
+      onToolResult: (e) => events.push({ hook: 'tool_result', ...e }),
+    });
+
+    // Order: step 1 → the tool call → its result → step 2 (the answer turn).
+    expect(events).toEqual([
+      { hook: 'step', step: 1 },
+      { hook: 'tool_call', name: 'get_child_profile' },
+      { hook: 'tool_result', name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+      { hook: 'step', step: 2 },
+    ]);
+
+    // Rule #1, structural: the tool_call carries the NAME and only the name — no
+    // `input`/`childId`/args field, and nothing equal to the sensitive id.
+    const call = events.find((e) => e.hook === 'tool_call');
+    expect(Object.keys(call ?? {}).sort()).toEqual(['hook', 'name']);
+
+    // Rule #1: the sensitive childId (from args) and the child's name (from the tool
+    // output) appear NOWHERE in the serialized event stream.
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain(SENSITIVE_CHILD_ID);
+    expect(serialized).not.toContain('Priya');
+
+    // The answer path is unaffected.
+    expect(result.answer).toBe('all good.');
+    expect(result.steps).toBe(2);
+  });
+
+  it('reports ok:false with a content-free preview when a tool call is refused (rule #1)', async () => {
+    // A bad argument (childId must be a string) makes invokeTool throw at the parse
+    // boundary — the loop feeds the error back to the model AND fires onToolResult
+    // with ok:false, so a refusal is observable, never silent.
+    const client = fakeStreamingClient([
+      {
+        chunks: [],
+        final: toolUseMessage('tu-bad', 'get_child_profile', { childId: 42 }, usage(50, 10)),
+      },
+      { chunks: ['here ', 'is guidance.'], final: textMessage('here is guidance.', usage(60, 15)) },
+    ]);
+    const { deps } = guardDeps();
+    const results: Array<{ name: string; ok: boolean; preview: string }> = [];
+
+    const result = await runAgentStreaming({
+      skill,
+      context: { question: 'help' },
+      tools: [profileTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+      onToolResult: (e) => results.push(e),
+    });
+
+    expect(results).toEqual([
+      { name: 'get_child_profile', ok: false, preview: 'get_child_profile was blocked' },
+    ]);
+    // The turn did not crash — the model got the error back and answered.
+    expect(result.answer).toBe('here is guidance.');
+  });
 });

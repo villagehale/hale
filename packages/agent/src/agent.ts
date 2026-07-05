@@ -66,16 +66,62 @@ export interface RunAgentResult {
 }
 
 /**
+ * A tool call, as surfaced to the streaming caller BEFORE the guarded invoker runs.
+ * Rule #1: the NAME is the only field — never the arguments. Tool arguments can
+ * carry a childId or free-text that quotes teen content, so they never leave the
+ * loop. The name alone is enough to render "Ran X" in the activity trail.
+ */
+export interface ToolCallEvent {
+  name: string;
+}
+
+/**
+ * A tool result, as surfaced AFTER the guarded invoker returns (post-cap / post-
+ * teen-redaction / post-audit). Rule #1: `ok` (did it succeed) plus a `preview`
+ * that is derived from the tool NAME and outcome ONLY — never from the tool's raw
+ * output, which can contain a child's profile, memory facts, or teen-quoting
+ * episodes. Carrying only name+ok makes a content leak structurally impossible:
+ * there is no field the raw result could flow into.
+ */
+export interface ToolResultEvent {
+  name: string;
+  ok: boolean;
+  /** A safe, content-free label ("Ran X" / "X was blocked") — never raw output. */
+  preview: string;
+}
+
+/**
  * The streaming loop's extra hooks. `onTextDelta` is fed each text delta as it
  * arrives. A turn can emit text BEFORE deciding to call a tool, so that text is
  * not the answer — when a turn ends in tool calls the loop fires `onTurnReset`,
  * telling the caller to discard whatever it streamed for that turn. The answer is
  * the text of the final turn, the one that ends WITHOUT tool calls.
+ *
+ * The step/tool hooks make the guarded tool loop's work observable so the chat can
+ * show it live: `onStep` fires once per loop iteration (a model round-trip),
+ * `onToolCall` fires per tool_use BEFORE the guarded invoker runs (name only —
+ * rule #1), and `onToolResult` fires AFTER it returns (name + ok + a content-free
+ * preview — rule #1). All three are optional so a caller that only wants text can
+ * omit them.
  */
 export interface RunAgentStreamingArgs extends RunAgentArgs {
   onTextDelta: (delta: string) => void;
   /** Fired when a streamed turn turns out to be a tool turn — discard its text. */
   onTurnReset: () => void;
+  /** Fired at the top of each loop iteration with the 1-based step number. */
+  onStep?: (step: number) => void;
+  /** Fired per tool_use BEFORE the guarded invoker — NAME ONLY, never args (rule #1). */
+  onToolCall?: (event: ToolCallEvent) => void;
+  /** Fired AFTER the guarded invoker — ok + a content-free preview, never raw output (rule #1). */
+  onToolResult?: (event: ToolResultEvent) => void;
+}
+
+/** The step/tool hooks, split out so `handleToolUses` can take just these. */
+type StreamingToolHooks = Pick<RunAgentStreamingArgs, 'onToolCall' | 'onToolResult'>;
+
+/** A content-free result label in Cursor grammar — derived from name+outcome ONLY (rule #1). */
+function toolResultPreview(name: string, ok: boolean): string {
+  return ok ? `Ran ${name}` : `${name} was blocked`;
 }
 
 const DEFAULT_MAX_TOKENS = 2048;
@@ -128,6 +174,7 @@ async function handleToolUses(
   messages: Anthropic.MessageParam[],
   content: Anthropic.ContentBlock[],
   toolUses: Anthropic.ToolUseBlock[],
+  hooks?: StreamingToolHooks,
 ): Promise<void> {
   messages.push({ role: 'assistant', content });
 
@@ -144,6 +191,9 @@ async function handleToolUses(
         `runAgent: model called tool '${block.name}' not in skill '${args.skill.meta.name}' allowlist`,
       );
     }
+    // Surface the call by NAME only, BEFORE the guarded invoker runs — never the
+    // args, which can carry a childId or teen-quoting free text (rule #1).
+    hooks?.onToolCall?.({ name: block.name });
     // But a bad tool ARGUMENT (e.g. an out-of-enum value the model invented) or a
     // guardrail rejection must NOT crash the turn — feed the error back so the
     // model self-corrects (retries with valid args) or adapts (answers without
@@ -151,12 +201,25 @@ async function handleToolUses(
     // handler never ran (rule #1/#7), and only authorized calls were audited.
     try {
       const result = await invokeTool(tool, block.input, args.toolContext, args.guardDeps);
+      // POST-guard: the result may contain a child's profile / memory / teen
+      // episodes, so ONLY the outcome + a content-free preview leaves the loop —
+      // the raw result goes back to the model, never to the client (rule #1).
+      hooks?.onToolResult?.({
+        name: block.name,
+        ok: true,
+        preview: toolResultPreview(block.name, true),
+      });
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,
         content: JSON.stringify(result),
       });
     } catch (err) {
+      hooks?.onToolResult?.({
+        name: block.name,
+        ok: false,
+        preview: toolResultPreview(block.name, false),
+      });
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,
@@ -242,6 +305,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
 
   while (steps < args.maxSteps) {
     steps += 1;
+    args.onStep?.(steps);
     const stream = args.client.messages.stream({
       model,
       max_tokens: args.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -276,7 +340,10 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     // This turn called tools, so any text it streamed was reasoning, not the
     // answer — tell the caller to drop it before the next turn streams.
     args.onTurnReset();
-    await handleToolUses(args, toolByName, messages, response.content, toolUses);
+    await handleToolUses(args, toolByName, messages, response.content, toolUses, {
+      onToolCall: args.onToolCall,
+      onToolResult: args.onToolResult,
+    });
   }
 
   return {

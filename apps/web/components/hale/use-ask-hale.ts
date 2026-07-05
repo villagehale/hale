@@ -16,6 +16,16 @@ export interface ActionIntent {
   actionType: string;
 }
 
+/**
+ * One entry in an assistant turn's live activity trail. Rule #1: an activity entry
+ * carries only what the server streamed — a step number, or a tool name + outcome +
+ * a content-free preview — NEVER tool arguments or raw tool output.
+ */
+export type Activity =
+  | { kind: 'step'; step: number }
+  | { kind: 'tool_call'; name: string }
+  | { kind: 'tool_result'; name: string; ok: boolean; preview: string };
+
 export interface Turn {
   id: string;
   role: 'user' | 'assistant';
@@ -28,15 +38,23 @@ export interface Turn {
   actionIntents?: ActionIntent[];
   /** Command widgets detected from the parent's OWN instruction (on a user turn). */
   inputIntents?: InputIntent[];
+  /** The live step/tool trail streamed while the answer was being produced. */
+  activity?: Activity[];
 }
 
 /**
- * One newline-delimited event from POST /api/coach. `delta` carries the next slice
- * of the streamed answer; `reset` means the text streamed so far was an intermediate
- * tool turn, not the answer — clear the in-flight bubble; `done` ends the stream with
- * the running conversationId and the gated action chips; `error` signals a failed run.
+ * One newline-delimited event from POST /api/coach. `step` marks a new model round-
+ * trip; `tool_call` names a tool the agent is invoking (rule #1: name only, never
+ * args); `tool_result` reports its outcome (rule #1: ok + a content-free preview,
+ * never raw output); `delta` carries the next slice of the streamed answer; `reset`
+ * means the text streamed so far was an intermediate tool turn, not the answer —
+ * clear the in-flight bubble; `done` ends the stream with the running conversationId
+ * and the gated action chips; `error` signals a failed run.
  */
 type CoachStreamEvent =
+  | { type: 'step'; step: number }
+  | { type: 'tool_call'; name: string }
+  | { type: 'tool_result'; name: string; ok: boolean; preview: string }
   | { type: 'delta'; text: string }
   | { type: 'reset' }
   | { type: 'done'; conversationId: string; actionIntents?: ActionIntent[] }
@@ -263,14 +281,37 @@ export function useAskHale(
       const id = ensureAssistantTurn();
       setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, body: t.body + text } : t)));
     };
-    // An intermediate tool turn streamed text that is NOT the answer — clear it so
-    // only the final answer renders, and fall back to the typing indicator.
+    // Append one live activity entry (step / tool_call / tool_result) to the turn's
+    // trail. Rule #1: the entry is exactly what the server streamed — a step number
+    // or a tool name + outcome + content-free preview — never args or raw output.
+    const appendActivity = (entry: Activity) => {
+      const id = ensureAssistantTurn();
+      setTurns((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, activity: [...(t.activity ?? []), entry] } : t)),
+      );
+    };
+    // An intermediate tool turn streamed text that is NOT the answer — clear that
+    // reasoning text so only the final answer renders. The activity trail is REAL
+    // completed work, so it survives the reset; a turn with no trail is removed so
+    // the typing indicator shows again (the original no-tool behaviour).
     const resetAssistantTurn = () => {
       if (!assistantId) return;
       const id = assistantId;
-      setTurns((prev) => prev.filter((t) => t.id !== id));
-      assistantId = null;
-      setStreamingId(null);
+      let kept = false;
+      setTurns((prev) =>
+        prev.flatMap((t) => {
+          if (t.id !== id) return [t];
+          if (t.activity && t.activity.length > 0) {
+            kept = true;
+            return [{ ...t, body: '' }];
+          }
+          return [];
+        }),
+      );
+      if (!kept) {
+        assistantId = null;
+        setStreamingId(null);
+      }
     };
 
     try {
@@ -301,6 +342,17 @@ export function useAskHale(
       await readNdjson(res.body, (event) => {
         if (event.type === 'delta') {
           appendDelta(event.text);
+        } else if (event.type === 'step') {
+          appendActivity({ kind: 'step', step: event.step });
+        } else if (event.type === 'tool_call') {
+          appendActivity({ kind: 'tool_call', name: event.name });
+        } else if (event.type === 'tool_result') {
+          appendActivity({
+            kind: 'tool_result',
+            name: event.name,
+            ok: event.ok,
+            preview: event.preview,
+          });
         } else if (event.type === 'reset') {
           resetAssistantTurn();
         } else if (event.type === 'done') {
