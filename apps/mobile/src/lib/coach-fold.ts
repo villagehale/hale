@@ -1,16 +1,17 @@
 /**
- * The batched fold of the coach NDJSON stream. RN's fetch has no readable body,
- * so askHale() reads the whole response text and folds the newline-delimited
- * events here, post-hoc. Split out from coach-api.ts so the fold is unit-testable
- * without a network round-trip.
+ * The pure line-parsing core of the coach NDJSON stream. The transport
+ * (coach-api.ts) reads response.body.getReader() and feeds decoded chunks here as
+ * they arrive; this splits them into complete newline-delimited events across
+ * arbitrary chunk boundaries and hands each one back so the UI can react LIVE
+ * (a step appears, a tool settles, the answer grows token-by-token). Split out so
+ * the parse is unit-testable without a native streaming round-trip.
  *
- * The answer is the concatenated `delta` text, cleared by a `reset` (an
- * intermediate tool turn whose text is NOT the answer), ended by `done` (carrying
- * the running conversationId). The activity trail is the settled `tool_result`
- * events — name + ok + a content-free preview only (rule #1: never args or raw
- * output; the server already redacted these). `step`/`tool_call` events are the
- * live-progress signals the web renders incrementally; in the batched mobile view
- * only the settled results matter, so they're dropped.
+ * The event grammar mirrors the web: `delta` text is the streamed answer, cleared
+ * by a `reset` (an intermediate tool turn whose text is NOT the answer), ended by
+ * `done` (carrying the running conversationId + gated actionIntents). `tool_result`
+ * events carry name + ok + a content-free preview only (rule #1: never args or raw
+ * output; the server already redacted these). `step`/`tool_call` are live-progress
+ * signals.
  */
 
 /** One settled tool step in a turn's activity trail. Mirrors the web
@@ -30,7 +31,7 @@ export interface ActionIntent {
   actionType: string;
 }
 
-type CoachEvent =
+export type CoachEvent =
   | { type: 'step'; step: number }
   | { type: 'tool_call'; name: string }
   | { type: 'tool_result'; name: string; ok: boolean; preview: string }
@@ -38,6 +39,47 @@ type CoachEvent =
   | { type: 'reset' }
   | { type: 'done'; conversationId: string; actionIntents?: ActionIntent[] }
   | { type: 'error' };
+
+/**
+ * A stateful splitter that turns a stream of arbitrarily-chunked NDJSON text into
+ * complete events. A single JSON line can split across two `push` calls (or two
+ * lines can arrive in one chunk), so it buffers the trailing partial line until a
+ * newline completes it. Blank lines are ignored. Call `flush()` at end-of-stream
+ * to emit a final unterminated line (the server ends each event with `\n`, so this
+ * is normally empty, but it keeps the parse total).
+ */
+export function createNdjsonSplitter(): {
+  push: (chunk: string) => CoachEvent[];
+  flush: () => CoachEvent[];
+} {
+  let buffer = '';
+
+  const parseLine = (line: string): CoachEvent | null => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+    return JSON.parse(trimmed) as CoachEvent;
+  };
+
+  return {
+    push(chunk: string): CoachEvent[] {
+      buffer += chunk;
+      const events: CoachEvent[] = [];
+      let newline = buffer.indexOf('\n');
+      while (newline !== -1) {
+        const event = parseLine(buffer.slice(0, newline));
+        if (event) events.push(event);
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf('\n');
+      }
+      return events;
+    },
+    flush(): CoachEvent[] {
+      const event = parseLine(buffer);
+      buffer = '';
+      return event ? [event] : [];
+    },
+  };
+}
 
 export interface CoachFold {
   answer: string;
@@ -47,17 +89,20 @@ export interface CoachFold {
   failed: boolean;
 }
 
-export function foldCoachStream(body: string): CoachFold {
+/**
+ * Fold a settled sequence of events into the final turn state — the assembled
+ * answer, the running conversationId, the settled activity trail, and the gated
+ * action chips. Pure over the ordered event list, so it's the same reducer whether
+ * the events arrived one chunk at a time or all at once.
+ */
+export function foldCoachEvents(events: Iterable<CoachEvent>): CoachFold {
   let answer = '';
   let conversationId: string | null = null;
   let failed = false;
   const activity: ActivityEvent[] = [];
   let actionIntents: ActionIntent[] = [];
 
-  for (const line of body.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const event = JSON.parse(trimmed) as CoachEvent;
+  for (const event of events) {
     if (event.type === 'delta') answer += event.text;
     else if (event.type === 'reset') answer = '';
     else if (event.type === 'done') {
@@ -69,4 +114,14 @@ export function foldCoachStream(body: string): CoachFold {
   }
 
   return { answer, conversationId, activity, actionIntents, failed };
+}
+
+/**
+ * Fold a whole NDJSON body at once — the batch convenience over the same splitter +
+ * reducer the live transport uses, so both paths share one parse. Used where the
+ * full body is already in hand (and by the unit tests).
+ */
+export function foldCoachStream(body: string): CoachFold {
+  const splitter = createNdjsonSplitter();
+  return foldCoachEvents([...splitter.push(body), ...splitter.flush()]);
 }

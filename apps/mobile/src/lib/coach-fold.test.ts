@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { foldCoachStream } from './coach-fold';
+import {
+  type CoachEvent,
+  createNdjsonSplitter,
+  foldCoachEvents,
+  foldCoachStream,
+} from './coach-fold';
 
 /**
  * The batched NDJSON fold. RN's fetch has no readable body, so askHale() reads the
@@ -112,5 +117,111 @@ describe('foldCoachStream', () => {
         .join('\n'),
     );
     expect(actionIntents).toEqual([]);
+  });
+});
+
+/**
+ * The incremental parser. The real transport reads response.body.getReader() and
+ * feeds decoded chunks in as they arrive — and chunk boundaries fall wherever the
+ * network splits, NOT on line boundaries. So the splitter must buffer a partial
+ * line across pushes, emit a complete event the instant its newline arrives, and
+ * fold to EXACTLY the same result as reading the whole body at once. These drive
+ * the same body through pathological chunk boundaries and assert order + fold.
+ */
+
+/** Feed a body to the splitter split at the given absolute character offsets,
+ * collecting every event in the order it's emitted (plus the flushed tail). */
+function drive(body: string, breakpoints: number[]): CoachEvent[] {
+  const splitter = createNdjsonSplitter();
+  const events: CoachEvent[] = [];
+  let last = 0;
+  for (const bp of [...breakpoints, body.length]) {
+    events.push(...splitter.push(body.slice(last, bp)));
+    last = bp;
+  }
+  events.push(...splitter.flush());
+  return events;
+}
+
+describe('createNdjsonSplitter', () => {
+  const BODY = [
+    { type: 'step', step: 1 },
+    { type: 'tool_call', name: 'get_child_profile' },
+    { type: 'tool_result', name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+    { type: 'delta', text: 'Naps get ' },
+    { type: 'delta', text: 'shorter around now.' },
+    { type: 'done', conversationId: 'conv-1' },
+  ]
+    .map((e) => JSON.stringify(e))
+    .join('\n');
+  // The server terminates every event with a newline; include the trailing one.
+  const WIRE = `${BODY}\n`;
+
+  const expected: CoachEvent[] = [
+    { type: 'step', step: 1 },
+    { type: 'tool_call', name: 'get_child_profile' },
+    { type: 'tool_result', name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+    { type: 'delta', text: 'Naps get ' },
+    { type: 'delta', text: 'shorter around now.' },
+    { type: 'done', conversationId: 'conv-1' },
+  ];
+
+  it('emits nothing until a line is completed by its newline', () => {
+    const splitter = createNdjsonSplitter();
+    const firstLine = JSON.stringify({ type: 'delta', text: 'hi' });
+    // A chunk that ends mid-line (before the newline) yields no event yet…
+    expect(splitter.push(firstLine.slice(0, 5))).toEqual([]);
+    expect(splitter.push(firstLine.slice(5))).toEqual([]);
+    // …only the newline flushes the buffered line as one event.
+    expect(splitter.push('\n')).toEqual([{ type: 'delta', text: 'hi' }]);
+  });
+
+  it('emits both events when two complete lines arrive in a single chunk', () => {
+    const splitter = createNdjsonSplitter();
+    const chunk = `${JSON.stringify({ type: 'step', step: 1 })}\n${JSON.stringify({
+      type: 'reset',
+    })}\n`;
+    expect(splitter.push(chunk)).toEqual([{ type: 'step', step: 1 }, { type: 'reset' }]);
+  });
+
+  it('yields the same ordered events no matter where the chunk boundaries fall', () => {
+    // Whole-body, byte-at-a-time, split inside a JSON token, and split exactly on
+    // the newline — all must reduce to the identical event sequence.
+    const byteAtATime = drive(
+      WIRE,
+      Array.from({ length: WIRE.length }, (_, i) => i),
+    );
+    const midToken = drive(WIRE, [3, 20, 47, 61, 88, 140]);
+    const onNewlines = drive(
+      WIRE,
+      [...WIRE].flatMap((ch, i) => (ch === '\n' ? [i, i + 1] : [])),
+    );
+
+    expect(drive(WIRE, [])).toEqual(expected);
+    expect(byteAtATime).toEqual(expected);
+    expect(midToken).toEqual(expected);
+    expect(onNewlines).toEqual(expected);
+  });
+
+  it('folds a chunk-by-chunk stream to the same answer/trail as the whole body', () => {
+    const streamed = foldCoachEvents(
+      drive(
+        WIRE,
+        Array.from({ length: WIRE.length }, (_, i) => i),
+      ),
+    );
+    const batched = foldCoachStream(BODY);
+    expect(streamed).toEqual(batched);
+    expect(streamed.answer).toBe('Naps get shorter around now.');
+    expect(streamed.conversationId).toBe('conv-1');
+    expect(streamed.activity).toEqual([
+      { name: 'get_child_profile', ok: true, preview: 'Ran get_child_profile' },
+    ]);
+  });
+
+  it('flushes a final line the stream never terminated with a newline', () => {
+    const splitter = createNdjsonSplitter();
+    expect(splitter.push(JSON.stringify({ type: 'delta', text: 'tail' }))).toEqual([]);
+    expect(splitter.flush()).toEqual([{ type: 'delta', text: 'tail' }]);
   });
 });
