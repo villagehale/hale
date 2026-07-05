@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ActionChip, buildActionRequest } from './action-chip';
+import { ActionChip, buildActionRequest, parseDraftResponse } from './action-chip';
 
 /**
  * A gated action chip drafts through the EXISTING approval engine, scoped to the
@@ -13,6 +13,7 @@ import { ActionChip, buildActionRequest } from './action-chip';
  */
 
 const CHILD_A = '11111111-1111-4111-8111-111111111111';
+const ACTION_ID = '22222222-2222-4222-8222-222222222222';
 
 describe('buildActionRequest — the child scope the chip drafts under', () => {
   it('drafts for the turn child even when the live scope has moved to the whole family', () => {
@@ -32,11 +33,35 @@ describe('buildActionRequest — the child scope the chip drafts under', () => {
   });
 });
 
+describe('parseDraftResponse — capturing the drafted actionId', () => {
+  it('returns the actionId from a 202 drafted_for_approval body', async () => {
+    const res = new Response(
+      JSON.stringify({ status: 'drafted_for_approval', actionId: ACTION_ID }),
+      { status: 202, headers: { 'content-type': 'application/json' } },
+    );
+    expect(await parseDraftResponse(res)).toBe(ACTION_ID);
+  });
+
+  it('returns null for a non-ok response so the chip surfaces an error', async () => {
+    const res = new Response(JSON.stringify({ error: 'no_family_for_user' }), { status: 403 });
+    expect(await parseDraftResponse(res)).toBeNull();
+  });
+
+  it('returns null when a 202 body carries no actionId', async () => {
+    const res = new Response(JSON.stringify({ status: 'drafted_for_approval' }), { status: 202 });
+    expect(await parseDraftResponse(res)).toBeNull();
+  });
+});
+
 describe('ActionChip — honest, held-for-approval copy', () => {
   it('shows the intent label and never claims the action happened', () => {
     const html = renderToStaticMarkup(
       createElement(ActionChip, {
-        intent: { kind: 'book_checkup', label: 'help me book this', actionType: 'create_calendar_event' },
+        intent: {
+          kind: 'book_checkup',
+          label: 'help me book this',
+          actionType: 'create_calendar_event',
+        },
         focusedChildId: CHILD_A,
         sourceAnswer: 'around six months',
       }),

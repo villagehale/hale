@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ActionApprovalCard } from '~/components/hale/action-approval-card';
 import type { ActionIntent } from '~/components/hale/use-ask-hale';
 
 type State = 'idle' | 'pending' | 'drafted' | 'error';
@@ -33,10 +34,25 @@ export function buildActionRequest(
 }
 
 /**
+ * Reads the drafted action's id off a successful /api/coach/action response. The
+ * route returns 202 `{ status: 'drafted_for_approval', actionId }`; anything else
+ * (or a 202 missing the id) yields null so the chip surfaces an error instead of
+ * rendering an approval card wired to nothing. Exported so the parse is unit-tested
+ * without a DOM (mirrors buildActionRequest).
+ */
+export async function parseDraftResponse(res: Response): Promise<string | null> {
+  if (!res.ok) return null;
+  const body = (await res.json()) as { actionId?: unknown };
+  return typeof body.actionId === 'string' ? body.actionId : null;
+}
+
+/**
  * A gated action chip — the inline-action thesis. Tapping it routes the intent
  * through the EXISTING approval engine, which creates a DRAFT a parent must approve
- * on the Approvals surface (rule #4: Hale never auto-acts). The copy is honest: the
- * success state says the action was drafted for approval, never "done".
+ * (rule #4: Hale never auto-acts). On a successful draft the chip hands off to an
+ * inline ActionApprovalCard so the parent approves or rejects right here in the chat,
+ * rather than being sent off to the Approvals surface. The copy is honest: nothing
+ * says "done".
  */
 export function ActionChip({
   intent,
@@ -48,6 +64,7 @@ export function ActionChip({
   sourceAnswer: string;
 }) {
   const [state, setState] = useState<State>('idle');
+  const [actionId, setActionId] = useState<string | null>(null);
 
   async function draft() {
     if (state === 'pending' || state === 'drafted') return;
@@ -59,27 +76,37 @@ export function ActionChip({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(req.body),
       });
-      setState(res.ok ? 'drafted' : 'error');
+      const id = await parseDraftResponse(res);
+      if (id) {
+        setActionId(id);
+        setState('drafted');
+      } else {
+        setState('error');
+      }
     } catch {
       setState('error');
     }
   }
 
+  if (state === 'drafted' && actionId) {
+    return (
+      <ActionApprovalCard actionId={actionId} label={intent.label} actionType={intent.actionType} />
+    );
+  }
+
   const label =
-    state === 'drafted'
-      ? 'added to your approvals'
-      : state === 'pending'
-        ? 'drafting…'
-        : state === 'error'
-          ? 'couldn’t draft — try again'
-          : intent.label;
+    state === 'pending'
+      ? 'drafting…'
+      : state === 'error'
+        ? 'couldn’t draft — try again'
+        : intent.label;
 
   return (
     <button
       type="button"
       className="pill pill-apricot pill-action cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       onClick={draft}
-      disabled={state === 'pending' || state === 'drafted'}
+      disabled={state === 'pending'}
       aria-live="polite"
     >
       {label}
