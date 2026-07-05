@@ -11,7 +11,7 @@ type TabMeta = { label: string; icon: IconName };
 const TABS: Record<string, TabMeta> = {
   index: { label: 'Home', icon: 'house.fill' },
   companion: { label: 'Companion', icon: 'figure.2.and.child.holdinghands' },
-  ask: { label: 'Ask', icon: 'sparkles' },
+  ask: { label: 'Concierge', icon: 'sparkles' },
   village: { label: 'Village', icon: 'map.fill' },
   more: { label: 'More', icon: 'ellipsis' },
 };

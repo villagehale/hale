@@ -10,16 +10,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ActivityTrail } from '@/components/hale/activity-trail';
+import { QuickLogCard } from '@/components/hale/quick-log-card';
+import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
 import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
-import { askHale } from '@/lib/coach-api';
+import { type ActivityEvent, askHale } from '@/lib/coach-api';
+import { detectQuickLog, type QuickLogMatch } from '@/lib/quick-log-detect';
 import { useTypewriter } from '@/lib/use-typewriter';
 import { useVoiceInput } from '@/lib/use-voice-input';
 
-type Message = { id: string; role: 'user' | 'hale'; text: string };
+type Message =
+  | { id: string; role: 'user'; text: string }
+  | { id: string; role: 'hale'; text: string; activity: ActivityEvent[] }
+  | { id: string; role: 'quicklog'; match: QuickLogMatch };
 
 function UserBubble({ text }: { text: string }) {
   return (
@@ -31,17 +38,26 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-function HaleBubble({ message, streaming }: { message: Message; streaming: boolean }) {
-  const [shown, isStreaming] = useTypewriter(message.text, streaming);
-  const text = streaming ? shown : message.text;
+function HaleBubble({
+  text,
+  activity,
+  streaming,
+}: {
+  text: string;
+  activity: ActivityEvent[];
+  streaming: boolean;
+}) {
+  const [shown, isStreaming] = useTypewriter(text, streaming);
+  const body = streaming ? shown : text;
   return (
     <View className="mb-3 max-w-[92%] self-start">
       <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
         Hale
       </AppText>
+      <ActivityTrail activity={activity} />
       <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
         <AppText variant="body">
-          {text}
+          {body}
           {isStreaming ? (
             <AppText variant="body" className="text-accent">
               {' ▍'}
@@ -91,25 +107,34 @@ export default function AskScreen() {
   const send = async (text: string) => {
     const q = text.trim();
     if (!q || pending) return;
-    const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: q };
-    setMessages((prev) => [...prev, userMsg]);
+    const newMessages: Message[] = [{ id: `u-${Date.now()}`, role: 'user', text: q }];
+    const quickLog = detectQuickLog(q);
+    if (quickLog) newMessages.push({ id: `ql-${Date.now()}`, role: 'quicklog', match: quickLog });
+    setMessages((prev) => [...prev, ...newMessages]);
     setDraft('');
     setPending(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
 
     try {
-      const { answer, conversationId: nextId } = await askHale({
+      const {
+        answer,
+        conversationId: nextId,
+        activity,
+      } = await askHale({
         question: q,
         ...(conversationId.current ? { conversationId: conversationId.current } : {}),
       });
       conversationId.current = nextId;
       const replyId = `h-${Date.now()}`;
-      setMessages((prev) => [...prev, { id: replyId, role: 'hale', text: answer }]);
+      setMessages((prev) => [...prev, { id: replyId, role: 'hale', text: answer, activity }]);
       setStreamingId(replyId);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       const replyId = `h-err-${Date.now()}`;
-      setMessages((prev) => [...prev, { id: replyId, role: 'hale', text: (e as Error).message }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: replyId, role: 'hale', text: (e as Error).message, activity: [] },
+      ]);
     } finally {
       setPending(false);
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -125,7 +150,7 @@ export default function AskScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View className="px-5 pt-2">
-          <AppText variant="display">Ask Hale</AppText>
+          <AppText variant="display">Concierge</AppText>
         </View>
 
         {empty ? (
@@ -140,22 +165,25 @@ export default function AskScreen() {
             showsVerticalScrollIndicator={false}
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
           >
-            {messages.map((m) =>
-              m.role === 'user' ? (
-                <UserBubble key={m.id} text={m.text} />
-              ) : (
-                <HaleBubble key={m.id} message={m} streaming={m.id === streamingId} />
-              ),
-            )}
+            {messages.map((m) => {
+              if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
+              if (m.role === 'quicklog') return <QuickLogCard key={m.id} match={m.match} />;
+              return (
+                <HaleBubble
+                  key={m.id}
+                  text={m.text}
+                  activity={m.activity}
+                  streaming={m.id === streamingId}
+                />
+              );
+            })}
             {pending ? (
               <View className="mb-3 max-w-[92%] self-start">
                 <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
                   Hale
                 </AppText>
-                <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-                  <AppText variant="body" className="text-ink-3">
-                    Thinking…
-                  </AppText>
+                <View className="self-start rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
+                  <TypingDots />
                 </View>
               </View>
             ) : null}
@@ -172,7 +200,7 @@ export default function AskScreen() {
               onChangeText={setDraft}
               placeholder="Type, or tap the mic to talk"
               placeholderTextColor={placeholderColor}
-              accessibilityLabel="Ask Hale a question"
+              accessibilityLabel="Ask Concierge a question"
               multiline
               returnKeyType="send"
               onSubmitEditing={() => send(draft)}
@@ -189,7 +217,7 @@ export default function AskScreen() {
             ) : (
               <IconButton
                 icon={voice.listening ? 'stop.fill' : 'mic'}
-                accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Hale by voice'}
+                accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Concierge by voice'}
                 onPress={voice.toggle}
                 className="bg-raised"
               />
