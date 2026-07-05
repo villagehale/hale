@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { LogoMark } from '@/components/ui/logo-mark';
 import { Pill } from '@/components/ui/pill';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
@@ -34,9 +35,12 @@ function HomeBody({ data }: { data: MobileHomeResponse }) {
     <>
       <View className="flex-row items-center justify-between pt-2">
         <AppText variant="display">{timeGreeting()}</AppText>
-        <AppText variant="title" className="text-sea">
-          Hale
-        </AppText>
+        <View className="flex-row items-center gap-2">
+          <LogoMark size={26} />
+          <AppText variant="title" className="text-sea">
+            Hale
+          </AppText>
+        </View>
       </View>
 
       <View className="flex-row items-center gap-2">

@@ -11,7 +11,8 @@ type ButtonProps = {
 
 export function Button({ label, onPress, variant = 'primary', className }: ButtonProps) {
   const isPrimary = variant === 'primary';
-  const base = 'h-12 flex-row items-center justify-center rounded-full px-5 active:opacity-80';
+  const base =
+    'min-h-12 flex-row items-center justify-center rounded-full px-6 py-3.5 active:opacity-80';
   const surface = isPrimary ? 'bg-ink' : 'border border-rule-strong bg-transparent';
 
   return (

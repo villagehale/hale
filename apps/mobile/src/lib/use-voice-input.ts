@@ -1,11 +1,12 @@
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 type VoiceInput = {
   listening: boolean;
   error: string | null;
   permissionBlocked: boolean;
   toggle: () => Promise<void>;
+  reset: () => void;
 };
 
 /**
@@ -18,13 +19,22 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [permissionBlocked, setPermissionBlocked] = useState(false);
+  // A late `result` (interim, or a final delivered after we stop) would otherwise
+  // re-fill the input after the parent has cleared it on send. This gate drops any
+  // transcript that arrives while we aren't actively listening.
+  const accepting = useRef(false);
 
   useSpeechRecognitionEvent('result', (event) => {
+    if (!accepting.current) return;
     const transcript = event.results?.[0]?.transcript;
     if (transcript) onTranscript(transcript);
   });
-  useSpeechRecognitionEvent('end', () => setListening(false));
+  useSpeechRecognitionEvent('end', () => {
+    accepting.current = false;
+    setListening(false);
+  });
   useSpeechRecognitionEvent('error', (event) => {
+    accepting.current = false;
     setError(event.message ?? 'Voice input failed.');
     setListening(false);
   });
@@ -32,6 +42,7 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
   const toggle = async () => {
     setError(null);
     if (listening) {
+      accepting.current = false;
       ExpoSpeechRecognitionModule.stop();
       return;
     }
@@ -42,9 +53,20 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
       return;
     }
     setPermissionBlocked(false);
+    accepting.current = true;
     ExpoSpeechRecognitionModule.start({ lang: 'en-US', interimResults: true });
     setListening(true);
   };
 
-  return { listening, error, permissionBlocked, toggle };
+  // On send: stop capture and drop any in-flight transcript so it can't repopulate
+  // the input the caller just cleared.
+  const reset = () => {
+    accepting.current = false;
+    if (listening) {
+      ExpoSpeechRecognitionModule.abort();
+      setListening(false);
+    }
+  };
+
+  return { listening, error, permissionBlocked, toggle, reset };
 }

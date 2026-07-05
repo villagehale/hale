@@ -71,29 +71,32 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
       <Card className="gap-2">
         <Tag label="Redacted · teen privacy" tone="attention" />
         <AppText variant="meta">
-          Category: {rec.kind}. Raw content is hidden by default to protect a teen's privacy.
+          Category: {rec.kind ?? ''}. Raw content is hidden by default to protect a teen's privacy.
         </AppText>
       </Card>
     );
   }
+  const found = foundStamp(rec.discoveredAt);
   return (
     <Card className="gap-2">
       <View className="flex-row items-start justify-between gap-3">
         <AppText variant="title" className="flex-1">
-          {rec.title}
+          {rec.title ?? ''}
         </AppText>
-        <Tag label={rec.kind} tone="coach" />
+        {rec.kind ? <Tag label={rec.kind} tone="coach" /> : null}
       </View>
       <View className="flex-row flex-wrap items-center gap-2">
         <CadenceChip cadence={rec.cadence} />
-        <AppText variant="meta" className="text-ink-3">
-          {foundStamp(rec.discoveredAt)}
-        </AppText>
+        {found ? (
+          <AppText variant="meta" className="text-ink-3">
+            {found}
+          </AppText>
+        ) : null}
       </View>
       {rec.endorsementCount > 0 ? (
         <AppText variant="meta">Recommended by {rec.endorsementCount} families</AppText>
       ) : null}
-      <AppText variant="body">{rec.summary}</AppText>
+      <AppText variant="body">{rec.summary ?? ''}</AppText>
       {rec.accepted ? (
         <View className="mt-1 self-start rounded-full bg-sage-tint px-3 py-1.5">
           <AppText variant="meta" className="text-sage">
@@ -107,11 +110,9 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
 
 function VillageBody({ data }: { data: MobileVillageResponse }) {
   const [cadence, setCadence] = useState<CadenceFilter>('all');
-  const recs = useMemo(
-    () => filterByCadence(data.candidates, cadence),
-    [data.candidates, cadence],
-  );
-  const hasAny = data.candidates.length > 0;
+  const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  const recs = useMemo(() => filterByCadence(candidates, cadence), [candidates, cadence]);
+  const hasAny = candidates.length > 0;
 
   return (
     <>

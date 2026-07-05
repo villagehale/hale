@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
+import { LogoMark } from '@/components/ui/logo-mark';
+import { Markdown } from '@/components/ui/markdown';
 import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
@@ -33,21 +35,24 @@ function UserBubble({ text }: { text: string }) {
 
 function HaleBubble({ message, streaming }: { message: Message; streaming: boolean }) {
   const [shown, isStreaming] = useTypewriter(message.text, streaming);
-  const text = streaming ? shown : message.text;
   return (
     <View className="mb-3 max-w-[92%] self-start">
       <AppText variant="meta" className="mb-1 text-ink-3">
         Hale
       </AppText>
       <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-        <AppText variant="body">
-          {text}
-          {isStreaming ? (
+        {isStreaming ? (
+          // Reveal raw text word-by-word while streaming; once settled, render the
+          // full answer as formatted markdown (bold, lists, headings).
+          <AppText variant="body">
+            {shown}
             <AppText variant="body" className="text-accent">
               {' ▍'}
             </AppText>
-          ) : null}
-        </AppText>
+          </AppText>
+        ) : (
+          <Markdown>{message.text}</Markdown>
+        )}
       </View>
     </View>
   );
@@ -94,6 +99,7 @@ export default function AskScreen() {
     const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: q };
     setMessages((prev) => [...prev, userMsg]);
     setDraft('');
+    voice.reset();
     setPending(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
 
@@ -124,7 +130,8 @@ export default function AskScreen() {
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View className="px-5 pt-2">
+        <View className="flex-row items-center gap-2 px-5 pt-2">
+          <LogoMark size={26} />
           <AppText variant="display">Ask Hale</AppText>
         </View>
 
