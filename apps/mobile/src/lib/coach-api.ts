@@ -1,5 +1,5 @@
 import { API_BASE, ApiError, signalUnauthorized } from './api-client';
-import { type ActivityEvent, foldCoachStream } from './coach-fold';
+import { type ActionIntent, type ActivityEvent, foldCoachStream } from './coach-fold';
 import { TOKEN_KEY, tokenStorage } from './token-storage';
 
 /**
@@ -13,13 +13,16 @@ import { TOKEN_KEY, tokenStorage } from './token-storage';
  * trail as a folded disclosure above the answer.
  */
 
-export type { ActivityEvent } from './coach-fold';
+export type { ActionIntent, ActivityEvent } from './coach-fold';
 
 export interface CoachAnswer {
   answer: string;
   conversationId: string | null;
   /** The settled tool steps Hale ran, for the collapsible activity trail. */
   activity: ActivityEvent[];
+  /** Gated action chips the answer implied — each a DRAFT the parent must approve
+   * (rule #4). Empty when the answer implied no action. */
+  actionIntents: ActionIntent[];
 }
 
 export interface AskHaleRequest {
@@ -61,7 +64,7 @@ export async function askHale(req: AskHaleRequest): Promise<CoachAnswer> {
   if (!res.ok) throw new ApiError(res.status, `Ask Hale failed (${res.status}).`);
 
   const body = await res.text();
-  const { answer, conversationId, activity, failed } = foldCoachStream(body);
+  const { answer, conversationId, activity, actionIntents, failed } = foldCoachStream(body);
   if (failed) throw new ApiError(500, 'Ask Hale ran into a problem. Please try again.');
-  return { answer, conversationId, activity };
+  return { answer, conversationId, activity, actionIntents };
 }
