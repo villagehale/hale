@@ -50,6 +50,13 @@ function ChildSwitcher({
   );
 }
 
+/**
+ * A health / milestone row. The timing sits in its own column that reads FULLY —
+ * only the "now" state (or done) earns a Tag pill; every other timing is plain
+ * uppercase eyebrow ink, mirroring the web companion (stamp for in-window, plain
+ * eyebrow otherwise). A pill on every row read messy and clipped "IN ~4 MONTHS";
+ * the label column now wraps instead of a fixed too-narrow pill.
+ */
 function InfoRow({
   when,
   stamp,
@@ -64,11 +71,20 @@ function InfoRow({
   done?: boolean;
 }) {
   return (
-    <View
-      className={`flex-row items-baseline gap-3 ${first ? '' : 'border-t border-rule pt-3'}`}
-    >
-      <View className="w-24 shrink-0">
-        <Tag label={done ? 'done' : when} tone={done ? 'done' : stamp ? 'attention' : 'neutral'} />
+    <View className={`flex-row items-start gap-3 ${first ? '' : 'border-t border-rule pt-3'}`}>
+      <View className="w-[104px] shrink-0 pt-0.5">
+        {done ? (
+          <Tag label="done" tone="done" />
+        ) : stamp ? (
+          <Tag label={when} tone="attention" />
+        ) : (
+          <AppText
+            variant="meta"
+            className="text-[11px] uppercase leading-[15px] tracking-eyebrow text-ink-2"
+          >
+            {when}
+          </AppText>
+        )}
       </View>
       <AppText variant="body" className={`flex-1 ${done ? 'text-ink-3' : ''}`}>
         {what}

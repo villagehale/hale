@@ -32,6 +32,7 @@ body {
   --color-ink: #01204f; /* spruce — primary */
   --color-ink-2: #33486b; /* slate-green — secondary */
   --color-ink-3: #5b6b86; /* faded-sage — meta */
+  --color-on-ink: #ffffff; /* label ON an ink fill — pure white (mirrors web --color-on-spruce). NEVER canvas off-white, which reads grey on Prussian. */
   /* accent — apricot family */
   --color-accent: #a84e20; /* apricot-deep — TEXT-SAFE accent */
   --color-accent-fill: #c8622d; /* apricot — FILL/large-graphic only */
@@ -58,6 +59,7 @@ body {
     --color-ink: #f6f1e7; /* cream */
     --color-ink-2: #c7d3e6;
     --color-ink-3: #9bb0d0;
+    --color-on-ink: #01204f; /* on the cream ink fill, the label inverts to Prussian (mirrors web dark --color-on-spruce) */
     --color-accent: #e8915c; /* text-safe on dark */
     --color-accent-fill: #e8915c;
     --color-accent-tint: #2e2331;

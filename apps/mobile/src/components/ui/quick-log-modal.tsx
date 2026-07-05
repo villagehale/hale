@@ -1,11 +1,14 @@
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
 
+import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 
 import { AppText } from './app-text';
 import { Button } from './button';
 import { Field } from './field';
+import { Icon } from './icon';
 
 export type LogKind = 'feed' | 'nap' | 'milestone';
 
@@ -44,15 +47,29 @@ const KIND_META: Record<
   },
 };
 
-/** Minutes-ago presets for the "when" control. A quick-log is almost always
- * "just now" or a short while ago — steppers beat a full date picker at 3am and
- * need no extra native dependency. */
+/** Minutes-ago shortcuts for the "when" control. A quick-log is usually "just now"
+ * or a short while ago, so these one-tap chips stay — but the exact date+time is
+ * always adjustable below via a real picker (an earlier feed the next morning, a
+ * milestone from last week). */
 const WHEN_PRESETS: { label: string; minutesAgo: number }[] = [
   { label: 'now', minutesAgo: 0 },
   { label: '30m ago', minutesAgo: 30 },
   { label: '1h ago', minutesAgo: 60 },
   { label: '2h ago', minutesAgo: 120 },
 ];
+
+const minutesAgoDate = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000);
+
+/** "Today, 2:15 PM" / "Jul 2, 8:40 AM" — the resolved occurred-at, read back to the
+ * parent so the picked instant is never a mystery. */
+function whenLabel(when: Date): string {
+  const now = new Date();
+  const sameDay = when.toDateString() === now.toDateString();
+  const time = when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (sameDay) return `Today, ${time}`;
+  const day = when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${day}, ${time}`;
+}
 
 function buildPayload(kind: LogKind, childId: string, entry: string, occurredAt: string) {
   const base = { childId, occurredAt };
@@ -84,19 +101,42 @@ export function QuickLogModal({
 }) {
   const [childId, setChildId] = useState('');
   const [value, setValue] = useState('');
-  const [minutesAgo, setMinutesAgo] = useState(0);
+  const [when, setWhen] = useState<Date>(() => new Date());
+  // The preset chip that produced `when`, or null once an exact time is picked —
+  // so the highlight is unambiguous instead of guessed from fragile time math.
+  const [activePreset, setActivePreset] = useState(0);
+  const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const iconColor = useMeadowColor('ink3');
 
   useEffect(() => {
     if (visible) {
       setChildId(kids[0]?.id ?? '');
       setValue('');
-      setMinutesAgo(0);
+      setWhen(new Date());
+      setActivePreset(0);
+      setShowPicker(false);
       setError(null);
       setSaving(false);
     }
   }, [visible, kids]);
+
+  const pickPreset = (minutesAgo: number) => {
+    setWhen(minutesAgoDate(minutesAgo));
+    setActivePreset(minutesAgo);
+    setShowPicker(false);
+  };
+
+  const onPickerChange = (event: DateTimePickerEvent, picked?: Date) => {
+    // Android fires 'dismissed' on cancel and closes its own dialog; iOS keeps the
+    // inline picker open until the parent hides it, so only Android toggles here.
+    if (Platform.OS !== 'ios') setShowPicker(false);
+    if (event.type === 'set' && picked) {
+      setWhen(picked);
+      setActivePreset(-1);
+    }
+  };
 
   if (!kind) return null;
   const meta = KIND_META[kind];
@@ -113,7 +153,7 @@ export function QuickLogModal({
     }
     setError(null);
     setSaving(true);
-    const occurredAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
+    const occurredAt = when.toISOString();
     try {
       await api('/api/mobile/companion/log', {
         method: 'POST',
@@ -131,88 +171,154 @@ export function QuickLogModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable
-        className="flex-1 justify-end bg-black/40"
-        onPress={onClose}
-        accessibilityLabel="Close"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1"
       >
-        <Pressable className="rounded-t-[24px] border-t border-rule bg-canvas px-5 pb-8 pt-3">
-          <View className="mb-4 h-1.5 w-10 self-center rounded-full bg-rule-strong" />
+        <Pressable
+          className="flex-1 justify-end bg-black/40"
+          onPress={onClose}
+          accessibilityLabel="Close"
+        >
+          {/* Sheet: a Pressable so taps inside don't dismiss; the inner ScrollView keeps
+              the field + Save reachable above the keyboard / a tall inline picker. */}
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            className="max-h-[88%] rounded-t-[28px] border-t border-rule bg-canvas"
+          >
+            <ScrollView
+              className="px-5 pt-3"
+              contentContainerClassName="pb-8"
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View className="mb-5 h-1.5 w-10 self-center rounded-full bg-rule-strong" />
 
-          <AppText variant="title" className="mb-4">
-            {meta.title}
-          </AppText>
+              <AppText variant="title" className="mb-4">
+                {meta.title}
+              </AppText>
 
-          {kids.length > 1 ? (
-            <View className="mb-4 flex-row gap-2 rounded-full border border-rule bg-card p-1">
-              {kids.map((child) => {
-                const active = child.id === childId;
-                return (
-                  <Pressable
-                    key={child.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Log for ${child.name ?? 'child'}`}
-                    accessibilityState={active ? { selected: true } : {}}
-                    onPress={() => setChildId(child.id)}
-                    className={`flex-1 items-center rounded-full py-2 ${active ? 'bg-raised' : ''}`}
-                  >
-                    <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-3'}>
-                      {child.name ?? 'Child'}
+              {kids.length > 1 ? (
+                <View className="mb-4 flex-row gap-2 rounded-full border border-rule bg-card p-1">
+                  {kids.map((child) => {
+                    const active = child.id === childId;
+                    return (
+                      <Pressable
+                        key={child.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Log for ${child.name ?? 'child'}`}
+                        accessibilityState={active ? { selected: true } : {}}
+                        onPress={() => setChildId(child.id)}
+                        className={`flex-1 items-center rounded-full py-2 ${active ? 'bg-raised' : ''}`}
+                      >
+                        <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-3'}>
+                          {child.name ?? 'Child'}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+
+              <View className="mb-5">
+                <Field
+                  label={meta.field}
+                  value={value}
+                  onChangeText={setValue}
+                  keyboardType={meta.keyboard}
+                  placeholder={meta.placeholder}
+                  autoCapitalize={kind === 'milestone' ? 'sentences' : 'none'}
+                  autoFocus
+                />
+              </View>
+
+              <View className="mb-5 gap-2">
+                <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+                  When
+                </AppText>
+                <View className="flex-row gap-2">
+                  {WHEN_PRESETS.map((preset) => {
+                    const active = preset.minutesAgo === activePreset;
+                    return (
+                      <Pressable
+                        key={preset.label}
+                        accessibilityRole="button"
+                        accessibilityLabel={`When: ${preset.label}`}
+                        accessibilityState={active ? { selected: true } : {}}
+                        onPress={() => pickPreset(preset.minutesAgo)}
+                        className={`h-11 flex-1 items-center justify-center rounded-full border ${
+                          active ? 'border-ink bg-ink' : 'border-rule bg-card'
+                        }`}
+                      >
+                        <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
+                          {preset.label}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* The exact date+time picker is a native module (no web impl), so on the
+                    RN-web preview we show the resolved time read-only; presets still set it. */}
+                {Platform.OS === 'web' ? (
+                  <View className="mt-1 h-12 flex-row items-center gap-2.5 rounded-lg border border-rule bg-card px-4">
+                    <Icon name="calendar" size={16} color={iconColor} />
+                    <AppText variant="body" className="text-ink">
+                      {whenLabel(when)}
                     </AppText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
+                  </View>
+                ) : (
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Exact time: ${whenLabel(when)}. Tap to change.`}
+                      accessibilityState={{ expanded: showPicker }}
+                      onPress={() => setShowPicker((s) => !s)}
+                      className="mt-1 h-12 flex-row items-center justify-between rounded-lg border border-rule bg-card px-4 active:opacity-80"
+                    >
+                      <View className="flex-row items-center gap-2.5">
+                        <Icon name="calendar" size={16} color={iconColor} />
+                        <AppText variant="body" className="text-ink">
+                          {whenLabel(when)}
+                        </AppText>
+                      </View>
+                      <Icon
+                        name={showPicker ? 'chevron.up' : 'chevron.down'}
+                        size={13}
+                        color={iconColor}
+                      />
+                    </Pressable>
 
-          <View className="mb-4">
-            <Field
-              label={meta.field}
-              value={value}
-              onChangeText={setValue}
-              keyboardType={meta.keyboard}
-              placeholder={meta.placeholder}
-              autoCapitalize={kind === 'milestone' ? 'sentences' : 'none'}
-              autoFocus
-            />
-          </View>
+                    {showPicker ? (
+                      <View className="items-center">
+                        <DateTimePicker
+                          value={when}
+                          mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
+                          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                          maximumDate={new Date()}
+                          onChange={onPickerChange}
+                        />
+                      </View>
+                    ) : null}
+                  </>
+                )}
+              </View>
 
-          <View className="mb-4 gap-1.5">
-            <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-              When
-            </AppText>
-            <View className="flex-row gap-2">
-              {WHEN_PRESETS.map((preset) => {
-                const active = preset.minutesAgo === minutesAgo;
-                return (
-                  <Pressable
-                    key={preset.label}
-                    accessibilityRole="button"
-                    accessibilityLabel={`When: ${preset.label}`}
-                    accessibilityState={active ? { selected: true } : {}}
-                    onPress={() => setMinutesAgo(preset.minutesAgo)}
-                    className={`h-11 flex-1 items-center justify-center rounded-full border ${
-                      active ? 'border-ink bg-ink' : 'border-rule bg-card'
-                    }`}
-                  >
-                    <AppText variant="meta" className={active ? 'text-canvas' : 'text-ink-2'}>
-                      {preset.label}
-                    </AppText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
+              {error ? (
+                <AppText
+                  variant="meta"
+                  className="mb-3 text-berry"
+                  accessibilityLiveRegion="polite"
+                >
+                  {error}
+                </AppText>
+              ) : null}
 
-          {error ? (
-            <AppText variant="meta" className="mb-3 text-berry" accessibilityLiveRegion="polite">
-              {error}
-            </AppText>
-          ) : null}
-
-          <Button label={saving ? 'Saving…' : 'Save log'} onPress={save} />
+              <Button label={saving ? 'Saving…' : 'Save log'} onPress={save} />
+            </ScrollView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

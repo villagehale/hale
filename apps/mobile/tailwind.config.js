@@ -16,6 +16,7 @@ module.exports = {
           2: "var(--color-ink-2)",
           3: "var(--color-ink-3)",
         },
+        "on-ink": "var(--color-on-ink)", // label on an ink fill — white (light) / Prussian (dark)
         accent: {
           DEFAULT: "var(--color-accent)", // text-safe (apricot-deep)
           fill: "var(--color-accent-fill)", // FILL ONLY (apricot)

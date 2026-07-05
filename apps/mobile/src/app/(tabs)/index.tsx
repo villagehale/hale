@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
@@ -73,12 +73,18 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
         onLogged={onLogged}
       />
 
-      <Card onPress={() => router.push('/ask')} className="flex-row items-center justify-between">
-        <AppText variant="body" className="text-ink-3">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ask Hale anything"
+        onPress={() => router.push('/ask')}
+        className="h-12 flex-row items-center gap-2.5 rounded-full border border-rule bg-card px-4 active:opacity-80"
+      >
+        <Icon name="sparkles" size={17} color={askIconColor} />
+        <AppText variant="body" className="flex-1 text-ink-3">
           Ask Hale anything
         </AppText>
-        <Icon name="mic" size={20} color={askIconColor} />
-      </Card>
+        <Icon name="mic" size={18} color={askIconColor} />
+      </Pressable>
 
       {rec ? (
         <View className="gap-2">
