@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { LogoMark } from '@/components/ui/logo-mark';
 import { Pill } from '@/components/ui/pill';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { type LogKind, QuickLogModal } from '@/components/ui/quick-log-modal';
@@ -38,14 +39,22 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
     <>
       <View className="flex-row items-center justify-between pt-2">
         <AppText variant="display">{timeGreeting()}</AppText>
-        <AppText variant="title" className="text-sea">
-          Hale
-        </AppText>
+        <View className="flex-row items-center gap-2">
+          <LogoMark size={26} />
+          <AppText variant="title" className="text-sea">
+            Hale
+          </AppText>
+        </View>
       </View>
 
       {hasChildren ? (
         <View className="flex-row items-center gap-2">
-          <Pill label="Feed" icon="drop.fill" className="flex-1" onPress={() => setLogKind('feed')} />
+          <Pill
+            label="Feed"
+            icon="drop.fill"
+            className="flex-1"
+            onPress={() => setLogKind('feed')}
+          />
           <Pill label="Nap" icon="moon.fill" className="flex-1" onPress={() => setLogKind('nap')} />
           <Pill
             label="Milestone"
@@ -120,9 +129,8 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
 }
 
 export default function HomeScreen() {
-  const { status, data, error, refreshing, reload, refresh } = useApi<MobileHomeResponse>(
-    '/api/mobile/home',
-  );
+  const { status, data, error, refreshing, reload, refresh } =
+    useApi<MobileHomeResponse>('/api/mobile/home');
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>

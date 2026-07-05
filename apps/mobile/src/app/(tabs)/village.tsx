@@ -97,7 +97,7 @@ function SeasonRow({
               active ? 'border-accent bg-accent-tint' : 'border-rule bg-card'
             } ${disabled ? 'opacity-50' : ''}`}
           >
-            <AppText variant="meta" className={active ? 'text-accent' : 'text-ink-2'}>
+            <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-2'}>
               {option.label}
             </AppText>
           </Pressable>
