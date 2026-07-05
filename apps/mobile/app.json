@@ -9,10 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "family.villagehale.app",
-      "buildNumber": "8",
+      "buildNumber": "11",
       "infoPlist": {
         "NSCameraUsageDescription": "Hale uses the camera to capture milestone photos.",
-        "NSMicrophoneUsageDescription": "Hale uses the microphone for voice — asking and logging by speaking.",
+        "NSMicrophoneUsageDescription": "Hale uses the microphone for voice \u2014 asking and logging by speaking.",
         "NSSpeechRecognitionUsageDescription": "Hale transcribes your voice to text.",
         "NSPhotoLibraryUsageDescription": "Hale accesses your photo library so you can add photos to your child's milestones and memories.",
         "ITSAppUsesNonExemptEncryption": false
