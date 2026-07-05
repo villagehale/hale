@@ -18,8 +18,19 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     expect(RATE_LIMITS.ingest.limit).toBeGreaterThanOrEqual(100);
   });
 
-  it('uses a one-minute window for every route', () => {
-    for (const opts of Object.values(RATE_LIMITS)) {
+  it('caps village-search as a paid run: a small per-hour cooldown, not a per-minute burst', () => {
+    // Unlike the other routes (silent bot guards on a 1-minute window), a village
+    // search triggers a billable LLM discovery, so its cap is a genuine COOLDOWN a
+    // curious parent could reach — a handful per hour. Pinned to an hour window and
+    // a single-digit cap so an edit can't quietly turn it into a per-minute floodgate.
+    expect(RATE_LIMITS['village-search'].windowSec).toBe(3600);
+    expect(RATE_LIMITS['village-search'].limit).toBeGreaterThanOrEqual(3);
+    expect(RATE_LIMITS['village-search'].limit).toBeLessThanOrEqual(10);
+  });
+
+  it('uses a one-minute window for every route except the paid village-search cooldown', () => {
+    for (const [route, opts] of Object.entries(RATE_LIMITS)) {
+      if (route === 'village-search') continue;
       expect(opts.windowSec).toBe(60);
     }
   });

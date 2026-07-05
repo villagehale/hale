@@ -34,6 +34,8 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     shareToken: null,
     eventDate: null,
     seasons: null,
+    runType: 'standing',
+    searchSeason: null,
     supersededAt: null,
     discoveredAt: new Date('2026-06-11T10:00:00Z'),
     ...overrides,

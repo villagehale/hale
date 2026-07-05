@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
+import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
+import { ApiError, api } from '@/lib/api-client';
 import type { MobileVillageResponse, VillageCandidateView } from '@/lib/api-types';
 import { foundStamp } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
@@ -16,6 +18,17 @@ import {
   cadenceChip,
   filterByCadence,
 } from '@/lib/village-filter';
+import {
+  type DiscoverResult,
+  SEASON_OPTIONS,
+  type SeasonKey,
+  type SeasonSelection,
+  searchOutcomeFromError,
+  searchOutcomeFromResult,
+  searchReadPath,
+} from '@/lib/village-search';
+
+const STANDING_PATH = '/api/mobile/village';
 
 function CadenceRow({
   value,
@@ -50,6 +63,81 @@ function CadenceRow({
         );
       })}
     </ScrollView>
+  );
+}
+
+function SeasonRow({
+  value,
+  onSelect,
+  disabled,
+}: {
+  value: SeasonSelection;
+  onSelect: (s: SeasonSelection) => void;
+  disabled: boolean;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="gap-2 pr-5"
+    >
+      {SEASON_OPTIONS.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="button"
+            accessibilityLabel={
+              option.value === 'feed' ? 'Your standing feed' : `Search ${option.label} activities`
+            }
+            accessibilityState={{ selected: active, disabled }}
+            disabled={disabled}
+            onPress={() => onSelect(option.value)}
+            className={`rounded-full border px-4 py-2 active:opacity-80 ${
+              active ? 'border-accent bg-accent-tint' : 'border-rule bg-card'
+            } ${disabled ? 'opacity-50' : ''}`}
+          >
+            <AppText variant="meta" className={active ? 'text-accent' : 'text-ink-2'}>
+              {option.label}
+            </AppText>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function SearchHeader({ season, onClear }: { season: SeasonKey; onClear: () => void }) {
+  return (
+    <View className="flex-row flex-wrap items-center gap-2 rounded-lg border border-rule bg-raised px-3 py-2.5">
+      <AppText variant="meta" className="text-ink-2">
+        Showing: {season}
+      </AppText>
+      <AppText variant="meta" className="text-ink-3">
+        ·
+      </AppText>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to your feed"
+        onPress={onClear}
+        className="active:opacity-80"
+      >
+        <AppText variant="meta" className="text-accent">
+          back to your feed
+        </AppText>
+      </Pressable>
+    </View>
+  );
+}
+
+function SearchPending({ season }: { season: SeasonKey }) {
+  return (
+    <Card className="mt-2 items-center gap-3 py-10">
+      <TypingDots />
+      <AppText variant="meta" className="text-center">
+        Searching {season} activities…
+      </AppText>
+    </Card>
   );
 }
 
@@ -105,29 +193,36 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
   );
 }
 
-function VillageBody({ data }: { data: MobileVillageResponse }) {
+function VillageBody({
+  data,
+  searchSeason,
+}: {
+  data: MobileVillageResponse;
+  searchSeason: SeasonKey | null;
+}) {
   const [cadence, setCadence] = useState<CadenceFilter>('all');
-  const recs = useMemo(
-    () => filterByCadence(data.candidates, cadence),
-    [data.candidates, cadence],
-  );
+  const recs = useMemo(() => filterByCadence(data.candidates, cadence), [data.candidates, cadence]);
   const hasAny = data.candidates.length > 0;
 
   return (
     <>
-      <View className="flex-row items-end justify-between pt-2">
-        <AppText variant="display">Village</AppText>
-      </View>
-
       {hasAny ? <CadenceRow value={cadence} onSelect={setCadence} /> : null}
 
       {recs.length === 0 ? (
         <Card className="mt-2 items-center gap-2 py-8">
-          <AppText variant="title">{hasAny ? 'Nothing in this filter' : 'Fresh picks coming'}</AppText>
+          <AppText variant="title">
+            {hasAny
+              ? 'Nothing in this filter'
+              : searchSeason
+                ? 'No matches yet'
+                : 'Fresh picks coming'}
+          </AppText>
           <AppText variant="meta" className="text-center">
             {hasAny
               ? 'No activities match this cadence right now — try "all".'
-              : 'Your village refreshes with current, in-season activities. Check back soon.'}
+              : searchSeason
+                ? `No ${searchSeason} activities found near you yet.`
+                : 'Your village refreshes with current, in-season activities. Check back soon.'}
           </AppText>
         </Card>
       ) : (
@@ -146,14 +241,78 @@ function VillageBody({ data }: { data: MobileVillageResponse }) {
 }
 
 export default function VillageScreen() {
+  const [activeSeason, setActiveSeason] = useState<SeasonKey | null>(null);
+  const [pendingSeason, setPendingSeason] = useState<SeasonKey | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const readPath = activeSeason ? searchReadPath(activeSeason) : STANDING_PATH;
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobileVillageResponse>('/api/mobile/village');
+    useApi<MobileVillageResponse>(readPath);
+
+  const clearToFeed = useCallback(() => {
+    setActiveSeason(null);
+    setPendingSeason(null);
+    setSearchError(null);
+  }, []);
+
+  const runSearch = useCallback(async (season: SeasonKey) => {
+    setSearchError(null);
+    setPendingSeason(season);
+    try {
+      const result = await api<DiscoverResult>('/api/mobile/village/search', {
+        method: 'POST',
+        body: JSON.stringify({ season }),
+      });
+      const outcome = searchOutcomeFromResult(season, result);
+      if (outcome.kind === 'search') setActiveSeason(outcome.season);
+      else setSearchError(outcome.message);
+    } catch (e) {
+      // A 401 already redirected to sign-in (mirrors useApi); swallow only that.
+      if (e instanceof ApiError && e.status === 401) return;
+      const err = e as ApiError;
+      setSearchError(searchOutcomeFromError(err.status ?? 0, err.message).message);
+    } finally {
+      setPendingSeason(null);
+    }
+  }, []);
+
+  const onSelect = useCallback(
+    (s: SeasonSelection) => {
+      if (s === 'feed') clearToFeed();
+      else runSearch(s);
+    },
+    [clearToFeed, runSearch],
+  );
+
+  const selection: SeasonSelection = pendingSeason ?? activeSeason ?? 'feed';
 
   return (
     <Screen scroll className="gap-4" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      {status === 'loading' ? <LoadingState /> : null}
-      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? <VillageBody data={data} /> : null}
+      <View className="flex-row items-end justify-between pt-2">
+        <AppText variant="display">Village</AppText>
+      </View>
+
+      <SeasonRow value={selection} onSelect={onSelect} disabled={pendingSeason !== null} />
+
+      {activeSeason ? <SearchHeader season={activeSeason} onClear={clearToFeed} /> : null}
+
+      {searchError ? (
+        <Card className="items-center gap-2 py-6">
+          <AppText variant="meta" className="text-center">
+            {searchError}
+          </AppText>
+        </Card>
+      ) : null}
+
+      {pendingSeason ? <SearchPending season={pendingSeason} /> : null}
+
+      {!pendingSeason && status === 'loading' ? <LoadingState /> : null}
+      {!pendingSeason && status === 'error' ? (
+        <ErrorState message={error ?? ''} onRetry={reload} />
+      ) : null}
+      {!pendingSeason && status === 'ready' && data ? (
+        <VillageBody data={data} searchSeason={activeSeason} />
+      ) : null}
     </Screen>
   );
 }

@@ -65,6 +65,14 @@ export const villageCandidates = pgTable(
      * 'spring'|'summer'|'fall'|'winter' — so the feed can hide out-of-season
      * candidates. Null for one-time/ongoing and unclassified rows. */
     seasons: text('seasons').array(),
+    /** Which run produced this row: 'standing' (the weekly feed) or 'search' (a
+     * parent-triggered season search). Supersession is scoped by this column so a
+     * search run never soft-retires the standing feed and vice-versa. Default
+     * 'standing' backfills every pre-search row correctly (rule #9). */
+    runType: text('run_type').notNull().default('standing'),
+    /** The season a 'search' run was scoped to ('spring'|'summer'|'fall'|'winter'),
+     * so a read can pull the latest search for that season. Null for standing rows. */
+    searchSeason: text('search_season'),
     /** Stamped when a newer discovery run replaces this family's set: the row is
      * soft-retired (the live feed filters superseded_at IS NULL) rather than
      * hard-deleted, so an endorsed / shared candidate survives for its public

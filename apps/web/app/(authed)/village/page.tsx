@@ -2,13 +2,27 @@ import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PageCorner } from '~/components/hale/page-corner';
 import { PrivacyNote } from '~/components/hale/privacy-note';
-import { VillageCandidates, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
+import {
+  VillageCandidates,
+  VillageFeedSkeleton,
+  VillageSearchRun,
+} from '~/components/hale/village-feed-section';
+import { VillageSeasonSelector } from '~/components/hale/village-season-selector';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { loadVillage } from '~/lib/village/queries';
+import { seasonFromParam } from '~/lib/village/season-selector-ui';
 
-export default async function VillagePage() {
-  const { routine } = await loadVillage();
+export default async function VillagePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
+  const { season } = await searchParams;
+  const activeSeason = seasonFromParam(season);
+  // The standing weekly routine belongs to the standing feed, not a forward-looking
+  // season search — so it (and its loadVillage read) is skipped on a search view.
+  const { routine } = activeSeason ? { routine: null } : await loadVillage();
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
@@ -68,10 +82,16 @@ export default async function VillagePage() {
         </section>
       ) : null}
 
-      {/* ── Candidates — streamed (the agent ranker must not block the page) ─ */}
+      {/* ── Season search — pick a future season, or clear back to your feed ─ */}
+      <div className="rise rise-3 mb-10 lg:mb-12">
+        <VillageSeasonSelector active={activeSeason} />
+      </div>
+
+      {/* ── Candidates — the season search RUN, or the standing feed. Both are
+           streamed behind Suspense so the shell renders instantly. ─────────── */}
       <div className="rise rise-3">
         <Suspense fallback={<VillageFeedSkeleton />}>
-          <VillageCandidates />
+          {activeSeason ? <VillageSearchRun season={activeSeason} /> : <VillageCandidates />}
         </Suspense>
       </div>
 
