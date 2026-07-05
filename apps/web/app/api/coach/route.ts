@@ -65,13 +65,16 @@ export async function POST(req: Request) {
   if (limited) return limited;
 
   // Stream the answer as newline-delimited JSON events so it renders token-by-token
-  // (perceived latency is output-length-bound). Events: {type:'delta',text} as the
-  // final answer streams, {type:'reset'} when an intermediate tool turn streamed
-  // text that is NOT the answer (drop it), then a terminal {type:'done',
-  // conversationId,actionIntents}. A failure mid-run emits {type:'error'} so the
-  // client shows its retry state rather than a dangling stream. The agent run
-  // (persistence, audit, action-intent detection, trace — rule #1/#4/#6) is
-  // unchanged; only the transport differs.
+  // (perceived latency is output-length-bound). Events: {type:'step',step} as each
+  // model round-trip begins, {type:'tool_call',name} / {type:'tool_result',name,ok,
+  // preview} as the guarded tool loop works (rule #1: name + ok + a content-free
+  // preview only — never args or raw tool output), {type:'delta',text} as the final
+  // answer streams, {type:'reset'} when an intermediate tool turn streamed text that
+  // is NOT the answer (drop it), then a terminal {type:'done',conversationId,
+  // actionIntents}. A failure mid-run emits {type:'error'} so the client shows its
+  // retry state rather than a dangling stream. The agent run (persistence, audit,
+  // action-intent detection, trace — rule #1/#4/#6) is unchanged; only the transport
+  // differs.
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -92,6 +95,13 @@ export async function POST(req: Request) {
           {
             onTextDelta: (text) => send({ type: 'delta', text }),
             onTurnReset: () => send({ type: 'reset' }),
+            onStep: (step) => send({ type: 'step', step }),
+            // Rule #1: forward only the harness's redacted payloads — name (no args)
+            // on the call, name + ok + content-free preview (no raw output) on the
+            // result. The route never re-derives these from tool data.
+            onToolCall: ({ name }) => send({ type: 'tool_call', name }),
+            onToolResult: ({ name, ok, preview }) =>
+              send({ type: 'tool_result', name, ok, preview }),
           },
         );
         send({ type: 'done', conversationId, actionIntents });

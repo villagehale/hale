@@ -1,5 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, pickModel, runAgent, runAgentStreaming } from '@hale/agent';
+import {
+  type AgentClient,
+  pickModel,
+  runAgent,
+  runAgentStreaming,
+  type ToolCallEvent,
+  type ToolResultEvent,
+} from '@hale/agent';
 import type { Database } from '@hale/db';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
@@ -65,10 +72,19 @@ export interface AskHaleResult {
  * fires when an intermediate (tool-calling) turn streamed text that is NOT the
  * answer, so the consumer drops it. Absent → the original non-streaming loop. The
  * persisted answer, action intents, metrics, and trace are identical either way.
+ *
+ * The step/tool hooks make the guarded loop's work observable so the chat can show
+ * a live activity trail: `onStep` per model round-trip, `onToolCall` per tool
+ * (name only — rule #1), `onToolResult` per tool (ok + content-free preview —
+ * rule #1). They are forwarded verbatim from the agent harness, which guarantees
+ * no raw args or tool output ever reach them.
  */
 export interface AskHaleStreamHooks {
   onTextDelta: (delta: string) => void;
   onTurnReset: () => void;
+  onStep?: (step: number) => void;
+  onToolCall?: (event: ToolCallEvent) => void;
+  onToolResult?: (event: ToolResultEvent) => void;
 }
 
 let defaultClient: Anthropic | undefined;

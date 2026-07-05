@@ -6,6 +6,7 @@ import { ActionChip } from '~/components/hale/action-chip';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
 import {
+  type Activity,
   type AskStatus,
   type Turn,
   type UseAskHale,
@@ -382,6 +383,65 @@ function EmptyState({
 }
 
 /**
+ * The live step/tool activity trail for an assistant turn — the work Hale did to
+ * answer, between the question and the answer. Rule #1: it renders ONLY what the
+ * server streamed (a tool name + content-free preview), never args or raw output;
+ * the client has no authority to reconstruct tool data it was never sent.
+ *
+ * Minimal + collapsible: while streaming (`live`) it shows a quiet "Exploring…"
+ * header with each settled tool line; once the answer lands it collapses into a
+ * <details> disclosure ("Explored N steps") so a finished turn stays uncluttered.
+ * A blocked tool (ok:false) is called out in the attention tone (rule #7/#1 refusals
+ * are observable, never silent).
+ */
+function ActivityTrail({ activity, live }: { activity: Activity[]; live: boolean }) {
+  const results = activity.filter(
+    (a): a is Extract<Activity, { kind: 'tool_result' }> => a.kind === 'tool_result',
+  );
+  const pendingCall = activity.at(-1)?.kind === 'tool_call';
+  if (results.length === 0 && !live) return null;
+
+  const lines = (
+    <ul className="space-y-1">
+      {results.map((r, i) => (
+        <li
+          // biome-ignore lint/suspicious/noArrayIndexKey: activity is append-only, so index is a stable identity
+          key={i}
+          className={`meta flex items-center gap-2 ${r.ok ? 'text-slate-green' : 'text-berry'}`}
+        >
+          <span aria-hidden>{r.ok ? '✓' : '✕'}</span>
+          <span>{r.preview}</span>
+        </li>
+      ))}
+      {live && pendingCall ? (
+        <li className="meta flex items-center gap-2 text-faded-sage">
+          <span aria-hidden>…</span>
+          <span>Exploring</span>
+        </li>
+      ) : null}
+    </ul>
+  );
+
+  if (live) {
+    return (
+      <div className="mb-3 border-l-2 border-rule pl-3">
+        <p className="eyebrow mb-1 text-faded-sage">Exploring</p>
+        {lines}
+      </div>
+    );
+  }
+
+  return (
+    <details className="mb-3 border-l-2 border-rule pl-3">
+      <summary className="eyebrow cursor-pointer text-faded-sage">
+        Explored {results.length} {results.length === 1 ? 'step' : 'steps'}
+      </summary>
+      <div className="mt-1">{lines}</div>
+    </details>
+  );
+}
+
+/**
  * The grouped timeline of turns. Mobile-first: one column, bounded line-length, a
  * scope chip shown only when the turn's scope CHANGES from the prior turn (message
  * grouping). Assistant turns render markdown + any gated action chips.
@@ -396,6 +456,7 @@ function Timeline({
   childLabelOf,
   kids,
   layout = 'quote',
+  streamingId,
   deletableIds,
   onDeleteTurn,
 }: {
@@ -403,6 +464,8 @@ function Timeline({
   childLabelOf: (id: string | null) => string;
   kids: TimelineChild[];
   layout?: 'quote' | 'chat';
+  /** The id of the turn currently streaming, so its activity trail renders "live". */
+  streamingId?: string | null;
   /** Ids of persisted turns a parent may remove (rule #6). Absent = no delete. */
   deletableIds?: ReadonlySet<string>;
   onDeleteTurn?: (id: string) => Promise<boolean>;
@@ -457,6 +520,9 @@ function Timeline({
                 }
               >
                 {chat ? <p className="eyebrow mb-2 text-sky-deep">Hale</p> : null}
+                {turn.activity && turn.activity.length > 0 ? (
+                  <ActivityTrail activity={turn.activity} live={turn.id === streamingId} />
+                ) : null}
                 <div data-hale-pii>
                   <Markdown>{turn.body}</Markdown>
                 </div>
@@ -790,6 +856,7 @@ function FullSurface({
               childLabelOf={childLabelOf}
               kids={seed.children}
               layout="chat"
+              streamingId={streamingId}
               deletableIds={deletableIds}
               onDeleteTurn={deleteTurn}
             />
