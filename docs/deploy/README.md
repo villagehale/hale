@@ -8,9 +8,9 @@ PIPEDA + Quebec Law 25 + CASL).
 > **Status:** deploy-READY config. The live deploy is **credential-gated** — no
 > Fly auth, no Supabase project, no Vercel prod token are wired yet. Everything
 > below is verifiable without secrets (config validity, Docker build, scratch-DB
-> migration test); see [Verification status](#verification-status). **Two release
-> blockers** must be cleared before a first production deploy can actually run —
-> see [Release blockers](#release-blockers).
+> migration test); see [Verification status](#verification-status). See
+> [Release blockers](#release-blockers) for historical provisioning blockers (B1
+> migration baseline and B2 package entrypoints — both now resolved).
 
 ---
 
@@ -93,17 +93,14 @@ full app env; the table below is the **deploy-time** subset per platform.
 
 ### GitHub Actions — CI/CD deploy (`Settings → Secrets → Actions`)
 
-These drive `.github/workflows/deploy.yml`. **A leg whose secret is absent is
-skipped with a notice; the pipeline stays green. A leg that runs without its
-required secret fails loud.**
+These drive `.github/workflows/deploy.yml` (which has exactly two legs —
+`migrate` and `fly`; Vercel deploys via its own native integration, not here).
+**A leg whose secret is absent is skipped with a notice; the pipeline stays
+green. A leg that runs without its required secret fails loud.**
 
 | Secret | Gates leg | Notes |
 |---|---|---|
-| `DATABASE_DIRECT_URL` | `migrate` | Direct (non-pooled) URL — drizzle-kit runs DDL in a transaction. |
-| `VERCEL_TOKEN` | `vercel` | Deploy token. |
-| `VERCEL_ORG_ID` | `vercel` | From `.vercel/project.json` after `vercel link`. |
-| `VERCEL_PROJECT_ID_WEB` | `vercel` (web) | Web project id. |
-| `VERCEL_PROJECT_ID_SITE` | `vercel` (site) | Site project id. |
+| `DATABASE_DIRECT_URL` | `migrate` (+ drift gate) | **Required for prod migrations to apply at all** — see [Migration drift guard](#migration-drift-guard). Direct (non-pooled) URL — drizzle-kit runs DDL in a transaction. |
 | `FLY_API_TOKEN` | `fly` | `fly auth token`. |
 
 ---
@@ -116,14 +113,16 @@ required secret fails loud.**
    (Toronto)**. (`infra/supabase/config.toml` is the local emulator config.)
 2. Grab the **pooled** connection string (port 6543, `?pgbouncer=true`) for
    `DATABASE_URL`, and the **direct** string (port 5432) for `DATABASE_DIRECT_URL`.
-3. Provision the schema — **see [Release blockers](#release-blockers) first**.
-   - **Interim / dev path (verified working):**
-     ```bash
-     pnpm --filter @hale/db build           # drizzle.config reads dist/schema
-     DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db push   # drizzle-kit push
-     ```
-   - The intended CI path (`drizzle-kit migrate`) is **blocked** until the
-     baseline migration exists (blocker B1).
+3. Provision the schema with the migration set (the intended path, verified
+   working — see [B1](#b1--production-migration-baseline-resolved)):
+   ```bash
+   pnpm --filter @hale/db build              # drizzle.config reads dist/schema
+   DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db migrate      # applies 0000_baseline … latest
+   DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db drift-check  # asserts in sync
+   ```
+   In production this runs automatically in the `migrate` leg once
+   `DATABASE_DIRECT_URL` is set as a GitHub secret
+   ([Migration drift guard](#migration-drift-guard)).
 
 ### 2. Vercel (web + site = two projects)
 
@@ -196,17 +195,81 @@ always drained.
 
 ## Deploy flow (CI/CD)
 
-`.github/workflows/deploy.yml` triggers on **CI success on `main`**
-(`workflow_run`), then:
+There are **two independent delivery paths** — this is the crucial topology to
+understand:
 
-1. **preflight** — gates on CI success; resolves which legs have secrets.
-2. **migrate** — `drizzle-kit migrate` against Supabase (skipped if no
-   `DATABASE_DIRECT_URL`). Runs first; a failure blocks the deploys.
-3. **vercel** (matrix: web + site) and **fly** (worker) run in parallel after a
-   clean/skipped migrate.
+1. **Web + marketing site → Vercel, via the native GitHub integration.** `hale-web`
+   and `site` are GitHub-connected Vercel projects; `vercel[bot]` builds and
+   promotes a Production deployment on every `main` merge. **This path does NOT
+   run database migrations** — Vercel only builds and serves the Next.js app.
+2. **DB migrations + worker → `.github/workflows/deploy.yml`**, triggered on **CI
+   success on `main`** (`workflow_run`):
+   - **preflight** — gates on CI success; resolves which legs have secrets.
+   - **migrate** — `drizzle-kit migrate` against Supabase, then a **drift
+     verification** (`pnpm --filter @hale/db drift-check`) that asserts the DB is
+     now in sync. Runs first; a failure blocks the worker deploy.
+   - **fly** (worker) — runs after a clean/skipped migrate.
 
-Each leg self-asserts its required secret and `exit 1`s loud if invoked without
-it.
+   Each leg self-asserts its required secret and `exit 1`s loud if invoked
+   without it. A leg whose secret is **absent** is SKIPPED (pipeline stays green).
+
+> ⚠️ **The two paths are coupled by the schema, not by CI.** Vercel ships new app
+> code that expects new columns; only the `migrate` leg creates them. If the
+> `migrate` leg is skipped (its secret is unset) while Vercel keeps deploying,
+> **prod code runs against a stale schema and breaks** — exactly the 2026-06-14
+> incident (see [Migration drift guard](#migration-drift-guard)). Setting
+> `DATABASE_DIRECT_URL` (below) is what closes this gap.
+
+---
+
+## Migration drift guard
+
+**The one manual step that makes migrations reach prod:** set
+`DATABASE_DIRECT_URL` as a **GitHub Actions secret**
+(`Settings → Secrets and variables → Actions → New repository secret`), to the
+Supabase **direct** (port 5432, non-pooled) connection string. This is a
+**repo-admin action** — it cannot be done from a PR or by CI. Until it is set,
+the `migrate` leg is skipped on every deploy and **no pending migration ever
+reaches prod**.
+
+Once set, that single secret enables **both**:
+
+- **Auto-migrate** — `drizzle-kit migrate` applies pending migrations on every
+  main deploy.
+- **The drift gate** — after applying, `pnpm --filter @hale/db drift-check`
+  compares the drizzle journal (`drizzle/meta/_journal.json`) to what the DB has
+  actually recorded in `drizzle.__drizzle_migrations` and **fails the deploy
+  loudly, listing every un-applied migration, if the DB is behind**. It is
+  strictly read-only (a single `SELECT`; it never applies anything) and skips
+  with a notice (exit 0) when no DB URL is present.
+
+### The incident this prevents
+
+On **2026-06-14**, prod's schema drifted **12 migrations behind for ~3 weeks**
+and nobody noticed. The Village cadence feature was broken in prod because the
+`cadence` / `superseded_at` columns (migration `0027_village_cadence`) never
+existed there.
+
+**Root cause:** migrations were never auto-applied. The web deploys via Vercel's
+native integration (which does not run migrations), and the `deploy.yml` `migrate`
+leg was **skipped on every run** because `DATABASE_DIRECT_URL` had never been set
+as a GitHub secret. So there was no path that applied pending migrations to prod,
+and nothing that alarmed when prod fell behind.
+
+**How the guard prevents recurrence:** the drift-check runs after `migrate` on
+every deploy and turns "silently behind" into a **red, blocking deploy** that
+names the missing migrations. A human can run the same check locally at any time:
+
+```bash
+DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db drift-check   # gate: exit 1 if behind
+DATABASE_DIRECT_URL=<direct-url> pnpm --filter @hale/db status        # applied-vs-pending at a glance
+```
+
+> **Residual blind spot (by design):** if `DATABASE_DIRECT_URL` is *absent*, both
+> the migrate leg **and** the drift-check skip — a green pipeline then only means
+> "nothing was checked." That is why setting the secret is a hard prerequisite,
+> documented here rather than guarded in code (CI can't invent a secret it was
+> never given).
 
 ---
 
@@ -237,50 +300,32 @@ Point-in-Time Recovery** (Toronto region) to just before the migration.
 
 ## Release blockers
 
-### B1 — Production migration baseline is missing  ⛔
+### B1 — Production migration baseline (RESOLVED)
 
-**Status:** confirmed by test. `packages/db/drizzle/` contains only additive
-deltas (`0000_b8910_reliability`, `0001_b18_entitlements`,
-`0002_fixwave_a_execute_resume`) and **`meta/` has only `_journal.json` — no
-`*_snapshot.json`**. No migration ever `CREATE`s the base tables/enums.
+**Status:** resolved. `packages/db/drizzle/` now begins with a `0000_baseline.sql`
+migration that `CREATE`s the base tables/enums, followed by the additive deltas
+(37 migrations total, `0000_baseline` … `0036_village_search_run`).
 
-Running `drizzle-kit migrate` against an **empty** database fails immediately:
+`drizzle-kit migrate` against a **fresh** database applies all 37 cleanly and
+records them in `drizzle.__drizzle_migrations` — verified 2026-07-05:
 
 ```
-applying migrations...error: type "event_status" does not exist  (SQLSTATE 42704)
+$ DATABASE_DIRECT_URL=<fresh-db> pnpm --filter @hale/db migrate
+[✓] migrations applied successfully!
+$ DATABASE_DIRECT_URL=<fresh-db> pnpm --filter @hale/db drift-check
+OK: database in sync — all 37 migration(s) applied.
 ```
 
-…because `0000` does `ALTER TYPE "event_status" ADD VALUE` on a type that was
-never created. **A fresh Supabase cannot be provisioned from the current
-migration set.**
+So the `migrate` CI leg is fully functional for fresh databases — the earlier
+"baseline missing" blocker no longer applies. (The root cause was that
+`drizzle-kit generate` couldn't load the schema until `drizzle.config.ts` was
+pointed at the compiled `dist/schema/index.js`; that fix is in place and
+`generate`/`migrate` both work once `@hale/db` is built.)
 
-**Root cause:** `drizzle-kit generate` originally couldn't load the schema (it
-needs the compiled `dist/`, not `.ts` source with `.js` ESM specifiers), so no
-baseline snapshot/migration was ever emitted; only hand-written additive deltas
-exist.
-
-**Fix (tested, owned by `packages/db`):** `drizzle.config.ts` now points at
-`dist/schema/index.js`, and `generate` **works** once `@hale/db` is built. The
-fix is to regenerate a baseline-first migration set:
-
-1. `pnpm --filter @hale/db build`
-2. Add a `0000_baseline` migration that `CREATE`s all 14 tables + 12 enums
-   (`drizzle-kit generate` against an empty DB produces exactly this), and
-   renumber the existing additive deltas after it.
-3. The additive deltas keep their `IF NOT EXISTS` guards, so they are safe
-   no-ops on a DB built from the baseline **and** still apply to the existing
-   dev/prod DB.
-
-**Verified:** a baseline-first set (`0000_baseline` + the three renumbered
-deltas) applied cleanly to an empty DB via `drizzle-kit migrate` — 14 tables,
-12 enums, 4 migrations recorded. The deltas were also confirmed idempotent on an
-already-provisioned DB. (Evidence: `.loop/evidence/deploy-setup.log`, steps
-4e–4j.)
-
-This edit lives in `packages/db/**` and is owned by the db maker — it was **not**
-made here (infra scope). Until it lands, provision Supabase with `drizzle-kit
-push` (the interim path above) and the `migrate` CI leg should be treated as
-not-yet-functional for fresh databases.
+> **The migrate leg is correct; the gap was purely operational.** Prod fell
+> behind not because `migrate` was broken, but because it was never *run* — its
+> `DATABASE_DIRECT_URL` secret was unset (see
+> [Migration drift guard](#migration-drift-guard)).
 
 ### B2 — Workspace packages are not runtime-resolvable  ⛔
 
@@ -317,7 +362,8 @@ crash is purely the package-entrypoint defect.
 | `infra/fly.toml` | TOML parses; correct non-HTTP poller shape (no `http_service`, `restart=always`, `yyz`) | `fly config validate` (needs `fly auth login`) |
 | Worker Docker image | **Builds** end-to-end from repo root; fails loud without `DATABASE_URL` | Runtime needs B2 fixed + secrets |
 | `apps/web/vercel.json` | Valid JSON; `yul1` pinned; crons defined | `vercel deploy --prod` (needs token + linked project) |
-| Migration provisioning | `drizzle-kit push` → 14 tables/12 enums on scratch DB; baseline-first `migrate` proven | Real run needs Supabase + B1 fixed |
-| `.github/workflows/deploy.yml` | YAML valid; **actionlint clean (0 findings)**; secret-gating logic | Real run needs the GitHub secrets above |
+| Migration provisioning | `drizzle-kit migrate` applies all 37 migrations to a fresh DB and `drift-check` reports in sync (verified on the local Supabase DB) | Real prod run needs `DATABASE_DIRECT_URL` set (see guard) |
+| Migration drift guard | `pnpm --filter @hale/db drift-check` / `status` — unit tests + run against local DB (behind, 12-behind incident shape, and in-sync all exercised) | Prod gate needs `DATABASE_DIRECT_URL` set |
+| `.github/workflows/deploy.yml` | YAML valid; **actionlint clean (0 findings)**; secret-gating logic; drift verify wired into the `migrate` leg | Real run needs the GitHub secrets above |
 
 Full command transcript: `.loop/evidence/deploy-setup.log`.

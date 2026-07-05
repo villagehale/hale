@@ -100,6 +100,15 @@ jobs:
             echo "::error::migrate leg ran without DATABASE_DIRECT_URL — refusing to proceed."; exit 1
           fi
           pnpm --filter @hale/db migrate
+      - name: Verify no migration drift
+        # Post-apply safety net: assert the DB is now in sync with the journal.
+        # This is what would have caught prod drifting 12 migrations behind for
+        # 3 weeks (2026-06-14) — a green deploy is now proven schema-current, not
+        # merely assumed. Read-only; exits non-zero + lists any un-applied
+        # migration. See docs/deploy/README.md § Migration drift guard.
+        env:
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+        run: pnpm --filter @hale/db drift-check
 
   # ── Worker → Fly.io Toronto (yyz) ─────────────────────────────────────────
   fly:

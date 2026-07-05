@@ -22,10 +22,13 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "studio": "drizzle-kit studio",
     "push": "drizzle-kit push",
+    "drift-check": "node scripts/check-migration-drift.mjs",
+    "status": "node scripts/check-migration-drift.mjs --status",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
@@ -35,6 +38,7 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "drizzle-kit": "^0.30.1",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   }
 }
