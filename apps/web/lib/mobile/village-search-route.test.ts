@@ -4,40 +4,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * Mobile timeframe search over HTTP (the Server Action isn't mobile-callable):
  *   - GET /api/mobile/village?season=fall threads searchSeason through loadVillage
  *     so the app can render a search run; no season → the standing feed (unchanged).
- *   - POST /api/mobile/village/search rate-limits (paid run) then triggers a
- *     season-scoped discovery, mirroring the auth pattern of the other mobile
- *     routes. A limiter denial returns 429 with Retry-After (rule #8, structured).
+ *   - POST /api/mobile/village/search delegates to the shared searchActivitiesForSeason
+ *     core (auth + per-family rate limit + discovery all live there, behind ~/lib/db,
+ *     so the route never touches the DB — rule #1). This route's own job is mapping
+ *     the core's structured result to HTTP, which is what these tests pin.
  */
 
 const authMock = vi.fn();
 const loadVillageMock = vi.fn();
-const enforceRateLimitMock = vi.fn();
-const resolveFamilyMock = vi.fn();
-const discoverMock = vi.fn();
+const searchMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/village/queries', () => ({
   loadVillage: (...a: unknown[]) => loadVillageMock(...a),
 }));
-vi.mock('~/lib/db', () => ({ db: () => ({ __db: true }) }));
-vi.mock('~/lib/family', () => ({
-  resolveFamilyForUser: (...a: unknown[]) => resolveFamilyMock(...a),
+vi.mock('~/lib/village/search', () => ({
+  searchActivitiesForSeason: (...a: unknown[]) => searchMock(...a),
 }));
-vi.mock('~/lib/rate-limit/apply', () => ({
-  enforceRateLimit: (...a: unknown[]) => enforceRateLimitMock(...a),
-}));
-vi.mock('~/lib/village/discover', () => ({
-  discoverForFamily: (...a: unknown[]) => discoverMock(...a),
-  defaultDiscoverDeps: () => ({ __deps: true }),
-}));
-vi.mock('~/lib/telemetry/langfuse', () => ({ flushTelemetry: async () => {} }));
 
 vi.mock('@hale/db', async (importActual) => {
   const actual = await importActual<typeof import('@hale/db')>();
   return {
     ...actual,
     createDb: () => {
-      throw new Error('mobile village GET must NOT touch the database (rule #1)');
+      throw new Error('mobile village route must NOT touch the database (rule #1)');
     },
   };
 });
@@ -94,66 +84,56 @@ describe('GET /api/mobile/village — season passthrough', () => {
   });
 });
 
-describe('POST /api/mobile/village/search — trigger', () => {
+describe('POST /api/mobile/village/search — maps the core result to HTTP', () => {
   beforeEach(() => {
     vi.resetModules();
-    authMock.mockReset().mockResolvedValue({ user: { id: 'ext-1' } });
-    resolveFamilyMock.mockReset().mockResolvedValue('fam-1');
-    enforceRateLimitMock.mockReset().mockResolvedValue(null);
-    discoverMock.mockReset().mockResolvedValue({ status: 'discovered', insertedCount: 2 });
+    searchMock.mockReset();
     vi.stubEnv('DATABASE_URL', 'postgres://test');
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it('returns 401 for a signed-out caller and never triggers discovery', async () => {
-    authMock.mockResolvedValue(null);
+  it('returns 503 (no_database) in a dev preview and never calls the core', async () => {
+    vi.stubEnv('DATABASE_URL', '');
+    const res = await callPost({ season: 'fall' });
+    expect(res.status).toBe(503);
+    expect(searchMock).not.toHaveBeenCalled();
+  });
+
+  it('passes the requested season straight to the shared core', async () => {
+    searchMock.mockResolvedValue({ status: 'discovered', insertedCount: 2 });
+    await callPost({ season: 'fall' });
+    expect(searchMock).toHaveBeenCalledWith('fall');
+  });
+
+  it('maps unauthenticated → 401', async () => {
+    searchMock.mockResolvedValue({ status: 'unauthenticated' });
     const res = await callPost({ season: 'fall' });
     expect(res.status).toBe(401);
-    expect(discoverMock).not.toHaveBeenCalled();
   });
 
-  it('returns 400 for an invalid season and never triggers discovery', async () => {
+  it('maps invalid_season → 400', async () => {
+    searchMock.mockResolvedValue({ status: 'invalid_season' });
     const res = await callPost({ season: 'autumn' });
     expect(res.status).toBe(400);
-    expect(discoverMock).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when the caller has no resolved family', async () => {
-    resolveFamilyMock.mockResolvedValue(null);
+  it('maps no_family → 403', async () => {
+    searchMock.mockResolvedValue({ status: 'no_family' });
     const res = await callPost({ season: 'fall' });
     expect(res.status).toBe(403);
-    expect(discoverMock).not.toHaveBeenCalled();
   });
 
-  it('returns the limiter 429 and never triggers discovery when over the cap', async () => {
-    const { NextResponse } = await import('next/server');
-    enforceRateLimitMock.mockResolvedValue(
-      NextResponse.json(
-        { error: 'rate_limited' },
-        { status: 429, headers: { 'Retry-After': '900' } },
-      ),
-    );
-
+  it('maps rate_limited → 429 with Retry-After', async () => {
+    searchMock.mockResolvedValue({ status: 'rate_limited', retryAfter: 900 });
     const res = await callPost({ season: 'fall' });
-
     expect(res.status).toBe(429);
     expect(res.headers.get('Retry-After')).toBe('900');
-    expect(enforceRateLimitMock).toHaveBeenCalledWith('village-search', 'fam-1');
-    expect(discoverMock).not.toHaveBeenCalled();
   });
 
-  it('triggers a season-scoped discovery under the cap and returns its result', async () => {
+  it('returns the discovery result as 200 JSON', async () => {
+    searchMock.mockResolvedValue({ status: 'discovered', insertedCount: 2 });
     const res = await callPost({ season: 'fall' });
-
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'discovered', insertedCount: 2 });
-    expect(discoverMock).toHaveBeenCalledWith(
-      'fam-1',
-      { __db: true },
-      { __deps: true },
-      {
-        searchSeason: 'fall',
-      },
-    );
   });
 });

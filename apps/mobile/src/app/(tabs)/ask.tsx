@@ -16,6 +16,7 @@ import { QuickLogCard } from '@/components/hale/quick-log-card';
 import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
+import { Markdown } from '@/components/ui/markdown';
 import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
@@ -68,14 +69,19 @@ function HaleBubble({
         </AppText>
         <ActivityTrail activity={activity} />
         <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-          <AppText variant="body">
-            {body}
-            {isStreaming ? (
+          {/* Reveal raw text word-by-word while streaming, then render markdown once
+              settled so the reply reads as formatted text instead of leaking raw
+              **asterisks** and - dashes. */}
+          {isStreaming ? (
+            <AppText variant="body">
+              {body}
               <AppText variant="body" className="text-accent">
                 {' ▍'}
               </AppText>
-            ) : null}
-          </AppText>
+            </AppText>
+          ) : (
+            <Markdown>{body}</Markdown>
+          )}
         </View>
       </View>
       {/* Gated action chips settle once the answer stops streaming — each drafts a
@@ -132,6 +138,7 @@ export default function AskScreen() {
     if (quickLog) newMessages.push({ id: `ql-${Date.now()}`, role: 'quicklog', match: quickLog });
     setMessages((prev) => [...prev, ...newMessages]);
     setDraft('');
+    voice.reset();
     setPending(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
 
@@ -230,8 +237,13 @@ export default function AskScreen() {
               multiline
               returnKeyType="send"
               onSubmitEditing={() => send(draft)}
-              style={{ color: inputColor, fontFamily: 'Inter_400Regular', maxHeight: 120 }}
-              className="min-h-11 flex-1 rounded-lg border border-rule bg-canvas px-4 py-3 text-[16px] leading-[22px]"
+              style={{
+                color: inputColor,
+                fontFamily: 'Inter_400Regular',
+                minHeight: 44,
+                maxHeight: 120,
+              }}
+              className="flex-1 rounded-lg border border-rule bg-canvas px-4 py-2.5 text-[16px] leading-[22px]"
             />
             {draft.trim() ? (
               <IconButton
