@@ -1,25 +1,25 @@
 import { API_BASE, ApiError, signalUnauthorized } from './api-client';
+import { type ActivityEvent, foldCoachStream } from './coach-fold';
 import { TOKEN_KEY, tokenStorage } from './token-storage';
 
 /**
  * Ask Hale over POST /api/coach. The route streams newline-delimited JSON
- * (delta/reset/done/error), but React Native's fetch has no readable response
- * body, so we read the whole text and fold the events into the final answer:
- * concatenated `delta` text, cleared by a `reset` (an intermediate tool turn),
- * ended by `done` (carrying the running conversationId) — the same fold the web
- * client applies incrementally. The screen animates the assembled answer with its
- * existing typewriter, preserving the perceived-streaming feel.
+ * (step/tool_call/tool_result/delta/reset/done/error), but React Native's fetch
+ * has no readable response body, so we read the whole text and fold the events
+ * post-hoc (see foldCoachStream): the assembled answer, the running
+ * conversationId, and the settled tool steps that make up the activity trail
+ * (rule #1: name/ok/preview only). The screen animates the assembled answer with
+ * its existing typewriter, preserving the perceived-streaming feel, and shows the
+ * trail as a folded disclosure above the answer.
  */
 
-type CoachEvent =
-  | { type: 'delta'; text: string }
-  | { type: 'reset' }
-  | { type: 'done'; conversationId: string }
-  | { type: 'error' };
+export type { ActivityEvent } from './coach-fold';
 
 export interface CoachAnswer {
   answer: string;
   conversationId: string | null;
+  /** The settled tool steps Hale ran, for the collapsible activity trail. */
+  activity: ActivityEvent[];
 }
 
 export interface AskHaleRequest {
@@ -61,18 +61,7 @@ export async function askHale(req: AskHaleRequest): Promise<CoachAnswer> {
   if (!res.ok) throw new ApiError(res.status, `Ask Hale failed (${res.status}).`);
 
   const body = await res.text();
-  let answer = '';
-  let conversationId: string | null = null;
-  let failed = false;
-  for (const line of body.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const event = JSON.parse(trimmed) as CoachEvent;
-    if (event.type === 'delta') answer += event.text;
-    else if (event.type === 'reset') answer = '';
-    else if (event.type === 'done') conversationId = event.conversationId;
-    else failed = true;
-  }
+  const { answer, conversationId, activity, failed } = foldCoachStream(body);
   if (failed) throw new ApiError(500, 'Ask Hale ran into a problem. Please try again.');
-  return { answer, conversationId };
+  return { answer, conversationId, activity };
 }

@@ -50,6 +50,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "biome lint .",
+    "test": "vitest run",
     "check-tokens": "node ./scripts/check-token-drift.mjs"
   },
   "private": true
