@@ -12,21 +12,10 @@
  */
 
 /** The four searchable seasons — mirrors SEASONS in apps/web/lib/village/visibility.ts.
- * A stored token never renders raw (rule #1): the chip carries a human label. */
+ * A stored token never renders raw (rule #1): the chip carries a human label. The
+ * screen renders these directly (capitalized) as the season-search suggestions. */
 export const SEASON_KEYS = ['spring', 'summer', 'fall', 'winter'] as const;
 export type SeasonKey = (typeof SEASON_KEYS)[number];
-
-/** The selector's value: the standing feed, or one future season to search. */
-export type SeasonSelection = 'feed' | SeasonKey;
-
-/** The selector chips in row order: the standing feed first, then the four seasons. */
-export const SEASON_OPTIONS: ReadonlyArray<{ value: SeasonSelection; label: string }> = [
-  { value: 'feed', label: 'your feed' },
-  { value: 'spring', label: 'spring' },
-  { value: 'summer', label: 'summer' },
-  { value: 'fall', label: 'fall' },
-  { value: 'winter', label: 'winter' },
-];
 
 /** The DiscoverResult the POST returns on 200 — mirrors apps/web/lib/village/discover.ts. */
 export type DiscoverResult =
