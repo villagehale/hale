@@ -35,7 +35,12 @@ const SECTIONS: { items: MenuItem[] }[] = [
   },
   {
     items: [
-      { label: 'Settings', detail: 'Notifications, privacy', icon: 'gearshape' },
+      {
+        label: 'Settings',
+        detail: 'Notifications, privacy',
+        icon: 'gearshape',
+        href: '/more/settings',
+      },
       {
         label: 'Sign out',
         detail: '',
