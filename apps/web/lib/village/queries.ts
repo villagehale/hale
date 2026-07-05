@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { type SQL, and, desc, eq, isNull, or } from 'drizzle-orm';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
@@ -12,7 +12,7 @@ import {
   toRoutineProposalView,
   toVillageCandidateView,
 } from './mappers';
-import { orderByDate, visibleCandidates } from './visibility';
+import { type Season, orderByDate, visibleCandidates, visibleSearchCandidates } from './visibility';
 
 /**
  * Mirrors dashboard/queries.ts: the village page runs both in a credential-less
@@ -41,6 +41,40 @@ export interface VillageData {
 const EMPTY_VILLAGE: VillageData = { candidates: [], routine: null };
 
 /**
+ * How to scope the village read. Absent → the STANDING weekly feed (existing
+ * behaviour). `searchSeason` → the latest SEARCH run for that season, so a parent's
+ * "find fall activities" search reads back without touching the standing feed.
+ */
+export interface VillageReadOptions {
+  searchSeason?: Season;
+}
+
+/**
+ * The active-candidate WHERE for a family's feed read. Always family-scoped +
+ * supersededAt-null; then scoped by run type so the standing feed and a season
+ * search stay separate. Default → the STANDING feed (run_type 'standing' OR legacy
+ * null, which the migration backfilled to 'standing'). With `searchSeason` → the
+ * latest SEARCH run for that season (run_type 'search' AND search_season = $).
+ * Extracted so the coexistence predicate is unit-tested in one place.
+ */
+export function villageActiveFilter(familyId: string, opts?: VillageReadOptions): SQL | undefined {
+  const runScope = opts?.searchSeason
+    ? and(
+        eq(schema.villageCandidates.runType, 'search'),
+        eq(schema.villageCandidates.searchSeason, opts.searchSeason),
+      )
+    : or(
+        eq(schema.villageCandidates.runType, 'standing'),
+        isNull(schema.villageCandidates.runType),
+      );
+  return and(
+    eq(schema.villageCandidates.familyId, familyId),
+    isNull(schema.villageCandidates.supersededAt),
+    runScope,
+  );
+}
+
+/**
  * Reads ONE resolved family's discovered candidates + latest routine proposal,
  * teen-safe. Split out of loadVillage so the agent-ranked feed can reuse the exact
  * same teen-redacted candidate read (rule #1) against an already-resolved
@@ -48,7 +82,11 @@ const EMPTY_VILLAGE: VillageData = { candidates: [], routine: null };
  * it. Teen attribution is derived LIVE from date_of_birth via deriveStage (never
  * stored); a candidate/routine item tied to a 13+ child is redacted at the mapper.
  */
-export async function readVillage(database: Database, familyId: string): Promise<VillageData> {
+export async function readVillage(
+  database: Database,
+  familyId: string,
+  opts?: VillageReadOptions,
+): Promise<VillageData> {
   const children = await database
     .select({
       id: schema.children.id,
@@ -64,24 +102,23 @@ export async function readVillage(database: Database, familyId: string): Promise
   const currentRunRows = await database
     .select()
     .from(schema.villageCandidates)
-    .where(
-      and(
-        eq(schema.villageCandidates.familyId, familyId),
-        isNull(schema.villageCandidates.supersededAt),
-      ),
-    )
+    .where(villageActiveFilter(familyId, opts))
     .orderBy(
       desc(schema.villageCandidates.confidence),
       desc(schema.villageCandidates.discoveredAt),
     );
 
-  // Drop past dated events, out-of-season seasonal picks, and an expired (stale)
-  // run — all at the one visibility primitive — then float dated picks to the top
-  // soonest-first so a time-boxed event reads before the standing options. The
-  // confidence order the DB applied is preserved within each group (stable sort).
-  // The day-boundary/season decisions use the family's own zone, not the server's.
+  // Drop past dated events, an expired (stale) run, and — on the STANDING feed only
+  // — out-of-season seasonal picks, all at the one visibility primitive; then float
+  // dated picks to the top soonest-first so a time-boxed event reads before the
+  // standing options. A SEARCH read skips the calendar-season gate: its rows were
+  // already season-targeted by the parent's chosen season, so a fall search viewed
+  // in summer must still show (visibleSearchCandidates). The confidence order the DB
+  // applied is preserved within each group (stable sort). The day-boundary/season
+  // decisions use the family's own zone, not the server's.
   const timeZone = await readFamilyTimezone(database, familyId);
-  const candidateRows = orderByDate(visibleCandidates(currentRunRows, new Date(), timeZone));
+  const visible = opts?.searchSeason ? visibleSearchCandidates : visibleCandidates;
+  const candidateRows = orderByDate(visible(currentRunRows, new Date(), timeZone));
 
   const routineRows = await database
     .select()
@@ -115,6 +152,6 @@ export async function readVillage(database: Database, familyId: string): Promise
  * authed session, landing both on the same calm empty state for the two EXPECTED
  * boundaries only. A genuine query failure once a DB exists must surface (rule #8).
  */
-export function loadVillage(): Promise<VillageData> {
-  return readForFamily(readVillage, EMPTY_VILLAGE);
+export function loadVillage(opts?: VillageReadOptions): Promise<VillageData> {
+  return readForFamily((database, familyId) => readVillage(database, familyId, opts), EMPTY_VILLAGE);
 }

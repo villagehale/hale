@@ -26,6 +26,8 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'checkmark.circle': 'checkmark-circle',
   'person.2': 'people',
   gearshape: 'settings-outline',
+  pencil: 'pencil',
+  'mappin.and.ellipse': 'location-outline',
   'rectangle.portrait.and.arrow.right': 'log-out-outline',
   'drop.fill': 'water',
   'moon.fill': 'moon',

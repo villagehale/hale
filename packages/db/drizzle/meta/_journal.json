@@ -253,6 +253,13 @@
       "when": 1781461800000,
       "tag": "0035_email_type_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781461860000,
+      "tag": "0036_village_search_run",
+      "breakpoints": true
     }
   ]
 }

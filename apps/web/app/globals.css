@@ -36,9 +36,9 @@
 
 @theme {
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #f6f1e7;       /* canvas — primary background, 11.96:1 with Spruce */
-  --color-oat: #efe7d6;         /* card surface — secondary surface, soft panels */
-  --color-raised: #fdfbf6;      /* RAISED — lifted card, a warm near-white notch above oat */
+  --color-linen: #f6f6f4;       /* canvas — primary background, crisp off-white */
+  --color-oat: #ffffff;         /* card surface — secondary surface, soft panels */
+  --color-raised: #ffffff;      /* RAISED — lifted card */
   --color-spruce: #01204F;      /* primary ink / night-section fill — 11.96:1 */
   --color-slate-green: #33486b; /* secondary text, captions — 7.00:1 */
   --color-faded-sage: #525f7d;  /* tertiary / meta / disclaimers — 5.19:1 on Oat (AA on every surface: Linen 5.67, Raised 6.17) */
@@ -110,9 +110,9 @@
  * Accents are lightened to hold AA on the dark ground (all text pairs verified
  * ≥ 4.5:1 against canvas, card, raised AND the Prussian chrome). */
 .dark {
-  --color-linen: #0b1626;        /* CANVAS — calm desaturated deep Prussian-charcoal */
-  --color-oat: #13233a;          /* CARD surface — one clear notch above canvas */
-  --color-raised: #1d3150;       /* RAISED — two notches up (interactive-card lift) */
+  --color-linen: #0c1420;        /* CANVAS — deep Prussian-charcoal */
+  --color-oat: #151e2c;          /* CARD surface — one clear notch above canvas */
+  --color-raised: #1c2636;       /* RAISED — two notches up (interactive-card lift) */
   --color-chrome: #021E4E;       /* CHROME ANCHOR — exact logo Prussian, app frame only */
   --color-spruce: #f6f1e7;       /* primary ink — cream — 16.12:1 on canvas */
   --color-slate-green: #c7d3e6;  /* secondary text — 12.00:1 on canvas */

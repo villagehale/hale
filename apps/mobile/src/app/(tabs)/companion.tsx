@@ -2,26 +2,21 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Field } from '@/components/ui/field';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
+import { type LogKind, QuickLogModal } from '@/components/ui/quick-log-modal';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import type { ChildCompanionView, MobileCompanionResponse, RecentLogView } from '@/lib/api-types';
-import { api, ApiError } from '@/lib/api-client';
 import { MILESTONE_TIMING_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
-type LogKind = 'feed' | 'nap' | 'milestone';
-
-const LOG_KINDS: { kind: LogKind; label: string; field: string; keyboard: 'numeric' | 'default' }[] =
-  [
-    { kind: 'feed', label: 'Feed', field: 'Amount (ml)', keyboard: 'numeric' },
-    { kind: 'nap', label: 'Nap', field: 'Duration (min)', keyboard: 'numeric' },
-    { kind: 'milestone', label: 'Milestone', field: 'What happened', keyboard: 'default' },
-  ];
+const LOG_KINDS: { kind: LogKind; label: string }[] = [
+  { kind: 'feed', label: 'Feed' },
+  { kind: 'nap', label: 'Nap' },
+  { kind: 'milestone', label: 'Milestone' },
+];
 
 function ChildSwitcher({
   kids,
@@ -82,38 +77,14 @@ function InfoRow({
   );
 }
 
-function LogForm({ childId, onLogged }: { childId: string; onLogged: () => void }) {
-  const [kind, setKind] = useState<LogKind>('feed');
-  const [value, setValue] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const meta = LOG_KINDS.find((k) => k.kind === kind) ?? LOG_KINDS[0];
-
-  const save = async () => {
-    const entry = value.trim();
-    if (!entry) {
-      setError(`Enter ${meta.field.toLowerCase()} before saving.`);
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    try {
-      const payload =
-        kind === 'feed'
-          ? { kind, childId, amountMl: entry }
-          : kind === 'nap'
-            ? { kind, childId, durationMin: entry }
-            : { kind, childId, milestone: entry };
-      await api('/api/mobile/companion/log', { method: 'POST', body: JSON.stringify(payload) });
-      setValue('');
-      onLogged();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
+function QuickLogCard({
+  child,
+  onLogged,
+}: {
+  child: ChildCompanionView;
+  onLogged: () => void;
+}) {
+  const [logKind, setLogKind] = useState<LogKind | null>(null);
 
   return (
     <Card raised className="gap-3">
@@ -121,43 +92,27 @@ function LogForm({ childId, onLogged }: { childId: string; onLogged: () => void 
         Quick log
       </AppText>
       <View className="flex-row gap-2">
-        {LOG_KINDS.map((k) => {
-          const active = k.kind === kind;
-          return (
-            <Pressable
-              key={k.kind}
-              accessibilityRole="button"
-              accessibilityLabel={k.label}
-              accessibilityState={active ? { selected: true } : {}}
-              onPress={() => {
-                setKind(k.kind);
-                setValue('');
-                setError(null);
-              }}
-              className={`flex-1 items-center rounded-full border py-2 ${
-                active ? 'border-ink bg-ink' : 'border-rule bg-card'
-              }`}
-            >
-              <AppText variant="meta" className={active ? 'text-canvas' : 'text-ink-2'}>
-                {k.label}
-              </AppText>
-            </Pressable>
-          );
-        })}
+        {LOG_KINDS.map((k) => (
+          <Pressable
+            key={k.kind}
+            accessibilityRole="button"
+            accessibilityLabel={k.label}
+            onPress={() => setLogKind(k.kind)}
+            className="h-11 flex-1 items-center justify-center rounded-full border border-rule bg-card active:opacity-80"
+          >
+            <AppText variant="meta" className="text-ink-2">
+              {k.label}
+            </AppText>
+          </Pressable>
+        ))}
       </View>
-      <Field
-        label={meta.field}
-        value={value}
-        onChangeText={setValue}
-        keyboardType={meta.keyboard}
-        autoCapitalize={kind === 'milestone' ? 'sentences' : 'none'}
+      <QuickLogModal
+        visible={logKind !== null}
+        kind={logKind}
+        kids={[{ id: child.id, name: child.name }]}
+        onClose={() => setLogKind(null)}
+        onLogged={onLogged}
       />
-      {error ? (
-        <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
-          {error}
-        </AppText>
-      ) : null}
-      <Button label={saving ? 'Saving…' : 'Save log'} onPress={save} className="self-start" />
     </Card>
   );
 }
@@ -273,7 +228,7 @@ function CompanionBody({
         </AppText>
       </Card>
 
-      <LogForm childId={child.id} onLogged={onLogged} />
+      <QuickLogCard child={child} onLogged={onLogged} />
 
       <View className="gap-2">
         <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">

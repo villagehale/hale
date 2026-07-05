@@ -34,6 +34,7 @@ export function filterByCadence(
   candidates: VillageCandidateView[],
   filter: CadenceFilter,
 ): VillageCandidateView[] {
+  if (!Array.isArray(candidates)) return [];
   if (filter === 'all') return candidates;
   const wanted = CADENCE_FILTER_MATCH[filter];
   return candidates.filter((c) => c.cadence === wanted);

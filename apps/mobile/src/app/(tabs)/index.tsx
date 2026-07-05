@@ -1,11 +1,14 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { LogoMark } from '@/components/ui/logo-mark';
 import { Pill } from '@/components/ui/pill';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
+import { type LogKind, QuickLogModal } from '@/components/ui/quick-log-modal';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { useMeadowColor } from '@/constants/meadow';
@@ -26,29 +29,49 @@ function firstVillageRec(candidates: VillageCandidateView[]): VillageCandidateVi
   return candidates.find((c) => !c.teenAttributed) ?? null;
 }
 
-function HomeBody({ data }: { data: MobileHomeResponse }) {
+function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () => void }) {
   const askIconColor = useMeadowColor('ink3');
   const rec = firstVillageRec(data.village.candidates);
+  const [logKind, setLogKind] = useState<LogKind | null>(null);
+  const hasChildren = data.children.length > 0;
 
   return (
     <>
       <View className="flex-row items-center justify-between pt-2">
         <AppText variant="display">{timeGreeting()}</AppText>
-        <AppText variant="title" className="text-sea">
-          Hale
-        </AppText>
+        <View className="flex-row items-center gap-2">
+          <LogoMark size={26} />
+          <AppText variant="title" className="text-sea">
+            Hale
+          </AppText>
+        </View>
       </View>
 
-      <View className="flex-row items-center gap-2">
-        <Pill label="Feed" icon="drop.fill" className="flex-1" onPress={() => router.push('/companion')} />
-        <Pill label="Nap" icon="moon.fill" className="flex-1" onPress={() => router.push('/companion')} />
-        <Pill
-          label="Milestone"
-          icon="star.fill"
-          className="flex-1"
-          onPress={() => router.push('/companion')}
-        />
-      </View>
+      {hasChildren ? (
+        <View className="flex-row items-center gap-2">
+          <Pill
+            label="Feed"
+            icon="drop.fill"
+            className="flex-1"
+            onPress={() => setLogKind('feed')}
+          />
+          <Pill label="Nap" icon="moon.fill" className="flex-1" onPress={() => setLogKind('nap')} />
+          <Pill
+            label="Milestone"
+            icon="star.fill"
+            className="flex-1"
+            onPress={() => setLogKind('milestone')}
+          />
+        </View>
+      ) : null}
+
+      <QuickLogModal
+        visible={logKind !== null}
+        kind={logKind}
+        kids={data.children.map((c) => ({ id: c.id, name: c.name }))}
+        onClose={() => setLogKind(null)}
+        onLogged={onLogged}
+      />
 
       <Card onPress={() => router.push('/ask')} className="flex-row items-center justify-between">
         <AppText variant="body" className="text-ink-3">
@@ -106,15 +129,14 @@ function HomeBody({ data }: { data: MobileHomeResponse }) {
 }
 
 export default function HomeScreen() {
-  const { status, data, error, refreshing, reload, refresh } = useApi<MobileHomeResponse>(
-    '/api/mobile/home',
-  );
+  const { status, data, error, refreshing, reload, refresh } =
+    useApi<MobileHomeResponse>('/api/mobile/home');
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? <HomeBody data={data} /> : null}
+      {status === 'ready' && data ? <HomeBody data={data} onLogged={refresh} /> : null}
     </Screen>
   );
 }
