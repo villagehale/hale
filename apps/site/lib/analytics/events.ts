@@ -9,7 +9,13 @@
  * redaction is unit-tested.
  */
 
-export type AnalyticsEvent = 'landing_cta_preview' | 'landing_cta_signin';
+export type AnalyticsEvent =
+  | 'landing_cta_preview'
+  | 'landing_cta_signin'
+  // Conversion CTAs on the SEO/AEO content pages — so the funnel can attribute a
+  // sign-in intent to the page that earned it (which content actually converts).
+  | 'faq_cta_signin'
+  | 'activities_cta_signin';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

@@ -15,6 +15,7 @@ import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
+import { siteJsonLd } from '~/lib/site/structured-data';
 
 // Aggregate, illustrative social proof — a COUNT only, never a family identity
 // (hard rule #1). Mirrors the app's endorsementLabel ("loved by N families near
@@ -123,6 +124,11 @@ const NEVER = [
 export default function LandingPage() {
   return (
     <main id="top" className="relative">
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
+      />
       {/* ── 1 · Hero — the village ──────────────────────────────────────── */}
       <SiteHeader />
 

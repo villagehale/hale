@@ -16,8 +16,16 @@ const LEGAL = [
   { label: 'Terms', href: `${APP_URL}/terms` },
 ] as const;
 
+const RESOURCES = [
+  { label: 'Activities by city', href: '/activities' },
+  { label: 'Milestones', href: '/milestones' },
+  { label: 'Answers', href: '/answers' },
+  { label: 'FAQ', href: '/faq' },
+] as const;
+
 const COLUMNS = [
   { heading: 'Product', links: PRODUCT },
+  { heading: 'Resources', links: RESOURCES },
   { heading: 'Company', links: COMPANY },
   { heading: 'Legal', links: LEGAL },
 ] as const;

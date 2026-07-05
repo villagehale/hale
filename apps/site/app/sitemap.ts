@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { publishedCities } from '~/lib/activities/index';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
 import { publishedCheckpoints } from '~/lib/milestones/index';
@@ -6,7 +7,7 @@ import { publishedCheckpoints } from '~/lib/milestones/index';
 // Static marketing routes. Add new public pages here as they ship.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact'].map((path) => ({
+  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq'].map((path) => ({
     url: `${SITE_URL}${path}`,
     lastModified,
     changeFrequency: 'monthly',
@@ -55,5 +56,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
           })),
         ];
 
-  return [...staticRoutes, ...answerRoutes, ...milestoneRoutes];
+  // City activity guides ride the same review-before-index gate: excluded until a
+  // human verifies a city's provincial-program details and flips `published`. The
+  // /activities hub enters with them.
+  const activityRoutes: MetadataRoute.Sitemap =
+    publishedCities.length === 0
+      ? []
+      : [
+          {
+            url: `${SITE_URL}/activities`,
+            lastModified,
+            changeFrequency: 'monthly',
+            priority: 0.6,
+          },
+          ...publishedCities.map((city) => ({
+            url: `${SITE_URL}/activities/${city.slug}`,
+            lastModified: new Date(city.updated),
+            changeFrequency: 'monthly' as const,
+            priority: 0.6,
+          })),
+        ];
+
+  return [...staticRoutes, ...answerRoutes, ...milestoneRoutes, ...activityRoutes];
 }
