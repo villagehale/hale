@@ -26,6 +26,12 @@ import type { RateLimitOptions } from './limiter';
  *   available before sign-in. A curious visitor re-runs it a few times tweaking
  *   age/area/interests; 10/min sits well above that yet stops a scripted loop from
  *   running up spend on an open endpoint.
+ * - village-search (5/hour/family): the ONE genuine cooldown here, not a silent bot
+ *   guard. Each search triggers a billable LLM discovery a parent explicitly asks
+ *   for, so it is capped per family on an HOUR window. Trying all four seasons plus
+ *   a couple of re-runs is 5-6; five per hour covers honest exploration while
+ *   blunting a parent (or a script) hammering paid runs. Per-family (not per-user)
+ *   because the run and its cost belong to the family, not one parent.
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
@@ -33,6 +39,7 @@ export const RATE_LIMITS = {
   ingest: { limit: 120, windowSec: 60 },
   auth: { limit: 20, windowSec: 60 },
   preview: { limit: 10, windowSec: 60 },
+  'village-search': { limit: 5, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

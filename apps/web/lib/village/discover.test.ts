@@ -450,6 +450,8 @@ describe('discoverForFamily', () => {
           'kind',
           'lat',
           'lng',
+          'runType',
+          'searchSeason',
           'seasons',
           'source',
           'sourceUrl',

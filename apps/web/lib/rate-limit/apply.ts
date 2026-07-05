@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '~/lib/db';
 import { RATE_LIMITS, type RateLimitRoute } from './config';
-import type { RateLimiter } from './limiter';
+import type { RateLimiter, RateLimitResult } from './limiter';
 import { PostgresRateLimiter } from './postgres';
 
 let cached: RateLimiter | undefined;
@@ -59,5 +59,24 @@ export async function enforceRateLimit(
     }
     console.error({ err, route }, 'rate-limit check failed — failing open');
     return null;
+  }
+}
+
+/**
+ * The structured counterpart to enforceRateLimit for callers that aren't HTTP
+ * routes (a Server Action returns a plain result, not a Response). Same limiter and
+ * same fail-OPEN behaviour: a broken limiter must never block a legitimate parent's
+ * paid run — it degrades to `allowed` rather than a false throttle (rule #8: the
+ * failure surfaces in logs, it is not swallowed into a wrong-user-facing state).
+ */
+export async function rateLimitStatus(
+  route: RateLimitRoute,
+  identifier: string,
+): Promise<RateLimitResult> {
+  try {
+    return await limiter().check(identifier, route, RATE_LIMITS[route]);
+  } catch (err) {
+    console.error({ err, route }, 'rate-limit check failed — failing open');
+    return { allowed: true, retryAfterSec: 0 };
   }
 }

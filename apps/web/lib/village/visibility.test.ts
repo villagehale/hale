@@ -6,6 +6,7 @@ import {
   orderByDate,
   seasonOf,
   visibleCandidates,
+  visibleSearchCandidates,
 } from './visibility.js';
 
 /**
@@ -35,6 +36,8 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     shareToken: null,
     eventDate: null,
     seasons: null,
+    runType: 'standing',
+    searchSeason: null,
     supersededAt: null,
     discoveredAt: new Date('2026-07-04T12:00:00Z'),
     ...overrides,
@@ -187,6 +190,50 @@ describe('visibleCandidates', () => {
 
     const kept = visibleCandidates([pastEvent, winterCamp, stale, ongoing, summerSwim], NOW);
     expect(kept.map((c) => c.id)).toEqual(['ongoing', 'swim']);
+  });
+});
+
+describe('visibleSearchCandidates (season gate skipped)', () => {
+  // A parent searches "fall activities" in the SUMMER. The results are already
+  // season-targeted by discovery, so the seasonOf(now) gate must NOT hide them —
+  // otherwise a fall search viewed in July would render empty. The freshness,
+  // superseded, and past-dated-event gates still apply.
+  const SUMMER = new Date('2026-07-04T12:00:00Z');
+
+  it('SHOWS a fall-tagged seasonal row even though now is summer', () => {
+    const fallPick = candidate({ cadence: 'seasonal', seasons: ['fall'] });
+    // The standing gate would hide it (fall != summer)…
+    expect(isVisibleNow(fallPick, SUMMER)).toBe(false);
+    // …but the search gate keeps it.
+    expect(visibleSearchCandidates([fallPick], SUMMER).map((c) => c.id)).toEqual(['cand-1']);
+  });
+
+  it('still drops a superseded row', () => {
+    const superseded = candidate({
+      cadence: 'seasonal',
+      seasons: ['fall'],
+      supersededAt: new Date('2026-07-03T12:00:00Z'),
+    });
+    expect(visibleSearchCandidates([superseded], SUMMER)).toEqual([]);
+  });
+
+  it('still drops a stale (expired) run', () => {
+    const stale = candidate({
+      cadence: 'seasonal',
+      seasons: ['fall'],
+      discoveredAt: new Date('2026-06-10T12:00:00Z'), // >14d before SUMMER
+    });
+    expect(visibleSearchCandidates([stale], SUMMER)).toEqual([]);
+  });
+
+  it('still drops a past dated event', () => {
+    const past = candidate({ cadence: 'one-time', eventDate: '2026-07-03', seasons: null });
+    expect(visibleSearchCandidates([past], SUMMER)).toEqual([]);
+  });
+
+  it('leaves the STANDING path season-gated (unchanged): a fall row is hidden in summer', () => {
+    const fallPick = candidate({ cadence: 'seasonal', seasons: ['fall'] });
+    expect(visibleCandidates([fallPick], SUMMER)).toEqual([]);
   });
 });
 

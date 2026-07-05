@@ -96,6 +96,27 @@ export function isVisibleNow(
   return true;
 }
 
+/**
+ * A search run's rows are already season-targeted by discovery (the parent chose
+ * the season), so the seasonOf(now) gate would wrongly hide a fall search viewed
+ * in summer. This is isVisibleNow WITHOUT the seasonal gate: the freshness,
+ * superseded, and past-dated-event gates still apply (an out-of-window search is
+ * still stale, a past event still drops), but a seasonal row is not hidden for
+ * being out of the current calendar season.
+ */
+export function isVisibleInSearch(
+  candidate: VisibilityFields,
+  now: Date,
+  timeZone: string = DEFAULT_TIMEZONE,
+): boolean {
+  if (candidate.supersededAt !== null) return false;
+  if (!isRunFresh(candidate.discoveredAt, now)) return false;
+  if (candidate.eventDate !== null) {
+    return candidate.eventDate >= dayKeyOf(now, timeZone);
+  }
+  return true;
+}
+
 /** Keep only the candidates visible at `now` (see isVisibleNow). Preserves the
  * caller's order — the confidence order the DB already applied. */
 export function visibleCandidates<T extends VisibilityFields>(
@@ -104,6 +125,17 @@ export function visibleCandidates<T extends VisibilityFields>(
   timeZone: string = DEFAULT_TIMEZONE,
 ): T[] {
   return candidates.filter((c) => isVisibleNow(c, now, timeZone));
+}
+
+/** The search-read counterpart to visibleCandidates: same freshness/superseded/
+ * past-event gating but WITHOUT the calendar-season gate (see isVisibleInSearch),
+ * so a season-scoped search run shows regardless of the current season. */
+export function visibleSearchCandidates<T extends VisibilityFields>(
+  candidates: readonly T[],
+  now: Date,
+  timeZone: string = DEFAULT_TIMEZONE,
+): T[] {
+  return candidates.filter((c) => isVisibleInSearch(c, now, timeZone));
 }
 
 /** Float dated (event_date) picks to the front, soonest-first, so a time-boxed
