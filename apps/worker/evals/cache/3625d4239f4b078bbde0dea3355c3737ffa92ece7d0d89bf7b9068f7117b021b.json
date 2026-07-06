@@ -1,0 +1,101 @@
+{
+  "response": {
+    "id": "msg_018RjsRzt73mstAFkiSBwgTL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-5",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "EvcFCmMIDxgCKkD6xCH2A//kd9MuCiJw17yTs7vyrMGV+UlX+qs4ZbtAftWsyR12YswUjj0U8DkFyidS3AVT2l6u/o17hse6O36nMg9jbGF1ZGUtc29ubmV0LTU4AEIIdGhpbmtpbmcSDFVab/EZo7SYfVb3fBoMi+oxAw60BcJMBnm6IjCMA9s9MxUtu8R/0ve6uQAWgy4xHmbWSCIGpcqDVZU9O/Gh5DOHLzNuovMyv2oTjV0qwQSJDDzjuAk5uNnL27x9Oc7CgcwMN8uGOCg/gusnSz9BDoPymk3cI66slSHxsm0ae6WcDYQbFyXrjyQZoVlcGUEVdQpXBON+bAdbfpQDOi+dUMTMWeF546E0T0a95qm90yYeLrGWEVpQcXP4EdByqlxYbrwo0cc2SeZYs2pIr7JNSEsyTxMCuCM6igqwvAyC7aGj7rum/OAdxON6GWfwoq4dHjVyBcLHsWnBcx2hqZI3EkGhlUKwi98k/yl/T1kv0rnZUEybLUTTaVztH+VjPE7ckfS4TUHRUORPqEexgSmrV8d0shFZ0OBzb4RejHS4SAfWajoNN7i4xiACJRyaZPnbgUSujignT8TYVIkaI84IgXoc0VzJ3aN5JiopGXL2qYtfEbnbT8AE3BU5lRs8j5qcyqzWcb18fPLWPRJlyjZGjPAeGPupbJb+sSE2hiPEP7L11rDHdQhM/kPZPx8G5ApihV0dg1q6PJc+UX6thBWh5H2Xei2cfdVIg09KLjGMPIahQC8bius654B6QO/HXHD07lPk6pmcGghRDTFZENg8Wvy6mRg9+mzLuVhNkLcTAQyptsk6ixalPTCSfXi1JPr6seDQM+qb7I+fmcGhAQKqK5YcTbrK6nljSqVGB10LiGzVFmDDdzaNuqjHpYxyOp9RLU9fZ1zTBmfsdBf9STcOgXbOLn9RVwExlgjrebQ96WJCFjqzy2C+trdRtTfpbi3ZwSb/2lYL7JY4tOcEk1KlQMXufYvlthPOpMZ6lty6G84FGAE="
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01VUkojoE5B1fomrapezeX4P",
+        "name": "check_action_idempotency",
+        "input": {
+          "familyId": "11111111-1111-4111-8111-111111111111",
+          "actionHash": "8bcef2ba3a480809c75893a54abc45e4b7882b190c0ee228df80c126f7378af7"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GT79mvKq4t6DtEvKWVEFFt",
+        "name": "check_action_time_window",
+        "input": {
+          "familyId": "11111111-1111-4111-8111-111111111111",
+          "actionType": "add_to_routine"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01H7DmQUSQbypbJGj1Z4WZt5",
+        "name": "check_pii_leak",
+        "input": {
+          "familyId": "11111111-1111-4111-8111-111111111111",
+          "payload": {
+            "event_type": "activity_signup_open",
+            "candidate_id": "cand-earlyon-1",
+            "title": "EarlyON Child and Family Centre drop-in",
+            "kind": "playgroup",
+            "summary": "Free drop-in play + caregiver support, serves your area.",
+            "coverage_note": "serves your area"
+          },
+          "recipient_visibility": "internal_only"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01GK9Ks3FCo8k8xAhVinb4jh",
+        "name": "check_user_override",
+        "input": {
+          "familyId": "11111111-1111-4111-8111-111111111111",
+          "actionType": "add_to_routine"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01UNstaDnvWREavDKLSQf8DY",
+        "name": "check_calendar_conflict",
+        "input": {
+          "familyId": "11111111-1111-4111-8111-111111111111",
+          "eventType": "activity_signup_open",
+          "candidateId": "cand-earlyon-1"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 305,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 1944,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 852,
+      "output_tokens_details": {
+        "thinking_tokens": 187
+      },
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

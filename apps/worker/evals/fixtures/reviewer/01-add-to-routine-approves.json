@@ -1,0 +1,20 @@
+{
+  "id": "01-add-to-routine-approves",
+  "note": "The ISSUE-5 regression guard. An accepted village activity pinned to the routine is a zero-external-dispatch, reversible internal write. Its ONLY required check is check_action_idempotency; with a real action_hash on the payload (the fix), the reviewer can pass it, the check returns ok:true (no prior duplicate), coverage is satisfied, and the reviewer must APPROVE. Before the fix the missing hash made the check error → coverage failed → flagged → silently un-completable.",
+  "familyId": "11111111-1111-4111-8111-111111111111",
+  "draft": {
+    "id": "a1111111-1111-4111-8111-111111111111",
+    "actionType": "add_to_routine",
+    "recipientVisibility": "internal_only",
+    "payload": {
+      "event_type": "activity_signup_open",
+      "candidate_id": "cand-earlyon-1",
+      "title": "EarlyON Child and Family Centre drop-in",
+      "kind": "playgroup",
+      "summary": "Free drop-in play + caregiver support, serves your area.",
+      "coverage_note": "serves your area"
+    }
+  },
+  "checkPolicy": { "check_action_idempotency": true },
+  "expect": "approve"
+}

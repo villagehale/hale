@@ -1,0 +1,21 @@
+{
+  "id": "03-supply-order-over-cap-rejects",
+  "note": "Risky-direction calibration: a money-spending action (place_supply_order) whose check_spending_cap returns ok:false (over the family's cap). Hard rule #7 — cap exceeded must NOT approve. Confirms the reviewer still gates genuinely risky actions and the coverage predicate isn't bypassed by the ISSUE-5 change.",
+  "familyId": "11111111-1111-4111-8111-111111111111",
+  "draft": {
+    "id": "a3333333-3333-4333-8333-333333333333",
+    "actionType": "place_supply_order",
+    "recipientVisibility": "internal_only",
+    "payload": {
+      "item": "size 3 diapers, 2 boxes",
+      "merchant": "example-pharmacy",
+      "estimated_total_cad": 240
+    }
+  },
+  "checkPolicy": {
+    "check_spending_cap": false,
+    "check_action_idempotency": true,
+    "check_user_override": true
+  },
+  "expect": "not-approve"
+}
