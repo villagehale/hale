@@ -435,6 +435,11 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
   }
 
   // 5. Review
+  // The reviewer's check_action_idempotency excludes the action UNDER REVIEW by
+  // id (ISSUE-5b self-match). recordAction mints a fresh DB id (defaultRandom),
+  // which differs from the drafter's transient draft.id — so the reviewer must
+  // see the PERSISTED id, or the exclusion misses and the draft matches itself.
+  draft = { ...draft, id: actionId ?? draft.id };
   const reviewed = await runReviewer({ familyId, draft });
   const verdict = reviewed.verdict;
   await recordReviewerVerdict({ actionId, verdict, reviewerMetrics: reviewed.runMetrics });
