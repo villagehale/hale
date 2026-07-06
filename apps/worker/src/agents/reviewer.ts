@@ -1,12 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { pickModel } from '@hale/agent';
 import {
-  REVIEWER_TOOLS,
+  REQUIRED_CHECKS,
   type ReviewerToolName,
   coverageSatisfiedWithResults,
   firstUnsatisfiedCheck,
 } from '@hale/tools-contracts';
-import type { DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
+import type { ActionType, DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
 import { anthropicClient } from '../anthropic/client.js';
 import { logger } from '../logger.js';
 import { loadPrompt } from '../prompts/loader.js';
@@ -77,8 +77,14 @@ const CHECK_INPUT_SCHEMAS: Partial<Record<ReviewerToolName, Anthropic.Tool['inpu
   },
 };
 
-function checkTools(): Anthropic.Tool[] {
-  return (Object.keys(REVIEWER_TOOLS) as ReviewerToolName[]).map((name) => ({
+// Expose ONLY the checks REQUIRED for this action type. add_to_routine (an
+// internal pin) requires just check_action_idempotency; showing it the full
+// external-action check set (calendar/pii/time-window) made the model call
+// irrelevant checks, fail their required fields, and flag on the noise (ISSUE-5b).
+// Scoping to REQUIRED_CHECKS is strictly MORE constrained — the coverage gate
+// still enforces every required check returned ok:true.
+function checkTools(actionType: ActionType): Anthropic.Tool[] {
+  return REQUIRED_CHECKS[actionType].map((name) => ({
     name,
     description: `Verification check: ${name}.`,
     input_schema: CHECK_INPUT_SCHEMAS[name] ?? { type: 'object', additionalProperties: true },
@@ -128,7 +134,7 @@ export async function runReviewer(
     ),
   });
 
-  const tools: Anthropic.Tool[] = [...checkTools(), verdictTool];
+  const tools: Anthropic.Tool[] = [...checkTools(input.draft.actionType), verdictTool];
   const messages: Anthropic.MessageParam[] = [
     {
       role: 'user',
@@ -201,6 +207,21 @@ export async function runReviewer(
       if (block.name === 'check_pii_leak') {
         if (childNames === null) childNames = await getChildNames(input.familyId);
         toolInput = { ...(block.input as object), knownChildNames: childNames };
+      }
+      if (block.name === 'check_action_idempotency') {
+        // The idempotency key is the draft's OWN stamped action_hash, and the
+        // check must exclude the action under review: recordAction persists the
+        // draft BEFORE review, so a naive hash match finds the draft matching
+        // ITSELF (isDuplicate → ok:false → reject). Inject both server-side —
+        // the model cannot be trusted to echo the hash or know its own id, and a
+        // fabricated hash would defeat dedup (ISSUE-5b, rule #3 verify-by-fact).
+        const payloadHash = (input.draft.payload as { action_hash?: unknown }).action_hash;
+        toolInput = {
+          ...(block.input as object),
+          familyId: input.familyId,
+          actionId: input.draft.id,
+          actionHash: typeof payloadHash === 'string' ? payloadHash : '',
+        };
       }
       const result = await invokeTool(block.name as ReviewerToolName, toolInput);
       collected.push(result);

@@ -163,6 +163,11 @@ export type ActionTimeWindowOutput = z.infer<typeof actionTimeWindowOutput>;
 export const actionIdempotencyInput = z.object({
   familyId: z.string().uuid(),
   actionHash: z.string(),
+  /** The action UNDER REVIEW, excluded from the duplicate scan. recordAction
+   * persists the draft (with its action_hash) before the reviewer runs, so
+   * without this the check finds the draft matching itself (ISSUE-5b). Injected
+   * server-side by the reviewer, never supplied by the model. */
+  actionId: z.string().uuid(),
   lookbackHours: z.number().int().positive().default(24),
 });
 export const actionIdempotencyOutput = z.object({

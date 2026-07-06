@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, ne, sql } from 'drizzle-orm';
 import { schema } from '@hale/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
 import type { ToolResult } from '@hale/types';
@@ -97,6 +97,7 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       .where(
         and(
           eq(schema.actions.familyId, input.familyId),
+          ne(schema.actions.id, input.actionId),
           gte(schema.actions.draftedAt, since),
           sql`${schema.actions.payload} ->> 'action_hash' = ${input.actionHash}`,
         ),
