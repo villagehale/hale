@@ -80,10 +80,8 @@ async function main() {
     if (disagreements.length >= TARGET_DISAGREEMENTS) break;
   }
 
-  const tally = disagreements.reduce(
-    (acc, d) => ((acc[d.verdict.winner] = (acc[d.verdict.winner] || 0) + 1), acc),
-    {},
-  );
+  const tally = { candidate: 0, baseline: 0, tie: 0 };
+  for (const d of disagreements) tally[d.verdict.winner] += 1;
   const runHash = createHash('sha256').update(JSON.stringify(inputs)).digest('hex').slice(0, 8);
   const lines = [
     '# shadow-prompt STATE',
