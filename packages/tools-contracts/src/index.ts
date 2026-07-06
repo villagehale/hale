@@ -163,6 +163,13 @@ export type ActionTimeWindowOutput = z.infer<typeof actionTimeWindowOutput>;
 export const actionIdempotencyInput = z.object({
   familyId: z.string().uuid(),
   actionHash: z.string(),
+  /** The action UNDER REVIEW, excluded from the duplicate scan. recordAction
+   * persists the draft (with its action_hash) before the reviewer runs, so
+   * without this the check finds the draft matching itself (ISSUE-5b). Injected
+   * server-side by the worker reviewer; OPTIONAL so the legacy web pipeline
+   * (which doesn't inject it) still validates — the exclusion is simply skipped
+   * when it's absent. */
+  actionId: z.string().uuid().optional(),
   lookbackHours: z.number().int().positive().default(24),
 });
 export const actionIdempotencyOutput = z.object({
