@@ -9,7 +9,7 @@ The offline evals (`run-eval.mjs` etc.) grade a prompt against **frozen cached f
 ## Rule #1 — non-negotiable
 This runs on Hale prompts that can see family data. **It must never process raw newborn/family PII.** Two allowed input sources, in order of preference:
 1. **Synthetic fixtures** (default) — hand-authored representative events, no real data. The scaffold ships with these.
-2. **Redacted prod samples** — real event shapes with all PII stripped *before* the prompt runs (names, DOB, precise location → placeholders). Enabling this requires an explicit `--redacted-source` flag AND your sign-off; the redactor must be verified to fail-closed. Until that's built + reviewed, the runner refuses real traffic.
+2. **Redacted prod samples** — real event shapes with all PII stripped *before* the prompt runs. The **fail-closed redactor is built** (`apps/worker/src/redaction/redact.ts`, unit-tested): every input is redacted (names/DOB/postal/email/phone → placeholders) and `assertNoPII` **drops** any input where PII survives — wired on the always-on path. What's still a stub is the real-traffic *sampler* (SEAM 2); wire that + get sign-off to point it at prod.
 
 ## How it works
 1. Sample `N` inputs (half edge-cases, half high-frequency shapes).
@@ -25,4 +25,4 @@ This runs on Hale prompts that can see family data. **It must never process raw 
 - **Model tiering:** the two prompt runs use the prompt's own tier (via `pickModel`); the judge is cheap (Haiku).
 
 ## Status
-`run-shadow-eval.mjs` is a **scaffold**: the sampler, the prompt-pair loader, and the diff/judge harness are wired against **synthetic fixtures** so it runs end-to-end today. To point it at a real candidate prompt, fill the two marked seams (`loadPromptVersions`, `sampleInputs`) — and do not enable `--redacted-source` until the redactor is built and reviewed. Wire into CI only after a first manual run reads clean.
+`run-shadow-eval.mjs` runs end-to-end against **synthetic fixtures**, with the fail-closed redactor wired on the always-on input path (`redact.ts` + `assertNoPII`). To point it at real work, fill the two marked seams: `loadPromptVersions` (baseline vs candidate Langfuse versions) and `sampleInputs` (a real, redacted traffic sampler). The redactor makes the input path safe; the sampler is the remaining piece + needs your sign-off. Wire into CI only after a first manual run reads clean.
