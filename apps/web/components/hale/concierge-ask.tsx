@@ -20,7 +20,7 @@ export function ConciergeAsk({ canAsk, seed }: { canAsk: boolean; seed: ThreadSe
         <div>
           <h2 className="eyebrow text-spruce">your concierge</h2>
           <p className="meta mt-1 text-slate-green">
-            ask Hale to refine your feed — or anything about your family
+            ask your concierge to refine your feed — or anything about your family
           </p>
         </div>
       </div>
