@@ -692,10 +692,10 @@ function CompactSurface({
     return (
       <div className="panel space-y-4">
         <p className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
-          ask Hale anything.
+          ask your concierge anything.
         </p>
         <output className="dev-preview-banner">
-          Sign in to ask Hale. In this preview the ask box is read-only — no question is sent.
+          Sign in to ask your concierge. In this preview the ask box is read-only — no question is sent.
         </output>
       </div>
     );
@@ -905,7 +905,7 @@ function FullSurface({
             </div>
           ) : (
             <output className="dev-preview-banner">
-              Sign in to ask Hale. In this preview the thread is read-only — no question is sent.
+              Sign in to ask your concierge. In this preview the thread is read-only — no question is sent.
             </output>
           )}
         </div>
@@ -934,7 +934,7 @@ function Composer({
   return (
     <div className="composer-shell">
       <label htmlFor="coach-input" className="sr-only">
-        ask Hale
+        ask your concierge
       </label>
       <textarea
         ref={inputRef}
@@ -958,7 +958,7 @@ function Composer({
         type="button"
         onClick={() => ask(draft)}
         disabled={pending || draft.trim().length === 0}
-        aria-label={pending ? 'thinking' : 'ask Hale'}
+        aria-label={pending ? 'thinking' : 'ask your concierge'}
         className={`composer-send cursor-pointer ${DISABLED_AFFORDANCE}`}
       >
         <ArrowUp aria-hidden size={20} />
