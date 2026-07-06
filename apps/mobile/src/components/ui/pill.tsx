@@ -21,7 +21,7 @@ export function Pill({ label, icon, onPress, className }: PillProps) {
       className={`h-11 flex-row items-center justify-center gap-1.5 rounded-full border border-rule bg-card px-4 active:opacity-80 ${className ?? ''}`}
     >
       {icon ? <Icon name={icon} size={15} color={iconColor} /> : null}
-      <AppText variant="meta" className="text-ink">
+      <AppText variant="meta" numberOfLines={1} className="text-ink">
         {label}
       </AppText>
     </Pressable>

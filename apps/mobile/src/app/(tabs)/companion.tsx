@@ -9,7 +9,7 @@ import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import type { ChildCompanionView, MobileCompanionResponse, RecentLogView } from '@/lib/api-types';
-import { MILESTONE_TIMING_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
+import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
 const LOG_KINDS: { kind: LogKind; label: string }[] = [
@@ -38,9 +38,13 @@ function ChildSwitcher({
             accessibilityLabel={`Show ${child.name ?? 'child'}`}
             accessibilityState={active ? { selected: true } : {}}
             onPress={() => onSelect(child.id)}
-            className={`flex-1 items-center rounded-full py-2 ${active ? 'bg-raised' : ''}`}
+            className={`min-h-11 flex-1 items-center justify-center rounded-full py-2.5 ${active ? 'bg-ink' : ''}`}
           >
-            <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-3'}>
+            <AppText
+              variant="meta"
+              numberOfLines={1}
+              className={active ? 'text-on-ink' : 'text-ink-3'}
+            >
               {child.name ?? 'Child'}
             </AppText>
           </Pressable>
@@ -188,8 +192,8 @@ function CompanionBody({
     <>
       <View className="flex-row items-end justify-between pt-2">
         <AppText variant="display">Companion</AppText>
-        <AppText variant="mono" className="text-ink-3">
-          {agePhrase(child.ageMonths)} · {child.stage}
+        <AppText variant="mono" numberOfLines={1} className="shrink-0 pl-3 text-ink-3">
+          {agePhrase(child.ageMonths)} · {STAGE_LABEL[child.stage]}
         </AppText>
       </View>
 

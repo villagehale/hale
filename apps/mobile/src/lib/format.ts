@@ -1,4 +1,4 @@
-import type { MilestoneStatus } from './api-types';
+import type { FamilyStage, MilestoneStatus } from './api-types';
 
 /** "3 mo" under two years, "2 yr" beyond — the compact companion age label. */
 export function agePhrase(ageMonths: number): string {
@@ -20,6 +20,15 @@ export const MILESTONE_TIMING_LABEL: Record<MilestoneStatus['timing'], string> =
   upcoming: 'coming up',
   in_window: 'around now',
   watch: 'worth asking',
+};
+
+/** Family stage → a capitalized, parent-facing label so headers read "Newborn"
+ * rather than the raw lowercase enum "newborn"/"teenager". */
+export const STAGE_LABEL: Record<FamilyStage, string> = {
+  newborn: 'Newborn',
+  toddler: 'Toddler',
+  child: 'Child',
+  teenager: 'Teen',
 };
 
 /** A logged episode's ISO time → a short "Jul 2, 2:15pm" style phrase. */

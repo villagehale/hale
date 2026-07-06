@@ -53,7 +53,7 @@ function CadenceRow({
             accessibilityLabel={`Filter: ${option.label}`}
             accessibilityState={active ? { selected: true } : {}}
             onPress={() => onSelect(option.value)}
-            className={`rounded-full border px-4 py-2 ${
+            className={`min-h-11 items-center justify-center rounded-full border px-4 py-2.5 ${
               active ? 'border-ink bg-ink' : 'border-rule bg-card'
             }`}
           >
@@ -141,7 +141,7 @@ function SeasonSearch({
                 setOpen(false);
                 onSearch(season);
               }}
-              className="rounded-full border border-rule bg-raised px-4 py-2 active:opacity-80"
+              className="min-h-11 items-center justify-center rounded-full border border-rule bg-raised px-4 py-2.5 active:opacity-80"
             >
               <AppText variant="meta" className="capitalize text-ink-2">
                 {season}
@@ -208,7 +208,10 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
         </AppText>
       </View>
       {rec.endorsementCount > 0 ? (
-        <AppText variant="meta">Recommended by {rec.endorsementCount} families</AppText>
+        <AppText variant="meta">
+          Recommended by {rec.endorsementCount}{' '}
+          {rec.endorsementCount === 1 ? 'family' : 'families'}
+        </AppText>
       ) : null}
       <AppText variant="body">{rec.summary}</AppText>
       {rec.accepted ? (
