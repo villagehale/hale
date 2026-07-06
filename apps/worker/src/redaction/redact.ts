@@ -59,7 +59,7 @@ export function redactEventPayload<T>(payload: T, knownChildNames: readonly stri
 export function assertNoPII(text: string, knownChildNames: readonly string[] = []): void {
   const nre = nameRe(knownChildNames);
   const hits: string[] = [];
-  if (nre && nre.test(text)) hits.push('name');
+  if (nre?.test(text)) hits.push('name');
   if (EMAIL_RE.test(text)) hits.push('email');
   if (POSTAL_RE.test(text)) hits.push('postal');
   if (DATE_RE.test(text)) hits.push('date');
