@@ -31,10 +31,10 @@ body {
   /* ink */
   --color-ink: #01204f; /* spruce — primary */
   --color-ink-2: #33486b; /* slate-green — secondary */
-  --color-ink-3: #5b6b86; /* faded-sage — meta */
+  --color-ink-3: #556079; /* faded-sage — meta (darkened from #5b6b86 to clear AA 4.5:1 on the oat card, 5.1:1) */
   --color-on-ink: #ffffff; /* label ON an ink fill — pure white (mirrors web --color-on-spruce). NEVER canvas off-white, which reads grey on Prussian. */
   /* accent — apricot family */
-  --color-accent: #a84e20; /* apricot-deep — TEXT-SAFE accent */
+  --color-accent: #9a4419; /* apricot-deep — TEXT-SAFE accent (darkened from #a84e20 for AA 4.5:1 on accent-tint, 5.0:1) */
   --color-accent-fill: #c8622d; /* apricot — FILL/large-graphic only */
   --color-accent-tint: #f5dcc6;
   /* secondary tones */
@@ -43,7 +43,7 @@ body {
   --color-sage-tint: #dde4d2;
   --color-berry: #9c3b54; /* needs-you */
   --color-berry-tint: #f3d7dd;
-  --color-sky: #2f6f86; /* coach tone */
+  --color-sky: #2a6478; /* coach tone (darkened from #2f6f86 for AA 4.5:1 on sky-tint, 5.0:1) */
   --color-sky-tint: #cfe3e7;
   /* hairline */
   --color-rule: rgba(1, 32, 79, 0.1);

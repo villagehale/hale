@@ -13,21 +13,34 @@ import type { ApprovalView, MobileApprovalsResponse } from '@/lib/api-types';
 import { api, ApiError } from '@/lib/api-client';
 import { useApi } from '@/lib/use-api';
 
+type VerdictTag = { label: string; tone: 'neutral' | 'done' | 'attention' | 'coach' };
+const VERDICT_TAG: Record<string, VerdictTag> = {
+  pending: { label: 'Reviewing', tone: 'coach' },
+  approved: { label: 'Reviewer approved', tone: 'done' },
+  rejected: { label: 'Reviewer flagged', tone: 'attention' },
+  flagged: { label: 'Reviewer flagged', tone: 'attention' },
+  superseded: { label: 'Superseded', tone: 'neutral' },
+};
+function verdictTag(verdict: string): VerdictTag {
+  return VERDICT_TAG[verdict] ?? { label: verdict.replace(/_/g, ' '), tone: 'neutral' };
+}
+/** De-snake a raw action_type into a readable title ("place_supply_order" →
+ * "Place supply order") so a DB enum never surfaces as a heading. */
+function humanizeActionType(actionType: string): string {
+  const s = actionType.replace(/_/g, ' ').trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function PayloadBlock({ action }: { action: ApprovalView }) {
-  if (action.payload === null) {
-    return (
-      <View className="gap-1.5 rounded-md border border-rule bg-canvas p-3">
-        <Tag label="Redacted · teen privacy" tone="attention" />
-        <AppText variant="meta" className="mt-1">
-          Raw content is hidden by default. Your teen can grant time-limited access if you ask.
-        </AppText>
-      </View>
-    );
-  }
+  // Only the teen-redacted case renders a block. A normal action is already
+  // summarized by its human `preview`; dumping raw JSON.stringify(payload)
+  // re-exposed the content the web card deliberately hides (rule #1).
+  if (action.payload !== null) return null;
   return (
-    <View className="rounded-md border border-rule bg-canvas p-3">
-      <AppText variant="mono" className="text-ink-3">
-        {JSON.stringify(action.payload)}
+    <View className="gap-1.5 rounded-md border border-rule bg-canvas p-3">
+      <Tag label="Redacted · teen privacy" tone="attention" />
+      <AppText variant="meta" className="mt-1">
+        Raw content is hidden by default. Your teen can grant time-limited access if you ask.
       </AppText>
     </View>
   );
@@ -59,7 +72,7 @@ function ActionCard({
   return (
     <Card className="gap-2">
       <View className="flex-row items-start justify-between gap-3">
-        <Tag label={`Reviewer: ${action.verdict}`} tone="coach" />
+        <Tag label={verdictTag(action.verdict).label} tone={verdictTag(action.verdict).tone} />
         {action.childLabel ? (
           <AppText variant="mono" className="text-ink-3">
             for {action.childLabel}
@@ -68,7 +81,7 @@ function ActionCard({
       </View>
 
       <AppText variant="title" className="mt-1">
-        {action.actionType}
+        {humanizeActionType(action.actionType)}
       </AppText>
       <AppText variant="body">{action.preview}</AppText>
 
@@ -86,12 +99,14 @@ function ActionCard({
         <Button
           label={busy ? 'Working…' : 'Approve'}
           onPress={() => act('approve')}
+          disabled={busy}
           className="flex-1"
         />
         <Button
           label="Dismiss"
           variant="secondary"
           onPress={() => act('decline')}
+          disabled={busy}
           className="flex-1"
         />
       </View>
