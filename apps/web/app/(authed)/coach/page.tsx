@@ -19,7 +19,7 @@ export default async function CoachPage({
 
   return (
     <>
-      <PageCorner section="ask Hale" />
+      <PageCorner section="concierge" />
       <CoachConversation
         canAsk={canAsk}
         seed={askSeed}
