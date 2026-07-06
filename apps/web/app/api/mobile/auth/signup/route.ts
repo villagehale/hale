@@ -1,4 +1,3 @@
-import type { Database } from '@hale/db';
 import { NextResponse } from 'next/server';
 import { authConfigured } from '~/lib/auth-config';
 import { registerCredential } from '~/lib/auth/credentials';
@@ -44,7 +43,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
   }
 
-  const database = db() as Database;
+  const database = db();
   const result = await registerCredential(email, password, database);
   if (!result.ok) {
     if (result.error === 'invalid_email') {
