@@ -29,6 +29,12 @@ const CACHE_DIR = join(HERE, 'cache');
 const FIXTURES_DIR = join(HERE, 'fixtures', 'reviewer');
 const cachedOnly = process.argv.includes('--cached-only');
 
+// reviewer.ts pulls in config.ts, which validates DATABASE_URL at import. This
+// eval injects every DB-touching dep (invokeTool, loadChildNames), so it never
+// opens a connection — but the import must not crash when no DB env is set (CI's
+// eval step has none). A stub URL satisfies the import-time parse; nothing reads it.
+process.env.DATABASE_URL ??= 'postgresql://stub:stub@localhost:5432/stub';
+
 // --- real code, loaded live via the tsx loader -----------------------------
 const reviewerMod = await tsImport('../src/agents/reviewer.ts', import.meta.url);
 const { computeActionHash } = await tsImport('../src/agents/action-hash.ts', import.meta.url);
