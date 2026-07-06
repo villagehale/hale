@@ -15,18 +15,27 @@ import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tsImport } from 'tsx/esm/api';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = join(HERE, 'shadow-STATE.md');
 const TARGET_DISAGREEMENTS = 50;
 
+// The rule-#1 gate: EVERY input is redacted + fail-closed-asserted before a prompt
+// sees it (src/redaction/redact.ts, unit-tested). An input that still carries PII
+// after redaction is DROPPED, never sent.
+const { redactEventPayload, assertNoPII } = await tsImport(
+  '../../src/redaction/redact.ts',
+  import.meta.url,
+);
+
 if (process.argv.includes('--redacted-source')) {
   console.error(
-    'REFUSED: real/redacted traffic is not enabled. Rule #1 requires a verified fail-closed\n' +
-      'redactor (no name/DOB/precise-location ever reaches a prompt) + explicit sign-off.\n' +
-      'Build + review that first; until then this eval runs on synthetic fixtures only.',
+    'The fail-closed redactor is built + wired (every input is redacted + asserted).\n' +
+      'To run on REAL prod traffic, replace SEAM 2 (sampleInputs) with a real sampler and\n' +
+      'get sign-off — the redactor makes that safe, but the sampler itself is still a stub.\n' +
+      'Running on synthetic fixtures for now.',
   );
-  process.exit(2);
 }
 
 // ── SEAM 1: the two prompt versions under comparison ─────────────────────────
@@ -72,7 +81,19 @@ function judge(input, base, cand) {
 
 async function main() {
   const { baseline, candidate } = await loadPromptVersions();
-  const inputs = sampleInputs();
+  // Rule #1: redact + fail-closed-assert every input BEFORE any prompt sees it.
+  // A real sampler supplies the family's child names; synthetic fixtures have none.
+  const knownChildNames = [];
+  const inputs = [];
+  for (const raw of sampleInputs()) {
+    const red = redactEventPayload(raw, knownChildNames);
+    try {
+      assertNoPII(JSON.stringify(red), knownChildNames);
+      inputs.push(red);
+    } catch (e) {
+      console.log(`  DROPPED ${raw.id} (rule #1): ${e.message}`);
+    }
+  }
   const disagreements = [];
   for (const input of inputs) {
     const [b, c] = await Promise.all([baseline(input), candidate(input)]);
