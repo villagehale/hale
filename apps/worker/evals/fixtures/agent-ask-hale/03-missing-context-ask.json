@@ -1,6 +1,6 @@
 {
   "id": "03-missing-context-ask",
-  "note": "The question is unanswerable without info the agent does not have (which child / how old). The skill says: say so and ASK — do not guess. The answer must contain a clarifying question.",
+  "note": "The question is unanswerable without info the agent does not have (which child / how old). The skill says: say so and ASK — do not guess. The answer must contain a clarifying question. expectAudit:false — asking for context is a no-action converse (no guarded tool fires); rule #6 audits per-ACTION, and there is no action here.",
   "input": {
     "question": "is this amount of sleep normal? i'm worried."
   },
@@ -30,6 +30,7 @@
     "groundedStrings": ["Ash", "Bo"]
   },
   "expect": {
+    "expectAudit": false,
     "onTopicAnyOf": ["sleep", "which", "how old", "age", "child", "tell me", "more"],
     "mustAskForContext": true,
     "forbiddenTokens": ["i diagnose", "prescribe", "5 ml", "you are legally"],
