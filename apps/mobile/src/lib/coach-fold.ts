@@ -22,6 +22,25 @@ export interface ActivityEvent {
   preview: string;
 }
 
+/** Friendly, parent-facing label for a tool the concierge ran — so the trail reads
+ * "Read your child’s profile" instead of the raw snake_case "get_child_profile"
+ * (which also wrapped mid-word to "get_child_ profile" on a phone). Unknown tools
+ * fall back to a de-snake-cased, sentence-cased form so a new tool never leaks raw. */
+const TOOL_LABELS: Record<string, string> = {
+  search_village: 'Searched your village',
+  get_child_profile: 'Read your child’s profile',
+  get_framework_guidance: 'Checked parenting guidance',
+  search_memory: 'Searched your history',
+  save_memory: 'Saved a note',
+};
+
+export function humanizeTool(name: string): string {
+  const known = TOOL_LABELS[name];
+  if (known) return known;
+  const words = name.replace(/_/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /** A gated action chip the answer implied — a DRAFT, never an auto-action (rule
  * #4). Mirrors the web ActionIntent: kind/label/actionType only, and only `label`
  * is ever rendered (rule #1: already content-safe, never the raw payload). */
