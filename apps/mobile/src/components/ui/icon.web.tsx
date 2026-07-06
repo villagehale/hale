@@ -22,6 +22,7 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'chevron.left': 'chevron-back',
   'chevron.right': 'chevron-forward',
   'square.and.arrow.up': 'share-outline',
+  'square.and.pencil': 'create-outline',
   calendar: 'calendar',
   'checkmark.circle': 'checkmark-circle',
   'person.2': 'people',

@@ -262,14 +262,27 @@ export default function AskScreen() {
 
   const empty = messages.length === 0;
 
+  const newConversation = () => {
+    setMessages([]);
+    conversationId.current = null;
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View className="px-5 pt-2">
+        <View className="flex-row items-center justify-between px-5 pt-2">
           <AppText variant="display">Concierge</AppText>
+          {!empty ? (
+            <IconButton
+              icon="square.and.pencil"
+              accessibilityLabel="New conversation"
+              onPress={newConversation}
+              className="bg-raised"
+            />
+          ) : null}
         </View>
 
         {empty ? (
