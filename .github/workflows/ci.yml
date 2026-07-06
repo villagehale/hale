@@ -58,6 +58,9 @@ jobs:
       - name: Memory inferencer eval (cached-only)
         run: pnpm --filter @hale/worker eval:memory
 
+      - name: Reviewer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:reviewer
+
       - name: Build
         run: pnpm build
         env:

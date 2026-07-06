@@ -1,57 +1,58 @@
-import { logger } from '../logger.js';
-import { runClassifier } from '../agents/classifier.js';
-import { runDrafter } from '../agents/drafter.js';
-import { runReviewer } from '../agents/reviewer.js';
-import { dedupHashFor } from '../agents/dedup.js';
-import type { AgentRunMetrics } from '../agents/run-metrics.js';
-import { runExecutor } from '../services/executor.js';
 import {
-  recordEvent,
-  recordAction,
-  recordReviewerVerdict,
-  recordExecution,
-  recordDrop,
-  recordSpendCeilingDrop,
-  recordReviewerRejection,
-  recordEntitlementGate,
-  recordActionGate,
-  loadResumePoint,
-  loadActionForEvent,
-  loadActionForApproval,
-  loadApprovedVerdictForAction,
-  loadFamilyPlanTier,
-  loadFamilyCreatedAt,
-  loadFamilyMonthToDateCostUsd,
-  loadActionApprovalHistory,
-  loadCrossParentConsent,
-  loadFamilyContext,
-  getMemorySlice,
-  markEventStage,
-  recordHumanApproval,
-} from '../services/memory-writer.js';
-import {
-  mintApprovedAction,
-  hasEntitlement,
-  entitlementRequiredFor,
-  isOverAllowance,
-  isOverHardCeiling,
-  hardCeilingUsd,
-  monthlyAllowanceUsd,
-  stageFromAgeInMonths,
-  type DraftedAction,
-  type ApprovedAction,
-  type ActionType,
-  type FamilyStage,
-} from '@hale/types';
-import {
+  type IngestedEventPayload,
   coverageSatisfiedWithResults,
   isCrossParentActionType,
-  type IngestedEventPayload,
 } from '@hale/tools-contracts';
 import {
-  withinObservationWindow,
+  type ActionType,
+  type ApprovedAction,
+  type DraftedAction,
+  type FamilyStage,
+  entitlementRequiredFor,
+  hardCeilingUsd,
+  hasEntitlement,
+  isOverAllowance,
+  isOverHardCeiling,
+  mintApprovedAction,
+  monthlyAllowanceUsd,
+  stageFromAgeInMonths,
+} from '@hale/types';
+import { computeActionHash } from '../agents/action-hash.js';
+import { runClassifier } from '../agents/classifier.js';
+import { dedupHashFor } from '../agents/dedup.js';
+import { runDrafter } from '../agents/drafter.js';
+import { runReviewer } from '../agents/reviewer.js';
+import type { AgentRunMetrics } from '../agents/run-metrics.js';
+import { logger } from '../logger.js';
+import { runExecutor } from '../services/executor.js';
+import {
+  getMemorySlice,
+  loadActionApprovalHistory,
+  loadActionForApproval,
+  loadActionForEvent,
+  loadApprovedVerdictForAction,
+  loadCrossParentConsent,
+  loadFamilyContext,
+  loadFamilyCreatedAt,
+  loadFamilyMonthToDateCostUsd,
+  loadFamilyPlanTier,
+  loadResumePoint,
+  markEventStage,
+  recordAction,
+  recordActionGate,
+  recordDrop,
+  recordEntitlementGate,
+  recordEvent,
+  recordExecution,
+  recordHumanApproval,
+  recordReviewerRejection,
+  recordReviewerVerdict,
+  recordSpendCeilingDrop,
+} from '../services/memory-writer.js';
+import {
   streakSatisfiesAutonomy,
   teenRedactionCapApplies,
+  withinObservationWindow,
 } from './autonomy-gate.js';
 
 const CONFIDENCE_AUTONOMY_THRESHOLD = 0.85;
@@ -241,10 +242,9 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
     // names a real child of this family — a hallucinated or stale id is dropped
     // to null rather than written as a dangling reference. events.child_id is
     // additive + nullable, so null (undeterminable or family-wide) is fine.
-    const knownChild =
-      fresh.concernsChildId
-        ? familyContext.children.find((c) => c.id === fresh.concernsChildId)
-        : undefined;
+    const knownChild = fresh.concernsChildId
+      ? familyContext.children.find((c) => c.id === fresh.concernsChildId)
+      : undefined;
     const childId = knownChild?.id ?? null;
     // Rule #1 write-site backstop: the classifier's teen_content is a probabilistic
     // signal, never the sole gate. When the event resolves to a known child whose
@@ -320,7 +320,10 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
   }
 
   if (classified.suggestion.kind !== 'autonomous_action') {
-    logger.debug({ familyId, eventId }, 'orchestrator: classifier did not suggest autonomous action');
+    logger.debug(
+      { familyId, eventId },
+      'orchestrator: classifier did not suggest autonomous action',
+    );
     return;
   }
 
@@ -373,12 +376,23 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
     // reviewer → autonomy-gate spine).
     let drafterMetrics: AgentRunMetrics;
     if (actionType === 'add_to_routine') {
+      // Stamp a deterministic action_hash so the reviewer's REQUIRED check
+      // check_action_idempotency has a real key to verify (ISSUE-5): without it
+      // the check errored → coverage failed → every accepted item was flagged and
+      // silently stuck. Keyed on the accepted candidate so a re-accept dedups.
+      const candidateId =
+        typeof classified.payload.candidate_id === 'string'
+          ? classified.payload.candidate_id
+          : eventId;
       draft = {
         id: crypto.randomUUID(),
         eventId,
         familyId,
         actionType,
-        payload: classified.payload,
+        payload: {
+          ...classified.payload,
+          action_hash: computeActionHash(familyId, actionType, candidateId),
+        },
         draftConfidence: classified.confidence,
         rationale: 'accepted village item pinned to routine',
         recipientVisibility: 'internal_only',

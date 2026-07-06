@@ -1,19 +1,19 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { pickModel } from '@hale/agent';
 import {
   REVIEWER_TOOLS,
+  type ReviewerToolName,
   coverageSatisfiedWithResults,
   firstUnsatisfiedCheck,
-  type ReviewerToolName,
 } from '@hale/tools-contracts';
-import { pickModel } from '@hale/agent';
 import type { DraftedAction, ReviewerVerdict, ToolResult } from '@hale/types';
 import { anthropicClient } from '../anthropic/client.js';
-import { invokeReviewerTool } from '../tools/registry.js';
-import { loadChildNames } from '../services/memory-writer.js';
-import { metricsFromUsage, type AgentRunMetrics } from './run-metrics.js';
-import { loadPrompt } from '../prompts/loader.js';
-import { cachedSystem } from './structured.js';
 import { logger } from '../logger.js';
+import { loadPrompt } from '../prompts/loader.js';
+import { loadChildNames } from '../services/memory-writer.js';
+import { invokeReviewerTool } from '../tools/registry.js';
+import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
+import { cachedSystem } from './structured.js';
 
 const VERDICT_TOOL = 'submit_verdict';
 const MAX_TURNS = 8;
@@ -55,11 +55,33 @@ const verdictTool: Anthropic.Tool = {
   },
 };
 
+// Per-check input contracts the model must see to call a check correctly. The
+// generic `additionalProperties:true` schema left the model guessing the field
+// names (it sent `{}` / `{action_hash}`), so a required check failed validation
+// (ok:false) and the coverage AND-fold poisoned it → every add_to_routine was
+// flagged (ISSUE-5). check_action_idempotency is add_to_routine's only required
+// check, so its contract must be explicit. Others keep the permissive schema.
+const CHECK_INPUT_SCHEMAS: Partial<Record<ReviewerToolName, Anthropic.Tool['input_schema']>> = {
+  check_action_idempotency: {
+    type: 'object',
+    properties: {
+      familyId: { type: 'string', description: "The draft action's family_id (a uuid)." },
+      actionHash: {
+        type: 'string',
+        description: "The draft payload's action_hash — pass it verbatim; do not invent one.",
+      },
+      lookbackHours: { type: 'number', description: 'Optional dedup window; defaults to 24.' },
+    },
+    required: ['familyId', 'actionHash'],
+    additionalProperties: false,
+  },
+};
+
 function checkTools(): Anthropic.Tool[] {
   return (Object.keys(REVIEWER_TOOLS) as ReviewerToolName[]).map((name) => ({
     name,
     description: `Verification check: ${name}.`,
-    input_schema: { type: 'object', additionalProperties: true },
+    input_schema: CHECK_INPUT_SCHEMAS[name] ?? { type: 'object', additionalProperties: true },
   }));
 }
 

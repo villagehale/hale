@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IngestedEventPayload } from '@hale/tools-contracts';
 import type { ActionType } from '@hale/types';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
+import { computeActionHash } from '../agents/action-hash.js';
 import type { ExecuteApprovedDeps } from './index.js';
 
 /**
@@ -137,6 +138,13 @@ describe('runOrchestrator — accepted village item routes to add_to_routine', (
       candidate_id: 'cand-1',
       title: 'Saturday baby sensory playgroup',
     });
+
+    // The draft carries a deterministic action_hash keyed on (family, type,
+    // candidate) so the REAL reviewer can pass it to check_action_idempotency —
+    // the missing field that made every accepted item flag in prod (ISSUE-5).
+    expect(recordArg?.payload?.action_hash).toBe(
+      computeActionHash(villageJob.family_id, 'add_to_routine', 'cand-1'),
+    );
 
     // It still went through the reviewer (hard rule #3) before being routed.
     expect(runReviewer).toHaveBeenCalledTimes(1);
