@@ -166,8 +166,10 @@ export const actionIdempotencyInput = z.object({
   /** The action UNDER REVIEW, excluded from the duplicate scan. recordAction
    * persists the draft (with its action_hash) before the reviewer runs, so
    * without this the check finds the draft matching itself (ISSUE-5b). Injected
-   * server-side by the reviewer, never supplied by the model. */
-  actionId: z.string().uuid(),
+   * server-side by the worker reviewer; OPTIONAL so the legacy web pipeline
+   * (which doesn't inject it) still validates — the exclusion is simply skipped
+   * when it's absent. */
+  actionId: z.string().uuid().optional(),
   lookbackHours: z.number().int().positive().default(24),
 });
 export const actionIdempotencyOutput = z.object({

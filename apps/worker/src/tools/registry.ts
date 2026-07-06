@@ -97,7 +97,9 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
       .where(
         and(
           eq(schema.actions.familyId, input.familyId),
-          ne(schema.actions.id, input.actionId),
+          // Exclude the action under review (self-match, ISSUE-5b) when its id is
+          // known — the worker reviewer always injects it; the legacy web path omits it.
+          ...(input.actionId ? [ne(schema.actions.id, input.actionId)] : []),
           gte(schema.actions.draftedAt, since),
           sql`${schema.actions.payload} ->> 'action_hash' = ${input.actionHash}`,
         ),
