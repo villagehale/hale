@@ -11,6 +11,7 @@ import Animated, {
 
 import { AppText } from '@/components/ui/app-text';
 import type { ActivityEvent } from '@/lib/coach-api';
+import { humanizeTool } from '@/lib/coach-fold';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
 
 /**
@@ -75,7 +76,7 @@ function TrailLines({ entries }: { entries: TrailEntry[] }) {
           >
             <PulseDot />
             <AppText variant="meta" className="flex-1 text-ink-2">
-              {entry.name}
+              {humanizeTool(entry.name)}
             </AppText>
           </View>
         ) : (
@@ -88,7 +89,7 @@ function TrailLines({ entries }: { entries: TrailEntry[] }) {
               {entry.ok ? '✓' : '✕'}
             </AppText>
             <AppText variant="meta" className={`flex-1 ${entry.ok ? 'text-ink-2' : 'text-berry'}`}>
-              {entry.preview}
+              {humanizeTool(entry.name)}
             </AppText>
           </View>
         ),

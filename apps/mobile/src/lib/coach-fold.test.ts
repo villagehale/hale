@@ -5,7 +5,20 @@ import {
   createNdjsonSplitter,
   foldCoachEvents,
   foldCoachStream,
+  humanizeTool,
 } from './coach-fold';
+
+describe('humanizeTool', () => {
+  it('maps known tools to a friendly, parent-facing label', () => {
+    expect(humanizeTool('search_village')).toBe('Searched your village');
+    expect(humanizeTool('get_child_profile')).toBe('Read your child’s profile');
+  });
+
+  it('never leaks a raw snake_case name — unknown tools are de-snaked + sentence-cased', () => {
+    expect(humanizeTool('some_new_tool')).toBe('Some new tool');
+    expect(humanizeTool('some_new_tool')).not.toContain('_');
+  });
+});
 
 /**
  * The batched NDJSON fold. RN's fetch has no readable body, so askHale() reads the

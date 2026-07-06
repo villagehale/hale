@@ -51,7 +51,7 @@ type Message =
 function UserBubble({ text }: { text: string }) {
   return (
     <View className="mb-3 max-w-[85%] self-end rounded-lg rounded-br-sm bg-ink px-4 py-3">
-      <AppText variant="body" className="text-canvas">
+      <AppText variant="body" className="text-on-ink">
         {text}
       </AppText>
     </View>
@@ -306,7 +306,7 @@ export default function AskScreen() {
           <AppText variant="meta" className="mb-1.5 uppercase tracking-eyebrow text-ink-3">
             {voice.listening ? 'Listening…' : 'Ask a question'}
           </AppText>
-          <View className="flex-row items-end gap-2">
+          <View className="flex-row items-center gap-2">
             <TextInput
               value={draft}
               onChangeText={setDraft}
