@@ -353,7 +353,7 @@ function EmptyState({
     <div className="mx-auto flex max-w-[34rem] flex-col items-center gap-6 py-12 text-center sm:py-16">
       <div className="space-y-3">
         <p className="font-display text-balance text-[clamp(2.3rem,4.4vw,3.75rem)] font-semibold leading-[1.04] tracking-[-0.02em]">
-          ask Hale <span className="text-apricot-deep">anything</span>
+          your family <span className="text-apricot-deep">concierge</span>
         </p>
         <p className="text-slate-green text-lg leading-relaxed">
           one ongoing conversation, grounded in your family. I answer in plain language and cite the
@@ -708,7 +708,7 @@ function CompactSurface({
           htmlFor={inputId}
           className="font-display text-[1.75rem] lg:text-[2.5rem] leading-tight"
         >
-          ask Hale anything.
+          ask your concierge anything.
         </label>
         <textarea
           ref={inputRef}
@@ -750,7 +750,7 @@ function CompactSurface({
             onClick={() => ask(draft)}
             disabled={status === 'pending' || draft.trim().length === 0}
           >
-            {status === 'pending' ? 'thinking…' : 'ask Hale'}
+            {status === 'pending' ? 'thinking…' : 'ask'}
           </Button>
         </div>
       </div>
@@ -815,7 +815,7 @@ function FullSurface({
       {/* The page's sole heading. The empty state shows a large editorial invite,
           but once the conversation starts that invite is gone — so /coach carries a
           persistent visually-hidden h1 so the document is never headingless. */}
-      <h1 className="sr-only">ask Hale</h1>
+      <h1 className="sr-only">Concierge</h1>
       {/* Quiet header — the conversation's scope + a secondary search, never a box
           stacked above the chat. Hidden until there's history to scope or search. */}
       {!isEmpty ? (

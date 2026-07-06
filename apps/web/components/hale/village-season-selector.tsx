@@ -48,7 +48,7 @@ export function VillageSeasonSelector({ active = null }: { active?: Season | nul
   return (
     <div className="flex flex-col gap-3">
       <fieldset
-        className="flex flex-wrap gap-1 rounded-[var(--r-full)] border border-rule-strong p-1"
+        className="flex flex-wrap gap-1 rounded-3xl border border-rule-strong p-1"
         aria-label="search a future season, or return to your weekly feed"
       >
         <Link

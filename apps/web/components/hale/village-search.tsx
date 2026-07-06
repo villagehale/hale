@@ -170,7 +170,7 @@ function CadenceFilterChips({
 }) {
   return (
     <fieldset
-      className="mb-10 lg:mb-12 flex flex-wrap gap-1 rounded-[var(--r-full)] border border-rule-strong p-1"
+      className="mb-10 lg:mb-12 flex flex-wrap gap-1 rounded-3xl border border-rule-strong p-1"
       aria-label="filter activities by cadence"
     >
       {CADENCE_OPTIONS.map((option) => {
