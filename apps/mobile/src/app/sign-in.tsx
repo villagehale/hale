@@ -2,12 +2,13 @@ import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
+import { API_BASE } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { exchangeGoogleIdToken, signInWithPassword } from '@/lib/auth-api';
 
@@ -65,7 +66,11 @@ export default function SignInScreen() {
   };
 
   return (
-    <Screen scroll className="gap-6">
+    <KeyboardAvoidingView
+      className="flex-1"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <Screen scroll className="gap-6">
       <View className="gap-2 pt-8">
         <AppText variant="display">Welcome to Hale</AppText>
         <AppText variant="body">Sign in to pick up where your family left off.</AppText>
@@ -97,7 +102,12 @@ export default function SignInScreen() {
             {error}
           </AppText>
         ) : null}
-        <Button label={busy ? 'Signing in…' : 'Sign in'} onPress={onPassword} className="mt-1" />
+        <Button
+          label={busy ? 'Signing in…' : 'Sign in'}
+          onPress={onPassword}
+          disabled={busy}
+          className="mt-1"
+        />
       </View>
 
       <View className="flex-row items-center gap-3">
@@ -109,12 +119,35 @@ export default function SignInScreen() {
       {googleReady ? (
         <GoogleButton onError={setError} />
       ) : (
-        <Button
-          label="Continue with Google"
-          variant="secondary"
-          onPress={() => setError('Google sign-in is not configured yet.')}
-        />
+        <Button label="Google sign-in unavailable" variant="secondary" disabled />
       )}
-    </Screen>
+
+      {API_BASE ? (
+        <View className="mt-2 items-center gap-3">
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Forgot password"
+            onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/forgot-password`)}
+            className="active:opacity-70"
+          >
+            <AppText variant="meta" className="text-accent">
+              Forgot password?
+            </AppText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="New to Hale, create an account"
+            onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/sign-up`)}
+            className="flex-row active:opacity-70"
+          >
+            <AppText variant="meta">New to Hale? </AppText>
+            <AppText variant="meta" className="text-accent">
+              Create an account
+            </AppText>
+          </Pressable>
+        </View>
+      ) : null}
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }

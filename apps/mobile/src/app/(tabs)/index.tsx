@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { LogoMark } from '@/components/ui/logo-mark';
@@ -63,7 +64,16 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
             onPress={() => setLogKind('milestone')}
           />
         </View>
-      ) : null}
+      ) : (
+        <Card className="gap-3">
+          <AppText variant="title">Add your first child</AppText>
+          <AppText variant="meta">
+            Add a child and Hale unlocks one-tap logging for feeds and naps, their milestones and
+            checkups, and a companion guide tuned to their stage.
+          </AppText>
+          <Button label="Add a child" onPress={() => router.push('/more/family')} />
+        </Card>
+      )}
 
       <QuickLogModal
         visible={logKind !== null}
