@@ -117,8 +117,10 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
                 className="min-w-[45%] flex-1 gap-1"
               >
                 <View className="flex-row items-baseline justify-between">
-                  <AppText variant="title">{child.name ?? 'Your child'}</AppText>
-                  <AppText variant="mono" className="text-ink-3">
+                  <AppText variant="title" numberOfLines={1} className="mr-2 flex-1">
+                    {child.name ?? 'Your child'}
+                  </AppText>
+                  <AppText variant="mono" className="shrink-0 text-ink-3">
                     {agePhrase(child.ageMonths)}
                   </AppText>
                 </View>

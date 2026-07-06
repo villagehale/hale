@@ -75,10 +75,12 @@ function ParentRow({ member }: { member: MemberView }) {
   return (
     <View className="flex-row items-center justify-between">
       <View className="flex-1">
-        <AppText variant="body" className="text-ink">
+        <AppText variant="body" numberOfLines={1} className="text-ink">
           {member.name ?? member.email}
         </AppText>
-        <AppText variant="meta">{member.email}</AppText>
+        <AppText variant="meta" numberOfLines={1}>
+          {member.email}
+        </AppText>
       </View>
       <Tag label={ROLE_LABEL[member.role] ?? member.role} tone="neutral" />
     </View>
