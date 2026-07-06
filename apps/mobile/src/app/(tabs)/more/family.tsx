@@ -1,16 +1,19 @@
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
+import { Icon } from '@/components/ui/icon';
 import { Pill } from '@/components/ui/pill';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
+import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
 import type {
   FamilyChildBasics,
@@ -69,6 +72,29 @@ function SectionTitle({ children }: { children: string }) {
 function coarseArea(location: FamilyLocationView): string {
   const parts = [location.city, location.province, location.postalCode].filter(Boolean);
   return parts.length > 0 ? parts.join(', ') : 'Not set';
+}
+
+// The API stores/returns DOB as 'YYYY-MM-DD'. Parse it as a local date (not UTC,
+// which would shift the day for negative timezones) for the picker, and format it
+// back to the wire shape after a pick.
+function parseDob(value: string): Date {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+function toDobString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function dobLabel(value: string): string {
+  return parseDob(value).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 }
 
 function ParentRow({ member }: { member: MemberView }) {
@@ -157,8 +183,10 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(child.name);
   const [dob, setDob] = useState(child.dateOfBirth);
+  const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const iconColor = useMeadowColor('ink3');
 
   if (!editing) {
     return (
@@ -167,7 +195,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
           <AppText variant="body" className="text-ink">
             {child.name}
           </AppText>
-          <AppText variant="meta">{child.dateOfBirth}</AppText>
+          <AppText variant="meta">{dobLabel(child.dateOfBirth)}</AppText>
         </View>
         <View className="flex-row items-center gap-2">
           <Tag label={child.stageLabel} tone="coach" />
@@ -176,6 +204,13 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
       </Card>
     );
   }
+
+  // Android fires 'dismissed' on cancel and closes its own dialog; iOS keeps the
+  // inline picker open until the parent hides it, so only Android toggles here.
+  const onPickerChange = (event: DateTimePickerEvent, picked?: Date) => {
+    if (Platform.OS !== 'ios') setShowPicker(false);
+    if (event.type === 'set' && picked) setDob(toDobString(picked));
+  };
 
   async function save() {
     setSaving(true);
@@ -200,14 +235,51 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         placeholder="Maya"
         autoCapitalize="words"
       />
-      <Field
-        label="Date of birth"
-        value={dob}
-        onChangeText={setDob}
-        placeholder="YYYY-MM-DD"
-        keyboardType="numbers-and-punctuation"
-        hint="Birthday sets the stage Hale tailors to."
-      />
+      <View className="gap-1.5">
+        <AppText variant="meta" className="text-ink-2">
+          Date of birth
+        </AppText>
+        {/* The date picker is a native module (no web impl), so on the RN-web preview
+            we show the resolved date read-only. */}
+        {Platform.OS === 'web' ? (
+          <View className="min-h-11 justify-center rounded-lg border border-rule bg-canvas px-4 py-3">
+            <AppText variant="body" className="text-ink">
+              {dobLabel(dob)}
+            </AppText>
+          </View>
+        ) : (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Date of birth: ${dobLabel(dob)}. Tap to change.`}
+              accessibilityState={{ expanded: showPicker }}
+              onPress={() => setShowPicker((s) => !s)}
+              className="min-h-11 flex-row items-center justify-between rounded-lg border border-rule bg-canvas px-4 py-3 active:opacity-80"
+            >
+              <AppText variant="body" className="text-ink">
+                {dobLabel(dob)}
+              </AppText>
+              <Icon
+                name={showPicker ? 'chevron.up' : 'chevron.down'}
+                size={13}
+                color={iconColor}
+              />
+            </Pressable>
+            {showPicker ? (
+              <View className="items-center">
+                <DateTimePicker
+                  value={parseDob(dob)}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  maximumDate={new Date()}
+                  onChange={onPickerChange}
+                />
+              </View>
+            ) : null}
+          </>
+        )}
+        <AppText variant="meta">Birthday sets the stage Hale tailors to.</AppText>
+      </View>
       <FormError message={error} />
       <View className="flex-row gap-3">
         <Button label={saving ? 'Saving…' : 'Save changes'} onPress={save} className="flex-1" />
@@ -217,6 +289,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
           onPress={() => {
             setName(child.name);
             setDob(child.dateOfBirth);
+            setShowPicker(false);
             setError(null);
             setEditing(false);
           }}

@@ -1,5 +1,5 @@
 import { type Href, router } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -80,7 +80,10 @@ export default function MoreScreen() {
 
   const activate = (item: MenuItem) => {
     if (item.action === 'signOut') {
-      signOut();
+      Alert.alert('Sign out?', 'You can sign back in anytime.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: signOut },
+      ]);
       return;
     }
     if (item.href) router.push(item.href);
