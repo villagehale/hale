@@ -9,9 +9,10 @@ import { describe, expect, it } from 'vitest';
 // helper file added tomorrow that reaches for the DB fails this test without
 // anyone remembering to update it.
 //
-// Two routes are audited to legitimately hold a db handle (they reuse the exact
-// web loaders/writers that own the query building): the password sign-in and the
-// companion quick-log. They may import ~/lib/db ONLY, and must contain NO
+// Three routes are audited to legitimately hold a db handle (they reuse the exact
+// web loaders/writers that own the query building): the password sign-in, the email
+// sign-up (delegates to registerCredential + the signup side-effect dispatcher), and
+// the companion quick-log. They may import ~/lib/db ONLY, and must contain NO
 // query-building tokens themselves — the query building lives behind the shared
 // lib, never inline in the route.
 //
@@ -23,10 +24,11 @@ const MOBILE_API_DIR = fileURLToPath(new URL('../../app/api/mobile', import.meta
 // the slice below yields a clean apps/web-relative path.
 const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/, '');
 
-// The two audited db-handle users, relative to apps/web. Each may import ~/lib/db
+// The audited db-handle users, relative to apps/web. Each may import ~/lib/db
 // (nothing else DB-related) and must build no queries of its own.
 const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/auth/password/route.ts',
+  'app/api/mobile/auth/signup/route.ts',
   'app/api/mobile/companion/log/route.ts',
 ]);
 
