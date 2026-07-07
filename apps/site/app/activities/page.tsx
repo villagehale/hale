@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     url: '/activities',
-    siteName: 'Hale',
+    siteName: 'Village Hale',
     locale: 'en_CA',
   },
   twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },

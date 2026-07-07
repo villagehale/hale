@@ -75,7 +75,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: checkpoint.title,
       description: checkpoint.description,
       url: canonical,
-      siteName: 'Hale',
+      siteName: 'Village Hale',
       locale: 'en_CA',
     },
     twitter: {

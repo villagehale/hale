@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: page.title,
       description: page.description,
       url: canonical,
-      siteName: 'Hale',
+      siteName: 'Village Hale',
       locale: 'en_CA',
     },
     twitter: {
