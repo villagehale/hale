@@ -34,7 +34,7 @@ export function TopHeader() {
         </button>
         <Link href="/home" className="runninghead-brand">
           <LogoMark size={28} />
-          <span className="font-display text-2xl leading-none font-semibold">Hale</span>
+          <span className="font-display text-2xl leading-none font-semibold">Village Hale</span>
         </Link>
         {current ? <span className="eyebrow text-spruce">{current.label}</span> : null}
       </div>

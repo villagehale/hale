@@ -42,7 +42,7 @@ export default async function OpengraphImage({
               backgroundColor: '#c8622d',
             }}
           />
-          <div style={{ fontSize: 36, color: '#f6f1e7', fontWeight: 600 }}>Hale · Milestones</div>
+          <div style={{ fontSize: 36, color: '#f6f1e7', fontWeight: 600 }}>Village Hale · Milestones</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div

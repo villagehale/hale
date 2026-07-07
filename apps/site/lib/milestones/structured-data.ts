@@ -20,8 +20,8 @@ export function checkpointJsonLd(checkpoint: MilestoneCheckpoint): Record<string
         mainEntityOfPage: url,
         dateModified: checkpoint.updated,
         inLanguage: 'en-CA',
-        author: { '@type': 'Organization', name: 'Hale' },
-        publisher: { '@type': 'Organization', name: 'Hale' },
+        author: { '@type': 'Organization', name: 'Village Hale' },
+        publisher: { '@type': 'Organization', name: 'Village Hale' },
         citation: [
           {
             '@type': 'CreativeWork',

@@ -45,9 +45,9 @@ export function SiteFooter() {
     >
       <div className="grid grid-cols-1 gap-y-12 lg:grid-cols-12 lg:gap-x-16">
         <div className="lg:col-span-5">
-          <a href="/#top" className="flex items-center gap-3" aria-label="Hale, home">
+          <a href="/#top" className="flex items-center gap-3" aria-label="Village Hale, home">
             <LogoMark size={32} />
-            <span className="font-display text-xl leading-none font-semibold">Hale</span>
+            <span className="font-display text-xl leading-none font-semibold">Village Hale</span>
           </a>
           <p className="meta mt-4 max-w-xs" style={{ lineHeight: 1.55 }}>
             The trusted parent network for every stage of childhood — the village,
@@ -80,7 +80,7 @@ export function SiteFooter() {
         className="mt-16 flex flex-wrap items-center justify-between gap-4 pt-8"
         style={{ borderTop: '1px solid var(--color-rule)' }}
       >
-        <p className="meta">Hale · Toronto · Canada</p>
+        <p className="meta">Village Hale · Toronto · Canada</p>
         <p className="meta">© {new Date().getFullYear()} Village Hale Technologies Inc.</p>
       </div>
     </footer>

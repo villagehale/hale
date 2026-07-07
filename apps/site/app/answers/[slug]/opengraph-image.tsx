@@ -40,7 +40,7 @@ export default async function OpengraphImage({
               backgroundColor: '#c8622d',
             }}
           />
-          <div style={{ fontSize: 36, color: '#f6f1e7', fontWeight: 600 }}>Hale · Answers</div>
+          <div style={{ fontSize: 36, color: '#f6f1e7', fontWeight: 600 }}>Village Hale · Answers</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div

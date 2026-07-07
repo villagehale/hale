@@ -29,7 +29,7 @@ function shareMetadata(title: string, description: string): Metadata {
       type: 'article',
       title,
       description,
-      siteName: 'Hale',
+      siteName: 'Village Hale',
       locale: 'en_CA',
     },
     twitter: {
