@@ -18,6 +18,11 @@ export const CONNECTOR_SCOPES: Record<ConnectorProvider, readonly string[]> = {
   gdrive: ['https://www.googleapis.com/auth/drive.readonly'],
 };
 
+/** Narrow an arbitrary path segment to a connector provider (rejects the other integration_provider values). */
+export function isConnectorProvider(value: string): value is ConnectorProvider {
+  return value === 'gcal' || value === 'gmail' || value === 'gdrive';
+}
+
 const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 

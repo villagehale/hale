@@ -6,7 +6,9 @@ import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { ExportDataButton } from '~/components/hale/export-data-button';
 import { SharedLinks } from '~/components/hale/shared-links';
 import { DeleteAccountButton } from '~/components/hale/delete-account-button';
+import { Connectors } from '~/components/hale/connectors';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
+import { loadFamilyConnectors } from '~/lib/integrations/load';
 
 /**
  * Settings: account + app configuration, sectioned — Profile, Plan & Billing,
@@ -16,7 +18,11 @@ import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
  * sidebar or header).
  */
 export default async function SettingsPage() {
-  const [members, basics] = await Promise.all([loadFamilyMembers(), loadFamilyBasics()]);
+  const [members, basics, connectors] = await Promise.all([
+    loadFamilyMembers(),
+    loadFamilyBasics(),
+    loadFamilyConnectors(),
+  ]);
 
   return (
     <div>
@@ -72,11 +78,7 @@ export default async function SettingsPage() {
             <p className="meta mt-2">calendars, stores, and portals you choose to connect</p>
           </div>
           <div className="lg:col-span-9">
-            <p className="text-spruce leading-relaxed max-w-md">
-              Nothing is connected yet. Hale never reaches outside your family until you connect a
-              service here — and you can disconnect it just as easily.
-            </p>
-            <p className="meta mt-3">connectors are coming soon.</p>
+            <Connectors connections={connectors} />
           </div>
         </div>
       </section>
