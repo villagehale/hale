@@ -14,6 +14,7 @@ import {
   normalizeLocation,
 } from '~/lib/family/location-input';
 import { type ChildInput, type ValidatedChild, validateChild } from './children';
+import { assignFoundingNumber } from './founding';
 import { provisionAndWriteChildren } from './persist';
 import { type WelcomeDeps, sendWelcomeEmail } from './send-welcome';
 import { type DiscoveryTrigger, defaultDiscoveryTrigger } from './trigger-discovery';
@@ -192,6 +193,17 @@ export async function completeOnboarding(
 
     return { familyId, userId };
   });
+
+  // The founding ordinal (first 100 families), only for a family provisioned in
+  // THIS run. Post-commit + boundary-caught on purpose: the badge is a
+  // decoration, and a failure here must never fail (or roll back) onboarding.
+  if (!existingFamilyId) {
+    try {
+      await assignFoundingNumber(database, familyId);
+    } catch (err) {
+      console.error('founding-number assignment failed (onboarding unaffected)', err);
+    }
+  }
 
   // The one-time welcome email, fired now that the family + children exist (so it
   // can be personalized and point at a ready village). Idempotent via the send
