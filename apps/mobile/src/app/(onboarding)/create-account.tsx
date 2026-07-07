@@ -2,7 +2,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
@@ -13,7 +13,7 @@ import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { useMeadowColor } from '@/constants/meadow';
 import { useAuth } from '@/lib/auth';
-import { exchangeGoogleIdToken, signUpWithPassword } from '@/lib/auth-api';
+import { exchangeGoogleIdToken, signInWithPassword, signUpWithPassword } from '@/lib/auth-api';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -82,7 +82,7 @@ export default function CreateAccountScreen() {
     }
   };
 
-  if (sentTo) return <VerifyEmail email={sentTo} />;
+  if (sentTo) return <VerifyEmail email={sentTo} password={password} />;
 
   return (
     <KeyboardAvoidingView
@@ -145,14 +145,74 @@ export default function CreateAccountScreen() {
   );
 }
 
+// Under the auth route's 20-per-minute IP cap: a 6s poll is 10/min, leaving
+// headroom for the manual button and the resend.
+const VERIFY_POLL_MS = 6000;
+const RESEND_COOLDOWN_MS = 30_000;
+
 /**
- * The "check your email" state after an email sign-up. Verification is required, so
- * no session exists yet — the parent taps the emailed link (out of app), comes
- * back, and signs in; the saved draft is then submitted by the resume effect in the
- * root layout. From here they go to the existing sign-in screen.
+ * The "check your email" state after an email sign-up — with the dead end
+ * removed. The just-typed credentials are still in memory (never persisted), so
+ * while the parent taps the emailed link this screen quietly retries sign-in
+ * every few seconds; the moment verification lands, the session mints and the
+ * root layout's gate + resume effect carry them into the app with their saved
+ * setup. An unverified attempt is a generic 401 by design (anti-enumeration),
+ * so poll failures are silent — the credentials were accepted at sign-up
+ * seconds ago. "Resend email" re-POSTs sign-up, which re-fires the
+ * verification email for an unverified account (same anti-enumeration
+ * response). If the app is killed first, the old path still works: sign in
+ * manually, the draft resumes.
  */
-function VerifyEmail({ email }: { email: string }) {
+function VerifyEmail({ email, password }: { email: string; password: string }) {
   const accent = useMeadowColor('accentFill');
+  const { signIn } = useAuth();
+  const [checking, setChecking] = useState(false);
+  const [notYet, setNotYet] = useState(false);
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const attempting = useRef(false);
+
+  const tryVerifiedSignIn = useCallback(async (): Promise<boolean> => {
+    if (attempting.current) return false;
+    attempting.current = true;
+    try {
+      const { token } = await signInWithPassword(email, password);
+      await signIn(token);
+      return true;
+    } catch {
+      // Generic 401 — verification hasn't landed yet. Keep waiting.
+      return false;
+    } finally {
+      attempting.current = false;
+    }
+  }, [email, password, signIn]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void tryVerifiedSignIn();
+    }, VERIFY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [tryVerifiedSignIn]);
+
+  const onManualCheck = async () => {
+    setChecking(true);
+    setNotYet(false);
+    const ok = await tryVerifiedSignIn();
+    if (!ok) setNotYet(true);
+    setChecking(false);
+  };
+
+  const onResend = async () => {
+    setResendState('sending');
+    try {
+      await signUpWithPassword(email, password);
+      setResendState('sent');
+    } catch {
+      setResendState('idle');
+      return;
+    }
+    setTimeout(() => setResendState('idle'), RESEND_COOLDOWN_MS);
+  };
+
   return (
     <Screen className="justify-center gap-6">
       <View className="items-center gap-5">
@@ -164,13 +224,41 @@ function VerifyEmail({ email }: { email: string }) {
             Verify your email
           </AppText>
           <AppText variant="body" className="max-w-[320px] text-center">
-            We sent a link to {email}. Tap it to confirm your address, then come back and sign in —
-            your setup is saved and waiting.
+            We sent a link to {email}. Tap it to confirm — the moment it&rsquo;s verified,
+            you&rsquo;ll be signed in here automatically. Your setup is saved.
           </AppText>
         </View>
       </View>
       <View className="gap-3">
-        <Button label="I've verified — sign in" onPress={() => router.replace('/sign-in')} />
+        <Button
+          label={checking ? 'Checking…' : "I've tapped the link"}
+          onPress={onManualCheck}
+          disabled={checking}
+        />
+        {notYet ? (
+          <AppText
+            variant="meta"
+            className="text-center text-ink-3"
+            accessibilityLiveRegion="polite"
+          >
+            Not verified yet — tap the link in your email first. We&rsquo;ll keep checking.
+          </AppText>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Resend the verification email"
+          onPress={onResend}
+          disabled={resendState !== 'idle'}
+          className="items-center py-1 active:opacity-70"
+        >
+          <AppText variant="meta" className="text-ink-3">
+            {resendState === 'sent'
+              ? 'Sent — check your inbox'
+              : resendState === 'sending'
+                ? 'Sending…'
+                : 'Resend the email'}
+          </AppText>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Use a different email"
