@@ -1618,3 +1618,33 @@ html, body, .sidebar, .panel, .card, .field {
   margin-top: 0.4rem;
   line-height: 1.5;
 }
+
+/* ── Turtle loader — the branded wait (mirrors the mobile app-open splash):
+   the mark fades + scales in with a soft overshoot, then breathes while the
+   real work resolves. Used only where a wait is unavoidable (route loading,
+   the preview generation) — never as a gate in front of fast content. ─── */
+
+@keyframes turtle-enter {
+  0%   { opacity: 0; transform: scale(0.82); }
+  70%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes turtle-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.045); }
+}
+
+.turtle-loader-mark {
+  animation:
+    turtle-enter 620ms var(--ease-breathe) both,
+    turtle-breathe 2.8s var(--ease-breathe) 620ms infinite;
+}
+.turtle-loader-text {
+  opacity: 0;
+  animation: settle 560ms var(--ease-breathe) 360ms forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turtle-loader-mark { animation: none; }
+  .turtle-loader-text { animation: none; opacity: 1; transform: none; }
+}
