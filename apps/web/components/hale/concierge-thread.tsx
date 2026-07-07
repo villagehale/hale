@@ -11,23 +11,23 @@ import {
   type AskStatus,
   type RecentTask,
   type Turn,
-  type UseAskHale,
+  type UseConcierge,
   recentTasks,
-  useAskHale,
-} from '~/components/hale/use-ask-hale';
+  useConcierge,
+} from '~/components/hale/use-concierge';
 import { VoiceMicButton } from '~/components/hale/voice-mic-button';
 import { Button } from '~/components/ui/button';
 import type { SuggestionGroup, ThreadSeed, TimelineChild } from '~/lib/coach/thread';
 
-export type AskHaleVariant = 'compact' | 'full';
+export type ConciergeVariant = 'compact' | 'full';
 
-interface AskHaleThreadProps {
+interface ConciergeThreadProps {
   /** Whether the signed-in parent may spend (auth configured). */
   canAsk: boolean;
   /** Server-rehydrated shell — the one conversation's timeline + chips + suggestions. */
   seed: ThreadSeed;
   /** 'compact' = Home hero entry; 'full' = the /coach continuous timeline. */
-  variant: AskHaleVariant;
+  variant: ConciergeVariant;
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
   /** The family's connectors, for the /coach Context panel. Empty on the Home hero. */
@@ -38,9 +38,9 @@ interface AskHaleThreadProps {
 const DISABLED_AFFORDANCE = 'disabled:opacity-50 disabled:cursor-not-allowed';
 
 /**
- * The ONE Ask Hale conversation surface — a continuous, memory-backed companion,
+ * The ONE Concierge conversation surface — a continuous, memory-backed companion,
  * not threads. Both the Home hero (compact) and the full /coach timeline (full)
- * render through this component and the single `useAskHale` hook, so they open the
+ * render through this component and the single `useConcierge` hook, so they open the
  * SAME ongoing conversation: shared history, a round-tripped conversationId, a
  * focused-child scope, topic + search filters, auto-scroll, focus-after-send. In
  * dev preview (auth unconfigured) the composer is replaced with a sign-in notice —
@@ -50,14 +50,14 @@ const DISABLED_AFFORDANCE = 'disabled:opacity-50 disabled:cursor-not-allowed';
  * bounded line-length, message grouping (the scope chip shows once per turn), and
  * a sticky composer at the bottom so the next action is always in reach.
  */
-export function AskHaleThread({
+export function ConciergeThread({
   canAsk,
   seed,
   variant,
   initialFocusedChildId = null,
   connectors = [],
-}: AskHaleThreadProps) {
-  const chat = useAskHale(seed, initialFocusedChildId);
+}: ConciergeThreadProps) {
+  const chat = useConcierge(seed, initialFocusedChildId);
   return variant === 'compact' ? (
     <CompactSurface canAsk={canAsk} chat={chat} seed={seed} />
   ) : (
@@ -681,7 +681,7 @@ function CompactSurface({
   seed,
 }: {
   canAsk: boolean;
-  chat: UseAskHale;
+  chat: UseConcierge;
   seed: ThreadSeed;
 }) {
   const inputId = useId();
@@ -796,7 +796,7 @@ function FullSurface({
   chat,
   seed,
   connectors,
-}: { canAsk: boolean; chat: UseAskHale; seed: ThreadSeed; connectors: ConnectorChip[] }) {
+}: { canAsk: boolean; chat: UseConcierge; seed: ThreadSeed; connectors: ConnectorChip[] }) {
   const {
     turns,
     visibleTurns,

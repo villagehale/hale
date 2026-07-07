@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * POST /api/coach/delete — the auth-gated, family-scoped removal of Ask Hale
+ * POST /api/coach/delete — the auth-gated, family-scoped removal of Concierge
  * history (soft-delete, rule #6). Auth mirrors the coach route: dev-preview 501,
  * signed-out 401, no-family/no-user 403. A malformed target is 400. A target the
  * family doesn't own is 404 (the mutation returns false/null — never a cross-family

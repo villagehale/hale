@@ -25,7 +25,7 @@ import { Markdown } from '@/components/ui/markdown';
 import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
-import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
+import { type ActionIntent, type ActivityEvent, runConcierge } from '@/lib/coach-api';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
 import { useVoiceInput } from '@/lib/use-voice-input';
 
@@ -185,7 +185,7 @@ export default function AskScreen() {
     };
 
     try {
-      await askHale(
+      await runConcierge(
         { question: q, ...(conversationId.current ? { conversationId: conversationId.current } : {}) },
         {
           onStep: () => ensureTurn(),

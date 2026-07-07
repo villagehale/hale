@@ -1,7 +1,7 @@
 import { type FamilyStage, deriveStage } from '@hale/types';
 
 /**
- * Dynamic, stage-aware Ask Hale prompts — the replacement for the old static
+ * Dynamic, stage-aware Concierge prompts — the replacement for the old static
  * example chips. Each child's suggestions are derived from their `deriveStage`, so
  * the family's ONE conversation offers the right starting points for whoever the
  * parent is focused on: a toddler's parent sees "tantrums at 2?", a teen's parent

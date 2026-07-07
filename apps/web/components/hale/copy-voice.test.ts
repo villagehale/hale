@@ -28,7 +28,7 @@ const SURFACES = [
   'app/preview/intake.tsx',
   'components/hale/village-feed-section.tsx',
   'components/hale/approvals-header.tsx',
-  'components/hale/ask-hale-thread.tsx',
+  'components/hale/concierge-thread.tsx',
 ] as const;
 
 /**

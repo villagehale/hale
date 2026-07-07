@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import { Field } from '~/components/ui/field';
 import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
-import type { InputIntent, PlanLogParse, QuickLogParse } from '~/components/hale/use-ask-hale';
+import type { InputIntent, PlanLogParse, QuickLogParse } from '~/components/hale/use-concierge';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
   FEED_EPISODE,

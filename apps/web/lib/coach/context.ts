@@ -10,7 +10,7 @@ import {
 import type { TranscriptMessage } from './conversation';
 
 /**
- * Builds the family-scoped context the Ask Hale agent reasons over. Everything
+ * Builds the family-scoped context the Concierge agent reasons over. Everything
  * here is the CALLER's family only (rule #1 — never another family's data).
  *
  * Teen redaction (rule #1 / #5) is structural, not cosmetic: a 13+ child

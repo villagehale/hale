@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ActionApprovalCard } from '~/components/hale/action-approval-card';
-import type { ActionIntent } from '~/components/hale/use-ask-hale';
+import type { ActionIntent } from '~/components/hale/use-concierge';
 
 type State = 'idle' | 'pending' | 'drafted' | 'error';
 

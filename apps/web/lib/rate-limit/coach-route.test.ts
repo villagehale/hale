@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // db are stubbed (the established route-test idiom — see village/accept-route.test);
 // the limiter decision is the variable under test.
 const authMock = vi.fn();
-const askHaleMock = vi.fn();
+const runConciergeMock = vi.fn();
 const enforceRateLimitMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
@@ -16,7 +16,7 @@ vi.mock('~/lib/family', () => ({
   resolveUserIdForUser: async () => 'user-1',
 }));
 vi.mock('~/lib/coach/agent', () => ({
-  askHale: (...a: unknown[]) => askHaleMock(...a),
+  runConcierge: (...a: unknown[]) => runConciergeMock(...a),
 }));
 vi.mock('~/lib/telemetry/langfuse', () => ({ flushTelemetry: async () => {} }));
 vi.mock('~/lib/rate-limit/apply', () => ({
@@ -34,7 +34,7 @@ async function callPost() {
 }
 
 async function drain(res: Response): Promise<void> {
-  // The 200 path streams; consume it so the controller closes and askHale runs.
+  // The 200 path streams; consume it so the controller closes and runConcierge runs.
   await res.text();
 }
 
@@ -42,10 +42,10 @@ describe('POST /api/coach — rate limiting', () => {
   beforeEach(() => {
     vi.resetModules();
     authMock.mockReset();
-    askHaleMock.mockReset();
+    runConciergeMock.mockReset();
     enforceRateLimitMock.mockReset();
     authMock.mockResolvedValue({ user: { id: 'ext-1' } });
-    askHaleMock.mockResolvedValue({ conversationId: 'c1', actionIntents: [] });
+    runConciergeMock.mockResolvedValue({ conversationId: 'c1', actionIntents: [] });
     vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'gid_test');
     vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'gsecret_test');
   });
@@ -63,7 +63,7 @@ describe('POST /api/coach — rate limiting', () => {
 
     expect(res.status).toBe(429);
     expect(res.headers.get('Retry-After')).toBe('30');
-    expect(askHaleMock).not.toHaveBeenCalled();
+    expect(runConciergeMock).not.toHaveBeenCalled();
     expect(enforceRateLimitMock).toHaveBeenCalledWith('coach', 'user-1');
   });
 
@@ -74,6 +74,6 @@ describe('POST /api/coach — rate limiting', () => {
     await drain(res);
 
     expect(res.status).toBe(200);
-    expect(askHaleMock).toHaveBeenCalledOnce();
+    expect(runConciergeMock).toHaveBeenCalledOnce();
   });
 });

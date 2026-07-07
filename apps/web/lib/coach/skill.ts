@@ -17,7 +17,7 @@ const SKILL_REL = join('packages', 'agent', 'skills', 'ask-hale.md');
 
 let cached: Skill | undefined;
 
-export async function loadAskHaleSkill(): Promise<Skill> {
+export async function loadConciergeSkill(): Promise<Skill> {
   cached ??= await loadSkill(resolveRepoFile(SKILL_REL));
   return cached;
 }

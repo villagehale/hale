@@ -122,7 +122,7 @@ export const AUDIT_VERBS = [
   // ── web rights (PIPEDA) ─────────────────────────────────────────────────
   'data_exported',
   'account_deletion_scheduled',
-  // ── web coach (Ask Hale) ────────────────────────────────────────────────
+  // ── web coach (Concierge) ───────────────────────────────────────────────
   'ask_hale.action_drafted',
   'coach_turn_deleted',
   'coach_conversation_erased',

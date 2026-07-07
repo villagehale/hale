@@ -26,7 +26,7 @@ export function analyticsEnabled(): boolean {
  *        address) — so anything a parent TYPES records as masked.
  *      · maskTextSelector masks the rendered TEXT inside any element tagged
  *        `[data-hale-pii]` — child names, ages, the health/feed/nap/milestone
- *        timeline, and Ask Hale chat content are tagged at the render sites, so
+ *        timeline, and Concierge chat content are tagged at the render sites, so
  *        the DOM replay keeps layout/labels/buttons while the PII reads as
  *        masked.
  *  - capture_exceptions ON — unhandled errors + promise rejections are captured

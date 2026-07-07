@@ -3,7 +3,7 @@ import type { ThreadSeed } from '~/lib/coach/thread';
 import { AskBox } from './ask-box';
 import { ConciergeAsk } from './concierge-ask';
 
-// The Ask Hale tree reaches the input-intent widget, which calls the
+// The Concierge tree reaches the input-intent widget, which calls the
 // logQuickEpisode 'use server' action. Stub the action module so this markup-only
 // test doesn't pull the server/auth graph (next-auth → next/server) through it.
 vi.mock('~/lib/companion/log', () => ({
@@ -15,9 +15,9 @@ vi.mock('~/lib/plan/plan-actions', () => ({
 }));
 
 /**
- * Ask Hale stays present as the village CONCIERGE — not the hero. The concierge
+ * The Concierge stays present as the village CONCIERGE — not the hero. The concierge
  * wrapper must keep the ask box WORKING: it forwards canAsk + seed unchanged to
- * the same shared AskBox (→ AskHaleThread → useAskHale → /api/coach), so the
+ * the same shared AskBox (→ ConciergeThread → useConcierge → /api/coach), so the
  * concierge thread is the same continuous, memory-backed conversation, only
  * reframed. We assert the wrapper renders that AskBox with the props intact and
  * carries the concierge framing — without deep-rendering the client thread (which
@@ -31,7 +31,7 @@ const SEED: ThreadSeed = {
   suggestions: [],
 };
 
-describe('ConciergeAsk — Ask Hale present as the concierge', () => {
+describe('ConciergeAsk — the Concierge present as the village entry', () => {
   it('forwards canAsk + seed to the shared AskBox unchanged (the ask box still works)', () => {
     const el = ConciergeAsk({ canAsk: true, seed: SEED });
     // Find the AskBox element anywhere in the rendered tree.
@@ -40,7 +40,7 @@ describe('ConciergeAsk — Ask Hale present as the concierge', () => {
     expect(found?.props).toMatchObject({ canAsk: true, seed: SEED });
   });
 
-  it('frames Ask Hale as the concierge (refine your feed), not the page hero', () => {
+  it('frames the Concierge as the village entry (refine your feed), not the page hero', () => {
     const serialized = JSON.stringify(ConciergeAsk({ canAsk: true, seed: SEED }));
     expect(serialized).toContain('your concierge');
     expect(serialized).toContain('refine your feed');

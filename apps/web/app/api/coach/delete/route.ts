@@ -17,7 +17,7 @@ const bodySchema = z.union([
 ]);
 
 /**
- * POST /api/coach/delete — a parent removes their own Ask Hale history: one turn
+ * POST /api/coach/delete — a parent removes their own Concierge history: one turn
  * (`messageId`) or the whole conversation (`conversationId`). Both are SOFT deletes
  * (stamp deleted_at) so the audit row survives (rule #6). Auth mirrors the coach
  * route (rule #1): dev preview → 501, signed out → 401, no family/user → 403. The

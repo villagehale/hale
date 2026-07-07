@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ThreadSeed } from '~/lib/coach/thread';
-import { AskHaleThread } from './ask-hale-thread';
+import { ConciergeThread } from './concierge-thread';
 import type { ConnectorChip } from './coach-context-panel';
 
 // The input-intent widget (reachable from the thread) calls the logQuickEpisode
@@ -17,14 +17,14 @@ vi.mock('~/lib/plan/plan-actions', () => ({
 }));
 
 /**
- * The /coach Ask Hale surface — a contained chat. These tests render to static
+ * The /coach Concierge surface — a contained chat. These tests render to static
  * HTML (the repo's render idiom — no jsdom, no LLM call). They guard the chat
  * structure that can regress silently in markup:
  *  - the composer is a reachable, labelled input pinned at the surface foot (a
  *    solid canvas bar, not a floating overlay);
  *  - search is a secondary toggled affordance, not a box stacked above the chat;
  *  - each turn renders in the transcript.
- * The search→timeline *filtering* logic itself is unit-tested in use-ask-hale.test.
+ * The search→timeline *filtering* logic itself is unit-tested in use-concierge.test.
  */
 
 function seed(timeline: ThreadSeed['timeline']): ThreadSeed {
@@ -51,11 +51,11 @@ function msg(
 
 function render(s: ThreadSeed, connectors: ConnectorChip[] = []): string {
   return renderToStaticMarkup(
-    createElement(AskHaleThread, { canAsk: true, seed: s, variant: 'full', connectors }),
+    createElement(ConciergeThread, { canAsk: true, seed: s, variant: 'full', connectors }),
   );
 }
 
-describe('AskHaleThread — full surface', () => {
+describe('ConciergeThread — full surface', () => {
   it('renders the composer with a reachable, labelled input pinned at the foot', () => {
     const html = render(seed([]));
 

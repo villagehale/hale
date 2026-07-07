@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TrailView } from './mappers';
 
 /**
- * The Ask Hale agent writes an audit_log row per guarded tool call
+ * The Concierge agent writes an audit_log row per guarded tool call
  * (action_taken = `tool:<name>`, see packages/agent/src/tool.ts). Those rows are
  * internal SUB-STEPS of an Ask, not parent-facing actions: they must NOT reach the
  * /trail timeline (they'd render as meaningless "recorded an action" rows and leak

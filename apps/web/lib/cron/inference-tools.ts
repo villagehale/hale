@@ -333,7 +333,7 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
   const readRecentConversations = defineTool({
     name: 'read_recent_conversations',
     description:
-      "Read THIS family's recent Ask Hale conversation turns (the last two weeks). A 13+ child's turns are already reduced to category/summary — raw teen content is never shown (rule #1). Use these to distill durable, per-child facts.",
+      "Read THIS family's recent Concierge conversation turns (the last two weeks). A 13+ child's turns are already reduced to category/summary — raw teen content is never shown (rule #1). Use these to distill durable, per-child facts.",
     inputSchema: z.object({}),
     handler: async (_input, ctx) => {
       const since = new Date(now.getTime() - CONVERSATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);

@@ -13,7 +13,7 @@ import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
 
 /**
- * The Ask Hale agent's tools — every one family-scoped (rule #1: a handler reads
+ * The Concierge agent's tools — every one family-scoped (rule #1: a handler reads
  * only `ctx.familyId`'s rows, never another family's). The guarded invoker writes
  * the audit row for each call (rule #6) and runs the teen-content check before
  * `get_child_profile`'s handler (rule #1/#5), so the rails are enforced no matter
@@ -71,7 +71,7 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
-export function buildAskHaleTools(database: Database): RegisteredTool[] {
+export function buildConciergeTools(database: Database): RegisteredTool[] {
   const getChildProfile = defineTool({
     name: 'get_child_profile',
     description:

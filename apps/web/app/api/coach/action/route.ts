@@ -24,7 +24,7 @@ const bodySchema = z.object({
 });
 
 /**
- * POST /api/coach/action — a parent tapping a gated action chip in Ask Hale.
+ * POST /api/coach/action — a parent tapping a gated action chip in the Concierge.
  *
  * This NEVER executes (rule #4): it routes the intent through the existing approval
  * engine, producing a draft HELD at drafted_for_approval that the parent must

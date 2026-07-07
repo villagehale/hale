@@ -3,7 +3,7 @@ import { schema, type Database } from '@hale/db';
 import { loadLatestThread, resolveLatestConversationForFamily } from './conversation';
 
 /**
- * Rehydration path for Ask Hale: on page load the family's most recent thread is
+ * Rehydration path for the Concierge: on page load the family's most recent thread is
  * resolved and its messages replayed, so visible history survives a refresh. The
  * read is family-scoped (rule #1) — a thread is only ever resolved for its owning
  * family. A fake db serves the rows; no real infrastructure is touched.

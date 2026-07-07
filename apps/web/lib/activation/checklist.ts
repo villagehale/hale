@@ -10,7 +10,7 @@
 export interface ActivationSignals {
   /** How many village candidates this family has accepted into their week. */
   acceptedCandidateCount: number;
-  /** Whether the one Ask Hale thread holds any message the parent sent. */
+  /** Whether the one Concierge thread holds any message the parent sent. */
   hasUserCoachMessage: boolean;
   /** Whether a co-parent has joined the household. */
   hasCoParent: boolean;

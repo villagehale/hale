@@ -4,7 +4,7 @@ import type { GuardDeps, GuardResult, MonetaryCost } from '@hale/agent';
 import { deriveStage, DEFAULT_SAFETY_POLICY } from '@hale/types';
 
 /**
- * The REAL GuardDeps for the Ask Hale agent — the hard rules wired to Postgres.
+ * The REAL GuardDeps for the Concierge agent — the hard rules wired to Postgres.
  * The harness runs these BEFORE any tool handler, so the safety rails are
  * rule-enforced, never agent-chosen (see packages/agent/src/tool.ts).
  *

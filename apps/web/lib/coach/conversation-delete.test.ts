@@ -3,7 +3,7 @@ import type { Database } from '@hale/db';
 import { eraseConversation, softDeleteMessage } from './conversation-delete';
 
 /**
- * Deleting Ask Hale history is family-scoped + audited (rules #1, #6) and SOFT:
+ * Deleting Concierge history is family-scoped + audited (rules #1, #6) and SOFT:
  * it stamps deleted_at rather than issuing a DELETE, so the audit row that
  * references the turn survives (right-to-access). These tests drive the fake tx
  * through both paths — a turn the family owns (stamped + audited) and one it does

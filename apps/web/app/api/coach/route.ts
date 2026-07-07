@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
-import { askHale } from '~/lib/coach/agent';
+import { runConcierge } from '~/lib/coach/agent';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
@@ -23,7 +23,7 @@ const bodySchema = z.object({
 });
 
 /**
- * POST /api/coach — a signed-in parent asking Ask Hale, now a stateful agent.
+ * POST /api/coach — a signed-in parent asking the Concierge, now a stateful agent.
  *
  * Auth is the spend gate. When auth is unconfigured (dev preview) we refuse with
  * 501 and NEVER run the agent — no spend, no guessing a family. Signed-out → 401.
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       const send = (event: unknown) =>
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       try {
-        const { conversationId, actionIntents } = await askHale(
+        const { conversationId, actionIntents } = await runConcierge(
           {
             familyId,
             question: parsed.data.question,

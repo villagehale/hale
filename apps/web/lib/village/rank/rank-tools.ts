@@ -22,7 +22,7 @@ import { visibleCandidates } from '~/lib/village/visibility';
  * un-endorsed candidate vs a weakly-fitting, well-endorsed one is a call, not a
  * formula). The tools only expose the SIGNALS; the model decides the ranking.
  *
- * Teen safety (rule #1) is BY CONSTRUCTION, mirroring the Ask Hale tools: these
+ * Teen safety (rule #1) is BY CONSTRUCTION, mirroring the Concierge tools: these
  * reads don't name a child, so the guard's child-content gate can't reach them.
  * Instead each resolves the family's teen child ids LIVE from DOB and redacts a
  * teen-attributed candidate to category-only at the source (via the shared
@@ -34,7 +34,7 @@ const CANDIDATE_LIMIT = 40;
 
 /** The family's children currently in the teenager stage, derived LIVE from DOB
  * (never stored) — the source-side teen filter shared by these child-naming-less
- * reads, identical to the Ask Hale tools' helper. */
+ * reads, identical to the Concierge tools' helper. */
 async function teenChildIdsForFamily(
   database: Database,
   familyId: string,

@@ -10,7 +10,7 @@ import {
 import { TOKEN_KEY, tokenStorage } from './token-storage';
 
 /**
- * Ask Hale over POST /api/coach — a TRULY streaming transport. Expo SDK 56's
+ * The Concierge over POST /api/coach — a TRULY streaming transport. Expo SDK 56's
  * `expo/fetch` exposes a readable response body (native didReceiveResponseData →
  * ReadableStream), which RN's built-in fetch does not; we read it with
  * response.body.getReader(), decode each chunk, split the newline-delimited events
@@ -37,7 +37,7 @@ export interface CoachStreamHandlers {
   onDone?: (conversationId: string) => void;
 }
 
-export interface AskHaleRequest {
+export interface ConciergeRequest {
   question: string;
   conversationId?: string;
   intent?: string;
@@ -76,7 +76,7 @@ function dispatch(event: CoachEvent, handlers: CoachStreamHandlers): boolean {
  * an ApiError on a transport/auth/rate-limit failure or a mid-stream `error` event,
  * so the screen shows its retry state rather than a half-finished bubble.
  */
-export async function askHale(req: AskHaleRequest, handlers: CoachStreamHandlers): Promise<void> {
+export async function runConcierge(req: ConciergeRequest, handlers: CoachStreamHandlers): Promise<void> {
   if (!API_BASE) throw new ApiError(0, 'API base URL is not configured.');
 
   const token = await tokenStorage.get(TOKEN_KEY);

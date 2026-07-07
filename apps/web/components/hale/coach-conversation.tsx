@@ -1,10 +1,10 @@
-import { AskHaleThread } from '~/components/hale/ask-hale-thread';
+import { ConciergeThread } from '~/components/hale/concierge-thread';
 import type { ConnectorChip } from '~/components/hale/coach-context-panel';
 import type { ThreadSeed } from '~/lib/coach/thread';
 
 /**
- * The full /coach Ask Hale thread — the editorial surface of the ONE shared
- * conversation component (`AskHaleThread`). It shares state, rehydrated history,
+ * The full /coach Concierge thread — the editorial surface of the ONE shared
+ * conversation component (`ConciergeThread`). It shares state, rehydrated history,
  * the running conversationId, auto-scroll, and focus-after-send with the Home
  * hero; only the layout differs. The Cowork layout also carries the family's
  * connectors for its Context panel.
@@ -23,7 +23,7 @@ export function CoachConversation({
   initialFocusedChildId?: string | null;
 }) {
   return (
-    <AskHaleThread
+    <ConciergeThread
       canAsk={canAsk}
       seed={seed}
       variant="full"

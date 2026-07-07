@@ -5,7 +5,7 @@ import { resolveRepoFile } from '~/lib/coach/resolve-repo-file';
 /**
  * Loads a SKILL — an agent's system instructions — from the single source of
  * truth in `packages/agent/skills/<name>.md` (rule #2: prompts by reference,
- * never inline). Same repo-root resolution as the coach's loadAskHaleSkill: a
+ * never inline). Same repo-root resolution as the coach's loadConciergeSkill: a
  * Next serverless bundle relocates the package-relative skills dir, so we resolve
  * the absolute path (next.config.ts ships the skill files via
  * outputFileTracingIncludes) and hand it to loadSkill. Cached per skill name.

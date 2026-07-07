@@ -4,13 +4,13 @@ import { Icon } from '~/components/ui/icon';
 import type { ThreadSeed } from '~/lib/coach/thread';
 
 /**
- * Ask Hale as the village CONCIERGE — present, not the hero. The agent-ranked
- * village feed leads the home/primary surface; this is the calm entry below it
- * where a parent asks Hale to refine what their village shows them (or ask
- * anything). It reuses the one shared Ask Hale conversation (AskBox →
- * AskHaleThread compact) so the thread is the same continuous, memory-backed
+ * The Concierge as the village CONCIERGE entry — present, not the hero. The
+ * agent-ranked village feed leads the home/primary surface; this is the calm entry
+ * below it where a parent asks the concierge to refine what their village shows them
+ * (or ask anything). It reuses the one shared Concierge conversation (AskBox →
+ * ConciergeThread compact) so the thread is the same continuous, memory-backed
  * conversation as /coach — only the framing differs: a quiet panel that names its
- * job ("ask Hale to refine your feed") rather than a full-bleed headline.
+ * job ("ask your concierge to refine your feed") rather than a full-bleed headline.
  */
 export function ConciergeAsk({ canAsk, seed }: { canAsk: boolean; seed: ThreadSeed }) {
   return (

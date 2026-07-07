@@ -6,7 +6,7 @@ import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { type ActorResolver, type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**
- * A `tool:<name>` audit row is an Ask Hale agent tool-call SUB-STEP (written by
+ * A `tool:<name>` audit row is a Concierge agent tool-call SUB-STEP (written by
  * packages/agent), not a parent-facing action. It must never reach the trail —
  * neither the timeline nor the tally. Excluded in the query (below) so the row
  * window stays meaningful; this predicate is the shared definition.
@@ -130,7 +130,7 @@ export async function loadTrailForFamily(
     )
     .leftJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
     .leftJoin(schema.children, eq(schema.events.childId, schema.children.id))
-    // Exclude the Ask Hale agent's internal tool-call sub-steps (action_taken
+    // Exclude the Concierge agent's internal tool-call sub-steps (action_taken
     // `tool:<name>`, see packages/agent): they're not parent-facing actions, so they
     // must neither render on the timeline nor inflate the tally. Filtered in the
     // query so the 50-row window stays 50 MEANINGFUL rows (both callers — History

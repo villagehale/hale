@@ -1,7 +1,7 @@
 import type { ActionType } from '@hale/types';
 
 /**
- * Inline gated actions — the Hale thesis. When an Ask Hale answer IMPLIES a real
+ * Inline gated actions — the Hale thesis. When a Concierge answer IMPLIES a real
  * action, the UI offers a chip that routes through the EXISTING approval engine
  * (draft held for approval, never auto-executed — rule #4) and writes an audit row
  * (rule #6). This module is the small, closed detector: it maps an answer to at

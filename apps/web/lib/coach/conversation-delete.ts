@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 
 /**
- * Deletion of Ask Hale history, family-scoped + audited (rules #1, #6). A parent
+ * Deletion of Concierge history, family-scoped + audited (rules #1, #6). A parent
  * may remove a SINGLE turn or ERASE the whole conversation from /coach. Both are
  * SOFT deletes — stamp `deleted_at`, never a hard DELETE — so the audit row that
  * references the turn stays intact (rule #6, PIPEDA right-to-access), matching the

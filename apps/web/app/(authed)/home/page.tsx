@@ -125,7 +125,7 @@ export default async function HomePage() {
         </Suspense>
       </section>
 
-      {/* ── Ask Hale — the concierge (present, not the hero) ─────────────── */}
+      {/* ── Concierge (present, not the hero) ─────────────────────────────── */}
       <section className="rise rise-3 mb-16 lg:mb-20">
         <ConciergeAsk canAsk={canAsk} seed={askSeed} />
       </section>

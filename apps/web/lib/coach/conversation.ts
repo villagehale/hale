@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 
 /**
- * Conversation persistence for multi-turn Ask Hale. A conversation is a
+ * Conversation persistence for the multi-turn Concierge. A conversation is a
  * family-scoped thread; its messages are the running transcript the agent
  * re-reads each turn. Every read is keyed on (id AND family_id) so a caller can
  * never load — or append to — another family's thread (rule #1, family-scoped).
@@ -93,7 +93,7 @@ export async function resolveLatestConversationForFamily(
 
 /**
  * Loads the family's one continuous conversation with its full timeline, or null
- * when there is nothing to rehydrate. The single read path the Ask Hale shell uses
+ * when there is nothing to rehydrate. The single read path the Concierge shell uses
  * on load so the same conversation the agent persisted re-appears after a refresh.
  */
 export async function loadLatestThread(

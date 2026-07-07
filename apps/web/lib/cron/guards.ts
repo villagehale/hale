@@ -4,7 +4,7 @@ import { buildGuardDeps } from '~/lib/coach/guards';
 
 /**
  * GuardDeps for the SCHEDULED (cron) agents. The safety rails are identical to
- * the interactive Ask Hale agent's — the harness runs them BEFORE any tool
+ * the interactive Concierge agent's — the harness runs them BEFORE any tool
  * handler, so a passive run can no more skip the cap / audit / teen-redaction
  * than a parent's question can:
  *

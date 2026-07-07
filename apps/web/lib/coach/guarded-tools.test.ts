@@ -3,7 +3,7 @@ import { GuardrailError, defineTool, invokeTool } from '@hale/agent';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildGuardDeps } from './guards';
-import { buildAskHaleTools } from './tools';
+import { buildConciergeTools } from './tools';
 
 /**
  * The guard rails + family-scoping, exercised through the REAL GuardDeps and the
@@ -101,7 +101,7 @@ function fakeDb(state: FakeDbState): Database {
 }
 
 function toolByName(db: Database, name: string) {
-  const tool = buildAskHaleTools(db).find((t) => t.name === name);
+  const tool = buildConciergeTools(db).find((t) => t.name === name);
   if (!tool) throw new Error(`no tool ${name}`);
   return tool;
 }
@@ -110,7 +110,7 @@ function emptyState(): FakeDbState {
   return { childrenResults: [], facts: [], episodes: [], audits: [], insertedFacts: [] };
 }
 
-describe('Ask Hale guard rails + family scoping', () => {
+describe('Concierge guard rails + family scoping', () => {
   it('writes an audit row for every tool call (rule #6)', async () => {
     const state = emptyState();
     // The teen guard's children lookup, then the handler's children lookup.

@@ -174,7 +174,7 @@ export function recentTasks(turns: Turn[]): RecentTask[] {
   return tasks.reverse();
 }
 
-export interface UseAskHale {
+export interface UseConcierge {
   /** Every turn (unfiltered) — the full relationship history. */
   turns: Turn[];
   /** Turns after the active child + topic + search filters. */
@@ -210,17 +210,17 @@ export interface UseAskHale {
 }
 
 /**
- * Single source of Ask Hale state for the continuous-companion shell. Seeded from
+ * Single source of Concierge state for the continuous-companion shell. Seeded from
  * the server-rehydrated timeline (so the one ongoing conversation survives a
  * refresh), it owns the running conversationId, the focused child, the topic +
  * search filters, auto-scrolls to the newest turn, and restores focus to the input
  * after each send. Filtering is derived, not stored, so the full history is always
  * intact behind any filter.
  */
-export function useAskHale(
+export function useConcierge(
   seed: ThreadSeed,
   initialFocusedChildId: string | null = null,
-): UseAskHale {
+): UseConcierge {
   const [turns, setTurns] = useState<Turn[]>(() => seedTurns(seed));
   const [conversationId, setConversationId] = useState<string | null>(seed.conversationId);
   const [draft, setDraft] = useState('');

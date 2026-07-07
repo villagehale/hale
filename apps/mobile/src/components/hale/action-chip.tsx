@@ -18,7 +18,7 @@ import { TOKEN_KEY, tokenStorage } from '@/lib/token-storage';
  * Rule #1: the chip renders ONLY the already-safe intent `label` — never the
  * drafted payload or raw content. The copy is honest: "drafting…" while in flight,
  * a retryable error on failure (never silent — CLAUDE.md #8), and only a 401
- * returns silently (the client bounces to sign-in, mirroring askHale).
+ * returns silently (the client bounces to sign-in, mirroring runConcierge).
  */
 
 type State = 'idle' | 'drafting' | 'error';

@@ -1,12 +1,12 @@
 import { type GuardDeps, invokeTool } from '@hale/agent';
 import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildAskHaleTools } from './tools';
+import { buildConciergeTools } from './tools';
 
 /**
  * search_village must recall only the CURRENT, in-season, unexpired discovery run:
  * a superseded/replaced pick, a past one-time event, and an out-of-season seasonal
- * activity must never surface to Ask Hale (they'd otherwise send a parent to a
+ * activity must never surface to the Concierge (they'd otherwise send a parent to a
  * class that already happened or a camp that isn't running).
  */
 
@@ -35,7 +35,7 @@ function fakeDb(candidates: Array<Record<string, unknown>>) {
 }
 
 function toolByName(database: import('@hale/db').Database, name: string) {
-  const tool = buildAskHaleTools(database).find((t) => t.name === name);
+  const tool = buildConciergeTools(database).find((t) => t.name === name);
   if (!tool) throw new Error(`no tool ${name}`);
   return tool;
 }

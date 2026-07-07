@@ -3,7 +3,7 @@ import { recordAgentRun } from '~/lib/agent-run';
 import type { CoachRunMetrics } from './coach';
 
 /**
- * Records the Ask Hale Q&A call as a standalone agent_runs row for cost tracking.
+ * Records the Concierge Q&A call as a standalone agent_runs row for cost tracking.
  * The coach answer is read-style (it mutates no family domain state and is not an
  * `actions` pipeline row), so — like the worker's standalone recordAgentRun path —
  * it writes an agent_runs row without an audit_log transition; agent_runs already

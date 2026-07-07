@@ -21,7 +21,7 @@ import { TOKEN_KEY, tokenStorage } from '@/lib/token-storage';
  * directly. Honest copy: on approve it settles to "Approved" (queued for the drain),
  * NEVER "Done"/"Logged"/"Scheduled". Errors are surfaced and retryable, never
  * silent (CLAUDE.md #8); only a 401 returns silently (the client bounces to
- * sign-in, mirroring askHale).
+ * sign-in, mirroring runConcierge).
  */
 
 type Status = 'idle' | 'approving' | 'declining' | 'approved' | 'dismissed' | 'error';

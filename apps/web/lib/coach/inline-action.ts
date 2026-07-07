@@ -8,7 +8,7 @@ import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
 
 /**
- * Routes an inline Ask Hale action intent through the EXISTING approval engine: it
+ * Routes an inline Concierge action intent through the EXISTING approval engine: it
  * mints a synthetic `ask_hale` event, drafts an action HELD at
  * drafted_for_approval, then runs the reviewer (rule #3) and persists its verdict.
  * It never executes (rule #4) — execution stays the parent's separate

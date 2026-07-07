@@ -4,7 +4,7 @@ import { families } from './families.js';
 import { children } from './children.js';
 
 /**
- * Multi-turn Ask Hale threads. A conversation is a family-scoped container; its
+ * Multi-turn Concierge threads. A conversation is a family-scoped container; its
  * messages are the running transcript the agent re-reads to keep context across
  * turns. Family-scoped (rule #1: a thread belongs to exactly one family — its
  * messages are never visible to another). The transcript carries only what the

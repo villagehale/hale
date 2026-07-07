@@ -45,7 +45,7 @@ const EMPTY_SEED: ThreadSeed = {
 };
 
 /**
- * Server-side rehydration for the Ask Hale shell. Resolves the current request's
+ * Server-side rehydration for the Concierge shell. Resolves the current request's
  * family (rule #1 — never another family's thread; fails closed to the empty seed
  * when no family), then loads its one continuous conversation plus the family's
  * children and stage-aware suggestions. Returns the empty seed (never null) so

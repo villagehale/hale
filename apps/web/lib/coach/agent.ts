@@ -20,12 +20,12 @@ import {
 } from './conversation';
 import { buildGuardDeps } from './guards';
 import { recordCoachRun } from './record-run';
-import { loadAskHaleSkill } from './skill';
-import { buildAskHaleTools } from './tools';
+import { loadConciergeSkill } from './skill';
+import { buildConciergeTools } from './tools';
 import { tagTopic } from './topic';
 
 /**
- * Ask Hale on the @hale/agent harness — multi-turn, memory-backed, fully
+ * The Concierge on the @hale/agent harness — multi-turn, memory-backed, fully
  * family-scoped. This REPLACES the old single Anthropic call (coach.ts).
  *
  * The flow: resolve (or open) the family's conversation, load its transcript,
@@ -46,7 +46,7 @@ const MAX_TOKENS = 1024;
 const SONNET_RATE = { inputPerMTok: 3, outputPerMTok: 15 } as const;
 const PER_MTOK = 1_000_000;
 
-export interface AskHaleInput {
+export interface ConciergeInput {
   familyId: string;
   question: string;
   intent: string | null;
@@ -58,7 +58,7 @@ export interface AskHaleInput {
   actor: string;
 }
 
-export interface AskHaleResult {
+export interface ConciergeResult {
   answer: string;
   conversationId: string;
   /** Gated action chips the answer implied — drafts, never auto-executed (rule #4). */
@@ -67,7 +67,7 @@ export interface AskHaleResult {
 }
 
 /**
- * Optional streaming hooks. When passed, askHale runs the STREAMING agent loop and
+ * Optional streaming hooks. When passed, runConcierge runs the STREAMING agent loop and
  * forwards the final answer's text token-by-token via `onTextDelta`; `onTurnReset`
  * fires when an intermediate (tool-calling) turn streamed text that is NOT the
  * answer, so the consumer drops it. Absent → the original non-streaming loop. The
@@ -79,7 +79,7 @@ export interface AskHaleResult {
  * rule #1). They are forwarded verbatim from the agent harness, which guarantees
  * no raw args or tool output ever reach them.
  */
-export interface AskHaleStreamHooks {
+export interface ConciergeStreamHooks {
   onTextDelta: (delta: string) => void;
   onTurnReset: () => void;
   onStep?: (step: number) => void;
@@ -98,12 +98,12 @@ function anthropicClient(): AgentClient {
   return defaultClient;
 }
 
-export async function askHale(
-  input: AskHaleInput,
+export async function runConcierge(
+  input: ConciergeInput,
   database: Database,
   client: AgentClient = anthropicClient(),
-  streamHooks?: AskHaleStreamHooks,
-): Promise<AskHaleResult> {
+  streamHooks?: ConciergeStreamHooks,
+): Promise<ConciergeResult> {
   // Continue the caller's thread only if it exists AND belongs to their family
   // (rule #1); an unknown or cross-family id is not an error — it starts a fresh
   // thread rather than leaking into another family's conversation.
@@ -131,8 +131,8 @@ export async function askHale(
     database,
   );
 
-  const skill = await loadAskHaleSkill();
-  const tools = buildAskHaleTools(database);
+  const skill = await loadConciergeSkill();
+  const tools = buildConciergeTools(database);
   const guardDeps = buildGuardDeps(database);
   const modelUsed = pickModel(skill.meta.task);
 
@@ -182,8 +182,8 @@ export async function askHale(
         await recordCoachRun(input.familyId, metrics, database, 'failed', trace.traceId);
         throw new Error(
           result.hitMaxSteps
-            ? 'askHale: agent hit maxSteps without an answer'
-            : 'askHale: agent returned no answer',
+            ? 'runConcierge: agent hit maxSteps without an answer'
+            : 'runConcierge: agent returned no answer',
         );
       }
 

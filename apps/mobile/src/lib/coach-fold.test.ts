@@ -21,7 +21,7 @@ describe('humanizeTool', () => {
 });
 
 /**
- * The batched NDJSON fold. RN's fetch has no readable body, so askHale() reads the
+ * The batched NDJSON fold. RN's fetch has no readable body, so runConcierge() reads the
  * whole response text and folds the newline-delimited events post-hoc. This tests
  * the pure fold in isolation: the final answer (delta concat, cleared by reset,
  * ended by done) AND the activity trail (tool_result events → name/ok/preview).

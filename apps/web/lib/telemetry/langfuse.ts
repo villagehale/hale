@@ -47,7 +47,7 @@ export type AgentTraceName =
 
 export interface AgentTraceContext {
   name: AgentTraceName;
-  /** Groups multi-turn runs (Ask Hale conversation); omit for one-shot paths. */
+  /** Groups multi-turn runs (Concierge conversation); omit for one-shot paths. */
   sessionId?: string;
   /** The acting parent's user id; 'system' for scheduled runs. */
   userId?: string;

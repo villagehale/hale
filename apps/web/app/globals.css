@@ -784,7 +784,7 @@ strong { font-weight: 700; }
   background: var(--color-linen);
 }
 
-/* Ask Hale is a contained chat: the transcript scrolls inside its own region while
+/* The Concierge is a contained chat: the transcript scrolls inside its own region while
  * the composer stays pinned to the surface foot. So the STAGE itself must not
  * scroll — it becomes a flex column that hands the remaining height to the surface
  * (`.coach-surface { flex:1; min-height:0 }`). Zero the bottom pad so the composer
@@ -1093,7 +1093,7 @@ strong { font-weight: 700; }
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
 
-/* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
+/* ── Concierge chat (the /coach transcript + composer) ─────────────────── *
  * The conversation is the hero: the parent's turns ride right in a warm apricot
  * bubble, Hale's answers sit left in an oat card. The composer is one rounded row
  * with the send affordance tucked at its trailing edge — a real chat input. */

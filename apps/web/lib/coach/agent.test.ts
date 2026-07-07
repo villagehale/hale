@@ -2,10 +2,10 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { askHale } from './agent';
+import { runConcierge } from './agent';
 
 /**
- * askHale orchestration mechanics with a FAKE Anthropic client (rule #8: the fake
+ * runConcierge orchestration mechanics with a FAKE Anthropic client (rule #8: the fake
  * drives the loop plumbing, never stands in for agent quality — that's an eval).
  *
  * We assert the multi-turn + persistence contract: a new conversation is opened,
@@ -49,7 +49,7 @@ function fakeClient(text: string): AgentClient {
 
 /**
  * A fake streaming client: one text turn, emitted as one text_delta per chunk, with
- * `finalMessage()` resolving the assembled answer. Drives askHale's streaming path's
+ * `finalMessage()` resolving the assembled answer. Drives runConcierge's streaming path's
  * plumbing only (rule #8) — never the model's reasoning.
  */
 function fakeStreamingClient(chunks: string[]): AgentClient {
@@ -79,7 +79,7 @@ interface InsertCapture {
 }
 
 /**
- * A fake Database for the askHale flow. Inserts into conversations return a fixed
+ * A fake Database for the runConcierge flow. Inserts into conversations return a fixed
  * id; messages inserts are captured in order. Reads serve a minimal family with
  * no children / no memory, so the context assembles without touching real rows.
  * `existingConversationId` (when set) makes the conversation-resolve read return
@@ -143,12 +143,12 @@ function fakeDb(capture: InsertCapture, existingConversationId?: string): Databa
   return db as unknown as Database;
 }
 
-describe('askHale — multi-turn persistence + conversationId', () => {
+describe('runConcierge — multi-turn persistence + conversationId', () => {
   it('opens a conversation, persists the question and answer, and returns the conversationId', async () => {
     const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
     const db = fakeDb(capture);
 
-    const result = await askHale(
+    const result = await runConcierge(
       {
         familyId: FAMILY_ID,
         question: 'when do I start solids?',
@@ -212,7 +212,7 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     } as unknown as AgentClient;
 
     await expect(
-      askHale(
+      runConcierge(
         {
           familyId: FAMILY_ID,
           question: 'anything?',
@@ -245,7 +245,7 @@ describe('askHale — multi-turn persistence + conversationId', () => {
     const deltas: string[] = [];
     let resets = 0;
 
-    const result = await askHale(
+    const result = await runConcierge(
       {
         familyId: FAMILY_ID,
         question: 'when do solids start?',
@@ -287,10 +287,10 @@ describe('askHale — multi-turn persistence + conversationId', () => {
   it('continues an existing thread when the conversation belongs to the family', async () => {
     const capture: InsertCapture = { conversations: [], messages: [], agentRuns: [] };
     // The conversation-resolve read returns the existing thread (it is owned by
-    // this family), so askHale reuses it instead of opening a new one.
+    // this family), so runConcierge reuses it instead of opening a new one.
     const db = fakeDb(capture, CONVERSATION_ID);
 
-    const result = await askHale(
+    const result = await runConcierge(
       {
         familyId: FAMILY_ID,
         question: 'and what about allergens?',
