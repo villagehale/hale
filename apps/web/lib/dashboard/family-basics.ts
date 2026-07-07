@@ -37,12 +37,15 @@ export interface FamilyBasicsView {
   location: FamilyLocationView;
   planTier: PlanTier;
   intents: OnboardingIntent[];
+  /** Permanent first-100 ordinal; null = not a founding family. */
+  foundingNumber: number | null;
   children: FamilyChildBasics[];
 }
 
 export interface FamilyRowBasics extends FamilyLocationView {
   planTier: PlanTier;
   intents: string[] | null;
+  foundingNumber: number | null;
 }
 
 export function toFamilyBasics(
@@ -59,6 +62,7 @@ export function toFamilyBasics(
     },
     planTier: family?.planTier ?? 'free',
     intents: parseIntents(family?.intents ?? []),
+    foundingNumber: family?.foundingNumber ?? null,
     children: children.map((child) => ({
       id: child.id,
       name: child.name,

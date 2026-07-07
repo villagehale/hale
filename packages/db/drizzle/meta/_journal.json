@@ -267,6 +267,13 @@
       "when": 1781461980000,
       "tag": "0038_waitlist_tier_neighbourhood",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1781462040000,
+      "tag": "0039_founding_and_active_days",
+      "breakpoints": true
     }
   ]
 }

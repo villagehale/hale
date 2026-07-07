@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import { auth } from '~/auth';
 import { AppShell } from '~/components/hale/app-shell';
 import { Sidebar } from '~/components/hale/sidebar';
@@ -11,6 +12,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { loadFamilyName } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser } from '~/lib/family';
+import { markFamilyActiveToday } from '~/lib/metrics/activity';
 import { SHELL_COLLAPSED_KEY } from '~/lib/shell';
 
 // authConfigured()/auth() read runtime secrets and the live session — never bake
@@ -39,6 +41,8 @@ export default async function AuthedLayout({ children }: { children: React.React
     if (!familyId) {
       redirect('/onboarding');
     }
+    // Day-grain retention substrate; after() so the paint never waits on it.
+    after(() => markFamilyActiveToday(db(), familyId));
   }
 
   const familyName = await loadFamilyName();

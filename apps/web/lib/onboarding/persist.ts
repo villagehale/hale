@@ -8,6 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { type ChildInput, buildChildInserts, unionStages, validateChild } from './children';
+import { assignFoundingNumber } from './founding';
 
 /**
  * Persists the onboarding children for a family.
@@ -78,6 +79,9 @@ export async function saveOnboardingChildren(
   const { familyId } = await database.transaction((tx) =>
     provisionAndWriteChildren(tx as unknown as Database, identity, validated),
   );
+  // Post-commit on purpose: the badge is a decoration and must never fail (or
+  // hold) onboarding. See assignFoundingNumber for the race posture.
+  await assignFoundingNumber(database, familyId);
   return { status: 'saved', familyId, childCount: validated.length, stages };
 }
 
