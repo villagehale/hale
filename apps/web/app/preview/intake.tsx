@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Compass, Heart } from 'lucide-react';
 import { type FamilyStage, type OnboardingIntent, FAMILY_STAGES } from '@hale/types';
 import { IntentChips } from '~/components/hale/intent-chips';
+import { TurtleLoader } from '~/components/hale/turtle-loader';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { writeIntakeDraft } from '~/lib/onboarding/intake-storage';
 
@@ -54,6 +55,15 @@ export function PreviewIntake() {
   const [intents, setIntents] = useState<OnboardingIntent[]>([]);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const capture = useAnalytics();
+  const loaderRef = useRef<HTMLDivElement>(null);
+
+  // The loader renders below the intake form — often below the fold — so bring
+  // it into view when the wait starts, or the branded moment plays unseen.
+  useEffect(() => {
+    if (result.kind !== 'loading') return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    loaderRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  }, [result.kind]);
 
   const canSearch = stage !== null && area.trim().length > 0;
 
@@ -200,6 +210,12 @@ export function PreviewIntake() {
           </Link>
         </p>
       </section>
+
+      {result.kind === 'loading' ? (
+        <div ref={loaderRef}>
+          <TurtleLoader label="finding the genuinely good things near you…" />
+        </div>
+      ) : null}
 
       {result.kind === 'ready' ? (
         <PreviewResult activities={result.activities} area={area.trim()} onSetUp={saveAndSetUp} />
