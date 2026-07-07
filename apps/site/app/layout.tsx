@@ -22,22 +22,22 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: 'Hale · the village every parent needs',
+  title: 'Village Hale · the village every parent needs',
   description:
-    'Hale is the trusted parent network for your neighborhood — find what families near you actually do, and share what you love. Your data stays in Canada.',
+    'Village Hale is the trusted parent network for your neighborhood — find what families near you actually do, and share what you love. Your data stays in Canada.',
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
-    siteName: 'Hale',
+    siteName: 'Village Hale',
     url: SITE_URL,
-    title: 'Hale · the village every parent needs',
+    title: 'Village Hale · the village every parent needs',
     description:
       'Find what families near you actually do, and share what you love — across every stage of childhood. Your data stays in Canada.',
     locale: 'en_CA',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Hale · the village every parent needs',
+    title: 'Village Hale · the village every parent needs',
     description:
       'Find what families near you actually do, and share what you love. Your data stays in Canada.',
   },

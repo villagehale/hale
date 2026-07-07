@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Hale",
+    "name": "Village Hale",
     "slug": "hale-mobile",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -11,6 +11,7 @@
       "bundleIdentifier": "family.villagehale.app",
       "buildNumber": "13",
       "infoPlist": {
+        "CFBundleDisplayName": "Hale",
         "NSCameraUsageDescription": "Hale uses the camera to capture milestone photos.",
         "NSMicrophoneUsageDescription": "Hale uses the microphone for voice \u2014 asking and logging by speaking.",
         "NSSpeechRecognitionUsageDescription": "Hale transcribes your voice to text.",

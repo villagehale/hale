@@ -104,7 +104,7 @@ export async function askHale(req: AskHaleRequest, handlers: CoachStreamHandlers
   if (res.status === 429) {
     throw new ApiError(429, 'Just a moment — try that again in a few seconds.');
   }
-  if (!res.ok || !res.body) throw new ApiError(res.status, `Ask Hale failed (${res.status}).`);
+  if (!res.ok || !res.body) throw new ApiError(res.status, `Concierge failed (${res.status}).`);
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -125,8 +125,8 @@ export async function askHale(req: AskHaleRequest, handlers: CoachStreamHandlers
     }
     drain(splitter.flush());
   } catch {
-    throw new ApiError(0, 'Ask Hale lost its connection mid-answer. Please try again.');
+    throw new ApiError(0, 'Concierge lost its connection mid-answer. Please try again.');
   }
 
-  if (failed) throw new ApiError(500, 'Ask Hale ran into a problem. Please try again.');
+  if (failed) throw new ApiError(500, 'Concierge ran into a problem. Please try again.');
 }
