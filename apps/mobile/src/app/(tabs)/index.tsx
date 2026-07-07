@@ -85,13 +85,13 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Ask Hale anything"
+        accessibilityLabel="Ask Concierge anything"
         onPress={() => router.push('/ask')}
         className="h-12 flex-row items-center gap-2.5 rounded-full border border-rule bg-card px-4 active:opacity-80"
       >
         <Icon name="sparkles" size={17} color={askIconColor} />
         <AppText variant="body" className="flex-1 text-ink-3">
-          Ask Hale anything
+          Ask Concierge anything
         </AppText>
         <Icon name="mic" size={18} color={askIconColor} />
       </Pressable>
