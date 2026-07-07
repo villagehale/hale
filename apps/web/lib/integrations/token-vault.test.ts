@@ -32,7 +32,8 @@ describe('integration token vault (AES-256-GCM)', () => {
 
   it('rejects a tampered ciphertext (GCM auth tag catches the flip)', () => {
     const bytes = Buffer.from(encryptTokens(TOKENS), 'base64');
-    bytes[bytes.length - 1] ^= 0xff; // flip the last ciphertext byte
+    const last = bytes.length - 1;
+    bytes[last] = ((bytes[last] ?? 0) ^ 0xff) & 0xff; // flip the last ciphertext byte
     expect(() => decryptTokens(bytes.toString('base64'))).toThrow();
   });
 
