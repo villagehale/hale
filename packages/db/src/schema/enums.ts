@@ -63,6 +63,7 @@ export const integrationProviderEnum = pgEnum('integration_provider', [
   'brightwheel', // daycare
   'himama', // daycare (now Lillio)
   'google_classroom', // school
+  'gdrive', // Google Drive connector (read-only)
 ]);
 
 export const integrationStatusEnum = pgEnum('integration_status', [
