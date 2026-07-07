@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { assignFoundingNumber } from '~/lib/onboarding/founding';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { completeOnboarding } from './complete-onboarding.js';
 import type { DiscoveryTrigger } from './trigger-discovery';
@@ -20,6 +21,7 @@ vi.mock('~/lib/family', async () => {
   return { ...actual, resolveFamilyForUser: vi.fn(), ensureUserRow: vi.fn() };
 });
 vi.mock('~/lib/onboarding/persist', () => ({ provisionAndWriteChildren: vi.fn() }));
+vi.mock('~/lib/onboarding/founding', () => ({ assignFoundingNumber: vi.fn() }));
 
 let fakeDbHandle: unknown = {};
 
@@ -106,6 +108,7 @@ beforeEach(() => {
   vi.mocked(resolveFamilyForUser).mockReset();
   vi.mocked(ensureUserRow).mockReset();
   vi.mocked(provisionAndWriteChildren).mockReset();
+  vi.mocked(assignFoundingNumber).mockReset();
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -225,6 +228,57 @@ describe('completeOnboarding', () => {
       { externalAuthId: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' },
       [{ name: 'Robin', lastName: 'Stone', dateOfBirth: '2024-03-15', gender: 'girl' }],
     );
+  });
+
+  it('assigns the founding number after a FRESH provisioning commits (post-tx, top-level db)', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+
+    await completeOnboarding({ children: PHASE_C_CHILDREN, planTier: 'free', tosAccepted: true });
+
+    // Post-commit on purpose (badge is a decoration): called with the TOP-LEVEL
+    // db handle, never the tx — a badge failure must not roll back the family.
+    expect(assignFoundingNumber).toHaveBeenCalledWith(s.database, NEW_FAMILY_ID);
+  });
+
+  it('does not assign a founding number when the family already existed', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+
+    await completeOnboarding({ children: PHASE_C_CHILDREN, planTier: 'free', tosAccepted: true });
+
+    expect(assignFoundingNumber).not.toHaveBeenCalled();
+  });
+
+  it('completes onboarding even when the founding assignment throws (badge never fails the meal)', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
+    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+    vi.mocked(assignFoundingNumber).mockRejectedValue(new Error('connection refused'));
+
+    const s = makeDb();
+    fakeDbHandle = s.database;
+
+    const result = await completeOnboarding({
+      children: PHASE_C_CHILDREN,
+      planTier: 'free',
+      tosAccepted: true,
+    });
+
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
   });
 
   it('writes the structured location and derives a coarse area from the postal code (rule #1)', async () => {
