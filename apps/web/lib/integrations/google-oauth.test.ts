@@ -4,6 +4,7 @@ import {
   CONNECTOR_SCOPES,
   type ConnectorProvider,
   exchangeCodeForTokens,
+  refreshAccessToken,
 } from './google-oauth';
 
 const REDIRECT = 'https://app.villagehale.com/api/integrations/google/callback';
@@ -102,5 +103,40 @@ describe('exchangeCodeForTokens', () => {
     await expect(
       exchangeCodeForTokens({ code: 'bad', redirectUri: REDIRECT }, fakeFetch),
     ).rejects.toThrow(/400/);
+  });
+});
+
+describe('refreshAccessToken', () => {
+  const prev = { ...process.env };
+  beforeEach(() => {
+    process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-123.apps.googleusercontent.com';
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'secret-abc';
+  });
+  afterEach(() => {
+    process.env = { ...prev };
+  });
+
+  it('POSTs a refresh_token grant and maps the new access token', async () => {
+    let sentBody = '';
+    const fakeFetch = async (_url: string, init: { body?: string }) => {
+      sentBody = init.body ?? '';
+      // Google omits refresh_token on a refresh — only a new access token comes back.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'ya29.refreshed', expires_in: 3600, token_type: 'Bearer' }),
+      };
+    };
+    const before = Date.now();
+    const tokens = await refreshAccessToken('1//stored-refresh', fakeFetch);
+    expect(tokens.accessToken).toBe('ya29.refreshed');
+    expect(tokens.expiresAt).toBeGreaterThanOrEqual(before + 3600_000);
+    expect(sentBody).toContain('grant_type=refresh_token');
+    expect(sentBody).toContain('refresh_token=1%2F%2Fstored-refresh');
+  });
+
+  it('throws on a non-ok refresh response (never returns partial tokens)', async () => {
+    const fakeFetch = async () => ({ ok: false, status: 400, json: async () => ({ error: 'invalid_grant' }) });
+    await expect(refreshAccessToken('1//revoked', fakeFetch)).rejects.toThrow(/400/);
   });
 });

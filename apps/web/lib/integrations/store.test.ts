@@ -1,7 +1,15 @@
 import type { Database } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { decryptTokens, encryptTokens, type OAuthTokens } from './token-vault';
-import { getConnectionTokens, revokeConnection, saveConnection } from './store';
+import {
+  getConnectionTokens,
+  listActiveConnectorConnections,
+  markConnectionError,
+  revokeConnection,
+  saveConnection,
+  saveConnectionCursor,
+  saveConnectionTokensById,
+} from './store';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
@@ -70,5 +78,43 @@ describe('integrations store', () => {
     await revokeConnection(database, FAMILY, USER, 'gcal');
     expect(cap.updated?.oauthTokensEncrypted).toBeNull();
     expect(cap.updated?.status).toBe('revoked');
+  });
+
+  it('lists active connector connections with decrypted tokens + metadata', async () => {
+    const enc = encryptTokens(TOKENS);
+    const { database } = fakeDb([
+      { id: 'i1', familyId: FAMILY, userId: USER, provider: 'gcal', providerMetadata: { syncToken: 't' }, enc },
+    ]);
+    const rows = await listActiveConnectorConnections(database);
+    expect(rows).toEqual([
+      { id: 'i1', familyId: FAMILY, userId: USER, provider: 'gcal', providerMetadata: { syncToken: 't' }, tokens: TOKENS },
+    ]);
+  });
+
+  it('advances the cursor: writes providerMetadata + lastSyncAt, status stays active', async () => {
+    const { database, cap } = fakeDb([]);
+    const meta = { syncToken: 'next-token' };
+    await saveConnectionCursor(database, 'i1', meta);
+    expect(cap.updated?.providerMetadata).toEqual(meta);
+    expect(cap.updated?.lastSyncAt).toBeInstanceOf(Date);
+    expect(cap.updated?.status).toBe('active');
+  });
+
+  it('marks a connection errored WITHOUT touching the cursor', async () => {
+    const { database, cap } = fakeDb([]);
+    await markConnectionError(database, 'i1');
+    expect(cap.updated?.status).toBe('error');
+    // No cursor advance on error — providerMetadata/lastSyncAt untouched.
+    expect(cap.updated).not.toHaveProperty('providerMetadata');
+    expect(cap.updated).not.toHaveProperty('lastSyncAt');
+  });
+
+  it('re-encrypts refreshed tokens by id (never plaintext)', async () => {
+    const { database, cap } = fakeDb([]);
+    const refreshed: OAuthTokens = { accessToken: 'ya29.new-access', refreshToken: '1//secret-refresh' };
+    await saveConnectionTokensById(database, 'i1', refreshed);
+    const stored = cap.updated?.oauthTokensEncrypted as string;
+    expect(stored).not.toContain('new-access');
+    expect(decryptTokens(stored)).toEqual(refreshed);
   });
 });

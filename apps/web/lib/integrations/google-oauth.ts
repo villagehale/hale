@@ -18,6 +18,9 @@ export const CONNECTOR_SCOPES: Record<ConnectorProvider, readonly string[]> = {
   gdrive: ['https://www.googleapis.com/auth/drive.readonly'],
 };
 
+/** The connector provider enum values — the single list the sync poller iterates. */
+export const CONNECTOR_PROVIDERS = Object.keys(CONNECTOR_SCOPES) as ConnectorProvider[];
+
 /** Narrow an arbitrary path segment to a connector provider (rejects the other integration_provider values). */
 export function isConnectorProvider(value: string): value is ConnectorProvider {
   return value === 'gcal' || value === 'gmail' || value === 'gdrive';
@@ -91,6 +94,37 @@ export async function exchangeCodeForTokens(
     throw new Error(`google token exchange failed: ${res.status}`);
   }
   const data = (await res.json()) as GoogleTokenResponse;
+  return mapTokenResponse(data);
+}
+
+/**
+ * Refresh an expired access token with the stored refresh token. Google's refresh
+ * response does NOT echo the refresh_token, so the caller keeps the existing one
+ * (mapTokenResponse only sets refreshToken when present). Throws on a non-ok
+ * response (e.g. the user revoked access) rather than returning a partial token.
+ */
+export async function refreshAccessToken(
+  refreshToken: string,
+  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+): Promise<OAuthTokens> {
+  const res = await fetchImpl(GOOGLE_TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: clientId(),
+      client_secret: clientSecret(),
+      grant_type: 'refresh_token',
+    }).toString(),
+  });
+  if (!res.ok) {
+    throw new Error(`google token refresh failed: ${res.status}`);
+  }
+  const data = (await res.json()) as GoogleTokenResponse;
+  return mapTokenResponse(data);
+}
+
+function mapTokenResponse(data: GoogleTokenResponse): OAuthTokens {
   return {
     accessToken: data.access_token,
     ...(data.refresh_token && { refreshToken: data.refresh_token }),

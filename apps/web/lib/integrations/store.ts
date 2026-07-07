@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
-import type { ConnectorProvider } from './google-oauth';
+import { CONNECTOR_PROVIDERS, type ConnectorProvider } from './google-oauth';
 import { decryptTokens, encryptTokens, type OAuthTokens } from './token-vault';
 
 /**
@@ -95,6 +95,87 @@ export async function listConnections(
     })
     .from(schema.integrations)
     .where(eq(schema.integrations.familyId, familyId));
+}
+
+/** One active connector row the poll sync operates on — tokens decrypted, cursor
+ * (providerMetadata) carried so the per-provider sync can resume incrementally. */
+export interface ActiveConnectorConnection {
+  id: string;
+  familyId: string;
+  userId: string | null;
+  provider: ConnectorProvider;
+  providerMetadata: Record<string, unknown>;
+  tokens: OAuthTokens;
+}
+
+/** Every ACTIVE connector connection (gcal/gmail/gdrive) with stored tokens — the
+ * poll sweep's work list. Revoked/errored rows and rows with purged tokens are
+ * excluded, so a disconnected connector is never polled. */
+export async function listActiveConnectorConnections(
+  database: Database,
+): Promise<ActiveConnectorConnection[]> {
+  const rows = await database
+    .select({
+      id: schema.integrations.id,
+      familyId: schema.integrations.familyId,
+      userId: schema.integrations.userId,
+      provider: schema.integrations.provider,
+      providerMetadata: schema.integrations.providerMetadata,
+      enc: schema.integrations.oauthTokensEncrypted,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.status, 'active'),
+        inArray(schema.integrations.provider, CONNECTOR_PROVIDERS),
+        isNotNull(schema.integrations.oauthTokensEncrypted),
+      ),
+    );
+  return rows.map((r) => ({
+    id: r.id,
+    familyId: r.familyId,
+    userId: r.userId,
+    provider: r.provider as ConnectorProvider,
+    providerMetadata: r.providerMetadata,
+    tokens: decryptTokens(r.enc as string),
+  }));
+}
+
+/** Advance a connection's sync cursor after a SUCCESSFUL sync: persist the new
+ * providerMetadata and stamp lastSyncAt. Only ever called once the batch's events
+ * are enqueued, so the cursor can't move past un-emitted items. */
+export async function saveConnectionCursor(
+  database: Database,
+  id: string,
+  providerMetadata: Record<string, unknown>,
+): Promise<void> {
+  await database
+    .update(schema.integrations)
+    .set({ providerMetadata, lastSyncAt: new Date(), status: 'active', updatedAt: new Date() })
+    .where(eq(schema.integrations.id, id));
+}
+
+/** Persist a refreshed token set (by row id), re-encrypted. The cursor is left
+ * untouched — a token refresh is orthogonal to sync progress. */
+export async function saveConnectionTokensById(
+  database: Database,
+  id: string,
+  tokens: OAuthTokens,
+): Promise<void> {
+  await database
+    .update(schema.integrations)
+    .set({ oauthTokensEncrypted: encryptTokens(tokens), updatedAt: new Date() })
+    .where(eq(schema.integrations.id, id));
+}
+
+/** Mark a connection errored after a failed sync. Deliberately does NOT advance
+ * the cursor: the next run re-fetches from the last good cursor, so no item is
+ * emitted twice and none is lost. */
+export async function markConnectionError(database: Database, id: string): Promise<void> {
+  await database
+    .update(schema.integrations)
+    .set({ status: 'error', updatedAt: new Date() })
+    .where(eq(schema.integrations.id, id));
 }
 
 /** Disconnect: purge the encrypted tokens and mark revoked (stops sync). */
