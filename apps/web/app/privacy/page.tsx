@@ -286,7 +286,7 @@ export default function PrivacyPage() {
       <LegalSectionBlock id="casl" title="Email and electronic messages (CASL)">
         <p>
           We send you email that is necessary to run your account — such as security notices and the
-          updates and digests you ask Hale to prepare. If we ever send commercial electronic
+          updates and digests you ask Concierge to prepare. If we ever send commercial electronic
           messages, we do so only with your consent, we identify ourselves, and every such message
           includes a clear, working way to unsubscribe. You can opt out of non-essential messages at
           any time without affecting your account.
