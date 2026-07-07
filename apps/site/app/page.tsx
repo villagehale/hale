@@ -148,7 +148,7 @@ export default function LandingPage() {
 
       <section className="shell pt-10 sm:pt-16 lg:pt-20 pb-20 lg:pb-28">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
-          <div className="lg:col-span-7 rise rise-1">
+          <div className="lg:col-span-6 rise rise-1">
             <HeroScene />
             <p className="meta mt-4 max-w-md">
               Hale turns the trusted, word-of-mouth village parents used to have —
@@ -157,15 +157,17 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="lg:col-span-5 rise rise-2">
+          <div className="lg:col-span-6 rise rise-2">
             <span className="eyebrow">Toronto and the GTA</span>
-            <h1 className="mt-3">
+            {/* Hero-scoped scale: the global h1 clamp (up to 4.75rem) wraps this
+             * headline to six lines in a half column and towers over the scene. */}
+            <h1 className="mt-3" style={{ fontSize: 'clamp(2.3rem, 3.5vw, 3.4rem)', textWrap: 'balance' }}>
               Find the <span className="accent">best activities</span> for your child near you.
             </h1>
             <p
-              className="mt-4 font-display font-semibold"
+              className="mt-3 font-display font-semibold"
               style={{
-                fontSize: 'clamp(1.4rem, 2.4vw, 1.9rem)',
+                fontSize: 'clamp(1.3rem, 2vw, 1.7rem)',
                 lineHeight: 1.25,
                 letterSpacing: 'var(--tracking-display)',
                 color: 'var(--color-spruce)',
@@ -174,15 +176,12 @@ export default function LandingPage() {
               Let Hale plan the week around them.
             </p>
             <p
-              className="mt-6 text-lg"
-              style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
+              className="mt-5 text-lg"
+              style={{ color: 'var(--color-slate-green)', lineHeight: 1.6, maxWidth: '36rem' }}
             >
               From toddler playgroups to hockey tryouts, Hale finds what fits your
-              kid right now.
-            </p>
-            <p className="mt-4" style={{ color: 'var(--color-faded-sage)', lineHeight: 1.55 }}>
-              Real recommendations from parents near you — and an AI that handles
-              the booking and reminders, so you just show up.
+              kid right now — real recommendations from parents near you, and an AI
+              that handles the booking and reminders, so you just show up.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <LandingCta
