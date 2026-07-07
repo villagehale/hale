@@ -1,5 +1,5 @@
 import { and, eq, gte, ne, sql } from 'drizzle-orm';
-import { schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
 import type { ToolResult } from '@hale/types';
 import { db } from '../db.js';
@@ -18,17 +18,20 @@ import { logger } from '../logger.js';
  * flag-for-human is the route.
  */
 
+// The default database is the worker's db(); the web pipeline injects its own
+// request-scoped database.
 type ToolImpl<TName extends ReviewerToolName> = (
   input: unknown,
+  database: Database,
 ) => Promise<{ tool: TName; ok: boolean; result: unknown }>;
 
 const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // ───────────────────────────────────────────────────────────────────
   // Time window — uses the family's stored timezone + safety policy.
   // ───────────────────────────────────────────────────────────────────
-  check_action_time_window: async (raw) => {
+  check_action_time_window: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_action_time_window.input.parse(raw);
-    const family = await db()
+    const family = await database
       .select({ timezone: schema.users.timezone })
       .from(schema.families)
       .leftJoin(schema.familyMembers, eq(schema.familyMembers.familyId, schema.families.id))
@@ -88,10 +91,10 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // Idempotency — has an action with the same hash been recorded for
   // this family in the lookback window?
   // ───────────────────────────────────────────────────────────────────
-  check_action_idempotency: async (raw) => {
+  check_action_idempotency: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_action_idempotency.input.parse(raw);
     const since = new Date(Date.now() - input.lookbackHours * 60 * 60 * 1000);
-    const duplicates = await db()
+    const duplicates = await database
       .select({ id: schema.actions.id })
       .from(schema.actions)
       .where(
@@ -206,9 +209,9 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // Recipient allowlist — checks the family_memory_facts entries with
   // fact_type=relationship for "recipient:<email>" facts.
   // ───────────────────────────────────────────────────────────────────
-  check_recipient_allowlist: async (raw) => {
+  check_recipient_allowlist: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_recipient_allowlist.input.parse(raw);
-    const facts = await db()
+    const facts = await database
       .select({ value: schema.familyMemoryFacts.factValue })
       .from(schema.familyMemoryFacts)
       .where(
@@ -243,9 +246,9 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // ───────────────────────────────────────────────────────────────────
   // Sender allowlist — analogous, fact_key = "sender:<email>".
   // ───────────────────────────────────────────────────────────────────
-  check_sender_allowlist: async (raw) => {
+  check_sender_allowlist: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_sender_allowlist.input.parse(raw);
-    const facts = await db()
+    const facts = await database
       .select({
         value: schema.familyMemoryFacts.factValue,
         validFrom: schema.familyMemoryFacts.validFrom,
@@ -383,9 +386,9 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   // User override — checks family_memory_facts with fact_type=preference
   // and fact_key = "action_override:<actionType>".
   // ───────────────────────────────────────────────────────────────────
-  check_user_override: async (raw) => {
+  check_user_override: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_user_override.input.parse(raw);
-    const facts = await db()
+    const facts = await database
       .select({ value: schema.familyMemoryFacts.factValue })
       .from(schema.familyMemoryFacts)
       .where(
@@ -412,10 +415,11 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
 export async function invokeReviewerTool<TName extends ReviewerToolName>(
   name: TName,
   input: unknown,
+  database: Database = db(),
 ): Promise<ToolResult> {
   try {
     const impl = implementations[name];
-    const result = await impl(input);
+    const result = await impl(input, database);
     return result as ToolResult;
   } catch (err) {
     logger.warn({ tool: name, err }, 'reviewer tool invocation failed');

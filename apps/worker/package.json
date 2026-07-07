@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    "./orchestrator": "./src/orchestrator/index.ts"
+    "./orchestrator": "./src/orchestrator/index.ts",
+    "./reviewer": "./src/agents/reviewer.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

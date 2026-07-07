@@ -16,7 +16,3 @@ export function loadClassifyEventSkill(): Promise<Skill> {
 export function loadDraftActionSkill(): Promise<Skill> {
   return loadCronSkill('draft-action');
 }
-
-export function loadReviewActionSkill(): Promise<Skill> {
-  return loadCronSkill('review-action');
-}
