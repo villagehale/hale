@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
 
 import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
@@ -182,6 +182,68 @@ function CadenceChip({ cadence }: { cadence: string | null }) {
   );
 }
 
+/** Maps a failed share-link mint to an honest, parent-facing line (mirrors web
+ * shareErrorMessage). A 401 never lands here — api() redirects to sign-in. */
+function shareErrorMessage(status: number): string {
+  if (status === 404) return 'Nothing to share here yet.';
+  if (status === 403 || status === 501) return "Sharing isn't available for this one.";
+  return "Couldn't make a link just now — try again in a moment.";
+}
+
+function ShareRow({ shareHref }: { shareHref: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const iconColor = useMeadowColor('ink2');
+
+  const onShare = async () => {
+    setBusy(true);
+    setError(null);
+    let link: string;
+    try {
+      ({ link } = await api<{ link: string }>(shareHref, { method: 'POST' }));
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 401) {
+        setError(shareErrorMessage(e instanceof ApiError ? e.status : 0));
+      }
+      setBusy(false);
+      return;
+    }
+    try {
+      await Share.share(Platform.OS === 'ios' ? { url: link } : { message: link });
+    } catch {
+      // The mint succeeded — only the native sheet failed, so say that.
+      setError("Couldn't open the share sheet — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View className="mt-1 gap-2">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Share this activity"
+        accessibilityState={{ disabled: busy }}
+        disabled={busy}
+        onPress={onShare}
+        className={`min-h-11 flex-row items-center gap-2 self-start rounded-full border border-rule bg-raised px-4 py-2.5 ${
+          busy ? 'opacity-50' : 'active:opacity-80'
+        }`}
+      >
+        <Icon name="square.and.arrow.up" size={15} color={iconColor} />
+        <AppText variant="meta" className="text-ink-2">
+          {busy ? 'Making a link…' : 'Share'}
+        </AppText>
+      </Pressable>
+      {error ? (
+        <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
+          {error}
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+
 function RecCard({ rec }: { rec: VillageCandidateView }) {
   if (rec.teenAttributed) {
     return (
@@ -221,6 +283,7 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
           </AppText>
         </View>
       ) : null}
+      <ShareRow shareHref={rec.shareHref} />
     </Card>
   );
 }
