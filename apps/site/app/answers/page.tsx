@@ -74,11 +74,11 @@ export default function AnswersIndexPage() {
           <div className="panel-oat px-8 py-14 sm:px-12 max-w-2xl rise rise-2">
             <p className="text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
               Our first answers are in review. In the meantime, the fastest way to get an answer for
-              your own child — with their age and your family in mind — is to ask Hale.
+              your own child — with their age and your family in mind — is to ask Concierge.
             </p>
             <div className="mt-8">
               <a href={`${APP_URL}/sign-up`} className="btn-primary">
-                Ask Hale about your child
+                Ask Concierge about your child
               </a>
             </div>
           </div>

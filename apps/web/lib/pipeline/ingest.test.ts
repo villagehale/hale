@@ -13,6 +13,9 @@ import { ingestEvent } from './ingest';
  */
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
+// The drafted action id the reviewer's idempotency check validates as a uuid (the
+// worker reviewer injects draft.id as actionId; a non-uuid stub would fail Zod).
+const ACTION_UUID = '44444444-4444-4444-8444-444444444444';
 const NOW = new Date('2026-06-21T12:00:00Z');
 
 interface Capture {
@@ -58,7 +61,7 @@ function fakeDb(capture: Capture, opts: { familyCreatedAt: Date; allowlisted: bo
           onConflictDoNothing: () => ({
             returning: async () => {
               capture.actions.push(row);
-              return [{ id: `action-${capture.actions.length}` }];
+              return [{ id: ACTION_UUID }];
             },
           }),
         }),
@@ -149,25 +152,32 @@ const FORCED_DRAFT = {
   },
 };
 
-/** reply_to_email requires pii + recipient + sender + idempotency. */
+/** reply_to_email requires pii + recipient + sender + idempotency. The model
+ * supplies familyId on each check from the draft_action in its context — the
+ * reviewer only injects the trusted familyId/actionId/actionHash for the
+ * idempotency check, never for the others. */
 const REVIEWER_CHECKS = [
   {
     type: 'tool_use',
     id: 't1',
     name: 'check_pii_leak',
-    input: { content: 'thursday 10 works', allowedRecipients: ['clinic@example.com'] },
+    input: {
+      familyId: FAMILY_ID,
+      content: 'thursday 10 works',
+      allowedRecipients: ['clinic@example.com'],
+    },
   },
   {
     type: 'tool_use',
     id: 't2',
     name: 'check_recipient_allowlist',
-    input: { recipient: 'clinic@example.com', recipientCategory: 'general' },
+    input: { familyId: FAMILY_ID, recipient: 'clinic@example.com', recipientCategory: 'general' },
   },
   {
     type: 'tool_use',
     id: 't3',
     name: 'check_sender_allowlist',
-    input: { sender: 'clinic@example.com' },
+    input: { familyId: FAMILY_ID, sender: 'clinic@example.com' },
   },
   {
     type: 'tool_use',

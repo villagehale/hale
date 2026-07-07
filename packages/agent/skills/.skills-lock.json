@@ -34,9 +34,5 @@
   "rank-recommendations.md": {
     "file": "rank-recommendations.md",
     "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"
-  },
-  "review-action.md": {
-    "file": "review-action.md",
-    "sha256": "6be3a6b4b11e656aa76977090280dff7431d60d3b07079d41aa388d056ce3d1c"
   }
 }

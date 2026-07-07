@@ -153,8 +153,8 @@ export default function LandingPage() {
               style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
             >
               Find what families like yours actually do near you — and share what
-              you love. Hale is the trusted parent network for every stage of
-              childhood, rebuilt so it grows with each family that joins.
+              you love. Village Hale is the trusted parent network for every stage
+              of childhood, rebuilt so it grows with each family that joins.
             </p>
             <p className="mt-4" style={{ color: 'var(--color-faded-sage)', lineHeight: 1.55 }}>
               A calm AI concierge finds and organizes it all — but the village is

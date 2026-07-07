@@ -5,8 +5,8 @@
 // prompts from packages/agent/skills/*.md via loadSkill and feeds them straight
 // to Anthropic as `system=`. The worker's Langfuse drift-check only guards
 // apps/worker/prompts/* — it never sees these files. Without this gate a silent
-// on-disk edit to any skill (classify-event, draft-action, review-action,
-// ask-hale, …) would ship to prod with no CI failure.
+// on-disk edit to any skill (classify-event, draft-action, ask-hale, …)
+// would ship to prod with no CI failure.
 //
 // `seed` records {file, sha256} for every skill into .skills-lock.json.
 // `check` recomputes and exits non-zero on any mismatch/missing/extra file.

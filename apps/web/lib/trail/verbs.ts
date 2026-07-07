@@ -222,9 +222,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'awaiting',
   },
   share_link_revoked: { sentence: 'you turned off a shared link', family: 'done' },
-  coach_turn_deleted: { sentence: 'you removed a message from Ask Hale', family: 'done' },
-  coach_conversation_erased: { sentence: 'you erased your Ask Hale conversation', family: 'done' },
-  'ask_hale.action_drafted': { sentence: 'Ask Hale drafted an action for you', family: 'note' },
+  coach_turn_deleted: { sentence: 'you removed a message from Concierge', family: 'done' },
+  coach_conversation_erased: { sentence: 'you erased your Concierge conversation', family: 'done' },
+  'ask_hale.action_drafted': { sentence: 'Concierge drafted an action for you', family: 'note' },
   // ── household / onboarding ──────────────────────────────────────────────
   family_created: { sentence: 'you set up your family', family: 'done' },
   tos_accepted: { sentence: 'you accepted the terms', family: 'done' },
@@ -301,8 +301,8 @@ const TARGET_NOUNS: Record<string, string> = {
   village_candidates: 'village suggestion',
   routine_proposals: 'routine',
   consent_records: 'consent',
-  conversations: 'Ask Hale',
-  messages: 'Ask Hale',
+  conversations: 'Concierge',
+  messages: 'Concierge',
   users: 'your profile',
 };
 

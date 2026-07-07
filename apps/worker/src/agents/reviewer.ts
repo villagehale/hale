@@ -15,6 +15,8 @@ import { invokeReviewerTool } from '../tools/registry.js';
 import { type AgentRunMetrics, metricsFromUsage } from './run-metrics.js';
 import { cachedSystem } from './structured.js';
 
+export { invokeReviewerTool } from '../tools/registry.js';
+
 const VERDICT_TOOL = 'submit_verdict';
 const MAX_TURNS = 8;
 

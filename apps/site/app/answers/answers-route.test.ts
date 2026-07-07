@@ -55,10 +55,10 @@ describe('answers/[slug] route', () => {
     expect(html.toLowerCase()).toContain('not medical advice');
   });
 
-  it('wires the "Ask Hale about your child" CTA to the app sign-up', async () => {
+  it('wires the "Ask Concierge about your child" CTA to the app sign-up', async () => {
     const html = await render(SLUG);
     expect(html).toContain(`${APP_URL}/sign-up`);
-    expect(html).toContain('Ask Hale about your child');
+    expect(html).toContain('Ask Concierge about your child');
   });
 
   it('noindexes every unpublished (unreviewed) page (review-before-index gate)', async () => {

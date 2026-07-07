@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "exports": {
     "./orchestrator": "./src/orchestrator/index.ts",
+    "./reviewer": "./src/agents/reviewer.ts",
     "./redaction": "./src/redaction/redact.ts"
   },
   "scripts": {
