@@ -15,7 +15,9 @@ export type AnalyticsEvent =
   // Conversion CTAs on the SEO/AEO content pages — so the funnel can attribute a
   // sign-in intent to the page that earned it (which content actually converts).
   | 'faq_cta_signin'
-  | 'activities_cta_signin';
+  | 'activities_cta_signin'
+  // Plus/Family waitlist form submitted (coarse event only — never the email).
+  | 'waitlist_signup';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

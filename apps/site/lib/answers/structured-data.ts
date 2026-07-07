@@ -11,7 +11,7 @@ import type { AnswerPage } from './types';
 const PUBLISHER = {
   '@type': 'Organization',
   '@id': `${SITE_URL}/#organization`,
-  name: 'Village Hale',
+  name: 'Hale',
   legalName: 'Village Hale Technologies Inc.',
   url: SITE_URL,
   logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },

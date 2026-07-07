@@ -126,7 +126,7 @@ describe('answerJsonLd', () => {
       dateModified: string;
       reviewedBy: Array<{ name: string }>;
     };
-    expect(article.publisher.name).toBe('Village Hale');
+    expect(article.publisher.name).toBe('Hale');
     expect(article.publisher.legalName).toBe('Village Hale Technologies Inc.');
     expect(article.publisher.logo.url).toMatch(/\/icon\.png$/);
     expect(article.dateModified).toBe(page.updated);
