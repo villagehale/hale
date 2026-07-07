@@ -7,6 +7,7 @@ import {
   hardCeilingUsd,
   isOverHardCeiling,
 } from '@hale/types';
+import { redactEventPayload } from '@hale/worker/redaction';
 import { and, count, eq, sql } from 'drizzle-orm';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { classifyEvent } from './classify';
@@ -156,19 +157,29 @@ export async function ingestEvent(
     return { status: 'dropped', eventId: null, reason: 'spend_ceiling' };
   }
 
-  const rawContent = JSON.stringify({
+  const payload = {
     subject: input.subject,
     body: input.body,
     ...(input.extra ?? {}),
-  });
+  };
+  const rawContent = JSON.stringify(payload);
   const dedupHash = dedupHashFor(familyId, input.source, rawContent);
+
+  // Rule #1 ingest boundary: redact connector/inbound PII (known child names +
+  // dates/postal/email/phone) from the CLASSIFIER INPUT only. rawContent (above)
+  // stays un-redacted for the dedupHash so a signal arriving twice still dedups.
+  const childNames = await loadFamilyChildNames(database, familyId);
+  const redactedRawContent = JSON.stringify(redactEventPayload(payload, childNames));
 
   // 1. Classify (Haiku skill). Traced as 'classify-event'; the mask is the rule-#1
   // backstop over the inbound raw content the classifier sees.
   const { classified, classifyTraceId } = await traceAgentRun(
     { name: 'classify-event', userId: 'system', tags: ['classify-event'], metadata: { familyId } },
     async (trace) => {
-      const result = await classifyEvent({ source: input.source, rawContent }, client);
+      const result = await classifyEvent(
+        { source: input.source, rawContent: redactedRawContent },
+        client,
+      );
       trace.recordGeneration('classify-event-call', { model: HAIKU_MODEL, usage: result.usage });
       return { classified: result, classifyTraceId: trace.traceId };
     },
@@ -296,6 +307,16 @@ export async function ingestEvent(
     actionId,
     verdict: reviewed.verdict.kind,
   };
+}
+
+/** The family's known child names, for the rule-#1 redaction of the classifier
+ * input (name-matched → [CHILD]). Family-scoped; empty for a childless family. */
+async function loadFamilyChildNames(database: Database, familyId: string): Promise<string[]> {
+  const rows = await database
+    .select({ id: schema.children.id, name: schema.children.name })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  return rows.map((r) => r.name);
 }
 
 /** Returns the child (id + DOB, for the rule-#1 teen derivation) iff it names a
