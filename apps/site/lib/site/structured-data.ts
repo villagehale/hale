@@ -13,7 +13,7 @@ export function siteJsonLd(): Record<string, unknown> {
   const organization = {
     '@type': 'Organization',
     '@id': `${SITE_URL}/#organization`,
-    name: 'Village Hale',
+    name: 'Hale',
     legalName: 'Village Hale Technologies Inc.',
     url: SITE_URL,
     logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
@@ -26,7 +26,7 @@ export function siteJsonLd(): Record<string, unknown> {
     '@type': 'WebSite',
     '@id': `${SITE_URL}/#website`,
     url: SITE_URL,
-    name: 'Village Hale',
+    name: 'Hale',
     inLanguage: 'en-CA',
     publisher: { '@id': `${SITE_URL}/#organization` },
   };
@@ -34,7 +34,7 @@ export function siteJsonLd(): Record<string, unknown> {
   const application = {
     '@type': 'SoftwareApplication',
     '@id': `${SITE_URL}/#app`,
-    name: 'Village Hale',
+    name: 'Hale',
     applicationCategory: 'LifestyleApplication',
     operatingSystem: 'Web, iOS',
     url: APP_URL,

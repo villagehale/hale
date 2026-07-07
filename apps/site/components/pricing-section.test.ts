@@ -31,9 +31,15 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('Join free');
   });
 
-  it('keeps paid CTAs soft — no checkout, paid tiers marked coming soon', () => {
-    expect(html).toContain('Coming soon');
-    expect(html).toContain('Founding families');
+  it('sends paid tiers to the waitlist — no checkout, no "Coming soon"', () => {
+    expect(html).not.toContain('Coming soon');
+    expect(html).toContain('Join the waitlist');
+    expect(html).toContain('href="#waitlist"');
     expect(html.toLowerCase()).not.toContain('checkout');
+  });
+
+  it('carries the founding-families banner with the first-100 badge promise', () => {
+    expect(html).toContain('Founding families join free.');
+    expect(html).toContain('first 100 families get a permanent founding badge');
   });
 });

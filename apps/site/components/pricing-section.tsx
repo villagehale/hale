@@ -23,14 +23,14 @@ const TIER_PRESENTATION = {
 /**
  * The landing pricing section. Free leads — the village is free; Plus and Family
  * are framed as "for when you want Hale to do more." Monthly and annual are both
- * shown, with annual as the better value (about two months free). Paid CTAs are
- * soft (the section close says paid plans are coming soon); the only live CTA is
+ * shown, with annual as the better value (about two months free). Paid CTAs
+ * capture the waitlist (billing isn't wired); the only live signup CTA is
  * "Join free." Names/prices/features render from @hale/types so they never drift.
  */
 export function PricingSection() {
   return (
     <section id="pricing" className="shell pb-20 lg:pb-28">
-      <div className="max-w-2xl mb-12 lg:mb-16">
+      <div className="max-w-2xl mb-10 lg:mb-12">
         <span className="eyebrow">Three sizes of help</span>
         <h2 className="mt-3">The village is free. Pay only when you want Hale to do more.</h2>
         <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
@@ -38,6 +38,19 @@ export function PricingSection() {
           you love — free, always, every stage and every child. The paid tiers are for when you want
           the concierge to do more of the work itself. Each is a little less monthly when you pay
           yearly — about two months free.
+        </p>
+      </div>
+
+      <div className="panel-apricot-tint px-8 py-6 mb-10 lg:mb-12 flex flex-wrap items-baseline justify-between gap-x-10 gap-y-2">
+        <p
+          className="font-display text-xl font-semibold"
+          style={{ color: 'var(--color-spruce)' }}
+        >
+          Founding families join free.
+        </p>
+        <p className="meta">
+          The first 100 families get a permanent founding badge — and first access when Plus and
+          Family open.
         </p>
       </div>
 
@@ -86,23 +99,16 @@ export function PricingSection() {
                   Join free
                 </a>
               ) : (
-                <span
-                  className="pill self-start mt-8"
-                  style={{
-                    border: '1px solid var(--color-sage)',
-                    color: 'var(--color-slate-green)',
-                  }}
-                >
-                  Coming soon
-                </span>
+                <a href="#waitlist" className="btn-secondary self-start mt-8">
+                  Join the waitlist
+                </a>
               )}
             </div>
           );
         })}
       </div>
       <p className="meta mt-6">
-        Founding families join free today — when paid plans open, you&rsquo;ll be first in line. The
-        village is free to start.
+        The village is free to start. Plus and Family open to the waitlist first.
       </p>
     </section>
   );

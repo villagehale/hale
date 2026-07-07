@@ -17,7 +17,7 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
       <header className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-6 pt-8 lg:px-10">
         <Link href="/" className="flex items-center gap-3 lg:invisible">
           <LogoMark size={32} />
-          <span className="font-display text-2xl font-semibold">Village Hale</span>
+          <span className="font-display text-2xl font-semibold">Hale</span>
         </Link>
         <ThemeToggle />
       </header>
@@ -25,7 +25,7 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
       <section className="bg-spruce text-on-spruce hidden lg:flex flex-col justify-between px-12 py-14 xl:px-16">
         <Link href="/" className="flex items-center gap-3">
           <LogoMark size={36} />
-          <span className="font-display text-2xl font-semibold text-on-spruce">Village Hale</span>
+          <span className="font-display text-2xl font-semibold text-on-spruce">Hale</span>
         </Link>
         <div className="max-w-md">
           <p className="eyebrow text-on-spruce-soft">For your neighborhood</p>
@@ -37,7 +37,7 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
             and organizes it all — for every stage of childhood.
           </p>
         </div>
-        <p className="text-on-spruce-faint text-sm">Village Hale · the village every parent needs</p>
+        <p className="text-on-spruce-faint text-sm">Hale · the village every parent needs</p>
       </section>
 
       <section className="flex min-h-[100dvh] flex-col items-center justify-center px-6 py-24 lg:min-h-0 lg:py-16">

@@ -48,7 +48,7 @@ describe('weekShareMeta', () => {
     expect(meta.openGraph?.title).toBe(meta.title);
     expect(meta.openGraph?.description).toBe(meta.description);
     expect((meta.openGraph as { locale?: string }).locale).toBe('en_CA');
-    expect((meta.openGraph as { siteName?: string }).siteName).toBe('Village Hale');
+    expect((meta.openGraph as { siteName?: string }).siteName).toBe('Hale');
     expect((meta.twitter as { card?: string })?.card).toBe('summary_large_image');
   });
 

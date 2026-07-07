@@ -1,4 +1,4 @@
-import { Check, Compass, Heart, Send, Users } from 'lucide-react';
+import { CalendarCheck, Check, Compass, Heart, Send, Users } from 'lucide-react';
 import { HeroScene } from '~/components/hero-scene';
 import { PricingSection } from '~/components/pricing-section';
 import {
@@ -14,6 +14,7 @@ import {
 import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { WaitlistSection } from '~/components/waitlist-section';
 import { APP_URL } from '~/lib/app-url';
 import { siteJsonLd } from '~/lib/site/structured-data';
 
@@ -45,24 +46,33 @@ const RECOMMENDED = [
   },
 ] as const;
 
-// The viral loop, made legible: discover trusted local things → share what you
-// love → your village grows. Mirrors the app's share surfaces (discover, endorse,
-// "join the village").
-const LOOP = [
+// Set to the real GTA family count when there is one worth naming; null renders
+// the founding-families line instead. Never fabricate — the database is the source.
+const GTA_FAMILY_COUNT: number | null = null;
+
+// How it works, activity-first: tell Hale about your kid → see what families
+// recommend → Hale drafts the week and handles the booking → share what worked.
+// Step 3 is the differentiator — Hale does the actual booking — so it says so.
+const HOW_IT_WORKS = [
   {
     Icon: Compass,
-    title: 'Discover what families like yours actually do',
-    body: 'Hale gathers the genuinely good local things — the class, the story-time, the festival — matched to your kid’s age and stage, near you.',
-  },
-  {
-    Icon: Send,
-    title: 'Share the ones you love',
-    body: 'One tap sends them to a friend, a group chat, the new parent down the street — no app required to open it.',
+    title: 'Tell Hale your child’s age and what they love',
+    body: 'Sixty seconds, once — from toddlers to ten-and-up, everything is matched to your kid right now.',
   },
   {
     Icon: Users,
-    title: 'Your village grows — and so does everyone’s',
-    body: 'Every family who joins adds what they’ve loved. The more your village grows, the better the recommendations get, for you and for them.',
+    title: 'See what families near you actually recommend this week',
+    body: 'Real activities, really loved — you see how many families near you love each one, never reviews from strangers.',
+  },
+  {
+    Icon: CalendarCheck,
+    title: 'Hale drafts your week’s plan — and handles the booking',
+    body: 'The registration, the reminder, the calendar entry: drafted for you, booked when you approve. You just show up.',
+  },
+  {
+    Icon: Send,
+    title: 'Share what worked. Your village gets smarter.',
+    body: 'One tap sends the good week to a friend or the group chat — and every family who joins makes the picks better.',
   },
 ] as const;
 
@@ -94,21 +104,25 @@ const LADDER = [
     shape: <Seed style={{ height: 64, width: 'auto' }} />,
     title: 'Connect',
     body: 'Your inbox first. Your calendar second. Photos only when you trust Hale with them.',
+    example: 'Link Google Calendar and Gmail in a tap — read-only, revocable any time.',
   },
   {
     shape: <Sprout style={{ height: 80, width: 'auto' }} />,
     title: 'Observe for 7 days',
     body: 'At first Hale only watches and learns your family — the ages, the rhythm, the village you already have. No drafts, no actions, no exceptions.',
+    example: 'Hale notices you go to library story-time most Saturdays.',
   },
   {
     shape: <Sapling style={{ height: 92, width: 'auto' }} />,
     title: 'Draft, with approval',
     body: 'After a week it begins drafting replies, appointments, orders. You approve every single one.',
+    example: 'Hale drafts the registration for Tuesday music class — you approve in one tap.',
   },
   {
     shape: <Tree style={{ height: 96, width: 'auto' }} />,
     title: 'Autonomy, earned',
     body: 'After five clean approvals of one kind of task, Hale may handle that kind on its own. You stay in control — withdraw any automation at any time.',
+    example: 'Hale books the swim class when a spot opens, sends you a reminder, updates the calendar.',
   },
 ] as const;
 
@@ -144,36 +158,46 @@ export default function LandingPage() {
           </div>
 
           <div className="lg:col-span-5 rise rise-2">
-            <span className="eyebrow">For your neighborhood</span>
+            <span className="eyebrow">Toronto and the GTA</span>
             <h1 className="mt-3">
-              The <span className="accent">village</span> every parent needs.
+              Find the <span className="accent">best activities</span> for your child near you.
             </h1>
+            <p
+              className="mt-4 font-display font-semibold"
+              style={{
+                fontSize: 'clamp(1.4rem, 2.4vw, 1.9rem)',
+                lineHeight: 1.25,
+                letterSpacing: 'var(--tracking-display)',
+                color: 'var(--color-spruce)',
+              }}
+            >
+              Let Hale plan the week around them.
+            </p>
             <p
               className="mt-6 text-lg"
               style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
             >
-              Find what families like yours actually do near you — and share what
-              you love. Village Hale is the trusted parent network for every stage
-              of childhood, rebuilt so it grows with each family that joins.
+              From toddler playgroups to hockey tryouts, Hale finds what fits your
+              kid right now.
             </p>
             <p className="mt-4" style={{ color: 'var(--color-faded-sage)', lineHeight: 1.55 }}>
-              A calm AI concierge finds and organizes it all — but the village is
-              the point: real recommendations from real families near you.
+              Real recommendations from parents near you — and an AI that handles
+              the booking and reminders, so you just show up.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <LandingCta
-                event="landing_cta_preview"
-                href={`${APP_URL}/preview`}
-                className="btn-primary"
-              >
-                See what Hale finds for you
-              </LandingCta>
-              <LandingCta
                 event="landing_cta_signin"
                 href={`${APP_URL}/sign-up`}
+                className="btn-primary"
+              >
+                Join free — Toronto and GTA
+              </LandingCta>
+              <LandingCta
+                event="landing_cta_preview"
+                href={`${APP_URL}/preview`}
                 className="btn-secondary"
               >
-                Join the village
+                See what Hale finds for you
               </LandingCta>
             </div>
           </div>
@@ -213,26 +237,46 @@ export default function LandingPage() {
           ))}
         </div>
         <p className="meta mt-6">
-          Illustrative examples. Counts are aggregate; no family is ever named.
+          {GTA_FAMILY_COUNT
+            ? `${GTA_FAMILY_COUNT} families in the GTA and growing. `
+            : 'Founding families are joining across the GTA now. '}
+          Counts are aggregate; no family is ever named.
         </p>
       </section>
 
       {/* ── 3 · How the village grows — the share hook → the loop ───────── */}
       <section id="loop" className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">How the village grows</span>
-          <h2 className="mt-3">One tap shares the good week. Then they join.</h2>
+          <span className="eyebrow">How it works</span>
+          <h2 className="mt-3">Tell us about your kid. Hale handles the rest.</h2>
           <p
             className="mt-5 text-lg"
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
-            Hale is a network, not a directory. When a friend loves their kid’s
-            week, they send it — and every family who joins makes the
-            recommendations better for everyone near them.
+            Four steps from “what should we do this week?” to a week that’s
+            already booked — and every share makes the village smarter.
           </p>
         </div>
 
-        {/* the hook, made concrete — a mocked share card families actually send */}
+        <ol className="mb-14 lg:mb-20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-12">
+          {HOW_IT_WORKS.map((step, i) => (
+            <li key={step.title} className={`rise rise-${i + 1}`}>
+              <span
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full"
+                style={{ background: 'var(--color-apricot-tint)' }}
+                aria-hidden
+              >
+                <step.Icon size={22} strokeWidth={2} style={{ color: 'var(--color-apricot-deep)' }} />
+              </span>
+              <h3 className="mt-5">{step.title}</h3>
+              <p className="mt-3" style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
+                {step.body}
+              </p>
+            </li>
+          ))}
+        </ol>
+
+        {/* the share hook, made concrete — a mocked share card families actually send */}
         <div className="panel-sky-tint px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
             <div className="lg:col-span-6 rise rise-1">
@@ -298,25 +342,6 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
-
-        {/* the loop the hook sets in motion: discover → share → grow */}
-        <ol className="mt-14 lg:mt-20 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-12">
-          {LOOP.map((step, i) => (
-            <li key={step.title} className={`rise rise-${i + 1}`}>
-              <span
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full"
-                style={{ background: 'var(--color-apricot-tint)' }}
-                aria-hidden
-              >
-                <step.Icon size={22} strokeWidth={2} style={{ color: 'var(--color-apricot-deep)' }} />
-              </span>
-              <h3 className="mt-5">{step.title}</h3>
-              <p className="mt-3" style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
-                {step.body}
-              </p>
-            </li>
-          ))}
-        </ol>
 
         <div className="mt-14 panel-apricot-tint px-8 py-10 sm:px-12 flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-10">
           <Village style={{ width: 'clamp(180px, 30vw, 260px)', height: 'auto' }} />
@@ -397,13 +422,17 @@ export default function LandingPage() {
               <p className="mt-3" style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
                 {step.body}
               </p>
+              <p className="mt-3 meta" style={{ fontStyle: 'italic' }}>
+                {step.example}
+              </p>
             </li>
           ))}
         </ol>
       </section>
 
-      {/* ── 6 · Three sizes of help (pricing) ───────────────────────────── */}
+      {/* ── 6 · Three sizes of help (pricing) + the Plus/Family waitlist ── */}
       <PricingSection />
+      <WaitlistSection />
 
       {/* ── 7 · Hale will never — the inverted night section ─────────────── */}
       <section className="night py-24 lg:py-32">

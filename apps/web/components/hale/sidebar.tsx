@@ -70,7 +70,7 @@ export function Sidebar({
       <div className="sidebar-top">
         <Link href="/home" className="sidebar-brand" onClick={closeDrawer}>
           <LogoMark size={34} />
-          <span className="sidebar-wordmark font-display font-semibold">Village Hale</span>
+          <span className="sidebar-wordmark font-display font-semibold">Hale</span>
         </Link>
 
         <div className="sidebar-top-controls">

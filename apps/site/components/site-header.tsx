@@ -15,9 +15,9 @@ import { APP_URL } from '~/lib/app-url';
 export function SiteHeader() {
   return (
     <header className="shell flex items-center justify-between gap-3 pt-6 pb-2">
-      <a href="/#top" className="flex shrink-0 items-center gap-3" aria-label="Village Hale, home">
+      <a href="/#top" className="flex shrink-0 items-center gap-3" aria-label="Hale, home">
         <LogoMark size={36} />
-        <span className="font-display text-2xl leading-none font-semibold">Village Hale</span>
+        <span className="font-display text-2xl leading-none font-semibold">Hale</span>
       </a>
       <div className="flex items-center gap-3 sm:gap-4">
         <a

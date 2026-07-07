@@ -38,7 +38,7 @@ export function LegalLayout({
       <header className="shell flex items-center justify-between pt-8 pb-2">
         <Link href="/" className="flex items-center gap-3">
           <LogoMark size={32} />
-          <span className="font-display text-2xl font-semibold">Village Hale</span>
+          <span className="font-display text-2xl font-semibold">Hale</span>
         </Link>
         <ThemeToggle />
       </header>

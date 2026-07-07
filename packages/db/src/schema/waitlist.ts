@@ -7,6 +7,12 @@ import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 export const waitlist = pgTable('waitlist', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
+  /** Coarse, self-reported — e.g. "Georgetown". Never a precise address (rule #1). */
+  neighbourhood: text('neighbourhood'),
+  /** Which paid tier the signup wants: 'plus' | 'family'. */
+  tier: text('tier'),
+  /** Where the signup came from, e.g. 'landing_pricing'. */
+  source: text('source'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
