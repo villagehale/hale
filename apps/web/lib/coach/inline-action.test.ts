@@ -7,7 +7,8 @@ import { draftInlineAction } from './inline-action';
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR = '22222222-2222-4222-8222-222222222222';
 // approveDraftedAction validates the enqueued payload's action_id as a UUID, so the
-// approve-path DB row must carry a real UUID (the fake insert returns 'action-1').
+// approve-path DB row must carry a real UUID — and so must the drafted action id the
+// reviewer's idempotency check validates, so the fake actions insert returns this UUID.
 const ACTION_UUID = '33333333-3333-4333-8333-333333333333';
 const TEEN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TODDLER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -63,7 +64,7 @@ function fakeDb(capture: Capture, children: { id: string; dateOfBirth: string }[
           onConflictDoNothing: () => ({
             returning: async () => {
               capture.actions.push(row);
-              return [{ id: 'action-1' }];
+              return [{ id: ACTION_UUID }];
             },
           }),
         }),
@@ -183,7 +184,7 @@ describe('draftInlineAction', () => {
       NOW,
     );
 
-    expect(result.actionId).toBe('action-1');
+    expect(result.actionId).toBe(ACTION_UUID);
 
     // Rule #4: the action is held at drafted_for_approval — never executed inline.
     expect(capture.actions).toHaveLength(1);
@@ -204,7 +205,7 @@ describe('draftInlineAction', () => {
     expect(draftAudit).toBeDefined();
     expect(draftAudit?.familyId).toBe(FAMILY_ID);
     expect(draftAudit?.actor).toBe(ACTOR);
-    expect(draftAudit?.targetId).toBe('action-1');
+    expect(draftAudit?.targetId).toBe(ACTION_UUID);
   });
 
   it('rejects an unknown intent kind rather than drafting an arbitrary action type', async () => {
