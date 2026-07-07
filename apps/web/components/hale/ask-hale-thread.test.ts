@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ThreadSeed } from '~/lib/coach/thread';
 import { AskHaleThread } from './ask-hale-thread';
+import type { ConnectorChip } from './coach-context-panel';
 
 // The input-intent widget (reachable from the thread) calls the logQuickEpisode
 // 'use server' action. Stub the action module so this markup-only test doesn't
@@ -48,9 +49,9 @@ function msg(
   };
 }
 
-function render(s: ThreadSeed): string {
+function render(s: ThreadSeed, connectors: ConnectorChip[] = []): string {
   return renderToStaticMarkup(
-    createElement(AskHaleThread, { canAsk: true, seed: s, variant: 'full' }),
+    createElement(AskHaleThread, { canAsk: true, seed: s, variant: 'full', connectors }),
   );
 }
 
@@ -133,6 +134,38 @@ describe('AskHaleThread — full surface', () => {
     expect(populated).not.toContain('how are naps going?');
     // The two-line privacy note also collapses after the first send.
     expect(populated).not.toContain('your conversation stays inside Hale');
+  });
+
+  it('renders the Recents rail — past questions as jump-to tasks + a New control', () => {
+    const html = render(
+      seed([
+        msg({ id: 'a', role: 'user', content: 'when do solids start?' }),
+        msg({ id: 'b', role: 'assistant', content: 'Around six months.' }),
+        msg({ id: 'c', role: 'user', content: 'how many naps for a toddler?' }),
+      ]),
+    );
+    // The rail is headed "Recents" and offers a New (start-fresh) control.
+    expect(html).toMatch(/Recents/);
+    expect(html).toMatch(/aria-label="start a new (?:task|conversation)"|>\s*New\s*</i);
+    // Both parent questions appear as rail entries (the assistant answer does not).
+    expect(html).toContain('when do solids start?');
+    expect(html).toContain('how many naps for a toddler?');
+  });
+
+  it('renders the Context → Connectors panel with a chip per family connector', () => {
+    const html = render(seed([msg({ id: 'a', content: 'when do solids start?' })]), [
+      { provider: 'gcal', label: 'Google Calendar', connected: true },
+      { provider: 'gmail', label: 'Gmail', connected: false },
+    ]);
+    // The right-column Context panel names its connectors as chips.
+    expect(html).toMatch(/Connectors/);
+    expect(html).toContain('Google Calendar');
+    expect(html).toContain('Gmail');
+  });
+
+  it('renders a Progress panel summarising the task’s tool trail', () => {
+    const html = render(seed([msg({ id: 'a', content: 'when do solids start?' })]));
+    expect(html).toMatch(/Progress/);
   });
 
   it('carries a page heading in BOTH the empty and the populated state', () => {

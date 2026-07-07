@@ -1,15 +1,18 @@
 'use client';
 
-import { ArrowRight, ArrowUp, Search, Trash2, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, Plus, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
+import type { ConnectorChip } from '~/components/hale/coach-context-panel';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
 import {
   type Activity,
   type AskStatus,
+  type RecentTask,
   type Turn,
   type UseAskHale,
+  recentTasks,
   useAskHale,
 } from '~/components/hale/use-ask-hale';
 import { VoiceMicButton } from '~/components/hale/voice-mic-button';
@@ -27,6 +30,8 @@ interface AskHaleThreadProps {
   variant: AskHaleVariant;
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
+  /** The family's connectors, for the /coach Context panel. Empty on the Home hero. */
+  connectors?: ConnectorChip[];
 }
 
 /** Disabled-state affordance for pills/buttons — globals.css carries no :disabled. */
@@ -50,12 +55,13 @@ export function AskHaleThread({
   seed,
   variant,
   initialFocusedChildId = null,
+  connectors = [],
 }: AskHaleThreadProps) {
   const chat = useAskHale(seed, initialFocusedChildId);
   return variant === 'compact' ? (
     <CompactSurface canAsk={canAsk} chat={chat} seed={seed} />
   ) : (
-    <FullSurface canAsk={canAsk} chat={chat} seed={seed} />
+    <FullSurface canAsk={canAsk} chat={chat} seed={seed} connectors={connectors} />
   );
 }
 
@@ -480,7 +486,11 @@ function Timeline({
         lastScope = scopeKey;
         const canDelete = Boolean(onDeleteTurn && deletableIds?.has(turn.id));
         return (
-          <div key={turn.id} className={`group space-y-2 ${chat ? 'rise' : ''}`}>
+          <div
+            key={turn.id}
+            id={`turn-${turn.id}`}
+            className={`group space-y-2 scroll-mt-4 ${chat ? 'rise' : ''}`}
+          >
             {showScope ? (
               <p className={`eyebrow text-faded-sage ${chat ? 'text-center' : ''}`}>
                 <span data-hale-pii>{childLabelOf(turn.childId)}</span>
@@ -771,11 +781,22 @@ function CompactSurface({
   );
 }
 
+/**
+ * The /coach surface — Cowork's three-column task workspace. LEFT is the Recents
+ * rail (the family's past questions as jump-to tasks + a New); CENTER is the task
+ * thread (the transcript with its per-turn tool-use trail, then the pinned
+ * composer); RIGHT stacks Progress (the active task's tool-trail summary) and
+ * Context → Connectors (the family's linked/available connectors). The center is
+ * the same continuous conversation as before — the columns wrap it, they don't
+ * change what it does. Below `lg` the side rails collapse and the center is the
+ * whole width, so the phone keeps a single reading column.
+ */
 function FullSurface({
   canAsk,
   chat,
   seed,
-}: { canAsk: boolean; chat: UseAskHale; seed: ThreadSeed }) {
+  connectors,
+}: { canAsk: boolean; chat: UseAskHale; seed: ThreadSeed; connectors: ConnectorChip[] }) {
   const {
     turns,
     visibleTurns,
@@ -805,6 +826,36 @@ function FullSurface({
     () => new Set(seed.timeline.map((m) => m.id)),
     [seed.timeline],
   );
+  const recents = useMemo(() => recentTasks(turns), [turns]);
+  // The tool-use trail for the Progress panel: the LAST assistant turn's activity —
+  // the task currently being worked, or the most recent one once it settles.
+  const activeActivity = useMemo(() => {
+    const last = [...turns]
+      .reverse()
+      .find((t) => t.role === 'assistant' && (t.activity?.length ?? 0) > 0);
+    return last?.activity ?? [];
+  }, [turns]);
+
+  // Jump the transcript to a past question, clearing any filter first so the target
+  // turn is actually in the visible set (a search/topic filter could hide it).
+  function jumpToTask(id: string) {
+    setSearch('');
+    setTopicFilter(null);
+    setFocusedChildId(null);
+    requestAnimationFrame(() => {
+      document.getElementById(`turn-${id}`)?.scrollIntoView({ block: 'start' });
+    });
+  }
+
+  // "New" starts a fresh task in the SAME conversation (Hale keeps one continuous
+  // thread per family): reset the scope + filters and drop focus into the composer.
+  function newTask() {
+    setFocusedChildId(null);
+    setTopicFilter(null);
+    setSearch('');
+    setDraft('');
+    inputRef.current?.focus();
+  }
 
   // `.coach-surface` turns the stage into a non-scrolling flex column (globals.css
   // `:has`): this surface fills the remaining height, and the TRANSCRIPT scrolls
@@ -816,101 +867,242 @@ function FullSurface({
           but once the conversation starts that invite is gone — so /coach carries a
           persistent visually-hidden h1 so the document is never headingless. */}
       <h1 className="sr-only">Concierge</h1>
-      {/* Quiet header — the conversation's scope + a secondary search, never a box
-          stacked above the chat. Hidden until there's history to scope or search. */}
-      {!isEmpty ? (
-        <ConversationHeader
-          kids={seed.children}
-          focusedChildId={focusedChildId}
-          setFocusedChildId={setFocusedChildId}
-          topicsInUse={topicsInUse}
-          topicFilter={topicFilter}
-          setTopicFilter={setTopicFilter}
-          search={search}
-          setSearch={setSearch}
-          onErase={eraseConversation}
+
+      <div className="flex min-h-0 flex-1 gap-x-6">
+        {/* LEFT — Recents rail. A quiet scroll column; hidden below lg so the phone
+            keeps the transcript as the single reading column. */}
+        <RecentsRail
+          recents={recents}
+          childLabelOf={childLabelOf}
+          onJump={jumpToTask}
+          onNew={canAsk ? newTask : undefined}
         />
-      ) : null}
 
-      {/* The transcript — the hero. Its own scroll region; the composer sits below
-          it, not over it, so nothing is hidden behind a floating bar. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[64rem] px-1 pb-6 pt-2">
-          {isEmpty ? (
-            <EmptyState
-              canAsk={canAsk}
-              suggestions={seed.suggestions}
+        {/* CENTER — the task thread. The same contained chat as before: quiet header,
+            scrolling transcript with per-turn tool trail, pinned composer. */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!isEmpty ? (
+            <ConversationHeader
+              kids={seed.children}
               focusedChildId={focusedChildId}
-              kids={seed.children}
               setFocusedChildId={setFocusedChildId}
-              onPick={ask}
-              disabled={status === 'pending'}
+              topicsInUse={topicsInUse}
+              topicFilter={topicFilter}
+              setTopicFilter={setTopicFilter}
+              search={search}
+              setSearch={setSearch}
+              onErase={eraseConversation}
             />
-          ) : visibleTurns.length === 0 ? (
-            <output className="meta italic mt-6 block text-center">
-              nothing here for this filter — clear it to see the rest of your conversation.
-            </output>
-          ) : (
-            <Timeline
-              turns={visibleTurns}
-              childLabelOf={childLabelOf}
-              kids={seed.children}
-              layout="chat"
-              streamingId={streamingId}
-              deletableIds={deletableIds}
-              onDeleteTurn={deleteTurn}
-            />
-          )}
-
-          {status === 'pending' && streamingId === null ? (
-            <div className="rise mt-6 flex" aria-hidden>
-              <p className="chat-bubble-hale typing-dots">
-                <span />
-                <span />
-                <span />
-              </p>
-            </div>
           ) : null}
-          <AssistantLiveStatus status={status} />
-          <div ref={threadEndRef} />
-        </div>
-      </div>
 
-      {/* Pinned composer — solid canvas bar (flips with the theme via --color-linen)
-          with a hairline top seam, anchored to the surface foot. The safe-area pad
-          keeps the input clear of the mobile keyboard / home bar. */}
-      <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="mx-auto w-full max-w-[64rem]">
-          {canAsk ? (
-            // The footer stays short so the transcript keeps the viewport on a
-            // narrow phone: the stage-aware suggestion chips live in the empty
-            // state's transcript (not stacked here), and the two-line privacy note
-            // collapses after the first send — once the parent is chatting, an
-            // error is the only thing worth the extra row.
-            <div className="space-y-3">
-              <Composer
-                inputRef={inputRef}
-                draft={draft}
-                setDraft={setDraft}
-                ask={ask}
-                status={status}
-              />
-              {status === 'error' ? (
-                <p className="meta italic text-apricot-deep" role="alert">
-                  Couldn&rsquo;t reach Hale — try again in a moment.
-                </p>
-              ) : isEmpty ? (
-                <ComposerNote />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[52rem] px-1 pb-6 pt-2">
+              {isEmpty ? (
+                <EmptyState
+                  canAsk={canAsk}
+                  suggestions={seed.suggestions}
+                  focusedChildId={focusedChildId}
+                  kids={seed.children}
+                  setFocusedChildId={setFocusedChildId}
+                  onPick={ask}
+                  disabled={status === 'pending'}
+                />
+              ) : visibleTurns.length === 0 ? (
+                <output className="meta italic mt-6 block text-center">
+                  nothing here for this filter — clear it to see the rest of your conversation.
+                </output>
+              ) : (
+                <Timeline
+                  turns={visibleTurns}
+                  childLabelOf={childLabelOf}
+                  kids={seed.children}
+                  layout="chat"
+                  streamingId={streamingId}
+                  deletableIds={deletableIds}
+                  onDeleteTurn={deleteTurn}
+                />
+              )}
+
+              {status === 'pending' && streamingId === null ? (
+                <div className="rise mt-6 flex" aria-hidden>
+                  <p className="chat-bubble-hale typing-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </p>
+                </div>
               ) : null}
+              <AssistantLiveStatus status={status} />
+              <div ref={threadEndRef} />
             </div>
-          ) : (
-            <output className="dev-preview-banner">
-              Sign in to ask your concierge. In this preview the thread is read-only — no question is sent.
-            </output>
-          )}
+          </div>
+
+          {/* Pinned composer — solid canvas bar (flips with the theme via
+              --color-linen) with a hairline top seam, anchored to the surface foot.
+              The safe-area pad keeps the input clear of the mobile keyboard / home bar. */}
+          <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+            <div className="mx-auto w-full max-w-[52rem]">
+              {canAsk ? (
+                <div className="space-y-3">
+                  <Composer
+                    inputRef={inputRef}
+                    draft={draft}
+                    setDraft={setDraft}
+                    ask={ask}
+                    status={status}
+                  />
+                  {status === 'error' ? (
+                    <p className="meta italic text-apricot-deep" role="alert">
+                      Couldn&rsquo;t reach Hale — try again in a moment.
+                    </p>
+                  ) : isEmpty ? (
+                    <ComposerNote />
+                  ) : null}
+                </div>
+              ) : (
+                <output className="dev-preview-banner">
+                  Sign in to ask your concierge. In this preview the thread is read-only — no question is sent.
+                </output>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* RIGHT — Progress + Context. A quiet scroll column; hidden below lg. */}
+        <aside className="hidden min-h-0 w-72 shrink-0 flex-col gap-y-6 overflow-y-auto pt-2 lg:flex">
+          <ProgressPanel activity={activeActivity} pending={status === 'pending'} />
+          <ContextConnectorsPanel connectors={connectors} />
+        </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * LEFT rail — the family's past questions as jump-to tasks, newest first, plus a New
+ * that starts a fresh task in the same conversation. There is ONE ongoing
+ * conversation per family, so a task IS a question in it — clicking one scrolls the
+ * transcript to that turn. Hidden below lg so the phone keeps a single column.
+ */
+function RecentsRail({
+  recents,
+  childLabelOf,
+  onJump,
+  onNew,
+}: {
+  recents: RecentTask[];
+  childLabelOf: (id: string | null) => string;
+  onJump: (id: string) => void;
+  onNew?: () => void;
+}) {
+  return (
+    <aside className="hidden min-h-0 w-64 shrink-0 flex-col gap-y-4 overflow-y-auto pt-2 lg:flex">
+      <div className="flex items-center justify-between">
+        <span className="eyebrow text-spruce">Recents</span>
+        {onNew ? (
+          <button
+            type="button"
+            onClick={onNew}
+            aria-label="start a new task"
+            className="pill pill-action inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus aria-hidden size={14} />
+            New
+          </button>
+        ) : null}
+      </div>
+      {recents.length === 0 ? (
+        <p className="meta">your questions will show up here as you ask them.</p>
+      ) : (
+        <ul className="flex flex-col gap-y-1">
+          {recents.map((task) => (
+            <li key={task.id}>
+              <button
+                type="button"
+                onClick={() => onJump(task.id)}
+                className="w-full rounded-[var(--r-lg)] px-3 py-2 text-left transition-colors hover:bg-oat cursor-pointer"
+              >
+                <span className="block truncate text-[0.95rem] leading-snug text-spruce" data-hale-pii>
+                  {task.label}
+                </span>
+                <span className="eyebrow mt-0.5 block text-faded-sage" data-hale-pii>
+                  {childLabelOf(task.childId)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  );
+}
+
+/**
+ * RIGHT panel — Progress: the active task's tool-use trail, summarised. Rule #1: it
+ * shows ONLY what the server streamed (a tool name + outcome + content-free
+ * preview), never args or raw output. A blocked tool (ok:false) reads in the
+ * attention tone so a refusal is observable, never silent.
+ */
+function ProgressPanel({ activity, pending }: { activity: Activity[]; pending: boolean }) {
+  const results = activity.filter(
+    (a): a is Extract<Activity, { kind: 'tool_result' }> => a.kind === 'tool_result',
+  );
+  return (
+    <section className="panel-oat px-5 py-4">
+      <p className="eyebrow text-spruce">Progress</p>
+      {results.length === 0 ? (
+        <p className="meta mt-2">{pending ? 'Hale is working…' : 'no tools used yet.'}</p>
+      ) : (
+        <>
+          <p className="meta mt-1">
+            {results.length} {results.length === 1 ? 'step' : 'steps'}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {results.map((r, i) => (
+              <li
+                // biome-ignore lint/suspicious/noArrayIndexKey: activity is append-only, so index is a stable identity
+                key={i}
+                className={`meta flex items-center gap-2 ${r.ok ? 'text-slate-green' : 'text-berry'}`}
+              >
+                <span aria-hidden>{r.ok ? '✓' : '✕'}</span>
+                <span>{r.preview}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * RIGHT panel — Context → Connectors: a chip per family connector, marked when it
+ * is linked. Read-only context; connectors feed drafts a parent approves, never
+ * auto-actions (rule #4). No "Working folder" panel — Hale has no local files.
+ */
+function ContextConnectorsPanel({ connectors }: { connectors: ConnectorChip[] }) {
+  return (
+    <section className="panel-oat px-5 py-4">
+      <p className="eyebrow text-spruce">Context</p>
+      <p className="meta mt-1">Connectors</p>
+      {connectors.length === 0 ? (
+        <p className="meta mt-2">no connectors available.</p>
+      ) : (
+        <ul className="mt-2 flex flex-wrap gap-2">
+          {connectors.map((c) => (
+            <li key={c.provider}>
+              <span className={`pill ${c.connected ? 'pill-sky' : ''}`}>
+                {c.label}
+                {c.connected ? null : <span className="text-faded-sage"> · add</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <a href="/settings" className="link mt-3 inline-block text-[0.85rem]">
+        manage connectors
+      </a>
+    </section>
   );
 }
 

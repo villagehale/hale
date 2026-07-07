@@ -145,6 +145,35 @@ export function filterTurns(
   });
 }
 
+/** One entry in the Recents rail — a parent question the family can jump back to.
+ * There is ONE ongoing conversation per family, so a "task" is a question within
+ * it (its user turn), not a separate thread. */
+export interface RecentTask {
+  /** The user turn's id — the jump anchor. */
+  id: string;
+  /** The question text, for the rail label. */
+  label: string;
+  /** The child the question was scoped to, or null for the whole family. */
+  childId: string | null;
+}
+
+/**
+ * The parent questions in the conversation, newest first — the Recents rail. Only
+ * user turns become tasks (an assistant turn is the answer, not its own entry); a
+ * blank in-flight turn is dropped so the rail never shows an empty task. Pure +
+ * exported so the derivation is unit-tested.
+ */
+export function recentTasks(turns: Turn[]): RecentTask[] {
+  const tasks: RecentTask[] = [];
+  for (const t of turns) {
+    if (t.role !== 'user') continue;
+    const label = t.body.trim();
+    if (!label) continue;
+    tasks.push({ id: t.id, label, childId: t.childId });
+  }
+  return tasks.reverse();
+}
+
 export interface UseAskHale {
   /** Every turn (unfiltered) — the full relationship history. */
   turns: Turn[];

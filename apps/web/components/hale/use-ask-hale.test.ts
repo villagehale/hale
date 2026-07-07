@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { type Turn, buildCoachRequest, filterTurns, readNdjson } from './use-ask-hale';
+import {
+  type Turn,
+  buildCoachRequest,
+  filterTurns,
+  readNdjson,
+  recentTasks,
+} from './use-ask-hale';
 
 /**
  * The continuous-companion shell's two pure seams:
@@ -105,5 +111,28 @@ describe('filterTurns', () => {
   it('combines child + topic + search filters', () => {
     expect(filterTurns(TIMELINE, 'tot', 'sleep', 'naps').map((t) => t.id)).toEqual(['b']);
     expect(filterTurns(TIMELINE, 'tot', 'feeding', 'naps')).toEqual([]);
+  });
+});
+
+describe('recentTasks', () => {
+  it('lists the parent questions (user turns) as tasks, newest first', () => {
+    // Each user turn is one "task" in the Recents rail; assistant turns are the
+    // answers, never their own entry.
+    expect(recentTasks(TIMELINE).map((t) => t.id)).toEqual(['d', 'c', 'b', 'a']);
+  });
+
+  it('carries each task’s scope + label so the rail can jump to it', () => {
+    const only = turn({ id: 'a', body: 'when do I start solids?', childId: 'tot', topic: 'feeding' });
+    expect(recentTasks([only])).toEqual([
+      { id: 'a', label: 'when do I start solids?', childId: 'tot' },
+    ]);
+  });
+
+  it('drops empty user turns so an in-flight blank never becomes a task', () => {
+    const withBlank: Turn[] = [
+      { id: 'x', role: 'user', body: '   ', childId: null, topic: null },
+      { id: 'y', role: 'assistant', body: 'the answer', childId: null, topic: null },
+    ];
+    expect(recentTasks(withBlank)).toEqual([]);
   });
 });
