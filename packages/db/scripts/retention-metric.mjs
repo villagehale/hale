@@ -23,6 +23,12 @@ try {
     JOIN families f ON f.id = t.family_id
     ORDER BY t.days DESC`;
   const retained = rows.filter((r) => r.days >= 3);
+  const [waitlist] = await sql`
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE tier = 'plus')::int AS plus,
+           count(*) FILTER (WHERE tier = 'family')::int AS family
+    FROM waitlist`;
+  console.log(`waitlist signups: ${waitlist.total} (plus ${waitlist.plus} · family ${waitlist.family})`);
   console.log(`active families (14d): ${rows.length}`);
   console.log(`retained (3+ days of 14): ${retained.length}`);
   for (const r of rows) {
