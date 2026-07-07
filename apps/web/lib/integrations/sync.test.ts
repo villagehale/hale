@@ -200,6 +200,75 @@ describe('syncConnection — Drive', () => {
   });
 });
 
+describe('syncConnection — pagination (drain all pages before advancing)', () => {
+  it('Calendar drains every page; the terminal nextSyncToken arrives only on the last', async () => {
+    const { fetchImpl } = routedFetch([
+      // page 2 (matched first): terminal nextSyncToken, no nextPageToken
+      { match: 'pageToken=PAGE2', body: { items: [{ id: 'ev2', summary: 'park' }], nextSyncToken: 'SYNC-2' } },
+      // page 1: items + nextPageToken, NO nextSyncToken
+      {
+        match: 'calendar/v3/calendars/primary/events',
+        body: { items: [{ id: 'ev1', summary: 'library' }], nextPageToken: 'PAGE2' },
+      },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.errored).toBe(false);
+    // BOTH pages' items emitted — page-2 items are silently lost without pagination.
+    expect(cap.enqueued.map((e) => e.payload.id)).toEqual(['ev1', 'ev2']);
+    // Cursor advances to the LAST page's sync token, not {syncToken: undefined}.
+    expect(cap.cursor).toEqual({ syncToken: 'SYNC-2' });
+  });
+
+  it('Calendar: a page with items but NO terminal token errors — cursor untouched, nothing emitted (no double-emit)', async () => {
+    const { fetchImpl } = routedFetch([
+      { match: 'calendar/v3/calendars/primary/events', body: { items: [{ id: 'ev1' }] } },
+    ]);
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gcal', { syncToken: 'SYNC-1' }), deps);
+
+    expect(cap.errored).toBe(true);
+    expect(cap.cursor).toBeUndefined();
+    expect(cap.enqueued).toHaveLength(0);
+  });
+
+  it('Gmail drains all history pages before advancing historyId (later-page messages are not skipped)', async () => {
+    const fetchImpl: GoogleFetch = async (url) => {
+      if (url.includes('/messages/m1')) {
+        return { ok: true, status: 200, json: async () => ({ id: 'm1', snippet: 'a', payload: { headers: [] } }) };
+      }
+      if (url.includes('/messages/m2')) {
+        return { ok: true, status: 200, json: async () => ({ id: 'm2', snippet: 'b', payload: { headers: [] } }) };
+      }
+      if (url.includes('pageToken=H2')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ history: [{ messagesAdded: [{ message: { id: 'm2' } }] }], historyId: '9200' }),
+        };
+      }
+      // history page 1: m1 + nextPageToken H2 (no terminal historyId advance yet)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          history: [{ messagesAdded: [{ message: { id: 'm1' } }] }],
+          nextPageToken: 'H2',
+          historyId: '9100',
+        }),
+      };
+    };
+    const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
+    await syncConnection(connection('gmail', { historyId: '9002' }), deps);
+
+    expect(cap.errored).toBe(false);
+    expect(cap.enqueued.map((e) => e.payload.id).sort()).toEqual(['m1', 'm2']);
+    // historyId advances to the last page's value, past all drained messages.
+    expect(cap.cursor).toEqual({ historyId: '9200' });
+  });
+});
+
 describe('syncConnection — failure isolation & token refresh', () => {
   it('a failed fetch sets status=error and does NOT advance the cursor (no double-emit / no loss)', async () => {
     const fetchImpl: GoogleFetch = async () => ({ ok: false, status: 500, json: async () => ({}) });

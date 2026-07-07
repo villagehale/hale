@@ -49,6 +49,9 @@ const GONE = 410;
 /** Refresh a token this many ms before its stated expiry, so a sync doesn't start
  * with a token that expires mid-run. */
 const EXPIRY_SKEW_MS = 60_000;
+/** Bound the per-run pagination loop so a pathological Google response (e.g. a
+ * self-referential nextPageToken) can't spin forever. */
+const MAX_PAGES = 50;
 
 interface ProviderResult {
   events: IngestedEventPayload[];
@@ -141,11 +144,14 @@ function ingested(
 }
 
 // ── Calendar ─────────────────────────────────────────────────────────────────
-// events.list with the stored syncToken (incremental). On 410 GONE the syncToken
-// is stale (Google expired it) → drop it and do a full resync, which returns a
-// fresh nextSyncToken.
+// events.list with the stored syncToken (incremental), DRAINED to completion:
+// Google returns nextPageToken for more pages and nextSyncToken ONLY on the final
+// page — so every page must be pulled before the cursor advances, else later-page
+// items are lost and the missing sync token forces a re-emit next run. On 410 GONE
+// the syncToken is stale → drop it and full-resync (which returns a fresh token).
 interface CalendarEventsResponse {
   items?: Array<Record<string, unknown>>;
+  nextPageToken?: string;
   nextSyncToken?: string;
 }
 
@@ -154,17 +160,45 @@ async function syncCalendar(
   accessToken: string,
   googleFetch: GoogleFetch,
 ): Promise<ProviderResult> {
-  const base = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&showDeleted=false';
-  const syncToken = readString(connection.providerMetadata.syncToken);
+  const base =
+    'https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&showDeleted=false';
+  let syncToken = readString(connection.providerMetadata.syncToken);
+  let resynced = false;
+  let pageToken: string | undefined;
+  const items: Array<Record<string, unknown>> = [];
+  let nextSyncToken: string | undefined;
 
-  const url = syncToken ? `${base}&syncToken=${encodeURIComponent(syncToken)}` : base;
-  let { status, data } = await getJson<CalendarEventsResponse>(googleFetch, url, accessToken);
-  if (status === GONE) {
-    // Stale syncToken → full resync (no syncToken).
-    ({ data } = await getJson<CalendarEventsResponse>(googleFetch, base, accessToken));
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    let url = base;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    else if (syncToken) url += `&syncToken=${encodeURIComponent(syncToken)}`;
+
+    const { status, data } = await getJson<CalendarEventsResponse>(googleFetch, url, accessToken);
+    if (status === GONE) {
+      if (resynced) throw new Error('calendar: syncToken gone during full resync');
+      // Stale syncToken → restart a full resync from scratch (drop the token/page).
+      resynced = true;
+      syncToken = undefined;
+      pageToken = undefined;
+      items.length = 0;
+      continue;
+    }
+    for (const item of data.items ?? []) items.push(item);
+    if (data.nextPageToken) {
+      pageToken = data.nextPageToken;
+      continue;
+    }
+    nextSyncToken = data.nextSyncToken;
+    break;
+  }
+  if (!nextSyncToken) {
+    // No terminal token after draining the pages → do NOT advance the cursor.
+    // Throwing marks the connection errored and leaves the old cursor, so nothing
+    // is dropped or re-emitted; the next run retries from the last good point.
+    throw new Error('calendar: no nextSyncToken on the final page');
   }
 
-  const events = (data.items ?? []).map((item) =>
+  const events = items.map((item) =>
     ingested('gcal', connection.familyId, {
       id: item.id,
       summary: item.summary,
@@ -174,7 +208,7 @@ async function syncCalendar(
       end: item.end,
     }),
   );
-  return { events, nextMetadata: { syncToken: data.nextSyncToken } };
+  return { events, nextMetadata: { syncToken: nextSyncToken } };
 }
 
 // ── Gmail ────────────────────────────────────────────────────────────────────
@@ -187,6 +221,7 @@ interface GmailListResponse {
 }
 interface GmailHistoryResponse {
   history?: Array<{ messagesAdded?: Array<{ message?: { id?: string } }> }>;
+  nextPageToken?: string;
   historyId?: string;
 }
 interface GmailMessageResponse {
@@ -201,26 +236,40 @@ async function syncGmail(
   googleFetch: GoogleFetch,
 ): Promise<ProviderResult> {
   const startHistoryId = readString(connection.providerMetadata.historyId);
-  let messageIds: string[];
+  const messageIds: string[] = [];
   let nextHistoryId: string | undefined;
 
   if (startHistoryId) {
-    const { data } = await getJson<GmailHistoryResponse>(
-      googleFetch,
-      `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`,
-      accessToken,
-    );
-    messageIds = (data.history ?? []).flatMap((h) =>
-      (h.messagesAdded ?? []).map((m) => m.message?.id).filter((id): id is string => Boolean(id)),
-    );
-    nextHistoryId = data.historyId;
+    // Drain every history page before advancing historyId — otherwise messages on
+    // later pages are dropped AND the cursor jumps past them permanently.
+    let pageToken: string | undefined;
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      let url = `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`;
+      if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+      const { data } = await getJson<GmailHistoryResponse>(googleFetch, url, accessToken);
+      for (const h of data.history ?? []) {
+        for (const m of h.messagesAdded ?? []) {
+          if (m.message?.id) messageIds.push(m.message.id);
+        }
+      }
+      nextHistoryId = data.historyId ?? nextHistoryId;
+      if (data.nextPageToken) {
+        pageToken = data.nextPageToken;
+        continue;
+      }
+      break;
+    }
   } else {
+    // First run: seed the historyId cursor + emit a bounded page of recent messages
+    // as the starting point.
     const { data } = await getJson<GmailListResponse>(
       googleFetch,
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25',
       accessToken,
     );
-    messageIds = (data.messages ?? []).map((m) => m.id).filter((id): id is string => Boolean(id));
+    for (const m of data.messages ?? []) {
+      if (m.id) messageIds.push(m.id);
+    }
     nextHistoryId = data.historyId;
   }
 
@@ -261,37 +310,54 @@ async function syncDrive(
   accessToken: string,
   googleFetch: GoogleFetch,
 ): Promise<ProviderResult> {
-  let pageToken = readString(connection.providerMetadata.pageToken);
-  if (!pageToken) {
+  let seed = readString(connection.providerMetadata.pageToken);
+  if (!seed) {
     const { data } = await getJson<DriveStartPageTokenResponse>(
       googleFetch,
       'https://www.googleapis.com/drive/v3/changes/startPageToken',
       accessToken,
     );
-    pageToken = data.startPageToken;
+    seed = data.startPageToken;
   }
-  if (!pageToken) {
+  if (!seed) {
     // No start token — nothing to sync yet; leave the cursor unset for next run.
     return { events: [], nextMetadata: connection.providerMetadata };
   }
 
-  const { data } = await getJson<DriveChangesResponse>(
-    googleFetch,
-    `https://www.googleapis.com/drive/v3/changes?pageToken=${encodeURIComponent(pageToken)}&fields=changes(file(id,name,mimeType,modifiedTime)),newStartPageToken`,
-    accessToken,
-  );
-  const events = (data.changes ?? [])
-    .map((c) => c.file)
-    .filter((f): f is Record<string, unknown> => Boolean(f))
-    .map((file) =>
-      ingested('gdrive', connection.familyId, {
-        id: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        modifiedTime: file.modifiedTime,
-      }),
+  // Drain every changes page; newStartPageToken (the next cursor) arrives ONLY on
+  // the final page, so advancing before then would drop later-page changes.
+  let pageToken = seed;
+  const files: Array<Record<string, unknown>> = [];
+  let newStartPageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const { data } = await getJson<DriveChangesResponse>(
+      googleFetch,
+      `https://www.googleapis.com/drive/v3/changes?pageToken=${encodeURIComponent(pageToken)}&fields=changes(file(id,name,mimeType,modifiedTime)),nextPageToken,newStartPageToken`,
+      accessToken,
     );
-  return { events, nextMetadata: { pageToken: data.newStartPageToken ?? data.nextPageToken ?? pageToken } };
+    for (const change of data.changes ?? []) {
+      if (change.file) files.push(change.file);
+    }
+    if (data.nextPageToken) {
+      pageToken = data.nextPageToken;
+      continue;
+    }
+    newStartPageToken = data.newStartPageToken;
+    break;
+  }
+  if (!newStartPageToken) {
+    throw new Error('drive: no newStartPageToken on the final page');
+  }
+
+  const events = files.map((file) =>
+    ingested('gdrive', connection.familyId, {
+      id: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      modifiedTime: file.modifiedTime,
+    }),
+  );
+  return { events, nextMetadata: { pageToken: newStartPageToken } };
 }
 
 function readString(value: unknown): string | undefined {
