@@ -79,6 +79,7 @@ const EMPTY_FAMILY_BASICS: FamilyBasicsView = {
   location: { country: null, province: null, city: null, postalCode: null },
   planTier: 'free',
   intents: [],
+  foundingNumber: null,
   children: [],
 };
 
@@ -98,6 +99,7 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
         postalCode: schema.families.postalCode,
         planTier: schema.families.planTier,
         intents: schema.families.intents,
+        foundingNumber: schema.families.foundingNumber,
       })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))

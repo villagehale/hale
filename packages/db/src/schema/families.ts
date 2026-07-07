@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer } from 'drizzle-orm/pg-core';
 import { onboardingStageEnum, planTierEnum } from './enums.js';
 
 export const families = pgTable('families', {
@@ -31,6 +31,11 @@ export const families = pgTable('families', {
    * hard-deletes it once now() passes this. NULL = not scheduled; clearing it
    * before the worker fires cancels the deletion (reversible by grace). */
   scheduledDeletionAt: timestamp('scheduled_deletion_at', { withTimezone: true }),
+  /** Permanent founding ordinal (first 100 families), assigned once right after
+   * provisioning and never recomputed — so later deletions can't shift anyone's
+   * number. NULL = not a founding family (or the freak concurrent-signup race,
+   * which forfeits the badge rather than failing onboarding). */
+  foundingNumber: integer('founding_number'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

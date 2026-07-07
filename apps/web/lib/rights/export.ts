@@ -60,6 +60,7 @@ export async function assembleFamilyExport(
       postalCode: schema.families.postalCode,
       planTier: schema.families.planTier,
       intents: schema.families.intents,
+      foundingNumber: schema.families.foundingNumber,
     })
     .from(schema.families)
     .where(eq(schema.families.id, familyId))

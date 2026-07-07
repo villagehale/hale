@@ -28,6 +28,11 @@ export default async function FamilyPage() {
             <h1 className="font-display">
               your <span className="text-apricot-deep">Family.</span>
             </h1>
+            {basics.foundingNumber !== null ? (
+              <p className="mt-4 inline-flex items-center rounded-full bg-apricot-tint px-4 py-1.5 font-display text-sm font-semibold text-spruce">
+                Founding family · #{basics.foundingNumber}
+              </p>
+            ) : null}
           </div>
         </div>
       </header>

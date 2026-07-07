@@ -14,6 +14,7 @@ describe('toFamilyBasics', () => {
         planTier: 'plus',
         // out of order, with an unknown value the mapper must drop
         intents: ['health', 'activities', 'groceries'],
+        foundingNumber: 7,
       },
       [
         { id: 'a', name: 'Robin', dateOfBirth: '2026-03-15' }, // ~3mo → newborn
@@ -29,6 +30,7 @@ describe('toFamilyBasics', () => {
       postalCode: 'M5V 2T6',
     });
     expect(view.planTier).toBe('plus');
+    expect(view.foundingNumber).toBe(7);
     // Unknown 'groceries' dropped, canonical order restored.
     expect(view.intents).toEqual(['activities', 'health']);
     expect(view.children).toEqual([
@@ -47,6 +49,7 @@ describe('toFamilyBasics', () => {
     });
     expect(view.planTier).toBe('free');
     expect(view.intents).toEqual([]);
+    expect(view.foundingNumber).toBeNull();
     expect(view.children).toEqual([]);
   });
 });
