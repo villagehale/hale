@@ -1,5 +1,6 @@
 import type { LogsPage } from '~/lib/companion/logs-view';
 import type { ChildCompanionView } from '~/lib/companion/queries';
+import type { DocumentView } from '~/lib/docs/documents';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
 import type { ApprovalView } from '~/lib/dashboard/approvals';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
@@ -89,6 +90,35 @@ export interface MobileLogEditResponse {
 /** The native Diary soft-delete of a logged episode, reusing the audited
  * softDeleteEpisode lib (family-scoped, rule #1). */
 export interface MobileLogDeleteResponse {
+  status: 'deleted';
+}
+
+// ── docs vault (GET/POST /api/mobile/docs, /docs/[id]/url, DELETE /docs/[id]) ──
+//
+// The Docs vault list, already teen-redacted (rule #1) by listDocuments and
+// carrying no storage path / URL — a URL is minted per-view through the [id]/url
+// route. Bytes never travel in these shapes.
+
+/** The family's live documents, most-recent first (teen-redacted). */
+export interface MobileDocsResponse {
+  documents: DocumentView[];
+}
+
+/** The upload result — the freshly-minted doc id only (no URL; the viewer mints one
+ * on demand). */
+export interface MobileDocUploadResponse {
+  status: 'uploaded';
+  id: string;
+}
+
+/** A short-TTL signed URL for viewing one document (rule #1: minted per view, never
+ * stored). */
+export interface MobileDocUrlResponse {
+  url: string;
+}
+
+/** The soft-delete result (the row stays for the audit trail, rules #6/#9). */
+export interface MobileDocDeleteResponse {
   status: 'deleted';
 }
 

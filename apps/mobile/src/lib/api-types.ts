@@ -94,6 +94,41 @@ export interface MobileLogsResponse {
   nextCursor: string | null;
 }
 
+// ── docs vault (from apps/web lib/docs/documents DocumentView + route envelopes) ──
+
+/** A document row flattened for the vault list. Never carries the storage path or a
+ * URL — a URL is minted per-view through the [id]/url route. Mirrors web DocumentView. */
+export interface DocumentView {
+  id: string;
+  childId: string | null;
+  kind: string;
+  title: string;
+  mime: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/** The family's live documents, most-recent first (teen-redacted). */
+export interface MobileDocsResponse {
+  documents: DocumentView[];
+}
+
+/** The upload result — the freshly-minted doc id only (no URL). */
+export interface MobileDocUploadResponse {
+  status: 'uploaded';
+  id: string;
+}
+
+/** A short-TTL signed URL for viewing one document (minted per view, never stored). */
+export interface MobileDocUrlResponse {
+  url: string;
+}
+
+/** The soft-delete result (the row stays for the audit trail). */
+export interface MobileDocDeleteResponse {
+  status: 'deleted';
+}
+
 // ── village (from apps/web lib/village/mappers + queries) ─────────────────────
 
 export interface VillageCandidateView {

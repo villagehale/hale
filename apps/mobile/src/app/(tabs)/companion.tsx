@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { AppointmentDetailSheet } from '@/components/hale/appointment-detail-sheet';
+import { DocsSection } from '@/components/hale/docs-section';
 import { GrowthAddSheet } from '@/components/hale/growth-add-sheet';
 import { LogEditSheet } from '@/components/hale/log-edit-sheet';
 import { AppText } from '@/components/ui/app-text';
@@ -45,6 +46,7 @@ const SECTIONS = [
   { key: 'milestones', label: 'Milestones' },
   { key: 'routines', label: 'Routines' },
   { key: 'diary', label: 'Diary' },
+  { key: 'docs', label: 'Docs' },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]['key'];
@@ -894,6 +896,12 @@ function CompanionBody({
       ) : null}
       {section === 'routines' ? <RoutinesSection /> : null}
       {section === 'diary' ? <DiarySection childId={child.id} /> : null}
+      {section === 'docs' ? (
+        <DocsSection
+          childId={child.id}
+          kids={data.children.map((c) => ({ id: c.id, name: c.name }))}
+        />
+      ) : null}
 
       <AppointmentDetailSheet
         item={healthItem}

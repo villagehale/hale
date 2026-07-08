@@ -47,6 +47,8 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'book.fill': 'book',
   'lock.shield.fill': 'lock-closed-outline',
   'checkmark.shield.fill': 'shield-checkmark-outline',
+  'cross.case.fill': 'medkit-outline',
+  'doc.text.fill': 'document-text-outline',
   bookmark: 'bookmark-outline',
   'bookmark.fill': 'bookmark',
   'person.crop.circle': 'person-circle-outline',
