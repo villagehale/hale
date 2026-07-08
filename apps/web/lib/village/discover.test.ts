@@ -739,3 +739,29 @@ describe('discoverForFamily', () => {
     expect(capture.villageCandidates).toEqual([]);
   });
 });
+
+describe('candidatesSchema — model null tolerance (season-search 500)', () => {
+  // The tool schema declares eventDate/seasons/cadence/sourceUrl as optional, and
+  // Claude routinely expresses "none" as an explicit null (a year-round pick in a
+  // season search has no eventDate and no seasons). The parse must accept exactly
+  // what the tool contract permits — a null here killed the whole run with a 500.
+  it('accepts explicit nulls for the optional candidate fields', async () => {
+    const { candidatesSchema } = await import('./discover.js');
+    const parsed = candidatesSchema.parse({
+      candidates: [
+        {
+          title: 'Public library toddler time',
+          description: 'Weekly story time, year-round.',
+          cadence: null,
+          eventDate: null,
+          seasons: null,
+          sourceUrl: null,
+          confidence: 0.8,
+          coverageNote: 'library site',
+        },
+      ],
+    });
+    expect(parsed.candidates[0]?.eventDate ?? null).toBeNull();
+    expect(parsed.candidates[0]?.seasons ?? null).toBeNull();
+  });
+});
