@@ -2,6 +2,8 @@ import { api } from './api-client';
 import type {
   MobileFamilyUpdateRequest,
   MobileFamilyUpdateResponse,
+  MobilePushPrefsUpdateRequest,
+  MobilePushPrefsUpdateResponse,
   MobileSettingsUpdateRequest,
   MobileSettingsUpdateResponse,
 } from './api-types';
@@ -24,6 +26,15 @@ export async function updateFamily(body: MobileFamilyUpdateRequest): Promise<voi
 export async function updateSettings(body: MobileSettingsUpdateRequest): Promise<void> {
   await api<MobileSettingsUpdateResponse>('/api/mobile/settings', {
     method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Toggle one PUSH stream (new picks / health reminders). PATCHes the notifications
+ * route, which resolves the family + audits the change (rules #1/#6). */
+export async function updatePushPref(body: MobilePushPrefsUpdateRequest): Promise<void> {
+  await api<MobilePushPrefsUpdateResponse>('/api/mobile/settings/notifications', {
+    method: 'PATCH',
     body: JSON.stringify(body),
   });
 }

@@ -15,6 +15,7 @@ export const MAX_FAMILIES_PER_RUN = {
   digest: 100,
   discovery: 50,
   inference: 100,
+  pushReminders: 100,
 } as const;
 
 /** Discovery only runs for families whose candidate pool is stale or empty. */

@@ -281,6 +281,13 @@
       "when": 1781462100000,
       "tag": "0040_village_saves",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781462160000,
+      "tag": "0041_notification_prefs",
+      "breakpoints": true
     }
   ]
 }
