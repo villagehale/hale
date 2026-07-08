@@ -13,10 +13,11 @@ import { describe, expect, it } from 'vitest';
 // exact web loaders/writers that own the query building): the password sign-in, the
 // email sign-up (delegates to registerCredential + the signup side-effect
 // dispatcher), the companion quick-log, the companion "mark done" (reuses the same
-// writeEpisode path), and the companion logs read (reuses the shared, teen-redacted
-// readLogsPage). They may import ~/lib/db ONLY, and must contain NO query-building
-// tokens themselves — the query building lives behind the shared lib, never inline
-// in the route.
+// writeEpisode path), the companion logs read (reuses the shared, teen-redacted
+// readLogsPage), and the three docs-vault routes (reuse the shared, teen-redacted
+// documents lib for list / signed-url / soft-delete). They may import ~/lib/db ONLY,
+// and must contain NO query-building tokens themselves — the query building lives
+// behind the shared lib, never inline in the route.
 //
 // (Lives under lib/ because the vitest `include` glob only picks up lib/** and
 // components/**, not app/**.)
@@ -34,6 +35,9 @@ const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/companion/log/route.ts',
   'app/api/mobile/companion/done/route.ts',
   'app/api/mobile/companion/logs/route.ts',
+  'app/api/mobile/docs/route.ts',
+  'app/api/mobile/docs/[id]/route.ts',
+  'app/api/mobile/docs/[id]/url/route.ts',
 ]);
 
 // Direct DB-access tokens forbidden in every mobile file (the allowlist relaxes

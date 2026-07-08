@@ -56,7 +56,11 @@ export async function api<T>(
   const token = await tokenStorage.get(TOKEN_KEY);
   const headers = new Headers(requestInit.headers);
   headers.set('accept', 'application/json');
-  if (requestInit.body !== undefined) headers.set('content-type', 'application/json');
+  // A multipart upload (FormData) must let fetch set content-type so it can add the
+  // boundary; only stamp JSON when the body is not FormData.
+  if (requestInit.body !== undefined && !(requestInit.body instanceof FormData)) {
+    headers.set('content-type', 'application/json');
+  }
   if (token) headers.set('authorization', `Bearer ${token}`);
 
   let res: Response;
