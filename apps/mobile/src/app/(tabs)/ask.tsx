@@ -28,6 +28,7 @@ import { ApiError } from '@/lib/api-client';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
 import { useVoiceInput } from '@/lib/use-voice-input';
+import { viewerFirstName } from '@/lib/viewer-name';
 
 /** A streaming Concierge turn. `text` grows as deltas arrive; `trail` is the live
  * step list (with the in-flight tool pulsing); once `streaming` is false the trail
@@ -111,9 +112,14 @@ function HaleBubble({ turn }: { turn: HaleTurn }) {
 }
 
 function StarterChips({ onPick }: { onPick: (q: string) => void }) {
+  // Warmed with the viewer's first name when Home has already loaded it; a
+  // greeting is never worth its own network call (see viewer-name.ts).
+  const first = viewerFirstName();
   return (
     <View className="flex-1 gap-4 pt-6">
-      <AppText variant="display">How can I help you today?</AppText>
+      <AppText variant="display">
+        {first ? `Hi ${first}, how can I help?` : 'How can I help you today?'}
+      </AppText>
       <AppText variant="meta" className="text-ink-3">
         Hale is here for you, 24/7.
       </AppText>
@@ -332,7 +338,7 @@ export default function AskScreen() {
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Type, or tap the mic to talk"
+              placeholder="Ask or type a parenting question"
               placeholderTextColor={placeholderColor}
               accessibilityLabel="Ask Hale a question"
               multiline

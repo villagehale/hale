@@ -17,6 +17,7 @@ import type { ChildCompanionView, MobileHomeResponse, VillageCandidateView } fro
 import { agePhrase } from '@/lib/format';
 import { timeGreeting } from '@/lib/greeting';
 import { useApi } from '@/lib/use-api';
+import { rememberViewerFirstName } from '@/lib/viewer-name';
 
 function nextForChild(child: ChildCompanionView): string {
   const health = child.nextHealth[0];
@@ -44,14 +45,20 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
   const [logKind, setLogKind] = useState<LogKind | null>(null);
   const hasChildren = data.children.length > 0;
   const greeting = homeGreeting(data.viewer);
+  rememberViewerFirstName(data.viewer.name);
 
   return (
     <>
-      <View className="flex-row items-center justify-between pt-2">
-        <AppText variant="display" className="flex-1 pr-3">
-          {greeting}
+      <View className="gap-0.5 pt-2">
+        <View className="flex-row items-center justify-between">
+          <AppText variant="display" className="flex-1 pr-3">
+            {greeting}
+          </AppText>
+          <LogoMark size={30} />
+        </View>
+        <AppText variant="meta" className="text-ink-3">
+          Here&rsquo;s what&rsquo;s happening today.
         </AppText>
-        <LogoMark size={30} />
       </View>
 
       {hasChildren ? (

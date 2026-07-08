@@ -24,18 +24,18 @@ type MenuItem = {
 const SECTIONS: { items: MenuItem[] }[] = [
   {
     items: [
+      {
+        label: 'Family',
+        detail: 'Parents, children, area',
+        icon: 'person.2',
+        href: '/more/family',
+      },
       { label: 'Plan', detail: 'Your week ahead', icon: 'calendar', href: '/more/plan' },
       {
         label: 'Approvals',
         detail: 'Actions waiting for you',
         icon: 'checkmark.circle',
         href: '/more/approvals',
-      },
-      {
-        label: 'Family',
-        detail: 'Parents, children, area',
-        icon: 'person.2',
-        href: '/more/family',
       },
     ],
   },
