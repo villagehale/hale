@@ -42,6 +42,12 @@ export interface CompanionView {
   ageMonths: number;
   name: string | null;
   nextHealth: readonly UpcomingHealthItem[];
+  /** The single upcoming health item worth leading a "today" surface with, or null
+   * (soonest not-done within the horizon). Mirrors @hale/types CompanionView. */
+  todayHealth: UpcomingHealthItem | null;
+  /** Health items whose scheduled age recently passed and are NOT marked done —
+   * "was due at X — done?". Bounded back a few months. Mirrors @hale/types. */
+  recentlyPassedHealth: readonly UpcomingHealthItem[];
   milestones: readonly MilestoneStatus[];
   whatsNow: readonly string[];
   whatsNext: string;
@@ -73,6 +79,11 @@ export interface LogView {
   durationMin?: number;
   amountMl?: number;
   feedKind?: string;
+  /** Growth measure kind (weight/height/head), lifted from payload; present only
+   * alongside value + unit (mirrors web LogView, lifted as a set). */
+  measureKind?: string;
+  value?: number;
+  unit?: string;
 }
 
 /** One keyset page of logs, newest first, with the cursor for the next page

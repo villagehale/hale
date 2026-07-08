@@ -177,4 +177,69 @@ describe('readLogsPage — numerics lifted from payload', () => {
     expect(view).not.toHaveProperty('feedKind');
     expect(JSON.stringify(page.logs)).not.toContain('mystery formula');
   });
+
+  it('lifts an enum-gated measurement (measureKind + value + unit) as a set', async () => {
+    const measurement: EpisodeRow = {
+      id: 'm-e',
+      childId: TODDLER_ID,
+      authoredBy: PARENT_ID,
+      episodeType: 'measurement',
+      summary: 'Weighed 10.4 kg',
+      occurredAt: new Date('2026-07-05T08:00:00Z'),
+      payload: { measureKind: 'weight', value: 10.4, unit: 'kg', note: 'after breakfast' },
+    };
+    const db = fakeDb([{ id: TODDLER_ID, dateOfBirth: '2024-05-01' }], [measurement]);
+
+    const page = await readLogsPage(db, FAMILY_ID, PARENT_ID, { limit: 30 });
+
+    const view = page.logs.find((l) => l.id === 'm-e');
+    expect(view).toMatchObject({ measureKind: 'weight', value: 10.4, unit: 'kg' });
+    // The raw note is payload content, never lifted (rule #1).
+    expect(view).not.toHaveProperty('note');
+    expect(JSON.stringify(page.logs)).not.toContain('after breakfast');
+  });
+
+  it('drops a free-text measureKind — same second-writer enum gate as feedKind', async () => {
+    const measurement: EpisodeRow = {
+      id: 'm-x',
+      childId: TODDLER_ID,
+      authoredBy: PARENT_ID,
+      episodeType: 'measurement',
+      summary: 'measured',
+      occurredAt: new Date('2026-07-05T08:00:00Z'),
+      payload: { measureKind: 'pipeline says: temperature', value: 37, unit: 'C' },
+    };
+    const db = fakeDb([{ id: TODDLER_ID, dateOfBirth: '2024-05-01' }], [measurement]);
+
+    const page = await readLogsPage(db, FAMILY_ID, PARENT_ID, { limit: 30 });
+
+    const view = page.logs.find((l) => l.id === 'm-x');
+    expect(view).not.toHaveProperty('measureKind');
+    expect(view).not.toHaveProperty('value');
+    expect(JSON.stringify(page.logs)).not.toContain('temperature');
+  });
+
+  it("never leaks a 13+ child's own measurement number through the widening", async () => {
+    const teenMeasurement: EpisodeRow = {
+      id: 'teen-m',
+      childId: TEEN_ID,
+      authoredBy: null, // pipeline-authored teen content
+      episodeType: 'measurement',
+      summary: 'Weighed 61 kg',
+      occurredAt: new Date('2026-07-05T08:00:00Z'),
+      payload: { measureKind: 'weight', value: 61, unit: 'kg' },
+    };
+    const db = fakeDb(
+      [
+        { id: TEEN_ID, dateOfBirth: '2011-01-01' },
+        { id: TODDLER_ID, dateOfBirth: '2024-05-01' },
+      ],
+      [teenMeasurement],
+    );
+
+    const page = await readLogsPage(db, FAMILY_ID, PARENT_ID, { limit: 30 });
+
+    expect(page.logs.map((l) => l.id)).not.toContain('teen-m');
+    expect(JSON.stringify(page.logs)).not.toContain('61');
+  });
 });
