@@ -131,4 +131,20 @@ describe('buildChildInserts', () => {
       { familyId: FAMILY_ID, name: 'Theo', lastName: null, dateOfBirth: '2013-06-15', gender: 'unspecified' },
     ]);
   });
+
+  it('threads interests when the caller supplies them (the Family-page add-child path); omits the key otherwise (column default)', () => {
+    const inserts = buildChildInserts(FAMILY_ID, [
+      { name: 'Maya', lastName: null, dateOfBirth: '2026-01-15', gender: 'girl', interests: ['swimming'] },
+    ]);
+    expect(inserts).toEqual([
+      {
+        familyId: FAMILY_ID,
+        name: 'Maya',
+        lastName: null,
+        dateOfBirth: '2026-01-15',
+        gender: 'girl',
+        interests: ['swimming'],
+      },
+    ]);
+  });
 });

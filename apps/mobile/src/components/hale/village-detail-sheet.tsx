@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Linking, Platform, Pressable, Share, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Linking, Platform, Pressable, Share, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -9,6 +9,8 @@ import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { VillageCandidateView } from '@/lib/api-types';
 import { foundStamp } from '@/lib/format';
+import { registerLinkHref } from '@/lib/register-link';
+import { useMapThumbnail } from '@/lib/use-map-thumbnail';
 
 /** Maps a failed action (accept / endorse / share) to an honest, parent-facing
  * line (mirrors web + the Village ShareRow). A 401 never lands here — api()
@@ -59,10 +61,13 @@ function ActionButton({
  * The shared Village detail sheet — one component behind BOTH Home's "from the
  * village" card and the Village tab's RecCard. Shows the pick's title / kind /
  * cadence / seasons / summary / coverage / venue, then the actions wired EXACTLY
- * like the Village ShareRow: Accept and Endorse POST their hrefs via api(); Share
+ * like the Village ShareRow: Accept and Endorse POST their hrefs via api(); "I'm
+ * interested" privately toggles a save (never surfaced, neither enrolls nor sends
+ * for approval — distinct from Accept and from the public Endorse count); Share
  * mints a link then hands it to the native Share sheet; "Open in Maps" opens the
- * public venue coordinates via Linking (never the family's address — rule #1); the
- * sourceUrl opens as an external link. Accepting does NOT add the activity to the
+ * public venue coordinates via Linking (never the family's address — rule #1);
+ * Register always resolves (the source URL or a Google-search fallback). Accepting
+ * does NOT add the activity to the
  * week — it re-enters the pipeline as a draft the parent must approve (rule #4), so
  * the post-accept pill reads "Sent for your approval", never "added to your week"
  * (mirrors the web AcceptButton). A teen-redacted card never opens a detail (guarded
@@ -84,7 +89,23 @@ export function VillageDetailSheet({
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [endorsed, setEndorsed] = useState(false);
+  const [saved, setSaved] = useState<boolean | null>(null);
   const accentIcon = useMeadowColor('accentFill');
+  // A teen-redacted card carries no venue point (lat/lng nulled at the mapper), so
+  // its id yields 204 and no map renders — the hook is safe to call for any rec.
+  const mapUri = useMapThumbnail(rec && !rec.teenAttributed ? rec.id : null);
+
+  // Drop this session's optimistic action state whenever a DIFFERENT candidate opens
+  // in the same (reused) sheet — otherwise a save toggled on candidate A would bleed
+  // into candidate B's bookmark. The server flags on `rec` then drive the state.
+  const recId = rec?.id ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on the candidate id only
+  useEffect(() => {
+    setAccepted(false);
+    setEndorsed(false);
+    setSaved(null);
+    setError(null);
+  }, [recId]);
 
   // Fail closed: a redacted card carries no raw fields, so never render a detail
   // for it even if a caller slips one through (rule #1).
@@ -92,7 +113,11 @@ export function VillageDetailSheet({
 
   const isAccepted = accepted || rec.accepted;
   const isEndorsed = endorsed || rec.endorsedByFamily;
+  // Save is a private toggle: the local optimistic state wins once tapped, else the
+  // server's saved flag. A save neither enrolls nor approves — distinct from Accept.
+  const isSaved = saved ?? rec.saved;
   const hasPin = rec.lat !== null && rec.lng !== null;
+  const registerUrl = registerLinkHref(rec.sourceUrl, rec.title);
 
   const runAction = async (href: string, onOk: () => void) => {
     setBusy(true);
@@ -100,6 +125,23 @@ export function VillageDetailSheet({
     try {
       await api(href, { method: 'POST' });
       onOk();
+      onChanged?.();
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 401) {
+        setError(actionErrorMessage(e instanceof ApiError ? e.status : 0));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onToggleSave = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      // The route is a toggle; it returns the resulting private saved state.
+      const { saved: nowSaved } = await api<{ saved: boolean }>(rec.saveHref, { method: 'POST' });
+      setSaved(nowSaved);
       onChanged?.();
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401) {
@@ -142,8 +184,10 @@ export function VillageDetailSheet({
     Linking.openURL(url).catch(() => setError("Couldn't open Maps."));
   };
 
-  const openSource = () => {
-    if (rec.sourceUrl) Linking.openURL(rec.sourceUrl).catch(() => setError("Couldn't open the link."));
+  const openRegister = () => {
+    // Always resolves (source URL, or a Google-search fallback) — parity with web
+    // so the Register/Source affordance is never missing (rule #1: title only).
+    Linking.openURL(registerUrl).catch(() => setError("Couldn't open the link."));
   };
 
   return (
@@ -154,6 +198,18 @@ export function VillageDetailSheet({
         </AppText>
         <Tag label={rec.kind} tone="coach" />
       </View>
+
+      {/* The static map is a graceful-degradation extra: it renders ONLY once the
+          hook has bytes (a 200). Absent (API not enabled, no venue point) → nothing,
+          no placeholder, no spinner. The plotted point is the PUBLIC venue (rule #1). */}
+      {mapUri ? (
+        <Image
+          source={{ uri: mapUri }}
+          accessibilityLabel={`Map showing ${rec.venueName ?? rec.title}`}
+          className="mb-3 h-32 w-full rounded-lg border border-rule"
+          resizeMode="cover"
+        />
+      ) : null}
 
       <AppText variant="meta" className="mb-3 text-ink-3">
         {foundStamp(rec.discoveredAt)}
@@ -206,6 +262,12 @@ export function VillageDetailSheet({
           />
         ) : null}
         <ActionButton
+          icon={isSaved ? 'bookmark.fill' : 'bookmark'}
+          label={isSaved ? 'Saved' : "I'm interested"}
+          disabled={busy}
+          onPress={onToggleSave}
+        />
+        <ActionButton
           icon="checkmark.circle"
           label={isEndorsed ? 'Endorsed' : 'Endorse'}
           disabled={busy || isEndorsed}
@@ -220,10 +282,16 @@ export function VillageDetailSheet({
         {hasPin ? (
           <ActionButton icon="map" label="Open in Maps" onPress={openMaps} />
         ) : null}
-        {rec.sourceUrl ? (
-          <ActionButton icon="arrow.up.right.square" label="Source" onPress={openSource} />
-        ) : null}
+        {/* Always resolves (register fallback), so a parent is never left without a
+            way through to registration — parity with the web card. */}
+        <ActionButton icon="arrow.up.right.square" label="Register" onPress={openRegister} />
       </View>
+
+      {isSaved ? (
+        <AppText variant="meta" className="mt-3 text-ink-3">
+          Saved privately — just for you. It's not enrolled or sent for approval.
+        </AppText>
+      ) : null}
 
       {error ? (
         <AppText variant="meta" className="mt-3 text-berry" accessibilityLiveRegion="polite">

@@ -17,8 +17,24 @@ describe('toFamilyBasics', () => {
         foundingNumber: 7,
       },
       [
-        { id: 'a', name: 'Robin', dateOfBirth: '2026-03-15' }, // ~3mo → newborn
-        { id: 'b', name: 'Sam', dateOfBirth: '2010-01-01' }, // 16y → teenager
+        // ~3mo → newborn, with the sensitive optional fields set
+        {
+          id: 'a',
+          name: 'Robin',
+          lastName: 'Vega',
+          dateOfBirth: '2026-03-15',
+          gender: 'girl',
+          interests: ['swimming', 'music'],
+        },
+        // 16y → teenager, bare optional fields
+        {
+          id: 'b',
+          name: 'Sam',
+          lastName: null,
+          dateOfBirth: '2010-01-01',
+          gender: 'unspecified',
+          interests: [],
+        },
       ],
       NOW,
     );
@@ -34,8 +50,24 @@ describe('toFamilyBasics', () => {
     // Unknown 'groceries' dropped, canonical order restored.
     expect(view.intents).toEqual(['activities', 'health']);
     expect(view.children).toEqual([
-      { id: 'a', name: 'Robin', dateOfBirth: '2026-03-15', stageLabel: 'newborn' },
-      { id: 'b', name: 'Sam', dateOfBirth: '2010-01-01', stageLabel: 'teenager' },
+      {
+        id: 'a',
+        name: 'Robin',
+        lastName: 'Vega',
+        dateOfBirth: '2026-03-15',
+        gender: 'girl',
+        interests: ['swimming', 'music'],
+        stageLabel: 'newborn',
+      },
+      {
+        id: 'b',
+        name: 'Sam',
+        lastName: null,
+        dateOfBirth: '2010-01-01',
+        gender: 'unspecified',
+        interests: [],
+        stageLabel: 'teenager',
+      },
     ]);
   });
 

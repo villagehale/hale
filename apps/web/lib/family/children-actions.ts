@@ -62,6 +62,7 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
           lastName: validated.child.lastName,
           dateOfBirth: validated.child.dateOfBirth,
           gender: validated.child.gender,
+          interests,
         },
       ]),
     );
@@ -126,12 +127,19 @@ export async function editChildAction(
     return { status: 'not_found' };
   }
   const userId = await ensureUserRow(identity, database);
+  const interests = parseInterests(input.interests);
 
   const updated = await database.transaction(async (tx) => {
     // Scope the update to the caller's family (rule #1): a childId from another
     // family must not be editable. The where(familyId) makes that structural.
     const existing = await tx
-      .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
+      .select({
+        name: schema.children.name,
+        lastName: schema.children.lastName,
+        dateOfBirth: schema.children.dateOfBirth,
+        gender: schema.children.gender,
+        interests: schema.children.interests,
+      })
       .from(schema.children)
       .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)))
       .limit(1);
@@ -140,9 +148,28 @@ export async function editChildAction(
       return false;
     }
 
+    // PARTIAL update: write only the fields the caller actually SENT. Writing
+    // validated defaults for absent keys wipes stored values — a web caller
+    // that sends only {name, dateOfBirth} must not reset gender/lastName/
+    // interests a parent set elsewhere (e.g. on mobile). Name + DOB are the
+    // required contract; the rest key off raw-input presence.
+    const after: {
+      name: string;
+      dateOfBirth: string;
+      lastName?: string | null;
+      gender?: (typeof validated.child)['gender'];
+      interests?: string[];
+    } = {
+      name: validated.child.name,
+      dateOfBirth: validated.child.dateOfBirth,
+    };
+    if (input.lastName !== undefined) after.lastName = validated.child.lastName;
+    if (input.gender !== undefined) after.gender = validated.child.gender;
+    if (input.interests !== undefined) after.interests = interests;
+
     await tx
       .update(schema.children)
-      .set({ name: validated.child.name, dateOfBirth: validated.child.dateOfBirth })
+      .set(after)
       .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)));
 
     await tx.insert(schema.auditLog).values({
@@ -152,7 +179,7 @@ export async function editChildAction(
       targetTable: 'children',
       targetId: childId,
       before,
-      after: { name: validated.child.name, dateOfBirth: validated.child.dateOfBirth },
+      after,
     });
     return true;
   });

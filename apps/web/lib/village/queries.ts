@@ -6,6 +6,8 @@ import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 import { listFamilyAcceptedCandidateIds } from './accept';
 import { countEndorsementsForCandidates, listFamilyEndorsedCandidateIds } from './endorse';
+import { listFamilySavedCandidateIds } from './save';
+import { readSavedVillageCandidates } from './saved-list';
 import {
   type RoutineProposalView,
   type VillageCandidateView,
@@ -128,10 +130,11 @@ export async function readVillage(
     .limit(1);
 
   const candidateIds = candidateRows.map((row) => row.id);
-  const [endorsementCounts, familyEndorsed, familyAccepted] = await Promise.all([
+  const [endorsementCounts, familyEndorsed, familyAccepted, familySaved] = await Promise.all([
     countEndorsementsForCandidates(database, candidateIds),
     listFamilyEndorsedCandidateIds(database, familyId),
     listFamilyAcceptedCandidateIds(database, familyId),
+    listFamilySavedCandidateIds(database, familyId),
   ]);
 
   const candidates = candidateRows.map((row) =>
@@ -139,6 +142,7 @@ export async function readVillage(
       endorsementCount: endorsementCounts.get(row.id) ?? 0,
       endorsedByFamily: familyEndorsed.has(row.id),
       accepted: familyAccepted.has(row.id),
+      saved: familySaved.has(row.id),
     }),
   );
   const routine = routineRows[0] ? toRoutineProposalView(routineRows[0], teenChildIds) : null;
@@ -154,4 +158,13 @@ export async function readVillage(
  */
 export function loadVillage(opts?: VillageReadOptions): Promise<VillageData> {
   return readForFamily((database, familyId) => readVillage(database, familyId, opts), EMPTY_VILLAGE);
+}
+
+/**
+ * The family's privately-saved candidates for the More → Saved screen, behind the
+ * same preview/unauthed boundary as loadVillage: no DATABASE_URL (preview) or no
+ * resolved family → an empty list. A genuine query failure surfaces (rule #8).
+ */
+export function loadSavedVillageCandidates(): Promise<VillageCandidateView[]> {
+  return readForFamily((database, familyId) => readSavedVillageCandidates(database, familyId), []);
 }

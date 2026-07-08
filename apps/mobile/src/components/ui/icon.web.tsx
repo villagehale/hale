@@ -43,6 +43,11 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'drop.fill': 'water',
   'moon.fill': 'moon',
   'star.fill': 'star',
+  bookmark: 'bookmark-outline',
+  'bookmark.fill': 'bookmark',
+  'person.crop.circle': 'person-circle-outline',
+  'slider.horizontal.3': 'options-outline',
+  xmark: 'close',
 };
 
 export type { IconName, IconProps };

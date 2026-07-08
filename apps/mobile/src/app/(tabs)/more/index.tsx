@@ -7,7 +7,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
-import type { MobileApprovalsResponse } from '@/lib/api-types';
+import type { MobileApprovalsResponse, MobileFamilyResponse } from '@/lib/api-types';
 import { useAuth } from '@/lib/auth';
 import { useApi } from '@/lib/use-api';
 
@@ -31,6 +31,12 @@ const SECTIONS: { items: MenuItem[] }[] = [
         href: '/more/family',
       },
       { label: 'Plan', detail: 'Your week ahead', icon: 'calendar', href: '/more/plan' },
+      {
+        label: 'Saved',
+        detail: "Activities you're interested in",
+        icon: 'bookmark',
+        href: '/more/saved',
+      },
       {
         label: 'Approvals',
         detail: 'Actions waiting for you',
@@ -85,6 +91,42 @@ function CountBadge({ count }: { count: number }) {
   );
 }
 
+/** The first letter of the viewer's name (or email), for the avatar circle — the
+ * app has no uploaded avatars, so an initial stands in (mirrors web's account chip). */
+function avatarInitial(name: string | null, email: string | null): string {
+  const source = name?.trim() || email?.trim() || '';
+  return source.charAt(0).toUpperCase() || '?';
+}
+
+/** The More profile header: an initial avatar + the SIGNED-IN parent's name/email.
+ * The viewer comes from the family route's `viewer` (this session), never
+ * members.primary — that slot is the OTHER parent in a co-parent household. Renders
+ * quietly: if the family fetch hasn't landed, the header simply stays hidden. */
+function ProfileHeader({ viewer }: { viewer: MobileFamilyResponse['viewer'] | undefined }) {
+  const accentText = useMeadowColor('onAccent');
+  if (!viewer) return null;
+  const primary = viewer.name?.trim() || viewer.email?.trim() || 'You';
+  return (
+    <View className="flex-row items-center gap-3 rounded-lg border border-rule bg-card px-4 py-4">
+      <View className="h-11 w-11 items-center justify-center rounded-full bg-accent">
+        <AppText variant="title" style={{ color: accentText }}>
+          {avatarInitial(viewer.name, viewer.email)}
+        </AppText>
+      </View>
+      <View className="flex-1">
+        <AppText variant="body" numberOfLines={1} className="text-ink">
+          {primary}
+        </AppText>
+        {viewer.email ? (
+          <AppText variant="meta" numberOfLines={1}>
+            {viewer.email}
+          </AppText>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function MenuRow({
   item,
   last,
@@ -129,6 +171,9 @@ export default function MoreScreen() {
   // /more/approvals and returning.
   const { data: approvals, refresh } = useApi<MobileApprovalsResponse>('/api/mobile/approvals');
   const pendingCount = approvals?.approvals.length ?? 0;
+  // The signed-in parent's identity for the profile header — from the family route's
+  // `viewer` (this session), not members.primary (the co-parent case reads wrong).
+  const { data: family } = useApi<MobileFamilyResponse>('/api/mobile/family');
   useFocusEffect(
     useCallback(() => {
       refresh();
@@ -155,6 +200,7 @@ export default function MoreScreen() {
       <AppText variant="display" className="pt-2">
         More
       </AppText>
+      <ProfileHeader viewer={family?.viewer} />
       {SECTIONS.map((section) => (
         <View
           key={section.items[0].label}

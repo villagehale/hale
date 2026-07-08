@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // delegation + the action-result → HTTP-status mapping, and poison createDb to
 // prove the route never constructs a db.
 const authMock = vi.fn();
+const addChildMock = vi.fn();
 const editChildMock = vi.fn();
 const setLocationMock = vi.fn();
 const setParentNameMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/family/children-actions', () => ({
+  addChildAction: (...a: unknown[]) => addChildMock(...a),
   editChildAction: (...a: unknown[]) => editChildMock(...a),
   setLocationAction: (...a: unknown[]) => setLocationMock(...a),
   setParentNameAction: (...a: unknown[]) => setParentNameMock(...a),
@@ -46,6 +48,7 @@ describe('POST /api/mobile/family', () => {
   beforeEach(() => {
     vi.resetModules();
     authMock.mockReset();
+    addChildMock.mockReset();
     editChildMock.mockReset();
     setLocationMock.mockReset();
     setParentNameMock.mockReset();
@@ -74,7 +77,7 @@ describe('POST /api/mobile/family', () => {
     expect(await res.json()).toEqual({ error: 'invalid_request' });
   });
 
-  it('delegates editChild to editChildAction with the childId and fields, and maps updated → 200', async () => {
+  it('delegates editChild to editChildAction with the childId and ALL editable fields, and maps updated → 200', async () => {
     authMock.mockResolvedValue({ user: { id: 'ext-1' } });
     editChildMock.mockResolvedValue({ status: 'updated' });
 
@@ -83,13 +86,45 @@ describe('POST /api/mobile/family', () => {
       childId: 'child-9',
       name: 'Maya',
       dateOfBirth: '2020-05-01',
+      lastName: 'Rivera',
+      gender: 'girl',
+      interests: 'swimming, music',
     });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'updated' });
+    // The route forwards gender/lastName/interests too — dropping them was the
+    // masked-input bug on the server side (the web action now persists them).
     expect(editChildMock).toHaveBeenCalledWith('child-9', {
       name: 'Maya',
       dateOfBirth: '2020-05-01',
+      lastName: 'Rivera',
+      gender: 'girl',
+      interests: 'swimming, music',
+    });
+  });
+
+  it('delegates addChild to addChildAction with all fields, and maps its "added" → 200 updated', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+    addChildMock.mockResolvedValue({ status: 'added' });
+
+    const res = await callPost({
+      action: 'addChild',
+      name: 'Noor',
+      dateOfBirth: '2023-03-03',
+      lastName: 'Aziz',
+      gender: 'nonbinary',
+      interests: 'art',
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'updated' });
+    expect(addChildMock).toHaveBeenCalledWith({
+      name: 'Noor',
+      dateOfBirth: '2023-03-03',
+      lastName: 'Aziz',
+      gender: 'nonbinary',
+      interests: 'art',
     });
   });
 

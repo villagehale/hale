@@ -50,6 +50,19 @@ export function parseDraftResponse(res: DraftResponse): string | null {
   return typeof res.actionId === 'string' ? res.actionId : null;
 }
 
+/**
+ * Whether the Approve button may be offered for an action. Policy 4 (rule #1):
+ * a 13+ teen's raw draft is redacted from the parent (teenRedacted → payload
+ * null, placeholder preview/summary), so approving it would be a decision on
+ * invisible content. Approve is therefore withheld — the parent asks their teen
+ * for time-limited access, or dismisses. Mirrors the web approvals page, which
+ * swaps Approve for RequestTeenAccessButton on a redacted row. Dismiss stays
+ * either way (declining hidden content is safe). Pure, so it's unit-tested.
+ */
+export function canApproveAction(action: { teenRedacted: boolean }): boolean {
+  return !action.teenRedacted;
+}
+
 export type ApproveState = 'approved' | 'error';
 export type DeclineState = 'dismissed' | 'error';
 

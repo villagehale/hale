@@ -116,9 +116,14 @@ export interface VillageCandidateView {
   sourceUrl: string | null;
   acceptHref: string;
   endorseHref: string;
+  /** The private-save ("I'm interested") toggle POSTs here. */
+  saveHref: string;
   shareHref: string;
   endorsementCount: number;
   endorsedByFamily: boolean;
+  /** Whether THIS family has privately saved this candidate — drives the bookmark's
+   * filled state. Only ever this family's own save (rule #1). */
+  saved: boolean;
   accepted: boolean;
   lat: number | null;
   lng: number | null;
@@ -178,10 +183,18 @@ export interface FamilyLocationView {
   postalCode: string | null;
 }
 
+export type ChildGender = 'boy' | 'girl' | 'nonbinary' | 'unspecified';
+
 export interface FamilyChildBasics {
   id: string;
   name: string;
+  /** Optional family / last name, or null when not given (rule #1). */
+  lastName: string | null;
   dateOfBirth: string;
+  /** Stored gender enum, so an edit form prefills it. */
+  gender: ChildGender;
+  /** Free-text interest tags driving discovery, so an edit form prefills them. */
+  interests: string[];
   stageLabel: string;
 }
 
@@ -224,6 +237,11 @@ export interface MobileCompanionResponse {
 
 export type MobileVillageResponse = VillageData;
 
+/** The More → Saved screen: the family's privately-saved candidates (all saved:true). */
+export interface MobileSavedResponse {
+  candidates: VillageCandidateView[];
+}
+
 export interface MobilePlanResponse {
   addedActivities: VillageCandidateView[];
   routine: RoutineProposalView | null;
@@ -234,6 +252,9 @@ export interface MobilePlanResponse {
 export interface MobileFamilyResponse {
   members: FamilyMembersView;
   basics: FamilyBasicsView;
+  /** The signed-in parent (from THIS session) for the More profile header —
+   * members.primary reads wrong for a co-parent. */
+  viewer: { name: string | null; email: string | null };
 }
 
 export interface MobileApprovalsResponse {
@@ -278,6 +299,20 @@ export interface EditChildRequest {
   name: string;
   /** Date-only `YYYY-MM-DD`. */
   dateOfBirth: string;
+  lastName?: string;
+  gender?: string;
+  /** Comma-separated free-text interests, e.g. "swimming, music". */
+  interests?: string;
+}
+
+export interface AddChildRequest {
+  action: 'addChild';
+  name: string;
+  /** Date-only `YYYY-MM-DD`. */
+  dateOfBirth: string;
+  lastName?: string;
+  gender?: string;
+  interests?: string;
 }
 
 export interface SetLocationRequest {
@@ -294,6 +329,7 @@ export interface SetParentNameRequest {
 }
 
 export type MobileFamilyUpdateRequest =
+  | AddChildRequest
   | EditChildRequest
   | SetLocationRequest
   | SetParentNameRequest;

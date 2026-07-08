@@ -125,6 +125,42 @@ export const villageEndorsements = pgTable(
 );
 
 /**
+ * One family privately saving one village candidate — the low-commitment "I'm
+ * interested" bookmark. Distinct from an endorsement: an endorsement is a public
+ * aggregate signal, a save is PRIVATE — the only reader is the saving family, and
+ * saving neither enrolls nor approves anything (rule #4). The unique
+ * (candidate_id, family_id) index makes saving idempotent: a family saves a
+ * candidate at most once, so the toggle stays honest.
+ *
+ * familyId / candidateId ON DELETE cascade: removing either parent removes the
+ * save, so a stale bookmark can never outlive its row.
+ */
+export const villageSaves = pgTable(
+  'village_saves',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: uuid('candidate_id')
+      .notNull()
+      .references(() => villageCandidates.id, { onDelete: 'cascade' }),
+    familyId: uuid('family_id')
+      .notNull()
+      .references(() => families.id, { onDelete: 'cascade' }),
+    /** The user who tapped save — for the audit trail (rule #6); never surfaced. */
+    savedByUserId: uuid('saved_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    candidateFamilyIdx: uniqueIndex('village_saves_candidate_family_idx').on(
+      table.candidateId,
+      table.familyId,
+    ),
+    candidateIdx: index('village_saves_candidate_idx').on(table.candidateId),
+  }),
+);
+
+/**
  * One item within a week's routine proposal. Defined locally because @hale/db is
  * a leaf package and must not depend on @hale/types (would create a cycle) —
  * same pattern as ClassifierSuggestion in events.ts.
@@ -197,5 +233,7 @@ export type RoutineProposal = typeof routineProposals.$inferSelect;
 export type NewRoutineProposal = typeof routineProposals.$inferInsert;
 export type VillageEndorsement = typeof villageEndorsements.$inferSelect;
 export type NewVillageEndorsement = typeof villageEndorsements.$inferInsert;
+export type VillageSave = typeof villageSaves.$inferSelect;
+export type NewVillageSave = typeof villageSaves.$inferInsert;
 export type VillageFeedRank = typeof villageFeedRank.$inferSelect;
 export type NewVillageFeedRank = typeof villageFeedRank.$inferInsert;

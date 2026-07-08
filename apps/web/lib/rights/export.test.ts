@@ -37,6 +37,7 @@ function fakeDb(args: {
   family: FamilyRow | null;
   children: ChildRow[];
   members: MemberRow[];
+  saves?: { title: string; savedAt: Date }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -56,13 +57,20 @@ function fakeDb(args: {
     return Promise.resolve(args.members);
   });
 
-  // Route each select to the right terminal by call order: family, children, members.
+  const savesWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.saves ?? []) };
+  });
+
+  // Route each select to the right terminal by call order: family, children,
+  // members, then the village-saves join.
   let selectCall = 0;
   const select = vi.fn(() => {
     const which = selectCall++;
     if (which === 0) return { from: () => ({ where: familyWhere }) };
     if (which === 1) return { from: () => ({ where: childrenWhere }) };
-    return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
+    if (which === 2) return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
+    return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -122,6 +130,25 @@ describe('assembleFamilyExport', () => {
     expect(doc.children).toHaveLength(1);
     expect(doc.children[0]?.name).toBe('Mika');
     expect(doc.members.primary?.email).toBe('ana@example.com');
+    expect(doc.savedActivities).toEqual([]);
+  });
+
+  it('includes the family village saves — user-generated rows belong in the right-to-access copy', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      saves: [{ title: 'Saturday story-time', savedAt: new Date('2026-07-01T12:00:00Z') }],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+    });
+
+    expect(doc.savedActivities).toEqual([
+      { title: 'Saturday story-time', savedAt: '2026-07-01T12:00:00.000Z' },
+    ]);
   });
 
   it('carries the ALREADY-REDACTED trail rows — a redacted teen row exports the placeholder, never raw content (rule #1)', async () => {
@@ -161,10 +188,11 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Three family-scoped selects (family, children, members) each recorded a
-    // where-condition; none was left unscoped. (The condition objects are opaque
-    // Drizzle SQL, so we assert on arity — every select passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(3);
+    // Four family-scoped selects (family, children, members, village saves)
+    // each recorded a where-condition; none was left unscoped. (The condition
+    // objects are opaque Drizzle SQL, so we assert on arity — every select
+    // passed through a where.)
+    expect(spies.whereFamilyIds).toHaveLength(4);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 });

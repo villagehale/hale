@@ -1,50 +1,22 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
+import { useMeadowColor } from '@/constants/meadow';
 import type { ApprovalView, MobileApprovalsResponse } from '@/lib/api-types';
 import { api, ApiError } from '@/lib/api-client';
+import { humanizeActionType, verdictTag } from '@/lib/approval-format';
 import { useApi } from '@/lib/use-api';
-
-type VerdictTag = { label: string; tone: 'neutral' | 'done' | 'attention' | 'coach' };
-const VERDICT_TAG: Record<string, VerdictTag> = {
-  pending: { label: 'Reviewing', tone: 'coach' },
-  approved: { label: 'Reviewer approved', tone: 'done' },
-  rejected: { label: 'Reviewer flagged', tone: 'attention' },
-  flagged: { label: 'Reviewer flagged', tone: 'attention' },
-  superseded: { label: 'Superseded', tone: 'neutral' },
-};
-function verdictTag(verdict: string): VerdictTag {
-  return VERDICT_TAG[verdict] ?? { label: verdict.replace(/_/g, ' '), tone: 'neutral' };
-}
-/** De-snake a raw action_type into a readable title ("place_supply_order" →
- * "Place supply order") so a DB enum never surfaces as a heading. */
-function humanizeActionType(actionType: string): string {
-  const s = actionType.replace(/_/g, ' ').trim();
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function PayloadBlock({ action }: { action: ApprovalView }) {
-  // Only the teen-redacted case renders a block. A normal action is already
-  // summarized by its human `preview`; dumping raw JSON.stringify(payload)
-  // re-exposed the content the web card deliberately hides (rule #1).
-  if (action.payload !== null) return null;
-  return (
-    <View className="gap-1.5 rounded-md border border-rule bg-canvas p-3">
-      <Tag label="Redacted · teen privacy" tone="attention" />
-      <AppText variant="meta" className="mt-1">
-        Raw content is hidden by default. Your teen can grant time-limited access if you ask.
-      </AppText>
-    </View>
-  );
-}
+import { ApprovalPayloadBlock } from '@/components/hale/approval-payload';
 
 function ActionCard({
   action,
@@ -55,6 +27,7 @@ function ActionCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const chevron = useMeadowColor('ink3');
 
   const act = async (verb: 'approve' | 'decline') => {
     setBusy(true);
@@ -71,23 +44,35 @@ function ActionCard({
 
   return (
     <Card className="gap-2">
-      <View className="flex-row items-start justify-between gap-3">
-        <Tag label={verdictTag(action.verdict).label} tone={verdictTag(action.verdict).tone} />
-        {action.childLabel ? (
-          <AppText variant="mono" className="text-ink-3">
-            for {action.childLabel}
-          </AppText>
-        ) : null}
-      </View>
+      {/* The card head opens the full detail page (same fields, same endpoints); the
+          inline Approve/Dismiss below stay for a one-tap decision from the list. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${humanizeActionType(action.actionType)} details`}
+        onPress={() => router.push(`/more/approval/${action.id}`)}
+        className="gap-2 active:opacity-80"
+      >
+        <View className="flex-row items-start justify-between gap-3">
+          <Tag label={verdictTag(action.verdict).label} tone={verdictTag(action.verdict).tone} />
+          <View className="flex-row items-center gap-2">
+            {action.childLabel ? (
+              <AppText variant="mono" className="text-ink-3">
+                for {action.childLabel}
+              </AppText>
+            ) : null}
+            <Icon name="chevron.right" size={13} color={chevron} />
+          </View>
+        </View>
 
-      <AppText variant="title" className="mt-1">
-        {humanizeActionType(action.actionType)}
-      </AppText>
-      <AppText variant="body">{action.preview}</AppText>
+        <AppText variant="title" className="mt-1">
+          {humanizeActionType(action.actionType)}
+        </AppText>
+        <AppText variant="body">{action.preview}</AppText>
 
-      <PayloadBlock action={action} />
+        <ApprovalPayloadBlock action={action} />
 
-      <AppText variant="meta">{action.summary}</AppText>
+        <AppText variant="meta">{action.summary}</AppText>
+      </Pressable>
 
       {error ? (
         <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">

@@ -122,11 +122,14 @@ export interface ChildInsert {
   lastName: string | null;
   dateOfBirth: string;
   gender: ChildGender;
+  interests?: string[];
 }
 
 export function buildChildInserts(
   familyId: string,
-  children: ReadonlyArray<Pick<ValidatedChild, 'name' | 'lastName' | 'dateOfBirth' | 'gender'>>,
+  children: ReadonlyArray<
+    Pick<ValidatedChild, 'name' | 'lastName' | 'dateOfBirth' | 'gender'> & { interests?: string[] }
+  >,
 ): ChildInsert[] {
   return children.map((child) => ({
     familyId,
@@ -134,5 +137,7 @@ export function buildChildInserts(
     lastName: child.lastName,
     dateOfBirth: child.dateOfBirth,
     gender: child.gender,
+    // Omitted → the column default ([]); the Family page threads real interests.
+    ...(child.interests ? { interests: child.interests } : {}),
   }));
 }

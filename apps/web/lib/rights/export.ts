@@ -30,6 +30,10 @@ export interface FamilyExportDocument {
   };
   children: FamilyBasicsView['children'];
   members: FamilyMembersView;
+  /** The family's private village saves ("I'm interested" bookmarks) — user-
+   * generated rows, so the right-to-access copy must include them. Title only:
+   * the candidate title is the family-facing fact; ids stay internal. */
+  savedActivities: { title: string; savedAt: string }[];
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -74,7 +78,10 @@ export async function assembleFamilyExport(
     .select({
       id: schema.children.id,
       name: schema.children.name,
+      lastName: schema.children.lastName,
       dateOfBirth: schema.children.dateOfBirth,
+      gender: schema.children.gender,
+      interests: schema.children.interests,
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId))
@@ -93,6 +100,23 @@ export async function assembleFamilyExport(
   const basics = toFamilyBasics(familyRow, childRows, now);
   const members = toFamilyMembersView(memberRows);
   const trail = await loadTrail(database, familyId);
+
+  const saveRows = await database
+    .select({
+      title: schema.villageCandidates.title,
+      savedAt: schema.villageSaves.createdAt,
+    })
+    .from(schema.villageSaves)
+    .innerJoin(
+      schema.villageCandidates,
+      eq(schema.villageSaves.candidateId, schema.villageCandidates.id),
+    )
+    .where(eq(schema.villageSaves.familyId, familyId))
+    .orderBy(schema.villageSaves.createdAt);
+  const savedActivities = saveRows.map((row) => ({
+    title: row.title,
+    savedAt: row.savedAt.toISOString(),
+  }));
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -113,6 +137,7 @@ export async function assembleFamilyExport(
     },
     children: basics.children,
     members,
+    savedActivities,
     trail,
   };
 }

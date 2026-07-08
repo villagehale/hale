@@ -35,12 +35,19 @@ export interface VillageCandidateView {
   acceptHref: string;
   /** The endorse action POSTs here (the trusted-parent half of hybrid trust). */
   endorseHref: string;
+  /** The private-save ("I'm interested") toggle POSTs here. */
+  saveHref: string;
   /** The per-activity public-share mint POSTs here. */
   shareHref: string;
   /** Aggregate distinct-family endorsements (a count, never an identity — rule #1). */
   endorsementCount: number;
   /** Whether THIS family has already endorsed — drives the button's state. */
   endorsedByFamily: boolean;
+  /** Whether THIS family has privately saved this candidate — drives the bookmark's
+   * filled state. Private (rule #1): it is only ever THIS family's own save, never
+   * another family's, so it is safe on a teen-attributed card (an opaque id, no
+   * content). */
+  saved: boolean;
   /** Whether THIS family already accepted this candidate into a LIVE draft — drives
    * the accept button's "sent for your approval" state from SERVER data so it
    * survives the streamed feed remounting the button (it would otherwise reset its
@@ -68,6 +75,8 @@ export interface CandidateEngagement {
   endorsedByFamily: boolean;
   /** True when this family already accepted (added to their week) this candidate. */
   accepted: boolean;
+  /** True when this family has privately saved ("I'm interested") this candidate. */
+  saved: boolean;
 }
 
 export interface RoutineItemView {
@@ -106,6 +115,7 @@ const NO_ENGAGEMENT: CandidateEngagement = {
   endorsementCount: 0,
   endorsedByFamily: false,
   accepted: false,
+  saved: false,
 };
 
 /**
@@ -137,10 +147,11 @@ export function toVillageCandidateView(
 ): VillageCandidateView {
   const acceptHref = `/api/village/${candidate.id}/accept`;
   const endorseHref = `/api/village/${candidate.id}/endorse`;
+  const saveHref = `/api/village/${candidate.id}/save`;
   const shareHref = `/api/village/${candidate.id}/share`;
   // The aggregate count is identity-free, so it is safe even on a teen row; the
   // renderer still blocks endorse/share on teen-attributed cards (rule #1).
-  const { endorsementCount, endorsedByFamily, accepted } = engagement;
+  const { endorsementCount, endorsedByFamily, accepted, saved } = engagement;
   if (teenAttributed) {
     return {
       id: candidate.id,
@@ -155,9 +166,11 @@ export function toVillageCandidateView(
       sourceUrl: null,
       acceptHref,
       endorseHref,
+      saveHref,
       shareHref,
       endorsementCount,
       endorsedByFamily,
+      saved,
       accepted,
       // Never plot a teen-redacted card — its location stays list-only (rule #1).
       lat: null,
@@ -179,9 +192,11 @@ export function toVillageCandidateView(
     sourceUrl: candidate.sourceUrl,
     acceptHref,
     endorseHref,
+    saveHref,
     shareHref,
     endorsementCount,
     endorsedByFamily,
+    saved,
     accepted,
     lat: candidate.lat,
     lng: candidate.lng,
