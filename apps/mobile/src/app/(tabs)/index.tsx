@@ -2,6 +2,8 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { LogsDetailSheet } from '@/components/hale/logs-detail-sheet';
+import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,10 +41,20 @@ function homeGreeting(viewer: MobileHomeResponse['viewer']): string {
   return firstName ? `${timeGreeting()}, ${firstName}` : timeGreeting();
 }
 
-function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () => void }) {
+function HomeBody({
+  data,
+  onLogged,
+  onRefresh,
+}: {
+  data: MobileHomeResponse;
+  onLogged: () => void;
+  onRefresh: () => void;
+}) {
   const askIconColor = useMeadowColor('ink3');
   const rec = firstVillageRec(data.village.candidates);
   const [logKind, setLogKind] = useState<LogKind | null>(null);
+  const [villageOpen, setVillageOpen] = useState(false);
+  const [glanceChild, setGlanceChild] = useState<ChildCompanionView | null>(null);
   const hasChildren = data.children.length > 0;
   const greeting = homeGreeting(data.viewer);
   rememberViewerFirstName(data.viewer.name);
@@ -115,7 +127,7 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
           <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
             From the village
           </AppText>
-          <Card onPress={() => router.push('/village')} className="gap-1">
+          <Card onPress={() => setVillageOpen(true)} className="gap-1">
             <AppText variant="title">{rec.title}</AppText>
             <AppText variant="mono" className="text-ink-3">
               {rec.kind}
@@ -125,6 +137,12 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
               {rec.summary}
             </AppText>
           </Card>
+          <VillageDetailSheet
+            rec={rec}
+            visible={villageOpen}
+            onClose={() => setVillageOpen(false)}
+            onChanged={onRefresh}
+          />
         </View>
       ) : null}
 
@@ -137,7 +155,7 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
             {data.children.map((child) => (
               <Card
                 key={child.id}
-                onPress={() => router.push('/companion')}
+                onPress={() => setGlanceChild(child)}
                 className="min-w-[45%] flex-1 gap-1"
               >
                 <View className="flex-row items-baseline justify-between">
@@ -154,6 +172,13 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
               </Card>
             ))}
           </View>
+
+          <LogsDetailSheet
+            childId={glanceChild?.id ?? null}
+            childName={glanceChild?.name ?? null}
+            visible={glanceChild !== null}
+            onClose={() => setGlanceChild(null)}
+          />
         </View>
       ) : null}
     </>
@@ -168,7 +193,9 @@ export default function HomeScreen() {
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? <HomeBody data={data} onLogged={refresh} /> : null}
+      {status === 'ready' && data ? (
+        <HomeBody data={data} onLogged={refresh} onRefresh={refresh} />
+      ) : null}
     </Screen>
   );
 }

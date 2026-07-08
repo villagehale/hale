@@ -8,7 +8,7 @@ import {
   NAP_EPISODE,
   type QuickLogInput,
 } from './log-types.js';
-import { buildDoneEpisodeInsert, buildEpisodeInsert, writeEpisode } from './log-write.js';
+import { buildDoneEpisodeInsert, buildEpisodeInsert, resolveNap, writeEpisode } from './log-write.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const CHILD_ID = '33333333-3333-4333-8333-333333333333';
@@ -38,6 +38,26 @@ describe('buildEpisodeInsert', () => {
     expect(episode.episodeType).toBe('nap');
     expect(episode.summary).toBe('Napped 45 min');
     expect(episode.payload).toEqual({ durationMin: 45 });
+  });
+
+  it('shapes a nap from a resolved window duration, keeping the bounds in the payload', () => {
+    const input: QuickLogInput = {
+      kind: NAP_EPISODE,
+      childId: CHILD_ID,
+      startAt: '2026-06-18T09:00:00Z',
+      endAt: '2026-06-18T10:30:00Z',
+    };
+
+    // The boundary derived 90 min from the window (resolveNapWindow); the pure
+    // builder receives it and stamps the summary + payload from it.
+    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID, 90);
+
+    expect(episode.summary).toBe('Napped 90 min');
+    expect(episode.payload).toEqual({
+      durationMin: 90,
+      startAt: '2026-06-18T09:00:00Z',
+      endAt: '2026-06-18T10:30:00Z',
+    });
   });
 
   it('shapes a milestone episode carrying the milestone text as summary and payload', () => {
@@ -107,6 +127,46 @@ describe('buildDoneEpisodeInsert', () => {
       summary: '4-month well-baby visit — done',
       payload: { healthKey: '4-well_child_visit', what: '4-month well-baby visit' },
     });
+  });
+});
+
+describe('resolveNap — the boundary guard now that the schema no longer requires durationMin', () => {
+  it('rejects a nap carrying NEITHER a duration nor a window (the case the schema stopped catching)', () => {
+    // napSchema is a plain ZodObject with an OPTIONAL durationMin, so {kind, childId}
+    // parses. resolveNap is the only thing standing between that and buildEpisodeInsert
+    // throwing (missing durationMin and window) → an unhandled 500. It must reject.
+    const r = resolveNap({ kind: NAP_EPISODE, childId: CHILD_ID }, NOW);
+    expect(r).toEqual({ ok: false, error: 'enter how long the nap was, or its start and end' });
+  });
+
+  it('rejects a nap with a lone bound (an incomplete window, no fallback duration)', () => {
+    const r = resolveNap(
+      { kind: NAP_EPISODE, childId: CHILD_ID, startAt: '2026-06-18T09:00:00Z' },
+      NOW,
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it('passes a plain-duration nap through, returning the direct duration', () => {
+    // No window → resolveNap falls back to the direct durationMin (45) and returns
+    // it, which buildEpisodeInsert then uses. (Only a NON-nap input yields undefined.)
+    expect(resolveNap({ kind: NAP_EPISODE, childId: CHILD_ID, durationMin: 45 }, NOW)).toEqual({
+      ok: true,
+      durationMin: 45,
+    });
+  });
+
+  it('derives the duration from a full window', () => {
+    const r = resolveNap(
+      {
+        kind: NAP_EPISODE,
+        childId: CHILD_ID,
+        startAt: '2026-06-18T09:00:00Z',
+        endAt: '2026-06-18T10:30:00Z',
+      },
+      NOW,
+    );
+    expect(r).toEqual({ ok: true, durationMin: 90 });
   });
 });
 

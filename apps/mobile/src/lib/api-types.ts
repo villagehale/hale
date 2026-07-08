@@ -59,6 +59,30 @@ export interface RecentLogView {
   occurredAt: string;
 }
 
+/** A logged episode for the paginated glance-detail sheet (mirrors web LogView).
+ * The structured NUMERICS are lifted from payload by the shared read — numbers
+ * only, never the raw payload / note (rule #1). Present only when the episode
+ * carries them. */
+export interface LogView {
+  id: string;
+  childId: string | null;
+  episodeType: string;
+  summary: string;
+  /** ISO string. */
+  occurredAt: string;
+  durationMin?: number;
+  amountMl?: number;
+  feedKind?: string;
+}
+
+/** One keyset page of logs, newest first, with the cursor for the next page
+ * (mirrors web LogsPage / MobileLogsResponse). */
+export interface MobileLogsResponse {
+  logs: LogView[];
+  /** occurredAt to page before on the next request, or null on the last page. */
+  nextCursor: string | null;
+}
+
 // ── village (from apps/web lib/village/mappers + queries) ─────────────────────
 
 export interface VillageCandidateView {

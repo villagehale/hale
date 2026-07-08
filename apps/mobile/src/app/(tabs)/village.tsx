@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
 
 import { TypingDots } from '@/components/hale/typing-dots';
+import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
@@ -244,7 +245,7 @@ function ShareRow({ shareHref }: { shareHref: string }) {
   );
 }
 
-function RecCard({ rec }: { rec: VillageCandidateView }) {
+function RecCard({ rec, onOpen }: { rec: VillageCandidateView; onOpen: (rec: VillageCandidateView) => void }) {
   if (rec.teenAttributed) {
     return (
       <Card className="gap-2">
@@ -257,32 +258,41 @@ function RecCard({ rec }: { rec: VillageCandidateView }) {
   }
   return (
     <Card className="gap-2">
-      <View className="flex-row items-start justify-between gap-3">
-        <AppText variant="title" className="flex-1">
-          {rec.title}
-        </AppText>
-        <Tag label={rec.kind} tone="coach" />
-      </View>
-      <View className="flex-row flex-wrap items-center gap-2">
-        <CadenceChip cadence={rec.cadence} />
-        <AppText variant="meta" className="text-ink-3">
-          {foundStamp(rec.discoveredAt)}
-        </AppText>
-      </View>
-      {rec.endorsementCount > 0 ? (
-        <AppText variant="meta">
-          Recommended by {rec.endorsementCount}{' '}
-          {rec.endorsementCount === 1 ? 'family' : 'families'}
-        </AppText>
-      ) : null}
-      <AppText variant="body">{rec.summary}</AppText>
-      {rec.accepted ? (
-        <View className="mt-1 h-7 items-center justify-center self-start rounded-full bg-sage-tint px-3">
-          <AppText variant="meta" className="leading-none text-sage">
-            Added to your week
+      {/* The card body opens the detail sheet (accept / endorse / share / maps);
+          the inline ShareRow below stays as the untouched one-tap share. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${rec.title}`}
+        onPress={() => onOpen(rec)}
+        className="gap-2 active:opacity-80"
+      >
+        <View className="flex-row items-start justify-between gap-3">
+          <AppText variant="title" className="flex-1">
+            {rec.title}
+          </AppText>
+          <Tag label={rec.kind} tone="coach" />
+        </View>
+        <View className="flex-row flex-wrap items-center gap-2">
+          <CadenceChip cadence={rec.cadence} />
+          <AppText variant="meta" className="text-ink-3">
+            {foundStamp(rec.discoveredAt)}
           </AppText>
         </View>
-      ) : null}
+        {rec.endorsementCount > 0 ? (
+          <AppText variant="meta">
+            Recommended by {rec.endorsementCount}{' '}
+            {rec.endorsementCount === 1 ? 'family' : 'families'}
+          </AppText>
+        ) : null}
+        <AppText variant="body">{rec.summary}</AppText>
+        {rec.accepted ? (
+          <View className="mt-1 h-7 items-center justify-center self-start rounded-full bg-sage-tint px-3">
+            <AppText variant="meta" className="leading-none text-sage">
+              Sent for your approval
+            </AppText>
+          </View>
+        ) : null}
+      </Pressable>
       <ShareRow shareHref={rec.shareHref} />
     </Card>
   );
@@ -292,12 +302,15 @@ function VillageBody({
   data,
   searchSeason,
   showFilter,
+  onRefresh,
 }: {
   data: MobileVillageResponse;
   searchSeason: SeasonKey | null;
   showFilter: boolean;
+  onRefresh: () => void;
 }) {
   const [cadence, setCadence] = useState<CadenceFilter>('all');
+  const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
   const recs = useMemo(() => filterByCadence(data.candidates, cadence), [data.candidates, cadence]);
   const hasAny = data.candidates.length > 0;
 
@@ -332,10 +345,17 @@ function VillageBody({
       ) : (
         <View className="gap-3">
           {recs.map((rec) => (
-            <RecCard key={rec.id} rec={rec} />
+            <RecCard key={rec.id} rec={rec} onOpen={setOpenRec} />
           ))}
         </View>
       )}
+
+      <VillageDetailSheet
+        rec={openRec}
+        visible={openRec !== null}
+        onClose={() => setOpenRec(null)}
+        onChanged={onRefresh}
+      />
 
       <AppText variant="meta" className="mt-2 text-center">
         Recommendations use your coarse area only — never your exact address. Data stays in Canada.
@@ -422,7 +442,12 @@ export default function VillageScreen() {
         <ErrorState message={error ?? ''} onRetry={reload} />
       ) : null}
       {!pendingSeason && status === 'ready' && data ? (
-        <VillageBody data={data} searchSeason={activeSeason} showFilter={activeSeason === null} />
+        <VillageBody
+          data={data}
+          searchSeason={activeSeason}
+          showFilter={activeSeason === null}
+          onRefresh={refresh}
+        />
       ) : null}
     </Screen>
   );

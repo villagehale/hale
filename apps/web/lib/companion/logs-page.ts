@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
+import { FEED_KINDS } from './log-types.js';
 import {
   type LogsPage,
   nextCursorFrom,
@@ -62,6 +63,7 @@ export async function readLogsPage(
       episodeType: schema.familyMemoryEpisodes.episodeType,
       summary: schema.familyMemoryEpisodes.summary,
       occurredAt: schema.familyMemoryEpisodes.occurredAt,
+      payload: schema.familyMemoryEpisodes.payload,
     })
     .from(schema.familyMemoryEpisodes)
     .where(and(...filters))
@@ -75,15 +77,48 @@ export async function readLogsPage(
     limit,
   );
 
-  const logs = recentInternal.dropTeenEpisodes(rows, children, requestingUserId).map((row) => ({
-    id: row.id,
-    childId: row.childId,
-    episodeType: row.episodeType,
-    summary: row.summary,
-    occurredAt: row.occurredAt.toISOString(),
-  }));
+  // Redaction runs on the raw rows FIRST (rule #1, shared read path); the numeric
+  // lift happens only on rows that survived it — a redacted row never reaches
+  // liftNumerics, so no teen number can leak. Only numbers are lifted, never the
+  // raw payload / notes.
+  const logs = recentInternal
+    .dropTeenEpisodes(rows, children, requestingUserId)
+    .map((row) => ({
+      id: row.id,
+      childId: row.childId,
+      episodeType: row.episodeType,
+      summary: row.summary,
+      occurredAt: row.occurredAt.toISOString(),
+      ...liftNumerics(row.payload),
+    }));
 
   return { logs, nextCursor };
+}
+
+/**
+ * Lifts ONLY the structured numerics a client charts (nap minutes, feed ml + kind)
+ * out of the episode payload — never the raw payload or free-text note (rule #1).
+ * Each field is emitted only when it is the expected type, so a malformed payload
+ * yields no field rather than a wrong-typed value.
+ */
+function liftNumerics(payload: Record<string, unknown>): {
+  durationMin?: number;
+  amountMl?: number;
+  feedKind?: string;
+} {
+  const out: { durationMin?: number; amountMl?: number; feedKind?: string } = {};
+  if (typeof payload.durationMin === 'number') out.durationMin = payload.durationMin;
+  if (typeof payload.amountMl === 'number') out.amountMl = payload.amountMl;
+  // Enum-gated, not any string: episodes have a second writer (the worker's
+  // free-shape payloads), so an unexpected feedKind value must not surface
+  // verbatim to clients.
+  if (
+    typeof payload.feedKind === 'string' &&
+    (FEED_KINDS as readonly string[]).includes(payload.feedKind)
+  ) {
+    out.feedKind = payload.feedKind;
+  }
+  return out;
 }
 
 /**

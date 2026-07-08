@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { AppointmentDetailSheet } from '@/components/hale/appointment-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
@@ -10,7 +11,12 @@ import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
-import type { ChildCompanionView, MobileCompanionResponse, RecentLogView } from '@/lib/api-types';
+import type {
+  ChildCompanionView,
+  MobileCompanionResponse,
+  RecentLogView,
+  UpcomingHealthItem,
+} from '@/lib/api-types';
 import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
@@ -74,15 +80,19 @@ function InfoRow({
   what,
   first,
   done = false,
+  onPress,
 }: {
   when: string;
   stamp: boolean;
   what: string;
   first: boolean;
   done?: boolean;
+  /** When set, the row is a button that opens a detail sheet (health rows). */
+  onPress?: () => void;
 }) {
-  return (
-    <View className={`flex-row items-start gap-3 ${first ? '' : 'border-t border-rule pt-3'}`}>
+  const iconColor = useMeadowColor('ink3');
+  const body = (
+    <>
       {/* Wide enough for the longest stamp, "around now" (11px uppercase, 0.12em
           tracking ≈ 103px pill) — at 104px it clipped to "AROUND N". */}
       <View className="w-[124px] shrink-0 pt-0.5">
@@ -102,8 +112,24 @@ function InfoRow({
       <AppText variant="body" className={`flex-1 ${done ? 'text-ink-3' : ''}`}>
         {what}
       </AppText>
-    </View>
+      {onPress ? <Icon name="chevron.right" size={13} color={iconColor} /> : null}
+    </>
   );
+
+  const rowClass = `flex-row items-start gap-3 ${first ? '' : 'border-t border-rule pt-3'}`;
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${what} — details`}
+        onPress={onPress}
+        className={`${rowClass} active:opacity-80`}
+      >
+        {body}
+      </Pressable>
+    );
+  }
+  return <View className={rowClass}>{body}</View>;
 }
 
 function QuickLogCard({
@@ -181,6 +207,7 @@ function CompanionBody({
   onLogged: () => void;
 }) {
   const [selectedId, setSelectedId] = useState(data.children[0]?.id ?? '');
+  const [healthItem, setHealthItem] = useState<UpcomingHealthItem | null>(null);
   // Above the early return — a hook after it crashes React when the child count
   // transitions between renders (rules of hooks).
   const accentFill = useMeadowColor('accentFill');
@@ -232,6 +259,7 @@ function CompanionBody({
                 what={item.what}
                 first={i === 0}
                 done={item.done}
+                onPress={() => setHealthItem(item)}
               />
             ))}
           </View>
@@ -240,6 +268,15 @@ function CompanionBody({
           Timing is the standard Canadian schedule — confirm with your provider.
         </AppText>
       </Card>
+
+      <AppointmentDetailSheet
+        item={healthItem}
+        childId={child.id}
+        childName={child.name}
+        visible={healthItem !== null}
+        onClose={() => setHealthItem(null)}
+        onDone={onLogged}
+      />
 
       <Card className="gap-3">
         <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">

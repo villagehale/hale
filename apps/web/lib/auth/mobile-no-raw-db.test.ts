@@ -9,12 +9,14 @@ import { describe, expect, it } from 'vitest';
 // helper file added tomorrow that reaches for the DB fails this test without
 // anyone remembering to update it.
 //
-// Three routes are audited to legitimately hold a db handle (they reuse the exact
-// web loaders/writers that own the query building): the password sign-in, the email
-// sign-up (delegates to registerCredential + the signup side-effect dispatcher), and
-// the companion quick-log. They may import ~/lib/db ONLY, and must contain NO
-// query-building tokens themselves — the query building lives behind the shared
-// lib, never inline in the route.
+// A handful of routes are audited to legitimately hold a db handle (they reuse the
+// exact web loaders/writers that own the query building): the password sign-in, the
+// email sign-up (delegates to registerCredential + the signup side-effect
+// dispatcher), the companion quick-log, the companion "mark done" (reuses the same
+// writeEpisode path), and the companion logs read (reuses the shared, teen-redacted
+// readLogsPage). They may import ~/lib/db ONLY, and must contain NO query-building
+// tokens themselves — the query building lives behind the shared lib, never inline
+// in the route.
 //
 // (Lives under lib/ because the vitest `include` glob only picks up lib/** and
 // components/**, not app/**.)
@@ -30,6 +32,8 @@ const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/auth/password/route.ts',
   'app/api/mobile/auth/signup/route.ts',
   'app/api/mobile/companion/log/route.ts',
+  'app/api/mobile/companion/done/route.ts',
+  'app/api/mobile/companion/logs/route.ts',
 ]);
 
 // Direct DB-access tokens forbidden in every mobile file (the allowlist relaxes

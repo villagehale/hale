@@ -5,7 +5,12 @@
  * bundle. The server read path (logs-page.ts) builds on these too.
  */
 
-/** A logged episode, flattened for a logs list. */
+/** A logged episode, flattened for a logs list. The structured NUMERICS are lifted
+ * from the episode payload (never the raw payload / notes) so a client can chart a
+ * naps trend without a second read. Present only when the episode carries them;
+ * these are the ONE deliberate widening past summary — numbers, never raw content —
+ * and they still ride the shared teen-redaction read (a redacted row never reaches
+ * this shape). */
 export interface LogView {
   id: string;
   childId: string | null;
@@ -13,6 +18,12 @@ export interface LogView {
   summary: string;
   /** ISO string. */
   occurredAt: string;
+  /** Nap length in minutes, lifted from payload; absent on non-nap rows. */
+  durationMin?: number;
+  /** Feed volume in ml, lifted from payload; absent on non-feed rows. */
+  amountMl?: number;
+  /** Feed kind (bottle/breast/solid), lifted from payload; absent when unspecified. */
+  feedKind?: string;
 }
 
 /** One page of logs, newest first, with the keyset cursor for the next page. */

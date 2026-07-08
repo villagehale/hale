@@ -1,3 +1,4 @@
+import type { LogsPage } from '~/lib/companion/logs-view';
 import type { ChildCompanionView } from '~/lib/companion/queries';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
 import type { ApprovalView } from '~/lib/dashboard/approvals';
@@ -51,6 +52,16 @@ export interface MobileApprovalsResponse {
 export interface MobileLogResponse {
   status: 'logged';
 }
+
+/** The native "mark a curated item done" write (a milestone or a health checkup). */
+export interface MobileDoneResponse {
+  status: 'done';
+}
+
+/** A keyset page of the family's quick-logs for the glance-detail sheet — the
+ * shared, teen-redacted LogsPage (numerics lifted from payload; never raw payload
+ * / notes). */
+export type MobileLogsResponse = LogsPage;
 
 // ── family write (POST /api/mobile/family) ────────────────────────────────────
 //
