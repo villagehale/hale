@@ -13,12 +13,13 @@ import {
   type PlanTier,
   parseIntents,
 } from '@hale/types';
+import { ConsentStep } from '~/components/hale/consent-step';
+import { GettingReady } from '~/components/hale/getting-ready';
 import { HomeAddress } from '~/components/hale/home-address';
 import { IntentChips } from '~/components/hale/intent-chips';
-import { LogoMark } from '~/components/hale/logo-mark';
 import { OnboardingPlanPicker } from '~/components/hale/onboarding-plan-picker';
+import { OnboardingShell } from '~/components/hale/onboarding-shell';
 import { PrivacyNote } from '~/components/hale/privacy-note';
-import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { TosAgreement } from '~/components/hale/tos-agreement';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { LocationInput } from '~/lib/family/location-input';
@@ -35,10 +36,17 @@ import { startGoogleSignIn } from '~/lib/onboarding/sign-in-action';
 
 type Phase = 'A' | 'B' | 'C';
 
+/**
+ * Phase C runs in three in-place views: the setup form, the "you're in control"
+ * consent moment (the finish gate — consent before provisioning), and the
+ * "getting things ready" interstitial shown while the first village fills in.
+ */
+type SetupView = 'form' | 'control' | 'ready';
+
 const PHASE_META: Record<Phase, { folio: string; section: string; title: string }> = {
-  A: { folio: '01', section: 'step one of three', title: 'tell me about your kids' },
-  B: { folio: '02', section: 'step two of three', title: 'create your account' },
-  C: { folio: '03', section: 'step three of three', title: 'finish setting up' },
+  A: { folio: '01', section: 'first, the basics', title: "who's your little person?" },
+  B: { folio: '02', section: 'save your setup', title: 'create your account' },
+  C: { folio: '03', section: 'a little more', title: 'finish setting up' },
 };
 
 /** A Phase-A name row, keyed by a stable id so add/remove keeps React state aligned. */
@@ -89,6 +97,10 @@ export function OnboardingWizard({
   // straight in Phase C; otherwise intake starts at Phase A.
   const initialPhase: Phase = startAtSetup && signedIn ? 'C' : 'A';
   const [phase, setPhase] = useState<Phase>(initialPhase);
+  // Phase C's in-place view: the setup form → the consent moment → the "getting
+  // things ready" interstitial. Advancing to 'ready' only happens after
+  // completeOnboarding succeeds (the family + first-village discovery are underway).
+  const [setupView, setSetupView] = useState<SetupView>('form');
   // The per-phase heading is the focus anchor on a phase change: advancing from
   // "continue →" unmounts that button, so a keyboard/SR user would otherwise be
   // stranded on a detached element. Moving focus to the new phase's heading lands
@@ -153,17 +165,21 @@ export function OnboardingWizard({
     }
   }, [sessionName]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: phase is the intended trigger, not a value read in the body
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the phase/view change is the intended trigger, not a value read in the body
   useEffect(() => {
     if (!didMountPhase.current) {
       didMountPhase.current = true;
       return;
     }
     headingRef.current?.focus();
-  }, [phase]);
+  }, [phase, setupView]);
 
-  const meta = PHASE_META[phase];
-  const phaseIndex = phase === 'A' ? 1 : phase === 'B' ? 2 : 3;
+  // The consent view ("you're in control") re-titles the hero for the finish gate;
+  // otherwise the phase's own heading.
+  const meta =
+    phase === 'C' && setupView === 'control'
+      ? { folio: '03', section: 'the last thing', title: "you're in control" }
+      : PHASE_META[phase];
 
   const namedChildren = nameRows.map((r) => r.name.trim()).filter((n) => n.length > 0);
   const phaseAComplete = namedChildren.length > 0;
@@ -201,15 +217,16 @@ export function OnboardingWizard({
       childValidations[i]?.ok === true,
   );
 
-  const canFinish = setupChildren.length > 0 && everyChildValid && tosAccepted;
+  // The setup form's gate to reach the consent moment: every child named + a valid
+  // DOB. Consent (tosAccepted) is the next step, so it is NOT part of this gate —
+  // completeOnboarding still requires it, and the consent step supplies it.
+  const canContinueSetup = setupChildren.length > 0 && everyChildValid;
 
-  // A plain reason for a disabled finish, so the button is never a silent
-  // dead-end. Children first (the top of the form), then the ToS gate.
-  const finishBlockedReason = !everyChildValid
-    ? "add each child's name and date of birth to finish."
-    : !tosAccepted
-      ? 'agree to the Terms of Service and Privacy Policy to finish.'
-      : '';
+  // A plain reason for a disabled continue, so the button is never a silent
+  // dead-end.
+  const setupBlockedReason = !everyChildValid
+    ? "add each child's name and date of birth to continue."
+    : '';
 
   function updateSetupChild(id: string, patch: Partial<SetupChild>) {
     setSetupChildren((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -223,7 +240,10 @@ export function OnboardingWizard({
     persistDraft({ intents: next });
   }
 
-  async function handleFinish() {
+  // `accepted` carries the consent given on THIS click: the consent step calls
+  // setTosAccepted(true) and handleFinish(true) together, but the state update is
+  // async, so the submission must read the just-agreed value, not the stale flag.
+  async function handleFinish(accepted: boolean = tosAccepted) {
     setSetupState({ kind: 'saving' });
     const result = await completeOnboarding({
       children: setupChildren.map((c) => ({
@@ -233,7 +253,7 @@ export function OnboardingWizard({
         gender: c.gender,
       })),
       planTier,
-      tosAccepted,
+      tosAccepted: accepted,
       parentName: parentName.trim(),
       location,
       intents,
@@ -241,9 +261,20 @@ export function OnboardingWizard({
     if (result.status === 'completed') {
       capture('onboarding_completed', { kidCount: setupChildren.length, planTier });
       clearIntakeDraft();
-      router.push(inviteCoParent ? '/family' : '/home');
+      // Co-parent inviters go straight to the family page to send the link; everyone
+      // else lands on the "getting things ready" moment while the first village
+      // fills in, then continues to /home.
+      if (inviteCoParent) {
+        router.push('/family');
+        return;
+      }
+      setSetupState({ kind: 'idle' });
+      setSetupView('ready');
       return;
     }
+    // Any non-completion returns to the setup form, where the error banner and the
+    // finish controls live — the consent view carries neither.
+    setSetupView('form');
     if (result.status === 'preview') {
       // Dev preview (auth/db unconfigured): nothing was written. Don't pretend a
       // family exists — say so and keep the user where they are.
@@ -268,46 +299,32 @@ export function OnboardingWizard({
     });
   }
 
+  // The "getting things ready" moment takes over the whole panel (no hero heading)
+  // once the family is provisioned and the first-village discovery is underway.
+  if (phase === 'C' && setupView === 'ready') {
+    return (
+      <OnboardingShell phase={phase} view={setupView}>
+        <GettingReady
+          area={location.city ?? city}
+          onContinue={() => router.push('/home')}
+        />
+      </OnboardingShell>
+    );
+  }
+
   return (
-    <div className="min-h-[100dvh] bg-linen">
-      <header className="shell flex items-center justify-between pt-6 pb-4 border-b border-rule">
-        <Link href="/" className="flex items-center gap-3">
-          <LogoMark size={32} />
-          <span className="font-display text-2xl font-semibold leading-none">Hale</span>
-        </Link>
-
-        <div className="flex items-center gap-3">
-          <span className="eyebrow hidden sm:inline">enrolment</span>
-          <div className="hidden sm:flex items-center gap-1.5" aria-hidden>
-            {[1, 2, 3].map((s) => (
-              <span
-                key={s}
-                className="block h-px w-6"
-                style={{
-                  background: s <= phaseIndex ? 'var(--color-spruce)' : 'var(--color-rule-strong)',
-                }}
-              />
-            ))}
-          </div>
-          <span className="meta tabular" aria-live="polite" aria-atomic="true">
-            step {phaseIndex} of 3
-          </span>
-          <ThemeToggle />
+    <OnboardingShell phase={phase} view={phase === 'C' ? setupView : 'form'}>
+      <div className="space-y-8">
+        <div className="onboarding-hero">
+          <span className="folio">{meta.folio}</span>
+          <p className="meta mt-2">{meta.section}</p>
+          <h1 ref={headingRef} tabIndex={-1} className="mt-4 font-display outline-none">
+            {meta.title}
+          </h1>
         </div>
-      </header>
 
-      <main className="shell pt-16 lg:pt-24 pb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-12">
-          <div className="onboarding-hero lg:col-span-3">
-            <span className="folio">{meta.folio}</span>
-            <p className="meta mt-2">{meta.section}</p>
-            <h1 ref={headingRef} tabIndex={-1} className="mt-6 font-display outline-none">
-              {meta.title}
-            </h1>
-          </div>
-
-          <div className="lg:col-span-9 lg:col-start-4">
-            {phase === 'A' ? (
+        <div>
+          {phase === 'A' ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
                   Start with the basics — just enough for me to show you how Hale
@@ -317,7 +334,7 @@ export function OnboardingWizard({
 
                 <div className="space-y-6">
                   <fieldset className="space-y-3">
-                    <legend className="eyebrow">your kids&rsquo; first names</legend>
+                    <legend className="eyebrow">their first name</legend>
                     {nameRows.map((row, index) => (
                       <div key={row.id} className="flex items-center gap-3">
                         <input
@@ -363,13 +380,13 @@ export function OnboardingWizard({
                       }}
                     >
                       <Plus size={14} strokeWidth={2} aria-hidden="true" />
-                      add another child
+                      anyone else?
                     </button>
                   </fieldset>
 
                   <div>
                     <label htmlFor="intake-city" className="eyebrow">
-                      your city
+                      where should I look for your village?
                     </label>
                     <input
                       id="intake-city"
@@ -391,7 +408,7 @@ export function OnboardingWizard({
 
                   <div>
                     <IntentChips
-                      legend="what are you hoping Hale can help with?"
+                      legend="what's keeping you busy lately?"
                       selected={intents}
                       onToggle={toggleIntent}
                     />
@@ -439,7 +456,21 @@ export function OnboardingWizard({
               />
             ) : null}
 
-            {phase === 'C' ? (
+            {phase === 'C' && setupView === 'control' ? (
+              <ConsentStep
+                saving={setupState.kind === 'saving'}
+                onBack={() => setSetupView('form')}
+                onAgree={() => {
+                  if (!tosAccepted) {
+                    setTosAccepted(true);
+                    persistDraft({ tosAccepted: true });
+                  }
+                  void handleFinish(true);
+                }}
+              />
+            ) : null}
+
+            {phase === 'C' && setupView === 'form' ? (
               <section className="rise rise-1 space-y-10 max-w-2xl">
                 <p className="text-lg text-slate-green leading-relaxed">
                   You&rsquo;re signed in
@@ -629,18 +660,9 @@ export function OnboardingWizard({
                   </span>
                 </label>
 
-                {/* The email cohort reaches Phase C without passing through the
-                    Phase-B account step, so the ToS agreement lives here too. Once
-                    accepted (via Phase B or here) the row collapses. */}
-                {tosAccepted ? null : (
-                  <TosAgreement
-                    checked={tosAccepted}
-                    onChange={(checked) => {
-                      setTosAccepted(checked);
-                      persistDraft({ tosAccepted: checked });
-                    }}
-                  />
-                )}
+                {/* Consent (the Terms/Privacy agreement) is no longer a checkbox
+                    here — it is the "you're in control" step this button leads to,
+                    so the agreement is given once, right before provisioning. */}
 
                 {setupState.kind === 'error' ? (
                   <p className="meta text-apricot-deep" role="alert">
@@ -649,28 +671,23 @@ export function OnboardingWizard({
                 ) : null}
 
                 <div className="flex flex-wrap items-center gap-5 pt-2">
-                  {canFinish ? null : (
-                    <p className="meta">{finishBlockedReason}</p>
+                  {canContinueSetup ? null : (
+                    <p className="meta">{setupBlockedReason}</p>
                   )}
                   <button
                     type="button"
                     className="btn-primary ml-auto"
-                    onClick={handleFinish}
-                    disabled={!canFinish || setupState.kind === 'saving'}
+                    onClick={() => setSetupView('control')}
+                    disabled={!canContinueSetup || setupState.kind === 'saving'}
                   >
-                    {setupState.kind === 'saving'
-                      ? 'finishing…'
-                      : inviteCoParent
-                        ? 'finish · invite co-parent →'
-                        : 'finish · open my home →'}
+                    continue →
                   </button>
                 </div>
               </section>
             ) : null}
-          </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </OnboardingShell>
   );
 }
 
@@ -711,9 +728,8 @@ export function AccountStep({
                 {' '}
                 as <span className="text-spruce">{sessionName}</span>
               </>
-            ) : null}{' '}
-            — just agree to the terms to continue. You&rsquo;ll pick a plan next, and
-            nothing is charged today.
+            ) : null}
+            . You&rsquo;ll pick a plan next, and nothing is charged today.
           </>
         ) : (
           <>
@@ -724,8 +740,11 @@ export function AccountStep({
         )}
       </p>
 
-      <TosAgreement checked={tosAccepted} onChange={onToggleTos} />
-
+      {/* No account is created in the signed-in branch — the parent already has
+          one — so the Terms/Privacy agreement is given once, at the "you're in
+          control" consent step right before provisioning (not here AND there).
+          The Google create-account branch keeps the checkbox below as its own
+          account-creation gate. */}
       {signedIn ? (
         <div className="flex flex-wrap items-center gap-5 pt-2">
           <button type="button" className="btn-ghost" onClick={onBack}>
@@ -734,7 +753,6 @@ export function AccountStep({
           <button
             type="button"
             className="btn-primary ml-auto"
-            disabled={!tosAccepted}
             onClick={onContinue}
           >
             continue →
@@ -742,6 +760,7 @@ export function AccountStep({
         </div>
       ) : authReady ? (
         <form action={startGoogleSignIn}>
+          <TosAgreement checked={tosAccepted} onChange={onToggleTos} />
           <div className="flex flex-wrap items-center gap-5 pt-2">
             <button type="button" className="btn-ghost" onClick={onBack}>
               ← back

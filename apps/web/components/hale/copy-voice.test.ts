@@ -29,6 +29,10 @@ const SURFACES = [
   'components/hale/village-feed-section.tsx',
   'components/hale/approvals-header.tsx',
   'components/hale/ask-hale-thread.tsx',
+  // Onboarding copy that moved out of wizard.tsx — the sweep follows the copy.
+  'components/hale/consent-step.tsx',
+  'components/hale/getting-ready.tsx',
+  'components/hale/onboarding-shell.tsx',
 ] as const;
 
 /**
