@@ -62,7 +62,7 @@ export function SplashLoader() {
           Hale
         </AppText>
         <AppText variant="meta" className="text-ink-3">
-          the village your family lost
+          Every family deserves a village.
         </AppText>
       </Animated.View>
     </View>

@@ -90,9 +90,10 @@ export default function CreateAccountScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Screen scroll className="gap-6">
-        <ScreenHeader title="Create your account" back />
+        <ScreenHeader title="Save your family" back />
         <AppText variant="body" className="-mt-2">
-          Last step — this saves your family so Hale can start helping.
+          Last step — create your account and Hale starts helping. Everything you just set up is
+          saved.
         </AppText>
 
         <View className="gap-3">

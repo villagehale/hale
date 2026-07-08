@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapImageDataUri } from './use-map-thumbnail';
+import { mapImageDataUri } from './map-image';
 
 /**
  * The degradation contract: while the Static Maps API is disabled the proxy
