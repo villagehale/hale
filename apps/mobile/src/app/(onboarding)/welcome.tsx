@@ -35,7 +35,7 @@ export default function WelcomeScreen() {
         <LogoMark size={72} />
         <View className="gap-4">
           <StoryText variant="display" className="text-[34px] leading-[40px]">
-            Hi — I'm Hale.
+            Hi 👋 — I'm Hale.
           </StoryText>
           <StoryText variant="body" muted className="max-w-[300px] text-[17px] leading-[26px]">
             I quietly keep watch over the little things — the shots, the sign-ups, the plans — so

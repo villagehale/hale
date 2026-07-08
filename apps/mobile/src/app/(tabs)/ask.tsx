@@ -121,7 +121,10 @@ function StarterChips({ onPick }: { onPick: (q: string) => void }) {
         {first ? `Hi ${first}, how can I help?` : 'How can I help you today?'}
       </AppText>
       <AppText variant="meta" className="text-ink-3">
-        Hale is here for you, 24/7.
+        Hale is your AI parenting co-pilot.
+      </AppText>
+      <AppText variant="meta" className="text-ink-3">
+        Here for you, 24/7.
       </AppText>
       <View className="mt-1 gap-2">
         {STARTER_CHIPS.map((q) => (

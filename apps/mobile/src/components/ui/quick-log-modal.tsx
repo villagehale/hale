@@ -12,7 +12,13 @@ import { Icon } from './icon';
 
 export type LogKind = 'feed' | 'nap' | 'milestone';
 
-type ChildOption = { id: string; name: string | null };
+/** A child in the picker. `milestoneSuggestions` are the `what` strings from that
+ * child's stage catalog (MILESTONES_BY_STAGE via the companion payload) — the
+ * tappable milestone chips, filtered to the selected child's stage. */
+type ChildOption = { id: string; name: string | null; milestoneSuggestions: string[] };
+
+/** How many stage milestone chips to offer before the free-text field. */
+const MILESTONE_CHIP_LIMIT = 6;
 
 /** The feed kinds the server accepts (log-types FEED_KINDS) with their sheet
  * labels. Selecting one sends feedKind so the summary reads "Fed 200 ml (bottle)". */
@@ -200,6 +206,15 @@ export function QuickLogModal({
   if (!kind) return null;
   const meta = KIND_META[kind];
   const hasNapWindow = napStart !== null && napEnd !== null;
+  // The tappable stage-milestone chips for the CURRENTLY selected child — so the
+  // suggestions track the picker. Capped to keep the sheet head compact.
+  const milestoneSuggestions =
+    kind === 'milestone'
+      ? (kids.find((k) => k.id === childId)?.milestoneSuggestions ?? []).slice(
+          0,
+          MILESTONE_CHIP_LIMIT,
+        )
+      : [];
 
   const save = async () => {
     const entry = value.trim();
@@ -291,6 +306,35 @@ export function QuickLogModal({
                       </Pressable>
                     );
                   })}
+                </View>
+              ) : null}
+
+              {milestoneSuggestions.length > 0 ? (
+                <View className="mb-4 gap-2">
+                  <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+                    Common for this stage
+                  </AppText>
+                  <View className="flex-row flex-wrap gap-2">
+                    {milestoneSuggestions.map((suggestion) => {
+                      const active = value.trim() === suggestion;
+                      return (
+                        <Pressable
+                          key={suggestion}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Milestone: ${suggestion}`}
+                          accessibilityState={active ? { selected: true } : {}}
+                          onPress={() => setValue(suggestion)}
+                          className={`rounded-full border px-3.5 py-2 active:opacity-80 ${
+                            active ? 'border-ink bg-ink' : 'border-rule bg-card'
+                          }`}
+                        >
+                          <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
+                            {suggestion}
+                          </AppText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
               ) : null}
 
@@ -463,7 +507,12 @@ export function QuickLogModal({
                 </AppText>
               ) : null}
 
-              <Button label={saving ? 'Saving…' : 'Save log'} onPress={save} />
+              <Button
+                label={
+                  saving ? 'Saving…' : kind === 'milestone' ? 'Create milestone' : 'Save log'
+                }
+                onPress={save}
+              />
             </ScrollView>
           </Pressable>
         </Pressable>

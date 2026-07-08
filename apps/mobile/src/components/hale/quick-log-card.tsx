@@ -4,6 +4,8 @@ import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { ChildCompanionView, MobileCompanionResponse } from '@/lib/api-types';
 import { whenPhrase } from '@/lib/format';
@@ -54,6 +56,14 @@ const KIND_LABEL: Record<QuickLogMatch['kind'], string> = {
   feed: 'Feed',
   nap: 'Nap',
   milestone: 'Milestone',
+};
+
+/** The leading glyph for a logged row, by kind — the same drop/moon/star language
+ * the Home quick-log pills use, so a logged card reads at a glance. */
+const KIND_ICON: Record<QuickLogMatch['kind'], IconName> = {
+  feed: 'drop.fill',
+  nap: 'moon.fill',
+  milestone: 'star.fill',
 };
 
 /** One `{ label, value }` line per field the log ACTUALLY captured — the kind and
@@ -117,6 +127,7 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [loggedAt, setLoggedAt] = useState<string | null>(null);
+  const kindIconColor = useMeadowColor('ink3');
 
   const childId = selectedId ?? kids[0]?.id ?? null;
   const label = summarise(match);
@@ -155,9 +166,12 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
     const rows = loggedRows(match, loggedAt);
     return (
       <View className="mb-3 max-w-[92%] self-end gap-2 rounded-lg border border-rule bg-sage-tint px-4 py-3.5">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-sage">
-          ✓ Logged
-        </AppText>
+        <View className="flex-row items-center gap-1.5">
+          <Icon name={KIND_ICON[match.kind]} size={14} color={kindIconColor} />
+          <AppText variant="meta" className="uppercase tracking-eyebrow text-sage">
+            ✓ Logged
+          </AppText>
+        </View>
         <View className="gap-1.5">
           {rows.map((row) => (
             <View key={row.label} className="flex-row items-baseline justify-between gap-3">
@@ -170,16 +184,28 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
             </View>
           ))}
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View recent logs in Companion"
-          onPress={() => router.push('/companion')}
-          className="mt-0.5 self-start active:opacity-80"
-        >
-          <AppText variant="meta" className="text-accent underline">
-            View recent logs
-          </AppText>
-        </Pressable>
+        <View className="mt-0.5 flex-row items-center gap-4">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View recent logs in Companion"
+            onPress={() => router.push('/companion')}
+            className="active:opacity-80"
+          >
+            <AppText variant="meta" className="text-accent underline">
+              View recent logs
+            </AppText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add another log in Companion"
+            onPress={() => router.push('/companion')}
+            className="active:opacity-80"
+          >
+            <AppText variant="meta" className="text-accent underline">
+              Add more
+            </AppText>
+          </Pressable>
+        </View>
       </View>
     );
   }
