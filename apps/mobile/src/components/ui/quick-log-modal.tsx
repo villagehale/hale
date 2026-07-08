@@ -14,6 +14,14 @@ export type LogKind = 'feed' | 'nap' | 'milestone';
 
 type ChildOption = { id: string; name: string | null };
 
+/** The feed kinds the server accepts (log-types FEED_KINDS) with their sheet
+ * labels. Selecting one sends feedKind so the summary reads "Fed 200 ml (bottle)". */
+const FEED_KINDS: { value: 'bottle' | 'breast' | 'solid'; label: string }[] = [
+  { value: 'bottle', label: 'Bottle' },
+  { value: 'breast', label: 'Breast' },
+  { value: 'solid', label: 'Solids' },
+];
+
 const KIND_META: Record<
   LogKind,
   {
@@ -36,7 +44,7 @@ const KIND_META: Record<
     field: 'Duration (min)',
     placeholder: '45',
     keyboard: 'numeric',
-    empty: 'Enter how long (minutes) before saving.',
+    empty: 'Enter how long (minutes), or set a start and end.',
   },
   milestone: {
     title: 'Note a milestone',
@@ -71,20 +79,51 @@ function whenLabel(when: Date): string {
   return `${day}, ${time}`;
 }
 
-function buildPayload(kind: LogKind, childId: string, entry: string, occurredAt: string) {
-  const base = { childId, occurredAt };
-  if (kind === 'feed') return { kind, ...base, amountMl: entry };
-  if (kind === 'nap') return { kind, ...base, durationMin: entry };
-  return { kind, ...base, milestone: entry };
+/** "1h 45m" / "45m" — the nap window's derived length, read back so the parent sees
+ * what the start/end pair means before saving. */
+function durationLabel(startAt: Date, endAt: Date): string {
+  const min = Math.round((endAt.getTime() - startAt.getTime()) / 60_000);
+  if (min <= 0) return 'end is before start';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/** Builds the POST body for the tapped kind. A nap sends a start/end WINDOW when the
+ * parent set one (the server derives the duration); otherwise the plain duration.
+ * A feed carries feedKind when picked. An optional note rides all three. */
+function buildPayload(args: {
+  kind: LogKind;
+  childId: string;
+  entry: string;
+  occurredAt: string;
+  feedKind: string | null;
+  napWindow: { startAt: string; endAt: string } | null;
+  note: string;
+}) {
+  const { kind, childId, entry, occurredAt, feedKind, napWindow, note } = args;
+  const trimmedNote = note.trim();
+  const base: Record<string, unknown> = { kind, childId, occurredAt };
+  if (trimmedNote) base.note = trimmedNote;
+  if (kind === 'feed') {
+    return { ...base, amountMl: entry, ...(feedKind ? { feedKind } : {}) };
+  }
+  if (kind === 'nap') {
+    if (napWindow) return { ...base, startAt: napWindow.startAt, endAt: napWindow.endAt };
+    return { ...base, durationMin: entry };
+  }
+  return { ...base, milestone: entry };
 }
 
 /**
  * The shared in-place quick-log sheet. Opens for the tapped kind with the right
- * field (feed=amount, nap=duration, milestone=text) plus a "when" control that
- * defaults to now. Sends occurredAt (ISO) so an earlier event lands at the right
- * time. POSTs the SAME /api/mobile/companion/log endpoint the companion uses —
- * one write path, one audit row (rule #6). Errors surface in place, never a
- * silent success.
+ * field (feed=amount + kind chips, nap=duration OR a start/end window, milestone=
+ * text) plus a "when" control that defaults to now and one quiet optional note.
+ * Sends occurredAt (ISO) so an earlier event lands at the right time; a nap window
+ * sends startAt/endAt (ISO) and the server derives the duration. POSTs the SAME
+ * /api/mobile/companion/log endpoint the companion uses — one write path, one audit
+ * row (rule #6). Errors surface in place, never a silent success.
  */
 export function QuickLogModal({
   visible,
@@ -101,11 +140,18 @@ export function QuickLogModal({
 }) {
   const [childId, setChildId] = useState('');
   const [value, setValue] = useState('');
+  const [feedKind, setFeedKind] = useState<string | null>(null);
+  const [note, setNote] = useState('');
   const [when, setWhen] = useState<Date>(() => new Date());
   // The preset chip that produced `when`, or null once an exact time is picked —
   // so the highlight is unambiguous instead of guessed from fragile time math.
   const [activePreset, setActivePreset] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
+  // A nap's optional start/end window. When both are set, they drive the duration
+  // (the plain minutes field is ignored); until then the minutes field is used.
+  const [napStart, setNapStart] = useState<Date | null>(null);
+  const [napEnd, setNapEnd] = useState<Date | null>(null);
+  const [openNapPicker, setOpenNapPicker] = useState<'start' | 'end' | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const iconColor = useMeadowColor('ink3');
@@ -114,9 +160,14 @@ export function QuickLogModal({
     if (visible) {
       setChildId(kids[0]?.id ?? '');
       setValue('');
+      setFeedKind(null);
+      setNote('');
       setWhen(new Date());
       setActivePreset(0);
       setShowPicker(false);
+      setNapStart(null);
+      setNapEnd(null);
+      setOpenNapPicker(null);
       setError(null);
       setSaving(false);
     }
@@ -138,12 +189,23 @@ export function QuickLogModal({
     }
   };
 
+  const onNapPickerChange = (which: 'start' | 'end') => (event: DateTimePickerEvent, picked?: Date) => {
+    if (Platform.OS !== 'ios') setOpenNapPicker(null);
+    if (event.type === 'set' && picked) {
+      if (which === 'start') setNapStart(picked);
+      else setNapEnd(picked);
+    }
+  };
+
   if (!kind) return null;
   const meta = KIND_META[kind];
+  const hasNapWindow = napStart !== null && napEnd !== null;
 
   const save = async () => {
     const entry = value.trim();
-    if (!entry) {
+    // A nap with a complete window doesn't need the minutes field; every other
+    // shape needs its primary entry.
+    if (!(kind === 'nap' && hasNapWindow) && !entry) {
       setError(meta.empty);
       return;
     }
@@ -151,13 +213,25 @@ export function QuickLogModal({
       setError('Add a child first.');
       return;
     }
+    if (kind === 'nap' && hasNapWindow && napEnd.getTime() <= napStart.getTime()) {
+      setError('The nap end must be after its start.');
+      return;
+    }
     setError(null);
     setSaving(true);
-    const occurredAt = when.toISOString();
+    const napWindow =
+      kind === 'nap' && hasNapWindow
+        ? { startAt: napStart.toISOString(), endAt: napEnd.toISOString() }
+        : null;
+    // A window nap belongs to the day it ENDED, not the moment it was typed —
+    // a 23:00–23:45 nap logged at 00:30 must not bucket under "today".
+    const occurredAt = napWindow ? napWindow.endAt : when.toISOString();
     try {
       await api('/api/mobile/companion/log', {
         method: 'POST',
-        body: JSON.stringify(buildPayload(kind, childId, entry, occurredAt)),
+        body: JSON.stringify(
+          buildPayload({ kind, childId, entry, occurredAt, feedKind, napWindow, note }),
+        ),
       });
       onLogged();
       onClose();
@@ -230,7 +304,70 @@ export function QuickLogModal({
                   autoCapitalize={kind === 'milestone' ? 'sentences' : 'none'}
                   autoFocus
                 />
+                {kind === 'nap' && hasNapWindow ? (
+                  <AppText variant="meta" className="mt-1.5 text-ink-3">
+                    Using the start and end below — the minutes field is optional.
+                  </AppText>
+                ) : null}
               </View>
+
+              {kind === 'feed' ? (
+                <View className="mb-5 gap-2">
+                  <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+                    Kind (optional)
+                  </AppText>
+                  <View className="flex-row gap-2">
+                    {FEED_KINDS.map((fk) => {
+                      const active = fk.value === feedKind;
+                      return (
+                        <Pressable
+                          key={fk.value}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Feed kind: ${fk.label}`}
+                          accessibilityState={active ? { selected: true } : {}}
+                          onPress={() => setFeedKind(active ? null : fk.value)}
+                          className={`h-11 flex-1 items-center justify-center rounded-full border ${
+                            active ? 'border-ink bg-ink' : 'border-rule bg-card'
+                          }`}
+                        >
+                          <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
+                            {fk.label}
+                          </AppText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {kind === 'nap' ? (
+                <View className="mb-5 gap-2">
+                  <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+                    Start &amp; end (optional)
+                  </AppText>
+                  <NapBoundRow
+                    label="Start"
+                    value={napStart}
+                    open={openNapPicker === 'start'}
+                    onToggle={() => setOpenNapPicker((p) => (p === 'start' ? null : 'start'))}
+                    onChange={onNapPickerChange('start')}
+                    iconColor={iconColor}
+                  />
+                  <NapBoundRow
+                    label="End"
+                    value={napEnd}
+                    open={openNapPicker === 'end'}
+                    onToggle={() => setOpenNapPicker((p) => (p === 'end' ? null : 'end'))}
+                    onChange={onNapPickerChange('end')}
+                    iconColor={iconColor}
+                  />
+                  {hasNapWindow ? (
+                    <AppText variant="meta" className="text-ink-2">
+                      Duration: {durationLabel(napStart, napEnd)}
+                    </AppText>
+                  ) : null}
+                </View>
+              ) : null}
 
               <View className="mb-5 gap-2">
                 <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
@@ -304,6 +441,18 @@ export function QuickLogModal({
                 )}
               </View>
 
+              <View className="mb-5">
+                <Field
+                  label="Note (optional)"
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Anything worth remembering"
+                  autoCapitalize="sentences"
+                  maxLength={280}
+                  multiline
+                />
+              </View>
+
               {error ? (
                 <AppText
                   variant="meta"
@@ -320,5 +469,123 @@ export function QuickLogModal({
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>
+  );
+}
+
+/** Merges the calendar day of `date` with the hour/minute of `time` into one Date,
+ * keeping seconds/ms zeroed — the two-step Android flow picks a day, then a
+ * time-of-day, and this combines them. For a nap PAIR the time-of-day is the whole
+ * point (a same-day window is inexpressible from a date-only picker). */
+function combineDayAndTime(date: Date, time: Date): Date {
+  const combined = new Date(date);
+  combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
+  return combined;
+}
+
+/** One bound of a nap window (Start / End): a tappable row that reads the picked
+ * instant back and discloses a native date+time picker. iOS uses one inline
+ * 'datetime' picker; Android's community picker can't do 'datetime' in one dialog,
+ * and for a start/end PAIR the time-of-day is the whole point — a date-only pick
+ * leaves both bounds at the same time and the window is rejected — so Android runs a
+ * two-step date→time flow and only commits the merged instant once time is chosen.
+ * On RN-web (no native picker) it stays read-only, mirroring the "when" control. */
+function NapBoundRow({
+  label,
+  value,
+  open,
+  onToggle,
+  onChange,
+  iconColor,
+}: {
+  label: string;
+  value: Date | null;
+  open: boolean;
+  onToggle: () => void;
+  onChange: (event: DateTimePickerEvent, picked?: Date) => void;
+  iconColor: string;
+}) {
+  // Android only: the day chosen in step 1, held while the time picker (step 2) is
+  // open. Null when no two-step flow is in progress.
+  const [androidPendingDay, setAndroidPendingDay] = useState<Date | null>(null);
+  const display = value ? whenLabel(value) : `Set ${label.toLowerCase()}`;
+
+  const onAndroidDate = (event: DateTimePickerEvent, picked?: Date) => {
+    onToggle(); // close step-1 dialog (parent tracks open)
+    if (event.type !== 'set' || !picked) return;
+    setAndroidPendingDay(picked);
+  };
+
+  const onAndroidTime = (event: DateTimePickerEvent, picked?: Date) => {
+    const day = androidPendingDay;
+    setAndroidPendingDay(null);
+    if (event.type !== 'set' || !picked || !day) return;
+    onChange(event, combineDayAndTime(day, picked));
+  };
+
+  return (
+    <View className="gap-1.5">
+      <AppText variant="meta" className="text-ink-2">
+        {label}
+      </AppText>
+      {Platform.OS === 'web' ? (
+        <View className="h-12 flex-row items-center gap-2.5 rounded-md border border-rule bg-card px-4">
+          <Icon name="calendar" size={16} color={iconColor} />
+          <AppText variant="body" className={value ? 'text-ink' : 'text-ink-3'}>
+            {display}
+          </AppText>
+        </View>
+      ) : (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${label}: ${display}. Tap to change.`}
+            accessibilityState={{ expanded: open }}
+            onPress={onToggle}
+            className="h-12 flex-row items-center justify-between rounded-md border border-rule bg-card px-4 active:opacity-80"
+          >
+            <View className="flex-row items-center gap-2.5">
+              <Icon name="calendar" size={16} color={iconColor} />
+              <AppText variant="body" className={value ? 'text-ink' : 'text-ink-3'}>
+                {display}
+              </AppText>
+            </View>
+            <Icon name={open ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+          </Pressable>
+          {Platform.OS === 'ios' ? (
+            open ? (
+              <View className="items-center">
+                <DateTimePicker
+                  value={value ?? new Date()}
+                  mode="datetime"
+                  display="inline"
+                  maximumDate={new Date()}
+                  onChange={onChange}
+                />
+              </View>
+            ) : null
+          ) : (
+            <>
+              {open ? (
+                <DateTimePicker
+                  value={value ?? new Date()}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={onAndroidDate}
+                />
+              ) : null}
+              {androidPendingDay ? (
+                <DateTimePicker
+                  value={value ?? androidPendingDay}
+                  mode="time"
+                  display="default"
+                  onChange={onAndroidTime}
+                />
+              ) : null}
+            </>
+          )}
+        </>
+      )}
+    </View>
   );
 }

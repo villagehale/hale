@@ -41,10 +41,23 @@ export const feedSchema = z.object({
   occurredAt: occurredAtField,
 });
 
+/** A nap's bounds: an ISO/datetime string with offset, validated to a real date
+ * (range-checked at the action boundary via resolveNapWindow). Optional — a plain
+ * durationMin entry omits both. */
+const napBoundField = z.string().trim().min(1).datetime({ offset: true }).optional();
+
+// Stays a plain ZodObject (no .refine) so it remains a valid member of the
+// quickLogSchema discriminated union. The cross-field rules — a window needs both
+// bounds, and a nap needs EITHER a duration or a window — are enforced at the
+// action boundary (resolveNapWindow), the same place occurredAt is range-checked.
 export const napSchema = z.object({
   kind: z.literal(NAP_EPISODE),
   childId: z.string().uuid(),
-  durationMin: z.coerce.number().positive().max(1440),
+  /** Optional once a start/end pair is given — the server derives the duration
+   * from the window. Still accepted directly for the plain "how long" entry. */
+  durationMin: z.coerce.number().positive().max(1440).optional(),
+  startAt: napBoundField,
+  endAt: napBoundField,
   note: z.string().trim().max(280).optional(),
   occurredAt: occurredAtField,
 });
@@ -88,6 +101,44 @@ export function resolveOccurredAt(
     return { ok: false, error: 'that time is too far in the past' };
   }
   return { ok: true, date };
+}
+
+/**
+ * Resolves a nap's start/end window into a whole-minute duration, or null when no
+ * window was given (a plain durationMin entry). A lone bound is rejected — the
+ * window needs both so a duration can be derived. Each bound gets the SAME range
+ * discipline as occurredAt (resolveOccurredAt: real date, not future, not absurdly
+ * old), then the end must be strictly after the start and the derived duration
+ * bounded to the same 1..1440 range the direct durationMin field accepts. Lives
+ * here so client and server agree on the rule.
+ */
+export function resolveNapWindow(
+  startAt: string | undefined,
+  endAt: string | undefined,
+  now: Date,
+): { ok: true; durationMin: number | null } | { ok: false; error: string } {
+  if (startAt === undefined && endAt === undefined) return { ok: true, durationMin: null };
+  if (startAt === undefined || endAt === undefined) {
+    return { ok: false, error: 'a nap window needs both a start and an end' };
+  }
+
+  const start = resolveOccurredAt(startAt, now);
+  if (!start.ok) return start;
+  const end = resolveOccurredAt(endAt, now);
+  if (!end.ok) return end;
+
+  const spanMs = end.date.getTime() - start.date.getTime();
+  if (spanMs <= 0) {
+    return { ok: false, error: 'the nap end must be after its start' };
+  }
+  const durationMin = Math.round(spanMs / 60_000);
+  if (durationMin < 1) {
+    return { ok: false, error: 'that nap is too short to log' };
+  }
+  if (durationMin > 1440) {
+    return { ok: false, error: 'that nap is longer than a day — check the times' };
+  }
+  return { ok: true, durationMin };
 }
 
 /** Edit of an existing logged episode from the dedicated logs view. A parent may

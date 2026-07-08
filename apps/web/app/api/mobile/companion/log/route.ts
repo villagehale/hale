@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { quickLogSchema, resolveOccurredAt } from '~/lib/companion/log-types';
-import { buildEpisodeInsert, childBelongsToFamily, writeEpisode } from '~/lib/companion/log-write';
+import {
+  buildEpisodeInsert,
+  childBelongsToFamily,
+  resolveNap,
+  writeEpisode,
+} from '~/lib/companion/log-write';
 import { db } from '~/lib/db';
 import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
 import type { MobileLogResponse } from '../../types';
@@ -40,9 +45,15 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const occurredAt = resolveOccurredAt(parsed.data.occurredAt, new Date());
+  const now = new Date();
+  const occurredAt = resolveOccurredAt(parsed.data.occurredAt, now);
   if (!occurredAt.ok) {
     return NextResponse.json({ error: occurredAt.error }, { status: 400 });
+  }
+
+  const nap = resolveNap(parsed.data, now);
+  if (!nap.ok) {
+    return NextResponse.json({ error: nap.error }, { status: 400 });
   }
 
   const database = db();
@@ -58,7 +69,7 @@ export async function POST(req: Request): Promise<Response> {
   const authoredBy = await resolveUserIdForUser(session.user.id, database);
   await writeEpisode(
     database,
-    buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy),
+    buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy, nap.durationMin),
   );
 
   const body: MobileLogResponse = { status: 'logged' };

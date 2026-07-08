@@ -20,6 +20,7 @@ import {
   buildDoneEpisodeInsert,
   buildEpisodeInsert,
   childBelongsToFamily,
+  resolveNap,
   softDeleteEpisode,
   updateEpisode,
   writeEpisode,
@@ -50,6 +51,11 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
     return { status: 'invalid', error: occurredAt.error };
   }
 
+  const nap = resolveNap(parsed.data, now);
+  if (!nap.ok) {
+    return { status: 'invalid', error: nap.error };
+  }
+
   if (!process.env.DATABASE_URL) {
     return { status: 'preview', reason: 'no_database' };
   }
@@ -70,7 +76,7 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
   const authoredBy = await currentUserId(database);
   await writeEpisode(
     database,
-    buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy),
+    buildEpisodeInsert(parsed.data, familyId, occurredAt.date, authoredBy, nap.durationMin),
   );
 
   revalidatePath('/companion');

@@ -148,4 +148,70 @@ describe('POST /api/mobile/companion/log', () => {
       payload: { amountMl: 120, feedKind: 'bottle' },
     });
   });
+
+  it('derives a nap duration from a start/end window (server-side, no client math)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({
+      kind: 'nap',
+      childId: CHILD_ID,
+      startAt: '2026-07-02T09:00:00Z',
+      endAt: '2026-07-02T10:30:00Z',
+    });
+
+    expect(res.status).toBe(201);
+    // 90 min derived from the window; the bounds ride the payload so the window
+    // survives (derived value, NOT copied from output — 09:00→10:30 = 90).
+    expect(writeEpisodeMock).toHaveBeenCalledWith(DB_HANDLE, {
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
+      occurredAt: NOW,
+      episodeType: 'nap',
+      summary: 'Napped 90 min',
+      payload: { durationMin: 90, startAt: '2026-07-02T09:00:00Z', endAt: '2026-07-02T10:30:00Z' },
+    });
+  });
+
+  it('rejects a nap with an end before its start (400, never writes)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({
+      kind: 'nap',
+      childId: CHILD_ID,
+      startAt: '2026-07-02T10:30:00Z',
+      endAt: '2026-07-02T09:00:00Z',
+    });
+
+    expect(res.status).toBe(400);
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a nap with NEITHER a duration nor a window (400 at the route, never writes)', async () => {
+    // napSchema's durationMin is now optional, so {kind:'nap', childId} PARSES —
+    // resolveNap is what stops it. Without this guard the route would reach
+    // buildEpisodeInsert (throws: missing durationMin and window) → an unhandled 500.
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({ kind: 'nap', childId: CHILD_ID });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: 'enter how long the nap was, or its start and end',
+    });
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a nap with a lone start bound (incomplete window, 400, never writes)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({
+      kind: 'nap',
+      childId: CHILD_ID,
+      startAt: '2026-07-02T09:00:00Z',
+    });
+
+    expect(res.status).toBe(400);
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
 });

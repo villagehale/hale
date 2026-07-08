@@ -15,16 +15,6 @@ export interface RecentLogView {
 
 const RECENT_LIMIT = 8;
 
-/** A raw episode row this module redacts/flattens. */
-interface EpisodeRow {
-  id: string;
-  childId: string | null;
-  authoredBy: string | null;
-  episodeType: string;
-  summary: string;
-  occurredAt: Date;
-}
-
 /**
  * Rule #1 teen redaction, with the parent-authored exemption (policy 2). The
  * episodes table carries no teen flag, so the teen set is derived LIVE from each
@@ -43,12 +33,12 @@ interface EpisodeRow {
  * drops it when the family has any teenager. A family with no teen keeps everything.
  * Pure, no I/O.
  */
-function dropTeenEpisodes(
-  episodes: EpisodeRow[],
+function dropTeenEpisodes<T extends { childId: string | null; authoredBy: string | null }>(
+  episodes: T[],
   children: ReadonlyArray<{ id: string; dateOfBirth: string }>,
   requestingUserId: string | null,
   now: Date = new Date(),
-): EpisodeRow[] {
+): T[] {
   const teenChildIds = new Set(
     children.filter((c) => deriveStage(c.dateOfBirth, now) === 'teenager').map((c) => c.id),
   );

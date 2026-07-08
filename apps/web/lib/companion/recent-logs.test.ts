@@ -40,7 +40,16 @@ const PARENT_ABOUT_TEEN_SUMMARY = 'took Maya to the orthodontist';
 const TODDLER_SUMMARY = 'Mara napped 90 minutes';
 const FAMILY_NOTE_SUMMARY = 'family movie night';
 
-function ep(over: Partial<Parameters<typeof _internal.dropTeenEpisodes>[0][number]>) {
+interface TestEpisode {
+  id: string;
+  childId: string | null;
+  authoredBy: string | null;
+  episodeType: string;
+  summary: string;
+  occurredAt: Date;
+}
+
+function ep(over: Partial<TestEpisode>): TestEpisode {
   return {
     id: 'e',
     childId: null,

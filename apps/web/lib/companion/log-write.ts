@@ -7,6 +7,7 @@ import {
   MILESTONE_EPISODE,
   NAP_EPISODE,
   type QuickLogInput,
+  resolveNapWindow,
 } from './log-types.js';
 
 /**
@@ -34,12 +35,18 @@ export interface EpisodeInsert {
  * the Coach and Memory Inferencer can read them (amountMl / durationMin /
  * milestone). `authoredBy` stamps the acting parent so the teen-redaction read can
  * exempt a parent's own log about their teen (rule #1, policy: parent-authored).
+ *
+ * A nap may arrive as a plain duration OR a start/end window; `napDurationMin` is
+ * the boundary-resolved duration (direct value, or derived from the window via
+ * resolveNapWindow) so this stays pure. When a window was given, its bounds are
+ * kept in the payload so the window survives round-trips (never re-derived).
  */
 export function buildEpisodeInsert(
   input: QuickLogInput,
   familyId: string,
   occurredAt: Date,
   authoredBy: string | null,
+  napDurationMin?: number,
 ): EpisodeInsert {
   const base = { familyId, childId: input.childId, authoredBy, occurredAt };
   switch (input.kind) {
@@ -54,15 +61,22 @@ export function buildEpisodeInsert(
           ...(input.note ? { note: input.note } : {}),
         },
       };
-    case NAP_EPISODE:
+    case NAP_EPISODE: {
+      const durationMin = napDurationMin ?? input.durationMin;
+      if (durationMin === undefined) {
+        throw new Error('buildEpisodeInsert: nap missing durationMin and window');
+      }
       return {
         ...base,
         episodeType: NAP_EPISODE,
-        summary: `Napped ${input.durationMin} min`,
-        payload: input.note
-          ? { durationMin: input.durationMin, note: input.note }
-          : { durationMin: input.durationMin },
+        summary: `Napped ${durationMin} min`,
+        payload: {
+          durationMin,
+          ...(input.startAt && input.endAt ? { startAt: input.startAt, endAt: input.endAt } : {}),
+          ...(input.note ? { note: input.note } : {}),
+        },
       };
+    }
     case MILESTONE_EPISODE:
       return {
         ...base,
@@ -74,6 +88,29 @@ export function buildEpisodeInsert(
         },
       };
   }
+}
+
+/**
+ * The nap-window boundary rule shared by both write paths (log.ts action + the
+ * mobile route): a nap needs EITHER a plain durationMin OR a start/end window. For
+ * a non-nap input it is a no-op. For a nap it derives a duration from the window
+ * when present (resolveNapWindow, same range discipline as occurredAt), else uses
+ * the direct durationMin, rejecting a nap that carries neither. Returns the derived
+ * durationMin to pass to buildEpisodeInsert (undefined when the direct field
+ * carries it).
+ */
+export function resolveNap(
+  input: QuickLogInput,
+  now: Date,
+): { ok: true; durationMin: number | undefined } | { ok: false; error: string } {
+  if (input.kind !== NAP_EPISODE) return { ok: true, durationMin: undefined };
+  const window = resolveNapWindow(input.startAt, input.endAt, now);
+  if (!window.ok) return window;
+  if (window.durationMin !== null) return { ok: true, durationMin: window.durationMin };
+  if (input.durationMin === undefined) {
+    return { ok: false, error: 'enter how long the nap was, or its start and end' };
+  }
+  return { ok: true, durationMin: input.durationMin };
 }
 
 /**
