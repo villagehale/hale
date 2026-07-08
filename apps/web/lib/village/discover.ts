@@ -79,15 +79,20 @@ export const DISCOVERY_TOOL = 'submit_candidates';
 
 const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
 
+// The optional fields are nullable AND optional: the tool schema below leaves
+// them out of `required`, and the model expresses "none" as an explicit null at
+// least as often as it omits the key (a year-round pick in a season search has
+// no eventDate and no seasons). `.optional()` alone rejected those nulls, and a
+// single null killed the whole run with a 500.
 export const candidatesSchema = z.object({
   candidates: z.array(
     z.object({
       title: z.string(),
       description: z.string(),
-      cadence: z.enum(['seasonal', 'one-time', 'ongoing']).optional(),
-      eventDate: z.string().optional(),
-      seasons: z.array(z.enum(SEASONS)).optional(),
-      sourceUrl: z.string().optional(),
+      cadence: z.enum(['seasonal', 'one-time', 'ongoing']).nullable().optional(),
+      eventDate: z.string().nullable().optional(),
+      seasons: z.array(z.enum(SEASONS)).nullable().optional(),
+      sourceUrl: z.string().nullable().optional(),
       confidence: z.number().min(0).max(1),
       coverageNote: z.string(),
     }),

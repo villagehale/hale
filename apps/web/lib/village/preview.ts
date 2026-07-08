@@ -138,7 +138,7 @@ export async function discoverPreview(
     title: c.title.slice(0, TITLE_MAX),
     summary: c.description.slice(0, SUMMARY_MAX),
     coverageNote: c.coverageNote.slice(0, COVERAGE_MAX),
-    sourceUrl: safeSourceUrl(c.sourceUrl),
+    sourceUrl: safeSourceUrl(c.sourceUrl ?? undefined),
   }));
 }
 
