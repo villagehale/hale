@@ -20,7 +20,13 @@ const LOG_KINDS: { kind: LogKind; label: string }[] = [
   { kind: 'milestone', label: 'Milestone' },
 ];
 
-function ChildSwitcher({
+/**
+ * Header initial-chips (the mockup's circular child chip, made plural): every
+ * kid is a small circle; the selected one is filled Prussian, the rest outlined.
+ * The tab stays "Companion" (a stable place); the PAGE is one child in focus —
+ * multi-child switching is one tap here, never a stacked double-length scroll.
+ */
+function ChildChips({
   kids,
   selectedId,
   onSelect,
@@ -30,9 +36,10 @@ function ChildSwitcher({
   onSelect: (id: string) => void;
 }) {
   return (
-    <View className="flex-row gap-2 rounded-full border border-rule bg-card p-1">
+    <View className="flex-row items-center gap-2">
       {kids.map((child) => {
         const active = child.id === selectedId;
+        const initial = (child.name ?? '?').trim().charAt(0).toUpperCase() || '?';
         return (
           <Pressable
             key={child.id}
@@ -40,14 +47,12 @@ function ChildSwitcher({
             accessibilityLabel={`Show ${child.name ?? 'child'}`}
             accessibilityState={active ? { selected: true } : {}}
             onPress={() => onSelect(child.id)}
-            className={`min-h-11 flex-1 items-center justify-center rounded-full py-2.5 ${active ? 'bg-ink' : ''}`}
+            className={`h-10 w-10 items-center justify-center rounded-full ${
+              active ? 'bg-ink' : 'border border-rule bg-card'
+            }`}
           >
-            <AppText
-              variant="meta"
-              numberOfLines={1}
-              className={active ? 'text-on-ink' : 'text-ink-3'}
-            >
-              {child.name ?? 'Child'}
+            <AppText variant="title" className={active ? 'text-on-ink' : 'text-ink-3'}>
+              {initial}
             </AppText>
           </Pressable>
         );
@@ -195,17 +200,19 @@ function CompanionBody({
 
   return (
     <>
-      {/* Child-centric header (mockup 2): the child IS the page. */}
-      <View className="flex-row items-end justify-between pt-2">
-        <AppText variant="display">{child.name ?? 'Your child'}</AppText>
-        <AppText variant="mono" numberOfLines={1} className="shrink-0 pl-3 text-ink-3">
-          {agePhrase(child.ageMonths)} · {STAGE_LABEL[child.stage]}
-        </AppText>
+      {/* Child-centric header (mockup 2): the child IS the page; the initial
+          chips are the switcher when there is more than one. */}
+      <View className="flex-row items-center justify-between pt-2">
+        <View className="flex-1 gap-0.5 pr-3">
+          <AppText variant="display">{child.name ?? 'Your child'}</AppText>
+          <AppText variant="meta" numberOfLines={1} className="text-ink-3">
+            {agePhrase(child.ageMonths)} · {STAGE_LABEL[child.stage]}
+          </AppText>
+        </View>
+        {data.children.length > 1 ? (
+          <ChildChips kids={data.children} selectedId={child.id} onSelect={setSelectedId} />
+        ) : null}
       </View>
-
-      {data.children.length > 1 ? (
-        <ChildSwitcher kids={data.children} selectedId={child.id} onSelect={setSelectedId} />
-      ) : null}
 
       <Card className="gap-3">
         <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
