@@ -76,12 +76,17 @@ function HomeBody({
       {hasChildren ? (
         <View className="flex-row items-center gap-2">
           <Pill
-            label="Feed"
+            label="Log feed"
             icon="drop.fill"
             className="flex-1"
             onPress={() => setLogKind('feed')}
           />
-          <Pill label="Nap" icon="moon.fill" className="flex-1" onPress={() => setLogKind('nap')} />
+          <Pill
+            label="Log nap"
+            icon="moon.fill"
+            className="flex-1"
+            onPress={() => setLogKind('nap')}
+          />
           <Pill
             label="Milestone"
             icon="star.fill"
@@ -104,7 +109,11 @@ function HomeBody({
       <QuickLogModal
         visible={logKind !== null}
         kind={logKind}
-        kids={data.children.map((c) => ({ id: c.id, name: c.name }))}
+        kids={data.children.map((c) => ({
+          id: c.id,
+          name: c.name,
+          milestoneSuggestions: c.milestones.map((m) => m.what),
+        }))}
         onClose={() => setLogKind(null)}
         onLogged={onLogged}
       />

@@ -614,8 +614,11 @@ export default function VillageScreen() {
 
   return (
     <Screen scroll className="gap-4" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <View className="flex-row items-end justify-between pt-2">
+      <View className="gap-0.5 pt-2">
         <AppText variant="display">Village</AppText>
+        <AppText variant="meta" className="text-ink-3">
+          Activities, events &amp; resources for your family.
+        </AppText>
       </View>
 
       <SeasonSearch

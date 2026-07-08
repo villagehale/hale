@@ -3,6 +3,8 @@ import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { useMeadowColor } from '@/constants/meadow';
 import { API_BASE, ApiError, signalUnauthorized } from '@/lib/api-client';
 import { approveResult, approvedPostState, declineResult } from '@/lib/approval-gate';
 import type { ActionIntent } from '@/lib/coach-api';
@@ -89,6 +91,36 @@ function provenanceNote(sourceAnswer: string): string | null {
   return oneLine.length > 140 ? `${oneLine.slice(0, 139)}…` : oneLine;
 }
 
+interface DetailRow {
+  icon: IconName;
+  text: string;
+}
+
+/** A weekday/month or a clock time embedded in the label. Best-effort — the label
+ * is the only rule-#1-safe source (the raw drafted payload is off-limits; see the
+ * component doc), so a row only appears when the safe label itself carries it. */
+const DATE_RE =
+  /\b(?:mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:\s+\d{1,2})?\b/i;
+const TIME_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i;
+
+/**
+ * Split the teen-safe intent LABEL into icon-led detail rows. Rule #1: this reads
+ * ONLY intent.label (already redacted and rendered) — it never reaches into the
+ * drafted payload, so no raw child/teen content can leak here. Today's labels are
+ * fixed verb phrases with no date/time (see action-intent.ts), so this returns a
+ * single labelled FRAME row; the calendar/clock rows light up automatically only if
+ * a future label carries that text. The frame is the fidelity win either way.
+ */
+function detailRows(label: string): DetailRow[] {
+  const rows: DetailRow[] = [];
+  const date = label.match(DATE_RE);
+  const time = label.match(TIME_RE);
+  if (date) rows.push({ icon: 'calendar', text: date[0] });
+  if (time) rows.push({ icon: 'clock', text: time[0] });
+  if (rows.length === 0) rows.push({ icon: 'calendar', text: label });
+  return rows;
+}
+
 export function DraftedActionCard({
   actionId,
   intent,
@@ -100,6 +132,7 @@ export function DraftedActionCard({
 }) {
   const [status, setStatus] = useState<Status>('idle');
   const busy = status === 'approving' || status === 'declining';
+  const rowIconColor = useMeadowColor('ink3');
 
   const approve = async () => {
     if (busy) return;
@@ -137,15 +170,23 @@ export function DraftedActionCard({
 
   const errored = status === 'error';
   const note = provenanceNote(sourceAnswer);
+  const rows = detailRows(intent.label);
 
   return (
     <View className="mb-3 max-w-[92%] self-start rounded-lg border border-rule bg-card px-4 py-3.5">
       <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-accent">
         {categoryLabel(intent.actionType)}
       </AppText>
-      <AppText variant="body" className="text-ink">
-        {intent.label}
-      </AppText>
+      <View className="gap-1.5">
+        {rows.map((row) => (
+          <View key={row.text} className="flex-row items-center gap-2">
+            <Icon name={row.icon} size={14} color={rowIconColor} />
+            <AppText variant="body" className="flex-1 text-ink">
+              {row.text}
+            </AppText>
+          </View>
+        ))}
+      </View>
       {note ? (
         <AppText variant="meta" className="mt-1 text-ink-3">
           {note}

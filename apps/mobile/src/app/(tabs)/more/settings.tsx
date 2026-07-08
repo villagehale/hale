@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { useState } from 'react';
 import { Switch, View } from 'react-native';
 
@@ -111,6 +112,13 @@ function SettingsBody({ data }: { data: MobileSettingsResponse }) {
               detail="Hale stores your family's data in Canada (PIPEDA / Quebec Law 25). Nothing is shared with a third party unless you connect one."
             />
           </View>
+        </Card>
+      </View>
+
+      <View className="gap-2">
+        <SectionTitle>About</SectionTitle>
+        <Card>
+          <InfoRow title="Village Hale" detail={`Version ${Constants.expoConfig?.version ?? '—'}`} />
         </Card>
       </View>
     </>

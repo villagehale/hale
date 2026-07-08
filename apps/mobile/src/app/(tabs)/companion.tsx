@@ -30,8 +30,8 @@ import { buildMeasureSeries, type MeasureKind } from '@/lib/measurement-series';
 import { useApi } from '@/lib/use-api';
 
 const LOG_KINDS: { kind: LogKind; label: string }[] = [
-  { kind: 'feed', label: 'Feed' },
-  { kind: 'nap', label: 'Nap' },
+  { kind: 'feed', label: 'Log feed' },
+  { kind: 'nap', label: 'Log nap' },
   { kind: 'milestone', label: 'Milestone' },
 ];
 
@@ -230,7 +230,13 @@ function QuickLogCard({ child, onLogged }: { child: ChildCompanionView; onLogged
       <QuickLogModal
         visible={logKind !== null}
         kind={logKind}
-        kids={[{ id: child.id, name: child.name }]}
+        kids={[
+          {
+            id: child.id,
+            name: child.name,
+            milestoneSuggestions: child.milestones.map((m) => m.what),
+          },
+        ]}
         onClose={() => setLogKind(null)}
         onLogged={onLogged}
       />

@@ -52,6 +52,10 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'person.crop.circle': 'person-circle-outline',
   'slider.horizontal.3': 'options-outline',
   xmark: 'close',
+  heart: 'heart-outline',
+  'person.3': 'people',
+  magnifyingglass: 'search-outline',
+  clock: 'time-outline',
 };
 
 export type { IconName, IconProps };

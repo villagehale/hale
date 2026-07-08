@@ -40,6 +40,7 @@ export default async function VillagePage({
             <h1 className="font-display">
               what your <span className="text-apricot-deep">village</span> recommends near you.
             </h1>
+            <p className="meta mt-3">Activities, events &amp; resources for your family.</p>
           </div>
         </div>
       </header>
