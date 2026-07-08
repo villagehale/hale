@@ -1,11 +1,12 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, ne } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
 import { type ApprovalView, toApprovalView } from './approvals';
+import { type HistoryActionRow, type HistoryView, toHistoryView } from './history';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
 import { type TrailView, effectiveTeenContent } from './mappers';
 import { familyHasTeenager, loadTrailForFamily, readFamilyTimezone } from './trail-query';
@@ -208,5 +209,80 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         timeZone,
       );
     });
+  }, []);
+}
+
+/**
+ * The Approvals HISTORY list: this family's RESOLVED actions — everything past the
+ * pending queue (userVisibleState != 'drafted_for_approval', so autonomous /
+ * needs_human / reverted), newest-resolved first. Same joins + rule-#1 redaction as
+ * loadPendingApprovals (event for teen_content, child for DOB), so a 13+ child's raw
+ * payload never reaches a history row; toHistoryView reuses the live card's teen-safe
+ * intent label. Same empty-state degradation: no DB or no resolved family → empty list.
+ *
+ * The 50-row window mirrors the pending queue and the trail; a keyset page isn't
+ * wired yet (see the loader family's limit), so this shows the most recent 50.
+ */
+export function loadResolvedActions(): Promise<HistoryView[]> {
+  return readForFamily(async (database, familyId) => {
+    const [familyHasTeen, timeZone] = await Promise.all([
+      familyHasTeenager(database, familyId),
+      readFamilyTimezone(database, familyId),
+    ]);
+    const rows = await database
+      .select({
+        id: schema.actions.id,
+        actionType: schema.actions.actionType,
+        payload: schema.actions.payload,
+        reviewerVerdict: schema.actions.reviewerVerdict,
+        reviewerVerdictAt: schema.actions.reviewerVerdictAt,
+        draftedAt: schema.actions.draftedAt,
+        userVisibleState: schema.actions.userVisibleState,
+        executedAt: schema.actions.executedAt,
+        revertedAt: schema.actions.revertedAt,
+        revertedReason: schema.actions.revertedReason,
+        teenContent: schema.events.teenContent,
+        childId: schema.events.childId,
+        childName: schema.children.name,
+        childDob: schema.children.dateOfBirth,
+      })
+      .from(schema.actions)
+      .innerJoin(schema.events, eq(schema.actions.eventId, schema.events.id))
+      .leftJoin(schema.children, eq(schema.events.childId, schema.children.id))
+      .where(
+        and(
+          eq(schema.actions.familyId, familyId),
+          ne(schema.actions.userVisibleState, 'drafted_for_approval'),
+        ),
+      )
+      .orderBy(desc(schema.actions.draftedAt))
+      .limit(50);
+    return rows
+      .map((row) => {
+        // The "when" stamp is the terminal instant: executed / reverted / reviewer
+        // verdict, falling back to draftedAt (always present) — a display default at
+        // an explicit boundary, not a masked null.
+        const resolvedAt =
+          row.revertedAt ?? row.executedAt ?? row.reviewerVerdictAt ?? row.draftedAt;
+        const historyRow: HistoryActionRow = {
+          id: row.id,
+          actionType: row.actionType,
+          payload: row.payload,
+          reviewerVerdict: row.reviewerVerdict,
+          draftedAt: row.draftedAt,
+          teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+          childId: row.childId ?? null,
+          childLabel: row.childName ?? null,
+          userVisibleState: row.userVisibleState as HistoryActionRow['userVisibleState'],
+          executedAt: row.executedAt,
+          revertedReason: row.revertedReason,
+          resolvedAt,
+        };
+        return { view: toHistoryView(historyRow, timeZone), resolvedAt };
+      })
+      // Newest RESOLVED first — the query orders by draftedAt (indexed), but the
+      // resolved instant is what the list reads by, so re-sort on it here.
+      .sort((a, b) => b.resolvedAt.getTime() - a.resolvedAt.getTime())
+      .map((r) => r.view);
   }, []);
 }

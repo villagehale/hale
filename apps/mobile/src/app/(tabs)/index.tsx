@@ -18,6 +18,7 @@ import { useMeadowColor } from '@/constants/meadow';
 import type { ChildCompanionView, MobileHomeResponse, VillageCandidateView } from '@/lib/api-types';
 import { agePhrase } from '@/lib/format';
 import { timeGreeting } from '@/lib/greeting';
+import { homeStatCells } from '@/lib/home-stats';
 import { useApi } from '@/lib/use-api';
 import { rememberViewerFirstName } from '@/lib/viewer-name';
 
@@ -39,6 +40,34 @@ function firstVillageRec(candidates: VillageCandidateView[]): VillageCandidateVi
 function homeGreeting(viewer: MobileHomeResponse['viewer']): string {
   const firstName = viewer.name?.trim().split(/\s+/)[0];
   return firstName ? `${timeGreeting()}, ${firstName}` : timeGreeting();
+}
+
+/** The stat row: three honest counts (this week's logs, checkups coming up, saved
+ * places). A zero stat reads a calm phrase, never a fake "0" (homeStatCells). Counts
+ * only — no content — so rule #1 can't leak here. */
+function HomeStatsRow({ stats }: { stats: MobileHomeResponse['stats'] }) {
+  return (
+    <View className="flex-row gap-2">
+      {homeStatCells(stats).map((cell) => (
+        <Card key={cell.label} className="flex-1 gap-0.5">
+          {cell.count === null ? (
+            <AppText variant="meta" className="text-ink-3">
+              {cell.label}
+            </AppText>
+          ) : (
+            <>
+              <AppText variant="display" className="text-ink">
+                {cell.count}
+              </AppText>
+              <AppText variant="meta" className="text-ink-3">
+                {cell.label}
+              </AppText>
+            </>
+          )}
+        </Card>
+      ))}
+    </View>
+  );
 }
 
 function HomeBody({
@@ -105,6 +134,8 @@ function HomeBody({
           <Button label="Add a child" onPress={() => router.push('/more/family')} />
         </Card>
       )}
+
+      {hasChildren ? <HomeStatsRow stats={data.stats} /> : null}
 
       <QuickLogModal
         visible={logKind !== null}

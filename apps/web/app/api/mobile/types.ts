@@ -1,12 +1,15 @@
 import type { LogsPage } from '~/lib/companion/logs-view';
 import type { ChildCompanionView } from '~/lib/companion/queries';
+import type { HomeStats } from '~/lib/home/aggregates';
 import type { DocumentView } from '~/lib/docs/documents';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
 import type { ApprovalView } from '~/lib/dashboard/approvals';
+import type { HistoryView } from '~/lib/dashboard/history';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
 import type { MessageView } from '~/lib/messages/mappers';
 import type { PlanChildItem } from '~/lib/plan/week';
+import type { PlanCatalogView } from '~/lib/plan/catalog';
 import type { NotificationPref, NotificationPrefsView } from '~/lib/settings/notification-prefs';
 import type { PushPref } from '~/lib/settings/push-notification-prefs';
 import type { PushPrefsView } from '~/lib/push/prefs';
@@ -25,6 +28,9 @@ export interface MobileHomeResponse {
   children: ChildCompanionView[];
   village: VillageData;
   members: FamilyMembersView;
+  /** The Home stat-row counts (this week's logs, upcoming health items, saved
+   * places) — counts only, teen-redacted at the source (rule #1). */
+  stats: HomeStats;
   /** The signed-in parent — greet by THIS name, not members.primary (which is the
    * primary-parent slot and reads wrong for a co-parent). */
   viewer: { name: string | null };
@@ -63,8 +69,22 @@ export interface MobileApprovalsResponse {
   approvals: ApprovalView[];
 }
 
+/** The Approvals → History segment: the family's RESOLVED actions (executed /
+ * declined / reverted / held), newest first. Teen-redacted at the source, reusing
+ * the live card's intent label (rule #1). */
+export interface MobileApprovalsHistoryResponse {
+  history: HistoryView[];
+}
+
 export interface MobileMessagesResponse {
   messages: MessageView[];
+}
+
+/** The native Plan surface (More → Plan & billing): the family's current tier + the
+ * plan catalog from the @hale/types source of truth. Informational only — no
+ * billing/checkout is wired. */
+export interface MobilePlanTiersResponse {
+  catalog: PlanCatalogView;
 }
 
 export interface MobileLogResponse {
