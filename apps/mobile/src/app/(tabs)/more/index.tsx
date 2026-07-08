@@ -54,6 +54,12 @@ const SECTIONS: { items: MenuItem[] }[] = [
   {
     items: [
       {
+        label: 'Plan & billing',
+        detail: 'Your plan and what it includes',
+        icon: 'creditcard',
+        href: '/more/plan-tiers',
+      },
+      {
         label: 'Resources',
         detail: 'Guides & answers from Hale',
         icon: 'book',

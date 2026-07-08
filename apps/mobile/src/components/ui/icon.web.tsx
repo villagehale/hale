@@ -58,6 +58,7 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'person.3': 'people',
   magnifyingglass: 'search-outline',
   clock: 'time-outline',
+  creditcard: 'card-outline',
 };
 
 export type { IconName, IconProps };

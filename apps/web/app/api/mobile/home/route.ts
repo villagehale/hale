@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadFamilyMembers } from '~/lib/dashboard/queries';
+import { loadHomeStats } from '~/lib/home/aggregates';
 import { loadVillage } from '~/lib/village/queries';
 import type { MobileHomeResponse } from '../types';
 
@@ -22,16 +23,18 @@ export async function GET(): Promise<Response> {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
-  const [children, village, members] = await Promise.all([
+  const [children, village, members, stats] = await Promise.all([
     loadCompanion(),
     loadVillage(),
     loadFamilyMembers(),
+    loadHomeStats(),
   ]);
 
   const body: MobileHomeResponse = {
     children,
     village,
     members,
+    stats,
     viewer: { name: session.user.name ?? null },
   };
   return NextResponse.json(body);

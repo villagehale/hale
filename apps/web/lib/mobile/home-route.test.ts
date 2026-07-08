@@ -9,10 +9,12 @@ const authMock = vi.fn();
 const loadCompanionMock = vi.fn();
 const loadVillageMock = vi.fn();
 const loadFamilyMembersMock = vi.fn();
+const loadHomeStatsMock = vi.fn();
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/companion/queries', () => ({ loadCompanion: () => loadCompanionMock() }));
 vi.mock('~/lib/village/queries', () => ({ loadVillage: () => loadVillageMock() }));
 vi.mock('~/lib/dashboard/queries', () => ({ loadFamilyMembers: () => loadFamilyMembersMock() }));
+vi.mock('~/lib/home/aggregates', () => ({ loadHomeStats: () => loadHomeStatsMock() }));
 
 // Poison the DB connection factory (repo convention, rule #1): this route must
 // never construct a database handle — reads go through the loaders only.
@@ -32,6 +34,7 @@ const MEMBERS = {
   primary: { name: 'Ada', email: 'ada@hale.test', role: 'primary_parent' },
   coParent: null,
 };
+const STATS = { logsThisWeek: 4, upcomingHealth: 2, savedPlaces: 1 };
 
 async function callGet(): Promise<Response> {
   const { GET } = await import('~/app/api/mobile/home/route');
@@ -45,9 +48,11 @@ describe('GET /api/mobile/home', () => {
     loadCompanionMock.mockReset();
     loadVillageMock.mockReset();
     loadFamilyMembersMock.mockReset();
+    loadHomeStatsMock.mockReset();
     loadCompanionMock.mockResolvedValue(CHILDREN);
     loadVillageMock.mockResolvedValue(VILLAGE);
     loadFamilyMembersMock.mockResolvedValue(MEMBERS);
+    loadHomeStatsMock.mockResolvedValue(STATS);
   });
 
   afterEach(() => {
@@ -64,6 +69,7 @@ describe('GET /api/mobile/home', () => {
     expect(loadCompanionMock).not.toHaveBeenCalled();
     expect(loadVillageMock).not.toHaveBeenCalled();
     expect(loadFamilyMembersMock).not.toHaveBeenCalled();
+    expect(loadHomeStatsMock).not.toHaveBeenCalled();
   });
 
   it('returns 401 when the session has no user id', async () => {
@@ -85,11 +91,13 @@ describe('GET /api/mobile/home', () => {
       children: CHILDREN,
       village: VILLAGE,
       members: MEMBERS,
+      stats: STATS,
       viewer: { name: 'Jordan Reyes' },
     });
     expect(loadCompanionMock).toHaveBeenCalledTimes(1);
     expect(loadVillageMock).toHaveBeenCalledTimes(1);
     expect(loadFamilyMembersMock).toHaveBeenCalledTimes(1);
+    expect(loadHomeStatsMock).toHaveBeenCalledTimes(1);
   });
 
   it('greets by the viewer, not the primary-parent slot, for a co-parent', async () => {

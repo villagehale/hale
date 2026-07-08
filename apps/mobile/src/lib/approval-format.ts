@@ -3,6 +3,7 @@
  * action title), shared by the Approvals LIST and the approval DETAIL page so the
  * two never drift. No RN import — unit-testable off-device.
  */
+import type { HistoryStatus } from './api-types';
 
 export type VerdictTag = { label: string; tone: 'neutral' | 'done' | 'attention' | 'coach' };
 
@@ -23,4 +24,19 @@ export function verdictTag(verdict: string): VerdictTag {
 export function humanizeActionType(actionType: string): string {
   const s = actionType.replace(/_/g, ' ').trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** A resolved-action status → its History chip (label + tone). Distinct from the
+ * live verdictTag: History shows the OUTCOME (done/declined/reverted/held), not the
+ * reviewer's pre-decision verdict. */
+const HISTORY_STATUS_TAG: Record<HistoryStatus, VerdictTag> = {
+  executed: { label: 'Done', tone: 'done' },
+  declined: { label: 'Declined', tone: 'neutral' },
+  reverted: { label: 'Reverted', tone: 'attention' },
+  held: { label: 'Held for you', tone: 'coach' },
+  failed: { label: "Couldn't complete", tone: 'attention' },
+};
+
+export function historyStatusTag(status: HistoryStatus): VerdictTag {
+  return HISTORY_STATUS_TAG[status];
 }

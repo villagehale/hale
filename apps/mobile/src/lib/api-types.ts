@@ -258,10 +258,18 @@ export interface ApprovalView {
 
 // ── the endpoint response envelopes (from apps/web/app/api/mobile/types.ts) ───
 
+/** The Home stat-row counts — counts only, teen-redacted at the source (rule #1). */
+export interface HomeStats {
+  logsThisWeek: number;
+  upcomingHealth: number;
+  savedPlaces: number;
+}
+
 export interface MobileHomeResponse {
   children: ChildCompanionView[];
   village: VillageData;
   members: FamilyMembersView;
+  stats: HomeStats;
   viewer: { name: string | null };
 }
 
@@ -296,6 +304,19 @@ export interface MobileApprovalsResponse {
   approvals: ApprovalView[];
 }
 
+export type HistoryStatus = 'executed' | 'declined' | 'reverted' | 'held' | 'failed';
+
+/** A past, resolved action for the Approvals → History segment. Extends the live
+ * card's teen-safe fields with its resolved status + when (mirrors web HistoryView). */
+export interface HistoryView extends ApprovalView {
+  status: HistoryStatus;
+  resolvedAt: string;
+}
+
+export interface MobileApprovalsHistoryResponse {
+  history: HistoryView[];
+}
+
 // ── messages (from apps/web lib/messages/mappers) ─────────────────────────────
 
 export type MessageKind = 'digest' | 'action';
@@ -324,6 +345,31 @@ export interface MessageView {
 
 export interface MobileMessagesResponse {
   messages: MessageView[];
+}
+
+// ── plan tiers (from apps/web lib/plan/catalog, derived from @hale/types) ──────
+
+export type PlanTier = 'free' | 'plus' | 'family';
+
+/** One tier's display card — names/prices/features come from the server (derived
+ * from the @hale/types source of truth), never hardcoded here. */
+export interface PlanTierView {
+  tier: PlanTier;
+  name: string;
+  tagline: string;
+  monthlyPrice: string;
+  annualPrice: string;
+  features: string[];
+  isFree: boolean;
+}
+
+export interface PlanCatalogView {
+  currentTier: PlanTier;
+  tiers: PlanTierView[];
+}
+
+export interface MobilePlanTiersResponse {
+  catalog: PlanCatalogView;
 }
 
 // ── family write (POST /api/mobile/family) ────────────────────────────────────
