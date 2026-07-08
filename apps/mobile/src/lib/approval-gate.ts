@@ -1,7 +1,7 @@
 /**
  * The pure decision logic for the inline approval gate (mobile mirror of the web
  * ActionChip / Approve / Dismiss buttons). RN-import-free so Vitest loads it
- * directly. The card in action-approval-card.tsx owns the fetch + state; this
+ * directly. The card in drafted-action-card.tsx owns the fetch + state; this
  * module owns the "what does this HTTP outcome mean" call so it's unit-tested
  * without a network round-trip or a native runtime.
  *
@@ -61,4 +61,32 @@ export function approveResult(status: number): ApproveState {
 /** Settle the decline POST: 200 (dismissed) → 'dismissed', else 'error'. */
 export function declineResult(status: number): DeclineState {
   return status === 200 ? 'dismissed' : 'error';
+}
+
+/**
+ * The action types whose executor is actually wired today (apps/worker executor.ts):
+ * email sends via Resend, and the two internal writes (digest note / routine pin).
+ * Everything else — calendar (no Google OAuth), supply orders, forms, clinic
+ * portals, photo sharing — throws HALE_NOT_CONFIGURED at execution. This list is the
+ * HONEST boundary the approved card reads: it must never claim Hale "did" something
+ * an executor will refuse. Keep in sync with the executor's configured cases.
+ */
+const CONFIGURED_ACTION_TYPES: ReadonlySet<string> = new Set([
+  'send_email',
+  'reply_to_email',
+  'add_to_digest_only',
+  'add_to_routine',
+]);
+
+/**
+ * The honest post-approval line for an action type. A configured executor queues
+ * for the drain and runs for real → the parent is told Hale is on it. An unwired
+ * action type (calendar et al.) is approved but cannot execute yet → the parent is
+ * told the truth: it lands when the integration comes online. NEVER a fake
+ * "Done"/"Scheduled" (the executor would throw). Pure, so it's unit-tested.
+ */
+export function approvedPostState(actionType: string): string {
+  return CONFIGURED_ACTION_TYPES.has(actionType)
+    ? 'Approved — Hale is on it.'
+    : 'Approved — Hale will handle this as integrations come online.';
 }

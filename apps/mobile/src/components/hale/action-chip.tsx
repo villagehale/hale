@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { ActionApprovalCard } from '@/components/hale/action-approval-card';
+import { DraftedActionCard } from '@/components/hale/drafted-action-card';
 import { AppText } from '@/components/ui/app-text';
 import { API_BASE, ApiError, signalUnauthorized } from '@/lib/api-client';
 import { buildActionRequest, parseDraftResponse } from '@/lib/approval-gate';
@@ -12,8 +12,8 @@ import { TOKEN_KEY, tokenStorage } from '@/lib/token-storage';
  * A gated action chip — the inline-action thesis on mobile. Tapping it routes the
  * intent through the EXISTING approval engine (POST /api/coach/action), which
  * creates a DRAFT a parent must approve (rule #4: Hale never auto-acts). On a
- * successful draft the chip hands off to an inline ActionApprovalCard so the parent
- * approves or rejects right here in the chat. Mirror of the web ActionChip.
+ * successful draft the chip hands off to an inline DraftedActionCard so the parent
+ * approves or denies right here in the chat. Mirror of the web ActionChip.
  *
  * Rule #1: the chip renders ONLY the already-safe intent `label` — never the
  * drafted payload or raw content. The copy is honest: "drafting…" while in flight,
@@ -81,7 +81,8 @@ export function ActionChip({
     }
   };
 
-  if (actionId) return <ActionApprovalCard actionId={actionId} label={intent.label} />;
+  if (actionId)
+    return <DraftedActionCard actionId={actionId} intent={intent} sourceAnswer={sourceAnswer} />;
 
   const label =
     state === 'drafting'
