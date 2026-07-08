@@ -30,6 +30,8 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ status: 'completed', familyId: result.familyId });
     case 'region_unavailable':
       return NextResponse.json({ error: 'region_unavailable' }, { status: 422 });
+    case 'email_in_use':
+      return NextResponse.json({ error: 'email_in_use' }, { status: 409 });
     case 'invalid':
       return NextResponse.json({ error: result.error }, { status: 400 });
     default:

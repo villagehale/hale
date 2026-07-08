@@ -293,6 +293,14 @@ export function OnboardingWizard({
       });
       return;
     }
+    if (result.status === 'email_in_use') {
+      setSetupState({
+        kind: 'error',
+        message:
+          'This email already has a Hale account. Sign in the way you did before — nothing was saved.',
+      });
+      return;
+    }
     setSetupState({
       kind: 'error',
       message: describeCompleteOnboardingError(result.error),

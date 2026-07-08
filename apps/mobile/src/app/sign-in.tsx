@@ -1,5 +1,7 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
@@ -9,8 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
 import { API_BASE } from '@/lib/api-client';
+import { appleIdentityToken } from '@/lib/apple-credential';
 import { useAuth } from '@/lib/auth';
-import { exchangeGoogleIdToken, signInWithPassword } from '@/lib/auth-api';
+import {
+  exchangeAppleIdentityToken,
+  exchangeGoogleIdToken,
+  signInWithPassword,
+} from '@/lib/auth-api';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -45,12 +52,71 @@ function GoogleButton({ onError }: { onError: (message: string) => void }) {
   return <Button label="Continue with Google" variant="secondary" onPress={() => promptGoogle()} />;
 }
 
+// Apple HIG requires Sign in with Apple wherever another social sign-in is offered
+// on iOS. Rendered only where AppleAuthentication.isAvailableAsync() is true
+// (device iOS) — web/Android render nothing, so there is no dead button. The native
+// AppleAuthenticationButton carries Apple's required badge/styling to pass review.
+function AppleButton({ onError }: { onError: (message: string) => void }) {
+  const { signIn } = useAuth();
+
+  const onPress = async () => {
+    try {
+      // Replay defense: send Apple the SHA-256 of a random nonce (which it echoes
+      // into the identity token's `nonce` claim), and send the raw nonce to the
+      // server, which re-hashes it and matches the claim. The hash must be HEX to
+      // match the server's createHash('sha256').digest('hex').
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+      const { token } = await exchangeAppleIdentityToken(
+        appleIdentityToken(credential),
+        rawNonce,
+      );
+      await signIn(token);
+    } catch (e) {
+      // A user cancelling the Apple sheet is not an error to surface.
+      if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return;
+      onError((e as Error).message);
+    }
+  };
+
+  return (
+    <AppleAuthentication.AppleAuthenticationButton
+      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+      cornerRadius={9999}
+      style={{ minHeight: 48 }}
+      onPress={onPress}
+    />
+  );
+}
+
 export default function SignInScreen() {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    AppleAuthentication.isAvailableAsync().then((ok) => {
+      if (active) setAppleAvailable(ok);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const onPassword = async () => {
     setError(null);
@@ -121,6 +187,8 @@ export default function SignInScreen() {
       ) : (
         <Button label="Google sign-in unavailable" variant="secondary" disabled />
       )}
+
+      {appleAvailable ? <AppleButton onError={setError} /> : null}
 
       {API_BASE ? (
         <View className="mt-2 items-center gap-3">
