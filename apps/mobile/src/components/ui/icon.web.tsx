@@ -10,9 +10,11 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 // true. Native keeps real SF Symbols (icon.tsx). Unmapped names fall back to a
 // neutral dot.
 const SF_TO_IONICON: Record<string, IoniconName> = {
+  house: 'home-outline',
   'house.fill': 'home',
   'figure.2.and.child.holdinghands': 'people',
   sparkles: 'sparkles',
+  map: 'map-outline',
   'map.fill': 'map',
   ellipsis: 'ellipsis-horizontal',
   mic: 'mic-outline',
@@ -23,6 +25,7 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   'chevron.right': 'chevron-forward',
   'square.and.arrow.up': 'share-outline',
   'square.and.pencil': 'create-outline',
+  book: 'book-outline',
   calendar: 'calendar',
   'checkmark.circle': 'checkmark-circle',
   'person.2': 'people',

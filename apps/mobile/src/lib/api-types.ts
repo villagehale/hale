@@ -179,6 +179,7 @@ export interface MobileHomeResponse {
   children: ChildCompanionView[];
   village: VillageData;
   members: FamilyMembersView;
+  viewer: { name: string | null };
 }
 
 export interface MobileCompanionResponse {

@@ -261,7 +261,7 @@ export function QuickLogModal({
                 {/* The exact date+time picker is a native module (no web impl), so on the
                     RN-web preview we show the resolved time read-only; presets still set it. */}
                 {Platform.OS === 'web' ? (
-                  <View className="mt-1 h-12 flex-row items-center gap-2.5 rounded-lg border border-rule bg-card px-4">
+                  <View className="mt-1 h-12 flex-row items-center gap-2.5 rounded-md border border-rule bg-card px-4">
                     <Icon name="calendar" size={16} color={iconColor} />
                     <AppText variant="body" className="text-ink">
                       {whenLabel(when)}
@@ -274,7 +274,7 @@ export function QuickLogModal({
                       accessibilityLabel={`Exact time: ${whenLabel(when)}. Tap to change.`}
                       accessibilityState={{ expanded: showPicker }}
                       onPress={() => setShowPicker((s) => !s)}
-                      className="mt-1 h-12 flex-row items-center justify-between rounded-lg border border-rule bg-card px-4 active:opacity-80"
+                      className="mt-1 h-12 flex-row items-center justify-between rounded-md border border-rule bg-card px-4 active:opacity-80"
                     >
                       <View className="flex-row items-center gap-2.5">
                         <Icon name="calendar" size={16} color={iconColor} />

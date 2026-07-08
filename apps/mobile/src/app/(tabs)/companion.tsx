@@ -3,11 +3,13 @@ import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { type LogKind, QuickLogModal } from '@/components/ui/quick-log-modal';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
+import { useMeadowColor } from '@/constants/meadow';
 import type { ChildCompanionView, MobileCompanionResponse, RecentLogView } from '@/lib/api-types';
 import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
@@ -82,7 +84,7 @@ function InfoRow({
         {done ? (
           <Tag label="done" tone="done" />
         ) : stamp ? (
-          <Tag label={when} tone="attention" />
+          <Tag label={when} tone="accent" />
         ) : (
           <AppText
             variant="meta"
@@ -174,6 +176,9 @@ function CompanionBody({
   onLogged: () => void;
 }) {
   const [selectedId, setSelectedId] = useState(data.children[0]?.id ?? '');
+  // Above the early return — a hook after it crashes React when the child count
+  // transitions between renders (rules of hooks).
+  const accentFill = useMeadowColor('accentFill');
   const child = data.children.find((c) => c.id === selectedId) ?? data.children[0];
   if (!child) {
     return (
@@ -190,8 +195,9 @@ function CompanionBody({
 
   return (
     <>
+      {/* Child-centric header (mockup 2): the child IS the page. */}
       <View className="flex-row items-end justify-between pt-2">
-        <AppText variant="display">Companion</AppText>
+        <AppText variant="display">{child.name ?? 'Your child'}</AppText>
         <AppText variant="mono" numberOfLines={1} className="shrink-0 pl-3 text-ink-3">
           {agePhrase(child.ageMonths)} · {STAGE_LABEL[child.stage]}
         </AppText>
@@ -244,10 +250,13 @@ function CompanionBody({
             />
           ))}
         </View>
-        <AppText variant="meta">
-          Every child grows at their own pace — if something's not happening yet, it's worth asking,
-          never a verdict.
-        </AppText>
+        <View className="mt-1 flex-row items-start gap-2.5 rounded-md bg-accent-tint px-3.5 py-3">
+          <Icon name="sparkles" size={16} color={accentFill} />
+          <AppText variant="meta" className="flex-1 text-ink">
+            Every child grows at their own pace — if something's not happening yet, it's worth
+            asking, never a verdict.
+          </AppText>
+        </View>
       </Card>
 
       <QuickLogCard child={child} onLogged={onLogged} />

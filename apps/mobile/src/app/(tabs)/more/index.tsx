@@ -1,11 +1,15 @@
-import { type Href, router } from 'expo-router';
+import { type Href, router, useFocusEffect } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { useCallback } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
+import type { MobileApprovalsResponse } from '@/lib/api-types';
 import { useAuth } from '@/lib/auth';
+import { useApi } from '@/lib/use-api';
 
 type MenuItem = {
   label: string;
@@ -13,6 +17,8 @@ type MenuItem = {
   icon: IconName;
   href?: Href;
   action?: 'signOut';
+  /** Opens outside the app (guides on villagehale.com) — real content, no dead rows. */
+  externalUrl?: string;
 };
 
 const SECTIONS: { items: MenuItem[] }[] = [
@@ -36,6 +42,12 @@ const SECTIONS: { items: MenuItem[] }[] = [
   {
     items: [
       {
+        label: 'Resources',
+        detail: 'Guides & answers from Hale',
+        icon: 'book',
+        externalUrl: 'https://www.villagehale.com/faq',
+      },
+      {
         label: 'Settings',
         detail: 'Notifications, privacy',
         icon: 'gearshape',
@@ -51,13 +63,38 @@ const SECTIONS: { items: MenuItem[] }[] = [
   },
 ];
 
-function MenuRow({ item, last, onPress }: { item: MenuItem; last: boolean; onPress: () => void }) {
+/** A small orange count pill for the Approvals row — surfaced only when actions
+ * are actually waiting. Orange stays scarce: this is one of the few status marks
+ * that earns the accent. */
+function CountBadge({ count }: { count: number }) {
+  return (
+    <View className="h-6 min-w-6 items-center justify-center rounded-full bg-accent px-2">
+      {/* No own a11y label — the row's label carries "{n} waiting" so VoiceOver
+          reads it (a label here is masked by the row's container label). */}
+      <AppText variant="meta" className="text-[12px] leading-none text-on-ink">
+        {count}
+      </AppText>
+    </View>
+  );
+}
+
+function MenuRow({
+  item,
+  last,
+  badge,
+  onPress,
+}: {
+  item: MenuItem;
+  last: boolean;
+  badge?: number;
+  onPress: () => void;
+}) {
   const icon = useMeadowColor('ink2');
   const chevron = useMeadowColor('ink3');
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={item.label}
+      accessibilityLabel={badge && badge > 0 ? `${item.label}, ${badge} waiting` : item.label}
       onPress={onPress}
       className={`flex-row items-center gap-3 px-4 py-4 active:opacity-80 ${
         last ? '' : 'border-rule border-b'
@@ -70,6 +107,7 @@ function MenuRow({ item, last, onPress }: { item: MenuItem; last: boolean; onPre
         </AppText>
         {item.detail ? <AppText variant="meta">{item.detail}</AppText> : null}
       </View>
+      {badge && badge > 0 ? <CountBadge count={badge} /> : null}
       {item.href ? <Icon name="chevron.right" size={14} color={chevron} /> : null}
     </Pressable>
   );
@@ -77,6 +115,18 @@ function MenuRow({ item, last, onPress }: { item: MenuItem; last: boolean; onPre
 
 export default function MoreScreen() {
   const { signOut } = useAuth();
+  // A quiet count for the Approvals badge — no loading/error UI on this static
+  // menu; if the fetch hasn't landed (or failed), the badge simply stays hidden.
+  // expo-router keeps this tab mounted, so re-fetch on focus (refresh keeps the
+  // shown count, no blink) — otherwise the badge is stale after approving in
+  // /more/approvals and returning.
+  const { data: approvals, refresh } = useApi<MobileApprovalsResponse>('/api/mobile/approvals');
+  const pendingCount = approvals?.approvals.length ?? 0;
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   const activate = (item: MenuItem) => {
     if (item.action === 'signOut') {
@@ -84,6 +134,10 @@ export default function MoreScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign out', style: 'destructive', onPress: signOut },
       ]);
+      return;
+    }
+    if (item.externalUrl) {
+      void WebBrowser.openBrowserAsync(item.externalUrl);
       return;
     }
     if (item.href) router.push(item.href);
@@ -104,6 +158,7 @@ export default function MoreScreen() {
               key={item.label}
               item={item}
               last={i === section.items.length - 1}
+              badge={item.href === '/more/approvals' ? pendingCount : undefined}
               onPress={() => activate(item)}
             />
           ))}

@@ -52,12 +52,15 @@ export function useApi<T>(path: string): UseApi<T> {
     load(false);
   }, [load]);
 
+  const reload = useCallback(() => load(false), [load]);
+  const refresh = useCallback(() => load(true), [load]);
+
   return {
     status: state.status,
     data: state.data,
     error: state.error,
     refreshing,
-    reload: () => load(false),
-    refresh: () => load(true),
+    reload,
+    refresh,
   };
 }

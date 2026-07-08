@@ -11,11 +11,12 @@ body {
 }
 
 /*
- * Hale Mobile — "Meadow" design system, mirrored from apps/web/app/globals.css.
- * Same token ROLES so the app reads as the same product. Dark mode follows the
- * device (prefers-color-scheme) — brand-ANCHORED charcoal-Prussian canvas, not
- * brand-flooded. Apricot #c8622d is FILL ONLY; apricot-deep is the text-safe
- * accent. Tone meaning by label + shape, never color alone.
+ * Hale Mobile — Prussian-on-warm design system. Prussian Blue ink over a warm
+ * off-white canvas, white rounded cards, orange kept scarce (important actions,
+ * status, badges only). Dark mode follows the device (prefers-color-scheme) —
+ * brand-ANCHORED charcoal-Prussian canvas, not brand-flooded. Orange #f97316 is
+ * FILL ONLY; orange-deep #c2410c is the text-safe accent. Tone meaning by label +
+ * shape, never color alone.
  */
 
 :root {
@@ -25,18 +26,18 @@ body {
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* canvas / surfaces */
-  --color-canvas: #f6f6f4; /* crisp off-white */
+  --color-canvas: #faf7f1; /* warm off-white */
   --color-card: #ffffff; /* card surface */
   --color-raised: #ffffff; /* raised card lift (light) */
-  /* ink */
-  --color-ink: #01204f; /* spruce — primary */
-  --color-ink-2: #33486b; /* slate-green — secondary */
-  --color-ink-3: #556079; /* faded-sage — meta (darkened from #5b6b86 to clear AA 4.5:1 on the oat card, 5.1:1) */
-  --color-on-ink: #ffffff; /* label ON an ink fill — pure white (mirrors web --color-on-spruce). NEVER canvas off-white, which reads grey on Prussian. */
-  /* accent — apricot family */
-  --color-accent: #9a4419; /* apricot-deep — TEXT-SAFE accent (darkened from #a84e20 for AA 4.5:1 on accent-tint, 5.0:1) */
-  --color-accent-fill: #c8622d; /* apricot — FILL/large-graphic only */
-  --color-accent-tint: #f5dcc6;
+  /* ink — Prussian Blue family */
+  --color-ink: #003153; /* Prussian Blue — primary */
+  --color-ink-2: #47587a; /* blue-gray — secondary/body, darker than meta so 16px body outranks 13px meta (AA 6.6:1 on the warm canvas) */
+  --color-ink-3: #5b6b86; /* blue-gray — meta, the spec's muted tone (AA 5.0:1 on the warm canvas) */
+  --color-on-ink: #ffffff; /* label ON an ink fill — pure white on Prussian (13.4:1). NEVER canvas off-white, which reads grey on Prussian. */
+  /* accent — orange family, scarce on purpose (important actions / status / badges only) */
+  --color-accent: #c2410c; /* orange-deep — TEXT-SAFE accent (AA 4.8:1 on canvas, 4.4:1 on accent-tint, 5.2:1 white-on-it) */
+  --color-accent-fill: #f97316; /* orange — FILL/large-graphic only */
+  --color-accent-tint: #fdead9;
   /* secondary tones */
   --color-sea: #0a3d62; /* turtle / brand accent */
   --color-sage: #4a5a3c; /* done/handled */
@@ -45,9 +46,9 @@ body {
   --color-berry-tint: #f3d7dd;
   --color-sky: #2a6478; /* coach tone (darkened from #2f6f86 for AA 4.5:1 on sky-tint, 5.0:1) */
   --color-sky-tint: #cfe3e7;
-  /* hairline */
-  --color-rule: rgba(1, 32, 79, 0.1);
-  --color-rule-strong: rgba(1, 32, 79, 0.2);
+  /* hairline — warm sand borders (mockup #E7E2DA) */
+  --color-rule: #e7e2da;
+  --color-rule-strong: #d8d1c5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -59,10 +60,10 @@ body {
     --color-ink: #f6f1e7; /* cream */
     --color-ink-2: #c7d3e6;
     --color-ink-3: #9bb0d0;
-    --color-on-ink: #01204f; /* on the cream ink fill, the label inverts to Prussian (mirrors web dark --color-on-spruce) */
-    --color-accent: #e8915c; /* text-safe on dark */
-    --color-accent-fill: #e8915c;
-    --color-accent-tint: #2e2331;
+    --color-on-ink: #003153; /* on the cream ink fill, the label inverts to Prussian (mirrors web dark --color-on-spruce) */
+    --color-accent: #fb923c; /* orange, text-safe on dark */
+    --color-accent-fill: #f97316; /* orange fill on dark */
+    --color-accent-tint: #2f2318;
     --color-sea: #6fb3c9;
     --color-sage: #a9c49a;
     --color-sage-tint: #18301f;

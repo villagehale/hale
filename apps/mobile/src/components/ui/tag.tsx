@@ -2,13 +2,15 @@ import { View } from 'react-native';
 
 import { AppText } from './app-text';
 
-export type TagTone = 'neutral' | 'done' | 'attention' | 'coach';
+export type TagTone = 'neutral' | 'done' | 'attention' | 'coach' | 'accent';
 
 const TONE: Record<TagTone, { bg: string; text: string }> = {
   neutral: { bg: 'bg-raised', text: 'text-ink-2' },
   done: { bg: 'bg-sage-tint', text: 'text-sage' },
   attention: { bg: 'bg-berry-tint', text: 'text-berry' },
   coach: { bg: 'bg-sky-tint', text: 'text-sky' },
+  /** The earned-orange status mark (due-now / around-now stamps — mockup). */
+  accent: { bg: 'bg-accent-tint', text: 'text-accent' },
 };
 
 export function Tag({ label, tone = 'neutral' }: { label: string; tone?: TagTone }) {

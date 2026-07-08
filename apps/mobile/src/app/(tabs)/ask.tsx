@@ -112,9 +112,11 @@ function HaleBubble({ turn }: { turn: HaleTurn }) {
 
 function StarterChips({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <View className="flex-1 justify-end gap-3 pb-2">
-      <AppText variant="title">What can I help with?</AppText>
-      <AppText variant="meta">Tap a question, or ask your own below.</AppText>
+    <View className="flex-1 gap-4 pt-6">
+      <AppText variant="display">How can I help you today?</AppText>
+      <AppText variant="meta" className="text-ink-3">
+        Hale is here for you, 24/7.
+      </AppText>
       <View className="mt-1 gap-2">
         {STARTER_CHIPS.map((q) => (
           <Pressable
@@ -122,7 +124,7 @@ function StarterChips({ onPick }: { onPick: (q: string) => void }) {
             accessibilityRole="button"
             accessibilityLabel={q}
             onPress={() => onPick(q)}
-            className="rounded-lg border border-rule bg-card px-4 py-3 active:opacity-80"
+            className="rounded-lg border border-rule bg-card px-4 py-3.5 active:opacity-80"
           >
             <AppText variant="body" className="text-ink">
               {q}
@@ -130,6 +132,10 @@ function StarterChips({ onPick }: { onPick: (q: string) => void }) {
           </Pressable>
         ))}
       </View>
+      <AppText variant="meta" className="mt-1">
+        Hale offers general guidance, never medical advice. For anything urgent, contact your care
+        provider.
+      </AppText>
     </View>
   );
 }
@@ -274,7 +280,10 @@ export default function AskScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View className="flex-row items-center justify-between px-5 pt-2">
-          <AppText variant="display">Concierge</AppText>
+          {/* On the empty state the big display title is the question below, so the
+              header demotes to a small nav-size label (mockup); once a conversation
+              starts there's no competing title, so it reads at full display size. */}
+          <AppText variant={empty ? 'title' : 'display'}>Hale</AppText>
           {!empty ? (
             <IconButton
               icon="square.and.pencil"
@@ -325,7 +334,7 @@ export default function AskScreen() {
               onChangeText={setDraft}
               placeholder="Type, or tap the mic to talk"
               placeholderTextColor={placeholderColor}
-              accessibilityLabel="Ask Concierge a question"
+              accessibilityLabel="Ask Hale a question"
               multiline
               returnKeyType="send"
               onSubmitEditing={() => send(draft)}
@@ -335,7 +344,7 @@ export default function AskScreen() {
                 minHeight: 44,
                 maxHeight: 120,
               }}
-              className="flex-1 rounded-lg border border-rule bg-canvas px-4 py-2.5 text-[16px] leading-[22px]"
+              className="flex-1 rounded-md border border-rule bg-canvas px-4 py-2.5 text-[16px] leading-[22px]"
             />
             {draft.trim() ? (
               <IconButton
@@ -347,7 +356,7 @@ export default function AskScreen() {
             ) : (
               <IconButton
                 icon={voice.listening ? 'stop.fill' : 'mic'}
-                accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Concierge by voice'}
+                accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Hale by voice'}
                 onPress={voice.toggle}
                 className="bg-raised"
               />

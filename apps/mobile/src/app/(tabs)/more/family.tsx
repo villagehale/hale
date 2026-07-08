@@ -242,7 +242,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         {/* The date picker is a native module (no web impl), so on the RN-web preview
             we show the resolved date read-only. */}
         {Platform.OS === 'web' ? (
-          <View className="min-h-11 justify-center rounded-lg border border-rule bg-canvas px-4 py-3">
+          <View className="min-h-11 justify-center rounded-md border border-rule bg-canvas px-4 py-3">
             <AppText variant="body" className="text-ink">
               {dobLabel(dob)}
             </AppText>
@@ -254,7 +254,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
               accessibilityLabel={`Date of birth: ${dobLabel(dob)}. Tap to change.`}
               accessibilityState={{ expanded: showPicker }}
               onPress={() => setShowPicker((s) => !s)}
-              className="min-h-11 flex-row items-center justify-between rounded-lg border border-rule bg-canvas px-4 py-3 active:opacity-80"
+              className="min-h-11 flex-row items-center justify-between rounded-md border border-rule bg-canvas px-4 py-3 active:opacity-80"
             >
               <AppText variant="body" className="text-ink">
                 {dobLabel(dob)}
