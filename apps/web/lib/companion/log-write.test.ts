@@ -4,6 +4,7 @@ import {
   FEED_EPISODE,
   HEALTH_DONE_EPISODE,
   type MarkDoneInput,
+  MEASUREMENT_EPISODE,
   MILESTONE_EPISODE,
   NAP_EPISODE,
   type QuickLogInput,
@@ -72,6 +73,40 @@ describe('buildEpisodeInsert', () => {
     expect(episode.episodeType).toBe('milestone');
     expect(episode.summary).toBe('rolled over');
     expect(episode.payload).toEqual({ milestone: 'rolled over' });
+  });
+
+  it('shapes a weight measurement with an honest summary and the fixed kg unit in payload', () => {
+    const input: QuickLogInput = {
+      kind: MEASUREMENT_EPISODE,
+      childId: CHILD_ID,
+      measureKind: 'weight',
+      value: 10.4,
+    };
+
+    expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID)).toEqual({
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
+      occurredAt: NOW,
+      episodeType: 'measurement',
+      summary: 'Weighed 10.4 kg',
+      payload: { measureKind: 'weight', value: 10.4, unit: 'kg' },
+    });
+  });
+
+  it('shapes a height measurement with the fixed cm unit (never a client-sent unit)', () => {
+    const input: QuickLogInput = {
+      kind: MEASUREMENT_EPISODE,
+      childId: CHILD_ID,
+      measureKind: 'height',
+      value: 62,
+    };
+
+    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID);
+
+    expect(episode.episodeType).toBe('measurement');
+    expect(episode.summary).toBe('Height 62 cm');
+    expect(episode.payload).toEqual({ measureKind: 'height', value: 62, unit: 'cm' });
   });
 
   it('includes an optional note in the feed payload when given', () => {

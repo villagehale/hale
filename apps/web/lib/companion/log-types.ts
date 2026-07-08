@@ -10,6 +10,10 @@ import { z } from 'zod';
 export const FEED_EPISODE = 'feed';
 export const NAP_EPISODE = 'nap';
 export const MILESTONE_EPISODE = 'milestone';
+/** A logged growth measurement (weight / height / head circumference). A raw data
+ * point only — NO percentile or WHO comparison is ever derived (that would be
+ * fabricated medical framing); the companion shows the plain series alone. */
+export const MEASUREMENT_EPISODE = 'measurement';
 export const BOOKING_EPISODE = 'booking_requested';
 /** A completed curated health item (a checkup / immunization set the parent
  * confirms is done). Distinct from the free-text quick-log kinds so the companion
@@ -20,6 +24,21 @@ export const HEALTH_DONE_EPISODE = 'health_done';
  * parent doesn't pick one (kept out of the summary). */
 export const FEED_KINDS = ['bottle', 'breast', 'solid'] as const;
 export type FeedKind = (typeof FEED_KINDS)[number];
+
+/** The kinds of growth measurement a parent may log. Each has ONE fixed unit and a
+ * sane upper bound (a child's real range — a mistyped value is rejected, never
+ * charted). Weight is kg; height and head circumference are cm. */
+export const MEASURE_KINDS = ['weight', 'height', 'head'] as const;
+export type MeasureKind = (typeof MEASURE_KINDS)[number];
+
+/** Fixed unit + human label per measure kind — the unit is NEVER user-chosen (a
+ * weight is always kg), so the summary and series can't mix units. */
+export const MEASURE_META: Record<MeasureKind, { unit: 'kg' | 'cm'; label: string; max: number }> =
+  {
+    weight: { unit: 'kg', label: 'Weight', max: 40 },
+    height: { unit: 'cm', label: 'Height', max: 220 },
+    head: { unit: 'cm', label: 'Head', max: 70 },
+  };
 
 /** How far in the future a logged time may be (small clock-skew tolerance) and
  * how far back it may reach. A quick-log is a recent household event, so a year
@@ -70,13 +89,47 @@ export const milestoneSchema = z.object({
   occurredAt: occurredAtField,
 });
 
+/**
+ * A growth measurement quick-log. `measureKind` picks the metric (its unit is
+ * fixed, never sent by the client) and `value` is a positive number. The generous
+ * `.max` here only rejects a wildly-out-of-range value at the schema; the per-kind
+ * ceiling (MEASURE_META.max) is enforced at the boundary by resolveMeasurement,
+ * mirroring how the nap window / occurredAt range rules live at the action boundary
+ * so this stays a plain ZodObject (a valid member of quickLogSchema).
+ */
+export const measurementSchema = z.object({
+  kind: z.literal(MEASUREMENT_EPISODE),
+  childId: z.string().uuid(),
+  measureKind: z.enum(MEASURE_KINDS),
+  value: z.coerce.number().positive().max(500),
+  note: z.string().trim().max(280).optional(),
+  occurredAt: occurredAtField,
+});
+
 export const quickLogSchema = z.discriminatedUnion('kind', [
   feedSchema,
   napSchema,
   milestoneSchema,
+  measurementSchema,
 ]);
 
 export type QuickLogInput = z.infer<typeof quickLogSchema>;
+
+/**
+ * Bounds-checks a measurement's value against the per-kind ceiling (MEASURE_META),
+ * at the boundary — like resolveNap / resolveOccurredAt — so measurementSchema can
+ * stay a plain ZodObject in the discriminated union. A weight over 40 kg or a head
+ * over 70 cm is a mistype, not a real reading, and is rejected rather than charted.
+ */
+export function resolveMeasurement(
+  measureKind: MeasureKind,
+  value: number,
+): { ok: true } | { ok: false; error: string } {
+  if (value > MEASURE_META[measureKind].max) {
+    return { ok: false, error: 'that reading looks too high — check the value' };
+  }
+  return { ok: true };
+}
 
 /**
  * Resolves and bounds-checks an optional logged time against the request clock.

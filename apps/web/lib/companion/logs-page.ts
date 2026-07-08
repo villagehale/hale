@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
-import { FEED_KINDS } from './log-types.js';
+import { FEED_KINDS, MEASURE_KINDS } from './log-types.js';
 import {
   type LogsPage,
   nextCursorFrom,
@@ -30,12 +30,13 @@ export type { LogView, LogsPage, LogDayGroup } from './logs-view.js';
  * optionally scoped to one child, with teen redaction applied (rule #1). `before`
  * is the occurredAt cursor from the previous page (exclusive); omit for the first
  * page. `childId` narrows to a single child; omit for the whole family.
+ * `episodeType` narrows to one kind (e.g. 'measurement' for Growth); omit for all.
  */
 export async function readLogsPage(
   database: Database,
   familyId: string,
   requestingUserId: string | null,
-  opts: { childId?: string; before?: string; limit?: number } = {},
+  opts: { childId?: string; episodeType?: string; before?: string; limit?: number } = {},
 ): Promise<LogsPage> {
   const limit = opts.limit ?? PAGE_LIMIT;
 
@@ -50,6 +51,12 @@ export async function readLogsPage(
   ];
   if (opts.childId) {
     filters.push(eq(schema.familyMemoryEpisodes.childId, opts.childId));
+  }
+  // A single episode type (e.g. Growth reads only 'measurement') keeps a rare-event
+  // series off the shared page budget: measurements never compete with the flood of
+  // feeds/naps for the 30 rows, so old readings don't silently fall off the page.
+  if (opts.episodeType) {
+    filters.push(eq(schema.familyMemoryEpisodes.episodeType, opts.episodeType));
   }
   if (opts.before) {
     filters.push(lt(schema.familyMemoryEpisodes.occurredAt, new Date(opts.before)));
@@ -105,8 +112,18 @@ function liftNumerics(payload: Record<string, unknown>): {
   durationMin?: number;
   amountMl?: number;
   feedKind?: string;
+  measureKind?: string;
+  value?: number;
+  unit?: string;
 } {
-  const out: { durationMin?: number; amountMl?: number; feedKind?: string } = {};
+  const out: {
+    durationMin?: number;
+    amountMl?: number;
+    feedKind?: string;
+    measureKind?: string;
+    value?: number;
+    unit?: string;
+  } = {};
   if (typeof payload.durationMin === 'number') out.durationMin = payload.durationMin;
   if (typeof payload.amountMl === 'number') out.amountMl = payload.amountMl;
   // Enum-gated, not any string: episodes have a second writer (the worker's
@@ -117,6 +134,19 @@ function liftNumerics(payload: Record<string, unknown>): {
     (FEED_KINDS as readonly string[]).includes(payload.feedKind)
   ) {
     out.feedKind = payload.feedKind;
+  }
+  // A measurement lifts three numerics/tokens: the ENUM-GATED measureKind (same
+  // second-writer discipline as feedKind), the numeric value, and the unit — but
+  // only together, so a partial/free-shape payload never surfaces a half-measurement.
+  if (
+    typeof payload.measureKind === 'string' &&
+    (MEASURE_KINDS as readonly string[]).includes(payload.measureKind) &&
+    typeof payload.value === 'number' &&
+    typeof payload.unit === 'string'
+  ) {
+    out.measureKind = payload.measureKind;
+    out.value = payload.value;
+    out.unit = payload.unit;
   }
   return out;
 }

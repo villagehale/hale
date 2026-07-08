@@ -24,6 +24,13 @@ export interface LogView {
   amountMl?: number;
   /** Feed kind (bottle/breast/solid), lifted from payload; absent when unspecified. */
   feedKind?: string;
+  /** Growth measure kind (weight/height/head), lifted from payload; absent on
+   * non-measurement rows. Present only alongside value + unit (lifted as a set). */
+  measureKind?: string;
+  /** The measured number, lifted from payload; absent on non-measurement rows. */
+  value?: number;
+  /** The measurement's fixed unit (kg/cm), lifted from payload; absent otherwise. */
+  unit?: string;
 }
 
 /** One page of logs, newest first, with the keyset cursor for the next page. */

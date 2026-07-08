@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { NAP_EPISODE, napSchema, resolveNapWindow } from './log-types.js';
+import {
+  MEASUREMENT_EPISODE,
+  measurementSchema,
+  NAP_EPISODE,
+  napSchema,
+  resolveMeasurement,
+  resolveNapWindow,
+} from './log-types.js';
 
 /**
  * The nap quick-log accepts EITHER a plain duration OR a start/end window (an
@@ -82,5 +89,69 @@ describe('resolveNapWindow — derives a whole-minute duration', () => {
   it('rejects a window longer than a day', () => {
     const r = resolveNapWindow('2026-07-05T10:00:00Z', '2026-07-07T11:00:00Z', NOW);
     expect(r.ok).toBe(false);
+  });
+});
+
+/**
+ * The growth measurement is the ONE new data concept, added via the episode pattern
+ * (a plain ZodObject member of the discriminated union, like napSchema). The unit is
+ * NEVER sent by the client — it is derived per measureKind — so the schema takes only
+ * measureKind + a positive value. The per-kind ceiling lives at the boundary
+ * (resolveMeasurement), mirroring the nap-window / occurredAt range rules. Expected
+ * values are derived from the spec (MEASURE_META bounds), not copied from output.
+ */
+describe('measurementSchema — a growth measurement (plain ZodObject for the union)', () => {
+  const CHILD = '33333333-3333-4333-8333-333333333333';
+
+  it('accepts a weight measurement with a positive value and no client-sent unit', () => {
+    const parsed = measurementSchema.safeParse({
+      kind: MEASUREMENT_EPISODE,
+      childId: CHILD,
+      measureKind: 'weight',
+      value: 10.4,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects a measureKind outside the fixed set (weight/height/head)', () => {
+    const parsed = measurementSchema.safeParse({
+      kind: MEASUREMENT_EPISODE,
+      childId: CHILD,
+      measureKind: 'temperature',
+      value: 37,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('rejects a non-positive value', () => {
+    const parsed = measurementSchema.safeParse({
+      kind: MEASUREMENT_EPISODE,
+      childId: CHILD,
+      measureKind: 'height',
+      value: 0,
+    });
+    expect(parsed.success).toBe(false);
+  });
+});
+
+describe('resolveMeasurement — the per-kind ceiling at the boundary', () => {
+  it('accepts a real weight within the kg ceiling', () => {
+    expect(resolveMeasurement('weight', 10.4)).toEqual({ ok: true });
+  });
+
+  it('rejects a weight over 40 kg as a mistype (never charted)', () => {
+    // MEASURE_META.weight.max is 40 kg — 55 is beyond a child's real range.
+    const r = resolveMeasurement('weight', 55);
+    expect(r.ok).toBe(false);
+  });
+
+  it('accepts a height within the cm ceiling but rejects one over 220 cm', () => {
+    expect(resolveMeasurement('height', 62)).toEqual({ ok: true });
+    expect(resolveMeasurement('height', 300).ok).toBe(false);
+  });
+
+  it('rejects a head circumference over 70 cm', () => {
+    expect(resolveMeasurement('head', 41).ok).toBe(true);
+    expect(resolveMeasurement('head', 90).ok).toBe(false);
   });
 });

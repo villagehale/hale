@@ -9,11 +9,13 @@ import {
   type DeleteResult,
   type EditResult,
   type LogResult,
+  MEASUREMENT_EPISODE,
   type MarkDoneResult,
   deleteEpisodeSchema,
   editEpisodeSchema,
   markDoneSchema,
   quickLogSchema,
+  resolveMeasurement,
   resolveOccurredAt,
 } from './log-types.js';
 import {
@@ -54,6 +56,13 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
   const nap = resolveNap(parsed.data, now);
   if (!nap.ok) {
     return { status: 'invalid', error: nap.error };
+  }
+
+  if (parsed.data.kind === MEASUREMENT_EPISODE) {
+    const measure = resolveMeasurement(parsed.data.measureKind, parsed.data.value);
+    if (!measure.ok) {
+      return { status: 'invalid', error: measure.error };
+    }
   }
 
   if (!process.env.DATABASE_URL) {
