@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
-import { quickLogSchema, resolveOccurredAt } from '~/lib/companion/log-types';
+import { MEASUREMENT_EPISODE, quickLogSchema, resolveMeasurement, resolveOccurredAt } from '~/lib/companion/log-types';
 import {
   buildEpisodeInsert,
   childBelongsToFamily,
@@ -54,6 +54,13 @@ export async function POST(req: Request): Promise<Response> {
   const nap = resolveNap(parsed.data, now);
   if (!nap.ok) {
     return NextResponse.json({ error: nap.error }, { status: 400 });
+  }
+
+  if (parsed.data.kind === MEASUREMENT_EPISODE) {
+    const measure = resolveMeasurement(parsed.data.measureKind, parsed.data.value);
+    if (!measure.ok) {
+      return NextResponse.json({ error: measure.error }, { status: 400 });
+    }
   }
 
   const database = db();

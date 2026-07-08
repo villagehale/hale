@@ -143,4 +143,18 @@ describe('GET /api/mobile/companion/logs — shared read (redaction + numerics)'
     expect(feed).toMatchObject({ amountMl: 120, feedKind: 'bottle' });
     expect(JSON.stringify(body)).not.toContain('spit up');
   });
+
+  it('accepts episodeType=measurement (the one narrowing Growth uses)', async () => {
+    dbRows = { children: [{ id: TODDLER_ID, dateOfBirth: '2024-05-01' }], episodes: [] };
+    const res = await callGet('?episodeType=measurement');
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects any other episodeType with 400 — the param is not a general filter', async () => {
+    dbRows = { children: [{ id: TODDLER_ID, dateOfBirth: '2024-05-01' }], episodes: [] };
+    const res = await callGet('?episodeType=nap');
+    expect(res.status).toBe(400);
+    const bogus = await callGet('?episodeType=anything');
+    expect(bogus.status).toBe(400);
+  });
 });

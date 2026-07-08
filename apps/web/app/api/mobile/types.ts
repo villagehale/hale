@@ -68,6 +68,18 @@ export interface MobileDoneResponse {
  * / notes). */
 export type MobileLogsResponse = LogsPage;
 
+/** The native Diary edit of a logged episode (summary + occurredAt only), reusing
+ * the audited updateEpisode lib (family-scoped, rule #1). */
+export interface MobileLogEditResponse {
+  status: 'edited';
+}
+
+/** The native Diary soft-delete of a logged episode, reusing the audited
+ * softDeleteEpisode lib (family-scoped, rule #1). */
+export interface MobileLogDeleteResponse {
+  status: 'deleted';
+}
+
 // ── family write (POST /api/mobile/family) ────────────────────────────────────
 //
 // One body shape per family mutation, discriminated by `action`, each delegating

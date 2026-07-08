@@ -4,6 +4,8 @@ import {
   FEED_EPISODE,
   HEALTH_DONE_EPISODE,
   type MarkDoneInput,
+  MEASURE_META,
+  MEASUREMENT_EPISODE,
   MILESTONE_EPISODE,
   NAP_EPISODE,
   type QuickLogInput,
@@ -87,6 +89,23 @@ export function buildEpisodeInsert(
           ...(input.note ? { note: input.note } : {}),
         },
       };
+    case MEASUREMENT_EPISODE: {
+      const { unit, label } = MEASURE_META[input.measureKind];
+      return {
+        ...base,
+        episodeType: MEASUREMENT_EPISODE,
+        summary:
+          input.measureKind === 'weight'
+            ? `Weighed ${input.value} ${unit}`
+            : `${label} ${input.value} ${unit}`,
+        payload: {
+          measureKind: input.measureKind,
+          value: input.value,
+          unit,
+          ...(input.note ? { note: input.note } : {}),
+        },
+      };
+    }
   }
 }
 

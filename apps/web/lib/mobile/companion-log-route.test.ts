@@ -214,4 +214,46 @@ describe('POST /api/mobile/companion/log', () => {
     expect(res.status).toBe(400);
     expect(writeEpisodeMock).not.toHaveBeenCalled();
   });
+
+  it('writes the exact audited measurement episode row (fixed unit, honest summary) and returns 201', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({
+      kind: 'measurement',
+      childId: CHILD_ID,
+      measureKind: 'weight',
+      value: 10.4,
+    });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ status: 'logged' });
+    // Derived from buildEpisodeInsert's measurement branch + the fixed kg unit
+    // (MEASURE_META, never client-sent) — NOT copied from output. The audit row's
+    // actionTaken becomes quick_log_measurement from this episodeType.
+    expect(writeEpisodeMock).toHaveBeenCalledWith(DB_HANDLE, {
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
+      occurredAt: NOW,
+      episodeType: 'measurement',
+      summary: 'Weighed 10.4 kg',
+      payload: { measureKind: 'weight', value: 10.4, unit: 'kg' },
+    });
+  });
+
+  it('rejects a measurement over the per-kind ceiling (400 at the boundary, never writes)', async () => {
+    // A weight of 55 kg is beyond MEASURE_META.weight.max (40) — a mistype, not a
+    // real reading. resolveMeasurement stops it at the route before any write.
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callPost({
+      kind: 'measurement',
+      childId: CHILD_ID,
+      measureKind: 'weight',
+      value: 55,
+    });
+
+    expect(res.status).toBe(400);
+    expect(writeEpisodeMock).not.toHaveBeenCalled();
+  });
 });

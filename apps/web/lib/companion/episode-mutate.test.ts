@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import type { SQL } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { softDeleteEpisode, updateEpisode } from './log-write.js';
 
@@ -32,28 +33,67 @@ interface Capture {
 }
 
 /**
- * Fakes the two chains a mutation touches inside a transaction:
+ * Reads the equality constraints ({ id, family_id, ... }) off a Drizzle WHERE by
+ * walking its SQL chunks: a column chunk (has a `.name` + `.table`) followed by the
+ * bound Param carries one `col = value`. This lets the fake EVALUATE the lib's real
+ * WHERE rather than stipulate a match — drop eq(family_id) and this stops seeing the
+ * family constraint, so the foreign-family row matches and the scoping test fails.
+ */
+function eqConstraints(sql: SQL, out: Record<string, unknown> = {}): Record<string, unknown> {
+  const chunks = (sql as unknown as { queryChunks?: unknown[] }).queryChunks ?? [];
+  let lastCol: string | null = null;
+  for (const chunk of chunks) {
+    const c = chunk as { constructor?: { name?: string }; name?: string; table?: unknown; value?: unknown };
+    if (c?.constructor?.name === 'SQL') {
+      eqConstraints(chunk as SQL, out);
+      lastCol = null;
+      continue;
+    }
+    if (typeof c?.name === 'string' && c.table) {
+      lastCol = c.name;
+      continue;
+    }
+    if (c?.constructor?.name === 'Param' && lastCol) {
+      out[lastCol] = c.value;
+      lastCol = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Fakes the chains a mutation touches inside a transaction, EVALUATING the real
+ * family-scoped WHERE against the seeded BEFORE_ROW (id + family_id):
  *   tx.select().from(episodes).where(id AND family) → [beforeRow] | []
  *   tx.update(episodes).set(patch).where(...).returning({id}) → [{id}] | []
  *   tx.insert(auditLog).values(row) → void
- * `matched` decides whether the family-scoped WHERE finds the row (the whole point
- * of the test: a foreign episode does NOT match).
+ * A foreign family's id passed to the lib builds a WHERE whose family_id ≠ the
+ * seeded row's, so the extractor-filtered match is empty — the whole point of the
+ * scoping test, held by construction rather than a stipulated flag.
  */
-function stubTxDb(capture: Capture, matched: boolean) {
+function stubTxDb(capture: Capture) {
+  const matches = (where: SQL): boolean => {
+    const c = eqConstraints(where);
+    return (
+      (c.id === undefined || BEFORE_ROW.id === c.id) &&
+      (c.family_id === undefined || BEFORE_ROW.familyId === c.family_id)
+    );
+  };
   const tx = {
     select: vi.fn(() => ({
       from: () => ({
-        where: () => ({
-          limit: async () => (matched ? [BEFORE_ROW] : []),
+        where: (where: SQL) => ({
+          limit: async () => (matches(where) ? [BEFORE_ROW] : []),
         }),
       }),
     })),
     update: vi.fn(() => ({
       set: (patch: Record<string, unknown>) => ({
-        where: () => ({
+        where: (where: SQL) => ({
           returning: async () => {
-            if (matched) capture.updateValues.push(patch);
-            return matched ? [{ id: EPISODE_ID }] : [];
+            const ok = matches(where);
+            if (ok) capture.updateValues.push(patch);
+            return ok ? [{ id: EPISODE_ID }] : [];
           },
         }),
       }),
@@ -76,7 +116,7 @@ function stubTxDb(capture: Capture, matched: boolean) {
 describe('updateEpisode', () => {
   it('updates the episode and writes an audit row carrying before + after (rules #1, #6)', async () => {
     const capture: Capture = { updateValues: [], audit: [] };
-    const { database } = stubTxDb(capture, true);
+    const { database } = stubTxDb(capture);
 
     const ok = await updateEpisode(
       database,
@@ -103,7 +143,7 @@ describe('updateEpisode', () => {
 
   it("rejects a foreign episode (another family's id) — no write, no audit row (rule #1)", async () => {
     const capture: Capture = { updateValues: [], audit: [] };
-    const { database } = stubTxDb(capture, false);
+    const { database } = stubTxDb(capture);
 
     const ok = await updateEpisode(
       database,
@@ -122,7 +162,7 @@ describe('updateEpisode', () => {
 describe('softDeleteEpisode', () => {
   it('stamps deleted_at and writes an audit row with the removed row as before (rules #6, #9)', async () => {
     const capture: Capture = { updateValues: [], audit: [] };
-    const { database } = stubTxDb(capture, true);
+    const { database } = stubTxDb(capture);
 
     const ok = await softDeleteEpisode(database, EPISODE_ID, FAMILY_ID, ACTOR, NOW);
 
@@ -142,7 +182,7 @@ describe('softDeleteEpisode', () => {
 
   it("rejects a foreign episode — no delete, no audit row (rule #1)", async () => {
     const capture: Capture = { updateValues: [], audit: [] };
-    const { database } = stubTxDb(capture, false);
+    const { database } = stubTxDb(capture);
 
     const ok = await softDeleteEpisode(database, EPISODE_ID, OTHER_FAMILY_ID, ACTOR, NOW);
 
