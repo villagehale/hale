@@ -85,3 +85,37 @@ const VERDICT_FALLBACK = 'awaiting your approval';
 export function verdictLabel(verdict: string): string {
   return VERDICT_LABELS[verdict] ?? VERDICT_FALLBACK;
 }
+
+/**
+ * Village candidate price band → human copy. Source of truth: the discovery tool's
+ * priceBand enum (village discover.ts: free | low | moderate | high). An unknown /
+ * absent value resolves to null so the card HIDES the chip rather than showing an
+ * internal or meaningless token — a price chip only earns its place when honest.
+ */
+const PRICE_BAND_LABELS: Record<string, string> = {
+  free: 'free',
+  low: '$',
+  moderate: '$$',
+  high: '$$$',
+};
+
+export function priceBandLabel(band: string | null): string | null {
+  if (band === null) return null;
+  return PRICE_BAND_LABELS[band] ?? null;
+}
+
+/**
+ * Village candidate indoor/outdoor → human copy. Source of truth: the discovery
+ * tool's indoorOutdoor enum (indoor | outdoor | both). Unknown / absent → null (the
+ * card hides the chip).
+ */
+const INDOOR_OUTDOOR_LABELS: Record<string, string> = {
+  indoor: 'indoor',
+  outdoor: 'outdoor',
+  both: 'indoor & outdoor',
+};
+
+export function indoorOutdoorLabel(value: string | null): string | null {
+  if (value === null) return null;
+  return INDOOR_OUTDOOR_LABELS[value] ?? null;
+}

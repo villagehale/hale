@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react';
+import { Lock, Star } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
 import { RegisterLink } from '~/components/hale/register-link';
@@ -6,7 +6,7 @@ import { ShareButton } from '~/components/hale/share-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
 import { Icon } from '~/components/ui/icon';
 import { DEFAULT_TIMEZONE, foundStamp } from '~/lib/format/datetime';
-import { villageKindLabel } from '~/lib/format/labels';
+import { indoorOutdoorLabel, priceBandLabel, villageKindLabel } from '~/lib/format/labels';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 
 /**
@@ -102,6 +102,7 @@ export function ActivityCard({
         {candidate.summary ? (
           <p className="text-lg text-spruce leading-relaxed">{candidate.summary}</p>
         ) : null}
+        <MetaChips candidate={candidate} />
         {proof}
         {actions}
       </section>
@@ -123,6 +124,7 @@ export function ActivityCard({
       {candidate.coverageNote ? (
         <p className="meta text-slate-green">{candidate.coverageNote}</p>
       ) : null}
+      <MetaChips candidate={candidate} />
       <p className="meta text-faded-sage">{foundStamp(candidate.discoveredAt, DEFAULT_TIMEZONE)}</p>
       {proof}
       {actions}
@@ -217,4 +219,35 @@ function CadenceChip({ cadence }: { cadence: string | null }) {
   const pill = cadence ? CADENCE_PILL[cadence] : undefined;
   if (!pill) return null;
   return <span className={pill.className}>{pill.label}</span>;
+}
+
+/**
+ * The honest, presence-gated metadata row: a VERIFIED Places rating (a real number
+ * with a count, never fabricated stars), then the model's coarse price band, age
+ * hint, and indoor/outdoor tag — each rendered as a small pill ONLY when a real
+ * value is present. Renders nothing at all when every field is null (a candidate
+ * with no metadata shows no empty row). Teen-redacted cards arrive with every field
+ * nulled at the mapper, so this never surfaces on them (rule #1).
+ */
+function MetaChips({ candidate }: { candidate: VillageCandidateView }) {
+  const price = priceBandLabel(candidate.priceLevel);
+  const place = indoorOutdoorLabel(candidate.indoorOutdoor);
+  const hasRating = candidate.rating !== null;
+  if (!hasRating && !price && !candidate.ageRange && !place) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+      {hasRating ? (
+        <span className="pill inline-flex items-center gap-1.5">
+          <Icon as={Star} size={14} className="text-apricot-deep" />
+          {candidate.rating}
+          {candidate.ratingCount !== null ? (
+            <span className="text-slate-green">({candidate.ratingCount})</span>
+          ) : null}
+        </span>
+      ) : null}
+      {price ? <span className="pill">{price}</span> : null}
+      {candidate.ageRange ? <span className="pill">{candidate.ageRange}</span> : null}
+      {place ? <span className="pill">{place}</span> : null}
+    </div>
+  );
 }

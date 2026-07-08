@@ -81,6 +81,11 @@ function view(id: string): VillageCandidateView {
     lat: null,
     lng: null,
     venueName: null,
+    rating: null,
+    ratingCount: null,
+    priceLevel: null,
+    ageRange: null,
+    indoorOutdoor: null,
     teenAttributed: false,
   };
 }

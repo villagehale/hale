@@ -84,6 +84,13 @@ const SEASONS = ['spring', 'summer', 'fall', 'winter'] as const;
 // least as often as it omits the key (a year-round pick in a season search has
 // no eventDate and no seasons). `.optional()` alone rejected those nulls, and a
 // single null killed the whole run with a 500.
+/** The honest attribute vocabularies the model may emit. Free text at the DB
+ * layer (no migration to extend), but the tool contract constrains the model to
+ * these values so a card's chip label is always mappable — and the model
+ * expresses "unknown" as an explicit null (never a fabricated in-between). */
+const PRICE_BANDS = ['free', 'low', 'moderate', 'high'] as const;
+const INDOOR_OUTDOOR = ['indoor', 'outdoor', 'both'] as const;
+
 export const candidatesSchema = z.object({
   candidates: z.array(
     z.object({
@@ -93,6 +100,15 @@ export const candidatesSchema = z.object({
       eventDate: z.string().nullable().optional(),
       seasons: z.array(z.enum(SEASONS)).nullable().optional(),
       sourceUrl: z.string().nullable().optional(),
+      // The honest attribute hints (season-search lesson: .nullable().optional() so
+      // an explicit null and an omitted key are BOTH accepted — the model expresses
+      // "unknown" as null at least as often as it omits the key, and a single null
+      // must not 500 the run).
+      // .catch(null): an out-of-vocab token from the model costs the FIELD,
+      // never the run (the attribute-level season-search lesson).
+      priceBand: z.enum(PRICE_BANDS).nullable().optional().catch(null),
+      ageRange: z.string().nullable().optional(),
+      indoorOutdoor: z.enum(INDOOR_OUTDOOR).nullable().optional().catch(null),
       confidence: z.number().min(0).max(1),
       coverageNote: z.string(),
     }),
@@ -113,6 +129,9 @@ export const candidatesJsonSchema = {
           eventDate: { type: 'string' },
           seasons: { type: 'array', items: { type: 'string', enum: [...SEASONS] } },
           sourceUrl: { type: 'string' },
+          priceBand: { type: 'string', enum: [...PRICE_BANDS] },
+          ageRange: { type: 'string' },
+          indoorOutdoor: { type: 'string', enum: [...INDOOR_OUTDOOR] },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           coverageNote: { type: 'string' },
         },
@@ -370,6 +389,16 @@ export async function discoverForFamily(
               lng: coords?.lng ?? null,
               venueName: coords?.venueName ?? null,
               venueAddress: coords?.venueAddress ?? null,
+              // VERIFIED Places enrichment — a rating/count/id only when Places
+              // actually returned them (the card renders nothing for a null rating).
+              // numeric columns take a fixed-point string, mirroring costUsd.
+              rating: coords?.rating !== undefined ? coords.rating.toFixed(1) : null,
+              ratingCount: coords?.ratingCount ?? null,
+              placeId: coords?.placeId ?? null,
+              // HONEST model attribute hints (null when the model expressed unknown).
+              priceLevel: c.priceBand ?? null,
+              ageRange: c.ageRange ?? null,
+              indoorOutdoor: c.indoorOutdoor ?? null,
               // Which run produced this row, so a search run and the standing feed
               // coexist and each is superseded only by its own kind (see above).
               runType,

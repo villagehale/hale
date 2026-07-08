@@ -31,6 +31,12 @@ function candidate(overrides: Partial<VillageCandidate> = {}): VillageCandidate 
     lng: -79.3534,
     venueName: 'Riverdale Community Centre',
     venueAddress: '123 Broadview Ave, Toronto, ON',
+    rating: null,
+    ratingCount: null,
+    placeId: null,
+    priceLevel: null,
+    ageRange: null,
+    indoorOutdoor: null,
     shareToken: null,
     eventDate: null,
     seasons: null,
@@ -114,6 +120,53 @@ describe('toVillageCandidateView', () => {
     expect(view.lat).toBe(43.6777);
     expect(view.lng).toBe(-79.3534);
     expect(view.venueName).toBe('Riverdale Community Centre');
+  });
+
+  it('parses the numeric rating string to a number and passes attributes through', () => {
+    const view = toVillageCandidateView(
+      candidate({
+        childId: null,
+        // numeric(2,1) reads back as a fixed-point string.
+        rating: '4.6' as unknown as VillageCandidate['rating'],
+        ratingCount: 128,
+        priceLevel: 'free',
+        ageRange: '2–6 years',
+        indoorOutdoor: 'outdoor',
+      }),
+      false,
+      NO_ENGAGEMENT,
+    );
+    expect(view.rating).toBe(4.6);
+    expect(view.ratingCount).toBe(128);
+    expect(view.priceLevel).toBe('free');
+    expect(view.ageRange).toBe('2–6 years');
+    expect(view.indoorOutdoor).toBe('outdoor');
+  });
+
+  it('leaves rating null (no fabrication) when the column is null', () => {
+    const view = toVillageCandidateView(candidate({ childId: null }), false, NO_ENGAGEMENT);
+    expect(view.rating).toBeNull();
+    expect(view.ratingCount).toBeNull();
+    expect(view.priceLevel).toBeNull();
+  });
+
+  it('nulls rating + all attributes on a teen-redacted card (no metadata leak, rule #1)', () => {
+    const view = toVillageCandidateView(
+      candidate({
+        rating: '4.9' as unknown as VillageCandidate['rating'],
+        ratingCount: 500,
+        priceLevel: 'high',
+        ageRange: '13–17 years',
+        indoorOutdoor: 'indoor',
+      }),
+      true,
+      NO_ENGAGEMENT,
+    );
+    expect(view.rating).toBeNull();
+    expect(view.ratingCount).toBeNull();
+    expect(view.priceLevel).toBeNull();
+    expect(view.ageRange).toBeNull();
+    expect(view.indoorOutdoor).toBeNull();
   });
 
   it('passes a seasonal candidate its seasons through to the view', () => {

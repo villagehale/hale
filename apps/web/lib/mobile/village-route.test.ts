@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The mobile Village route returns loadVillage() verbatim; teen-attributed
-// candidates/routine items are already redacted at the mapper inside the loader.
+// The mobile Village route returns loadVillage() merged with the curated Resources
+// rail; teen-attributed candidates/routine items are already redacted at the mapper
+// inside the loader.
 const authMock = vi.fn();
 const loadVillageMock = vi.fn();
+const loadResourcesMock = vi.fn();
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/village/queries', () => ({ loadVillage: () => loadVillageMock() }));
+vi.mock('~/lib/village/curated-resources', () => ({
+  loadCuratedResources: () => loadResourcesMock(),
+}));
 
 vi.mock('@hale/db', async (importActual) => {
   const actual = await importActual<typeof import('@hale/db')>();
@@ -18,6 +23,16 @@ vi.mock('@hale/db', async (importActual) => {
 });
 
 const VILLAGE = { candidates: [{ id: 'cand-1', teenAttributed: false }], routine: null };
+const RESOURCES = [
+  {
+    id: 'res-1',
+    name: 'Halton Region – EarlyON',
+    category: 'EarlyON child & family centres',
+    area: 'Halton Region',
+    url: 'https://www.halton.ca/earlyon',
+    description: 'Free EarlyON programs.',
+  },
+];
 
 async function callGet(): Promise<Response> {
   const { GET } = await import('~/app/api/mobile/village/route');
@@ -29,7 +44,9 @@ describe('GET /api/mobile/village', () => {
     vi.resetModules();
     authMock.mockReset();
     loadVillageMock.mockReset();
+    loadResourcesMock.mockReset();
     loadVillageMock.mockResolvedValue(VILLAGE);
+    loadResourcesMock.mockResolvedValue(RESOURCES);
   });
 
   afterEach(() => {
@@ -44,15 +61,18 @@ describe('GET /api/mobile/village', () => {
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'unauthenticated' });
     expect(loadVillageMock).not.toHaveBeenCalled();
+    expect(loadResourcesMock).not.toHaveBeenCalled();
   });
 
-  it('returns the village data for a signed-in parent', async () => {
+  it('returns the village data + curated resources for a signed-in parent', async () => {
     authMock.mockResolvedValue({ user: { id: 'ext-1' } });
 
     const res = await callGet();
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(VILLAGE);
+    // The standing feed merges the village data with the Resources rail.
+    expect(await res.json()).toEqual({ ...VILLAGE, resources: RESOURCES });
     expect(loadVillageMock).toHaveBeenCalledTimes(1);
+    expect(loadResourcesMock).toHaveBeenCalledTimes(1);
   });
 });

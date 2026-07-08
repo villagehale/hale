@@ -15,6 +15,30 @@ export function duePhrase(dueInWeeks: number): string {
   return `in ~${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
+/** Village price band → a compact chip label (mirrors web priceBandLabel).
+ * Unknown / absent → null so the caller HIDES the chip (never a fabricated band). */
+const PRICE_BAND_LABELS: Record<string, string> = {
+  free: 'Free',
+  low: '$',
+  moderate: '$$',
+  high: '$$$',
+};
+export function priceBandLabel(band: string | null): string | null {
+  if (band === null) return null;
+  return PRICE_BAND_LABELS[band] ?? null;
+}
+
+/** Village indoor/outdoor → chip label (mirrors web). Unknown / absent → null. */
+const INDOOR_OUTDOOR_LABELS: Record<string, string> = {
+  indoor: 'Indoor',
+  outdoor: 'Outdoor',
+  both: 'Indoor & outdoor',
+};
+export function indoorOutdoorLabel(value: string | null): string | null {
+  if (value === null) return null;
+  return INDOOR_OUTDOOR_LABELS[value] ?? null;
+}
+
 /** Milestone timing → the parent-facing label (mirrors the web page). */
 export const MILESTONE_TIMING_LABEL: Record<MilestoneStatus['timing'], string> = {
   upcoming: 'coming up',

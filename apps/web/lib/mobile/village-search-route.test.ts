@@ -12,11 +12,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authMock = vi.fn();
 const loadVillageMock = vi.fn();
+const loadResourcesMock = vi.fn();
 const searchMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/village/queries', () => ({
   loadVillage: (...a: unknown[]) => loadVillageMock(...a),
+}));
+vi.mock('~/lib/village/curated-resources', () => ({
+  loadCuratedResources: () => loadResourcesMock(),
 }));
 vi.mock('~/lib/village/search', () => ({
   searchActivitiesForSeason: (...a: unknown[]) => searchMock(...a),
@@ -55,6 +59,7 @@ describe('GET /api/mobile/village — season passthrough', () => {
     vi.resetModules();
     authMock.mockReset().mockResolvedValue({ user: { id: 'ext-1' } });
     loadVillageMock.mockReset().mockResolvedValue(VILLAGE);
+    loadResourcesMock.mockReset().mockResolvedValue([]);
   });
   afterEach(() => vi.unstubAllEnvs());
 

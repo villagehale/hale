@@ -340,6 +340,94 @@ describe('discoverForFamily', () => {
     expect(rows[2]?.seasons).toBeNull();
   });
 
+  it('persists the VERIFIED Places rating/count/place_id (fixed-point string), null when absent', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      { title: 'Rated venue', description: 'x', confidence: 0.6, coverageNote: 'serves area' },
+      { title: 'Unrated venue', description: 'y', confidence: 0.5, coverageNote: 'serves area' },
+    ]);
+    // First venue has a real Places rating; second resolves coords but no rating.
+    const geocode: DiscoverDeps['geocode'] = async (title) =>
+      title === 'Rated venue'
+        ? {
+            lat: 43.6,
+            lng: -79.4,
+            venueName: 'Rated venue',
+            venueAddress: '1 Rd',
+            placeId: 'places/ABC',
+            rating: 4.6,
+            ratingCount: 128,
+          }
+        : { lat: 43.7, lng: -79.5, venueName: 'Unrated venue', venueAddress: '2 Rd' };
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client, geocode));
+
+    const rows = capture.villageCandidates as Record<string, unknown>[];
+    // numeric(2,1) takes a fixed-point STRING on insert (mirrors costUsd).
+    expect(rows[0]?.rating).toBe('4.6');
+    expect(rows[0]?.ratingCount).toBe(128);
+    expect(rows[0]?.placeId).toBe('places/ABC');
+    // No Places rating → null (the card renders NO stars, never a fabricated 0).
+    expect(rows[1]?.rating).toBeNull();
+    expect(rows[1]?.ratingCount).toBeNull();
+    expect(rows[1]?.placeId).toBeNull();
+  });
+
+  it('persists the honest model attribute hints (price/age/indoor), null when the model omitted them', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient([
+      {
+        title: 'Free outdoor splash pad',
+        description: 'x',
+        priceBand: 'free',
+        ageRange: '2–6 years',
+        indoorOutdoor: 'outdoor',
+        confidence: 0.7,
+        coverageNote: 'serves area',
+      },
+      {
+        // The model expressed unknown as explicit null — must persist as null, not error.
+        title: 'Unclassified group',
+        description: 'y',
+        priceBand: null,
+        ageRange: null,
+        indoorOutdoor: null,
+        confidence: 0.5,
+        coverageNote: 'serves area',
+      },
+    ]);
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    const rows = capture.villageCandidates as Record<string, unknown>[];
+    expect(rows[0]?.priceLevel).toBe('free');
+    expect(rows[0]?.ageRange).toBe('2–6 years');
+    expect(rows[0]?.indoorOutdoor).toBe('outdoor');
+    expect(rows[1]?.priceLevel).toBeNull();
+    expect(rows[1]?.ageRange).toBeNull();
+    expect(rows[1]?.indoorOutdoor).toBeNull();
+  });
+
   it('records a FAILED agent_runs row and rethrows when the model returns no tool call (rule #8)', async () => {
     const capture: InsertCapture = {
       villageCandidates: [],
@@ -441,15 +529,21 @@ describe('discoverForFamily', () => {
       // for a child DOB or the precise family home (rule #1).
       expect(Object.keys(row).sort()).toEqual(
         [
+          'ageRange',
           'cadence',
           'childId',
           'confidence',
           'coverageNote',
           'eventDate',
           'familyId',
+          'indoorOutdoor',
           'kind',
           'lat',
           'lng',
+          'placeId',
+          'priceLevel',
+          'rating',
+          'ratingCount',
           'runType',
           'searchSeason',
           'seasons',
@@ -756,6 +850,9 @@ describe('candidatesSchema — model null tolerance (season-search 500)', () => 
           eventDate: null,
           seasons: null,
           sourceUrl: null,
+          priceBand: null,
+          ageRange: null,
+          indoorOutdoor: null,
           confidence: 0.8,
           coverageNote: 'library site',
         },
@@ -763,5 +860,70 @@ describe('candidatesSchema — model null tolerance (season-search 500)', () => 
     });
     expect(parsed.candidates[0]?.eventDate ?? null).toBeNull();
     expect(parsed.candidates[0]?.seasons ?? null).toBeNull();
+    // The new attribute fields accept an explicit null too (season-search lesson).
+    expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
+    expect(parsed.candidates[0]?.ageRange ?? null).toBeNull();
+    expect(parsed.candidates[0]?.indoorOutdoor ?? null).toBeNull();
+  });
+
+  it('degrades an out-of-vocab attribute token to null instead of killing the run', async () => {
+    // The attribute-level season-search lesson: the model inventing 'cheap-ish'
+    // or 'mixed' must cost that FIELD, not the whole discovery run (which would
+    // bypass recordRun('failed') entirely).
+    const { candidatesSchema } = await import('./discover.js');
+    const parsed = candidatesSchema.parse({
+      candidates: [
+        {
+          title: 'Community centre open gym',
+          description: 'drop-in play',
+          priceBand: 'cheap-ish',
+          indoorOutdoor: 'mixed',
+          confidence: 0.6,
+          coverageNote: 'city site',
+        },
+      ],
+    });
+    expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
+    expect(parsed.candidates[0]?.indoorOutdoor ?? null).toBeNull();
+  });
+
+  it('accepts the attribute fields when the model DID supply them', async () => {
+    const { candidatesSchema } = await import('./discover.js');
+    const parsed = candidatesSchema.parse({
+      candidates: [
+        {
+          title: 'Outdoor splash pad',
+          description: 'free summer water play',
+          priceBand: 'free',
+          ageRange: '2–6 years',
+          indoorOutdoor: 'outdoor',
+          confidence: 0.7,
+          coverageNote: 'city site',
+        },
+      ],
+    });
+    expect(parsed.candidates[0]?.priceBand).toBe('free');
+    expect(parsed.candidates[0]?.ageRange).toBe('2–6 years');
+    expect(parsed.candidates[0]?.indoorOutdoor).toBe('outdoor');
+  });
+
+  it('never lets an out-of-vocab price band SURVIVE the parse (degrade, not persist)', async () => {
+    // The honesty property the old reject-semantics guarded, restated for the
+    // degrade behavior: the invented token must not reach the vocabulary — it
+    // becomes null (chip hidden), never a rendered raw string.
+    const { candidatesSchema } = await import('./discover.js');
+    const parsed = candidatesSchema.parse({
+      candidates: [
+        {
+          title: 'x',
+          description: 'y',
+          priceBand: 'cheap-ish',
+          confidence: 0.5,
+          coverageNote: 'z',
+        },
+      ],
+    });
+    expect(parsed.candidates[0]?.priceBand ?? null).toBeNull();
+    expect(JSON.stringify(parsed)).not.toContain('cheap-ish');
   });
 });

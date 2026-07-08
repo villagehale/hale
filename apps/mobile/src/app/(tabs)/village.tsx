@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, Share, View } from 'react-native';
 
+import { ResourcesRail } from '@/components/hale/resources-rail';
 import { TypingDots } from '@/components/hale/typing-dots';
 import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
@@ -565,6 +566,11 @@ function VillageBody({
           setSeasons(new Set(s));
         }}
       />
+
+      {/* The Resources rail is directory-style reference data — it belongs on the
+          standing feed only (not a season search), and the server only sends
+          `resources` on the standing read. Renders nothing when absent/empty. */}
+      {searchSeason === null ? <ResourcesRail resources={data.resources} /> : null}
 
       <AppText variant="meta" className="mt-2 text-center">
         Recommendations use your coarse area only — never your exact address. Data stays in Canada.

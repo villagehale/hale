@@ -24,8 +24,14 @@ const BIAS_RADIUS_METERS = 30000;
 /** Only the fields we persist — keeps the response (and any log) minimal.
  * websiteUri is a Places "Pro" SKU field; we request it so a candidate without
  * an LLM-supplied source_url can link straight to the venue's real site rather
- * than a Google search fallback. */
-const FIELD_MASK = 'places.location,places.displayName,places.formattedAddress,places.websiteUri';
+ * than a Google search fallback. `id`, `rating`, and `userRatingCount` are the
+ * enrichment fields the metadata build renders: the stable Places id (for a
+ * future re-enrichment by id) and the venue's PUBLIC rating + count — surfaced
+ * ONLY when Places actually returns them (no fabrication). rating/count bill
+ * under the Enterprise SKU (as does websiteUri, already in the mask — the call
+ * was Enterprise-billed before them); the mask stays tight to bound cost. */
+const FIELD_MASK =
+  'places.id,places.location,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount';
 
 export interface GeocodeResult {
   lat: number;
@@ -35,6 +41,14 @@ export interface GeocodeResult {
   /** The venue's public website, when Places has one — the real
    * details/registration URL we prefer over a Google-search fallback. */
   website?: string;
+  /** The stable Google Places id for this venue — stored so a future
+   * re-enrichment can look it up by id rather than re-geocoding. */
+  placeId?: string;
+  /** The venue's PUBLIC Google rating (0.0–5.0), when Places has one. Undefined
+   * when Places returns none — the card then shows NO rating (never a placeholder). */
+  rating?: number;
+  /** How many public ratings the average rests on, when Places has it. */
+  ratingCount?: number;
 }
 
 /** Centroid used to bias a venue lookup toward the family's coarse area. Always
@@ -64,10 +78,13 @@ export function buildTextQuery(title: string, areaCoarse: string): string {
 /** Shape we read out of the Places Text Search (New) response. */
 interface PlacesResponse {
   places?: Array<{
+    id?: string;
     location?: { latitude?: number; longitude?: number };
     displayName?: { text?: string };
     formattedAddress?: string;
     websiteUri?: string;
+    rating?: number;
+    userRatingCount?: number;
   }>;
 }
 
@@ -83,6 +100,11 @@ function parseFirstPlace(raw: unknown): GeocodeResult | null {
     venueName: place?.displayName?.text ?? '',
     venueAddress: place?.formattedAddress ?? '',
     website: place?.websiteUri,
+    placeId: place?.id,
+    // Only surface a rating Places actually returned — never a default/placeholder.
+    rating: typeof place?.rating === 'number' ? place.rating : undefined,
+    ratingCount:
+      typeof place?.userRatingCount === 'number' ? place.userRatingCount : undefined,
   };
 }
 
@@ -151,19 +173,52 @@ export function defaultGeocodeClient(): GeocodeClient {
           },
         };
       }
-      const res = await fetch(PLACES_TEXT_SEARCH_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': FIELD_MASK,
-        },
-        body: JSON.stringify(body),
-      });
+      const res = await fetchOnceRetryingTransient(apiKey, body);
       if (!res.ok) {
         throw new Error(`places searchText failed: ${res.status}`);
       }
       return res.json();
     },
   };
+}
+
+/** Statuses worth one more attempt: a transient Google-side blip. A 4xx (bad key,
+ * quota exhausted, invalid argument) is deterministic — retrying only wastes a
+ * call and risks a storm, so it fails fast. */
+function isTransient(status: number): boolean {
+  return status >= 500;
+}
+
+/**
+ * One Places call, with a SINGLE retry on a transient (5xx / network) failure —
+ * cost discipline: never a retry storm. A 4xx fails immediately (a bad/invalid
+ * key won't heal on a retry); a resolved 5xx or a thrown network error gets one
+ * more shot, then the caller's guard degrades the enrichment to null.
+ */
+const PLACES_ATTEMPT_TIMEOUT_MS = 10_000;
+
+async function fetchOnceRetryingTransient(
+  apiKey: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const doFetch = () =>
+    fetch(PLACES_TEXT_SEARCH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+      // Bounded per attempt: a hung Places request must not stall the whole
+      // discovery Promise.all until the platform kills the function.
+      signal: AbortSignal.timeout(PLACES_ATTEMPT_TIMEOUT_MS),
+    });
+  try {
+    const res = await doFetch();
+    if (res.ok || !isTransient(res.status)) return res;
+  } catch {
+    // A network throw is transient — fall through to the single retry.
+  }
+  return doFetch();
 }

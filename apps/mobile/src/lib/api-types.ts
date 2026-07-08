@@ -163,6 +163,15 @@ export interface VillageCandidateView {
   lat: number | null;
   lng: number | null;
   venueName: string | null;
+  /** The venue's PUBLIC Google rating (0.0–5.0) + count, set ONLY when Places had
+   * a real value (never fabricated). Null → no rating shown. Null on teen rows. */
+  rating: number | null;
+  ratingCount: number | null;
+  /** Honest, presence-gated attribute chips (price band / age hint / indoor-outdoor);
+   * null → no chip. Null on teen-redacted rows (rule #1). */
+  priceLevel: string | null;
+  ageRange: string | null;
+  indoorOutdoor: string | null;
   teenAttributed: boolean;
 }
 
@@ -184,6 +193,17 @@ export interface RoutineProposalView {
 export interface VillageData {
   candidates: VillageCandidateView[];
   routine: RoutineProposalView | null;
+}
+
+/** A hand-verified public local resource for the Village "Resources" rail (mirrors
+ * web CuratedResourceView). Family-agnostic reference data — no PII (rule #1). */
+export interface CuratedResourceView {
+  id: string;
+  name: string;
+  category: string;
+  area: string;
+  url: string;
+  description: string;
 }
 
 // ── plan (from apps/web lib/plan/week) ────────────────────────────────────────
@@ -278,7 +298,12 @@ export interface MobileCompanionResponse {
   recentLogs: RecentLogView[];
 }
 
-export type MobileVillageResponse = VillageData;
+/** The Village tab response: VillageData plus the optional Resources rail. Present
+ * only on the standing feed (a directory is not season-scoped); an older client
+ * that ignores `resources` still reads candidates/routine. */
+export interface MobileVillageResponse extends VillageData {
+  resources?: CuratedResourceView[];
+}
 
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true). */
 export interface MobileSavedResponse {

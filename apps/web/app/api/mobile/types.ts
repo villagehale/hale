@@ -13,6 +13,7 @@ import type { PlanCatalogView } from '~/lib/plan/catalog';
 import type { NotificationPref, NotificationPrefsView } from '~/lib/settings/notification-prefs';
 import type { PushPref } from '~/lib/settings/push-notification-prefs';
 import type { PushPrefsView } from '~/lib/push/prefs';
+import type { CuratedResourceView } from '~/lib/village/curated-resources';
 import type { RoutineProposalView, VillageCandidateView } from '~/lib/village/mappers';
 import type { VillageData } from '~/lib/village/queries';
 
@@ -41,7 +42,13 @@ export interface MobileCompanionResponse {
   recentLogs: RecentLogView[];
 }
 
-export type MobileVillageResponse = VillageData;
+/** The Village tab: the family's candidates + routine (VillageData), plus the
+ * curated Resources rail. `resources` is additive + optional: it is present only on
+ * the standing feed read (a directory is not season-scoped, so a season search
+ * omits it), and an older client that ignores it still reads candidates/routine. */
+export interface MobileVillageResponse extends VillageData {
+  resources?: CuratedResourceView[];
+}
 
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true),
  * newest-save-first. Reuses the same teen-redacted view shape as the feed. */

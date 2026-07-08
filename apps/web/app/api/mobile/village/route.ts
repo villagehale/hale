@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { loadCuratedResources } from '~/lib/village/curated-resources';
 import { loadVillage } from '~/lib/village/queries';
 import { SEASONS, type Season } from '~/lib/village/visibility';
 import type { MobileVillageResponse } from '../types';
@@ -29,8 +30,13 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const season = seasonParam(req);
-  const body: MobileVillageResponse = await (season
-    ? loadVillage({ searchSeason: season })
-    : loadVillage());
+  // A season SEARCH read omits the Resources rail — the directory is not
+  // season-scoped, so it belongs only on the standing feed.
+  if (season) {
+    const searchBody: MobileVillageResponse = await loadVillage({ searchSeason: season });
+    return NextResponse.json(searchBody);
+  }
+  const [village, resources] = await Promise.all([loadVillage(), loadCuratedResources()]);
+  const body: MobileVillageResponse = { ...village, resources };
   return NextResponse.json(body);
 }
