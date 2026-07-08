@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   approveResult,
+  approvedPostState,
   buildActionRequest,
   declineResult,
   parseDraftResponse,
@@ -70,5 +71,23 @@ describe('declineResult', () => {
     expect(declineResult(202)).toBe('error');
     expect(declineResult(404)).toBe('error');
     expect(declineResult(500)).toBe('error');
+  });
+});
+
+describe('approvedPostState — honest post-approval copy', () => {
+  it('tells the parent Hale is on it for a wired executor (email / digest / routine)', () => {
+    expect(approvedPostState('send_email')).toBe('Approved — Hale is on it.');
+    expect(approvedPostState('reply_to_email')).toBe('Approved — Hale is on it.');
+    expect(approvedPostState('add_to_digest_only')).toBe('Approved — Hale is on it.');
+    expect(approvedPostState('add_to_routine')).toBe('Approved — Hale is on it.');
+  });
+
+  it('never fakes success for an unwired executor — calendar waits for the integration', () => {
+    const line = 'Approved — Hale will handle this as integrations come online.';
+    expect(approvedPostState('create_calendar_event')).toBe(line);
+    expect(approvedPostState('update_calendar_event')).toBe(line);
+    expect(approvedPostState('place_supply_order')).toBe(line);
+    // An unknown action type fails closed to the honest "coming online" line.
+    expect(approvedPostState('some_future_type')).toBe(line);
   });
 });

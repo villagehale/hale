@@ -3,6 +3,7 @@ import type { RecentLogView } from '~/lib/companion/recent-logs';
 import type { ApprovalView } from '~/lib/dashboard/approvals';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
+import type { MessageView } from '~/lib/messages/mappers';
 import type { PlanChildItem } from '~/lib/plan/week';
 import type { NotificationPref, NotificationPrefsView } from '~/lib/settings/notification-prefs';
 import type { RoutineProposalView, VillageCandidateView } from '~/lib/village/mappers';
@@ -46,6 +47,10 @@ export interface MobileFamilyResponse {
 
 export interface MobileApprovalsResponse {
   approvals: ApprovalView[];
+}
+
+export interface MobileMessagesResponse {
+  messages: MessageView[];
 }
 
 export interface MobileLogResponse {

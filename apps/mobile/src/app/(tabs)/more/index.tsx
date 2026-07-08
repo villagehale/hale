@@ -37,6 +37,12 @@ const SECTIONS: { items: MenuItem[] }[] = [
         icon: 'checkmark.circle',
         href: '/more/approvals',
       },
+      {
+        label: 'Messages',
+        detail: "Hale's notes to you",
+        icon: 'envelope',
+        href: '/more/messages',
+      },
     ],
   },
   {
@@ -63,9 +69,10 @@ const SECTIONS: { items: MenuItem[] }[] = [
   },
 ];
 
-/** A small orange count pill for the Approvals row — surfaced only when actions
- * are actually waiting. Orange stays scarce: this is one of the few status marks
- * that earns the accent. */
+/** A small orange count pill for the Approvals and Messages rows — surfaced only
+ * when actions are actually waiting (both rows show the same pending count; the
+ * drafted rows appear in the feed too). Orange stays scarce: this is one of the
+ * few status marks that earns the accent. */
 function CountBadge({ count }: { count: number }) {
   return (
     <View className="h-6 min-w-6 items-center justify-center rounded-full bg-accent px-2">
@@ -158,7 +165,11 @@ export default function MoreScreen() {
               key={item.label}
               item={item}
               last={i === section.items.length - 1}
-              badge={item.href === '/more/approvals' ? pendingCount : undefined}
+              badge={
+                item.href === '/more/approvals' || item.href === '/more/messages'
+                  ? pendingCount
+                  : undefined
+              }
               onPress={() => activate(item)}
             />
           ))}
