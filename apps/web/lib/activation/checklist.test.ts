@@ -31,7 +31,7 @@ describe('deriveActivationSteps', () => {
     expect(stepDone({ ...NONE, acceptedCandidateCount: 3 }, 'plan')).toBe(true);
   });
 
-  it('marks "ask Concierge" done only when a user message exists in the thread', () => {
+  it('marks "ask Hale" done only when a user message exists in the thread', () => {
     expect(stepDone({ ...NONE, hasUserCoachMessage: false }, 'coach')).toBe(false);
     expect(stepDone({ ...NONE, hasUserCoachMessage: true }, 'coach')).toBe(true);
   });

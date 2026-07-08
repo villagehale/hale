@@ -353,7 +353,7 @@ function EmptyState({
     <div className="mx-auto flex max-w-[34rem] flex-col items-center gap-6 py-12 text-center sm:py-16">
       <div className="space-y-3">
         <p className="font-display text-balance text-[clamp(2.3rem,4.4vw,3.75rem)] font-semibold leading-[1.04] tracking-[-0.02em]">
-          your family <span className="text-apricot-deep">concierge</span>
+          your parenting <span className="text-apricot-deep">co-pilot</span>
         </p>
         <p className="text-slate-green text-lg leading-relaxed">
           one ongoing conversation, grounded in your family. I answer in plain language and cite the
@@ -692,10 +692,10 @@ function CompactSurface({
     return (
       <div className="panel space-y-4">
         <p className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
-          ask your concierge anything.
+          ask Hale anything.
         </p>
         <output className="dev-preview-banner">
-          Sign in to ask your concierge. In this preview the ask box is read-only — no question is sent.
+          Sign in to ask Hale. In this preview the ask box is read-only — no question is sent.
         </output>
       </div>
     );
@@ -708,7 +708,7 @@ function CompactSurface({
           htmlFor={inputId}
           className="font-display text-[1.75rem] lg:text-[2.5rem] leading-tight"
         >
-          ask your concierge anything.
+          ask Hale anything.
         </label>
         <textarea
           ref={inputRef}
@@ -815,7 +815,7 @@ function FullSurface({
       {/* The page's sole heading. The empty state shows a large editorial invite,
           but once the conversation starts that invite is gone — so /coach carries a
           persistent visually-hidden h1 so the document is never headingless. */}
-      <h1 className="sr-only">Concierge</h1>
+      <h1 className="sr-only">Hale</h1>
       {/* Quiet header — the conversation's scope + a secondary search, never a box
           stacked above the chat. Hidden until there's history to scope or search. */}
       {!isEmpty ? (
@@ -905,7 +905,7 @@ function FullSurface({
             </div>
           ) : (
             <output className="dev-preview-banner">
-              Sign in to ask your concierge. In this preview the thread is read-only — no question is sent.
+              Sign in to ask Hale. In this preview the thread is read-only — no question is sent.
             </output>
           )}
         </div>
@@ -934,7 +934,7 @@ function Composer({
   return (
     <div className="composer-shell">
       <label htmlFor="coach-input" className="sr-only">
-        ask your concierge
+        ask Hale
       </label>
       <textarea
         ref={inputRef}
@@ -958,7 +958,7 @@ function Composer({
         type="button"
         onClick={() => ask(draft)}
         disabled={pending || draft.trim().length === 0}
-        aria-label={pending ? 'thinking' : 'ask your concierge'}
+        aria-label={pending ? 'thinking' : 'ask Hale'}
         className={`composer-send cursor-pointer ${DISABLED_AFFORDANCE}`}
       >
         <ArrowUp aria-hidden size={20} />

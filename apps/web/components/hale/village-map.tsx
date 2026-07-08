@@ -39,16 +39,16 @@ const FALLBACK_ZOOM = 12;
 // renders classic markers without a Map ID, so adding one would silently disable
 // this styling.
 const HALE_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#f3ece0' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#3d4f49' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#f6f1e7' }] },
+  { elementType: 'geometry', stylers: [{ color: '#f4efe6' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#3a4a5c' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#faf7f1' }] },
   { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#fbf7ef' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e6dcc8' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#ecd9bd' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#dcc59c' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#fdfbf6' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#e9e1d2' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#eeddc5' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#ded0b0' }] },
   { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#d7e0cd' }] },
   { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#5b6b54' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#bcd0cf' }] },
@@ -151,7 +151,7 @@ export function VillageMap({
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
-            style={{ background: '#efe6d3', mixBlendMode: 'multiply', opacity: 0.5 }}
+            style={{ background: '#f1eadb', mixBlendMode: 'multiply', opacity: 0.5 }}
           />
         ) : null}
         {status !== 'ready' ? (

@@ -60,7 +60,7 @@ describe('AskHaleThread — full surface', () => {
 
     // The composer textarea exists and is wired to its (sr-only) label.
     expect(html).toMatch(/<textarea[^>]*id="coach-input"/);
-    expect(html).toMatch(/<label[^>]*for="coach-input"[^>]*>\s*ask your concierge\s*<\/label>/);
+    expect(html).toMatch(/<label[^>]*for="coach-input"[^>]*>\s*ask Hale\s*<\/label>/);
     // It sits in the pinned composer bar (solid canvas + top seam), not a
     // translucent floating overlay.
     expect(html).toContain('sticky bottom-0');

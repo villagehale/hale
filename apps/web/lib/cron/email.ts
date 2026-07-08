@@ -36,7 +36,7 @@ function renderHtml(body: string, unsubscribeUrl: string): string {
     .filter((block) => block.length > 0)
     .map(
       (block) =>
-        `<p style="margin:0 0 16px;color:#01204F;font-size:16px;line-height:1.6;">${escapeHtml(
+        `<p style="margin:0 0 16px;color:#003153;font-size:16px;line-height:1.6;">${escapeHtml(
           block,
         ).replace(/\n/g, '<br/>')}</p>`,
     )
@@ -48,7 +48,7 @@ function renderHtml(body: string, unsubscribeUrl: string): string {
   )}<br/>You're receiving this because you have a Hale account. <a href="${escapeHtml(
     unsubscribeUrl,
   )}" style="color:#6b6357;">Unsubscribe from daily briefs</a>.</p>`;
-  return `<div style="font-family:Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif;background:#f6f1e7;padding:24px;">${paragraphs}${footer}</div>`;
+  return `<div style="font-family:Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif;background:#faf7f1;padding:24px;">${paragraphs}${footer}</div>`;
 }
 
 /** Plain-text counterpart of the CASL footer, for the text/plain part. */

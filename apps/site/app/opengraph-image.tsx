@@ -17,7 +17,7 @@ export default function OpengraphImage() {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          backgroundColor: '#01204F',
+          backgroundColor: '#003153',
           padding: 88,
           fontFamily: 'sans-serif',
         }}
@@ -28,10 +28,10 @@ export default function OpengraphImage() {
               width: 52,
               height: 52,
               borderRadius: 9999,
-              backgroundColor: '#c8622d',
+              backgroundColor: '#f97316',
             }}
           />
-          <div style={{ fontSize: 40, color: '#f6f1e7', fontWeight: 600 }}>
+          <div style={{ fontSize: 40, color: '#faf7f1', fontWeight: 600 }}>
             Hale
           </div>
         </div>
@@ -39,7 +39,7 @@ export default function OpengraphImage() {
           <div
             style={{
               fontSize: 76,
-              color: '#f6f1e7',
+              color: '#faf7f1',
               fontWeight: 700,
               letterSpacing: -1.5,
               lineHeight: 1.04,
@@ -47,7 +47,7 @@ export default function OpengraphImage() {
           >
             The village every parent needs
           </div>
-          <div style={{ fontSize: 32, color: 'rgba(246,241,231,0.74)' }}>
+          <div style={{ fontSize: 32, color: 'rgba(250,247,241,0.74)' }}>
             Find what families near you actually do. Your data stays in Canada.
           </div>
         </div>

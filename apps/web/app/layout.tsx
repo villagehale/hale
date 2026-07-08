@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#01204F',
+  themeColor: '#003153',
 };
 
 // Runs before first paint: sets the .dark class from the stored preference (so the

@@ -16,11 +16,11 @@ const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
 const VERIFY_SUBJECT = 'confirm your email for Hale';
 const RESET_SUBJECT = 'reset your Hale password';
 
-const PRUSSIAN = '#01204F';
-const LINEN = '#f6f1e7';
-const APRICOT = '#c8622d';
-const APRICOT_DEEP = '#a84e20';
-const SLATE_GREEN = '#33486b';
+const PRUSSIAN = '#003153';
+const LINEN = '#faf7f1';
+const APRICOT = '#f97316';
+const APRICOT_DEEP = '#c2410c';
+const SLATE_GREEN = '#47587a';
 const FADED_SAGE = '#5b6b86';
 const FONT_STACK = "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
 
@@ -85,7 +85,7 @@ function renderHtml(url: string, copy: EmailCopy): string {
 
   const card = `<tr><td style="padding:28px 8px 0;">${para(copy.lead)}${button}${para(copy.expiry)}</td></tr>`;
 
-  const footer = `<tr><td style="padding:28px 8px 0;"><hr style="border:none;border-top:1px solid rgba(1,32,79,0.12);margin:0 0 14px;"/><p style="margin:0;color:${FADED_SAGE};font-size:12px;line-height:1.6;">Sent by ${escapeHtml(
+  const footer = `<tr><td style="padding:28px 8px 0;"><hr style="border:none;border-top:1px solid rgba(0,49,83,0.12);margin:0 0 14px;"/><p style="margin:0;color:${FADED_SAGE};font-size:12px;line-height:1.6;">Sent by ${escapeHtml(
     SENDER_NAME,
   )} · ${escapeHtml(BUSINESS_ADDRESS)}</p></td></tr>`;
 

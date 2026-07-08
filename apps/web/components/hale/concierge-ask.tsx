@@ -18,9 +18,9 @@ export function ConciergeAsk({ canAsk, seed }: { canAsk: boolean; seed: ThreadSe
       <div className="flex items-center gap-3">
         <Icon as={MessageCircleHeart} size={20} className="text-apricot-deep" />
         <div>
-          <h2 className="eyebrow text-spruce">your concierge</h2>
+          <h2 className="eyebrow text-spruce">ask Hale</h2>
           <p className="meta mt-1 text-slate-green">
-            ask your concierge to refine your feed — or anything about your family
+            ask Hale to refine your feed — or anything about your family
           </p>
         </div>
       </div>

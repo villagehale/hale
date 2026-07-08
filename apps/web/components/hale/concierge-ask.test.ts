@@ -42,7 +42,7 @@ describe('ConciergeAsk — Ask Hale present as the concierge', () => {
 
   it('frames Ask Hale as the concierge (refine your feed), not the page hero', () => {
     const serialized = JSON.stringify(ConciergeAsk({ canAsk: true, seed: SEED }));
-    expect(serialized).toContain('your concierge');
+    expect(serialized).toContain('ask Hale');
     expect(serialized).toContain('refine your feed');
   });
 });
