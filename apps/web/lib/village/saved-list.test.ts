@@ -85,7 +85,11 @@ function fakeDb(opts: {
     acceptedChain,
   ];
   let call = 0;
-  const select = vi.fn().mockImplementation(() => chains[call++]());
+  const select = vi.fn().mockImplementation(() => {
+    const chain = chains[call++];
+    if (!chain) throw new Error(`fakeDb: unexpected select call #${call}`);
+    return chain();
+  });
   return { select } as never;
 }
 
