@@ -27,7 +27,22 @@ export async function loadCompanion(): Promise<ChildCompanionView[]> {
   const database = defaultDb();
   const familyId = await currentFamilyId(database);
   if (!familyId) return [];
+  return companionForFamily(familyId, database);
+}
 
+/**
+ * The per-child companion views for an EXPLICIT family — the session-less variant
+ * loadCompanion delegates to, so a cron (which has a familyId, not a session) reads
+ * the same age-derived health items + done markers without duplicating the query.
+ * Every read is keyed on familyId (rule #1: family-scoped); teen redaction is the
+ * caller's job on the derived view, since the raw DOB is needed here to derive the
+ * schedule.
+ */
+export async function companionForFamily(
+  familyId: string,
+  database: Database,
+  now: Date = new Date(),
+): Promise<ChildCompanionView[]> {
   const rows = await database
     .select({
       id: schema.children.id,
@@ -44,7 +59,7 @@ export async function loadCompanion(): Promise<ChildCompanionView[]> {
     id: row.id,
     ...companionForChild(
       { dateOfBirth: row.dateOfBirth, name: row.name },
-      new Date(),
+      now,
       doneForChild(doneByChild, row.id),
     ),
   }));

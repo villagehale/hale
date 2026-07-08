@@ -358,3 +358,25 @@ export interface MobileSettingsUpdateRequest {
 export interface MobileSettingsUpdateResponse {
   status: 'updated';
 }
+
+// ── push notifications (GET + PATCH /api/mobile/settings/notifications) ────────
+
+export type PushPref = 'pushNewPicks' | 'pushHealthReminders';
+
+export interface PushPrefsView {
+  pushNewPicks: boolean;
+  pushHealthReminders: boolean;
+}
+
+export interface MobilePushPrefsResponse {
+  notifications: PushPrefsView;
+}
+
+export interface MobilePushPrefsUpdateRequest {
+  pref: PushPref;
+  enabled: boolean;
+}
+
+export interface MobilePushPrefsUpdateResponse {
+  status: 'updated';
+}

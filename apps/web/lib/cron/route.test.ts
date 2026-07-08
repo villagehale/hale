@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const runDigestCronMock = vi.fn();
 const runDiscoveryCronMock = vi.fn();
 const runInferenceCronMock = vi.fn();
+const runPushRemindersCronMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
@@ -33,6 +34,9 @@ vi.mock('~/lib/cron/discovery', () => ({
 vi.mock('~/lib/cron/inference', () => ({
   runInferenceCron: (...a: unknown[]) => runInferenceCronMock(...a),
 }));
+vi.mock('~/lib/cron/push-reminders', () => ({
+  runPushRemindersCron: (...a: unknown[]) => runPushRemindersCronMock(...a),
+}));
 
 const SECRET = 'cron-secret-xyz';
 
@@ -47,6 +51,11 @@ const ROUTES = [
   { name: 'digest', path: '~/app/api/cron/digest/route', mock: runDigestCronMock },
   { name: 'discovery', path: '~/app/api/cron/discovery/route', mock: runDiscoveryCronMock },
   { name: 'inference', path: '~/app/api/cron/inference/route', mock: runInferenceCronMock },
+  {
+    name: 'push-reminders',
+    path: '~/app/api/cron/push-reminders/route',
+    mock: runPushRemindersCronMock,
+  },
 ] as const;
 
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
@@ -55,6 +64,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runDigestCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runDiscoveryCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
+    runPushRemindersCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     dbMock.mockReset().mockReturnValue({});
   });
 

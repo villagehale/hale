@@ -7,6 +7,8 @@ import type { FamilyMembersView } from '~/lib/dashboard/family-members';
 import type { MessageView } from '~/lib/messages/mappers';
 import type { PlanChildItem } from '~/lib/plan/week';
 import type { NotificationPref, NotificationPrefsView } from '~/lib/settings/notification-prefs';
+import type { PushPref } from '~/lib/settings/push-notification-prefs';
+import type { PushPrefsView } from '~/lib/push/prefs';
 import type { RoutineProposalView, VillageCandidateView } from '~/lib/village/mappers';
 import type { VillageData } from '~/lib/village/queries';
 
@@ -156,5 +158,25 @@ export interface MobileSettingsUpdateRequest {
 }
 
 export interface MobileSettingsUpdateResponse {
+  status: 'updated';
+}
+
+// ── push notifications (GET + PATCH /api/mobile/settings/notifications) ────────
+//
+// The two PUSH streams the native app controls (distinct from the daily-brief
+// email above): new village picks + health reminders. Both default on (the
+// absence of a notification_prefs row), so a GET on a never-touched account
+// returns both true.
+
+export interface MobilePushPrefsResponse {
+  notifications: PushPrefsView;
+}
+
+export interface MobilePushPrefsUpdateRequest {
+  pref: PushPref;
+  enabled: boolean;
+}
+
+export interface MobilePushPrefsUpdateResponse {
   status: 'updated';
 }
