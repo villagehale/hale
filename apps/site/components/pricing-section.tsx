@@ -36,7 +36,7 @@ export function PricingSection() {
         <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
           Joining the village, seeing what families near you recommend, asking Hale, sharing what
           you love — free, always, every stage and every child. The paid tiers are for when you want
-          the concierge to do more of the work itself. Each is a little less monthly when you pay
+          Hale to do more of the work itself. Each is a little less monthly when you pay
           yearly — about two months free.
         </p>
       </div>

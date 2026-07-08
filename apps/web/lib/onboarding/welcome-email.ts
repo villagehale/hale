@@ -26,15 +26,15 @@ const LINKS = {
 } as const;
 
 /* Brand palette, mirroring apps/site's design system (globals.css) and the
- * waitlist email: Spruce/Prussian #01204F ink + night band, Linen #f6f1e7
- * canvas, Apricot #c8622d as the warm large-graphic/fill accent, Apricot-deep
- * #a84e20 as the text-safe accent (used for the step labels), Slate-green body
+ * waitlist email: Spruce/Prussian #003153 ink + night band, Linen #faf7f1
+ * canvas, Apricot #f97316 as the warm large-graphic/fill accent, Apricot-deep
+ * #c2410c as the text-safe accent (used for the step labels), Slate-green body
  * text, Faded-sage footer meta. Inline styles only — most portable for email. */
-const PRUSSIAN = '#01204F';
-const LINEN = '#f6f1e7';
-const APRICOT = '#c8622d';
-const APRICOT_DEEP = '#a84e20';
-const SLATE_GREEN = '#33486b';
+const PRUSSIAN = '#003153';
+const LINEN = '#faf7f1';
+const APRICOT = '#f97316';
+const APRICOT_DEEP = '#c2410c';
+const SLATE_GREEN = '#47587a';
 const FADED_SAGE = '#5b6b86';
 const FONT_STACK = "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
 
@@ -99,7 +99,7 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
   const step = (n: number, href: string, lead: string, label: string) =>
     `<tr><td style="padding:0 0 12px;"><a href="${escapeHtml(
       href,
-    )}" style="display:block;text-decoration:none;background:${LINEN};border:1px solid rgba(1,32,79,0.10);border-radius:12px;padding:14px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="34" valign="top" style="color:${APRICOT_DEEP};font-size:18px;font-weight:700;line-height:1.4;">${n}</td><td style="color:${PRUSSIAN};font-size:16px;line-height:1.4;"><span style="font-weight:600;">${escapeHtml(
+    )}" style="display:block;text-decoration:none;background:${LINEN};border:1px solid rgba(0,49,83,0.10);border-radius:12px;padding:14px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="34" valign="top" style="color:${APRICOT_DEEP};font-size:18px;font-weight:700;line-height:1.4;">${n}</td><td style="color:${PRUSSIAN};font-size:16px;line-height:1.4;"><span style="font-weight:600;">${escapeHtml(
       lead,
     )}</span><br/><span style="color:${APRICOT_DEEP};font-size:14px;font-weight:600;">${escapeHtml(
       label,
@@ -133,7 +133,7 @@ function renderHtml(firstName: string | null, unsubscribeUrl: string): string {
 
   const card = `<tr><td style="padding:28px 8px 0;">${intro}${steps}${outro}</td></tr>`;
 
-  const footer = `<tr><td style="padding:28px 8px 0;"><hr style="border:none;border-top:1px solid rgba(1,32,79,0.12);margin:0 0 14px;"/><p style="margin:0;color:${FADED_SAGE};font-size:12px;line-height:1.6;">Sent by ${escapeHtml(
+  const footer = `<tr><td style="padding:28px 8px 0;"><hr style="border:none;border-top:1px solid rgba(0,49,83,0.12);margin:0 0 14px;"/><p style="margin:0;color:${FADED_SAGE};font-size:12px;line-height:1.6;">Sent by ${escapeHtml(
     SENDER_NAME,
   )} · ${escapeHtml(
     BUSINESS_ADDRESS,

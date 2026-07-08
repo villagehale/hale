@@ -28,7 +28,7 @@ export default async function OpengraphImage({
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          backgroundColor: '#01204F',
+          backgroundColor: '#003153',
           padding: 88,
           fontFamily: 'sans-serif',
         }}
@@ -39,16 +39,16 @@ export default async function OpengraphImage({
               width: 52,
               height: 52,
               borderRadius: 9999,
-              backgroundColor: '#c8622d',
+              backgroundColor: '#f97316',
             }}
           />
-          <div style={{ fontSize: 36, color: '#f6f1e7', fontWeight: 600 }}>Hale · Milestones</div>
+          <div style={{ fontSize: 36, color: '#faf7f1', fontWeight: 600 }}>Hale · Milestones</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div
             style={{
               fontSize: 64,
-              color: '#f6f1e7',
+              color: '#faf7f1',
               fontWeight: 700,
               letterSpacing: -1.5,
               lineHeight: 1.08,
@@ -56,7 +56,7 @@ export default async function OpengraphImage({
           >
             {headline}
           </div>
-          <div style={{ fontSize: 28, color: 'rgba(246,241,231,0.74)' }}>
+          <div style={{ fontSize: 28, color: 'rgba(250,247,241,0.74)' }}>
             A picture of typical, from the CDC — general guidance, not a test.
           </div>
         </div>

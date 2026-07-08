@@ -6,9 +6,9 @@ export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 export const alt = 'this week with Hale';
 
-const PRUSSIAN = '#01204F';
-const LINEN = '#f6f1e7';
-const APRICOT = '#c8622d';
+const PRUSSIAN = '#003153';
+const LINEN = '#faf7f1';
+const APRICOT = '#f97316';
 
 /**
  * Public share card (rule #1). Loads the SAME privacy-safe `loadSharedWeekPlan`

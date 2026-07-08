@@ -218,7 +218,7 @@ function ChildPanel({ child }: { child: ChildCompanionView }) {
             ))}
           </ul>
           <Link href={`/coach?child=${child.id}`} className="btn-ghost">
-            ask your concierge about <span data-hale-pii>{child.name ?? 'your child'}</span> →
+            ask Hale about <span data-hale-pii>{child.name ?? 'your child'}</span> →
           </Link>
         </div>
       </div>

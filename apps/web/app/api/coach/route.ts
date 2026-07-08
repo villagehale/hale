@@ -34,7 +34,7 @@ const bodySchema = z.object({
 export async function POST(req: Request) {
   if (!authConfigured()) {
     return NextResponse.json(
-      { error: 'auth_required', detail: 'sign in to ask your concierge' },
+      { error: 'auth_required', detail: 'sign in to ask Hale' },
       { status: 501 },
     );
   }

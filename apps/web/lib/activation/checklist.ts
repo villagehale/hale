@@ -39,7 +39,7 @@ export function deriveActivationSteps(signals: ActivationSignals): ActivationSte
       done: villageDone,
     },
     { id: 'plan', label: 'add your first activity to your week', href: '/village', done: planDone },
-    { id: 'coach', label: 'ask Concierge a question', href: '/coach', done: coachDone },
+    { id: 'coach', label: 'ask Hale a question', href: '/coach', done: coachDone },
     { id: 'invite', label: 'invite a parent you trust', href: '/family', done: inviteDone },
   ];
 }

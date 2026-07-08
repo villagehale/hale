@@ -33,8 +33,8 @@ export function AuthShell({ heading, children }: PropsWithChildren<{ heading: st
             The <span className="text-apricot-deep">village</span> every parent needs.
           </p>
           <p className="mt-6 text-lg leading-relaxed text-on-spruce-soft">
-            Real recommendations from real families near you, with a calm AI concierge that finds
-            and organizes it all — for every stage of childhood.
+            Real recommendations from real families near you, with Hale, a calm AI co-pilot that
+            finds and organizes it all — for every stage of childhood.
           </p>
         </div>
         <p className="text-on-spruce-faint text-sm">Hale · the village every parent needs</p>

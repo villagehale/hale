@@ -74,8 +74,8 @@ export default function PrivacyPage() {
             record — feeds, naps, milestones, and similar notes about your child&rsquo;s routine.
           </li>
           <li>
-            <strong>Concierge conversations and derived memory.</strong> The questions you ask your
-            Concierge and its answers, plus a structured memory of facts and patterns Hale infers
+            <strong>Hale conversations and derived memory.</strong> The questions you ask
+            Hale and its answers, plus a structured memory of facts and patterns Hale infers
             from your family&rsquo;s activity (for example, a usual nap window or a stated preference)
             so it can be more helpful over time.
           </li>
@@ -198,7 +198,7 @@ export default function PrivacyPage() {
             data is coarse and non-identifying (no child data, no message content) — we capture only
             a few key product steps. Session replay is on so we can understand and fix problems, but
             every typed value (names, dates of birth, email, address) and all personal data shown on
-            screen — child names and ages, the health and activity timeline, and Concierge
+            screen — child names and ages, the health and activity timeline, and Hale
             conversations — is <strong>masked</strong> before the recording leaves your browser.
             Error tracking captures unhandled errors (a stack trace, not your data) so we can fix
             them. Autocapture stays off, and we identify you by an opaque account id, never your name
@@ -286,7 +286,7 @@ export default function PrivacyPage() {
       <LegalSectionBlock id="casl" title="Email and electronic messages (CASL)">
         <p>
           We send you email that is necessary to run your account — such as security notices and the
-          updates and digests you ask Concierge to prepare. If we ever send commercial electronic
+          updates and digests you ask Hale to prepare. If we ever send commercial electronic
           messages, we do so only with your consent, we identify ourselves, and every such message
           includes a clear, working way to unsubscribe. You can opt out of non-essential messages at
           any time without affecting your account.

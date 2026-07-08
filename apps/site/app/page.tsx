@@ -396,16 +396,16 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      {/* ── 5 · Trust, earned slowly — the concierge ────────────────────── */}
+      {/* ── 5 · Trust, earned slowly — Hale, the AI ─────────────────────── */}
       <section id="how" className="shell pb-20 lg:pb-28">
         <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">The concierge, trust earned slowly</span>
+          <span className="eyebrow">Hale, trust earned slowly</span>
           <h2 className="mt-3">The AI that powers it never acts until you say so.</h2>
           <p
             className="mt-5 text-lg"
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
-            The village is the moat; the concierge is how it gets done. It finds,
+            The village is the moat; Hale is how it gets done. It finds,
             organizes, and — only once you’ve let it — handles the small tasks.
             Autonomy is grown, never assumed.
           </p>
