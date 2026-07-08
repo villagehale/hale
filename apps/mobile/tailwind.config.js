@@ -35,7 +35,7 @@ module.exports = {
         sans: ["Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "monospace"],
       },
-      borderRadius: { sm: "8px", md: "14px", lg: "16px", xl: "18px" },
+      borderRadius: { sm: "10px", md: "16px", lg: "24px", xl: "28px" },
       letterSpacing: { display: "-0.02em", eyebrow: "0.12em" },
     },
   },

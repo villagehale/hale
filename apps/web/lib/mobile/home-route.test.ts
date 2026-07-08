@@ -75,15 +75,32 @@ describe('GET /api/mobile/home', () => {
     expect(loadCompanionMock).not.toHaveBeenCalled();
   });
 
-  it('returns the composed loader output for a signed-in parent', async () => {
-    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+  it('returns the composed loader output plus the signed-in viewer', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1', name: 'Jordan Reyes' } });
 
     const res = await callGet();
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ children: CHILDREN, village: VILLAGE, members: MEMBERS });
+    expect(await res.json()).toEqual({
+      children: CHILDREN,
+      village: VILLAGE,
+      members: MEMBERS,
+      viewer: { name: 'Jordan Reyes' },
+    });
     expect(loadCompanionMock).toHaveBeenCalledTimes(1);
     expect(loadVillageMock).toHaveBeenCalledTimes(1);
     expect(loadFamilyMembersMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('greets by the viewer, not the primary-parent slot, for a co-parent', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-2', name: 'Jordan Reyes' } });
+
+    const res = await callGet();
+    const body = (await res.json()) as { members: typeof MEMBERS; viewer: { name: string | null } };
+
+    // members.primary is Ada; the signed-in co-parent is Jordan — greeting must
+    // read Jordan (the viewer), never Ada (the primary slot).
+    expect(body.members.primary?.name).toBe('Ada');
+    expect(body.viewer.name).toBe('Jordan Reyes');
   });
 });

@@ -28,6 +28,11 @@ export async function GET(): Promise<Response> {
     loadFamilyMembers(),
   ]);
 
-  const body: MobileHomeResponse = { children, village, members };
+  const body: MobileHomeResponse = {
+    children,
+    village,
+    members,
+    viewer: { name: session.user.name ?? null },
+  };
   return NextResponse.json(body);
 }

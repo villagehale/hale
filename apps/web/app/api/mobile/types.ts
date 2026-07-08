@@ -20,6 +20,9 @@ export interface MobileHomeResponse {
   children: ChildCompanionView[];
   village: VillageData;
   members: FamilyMembersView;
+  /** The signed-in parent — greet by THIS name, not members.primary (which is the
+   * primary-parent slot and reads wrong for a co-parent). */
+  viewer: { name: string | null };
 }
 
 export interface MobileCompanionResponse {

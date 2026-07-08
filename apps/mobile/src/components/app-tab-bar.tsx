@@ -6,14 +6,18 @@ import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { useMeadowColor } from '@/constants/meadow';
 
-type TabMeta = { label: string; icon: IconName };
+type TabMeta = { label: string; icon: IconName; activeIcon: IconName };
 
 const TABS: Record<string, TabMeta> = {
-  index: { label: 'Home', icon: 'house.fill' },
-  companion: { label: 'Companion', icon: 'figure.2.and.child.holdinghands' },
-  ask: { label: 'Concierge', icon: 'sparkles' },
-  village: { label: 'Village', icon: 'map.fill' },
-  more: { label: 'More', icon: 'ellipsis' },
+  index: { label: 'Home', icon: 'house', activeIcon: 'house.fill' },
+  companion: {
+    label: 'Companion',
+    icon: 'figure.2.and.child.holdinghands',
+    activeIcon: 'figure.2.and.child.holdinghands',
+  },
+  ask: { label: 'Hale', icon: 'sparkles', activeIcon: 'sparkles' },
+  village: { label: 'Village', icon: 'map', activeIcon: 'map.fill' },
+  more: { label: 'More', icon: 'ellipsis', activeIcon: 'ellipsis' },
 };
 
 export function AppTabBar({ state, navigation }: BottomTabBarProps) {
@@ -52,7 +56,11 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
             className="flex-1 items-center justify-end gap-1 pb-1 active:opacity-80"
           >
             <View>
-              <Icon name={meta.icon} size={22} color={isFocused ? activeTint : inactiveTint} />
+              <Icon
+                name={isFocused ? meta.activeIcon : meta.icon}
+                size={22}
+                color={isFocused ? activeTint : inactiveTint}
+              />
             </View>
             <AppText
               variant="meta"

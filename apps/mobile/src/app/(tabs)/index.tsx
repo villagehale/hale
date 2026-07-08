@@ -30,22 +30,28 @@ function firstVillageRec(candidates: VillageCandidateView[]): VillageCandidateVi
   return candidates.find((c) => !c.teenAttributed) ?? null;
 }
 
+/** "Good evening, Alex" — the time-of-day phrase, warmed with the SIGNED-IN
+ * parent's first name (the viewer, not the primary-parent slot, so a co-parent
+ * sees their own name). Falls back to the bare phrase for a name-less account. */
+function homeGreeting(viewer: MobileHomeResponse['viewer']): string {
+  const firstName = viewer.name?.trim().split(/\s+/)[0];
+  return firstName ? `${timeGreeting()}, ${firstName}` : timeGreeting();
+}
+
 function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () => void }) {
   const askIconColor = useMeadowColor('ink3');
   const rec = firstVillageRec(data.village.candidates);
   const [logKind, setLogKind] = useState<LogKind | null>(null);
   const hasChildren = data.children.length > 0;
+  const greeting = homeGreeting(data.viewer);
 
   return (
     <>
       <View className="flex-row items-center justify-between pt-2">
-        <AppText variant="display">{timeGreeting()}</AppText>
-        <View className="flex-row items-center gap-2">
-          <LogoMark size={26} />
-          <AppText variant="title" className="text-sea">
-            Hale
-          </AppText>
-        </View>
+        <AppText variant="display" className="flex-1 pr-3">
+          {greeting}
+        </AppText>
+        <LogoMark size={30} />
       </View>
 
       {hasChildren ? (
@@ -60,6 +66,7 @@ function HomeBody({ data, onLogged }: { data: MobileHomeResponse; onLogged: () =
           <Pill
             label="Milestone"
             icon="star.fill"
+            accent
             className="flex-1"
             onPress={() => setLogKind('milestone')}
           />
