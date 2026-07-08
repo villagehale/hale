@@ -28,6 +28,7 @@ const SF_TO_IONICON: Record<string, IoniconName> = {
   book: 'book-outline',
   calendar: 'calendar',
   checkmark: 'checkmark',
+  envelope: 'mail-outline',
   'checkmark.circle': 'checkmark-circle',
   'arrow.up.right.square': 'open-outline',
   'person.2': 'people',

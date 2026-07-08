@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -5,6 +6,7 @@ import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { ApiError, api } from '@/lib/api-client';
 import type { ChildCompanionView, MobileCompanionResponse } from '@/lib/api-types';
+import { whenPhrase } from '@/lib/format';
 import type { QuickLogMatch } from '@/lib/quick-log-detect';
 import { useApi } from '@/lib/use-api';
 
@@ -38,8 +40,7 @@ function summarise(match: QuickLogMatch): string {
  * (an amountless feed, a durationless nap, a bare milestone) fall back to a small
  * sensible default so a one-tap log always writes a valid row; the parent can
  * refine it later from the Companion timeline. */
-function buildBody(match: QuickLogMatch, childId: string): Record<string, unknown> {
-  const occurredAt = new Date().toISOString();
+function buildBody(match: QuickLogMatch, childId: string, occurredAt: string): Record<string, unknown> {
   if (match.kind === 'feed') {
     return { kind: 'feed', childId, amountMl: match.amountMl ?? 120, occurredAt };
   }
@@ -47,6 +48,32 @@ function buildBody(match: QuickLogMatch, childId: string): Record<string, unknow
     return { kind: 'nap', childId, durationMin: match.durationMin ?? 30, occurredAt };
   }
   return { kind: 'milestone', childId, milestone: match.milestone ?? 'Milestone', occurredAt };
+}
+
+const KIND_LABEL: Record<QuickLogMatch['kind'], string> = {
+  feed: 'Feed',
+  nap: 'Nap',
+  milestone: 'Milestone',
+};
+
+/** One `{ label, value }` line per field the log ACTUALLY captured — the kind and
+ * the real logged time always, plus a detail ONLY when the parser lifted it from
+ * the parent's words (an amount, a duration, a milestone). A field the parser
+ * missed (and the write defaulted) is deliberately NOT shown, so the card never
+ * claims the parent said something they didn't. */
+function loggedRows(match: QuickLogMatch, occurredAt: string): { label: string; value: string }[] {
+  const rows = [
+    { label: 'Kind', value: KIND_LABEL[match.kind] },
+    { label: 'Time', value: whenPhrase(occurredAt) },
+  ];
+  if (match.kind === 'feed' && match.amountMl !== undefined) {
+    rows.push({ label: 'Amount', value: `${match.amountMl}ml` });
+  } else if (match.kind === 'nap' && match.durationMin !== undefined) {
+    rows.push({ label: 'Duration', value: `${match.durationMin}min` });
+  } else if (match.kind === 'milestone' && match.milestone) {
+    rows.push({ label: 'Detail', value: match.milestone });
+  }
+  return rows;
 }
 
 function ChildPicker({
@@ -89,6 +116,7 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [loggedAt, setLoggedAt] = useState<string | null>(null);
 
   const childId = selectedId ?? kids[0]?.id ?? null;
   const label = summarise(match);
@@ -101,11 +129,15 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
     }
     setStatus('saving');
     setError(null);
+    // The same instant is written AND displayed — the logged card shows the real
+    // occurredAt, never a re-derived "now" that would drift from the row.
+    const occurredAt = new Date().toISOString();
     try {
       await api('/api/mobile/companion/log', {
         method: 'POST',
-        body: JSON.stringify(buildBody(match, childId)),
+        body: JSON.stringify(buildBody(match, childId, occurredAt)),
       });
+      setLoggedAt(occurredAt);
       setStatus('logged');
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
@@ -116,12 +148,38 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
 
   if (status === 'dismissed') return null;
 
-  if (status === 'logged') {
+  if (status === 'logged' && loggedAt) {
+    // The structured confirm (mockup screen 2): the rows the log actually captured
+    // + a link to the Companion timeline where the row now lives. No fabricated
+    // fields — loggedRows shows only what the parser lifted.
+    const rows = loggedRows(match, loggedAt);
     return (
-      <View className="mb-3 max-w-[92%] self-end rounded-lg border border-rule bg-sage-tint px-4 py-3">
-        <AppText variant="meta" className="text-sage">
-          ✓ Logged {label}
+      <View className="mb-3 max-w-[92%] self-end gap-2 rounded-lg border border-rule bg-sage-tint px-4 py-3.5">
+        <AppText variant="meta" className="uppercase tracking-eyebrow text-sage">
+          ✓ Logged
         </AppText>
+        <View className="gap-1.5">
+          {rows.map((row) => (
+            <View key={row.label} className="flex-row items-baseline justify-between gap-3">
+              <AppText variant="meta" className="text-ink-3">
+                {row.label}
+              </AppText>
+              <AppText variant="body" className="flex-1 text-right text-ink">
+                {row.value}
+              </AppText>
+            </View>
+          ))}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View recent logs in Companion"
+          onPress={() => router.push('/companion')}
+          className="mt-0.5 self-start active:opacity-80"
+        >
+          <AppText variant="meta" className="text-accent underline">
+            View recent logs
+          </AppText>
+        </Pressable>
       </View>
     );
   }

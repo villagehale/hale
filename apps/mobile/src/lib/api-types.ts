@@ -229,6 +229,36 @@ export interface MobileApprovalsResponse {
   approvals: ApprovalView[];
 }
 
+// ── messages (from apps/web lib/messages/mappers) ─────────────────────────────
+
+export type MessageKind = 'digest' | 'action';
+
+export type MessageActionState =
+  | 'drafted_for_approval'
+  | 'autonomous'
+  | 'needs_human'
+  | 'reverted';
+
+export interface MessageView {
+  id: string;
+  kind: MessageKind;
+  /** Short eyebrow — "Daily brief" for a digest, the action category for an action. */
+  eyebrow: string;
+  /** The note's one line: the digest brief prose, or the lifecycle framing. */
+  body: string;
+  /** The family-zone timestamp the row is stamped with. */
+  when: string;
+  /** For an action row: the lifecycle state, so a drafted row navigates to Approvals
+   * (mirrors web; absent on a digest row). */
+  actionState?: MessageActionState;
+  /** True when the action's content is redacted for a 13+ teen (rule #1). */
+  teenRedacted?: boolean;
+}
+
+export interface MobileMessagesResponse {
+  messages: MessageView[];
+}
+
 // ── family write (POST /api/mobile/family) ────────────────────────────────────
 
 export interface EditChildRequest {
