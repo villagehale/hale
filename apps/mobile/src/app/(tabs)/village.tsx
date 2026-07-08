@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
+import { Platform, Pressable, Share, View } from 'react-native';
 
 import { TypingDots } from '@/components/hale/typing-dots';
 import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
@@ -9,6 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
+import { Sheet } from '@/components/ui/sheet';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
@@ -18,8 +19,11 @@ import { useApi } from '@/lib/use-api';
 import {
   CADENCE_OPTIONS,
   type CadenceFilter,
+  SEASON_FILTER_KEYS,
+  type SeasonFilterKey,
+  activeFilterCount,
+  applyFilters,
   cadenceChip,
-  filterByCadence,
 } from '@/lib/village-filter';
 import {
   type DiscoverResult,
@@ -32,39 +36,149 @@ import {
 
 const STANDING_PATH = '/api/mobile/village';
 
-function CadenceRow({
-  value,
-  onSelect,
+/** A selectable pill (a filter chip) inside the Filters sheet. */
+function FilterChip({
+  label,
+  active,
+  onPress,
 }: {
-  value: CadenceFilter;
-  onSelect: (c: CadenceFilter) => void;
+  label: string;
+  active: boolean;
+  onPress: () => void;
 }) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerClassName="gap-2 pr-5"
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Filter: ${label}`}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      className={`min-h-11 items-center justify-center rounded-full border px-4 py-2.5 ${
+        active ? 'border-ink bg-ink' : 'border-rule bg-card'
+      }`}
     >
-      {CADENCE_OPTIONS.map((option) => {
-        const active = option.value === value;
-        return (
+      <AppText variant="meta" className={`capitalize ${active ? 'text-on-ink' : 'text-ink-2'}`}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
+
+/**
+ * The Filters sheet: cadence chips + season chips that narrow the ALREADY-LOADED
+ * feed client-side (no request, no new location signal — rule #1). This is the
+ * loaded-feed FILTER, kept deliberately distinct from the season SEARCH (a separate
+ * LLM discovery run in SeasonSearch). Only these two honest axes are offered: kind
+ * is a single hardcoded value today and distance has no family centroid, so both are
+ * omitted rather than faked. Selections are staged locally and applied on "Show N
+ * results", so the count reflects the pending choice before the sheet closes.
+ */
+function FiltersSheet({
+  visible,
+  onClose,
+  cadence,
+  seasons,
+  resultCountFor,
+  onApply,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  cadence: CadenceFilter;
+  seasons: ReadonlySet<SeasonFilterKey>;
+  resultCountFor: (cadence: CadenceFilter, seasons: ReadonlySet<SeasonFilterKey>) => number;
+  onApply: (cadence: CadenceFilter, seasons: ReadonlySet<SeasonFilterKey>) => void;
+}) {
+  const [draftCadence, setDraftCadence] = useState<CadenceFilter>(cadence);
+  const [draftSeasons, setDraftSeasons] = useState<Set<SeasonFilterKey>>(new Set(seasons));
+
+  // Re-seed the draft from the applied filters each time the sheet opens.
+  const seed = () => {
+    setDraftCadence(cadence);
+    setDraftSeasons(new Set(seasons));
+  };
+
+  const toggleSeason = (s: SeasonFilterKey) => {
+    setDraftSeasons((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  };
+
+  const count = resultCountFor(draftCadence, draftSeasons);
+  const anyActive = activeFilterCount(draftCadence, draftSeasons) > 0;
+
+  return (
+    <Sheet
+      visible={visible}
+      onClose={() => {
+        // Discard an unapplied draft on dismiss — the applied filters stand.
+        seed();
+        onClose();
+      }}
+    >
+      <View className="mb-4 flex-row items-center justify-between">
+        <AppText variant="title">Filters</AppText>
+        {anyActive ? (
           <Pressable
-            key={option.value}
             accessibilityRole="button"
-            accessibilityLabel={`Filter: ${option.label}`}
-            accessibilityState={active ? { selected: true } : {}}
-            onPress={() => onSelect(option.value)}
-            className={`min-h-11 items-center justify-center rounded-full border px-4 py-2.5 ${
-              active ? 'border-ink bg-ink' : 'border-rule bg-card'
-            }`}
+            accessibilityLabel="Clear all filters"
+            hitSlop={8}
+            onPress={() => {
+              setDraftCadence('all');
+              setDraftSeasons(new Set());
+            }}
+            className="active:opacity-70"
           >
-            <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
-              {option.label}
+            <AppText variant="meta" className="text-accent">
+              Clear all
             </AppText>
           </Pressable>
-        );
-      })}
-    </ScrollView>
+        ) : null}
+      </View>
+
+      <AppText variant="meta" className="mb-2 uppercase tracking-eyebrow text-ink-3">
+        Cadence
+      </AppText>
+      <View className="mb-5 flex-row flex-wrap gap-2">
+        {CADENCE_OPTIONS.map((option) => (
+          <FilterChip
+            key={option.value}
+            label={option.label}
+            active={draftCadence === option.value}
+            onPress={() => setDraftCadence(option.value)}
+          />
+        ))}
+      </View>
+
+      <AppText variant="meta" className="mb-2 uppercase tracking-eyebrow text-ink-3">
+        Season
+      </AppText>
+      <View className="mb-6 flex-row flex-wrap gap-2">
+        {SEASON_FILTER_KEYS.map((season) => (
+          <FilterChip
+            key={season}
+            label={season}
+            active={draftSeasons.has(season)}
+            onPress={() => toggleSeason(season)}
+          />
+        ))}
+      </View>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Show ${count} result${count === 1 ? '' : 's'}`}
+        onPress={() => {
+          onApply(draftCadence, draftSeasons);
+          onClose();
+        }}
+        className="min-h-12 items-center justify-center rounded-full bg-ink px-4 active:opacity-80"
+      >
+        <AppText variant="meta" className="text-on-ink">
+          Show {count} result{count === 1 ? '' : 's'}
+        </AppText>
+      </Pressable>
+    </Sheet>
   );
 }
 
@@ -245,7 +359,59 @@ function ShareRow({ shareHref }: { shareHref: string }) {
   );
 }
 
-function RecCard({ rec, onOpen }: { rec: VillageCandidateView; onOpen: (rec: VillageCandidateView) => void }) {
+/** A compact private-save (bookmark) toggle for the RecCard. The save is PRIVATE
+ * and low-commitment — it neither enrolls nor sends for approval (rule #4), so it
+ * reads as a bookmark, never as Accept. Optimistic: the tapped state wins over the
+ * server's until the feed refreshes. A 401 is swallowed (api() redirects). */
+function SaveToggle({ rec, onChanged }: { rec: VillageCandidateView; onChanged: () => void }) {
+  const [saved, setSaved] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inkIcon = useMeadowColor('ink2');
+  const accentIcon = useMeadowColor('accentFill');
+  const isSaved = saved ?? rec.saved;
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      const { saved: nowSaved } = await api<{ saved: boolean }>(rec.saveHref, { method: 'POST' });
+      setSaved(nowSaved);
+      onChanged();
+    } catch (e) {
+      // A 401 already redirected to sign-in; any other error just leaves the state.
+      if (e instanceof ApiError && e.status === 401) return;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={isSaved ? `Saved ${rec.title}` : `Save ${rec.title} — I'm interested`}
+      accessibilityState={{ selected: isSaved, disabled: busy }}
+      disabled={busy}
+      hitSlop={8}
+      onPress={toggle}
+      className={busy ? 'opacity-50' : 'active:opacity-70'}
+    >
+      <Icon
+        name={isSaved ? 'bookmark.fill' : 'bookmark'}
+        size={18}
+        color={isSaved ? accentIcon : inkIcon}
+      />
+    </Pressable>
+  );
+}
+
+function RecCard({
+  rec,
+  onOpen,
+  onChanged,
+}: {
+  rec: VillageCandidateView;
+  onOpen: (rec: VillageCandidateView) => void;
+  onChanged: () => void;
+}) {
   if (rec.teenAttributed) {
     return (
       <Card className="gap-2">
@@ -258,20 +424,24 @@ function RecCard({ rec, onOpen }: { rec: VillageCandidateView; onOpen: (rec: Vil
   }
   return (
     <Card className="gap-2">
-      {/* The card body opens the detail sheet (accept / endorse / share / maps);
-          the inline ShareRow below stays as the untouched one-tap share. */}
+      {/* The bookmark sits OUTSIDE the body Pressable so tapping "save" doesn't also
+          open the sheet. The body opens the detail sheet (accept / endorse / share /
+          maps); the inline ShareRow below stays as the untouched one-tap share. */}
+      <View className="flex-row items-start justify-between gap-3">
+        <AppText variant="title" className="flex-1">
+          {rec.title}
+        </AppText>
+        <View className="flex-row items-center gap-2">
+          <Tag label={rec.kind} tone="coach" />
+          <SaveToggle rec={rec} onChanged={onChanged} />
+        </View>
+      </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Open ${rec.title}`}
         onPress={() => onOpen(rec)}
         className="gap-2 active:opacity-80"
       >
-        <View className="flex-row items-start justify-between gap-3">
-          <AppText variant="title" className="flex-1">
-            {rec.title}
-          </AppText>
-          <Tag label={rec.kind} tone="coach" />
-        </View>
         <View className="flex-row flex-wrap items-center gap-2">
           <CadenceChip cadence={rec.cadence} />
           <AppText variant="meta" className="text-ink-3">
@@ -310,33 +480,60 @@ function VillageBody({
   onRefresh: () => void;
 }) {
   const [cadence, setCadence] = useState<CadenceFilter>('all');
+  const [seasons, setSeasons] = useState<Set<SeasonFilterKey>>(new Set());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
-  const recs = useMemo(() => filterByCadence(data.candidates, cadence), [data.candidates, cadence]);
+  const recs = useMemo(
+    () => applyFilters(data.candidates, cadence, seasons),
+    [data.candidates, cadence, seasons],
+  );
   const hasAny = data.candidates.length > 0;
+  const filterCount = activeFilterCount(cadence, seasons);
+  const chevron = useMeadowColor('ink2');
+
+  const resultCountFor = useCallback(
+    (c: CadenceFilter, s: ReadonlySet<SeasonFilterKey>) => applyFilters(data.candidates, c, s).length,
+    [data.candidates],
+  );
 
   return (
     <>
       {hasAny && showFilter ? (
-        <View className="gap-2">
-          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-            Filter
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            filterCount > 0 ? `Filters, ${filterCount} active` : 'Filters'
+          }
+          accessibilityState={{ expanded: filtersOpen }}
+          onPress={() => setFiltersOpen(true)}
+          className="min-h-11 flex-row items-center gap-2 self-start rounded-full border border-rule bg-card px-4 py-2.5 active:opacity-80"
+        >
+          <Icon name="slider.horizontal.3" size={15} color={chevron} />
+          <AppText variant="meta" className="text-ink-2">
+            Filters
           </AppText>
-          <CadenceRow value={cadence} onSelect={setCadence} />
-        </View>
+          {filterCount > 0 ? (
+            <View className="h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5">
+              <AppText variant="meta" className="text-[11px] leading-none text-on-ink">
+                {filterCount}
+              </AppText>
+            </View>
+          ) : null}
+        </Pressable>
       ) : null}
 
       {recs.length === 0 ? (
         <Card className="mt-2 items-center gap-2 py-8">
           <AppText variant="title">
             {hasAny
-              ? 'Nothing in this filter'
+              ? 'Nothing in these filters'
               : searchSeason
                 ? 'No matches yet'
                 : 'Fresh picks coming'}
           </AppText>
           <AppText variant="meta" className="text-center">
             {hasAny
-              ? 'No activities match this cadence right now — try "all".'
+              ? 'No activities match these filters right now — try clearing them.'
               : searchSeason
                 ? `No ${searchSeason} activities found near you yet.`
                 : 'Your village refreshes with current, in-season activities. Check back soon.'}
@@ -345,7 +542,7 @@ function VillageBody({
       ) : (
         <View className="gap-3">
           {recs.map((rec) => (
-            <RecCard key={rec.id} rec={rec} onOpen={setOpenRec} />
+            <RecCard key={rec.id} rec={rec} onOpen={setOpenRec} onChanged={onRefresh} />
           ))}
         </View>
       )}
@@ -355,6 +552,18 @@ function VillageBody({
         visible={openRec !== null}
         onClose={() => setOpenRec(null)}
         onChanged={onRefresh}
+      />
+
+      <FiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        cadence={cadence}
+        seasons={seasons}
+        resultCountFor={resultCountFor}
+        onApply={(c, s) => {
+          setCadence(c);
+          setSeasons(new Set(s));
+        }}
       />
 
       <AppText variant="meta" className="mt-2 text-center">

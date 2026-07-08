@@ -274,6 +274,13 @@
       "when": 1781462040000,
       "tag": "0039_founding_and_active_days",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781462100000,
+      "tag": "0040_village_saves",
+      "breakpoints": true
     }
   ]
 }

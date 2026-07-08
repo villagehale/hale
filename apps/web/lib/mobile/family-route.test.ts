@@ -62,13 +62,21 @@ describe('GET /api/mobile/family', () => {
     expect(loadFamilyBasicsMock).not.toHaveBeenCalled();
   });
 
-  it('returns members and basics for a signed-in parent', async () => {
-    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+  it('returns members, basics, and the viewer (from THIS session) for a signed-in parent', async () => {
+    authMock.mockResolvedValue({
+      user: { id: 'ext-1', name: 'Beckett', email: 'beckett@hale.test' },
+    });
 
     const res = await callGet();
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ members: MEMBERS, basics: BASICS });
+    // The viewer identifies THIS account, not members.primary — the More profile
+    // header would read wrong for a co-parent otherwise.
+    expect(await res.json()).toEqual({
+      members: MEMBERS,
+      basics: BASICS,
+      viewer: { name: 'Beckett', email: 'beckett@hale.test' },
+    });
     expect(loadFamilyMembersMock).toHaveBeenCalledTimes(1);
     expect(loadFamilyBasicsMock).toHaveBeenCalledTimes(1);
   });

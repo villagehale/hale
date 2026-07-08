@@ -109,7 +109,10 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
       .select({
         id: schema.children.id,
         name: schema.children.name,
+        lastName: schema.children.lastName,
         dateOfBirth: schema.children.dateOfBirth,
+        gender: schema.children.gender,
+        interests: schema.children.interests,
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId))

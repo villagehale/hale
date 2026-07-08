@@ -40,6 +40,48 @@ export function filterByCadence(
   return candidates.filter((c) => c.cadence === wanted);
 }
 
+/** The four seasons a loaded row can carry. This FILTERS already-loaded rows
+ * client-side (no request, no LLM run) — distinct from the season SEARCH that
+ * triggers a fresh discovery run (village-search.ts). */
+export const SEASON_FILTER_KEYS = ['spring', 'summer', 'fall', 'winter'] as const;
+export type SeasonFilterKey = (typeof SEASON_FILTER_KEYS)[number];
+
+/**
+ * Narrow the loaded feed to a SET of selected seasons (client-side, over rows the
+ * server already visibility-filtered — no request, no new location signal, rule #1).
+ * An empty selection narrows nothing. A row matches when its `seasons` array overlaps
+ * the selection; a season-less row (one-time / ongoing / unclassified) is kept ONLY
+ * when no season is selected — a season filter is a positive narrow, so a season-less
+ * row can't satisfy it.
+ */
+export function filterBySeasons(
+  candidates: VillageCandidateView[],
+  selected: ReadonlySet<SeasonFilterKey>,
+): VillageCandidateView[] {
+  if (!Array.isArray(candidates)) return [];
+  if (selected.size === 0) return candidates;
+  return candidates.filter((c) => c.seasons?.some((s) => selected.has(s as SeasonFilterKey)));
+}
+
+/** Apply both filter axes (cadence, then seasons) in one pass — the loaded feed's
+ * client-side narrow behind the Filters sheet. */
+export function applyFilters(
+  candidates: VillageCandidateView[],
+  cadence: CadenceFilter,
+  seasons: ReadonlySet<SeasonFilterKey>,
+): VillageCandidateView[] {
+  return filterBySeasons(filterByCadence(candidates, cadence), seasons);
+}
+
+/** How many filter axes are active — drives the count badge on the Filters trigger.
+ * Cadence counts when it isn't "all"; seasons count as one axis when any is picked. */
+export function activeFilterCount(
+  cadence: CadenceFilter,
+  seasons: ReadonlySet<SeasonFilterKey>,
+): number {
+  return (cadence === 'all' ? 0 : 1) + (seasons.size > 0 ? 1 : 0);
+}
+
 /** A card's cadence → its chip treatment (label + tint classes). Meaning is carried
  * by label + shape, never colour alone (rule #1 / DESIGN.md). Mirrors web
  * CADENCE_PILL: seasonal = time-boxed (apricot tint), one-time = single event (sky),

@@ -1,5 +1,5 @@
 import type { schema } from '@hale/db';
-import type { OnboardingIntent, PlanTier } from '@hale/types';
+import type { ChildGender, OnboardingIntent, PlanTier } from '@hale/types';
 import { type FamilyStage, deriveStage, parseIntents } from '@hale/types';
 
 /**
@@ -22,7 +22,13 @@ const STAGE_LABEL: Record<FamilyStage, string> = {
 export interface FamilyChildBasics {
   id: string;
   name: string;
+  /** Optional family / last name, or null when not given (rule #1: sensitive). */
+  lastName: string | null;
   dateOfBirth: string;
+  /** The child's stored gender enum, so an edit form prefills it. */
+  gender: ChildGender;
+  /** Free-text interest tags driving discovery, so an edit form prefills them. */
+  interests: string[];
   stageLabel: string;
 }
 
@@ -50,7 +56,9 @@ export interface FamilyRowBasics extends FamilyLocationView {
 
 export function toFamilyBasics(
   family: FamilyRowBasics | null,
-  children: ReadonlyArray<Pick<ChildRow, 'id' | 'name' | 'dateOfBirth'>>,
+  children: ReadonlyArray<
+    Pick<ChildRow, 'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'interests'>
+  >,
   now: Date = new Date(),
 ): FamilyBasicsView {
   return {
@@ -66,7 +74,10 @@ export function toFamilyBasics(
     children: children.map((child) => ({
       id: child.id,
       name: child.name,
+      lastName: child.lastName,
       dateOfBirth: child.dateOfBirth,
+      gender: child.gender,
+      interests: child.interests,
       stageLabel: STAGE_LABEL[deriveStage(child.dateOfBirth, now)],
     })),
   };

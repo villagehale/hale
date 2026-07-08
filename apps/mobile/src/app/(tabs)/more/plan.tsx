@@ -1,13 +1,18 @@
-import { View } from 'react-native';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { Pressable, View } from 'react-native';
 
+import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
-import type { MobilePlanResponse } from '@/lib/api-types';
+import { useMeadowColor } from '@/constants/meadow';
+import type { MobilePlanResponse, VillageCandidateView } from '@/lib/api-types';
 import { useApi } from '@/lib/use-api';
 
 function SectionTitle({ children }: { children: string }) {
@@ -18,8 +23,10 @@ function SectionTitle({ children }: { children: string }) {
   );
 }
 
-function PlanBody({ data }: { data: MobilePlanResponse }) {
+function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: () => void }) {
   const { addedActivities, routine, childItems, hasPlan } = data;
+  const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
+  const chevron = useMeadowColor('ink3');
 
   if (!hasPlan) {
     return (
@@ -39,12 +46,25 @@ function PlanBody({ data }: { data: MobilePlanResponse }) {
           <SectionTitle>Added to your week</SectionTitle>
           <View className="gap-3">
             {addedActivities.map((activity) => (
-              <Card key={activity.id} className="gap-1">
-                <Tag label={activity.kind} tone="coach" />
-                <AppText variant="title" className="mt-1">
-                  {activity.title}
-                </AppText>
-              </Card>
+              // The added activity is a full VillageCandidateView (rich fields already
+              // in /api/mobile/plan), so it opens the SAME detail sheet as the feed.
+              <Pressable
+                key={activity.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${activity.title}`}
+                onPress={() => setOpenRec(activity)}
+                className="active:opacity-80"
+              >
+                <Card className="gap-1">
+                  <View className="flex-row items-start justify-between gap-3">
+                    <Tag label={activity.kind} tone="coach" />
+                    <Icon name="chevron.right" size={13} color={chevron} />
+                  </View>
+                  <AppText variant="title" className="mt-1">
+                    {activity.title}
+                  </AppText>
+                </Card>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -92,18 +112,32 @@ function PlanBody({ data }: { data: MobilePlanResponse }) {
                   </AppText>
                 </Card>
               ) : (
-                <Card key={item.key} className="gap-1">
-                  <View className="flex-row items-center justify-between">
-                    <Tag label={item.kindLabel} tone="coach" />
-                    <AppText variant="mono" className="text-ink-3">
-                      {item.childName}
+                // A per-child item is a shallow computed fold — there is no deeper
+                // view to fabricate, so the row links to the Companion tab where that
+                // child's full picture lives.
+                <Pressable
+                  key={item.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.what} — open Companion`}
+                  onPress={() => router.push('/companion')}
+                  className="active:opacity-80"
+                >
+                  <Card className="gap-1">
+                    <View className="flex-row items-center justify-between">
+                      <Tag label={item.kindLabel} tone="coach" />
+                      <View className="flex-row items-center gap-2">
+                        <AppText variant="mono" className="text-ink-3">
+                          {item.childName}
+                        </AppText>
+                        <Icon name="chevron.right" size={13} color={chevron} />
+                      </View>
+                    </View>
+                    <AppText variant="title" className="mt-1">
+                      {item.what}
                     </AppText>
-                  </View>
-                  <AppText variant="title" className="mt-1">
-                    {item.what}
-                  </AppText>
-                  <AppText variant="meta">{item.when}</AppText>
-                </Card>
+                    <AppText variant="meta">{item.when}</AppText>
+                  </Card>
+                </Pressable>
               ),
             )}
           </View>
@@ -112,6 +146,13 @@ function PlanBody({ data }: { data: MobilePlanResponse }) {
           </AppText>
         </View>
       ) : null}
+
+      <VillageDetailSheet
+        rec={openRec}
+        visible={openRec !== null}
+        onClose={() => setOpenRec(null)}
+        onChanged={onRefresh}
+      />
     </>
   );
 }
@@ -128,7 +169,7 @@ export default function PlanScreen() {
       </AppText>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? <PlanBody data={data} /> : null}
+      {status === 'ready' && data ? <PlanBody data={data} onRefresh={refresh} /> : null}
     </Screen>
   );
 }

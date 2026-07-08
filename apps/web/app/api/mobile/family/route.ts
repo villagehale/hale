@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import {
+  addChildAction,
   editChildAction,
   setLocationAction,
   setParentNameAction,
@@ -28,7 +29,14 @@ export async function GET(): Promise<Response> {
 
   const [members, basics] = await Promise.all([loadFamilyMembers(), loadFamilyBasics()]);
 
-  const body: MobileFamilyResponse = { members, basics };
+  // The viewer comes from THIS session, not members.primary — in a co-parent
+  // household the primary slot is the OTHER parent, so greeting/identifying by it
+  // reads wrong. Name/email are the account's own, never another member's.
+  const body: MobileFamilyResponse = {
+    members,
+    basics,
+    viewer: { name: session.user.name ?? null, email: session.user.email ?? null },
+  };
   return NextResponse.json(body);
 }
 
@@ -78,10 +86,27 @@ type DispatchResult =
 
 async function dispatch(body: MobileFamilyUpdateRequest): Promise<DispatchResult> {
   switch (body.action) {
+    case 'addChild': {
+      const result = await addChildAction({
+        name: body.name,
+        dateOfBirth: body.dateOfBirth,
+        lastName: body.lastName,
+        gender: body.gender,
+        interests: body.interests,
+      });
+      if (result.status === 'invalid') {
+        return { status: 'invalid', error: result.error };
+      }
+      // The web action reports 'added'; the mobile write contract is 'updated'.
+      return result.status === 'added' ? { status: 'updated' } : result;
+    }
     case 'editChild': {
       const result = await editChildAction(body.childId, {
         name: body.name,
         dateOfBirth: body.dateOfBirth,
+        lastName: body.lastName,
+        gender: body.gender,
+        interests: body.interests,
       });
       if (result.status === 'invalid') {
         return { status: 'invalid', error: result.error };

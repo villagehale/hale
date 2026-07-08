@@ -165,12 +165,15 @@ function familyDisplayName(name: string | null): string {
   return firstName ? `${firstName}'s family` : 'Your family';
 }
 
-/** The child fields the persist path needs: the source-of-truth columns only. */
+/** The child fields the persist path needs: the source-of-truth columns only.
+ * `interests` is optional — onboarding leaves it to the column default ([]); the
+ * Family page's add-child form threads the parent's typed interests through. */
 type ChildPersist = {
   name: string;
   lastName: string | null;
   dateOfBirth: string;
   gender: ChildGender;
+  interests?: string[];
 };
 
 async function writeChildren(

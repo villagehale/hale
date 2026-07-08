@@ -147,13 +147,17 @@ describe('addChildAction', () => {
     });
   });
 
-  it('provisions a family (the audited onboarding path) when the parent has none yet', async () => {
+  it('provisions a family (the audited onboarding path) when the parent has none yet, threading the typed interests through', async () => {
     vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
     vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: FAMILY_ID });
     const { tx } = makeTx([]);
     fakeDbHandle = txDb(tx);
 
-    const result = await addChildAction({ name: 'Robin', dateOfBirth: '2024-01-01' });
+    const result = await addChildAction({
+      name: 'Robin',
+      dateOfBirth: '2024-01-01',
+      interests: 'swimming, music',
+    });
 
     expect(result).toEqual({ status: 'added' });
     // Provisioning runs INSIDE the caller's transaction (it no longer owns its
@@ -162,8 +166,16 @@ describe('addChildAction', () => {
       (fakeDbHandle as { transaction: ReturnType<typeof vi.fn> }).transaction,
     ).toHaveBeenCalledTimes(1);
     expect(provisionAndWriteChildren).toHaveBeenCalledTimes(1);
+    // A first-time parent's typed interests must NOT vanish: they thread through
+    // the provisioning path onto the child, not just the existing-family path.
     expect(provisionAndWriteChildren).toHaveBeenCalledWith(tx, expect.anything(), [
-      { name: 'Robin', lastName: null, dateOfBirth: '2024-01-01', gender: 'unspecified' },
+      {
+        name: 'Robin',
+        lastName: null,
+        dateOfBirth: '2024-01-01',
+        gender: 'unspecified',
+        interests: ['swimming', 'music'],
+      },
     ]);
   });
 
@@ -190,21 +202,105 @@ describe('addChildAction', () => {
 
 describe('editChildAction', () => {
   it('updates a child scoped to the family and audits child_updated with before/after', async () => {
-    const before = { name: 'Robin', dateOfBirth: '2024-01-01' };
+    const before = {
+      name: 'Robin',
+      lastName: null,
+      dateOfBirth: '2024-01-01',
+      gender: 'unspecified',
+      interests: [],
+    };
     const { tx, inserts, updates } = makeTx([before]);
     fakeDbHandle = txDb(tx);
 
     const result = await editChildAction(CHILD_ID, { name: 'Robyn', dateOfBirth: '2024-02-02' });
 
     expect(result).toEqual({ status: 'updated' });
-    expect(valuesFor(updates, schema.children)).toEqual({ name: 'Robyn', dateOfBirth: '2024-02-02' });
+    // PARTIAL update: an edit that sends only name + DOB writes ONLY name + DOB.
+    // Absent optional keys must not become validated defaults — that would wipe
+    // gender/lastName/interests a parent set elsewhere (e.g. on mobile).
+    expect(valuesFor(updates, schema.children)).toEqual({
+      name: 'Robyn',
+      dateOfBirth: '2024-02-02',
+    });
     expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
       familyId: FAMILY_ID,
       actor: USER_ID,
       actionTaken: 'child_updated',
       targetId: CHILD_ID,
       before,
-      after: { name: 'Robyn', dateOfBirth: '2024-02-02' },
+      after: {
+        name: 'Robyn',
+        dateOfBirth: '2024-02-02',
+      },
+    });
+    const audited = valuesFor(inserts, schema.auditLog) as { after: Record<string, unknown> };
+    expect(audited.after).not.toHaveProperty('gender');
+    expect(audited.after).not.toHaveProperty('interests');
+  });
+
+  it('preserves stored gender/lastName/interests when the edit sends only name + DOB', async () => {
+    // The web /family rename flow sends exactly {name, dateOfBirth}. A child
+    // whose gender + interests were set on mobile must come through unwiped.
+    const before = {
+      name: 'Robin',
+      lastName: 'Vega',
+      dateOfBirth: '2024-01-01',
+      gender: 'girl',
+      interests: ['music', 'water play'],
+    };
+    const { tx, updates } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await editChildAction(CHILD_ID, { name: 'Robyn', dateOfBirth: '2024-01-01' });
+
+    expect(result).toEqual({ status: 'updated' });
+    const written = valuesFor(updates, schema.children) as Record<string, unknown>;
+    expect(written).toEqual({ name: 'Robyn', dateOfBirth: '2024-01-01' });
+    // The wipe would show up as explicit defaults here:
+    expect(written).not.toHaveProperty('gender');
+    expect(written).not.toHaveProperty('lastName');
+    expect(written).not.toHaveProperty('interests');
+  });
+
+  it('persists gender, lastName, and interests too — not just name + DOB (masked-input bug, CLAUDE.md #8)', async () => {
+    const before = {
+      name: 'Robin',
+      lastName: null,
+      dateOfBirth: '2024-01-01',
+      gender: 'unspecified',
+      interests: [],
+    };
+    const { tx, inserts, updates } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await editChildAction(CHILD_ID, {
+      name: 'Robyn',
+      lastName: 'Vega',
+      dateOfBirth: '2024-02-02',
+      gender: 'girl',
+      interests: 'swimming, music',
+    });
+
+    expect(result).toEqual({ status: 'updated' });
+    // The .set must write EVERY editable field the input carries — the old code
+    // silently dropped gender/lastName/interests.
+    expect(valuesFor(updates, schema.children)).toEqual({
+      name: 'Robyn',
+      lastName: 'Vega',
+      dateOfBirth: '2024-02-02',
+      gender: 'girl',
+      interests: ['swimming', 'music'],
+    });
+    // The audit after-snapshot reflects the full new state (rule #6).
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      actionTaken: 'child_updated',
+      after: {
+        name: 'Robyn',
+        lastName: 'Vega',
+        dateOfBirth: '2024-02-02',
+        gender: 'girl',
+        interests: ['swimming', 'music'],
+      },
     });
   });
 

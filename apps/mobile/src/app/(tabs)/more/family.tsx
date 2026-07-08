@@ -29,6 +29,22 @@ const ROLE_LABEL: Record<string, string> = {
   co_parent: 'Co-parent',
 };
 
+// Mirror of @hale/types CHILD_GENDERS — the native bundle can't import package code,
+// so the value/label pairs are hand-copied (same pattern as INTENT_LABEL). Gender is
+// OPTIONAL and sensitive (rule #1): 'unspecified' is the honest "prefer not to say".
+const GENDERS: { value: string; label: string }[] = [
+  { value: 'boy', label: 'Boy' },
+  { value: 'girl', label: 'Girl' },
+  { value: 'nonbinary', label: 'Non-binary' },
+  { value: 'unspecified', label: 'Prefer not to say' },
+];
+
+/** Joins an interests array back into the comma-separated field the form edits (and
+ * the server splits again with parseInterests). */
+function interestsToField(interests: string[]): string {
+  return interests.join(', ');
+}
+
 // Mirrored from @hale/types ONBOARDING_INTENTS — the intents come back as their
 // stored values; show the same labels the web wizard/settings use.
 const INTENT_LABEL: Record<string, string> = {
@@ -179,10 +195,49 @@ function ParentNameForm({ member, onSaved }: { member: MemberView; onSaved: () =
   );
 }
 
+/** A single-select chip row (gender). Selection is carried by label + fill, never
+ * colour alone (rule #1 / DESIGN.md). */
+function ChipSelect({
+  options,
+  value,
+  onSelect,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onSelect: (v: string) => void;
+}) {
+  return (
+    <View className="flex-row flex-wrap gap-2">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="button"
+            accessibilityLabel={option.label}
+            accessibilityState={{ selected: active }}
+            onPress={() => onSelect(option.value)}
+            className={`min-h-11 items-center justify-center rounded-full border px-4 py-2.5 ${
+              active ? 'border-ink bg-ink' : 'border-rule bg-card'
+            }`}
+          >
+            <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
+              {option.label}
+            </AppText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(child.name);
+  const [lastName, setLastName] = useState(child.lastName ?? '');
   const [dob, setDob] = useState(child.dateOfBirth);
+  const [gender, setGender] = useState(child.gender);
+  const [interests, setInterests] = useState(interestsToField(child.interests));
   const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -216,7 +271,17 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
     setSaving(true);
     setError(null);
     try {
-      await updateFamily({ action: 'editChild', childId: child.id, name, dateOfBirth: dob });
+      // Send EVERY editable field — the server now persists gender/lastName/interests
+      // (the masked-input bug that dropped them is fixed).
+      await updateFamily({
+        action: 'editChild',
+        childId: child.id,
+        name,
+        dateOfBirth: dob,
+        lastName,
+        gender,
+        interests,
+      });
       setEditing(false);
       onSaved();
     } catch (e) {
@@ -233,6 +298,13 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         value={name}
         onChangeText={setName}
         placeholder="Maya"
+        autoCapitalize="words"
+      />
+      <Field
+        label="Last name (optional)"
+        value={lastName}
+        onChangeText={setLastName}
+        placeholder="Rivera"
         autoCapitalize="words"
       />
       <View className="gap-1.5">
@@ -280,6 +352,20 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         )}
         <AppText variant="meta">Birthday sets the stage Hale tailors to.</AppText>
       </View>
+      <View className="gap-1.5">
+        <AppText variant="meta" className="text-ink-2">
+          Gender (optional)
+        </AppText>
+        <ChipSelect options={GENDERS} value={gender} onSelect={(g) => setGender(g as typeof gender)} />
+      </View>
+      <Field
+        label="Interests (optional)"
+        value={interests}
+        onChangeText={setInterests}
+        placeholder="swimming, music"
+        autoCapitalize="none"
+        hint="Comma-separated — helps Hale find local things."
+      />
       <FormError message={error} />
       <View className="flex-row gap-3">
         <Button label={saving ? 'Saving…' : 'Save changes'} onPress={save} className="flex-1" />
@@ -288,10 +374,149 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
           variant="secondary"
           onPress={() => {
             setName(child.name);
+            setLastName(child.lastName ?? '');
             setDob(child.dateOfBirth);
+            setGender(child.gender);
+            setInterests(interestsToField(child.interests));
             setShowPicker(false);
             setError(null);
             setEditing(false);
+          }}
+          className="flex-1"
+        />
+      </View>
+    </Card>
+  );
+}
+
+/** The add-a-child form: the SAME fields as edit, starting empty, dispatching the
+ * `addChild` action (the mobile route delegates to the audited addChildAction). A
+ * collapsed "Add a child" pill expands it. */
+function AddChildForm({ onSaved }: { onSaved: () => void }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [dob, setDob] = useState('');
+  const [gender, setGender] = useState('unspecified');
+  const [interests, setInterests] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const iconColor = useMeadowColor('ink3');
+
+  function reset() {
+    setName('');
+    setLastName('');
+    setDob('');
+    setGender('unspecified');
+    setInterests('');
+    setShowPicker(false);
+    setError(null);
+  }
+
+  if (!adding) {
+    return <Pill label="Add a child" icon="plus" onPress={() => setAdding(true)} />;
+  }
+
+  const onPickerChange = (event: DateTimePickerEvent, picked?: Date) => {
+    if (Platform.OS !== 'ios') setShowPicker(false);
+    if (event.type === 'set' && picked) setDob(toDobString(picked));
+  };
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateFamily({ action: 'addChild', name, dateOfBirth: dob, lastName, gender, interests });
+      reset();
+      setAdding(false);
+      onSaved();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="gap-4">
+      <SectionTitle>Add a child</SectionTitle>
+      <Field
+        label="Name or nickname"
+        value={name}
+        onChangeText={setName}
+        placeholder="Maya"
+        autoCapitalize="words"
+      />
+      <Field
+        label="Last name (optional)"
+        value={lastName}
+        onChangeText={setLastName}
+        placeholder="Rivera"
+        autoCapitalize="words"
+      />
+      <View className="gap-1.5">
+        <AppText variant="meta" className="text-ink-2">
+          Date of birth
+        </AppText>
+        {Platform.OS === 'web' ? (
+          <View className="min-h-11 justify-center rounded-md border border-rule bg-canvas px-4 py-3">
+            <AppText variant="body" className={dob ? 'text-ink' : 'text-ink-3'}>
+              {dob ? dobLabel(dob) : 'Pick a date (native only)'}
+            </AppText>
+          </View>
+        ) : (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={dob ? `Date of birth: ${dobLabel(dob)}. Tap to change.` : 'Pick a date of birth'}
+              accessibilityState={{ expanded: showPicker }}
+              onPress={() => setShowPicker((s) => !s)}
+              className="min-h-11 flex-row items-center justify-between rounded-md border border-rule bg-canvas px-4 py-3 active:opacity-80"
+            >
+              <AppText variant="body" className={dob ? 'text-ink' : 'text-ink-3'}>
+                {dob ? dobLabel(dob) : 'Pick a date'}
+              </AppText>
+              <Icon name={showPicker ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+            </Pressable>
+            {showPicker ? (
+              <View className="items-center">
+                <DateTimePicker
+                  value={dob ? parseDob(dob) : new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  maximumDate={new Date()}
+                  onChange={onPickerChange}
+                />
+              </View>
+            ) : null}
+          </>
+        )}
+        <AppText variant="meta">Birthday sets the stage Hale tailors to.</AppText>
+      </View>
+      <View className="gap-1.5">
+        <AppText variant="meta" className="text-ink-2">
+          Gender (optional)
+        </AppText>
+        <ChipSelect options={GENDERS} value={gender} onSelect={setGender} />
+      </View>
+      <Field
+        label="Interests (optional)"
+        value={interests}
+        onChangeText={setInterests}
+        placeholder="swimming, music"
+        autoCapitalize="none"
+        hint="Comma-separated — helps Hale find local things."
+      />
+      <FormError message={error} />
+      <View className="flex-row gap-3">
+        <Button label={saving ? 'Adding…' : 'Add child'} onPress={save} className="flex-1" />
+        <Button
+          label="Cancel"
+          variant="secondary"
+          onPress={() => {
+            reset();
+            setAdding(false);
           }}
           className="flex-1"
         />
@@ -417,6 +642,7 @@ function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: ()
             <ChildCard key={child.id} child={child} onSaved={onSaved} />
           ))
         )}
+        <AddChildForm onSaved={onSaved} />
       </View>
 
       <View className="gap-2">

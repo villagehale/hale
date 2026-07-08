@@ -34,6 +34,12 @@ export interface MobileCompanionResponse {
 
 export type MobileVillageResponse = VillageData;
 
+/** The More → Saved screen: the family's privately-saved candidates (all saved:true),
+ * newest-save-first. Reuses the same teen-redacted view shape as the feed. */
+export interface MobileSavedResponse {
+  candidates: VillageCandidateView[];
+}
+
 export interface MobilePlanResponse {
   addedActivities: VillageCandidateView[];
   routine: RoutineProposalView | null;
@@ -44,6 +50,10 @@ export interface MobilePlanResponse {
 export interface MobileFamilyResponse {
   members: FamilyMembersView;
   basics: FamilyBasicsView;
+  /** The signed-in parent (from THIS session), so the More profile header identifies
+   * the viewer — members.primary reads wrong for a co-parent. Name may be null; email
+   * always resolves from the account. */
+  viewer: { name: string | null; email: string | null };
 }
 
 export interface MobileApprovalsResponse {
@@ -81,6 +91,22 @@ export interface EditChildRequest {
   name: string;
   /** Date-only `YYYY-MM-DD`. */
   dateOfBirth: string;
+  /** Optional family / last name (rule #1: sensitive, never required). */
+  lastName?: string;
+  /** One of the ChildGender values; absent / unknown → 'unspecified' server-side. */
+  gender?: string;
+  /** Comma-separated free-text interests, e.g. "swimming, music". Optional. */
+  interests?: string;
+}
+
+export interface AddChildRequest {
+  action: 'addChild';
+  name: string;
+  /** Date-only `YYYY-MM-DD`. */
+  dateOfBirth: string;
+  lastName?: string;
+  gender?: string;
+  interests?: string;
 }
 
 export interface SetLocationRequest {
@@ -97,6 +123,7 @@ export interface SetParentNameRequest {
 }
 
 export type MobileFamilyUpdateRequest =
+  | AddChildRequest
   | EditChildRequest
   | SetLocationRequest
   | SetParentNameRequest;

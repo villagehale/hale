@@ -4,6 +4,7 @@ import {
   approveResult,
   approvedPostState,
   buildActionRequest,
+  canApproveAction,
   declineResult,
   parseDraftResponse,
 } from './approval-gate';
@@ -71,6 +72,16 @@ describe('declineResult', () => {
     expect(declineResult(202)).toBe('error');
     expect(declineResult(404)).toBe('error');
     expect(declineResult(500)).toBe('error');
+  });
+});
+
+describe('canApproveAction — Policy 4 (no decision on invisible content)', () => {
+  it('offers Approve for a non-redacted action the parent can actually see', () => {
+    expect(canApproveAction({ teenRedacted: false })).toBe(true);
+  });
+
+  it('withholds Approve for a teen-redacted action (raw draft hidden, rule #1)', () => {
+    expect(canApproveAction({ teenRedacted: true })).toBe(false);
   });
 });
 
