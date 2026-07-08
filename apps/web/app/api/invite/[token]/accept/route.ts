@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
-import { ensureUserRow } from '~/lib/family';
+import { EmailInUseError, ensureUserRow } from '~/lib/family';
 import { acceptFamilyInvite } from '~/lib/invites/accept';
 
 interface RouteContext {
@@ -42,10 +42,18 @@ export async function POST(_req: Request, context: RouteContext) {
   }
 
   const database = db();
-  const internalUserId = await ensureUserRow(
-    { externalAuthId, email, name: session.user?.name ?? null },
-    database,
-  );
+  let internalUserId: string;
+  try {
+    internalUserId = await ensureUserRow(
+      { externalAuthId, email, name: session.user?.name ?? null },
+      database,
+    );
+  } catch (err) {
+    if (err instanceof EmailInUseError) {
+      return NextResponse.json({ error: 'email_in_use' }, { status: 409 });
+    }
+    throw err;
+  }
 
   const result = await acceptFamilyInvite(database, { token, userId: internalUserId, email });
 

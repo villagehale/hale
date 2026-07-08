@@ -7,7 +7,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { recordConsent } from '~/lib/consent';
-import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { EmailInUseError, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import {
   type LocationInput,
   isOnboardingRegionSupported,
@@ -76,6 +76,7 @@ export type CompleteOnboardingResult =
   | { status: 'completed'; familyId: string }
   | { status: 'preview' }
   | { status: 'region_unavailable' }
+  | { status: 'email_in_use' }
   | { status: 'invalid'; error: string };
 
 export async function completeOnboarding(
@@ -146,7 +147,10 @@ export async function completeOnboarding(
   // child's data can never be left in the DB without its consent row (rule #1,
   // rule #6). The consents reference the family id, so they are recorded once the
   // family exists (the FK is immediate); a crash before COMMIT discards both.
-  const { familyId, userId } = await database.transaction(async (tx) => {
+  let familyId: string;
+  let userId: string;
+  try {
+    ({ familyId, userId } = await database.transaction(async (tx) => {
     const executor = tx as unknown as Database;
     const familyId =
       existingFamilyId ??
@@ -192,7 +196,15 @@ export async function completeOnboarding(
     }
 
     return { familyId, userId };
-  });
+    }));
+  } catch (err) {
+    // A second provider with an email that already has an account (rule #8:
+    // typed boundary catch, everything else rethrows and stays a 500).
+    if (err instanceof EmailInUseError) {
+      return { status: 'email_in_use' };
+    }
+    throw err;
+  }
 
   // The founding ordinal (first 100 families), only for a family provisioned in
   // THIS run. Post-commit + boundary-caught on purpose: the badge is a

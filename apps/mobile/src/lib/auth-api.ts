@@ -17,6 +17,7 @@ export type AuthResult = { token: string };
 
 const GENERIC_PASSWORD_ERROR = "That email and password didn't match. Please try again.";
 const GENERIC_GOOGLE_ERROR = "Couldn't sign in with Google. Please try again.";
+const GENERIC_APPLE_ERROR = "Couldn't sign in with Apple. Please try again.";
 const GENERIC_SIGNUP_ERROR = "Couldn't create your account just now. Please try again.";
 const GENERIC_ONBOARDING_ERROR = "Couldn't finish setting up your family — please try again.";
 const REGION_UNAVAILABLE_ERROR = "Hale isn't available in your region yet — we're Canada-first.";
@@ -44,6 +45,19 @@ async function exchange(path: string, payload: unknown, genericError: string): P
 
 export async function exchangeGoogleIdToken(idToken: string): Promise<AuthResult> {
   return exchange('/api/mobile/auth/google', { idToken }, GENERIC_GOOGLE_ERROR);
+}
+
+/**
+ * Exchange a Sign in with Apple identity token for a Hale session. `rawNonce` is
+ * the un-hashed nonce the client generated; the server SHA-256-hashes it and
+ * matches it against the token's nonce claim (replay defense), so it must be the
+ * exact string whose hash was passed to AppleAuthentication.signInAsync.
+ */
+export async function exchangeAppleIdentityToken(
+  identityToken: string,
+  rawNonce: string,
+): Promise<AuthResult> {
+  return exchange('/api/mobile/auth/apple', { identityToken, rawNonce }, GENERIC_APPLE_ERROR);
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<AuthResult> {

@@ -147,18 +147,50 @@ export async function ensureUserRow(
     return existing;
   }
 
-  await database
-    .insert(schema.users)
-    .values({
-      externalAuthId: identity.externalAuthId,
-      email: identity.email,
-      name: identity.name,
-    })
-    .onConflictDoNothing({ target: schema.users.externalAuthId });
+  try {
+    await database
+      .insert(schema.users)
+      .values({
+        externalAuthId: identity.externalAuthId,
+        email: identity.email,
+        name: identity.name,
+      })
+      .onConflictDoNothing({ target: schema.users.externalAuthId });
+  } catch (err) {
+    // users.email is ALSO unique, and the conflict target above covers only
+    // external_auth_id — a second provider (e.g. Apple after Google) carrying the
+    // same address lands here. Typed so the API boundaries can answer "this email
+    // already has an account — sign in the way you did before" instead of a 500.
+    if (isEmailUniqueViolation(err)) {
+      throw new EmailInUseError();
+    }
+    throw err;
+  }
 
   const id = await resolveUserIdForUser(identity.externalAuthId, database);
   if (!id) {
     throw new Error(`ensureUserRow: no users row after upsert for ${identity.externalAuthId}`);
   }
   return id;
+}
+
+/** The signed-in identity's email already belongs to a users row under a DIFFERENT
+ * auth identity (provider). Callers map this to an explicit "sign in the way you
+ * did before" response — the email itself is deliberately not carried (rule #1:
+ * never in logs or error text). */
+export class EmailInUseError extends Error {
+  constructor() {
+    super('email already belongs to another auth identity');
+    this.name = 'EmailInUseError';
+  }
+}
+
+function isEmailUniqueViolation(err: unknown): boolean {
+  for (let e = err; e instanceof Error; e = e.cause as Error) {
+    const pg = e as Error & { code?: string; constraint_name?: string };
+    if (pg.code === '23505' && pg.constraint_name === 'users_email_unique') {
+      return true;
+    }
+  }
+  return false;
 }

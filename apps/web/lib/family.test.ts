@@ -13,7 +13,7 @@ vi.mock('drizzle-orm', async () => {
   return { ...actual, eq: (_col: unknown, val: unknown) => ({ __eq: true, val }) };
 });
 
-import { ensureUserRow, resolveFamilyForUser } from './family.js';
+import { EmailInUseError, ensureUserRow, resolveFamilyForUser } from './family.js';
 
 const GOOGLE_ID = 'google_user_abc';
 const CREDENTIALS_ID = 'credentials:cred-1';
@@ -98,6 +98,28 @@ describe('ensureUserRow', () => {
     // First call inserts (conflict no-ops), second call resolves the existing row
     // up front and never reaches the insert.
     expect(insert).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws EmailInUseError when the email already belongs to a different auth identity', async () => {
+    // The real users table is UNIQUE on email as well as external_auth_id; the
+    // insert's onConflictDoNothing targets only the latter, so a second provider
+    // (e.g. Apple after Google) with the same address surfaces the pg unique
+    // violation. It must become a typed, boundary-mappable error — never a 500.
+    const pgError = Object.assign(
+      new Error('duplicate key value violates unique constraint "users_email_unique"'),
+      { code: '23505', constraint_name: 'users_email_unique' },
+    );
+    const insert = vi.fn(() => ({
+      values: () => ({ onConflictDoNothing: vi.fn(() => Promise.reject(pgError)) }),
+    }));
+    const select = vi.fn(() => ({
+      from: () => ({ where: () => ({ limit: async () => [] }) }),
+    }));
+    const db = { insert, select } as unknown as Database;
+
+    await expect(
+      ensureUserRow({ externalAuthId: 'apple-sub-9', email: 'parent@example.com', name: null }, db),
+    ).rejects.toBeInstanceOf(EmailInUseError);
   });
 });
 

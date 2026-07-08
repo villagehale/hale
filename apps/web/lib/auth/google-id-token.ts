@@ -55,6 +55,7 @@ export async function verifyGoogleIdToken(
   const { payload } = await jwtVerify(idToken, deps.jwks ?? googleJwks(), {
     issuer: GOOGLE_ISSUERS,
     audience,
+    algorithms: ['RS256'],
   });
 
   const sub = payload.sub;
