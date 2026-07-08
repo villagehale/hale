@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
     "backfill:source-urls": "tsx scripts/backfill-source-urls.ts",
+    "seed:curated-resources": "tsx scripts/seed-curated-resources.ts",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {

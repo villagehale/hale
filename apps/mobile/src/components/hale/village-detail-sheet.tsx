@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Image, Linking, Platform, Pressable, Share, View } from 'react-native';
+import { Linking, Platform, Pressable, Share, View } from 'react-native';
 
+import { VillageMap } from '@/components/hale/village-map';
 import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
@@ -8,7 +9,7 @@ import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { VillageCandidateView } from '@/lib/api-types';
-import { foundStamp } from '@/lib/format';
+import { foundStamp, indoorOutdoorLabel, priceBandLabel } from '@/lib/format';
 import { registerLinkHref } from '@/lib/register-link';
 import { useMapThumbnail } from '@/lib/use-map-thumbnail';
 
@@ -58,6 +59,35 @@ function ActionButton({
 }
 
 /**
+ * The honest, presence-gated metadata row: a VERIFIED Places rating (a real number
+ * + count, never fabricated stars), then the model's coarse price band, age hint,
+ * and indoor/outdoor tag — each a small Tag ONLY when a real value is present.
+ * Renders nothing when every field is null. A teen-redacted card never reaches
+ * here (guarded above), and its fields are nulled at the mapper anyway (rule #1).
+ */
+function MetaChips({ rec }: { rec: VillageCandidateView }) {
+  const price = priceBandLabel(rec.priceLevel);
+  const place = indoorOutdoorLabel(rec.indoorOutdoor);
+  const hasRating = rec.rating !== null;
+  if (!hasRating && !price && !rec.ageRange && !place) return null;
+  return (
+    <View className="mb-4 flex-row flex-wrap gap-2">
+      {hasRating ? (
+        <Tag
+          label={
+            rec.ratingCount !== null ? `★ ${rec.rating} (${rec.ratingCount})` : `★ ${rec.rating}`
+          }
+          tone="accent"
+        />
+      ) : null}
+      {price ? <Tag label={price} /> : null}
+      {rec.ageRange ? <Tag label={rec.ageRange} /> : null}
+      {place ? <Tag label={place} /> : null}
+    </View>
+  );
+}
+
+/**
  * The shared Village detail sheet — one component behind BOTH Home's "from the
  * village" card and the Village tab's RecCard. Shows the pick's title / kind /
  * cadence / seasons / summary / coverage / venue, then the actions wired EXACTLY
@@ -93,7 +123,11 @@ export function VillageDetailSheet({
   const accentIcon = useMeadowColor('accentFill');
   // A teen-redacted card carries no venue point (lat/lng nulled at the mapper), so
   // its id yields 204 and no map renders — the hook is safe to call for any rec.
-  const mapUri = useMapThumbnail(rec && !rec.teenAttributed ? rec.id : null);
+  // Web-only: native renders the interactive expo-maps view and ignores the
+  // static thumbnail, so fetching it there is a discarded Static Maps call.
+  const mapUri = useMapThumbnail(
+    Platform.OS === 'web' && rec && !rec.teenAttributed ? rec.id : null,
+  );
 
   // Drop this session's optimistic action state whenever a DIFFERENT candidate opens
   // in the same (reused) sheet — otherwise a save toggled on candidate A would bleed
@@ -199,17 +233,12 @@ export function VillageDetailSheet({
         <Tag label={rec.kind} tone="coach" />
       </View>
 
-      {/* The static map is a graceful-degradation extra: it renders ONLY once the
-          hook has bytes (a 200). Absent (API not enabled, no venue point) → nothing,
-          no placeholder, no spinner. The plotted point is the PUBLIC venue (rule #1). */}
-      {mapUri ? (
-        <Image
-          source={{ uri: mapUri }}
-          accessibilityLabel={`Map showing ${rec.venueName ?? rec.title}`}
-          className="mb-3 h-32 w-full rounded-lg border border-rule"
-          resizeMode="cover"
-        />
-      ) : null}
+      {/* The venue map: on native this is an INTERACTIVE expo-maps view plotting the
+          public venue pin (rule #1: a public place, never the family's home); on
+          RN-web (no expo-maps) it degrades to the static Static-Maps thumbnail the
+          hook fetched. Either way it renders NOTHING when there is no coordinate or
+          no thumbnail — never a broken/empty map box. */}
+      <VillageMap candidate={rec} staticMapUri={mapUri} />
 
       <AppText variant="meta" className="mb-3 text-ink-3">
         {foundStamp(rec.discoveredAt)}
@@ -227,6 +256,8 @@ export function VillageDetailSheet({
       <AppText variant="body" className="mb-4">
         {rec.summary}
       </AppText>
+
+      <MetaChips rec={rec} />
 
       {rec.venueName ? (
         <View className="mb-3 flex-row items-center gap-2">

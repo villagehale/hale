@@ -21,6 +21,7 @@ export * from './outbound-sends.js';
 export * from './email-sends.js';
 export * from './daily-digests.js';
 export * from './village.js';
+export * from './curated-resources.js';
 export * from './waitlist.js';
 export * from './conversations.js';
 export * from './rate-limits.js';

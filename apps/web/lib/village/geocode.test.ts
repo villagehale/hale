@@ -23,10 +23,13 @@ const AREA_COARSE = 'M4K';
 const RESOLVED = {
   places: [
     {
+      id: 'places/ChIJ_riverdale',
       location: { latitude: 43.6777, longitude: -79.3534 },
       displayName: { text: 'Riverdale Library' },
       formattedAddress: '370 Broadview Ave, Toronto, ON',
       websiteUri: 'https://www.torontopubliclibrary.ca/riverdale',
+      rating: 4.6,
+      userRatingCount: 128,
     },
   ],
 };
@@ -69,9 +72,31 @@ describe('geocodeVenue', () => {
       venueName: 'Riverdale Library',
       venueAddress: '370 Broadview Ave, Toronto, ON',
       website: 'https://www.torontopubliclibrary.ca/riverdale',
+      placeId: 'places/ChIJ_riverdale',
+      rating: 4.6,
+      ratingCount: 128,
     });
     // Only the coarse area reaches Google — no precise location (rule #1).
     expect(calls).toEqual(['Riverdale Library kids storytime M4K']);
+  });
+
+  it('leaves rating/count/placeId undefined when Places returns none (no fabrication)', async () => {
+    const { client } = fakeClient(async () => ({
+      places: [
+        {
+          location: { latitude: 43.6, longitude: -79.4 },
+          displayName: { text: 'A quiet venue' },
+          formattedAddress: '1 Quiet Rd, Toronto, ON',
+          // No id, no rating, no userRatingCount.
+        },
+      ],
+    }));
+    const result = await geocodeVenue('a quiet venue', AREA_COARSE, client);
+    expect(result?.rating).toBeUndefined();
+    expect(result?.ratingCount).toBeUndefined();
+    expect(result?.placeId).toBeUndefined();
+    // But the coordinate still resolves (a rating-less venue still gets a pin).
+    expect(result?.lat).toBe(43.6);
   });
 
   it('leaves website undefined when the venue has no websiteUri', async () => {
@@ -200,5 +225,41 @@ describe('defaultGeocodeClient searchText request body', () => {
     await defaultGeocodeClient().searchText('Halton Hills');
 
     expect(sentBody()).toEqual({ textQuery: 'Halton Hills', maxResultCount: 1 });
+  });
+
+  it('requests the enrichment field mask (id + rating + count) so a card can show a real rating', async () => {
+    await defaultGeocodeClient().searchText('Riverdale Library M4K');
+
+    const headers = (fetchSpy.mock.calls[0]?.[1] as { headers: Record<string, string> }).headers;
+    const mask = headers['X-Goog-FieldMask'];
+    // Cost-disciplined but complete: the id + rating fields the metadata build renders.
+    expect(mask).toContain('places.id');
+    expect(mask).toContain('places.rating');
+    expect(mask).toContain('places.userRatingCount');
+    // Still the venue essentials it already fetched.
+    expect(mask).toContain('places.location');
+    expect(mask).toContain('places.websiteUri');
+  });
+
+  it('retries ONCE on a transient 5xx, then succeeds (no storm)', async () => {
+    fetchSpy
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
+
+    const out = await defaultGeocodeClient().searchText('Riverdale Library M4K');
+
+    expect(out).toEqual({ places: [] });
+    // Exactly two attempts — one retry, never more.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry a deterministic 4xx (a bad key never heals) — one attempt, then throws', async () => {
+    fetchSpy.mockResolvedValue({ ok: false, status: 400, json: async () => ({}) });
+
+    await expect(defaultGeocodeClient().searchText('Riverdale Library M4K')).rejects.toThrow(
+      '400',
+    );
+    // A 4xx is deterministic — fail fast, exactly one attempt (no wasted call/storm).
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

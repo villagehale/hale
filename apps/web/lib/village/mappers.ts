@@ -61,6 +61,19 @@ export interface VillageCandidateView {
   lng: number | null;
   /** Public venue name for the marker tooltip; null when there is no pin. */
   venueName: string | null;
+  /** The venue's PUBLIC Google rating (0.0–5.0) and the count it rests on — set
+   * ONLY when Places returned a real value at discovery time (never fabricated).
+   * Null → the card shows NO rating (no stars, no placeholder). Always null on a
+   * teen-redacted card (no metadata leak, rule #1). */
+  rating: number | null;
+  ratingCount: number | null;
+  /** Honest, presence-gated attribute chips — a coarse price band
+   * ('free'|'low'|'moderate'|'high'), a human age hint, and indoor/outdoor. Each
+   * rendered as a small chip ONLY when present; null → no chip. Always null on a
+   * teen-redacted card (rule #1). */
+  priceLevel: string | null;
+  ageRange: string | null;
+  indoorOutdoor: string | null;
   /**
    * True when the candidate is attributed to a 13+ child (rule #1): the renderer
    * shows the locked treatment and a parent cannot accept content they can't
@@ -176,6 +189,12 @@ export function toVillageCandidateView(
       lat: null,
       lng: null,
       venueName: null,
+      // No metadata on a teen-redacted card — category only (rule #1).
+      rating: null,
+      ratingCount: null,
+      priceLevel: null,
+      ageRange: null,
+      indoorOutdoor: null,
       teenAttributed: true,
     };
   }
@@ -201,8 +220,24 @@ export function toVillageCandidateView(
     lat: candidate.lat,
     lng: candidate.lng,
     venueName: candidate.venueName,
+    // The numeric rating column reads back as a fixed-point STRING; parse it to a
+    // number for the view, or null when Places never returned one.
+    rating: parseRating(candidate.rating),
+    ratingCount: candidate.ratingCount,
+    priceLevel: candidate.priceLevel,
+    ageRange: candidate.ageRange,
+    indoorOutdoor: candidate.indoorOutdoor,
     teenAttributed: false,
   };
+}
+
+/** A numeric(2,1) column reads back as a fixed-point string ("4.6") — parse it to
+ * a number for the view. Null (Places had no rating) stays null → the card shows
+ * no rating. A non-finite parse also collapses to null (never a fabricated 0). */
+function parseRating(raw: string | null): number | null {
+  if (raw === null) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 /**

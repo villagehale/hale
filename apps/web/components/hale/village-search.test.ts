@@ -37,6 +37,11 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
     lat: null,
     lng: null,
     venueName: null,
+    rating: null,
+    ratingCount: null,
+    priceLevel: null,
+    ageRange: null,
+    indoorOutdoor: null,
     teenAttributed: false,
     ...overrides,
   };

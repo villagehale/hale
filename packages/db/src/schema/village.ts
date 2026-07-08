@@ -2,7 +2,9 @@ import {
   date,
   doublePrecision,
   index,
+  integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -65,6 +67,24 @@ export const villageCandidates = pgTable(
      * 'spring'|'summer'|'fall'|'winter' — so the feed can hide out-of-season
      * candidates. Null for one-time/ongoing and unclassified rows. */
     seasons: text('seasons').array(),
+    /** PUBLIC venue metadata enriched from Google Places at discovery time — all
+     * nullable and rendered ONLY when a real value is present (no fabrication):
+     * `rating` is the venue's public Google rating (0.0–5.0, numeric so a half-star
+     * shows), `ratingCount` how many ratings it rests on, and `placeId` the stable
+     * Google id so a future re-enrichment looks the venue up by id, not a re-geocode.
+     * Null when Places has no rating or the API isn't enabled (graceful degrade). */
+    rating: numeric('rating', { precision: 2, scale: 1 }),
+    ratingCount: integer('rating_count'),
+    placeId: text('place_id'),
+    /** Honest, model-emitted attribute hints — a coarse price band
+     * ('free'|'low'|'moderate'|'high'), a human age hint ("3–5 years"), and an
+     * indoor/outdoor tag ('indoor'|'outdoor'|'both'). All nullable + free text (not
+     * DB enums) so a new value lands without a migration; the card maps each to a
+     * label and shows a chip ONLY when present. The model expresses "unknown" as
+     * null (never a fabricated value). */
+    priceLevel: text('price_level'),
+    ageRange: text('age_range'),
+    indoorOutdoor: text('indoor_outdoor'),
     /** Which run produced this row: 'standing' (the weekly feed) or 'search' (a
      * parent-triggered season search). Supersession is scoped by this column so a
      * search run never soft-retires the standing feed and vice-versa. Default

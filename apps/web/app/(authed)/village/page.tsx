@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PageCorner } from '~/components/hale/page-corner';
 import { PrivacyNote } from '~/components/hale/privacy-note';
+import { ResourcesRail } from '~/components/hale/resources-rail';
 import {
   VillageCandidates,
   VillageFeedSkeleton,
@@ -10,6 +11,7 @@ import {
 import { VillageSeasonSelector } from '~/components/hale/village-season-selector';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
+import { loadCuratedResources } from '~/lib/village/curated-resources';
 import { loadVillage } from '~/lib/village/queries';
 import { seasonFromParam } from '~/lib/village/season-selector-ui';
 
@@ -22,7 +24,10 @@ export default async function VillagePage({
   const activeSeason = seasonFromParam(season);
   // The standing weekly routine belongs to the standing feed, not a forward-looking
   // season search — so it (and its loadVillage read) is skipped on a search view.
-  const { routine } = activeSeason ? { routine: null } : await loadVillage();
+  const [{ routine }, resources] = await Promise.all([
+    activeSeason ? Promise.resolve({ routine: null }) : loadVillage(),
+    loadCuratedResources(),
+  ]);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
@@ -95,6 +100,11 @@ export default async function VillagePage({
           {activeSeason ? <VillageSearchRun season={activeSeason} /> : <VillageCandidates />}
         </Suspense>
       </div>
+
+      {/* ── Resources — the calm, curated directory rail (verified, outward-linking).
+          Standing feed only, matching mobile: a season search stays focused on
+          its results. ─ */}
+      {activeSeason ? null : <ResourcesRail resources={resources} />}
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
       <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
