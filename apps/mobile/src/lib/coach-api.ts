@@ -22,7 +22,7 @@ import { TOKEN_KEY, tokenStorage } from './token-storage';
  * redacted args and raw output; this client never re-derives them.
  */
 
-export type { ActionIntent, ActivityEvent } from './coach-fold';
+export type { ActionIntent, ActivityEvent, ToolCard } from './coach-fold';
 
 /** Live callbacks fired as the stream arrives. Every one is optional; the screen
  * wires the ones it renders. `onReset` clears an intermediate tool turn's text (not
@@ -56,7 +56,12 @@ function dispatch(event: CoachEvent, handlers: CoachStreamHandlers): boolean {
       handlers.onToolCall?.(event.name);
       return false;
     case 'tool_result':
-      handlers.onToolResult?.({ name: event.name, ok: event.ok, preview: event.preview });
+      handlers.onToolResult?.({
+        name: event.name,
+        ok: event.ok,
+        preview: event.preview,
+        ...(event.card ? { card: event.card } : {}),
+      });
       return false;
     case 'reset':
       handlers.onReset?.();

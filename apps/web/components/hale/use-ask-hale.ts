@@ -1,9 +1,12 @@
 'use client';
 
+import type { ToolCard } from '@hale/agent';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { detectInputIntents, type InputIntent } from '~/lib/coach/action-intent';
 import type { ThreadSeed } from '~/lib/coach/thread';
+
+export type { ToolCard } from '@hale/agent';
 
 export type { InputIntent, PlanLogParse, QuickLogParse } from '~/lib/coach/action-intent';
 
@@ -19,12 +22,13 @@ export interface ActionIntent {
 /**
  * One entry in an assistant turn's live activity trail. Rule #1: an activity entry
  * carries only what the server streamed — a step number, or a tool name + outcome +
- * a content-free preview — NEVER tool arguments or raw tool output.
+ * a content-free preview — NEVER tool arguments or raw tool output. The lone
+ * exception is a whitelisted `card` a connector read tool attached (see ToolCard).
  */
 export type Activity =
   | { kind: 'step'; step: number }
   | { kind: 'tool_call'; name: string }
-  | { kind: 'tool_result'; name: string; ok: boolean; preview: string };
+  | { kind: 'tool_result'; name: string; ok: boolean; preview: string; card?: ToolCard };
 
 export interface Turn {
   id: string;
@@ -54,7 +58,7 @@ export interface Turn {
 type CoachStreamEvent =
   | { type: 'step'; step: number }
   | { type: 'tool_call'; name: string }
-  | { type: 'tool_result'; name: string; ok: boolean; preview: string }
+  | { type: 'tool_result'; name: string; ok: boolean; preview: string; card?: ToolCard }
   | { type: 'delta'; text: string }
   | { type: 'reset' }
   | { type: 'done'; conversationId: string; actionIntents?: ActionIntent[] }
@@ -352,6 +356,7 @@ export function useAskHale(
             name: event.name,
             ok: event.ok,
             preview: event.preview,
+            ...(event.card ? { card: event.card } : {}),
           });
         } else if (event.type === 'reset') {
           resetAssistantTurn();
