@@ -38,7 +38,7 @@ const SECTIONS: { items: MenuItem[] }[] = [
         href: '/more/saved',
       },
       {
-        label: 'Approvals',
+        label: 'Activity',
         detail: 'Actions waiting for you',
         icon: 'checkmark.circle',
         href: '/more/approvals',

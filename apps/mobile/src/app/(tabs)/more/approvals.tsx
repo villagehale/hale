@@ -118,7 +118,8 @@ function ApprovalsBody({
         <Card className="mt-2 items-center gap-2 py-10">
           <AppText variant="title">You're all caught up</AppText>
           <AppText variant="meta" className="text-center">
-            No actions are waiting. Hale will queue anything that needs your okay here.
+            When Hale drafts something — an email, a sign-up, a booking — it waits here
+            for your yes. Nothing happens without it.
           </AppText>
         </Card>
       ) : (
@@ -197,8 +198,8 @@ type Segment = 'pending' | 'history';
  * this is a local pair of pills matching the app's rounded/bordered style. */
 function Segmented({ value, onChange }: { value: Segment; onChange: (s: Segment) => void }) {
   const tabs: { key: Segment; label: string }[] = [
-    { key: 'pending', label: 'Pending' },
-    { key: 'history', label: 'History' },
+    { key: 'pending', label: 'Needs you' },
+    { key: 'history', label: 'Settled' },
   ];
   return (
     <View className="flex-row gap-1 rounded-full border border-rule bg-card p-1">
@@ -240,7 +241,7 @@ export default function ApprovalsScreen() {
       className="gap-5"
       refreshControl={useTintedRefresh(active.refreshing, active.refresh)}
     >
-      <ScreenHeader title="Approvals" back />
+      <ScreenHeader title="Activity" back />
       <Segmented value={segment} onChange={setSegment} />
       {active.status === 'loading' ? <LoadingState /> : null}
       {active.status === 'error' ? (

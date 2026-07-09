@@ -2,7 +2,7 @@
   "name": "hale",
   "version": "0.0.1",
   "private": true,
-  "description": "Passive multi-agent household AI assistant for families, across every stage of childhood (0–18)",
+  "description": "Passive multi-agent household AI assistant for families, across every stage of childhood (0\u201318)",
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=22.0.0",
@@ -32,7 +32,8 @@
   "pnpm": {
     "overrides": {
       "react": "19.2.3",
-      "react-dom": "19.2.3"
+      "react-dom": "19.2.3",
+      "@expo/dom-webview": "56.0.6"
     }
   }
 }

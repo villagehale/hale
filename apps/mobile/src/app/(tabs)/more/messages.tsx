@@ -54,7 +54,7 @@ function MessageRow({ message }: { message: MessageView }) {
       <Card
         onPress={() => router.push('/more/approvals')}
         accessibilityRole="button"
-        accessibilityLabel={`${message.body} Opens Approvals.`}
+        accessibilityLabel={`${message.body} Opens Activity.`}
       >
         {body}
       </Card>

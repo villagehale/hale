@@ -1,6 +1,6 @@
 import type { FamilyStage } from '@hale/types';
 import { Resend } from 'resend';
-import { BUSINESS_ADDRESS, SENDER_NAME } from '~/lib/cron/email-compliance';
+import { BUSINESS_ADDRESS, SENDER_NAME, appBaseUrl } from '~/lib/cron/email-compliance';
 
 /**
  * The one-time welcome email, sent when a family finishes onboarding. Unlike the
@@ -19,7 +19,9 @@ import { BUSINESS_ADDRESS, SENDER_NAME } from '~/lib/cron/email-compliance';
 // (aloha@) on purpose; overridable for non-prod sending domains.
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
 
-const APP_BASE = 'https://app.villagehale.com';
+// Same env source as the unsubscribe link in this very email (APP_URL ?? prod):
+// a staging send must not mix staging unsubscribe with prod body links.
+const APP_BASE = appBaseUrl();
 const SUBJECT = 'welcome to your village';
 
 /** The product surfaces the three next steps point at. */
