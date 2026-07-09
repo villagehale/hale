@@ -23,6 +23,7 @@ export type AnalyticsEvent =
   | 'endorse'
   | 'share'
   | 'ask_hale'
+  | 'village_save'
   | 'plan_notify_requested';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */

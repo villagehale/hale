@@ -2,6 +2,7 @@ import { Lock, Star } from 'lucide-react';
 import { AcceptButton } from '~/components/hale/accept-button';
 import { EndorseButton } from '~/components/hale/endorse-button';
 import { RegisterLink } from '~/components/hale/register-link';
+import { SaveButton } from '~/components/hale/save-button';
 import { ShareButton } from '~/components/hale/share-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
 import { Icon } from '~/components/ui/icon';
@@ -133,7 +134,8 @@ export function ActivityCard({
 }
 
 /** The shared action cluster every non-locked variant carries — Accept / Register,
- * then Endorse / Share pushed to the trailing edge on wider viewports. */
+ * then Save ("I'm interested") / Endorse / Share pushed to the trailing edge on
+ * wider viewports. */
 function ActivityActions({
   candidate,
   area,
@@ -146,6 +148,7 @@ function ActivityActions({
       <AcceptButton href={candidate.acceptHref} initiallyAccepted={candidate.accepted} />
       <RegisterLink sourceUrl={candidate.sourceUrl} title={candidate.title} area={area} />
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:ml-auto">
+        <SaveButton endpoint={candidate.saveHref} initiallySaved={candidate.saved} />
         <EndorseButton
           endpoint={candidate.endorseHref}
           initiallyEndorsed={candidate.endorsedByFamily}

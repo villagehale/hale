@@ -1,13 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { companionForChild } from '@hale/types';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ToolCard } from '@hale/agent';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { AccountMenuView } from './account-menu-view';
+import { GrowthSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
 import { TrailTimeline } from './trail-timeline';
+
+// companion-tabs pulls done-button → the 'use server' log module; stub it so a
+// static render doesn't drag the auth/db chain into the test.
+vi.mock('~/lib/companion/log', () => ({ markCompanionItemDone: vi.fn() }));
 
 /**
  * Replay-masking regression guard (hard rule #1). PostHog session replay records
@@ -148,6 +154,67 @@ describe('history timeline masks each entry summary + child name', () => {
     // The non-PII frame — day heading, the deep link — survives the strip.
     expect(residue).toContain('Thursday, Jun 11');
     expect(residue).toContain('view this draft');
+  });
+});
+
+describe('companion growth section masks the measurement readings', () => {
+  const child = { id: 'c-1', ...companionForChild({ dateOfBirth: '2025-06-01', name: 'Noor' }) };
+  // A unique reading string so the assertion can't pass on incidental markup.
+  const growthLogs = [
+    {
+      id: 'g1',
+      childId: 'c-1',
+      episodeType: 'measurement',
+      summary: '7.3 kg',
+      occurredAt: '2026-06-01T10:00:00.000Z',
+      measureKind: 'weight',
+      value: 7.3,
+      unit: 'kg',
+    },
+  ];
+  const html = renderToStaticMarkup(
+    h(GrowthSection, { child, growthLogs, timeZone: 'America/Toronto' }),
+  );
+
+  it('renders the reading at all (guards against a vacuous pass)', () => {
+    expect(html).toContain('7.3 kg');
+  });
+
+  it('keeps each measurement reading inside a [data-hale-pii] subtree', () => {
+    const residue = stripMaskedSubtrees(html);
+    expect(residue).not.toContain('7.3 kg');
+    // The non-PII frame — the section label + disclaimer — survives the strip.
+    expect(residue).toContain('no percentiles or WHO comparisons');
+  });
+});
+
+describe('companion routines section masks a routine item title + note', () => {
+  const routine = {
+    id: 'r-1',
+    weekOf: '2026-06-15',
+    items: [
+      {
+        title: 'Swim lessons at the Y',
+        kind: 'activity',
+        stageNote: 'builds water confidence',
+        day: 'saturday',
+        teenAttributed: false,
+      },
+    ],
+  };
+  const html = renderToStaticMarkup(h(RoutinesSection, { routine }));
+
+  it('renders the routine item at all (guards against a vacuous pass)', () => {
+    expect(html).toContain('Swim lessons at the Y');
+  });
+
+  it('keeps the item title and stage note inside a [data-hale-pii] subtree', () => {
+    const residue = stripMaskedSubtrees(html);
+    expect(residue).not.toContain('Swim lessons at the Y');
+    expect(residue).not.toContain('builds water confidence');
+    // The non-PII frame — the kind pill + the day — survives the strip.
+    expect(residue).toContain('activity');
+    expect(residue).toContain('saturday');
   });
 });
 

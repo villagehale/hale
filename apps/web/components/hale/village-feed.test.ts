@@ -72,11 +72,19 @@ describe('VillageFeed — renders the agent-ranked, social-proof-rich feed', () 
     expect(html.split('loved by 5 families near you')).toHaveLength(2);
   });
 
-  it('shows the endorse + share + accept controls on a normal card', () => {
+  it('shows the save + endorse + share + accept controls on a normal card', () => {
     const html = renderFeed([view({ id: 'a', title: 'card-a' })]);
+    expect(html).toContain('i&#x27;m interested'); // SaveButton (mobile parity)
     expect(html).toContain('i love this'); // EndorseButton
     expect(html).toContain('share this pick'); // ShareButton
     expect(html).toContain('add to my week'); // AcceptButton
+  });
+
+  it('shows the save control pressed when the family already saved the card', () => {
+    // The saved state is server-resolved so it survives the streamed feed remount.
+    const html = renderFeed([view({ id: 's', title: 'card-s', saved: true })]);
+    expect(html).toContain('>saved<');
+    expect(html).toContain('aria-pressed="true"');
   });
 
   it('renders a cadence chip labelled by value, absent when the cadence is null', () => {
@@ -121,7 +129,8 @@ describe('VillageFeed — renders the agent-ranked, social-proof-rich feed', () 
     expect(html).toContain(TEEN_REDACTED_PLACEHOLDER);
     expect(html).not.toContain('this raw teen summary must never render');
     // No action controls for a teen card — a parent can't act on content they
-    // can't preview.
+    // can't preview (save included: never save content a parent can't see).
+    expect(html).not.toContain("i&#x27;m interested");
     expect(html).not.toContain('i love this');
     expect(html).not.toContain('share this pick');
     expect(html).not.toContain('add to my week');

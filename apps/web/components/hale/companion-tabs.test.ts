@@ -8,14 +8,17 @@ import type { ChildCompanionView } from '~/lib/companion/queries';
 // log module; stub the action so a static render doesn't pull the auth/db chain.
 vi.mock('~/lib/companion/log', () => ({ markCompanionItemDone: vi.fn() }));
 
-const { CompanionTabs, nextTabIndex } = await import('./companion-tabs');
+const { CompanionTabs, GrowthSection, MilestonesSection, RoutinesSection, nextTabIndex } =
+  await import('./companion-tabs');
 
 /**
- * The companion renders a plain panel for one child and an accessible roving
- * tablist for two or more (only the active child's panel is mounted — no stacked
- * scroll). We render to static HTML (the repo's component-test convention) for the
- * DOM-structure guarantees, and drive the pure keyboard reducer directly for the
- * wraparound / Home / End model, which a static render can't exercise.
+ * The companion renders a plain header for one child and an accessible roving child
+ * tablist for two or more (only the active child's body is mounted — no stacked
+ * scroll). Below the header sits the six-section switcher (health / growth /
+ * milestones / routines / diary / docs), defaulting to health. We render to static
+ * HTML (the repo's component-test convention) for the DOM-structure guarantees, and
+ * drive the pure keyboard reducer directly for the wraparound / Home / End model,
+ * which a static render can't exercise.
  */
 
 function child(id: string, name: string, dateOfBirth: string): ChildCompanionView {
@@ -27,38 +30,57 @@ const AVA = child('c-ava', 'Ava', '2025-01-01'); // ~newborn/infant
 const BEN = child('c-ben', 'Ben', '2022-01-01'); // ~toddler
 const CY = child('c-cy', 'Cy', '2016-01-01'); // ~school-age
 
+const NO_PROPS = { routine: null, growthLogs: [], recentLogs: [], timeZone: 'America/Toronto' };
+
 function render(kids: ChildCompanionView[]): string {
-  return renderToStaticMarkup(createElement(CompanionTabs, { kids }));
+  return renderToStaticMarkup(createElement(CompanionTabs, { kids, ...NO_PROPS }));
 }
 
 describe('CompanionTabs DOM structure', () => {
-  it('renders no tablist for a single child', () => {
+  it('renders no CHILD tablist for a single child (only the section switcher)', () => {
     const html = render([AVA]);
-    expect(html).not.toContain('role="tablist"');
-    expect(html).not.toContain('role="tab"');
+    // No "children" tablist for a single child …
+    expect(html).not.toContain('aria-label="children"');
+    // … but the section switcher tablist is always present.
+    expect(html).toContain('aria-label="companion sections"');
     expect(html).toContain('Ava');
   });
 
-  it('renders a tablist and mounts only the active child panel for 2+ children', () => {
+  it('renders both the child tablist and the section switcher for 2+ children', () => {
     const html = render([AVA, BEN, CY]);
-    expect(html).toContain('role="tablist"');
-    // One tab button per child.
-    expect((html.match(/role="tab"/g) ?? []).length).toBe(3);
-    // Exactly one tabpanel, and it belongs to the default-active (first) child.
-    expect((html.match(/role="tabpanel"/g) ?? []).length).toBe(1);
-    // Active tab is the first; the others are not selected.
-    expect((html.match(/aria-selected="true"/g) ?? []).length).toBe(1);
-    expect((html.match(/aria-selected="false"/g) ?? []).length).toBe(2);
-    // The mounted panel is Ava's (active); Ben/Cy panels are absent.
+    expect(html).toContain('aria-label="children"');
+    expect(html).toContain('aria-label="companion sections"');
+    // Three child tabs + six section tabs = nine role="tab" buttons.
+    expect((html.match(/role="tab"/g) ?? []).length).toBe(3 + 6);
+    // The mounted child body is Ava's (active); Ben/Cy bodies are absent.
     const panel = html.slice(html.indexOf('role="tabpanel"'));
     expect(panel).toContain('Ava');
     expect(panel).not.toContain('Ben');
     expect(panel).not.toContain('Cy');
   });
 
-  it('makes the tabpanel programmatically focusable (ARIA requires tabIndex on a tabpanel)', () => {
-    const html = render([AVA, BEN, CY]);
-    const panelTag = html.slice(html.indexOf('role="tabpanel"'), html.indexOf('>', html.indexOf('role="tabpanel"')));
+  it('defaults to the health section (its content, not growth/routines/docs)', () => {
+    const html = render([AVA]);
+    // Health leads with "what's next" + the health-items block.
+    expect(html).toContain('what’s next');
+    expect(html).toContain('health items');
+    // The inactive sections' bodies are NOT mounted (single active section panel).
+    expect(html).not.toContain('no measurements yet');
+    expect(html).not.toContain('the vault lives in the Hale app');
+    expect(html).not.toContain('no rhythm yet this week');
+  });
+
+  it('lists all six section tabs by label', () => {
+    const html = render([AVA]);
+    for (const label of ['health', 'growth', 'milestones', 'routines', 'diary', 'docs']) {
+      expect(html).toContain(`>${label}<`);
+    }
+  });
+
+  it('makes the section tabpanel programmatically focusable (ARIA requires tabIndex)', () => {
+    const html = render([AVA]);
+    const idx = html.indexOf('role="tabpanel"');
+    const panelTag = html.slice(idx, html.indexOf('>', idx));
     expect(panelTag).toContain('tabindex="-1"');
   });
 });
@@ -90,9 +112,12 @@ describe('CompanionTabs done + recently-passed affordances', () => {
 
   it('renders a done milestone as a settled sage pill, not a tappable "mark done"', () => {
     // 13mo toddler with "Walks independently" marked done → that row shows the done
-    // pill; an undone milestone still shows the tappable affordance.
+    // pill; an undone milestone still shows the tappable affordance. Milestones live
+    // in their own section (not the default health one), so render it directly.
     const done = { milestones: new Set(['Walks independently']), health: new Set<string>() };
-    const html = render([viewFor('2025-05-15', done)]);
+    const html = renderToStaticMarkup(
+      createElement(MilestonesSection, { child: viewFor('2025-05-15', done) }),
+    );
 
     expect(html).toContain('Walks independently');
     // Some milestone is still tappable (the undone ones) …
@@ -119,6 +144,56 @@ describe('CompanionTabs done + recently-passed affordances', () => {
     const html = render([view]);
     expect(html).toContain('under a month old');
     expect(html).not.toContain('0 months old');
+  });
+});
+
+describe('GrowthSection', () => {
+  const TZ = 'America/Toronto';
+
+  it('shows the calm empty state when the child has no measurements', () => {
+    const html = renderToStaticMarkup(
+      createElement(GrowthSection, { child: AVA, growthLogs: [], timeZone: TZ }),
+    );
+    expect(html).toContain('no measurements yet');
+    // Honest disclaimer: never a percentile / WHO curve.
+    expect(html).toContain('no percentiles or WHO comparisons');
+  });
+
+  it('charts only the ACTIVE child’s measurement readings (family-wide list, filtered)', () => {
+    const growthLogs = [
+      { id: 'w-ava', childId: 'c-ava', episodeType: 'measurement', summary: '6.4 kg', occurredAt: '2026-06-01T10:00:00.000Z', measureKind: 'weight', value: 6.4, unit: 'kg' },
+      { id: 'w-ben', childId: 'c-ben', episodeType: 'measurement', summary: '11 kg', occurredAt: '2026-06-01T10:00:00.000Z', measureKind: 'weight', value: 11, unit: 'kg' },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(GrowthSection, { child: AVA, growthLogs, timeZone: TZ }),
+    );
+    // Ava's reading is charted; Ben's (a different child) is filtered out.
+    expect(html).toContain('6.4 kg');
+    expect(html).not.toContain('11 kg');
+    expect(html).not.toContain('no measurements yet');
+  });
+});
+
+describe('RoutinesSection', () => {
+  it('renders the calm empty state when there is no routine', () => {
+    const html = renderToStaticMarkup(createElement(RoutinesSection, { routine: null }));
+    expect(html).toContain('no rhythm yet this week');
+  });
+
+  it('locks a teen-attributed item to a private placeholder (rule #1), never its title', () => {
+    const routine = {
+      id: 'r-1',
+      weekOf: '2026-06-15',
+      items: [
+        { title: 'THIS SHOULD NOT LEAK', kind: 'sport', stageNote: 'secret', day: 'monday', teenAttributed: true },
+        { title: 'Family walk', kind: 'outing', stageNote: 'gentle', day: 'tuesday', teenAttributed: false },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(RoutinesSection, { routine }));
+    expect(html).not.toContain('THIS SHOULD NOT LEAK');
+    expect(html).toContain('private');
+    // The non-teen item's title renders normally.
+    expect(html).toContain('Family walk');
   });
 });
 

@@ -1,6 +1,7 @@
 import { Baby } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { auth } from '~/auth';
 import { ActivationPanel } from '~/components/hale/activation-panel';
 import { BookButton } from '~/components/hale/book-button';
 import { scopeChildren } from '~/components/hale/child-scope-core';
@@ -16,6 +17,8 @@ import { authConfigured } from '~/lib/auth-config';
 import { loadThreadShellForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
 import { loadFamilyMembers } from '~/lib/dashboard/queries';
+import { loadHomeStats } from '~/lib/home/aggregates';
+import { homeGreeting, homeStatCells } from '~/lib/home/greeting';
 import { loadVillage } from '~/lib/village/queries';
 
 function duePhrase(dueInWeeks: number): string {
@@ -31,14 +34,51 @@ function milestoneInWindow(child: ChildCompanionView) {
   return child.milestones.find((m) => m.timing === 'in_window') ?? child.milestones[0] ?? null;
 }
 
+/** The warm front door: "good evening, Alex." — the time-of-day phrase warmed with
+ * the signed-in viewer's first name. In preview (auth off) there is no session, so
+ * the greeting degrades to the bare phrase. Mirrors the mobile Home hero. */
+async function viewerName(): Promise<string | null> {
+  if (!authConfigured()) return null;
+  const session = await auth();
+  return session?.user?.name ?? null;
+}
+
+/** The honest stat row — three counts (this week's logs, checkups coming up, saved
+ * places), each a big number or a calm zero phrase. Counts only, teen-redacted in
+ * the loader (rule #1). Mirrors the mobile HomeStatsRow. */
+function HomeStatsRow({ stats }: { stats: Awaited<ReturnType<typeof loadHomeStats>> }) {
+  return (
+    <div className="grid grid-cols-3 gap-3 lg:gap-4">
+      {homeStatCells(stats).map((cell) => (
+        <div key={cell.label} className="card">
+          {cell.count === null ? (
+            <p className="meta text-faded-sage">{cell.label}</p>
+          ) : (
+            <>
+              <p className="font-display text-[2rem] lg:text-[2.5rem] leading-none text-spruce tabular">
+                {cell.count}
+              </p>
+              <p className="meta mt-2 text-faded-sage">{cell.label}</p>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default async function HomePage() {
   const canAsk = authConfigured();
-  const [children, askSeed, village, members] = await Promise.all([
+  const [children, askSeed, village, members, stats, name] = await Promise.all([
     loadCompanion(),
     loadThreadShellForRequest(),
     loadVillage(),
     loadFamilyMembers(),
+    loadHomeStats(),
+    viewerName(),
   ]);
+
+  const greeting = homeGreeting(name);
 
   if (children.length === 0) {
     return (
@@ -49,10 +89,9 @@ export default async function HomePage() {
           </span>
         </div>
 
-        <header className="rise rise-1 mb-12 lg:mb-16">
-          <h1 className="font-display">
-            welcome to <span className="text-apricot-deep">Hale</span>.
-          </h1>
+        <header className="rise rise-1 mb-10 lg:mb-14">
+          <h1 className="font-display">{greeting}.</h1>
+          <p className="meta mt-3 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
         </header>
 
         <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
@@ -93,41 +132,41 @@ export default async function HomePage() {
         </span>
       </div>
 
-      {/* ── Home identity — the warm front door (the runninghead is gone on
-       * desktop, so home carries its own header). One apricot accent on the
-       * verb Hale performs for you; the feed's own header sits below. ─────── */}
-      <header className="rise rise-1 mb-12 lg:mb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">your home</span>
-            <p className="meta mt-2">everything your family needs, in one calm place</p>
-          </div>
-          <div className="lg:col-span-9">
-            <h1 className="font-display">
-              your village, <span className="text-apricot-deep">gathered</span> for you.
-            </h1>
-          </div>
-        </div>
+      {/* ── The warm front door — greeting hero, mirrors the mobile Home. The
+       * runninghead is gone on desktop, so home carries its own header. ─────── */}
+      <header className="rise rise-1 mb-8 lg:mb-10">
+        <h1 className="font-display">{greeting}.</h1>
+        <p className="meta mt-3 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
       </header>
+
+      {/* ── Quick-log — one-tap logging, right under the greeting (mobile order) ─ */}
+      <section className="rise rise-2 mb-10 lg:mb-12">
+        <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
+      </section>
+
+      {/* ── Honest stat row — three real counts (logs / health / saved) ──────── */}
+      <section className="rise rise-2 mb-12 lg:mb-16">
+        <HomeStatsRow stats={stats} />
+      </section>
 
       {/* ── First-run activation — auto-hides once the loop is found ──────── */}
       {showActivation ? (
-        <section className="rise rise-2 mb-16 lg:mb-20">
+        <section className="rise rise-3 mb-12 lg:mb-16">
           <ActivationPanel steps={deriveActivationSteps(activationSignals)} />
         </section>
       ) : null}
 
-      {/* ── The village — the agent-ranked, trusted feed (the hero) ──────── */}
+      {/* ── Ask Hale — the concierge, present but secondary (demoted from hero) ─ */}
+      <section className="rise rise-3 mb-12 lg:mb-16">
+        <ConciergeAsk canAsk={canAsk} seed={askSeed} />
+      </section>
+
+      {/* ── From the village — the agent-ranked, trusted feed ─────────────── */}
       {/* Streamed: the rank-recommendations agent must not block the shell. */}
-      <section className="rise rise-2 mb-16 lg:mb-20">
+      <section className="rise rise-4 mb-12 lg:mb-16">
         <Suspense fallback={<VillageFeedSkeleton />}>
           <HomeVillageFeed />
         </Suspense>
-      </section>
-
-      {/* ── Ask Hale — the concierge (present, not the hero) ─────────────── */}
-      <section className="rise rise-3 mb-16 lg:mb-20">
-        <ConciergeAsk canAsk={canAsk} seed={askSeed} />
       </section>
 
       {/* ── Today, per child (the quiet Companion — distinct from the village) ─ */}
@@ -138,7 +177,7 @@ export default async function HomePage() {
             const milestone = milestoneInWindow(child);
             const nextHealth = child.todayHealth;
             const whatsNow = child.whatsNow[0] ?? null;
-            const delay = `rise-${Math.min(idx + 4, 7)}`;
+            const delay = `rise-${Math.min(idx + 5, 7)}`;
             return {
               childId: child.id,
               node: (
@@ -198,11 +237,6 @@ export default async function HomePage() {
             };
           })}
         />
-      </section>
-
-      {/* ── Quick-log ───────────────────────────────────────────────────── */}
-      <section className="rise rise-7 mt-16 lg:mt-20 pt-10 border-t border-rule space-y-4">
-        <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
       </section>
     </div>
   );
