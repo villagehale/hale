@@ -126,14 +126,20 @@ describe('syncConnection — Gmail', () => {
           status: 200,
           json: async () => ({
             id: 'm1',
-            historyId: '9002',
             snippet: 'Reminder for Mila from daycare',
             payload: { headers: [{ name: 'Subject', value: 'Daycare note about Mila' }] },
           }),
         };
       }
-      // messages.list (no historyId cursor yet on first run)
-      return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm1' }], historyId: '9002' }) };
+      // getProfile carries the mailbox historyId — the REAL cursor source. The
+      // messages.list resource does NOT return a historyId (the seed bug this
+      // guards: reading it from the list yields undefined -> a {} cursor -> the
+      // next run re-seeds and re-emits every message).
+      if (url.includes('/profile')) {
+        return { ok: true, status: 200, json: async () => ({ historyId: '9002' }) };
+      }
+      // messages.list (no historyId cursor yet on first run) — NO historyId field.
+      return { ok: true, status: 200, json: async () => ({ messages: [{ id: 'm1' }] }) };
     };
     const { deps, cap } = stubDeps({ googleFetch: fetchImpl });
     await syncConnection(connection('gmail', {}), deps);

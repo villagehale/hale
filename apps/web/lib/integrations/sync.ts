@@ -218,6 +218,10 @@ async function syncCalendar(
 // First run (no historyId): messages.list → seed the historyId cursor. Incremental:
 // history.list from the stored historyId → the ids of messages added since. Either
 // way we fetch each changed message's metadata (subject header + snippet only).
+interface GmailProfileResponse {
+  historyId?: string;
+}
+
 interface GmailListResponse {
   messages?: Array<{ id?: string }>;
   historyId?: string;
@@ -268,8 +272,16 @@ async function syncGmail(
       throw new Error('gmail history drained without a terminal historyId');
     }
   } else {
-    // First run: seed the historyId cursor + emit a bounded page of recent messages
+    // First run: seed the historyId cursor from getProfile (the mailbox's current
+    // historyId — messages.list does NOT return one, so reading it there yielded a
+    // {} cursor and re-seeded every run) and emit a bounded page of recent messages
     // as the starting point.
+    const { data: profile } = await getJson<GmailProfileResponse>(
+      googleFetch,
+      'https://gmail.googleapis.com/gmail/v1/users/me/profile',
+      accessToken,
+    );
+    nextHistoryId = profile.historyId;
     const { data } = await getJson<GmailListResponse>(
       googleFetch,
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25',
@@ -278,7 +290,11 @@ async function syncGmail(
     for (const m of data.messages ?? []) {
       if (m.id) messageIds.push(m.id);
     }
-    nextHistoryId = data.historyId;
+    if (nextHistoryId === undefined) {
+      // No mailbox historyId means no safe incremental cursor to resume from — err
+      // rather than persist {} and re-seed forever.
+      throw new Error('gmail getProfile returned no historyId');
+    }
   }
 
   const events: IngestedEventPayload[] = [];
