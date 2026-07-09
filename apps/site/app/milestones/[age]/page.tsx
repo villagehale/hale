@@ -38,7 +38,7 @@ const DOMAINS: Record<
   },
   'language-communication': {
     label: 'Language and communication',
-    panel: 'panel-sky-tint',
+    panel: 'panel-oat',
     icon: MessageCircle,
   },
   cognitive: {
@@ -48,7 +48,7 @@ const DOMAINS: Record<
   },
   'movement-physical': {
     label: 'Movement and physical',
-    panel: 'panel-sage-tint',
+    panel: 'panel-oat',
     icon: Footprints,
   },
 };
@@ -230,7 +230,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
             </section>
           )}
 
-          <section className="panel-berry-tint px-6 py-8 sm:px-8 mt-12 rise rise-2">
+          <section className="panel-oat px-6 py-8 sm:px-8 mt-12 rise rise-2">
             <h2 style={{ fontSize: 'clamp(1.35rem, 2.8vw, 1.75rem)' }}>
               When it’s worth a chat with your provider
             </h2>
