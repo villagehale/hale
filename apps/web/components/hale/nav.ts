@@ -1,11 +1,7 @@
 import type { Route } from 'next';
 import {
-  Bookmark,
-  CalendarRange,
-  CheckCircle2,
   History,
   House,
-  Mail,
   MessageCircleHeart,
   Settings,
   Sparkles,
@@ -31,12 +27,8 @@ export interface NavItem {
 export const PRIMARY_NAV = [
   { href: '/home', label: 'home', icon: House },
   { href: '/companion', label: 'companion', icon: Sparkles },
-  { href: '/village', label: 'village', icon: Users },
   { href: '/coach', label: 'Hale', icon: MessageCircleHeart },
-  { href: '/approvals', label: 'activity', icon: CheckCircle2 },
-  { href: '/messages', label: 'messages', icon: Mail },
-  { href: '/saved', label: 'saved', icon: Bookmark },
-  { href: '/plan', label: 'plan', icon: CalendarRange },
+  { href: '/village', label: 'village', icon: Users },
   { href: '/family', label: 'family', icon: UsersRound },
 ] as const satisfies ReadonlyArray<NavItem>;
 
@@ -48,7 +40,7 @@ export const HISTORY_NAV = {
 
 export const SETTINGS_NAV = {
   href: '/settings',
-  label: 'settings',
+  label: 'account',
   icon: Settings,
 } as const satisfies NavItem;
 

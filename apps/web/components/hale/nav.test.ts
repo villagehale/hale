@@ -14,7 +14,7 @@ describe('shared nav definition', () => {
     expect(HISTORY_NAV.href).toBe('/trail');
     expect(HISTORY_NAV.label).toBe('history');
     expect(SETTINGS_NAV.href).toBe('/settings');
-    expect(SETTINGS_NAV.label).toBe('settings');
+    expect(SETTINGS_NAV.label).toBe('account');
   });
 
   it('the primary stops are the daily product surfaces, with family pointing at /family (not settings)', () => {
