@@ -32,10 +32,8 @@ export default async function SettingsPage() {
   return (
     <div>
       <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          your <span className="text-apricot-deep">Settings.</span>
-        </h1>
-        <p className="meta mt-1 text-slate-green">your profile · plan · connections · appearance</p>
+        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">account</h1>
+        <p className="meta mt-1 text-slate-green">your profile · plan &amp; billing · connections · preferences</p>
       </header>
 
       {/* ── Profile ────────────────────────────────────────────────────── */}
