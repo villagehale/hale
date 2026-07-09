@@ -54,7 +54,7 @@ export function ConsentStep({
           <li key={promise.title} className="flex gap-4">
             <span
               aria-hidden="true"
-              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sage-tint text-sage"
+              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-spruce text-on-spruce"
             >
               <Check size={16} strokeWidth={2.5} />
             </span>
