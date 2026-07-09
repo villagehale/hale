@@ -178,6 +178,18 @@ describe('toVillageCandidateView', () => {
     expect(view.seasons).toEqual(['summer', 'fall']);
   });
 
+  it('threads eventDate through on a non-teen card and nulls it on a teen card (rule #1)', () => {
+    const open = toVillageCandidateView(
+      candidate({ childId: null, eventDate: '2026-09-12' }),
+      false,
+      NO_ENGAGEMENT,
+    );
+    expect(open.eventDate).toBe('2026-09-12');
+
+    const teen = toVillageCandidateView(candidate({ eventDate: '2026-09-12' }), true, NO_ENGAGEMENT);
+    expect(teen.eventDate).toBeNull();
+  });
+
   it('folds the aggregate engagement (count + own-endorsed) into both teen and non-teen views', () => {
     const engaged = { endorsementCount: 5, endorsedByFamily: true, accepted: false, saved: false };
 

@@ -21,6 +21,11 @@ export interface VillageCandidateView {
   /** How the activity recurs — "seasonal" | "one-time" | "ongoing" — or null when
    * the discovery run didn't classify it (no chip). Null on a teen-redacted card. */
   cadence: string | null;
+  /** The dated event's calendar day (`YYYY-MM-DD`), or null for an undated standing
+   * activity. Threaded through so the board's "Upcoming" rail can list dated events
+   * soonest-first. Null on a teen-redacted card (a dated event's timing is per-child
+   * signal — rule #1). */
+  eventDate: string | null;
   /** Which seasons a seasonal activity runs — passed through for the client-side
    * cadence filter; the server already applied the in-season gate. Null on a
    * teen-redacted card (same treatment as cadence) and on non-seasonal rows. */
@@ -172,6 +177,7 @@ export function toVillageCandidateView(
       title: TEEN_REDACTED_PLACEHOLDER,
       kind: candidate.kind,
       cadence: null,
+      eventDate: null,
       seasons: null,
       discoveredAt: candidate.discoveredAt.toISOString(),
       summary: '',
@@ -204,6 +210,7 @@ export function toVillageCandidateView(
     title: candidate.title,
     kind: candidate.kind,
     cadence: effectiveCadence(candidate.cadence, candidate.eventDate, candidate.seasons),
+    eventDate: candidate.eventDate,
     seasons: candidate.seasons,
     discoveredAt: candidate.discoveredAt.toISOString(),
     summary: candidate.summary,

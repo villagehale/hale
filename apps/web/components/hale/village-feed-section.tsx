@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadVillageFeed } from '~/lib/village/feed';
-import { loadVillage } from '~/lib/village/queries';
+import { loadSavedVillageCandidates, loadVillage } from '~/lib/village/queries';
 import type { Season } from '~/lib/village/visibility';
 import { scopeChildren } from './child-scope-core';
 import { FindActivitiesButton } from './find-activities-button';
 import { VillageFeed, VillageFeedHeader } from './village-feed';
+import { VillageRail } from './village-rail';
 import { VillageSearch } from './village-search';
 
 /**
@@ -43,8 +44,22 @@ export async function HomeVillageFeed() {
   );
 }
 
+/**
+ * The village BOARD — the /village primary surface as a responsive 3-column board:
+ * the search + cadence controls and the agent-ranked near-you list with the map
+ * persistently beside it (VillageSearch layout="board"), plus a server-rendered
+ * right rail (Upcoming / Saved / From Hale). On mobile it stacks to one column and
+ * the map returns to a list/map toggle so it never crowds the list.
+ *
+ * Every panel traces to a real loader; nothing is fabricated. Teen redaction (rule
+ * #1) is already applied upstream in the mapper, so the board never re-implements it.
+ */
 export async function VillageCandidates() {
-  const [feed, children] = await Promise.all([loadVillageFeed(), loadCompanion()]);
+  const [feed, children, saved] = await Promise.all([
+    loadVillageFeed(),
+    loadCompanion(),
+    loadSavedVillageCandidates(),
+  ]);
   if (feed.candidates.length === 0) {
     return (
       <section className="panel-oat px-6 py-12 lg:py-16 text-center">
@@ -63,12 +78,20 @@ export async function VillageCandidates() {
   }
   return (
     <>
-      <VillageSearch
-        candidates={feed.candidates}
-        coarseCenter={feed.coarseCenter}
-        area={feed.areaCoarse}
-        kids={scopeChildren(children)}
-      />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-8 lg:items-start">
+        <div className="lg:col-span-9 min-w-0">
+          <VillageSearch
+            candidates={feed.candidates}
+            coarseCenter={feed.coarseCenter}
+            area={feed.areaCoarse}
+            kids={scopeChildren(children)}
+            layout="board"
+          />
+        </div>
+        <div className="lg:col-span-3">
+          <VillageRail candidates={feed.candidates} saved={saved} />
+        </div>
+      </div>
       <FindMoreFooter />
     </>
   );

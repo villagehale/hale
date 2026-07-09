@@ -21,6 +21,7 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
     title: `title-${overrides.id}`,
     kind: 'class',
     cadence: null,
+    eventDate: null,
     seasons: null,
     discoveredAt: '2026-07-04T12:00:00.000Z',
     summary: `summary-${overrides.id}`,
@@ -52,6 +53,12 @@ const COARSE_CENTER = { lat: 43.65, lng: -79.38 };
 function render(candidates: VillageCandidateView[]): string {
   return renderToStaticMarkup(
     createElement(VillageSearch, { candidates, coarseCenter: COARSE_CENTER }),
+  );
+}
+
+function renderBoard(candidates: VillageCandidateView[]): string {
+  return renderToStaticMarkup(
+    createElement(VillageSearch, { candidates, coarseCenter: COARSE_CENTER, layout: 'board' }),
   );
 }
 
@@ -94,6 +101,27 @@ describe('VillageSearch — list↔map toggle', () => {
     // longer the odd surface that drops it.
     const html = render([view({ id: 'a', endorsementCount: 4 })]);
     expect(html).toContain('loved by 4 families near you');
+  });
+});
+
+describe('VillageSearch — board layout', () => {
+  it('shows the map persistently beside the list (not toggle-hidden) and hides the toggle from lg', () => {
+    const html = renderBoard([view({ id: 'a', lat: 43.6, lng: -79.4 })]);
+
+    // The list rows render (the default view).
+    expect(html).toContain('title-a');
+
+    // The map container is present from lg up regardless of the toggle state — its
+    // wrapper carries lg:block so it is never toggle-hidden on the desktop board.
+    expect(html).toContain('lg:block');
+    // The map region label is rendered, i.e. the map is mounted alongside the list.
+    expect(html).toContain('map of nearby activities');
+
+    // The view toggle is a mobile-only affordance on the board — hidden from lg up.
+    const toggle =
+      html.match(/<fieldset[^>]*aria-label="view activities as a list or a map"[\s\S]*?<\/fieldset>/)?.[0] ??
+      '';
+    expect(toggle).toContain('lg:hidden');
   });
 });
 

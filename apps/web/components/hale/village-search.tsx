@@ -22,6 +22,11 @@ import {
  * #1), so it's safe and fast. Accepting a candidate still goes through the real
  * accept pipeline via AcceptButton.
  *
+ * Layout: on the village board (`layout="board"`) the map sits PERSISTENTLY beside
+ * the list from `lg` up (the toggle is a mobile-only affordance so the map never
+ * crowds the list on a phone); the default `layout="stack"` keeps the single-column
+ * toggle for narrow embeds. Both share the same filtered feed.
+ *
  * The map (rule #1) plots only PUBLIC venue coords and centers on the coarse area,
  * never the precise home; coordless and teen-redacted candidates stay list-only.
  */
@@ -32,17 +37,20 @@ export function VillageSearch({
   coarseCenter,
   area = null,
   kids = [],
+  layout = 'stack',
 }: {
   candidates: VillageCandidateView[];
   coarseCenter: LatLng | null;
   area?: string | null;
   kids?: ScopeChild[];
+  layout?: 'stack' | 'board';
 }) {
   const inputId = useId();
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<string | null>(null);
   const [cadence, setCadence] = useState<CadenceFilter>('all');
   const [view, setView] = useState<View>('list');
+  const board = layout === 'board';
 
   const filtered = useMemo(() => {
     const byCadence = filterCandidatesByCadence(candidates, cadence);
@@ -88,7 +96,9 @@ export function VillageSearch({
         </div>
 
         <fieldset
-          className="shrink-0 inline-flex rounded-[var(--r-full)] border border-rule-strong p-1"
+          className={`shrink-0 inline-flex rounded-[var(--r-full)] border border-rule-strong p-1 ${
+            layout === 'board' ? 'lg:hidden' : ''
+          }`}
           aria-label="view activities as a list or a map"
         >
           {(
@@ -119,30 +129,53 @@ export function VillageSearch({
 
       <CadenceFilterChips value={cadence} onChange={setCadence} />
 
-      {view === 'map' ? (
-        <VillageMap candidates={filtered} coarseCenter={coarseCenter} area={area} />
-      ) : null}
+      <div className={board ? 'grid grid-cols-1 lg:grid-cols-2 lg:gap-8 lg:items-start' : undefined}>
+        {/* Map — a toggle target below lg; on the board it becomes a persistent
+         * companion beside the list from lg up (order-first so it reads on the
+         * right of the split). */}
+        <div
+          className={
+            board
+              ? `min-w-0 ${view === 'map' ? 'block' : 'hidden'} lg:block lg:order-2 lg:sticky lg:top-6`
+              : view === 'map'
+                ? undefined
+                : 'hidden'
+          }
+        >
+          <VillageMap candidates={filtered} coarseCenter={coarseCenter} area={area} />
+        </div>
 
-      <div className={view === 'map' ? 'hidden' : undefined}>
-        {filtered.length === 0 ? (
-        <output className="meta italic text-slate-green block">
-          {query.trim()
-            ? `nothing matches “${query.trim()}” this week.`
-            : 'nothing for this child this week — try whole family.'}
-        </output>
-      ) : (
-        <section>
-          {filtered.map((candidate, idx) => (
-            <ActivityCard
-              key={candidate.id}
-              candidate={candidate}
-              variant="row"
-              area={area}
-              className={`rise rise-${Math.min(idx + 3, 7)}`}
-            />
-          ))}
-        </section>
-      )}
+        {/* List — the agent-ranked rows. Hidden below lg while the map toggle is
+         * active; always shown from lg up on the board. */}
+        <div
+          className={
+            board
+              ? `min-w-0 ${view === 'map' ? 'hidden' : 'block'} lg:block lg:order-1`
+              : view === 'map'
+                ? 'hidden'
+                : undefined
+          }
+        >
+          {filtered.length === 0 ? (
+            <output className="meta italic text-slate-green block">
+              {query.trim()
+                ? `nothing matches “${query.trim()}” this week.`
+                : 'nothing for this child this week — try whole family.'}
+            </output>
+          ) : (
+            <section>
+              {filtered.map((candidate, idx) => (
+                <ActivityCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  variant="row"
+                  area={area}
+                  className={`rise rise-${Math.min(idx + 3, 7)}`}
+                />
+              ))}
+            </section>
+          )}
+        </div>
       </div>
     </div>
   );
