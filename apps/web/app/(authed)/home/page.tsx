@@ -46,19 +46,25 @@ async function viewerName(): Promise<string | null> {
 /** The honest stat row — three counts (this week's logs, checkups coming up, saved
  * places), each a big number or a calm zero phrase. Counts only, teen-redacted in
  * the loader (rule #1). Mirrors the mobile HomeStatsRow. */
+/** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
+ * above its content. Replaces the editorial label-rail gutters. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
+}
+
 function HomeStatsRow({ stats }: { stats: Awaited<ReturnType<typeof loadHomeStats>> }) {
   return (
-    <div className="grid grid-cols-3 gap-3 lg:gap-4">
+    <div className="grid grid-cols-3 divide-x divide-rule overflow-hidden rounded-2xl border border-rule bg-oat">
       {homeStatCells(stats).map((cell) => (
-        <div key={cell.label} className="card">
+        <div key={cell.label} className="flex min-h-[5.5rem] flex-col justify-center gap-0.5 px-4 py-4 lg:px-5">
           {cell.count === null ? (
-            <p className="meta text-faded-sage">{cell.label}</p>
+            <p className="meta text-faded-sage leading-snug">{cell.label}</p>
           ) : (
             <>
-              <p className="font-display text-[2rem] lg:text-[2.5rem] leading-none text-spruce tabular">
+              <p className="font-display text-[1.6rem] lg:text-[1.9rem] leading-none text-spruce tabular">
                 {cell.count}
               </p>
-              <p className="meta mt-2 text-faded-sage">{cell.label}</p>
+              <p className="meta text-faded-sage leading-snug">{cell.label}</p>
             </>
           )}
         </div>
@@ -126,44 +132,37 @@ export default async function HomePage() {
 
   return (
     <div>
-      <div className="page-corner">
-        <span className="ml-auto">
-          <LongDate />
-        </span>
-      </div>
 
-      {/* ── The warm front door — greeting hero, mirrors the mobile Home. The
-       * runninghead is gone on desktop, so home carries its own header. ─────── */}
-      <header className="rise rise-1 mb-8 lg:mb-10">
-        <h1 className="font-display">{greeting}.</h1>
-        <p className="meta mt-3 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
+      {/* ── Greeting — a modest, app-like header (Notion/Linear register), not a
+       * magazine hero. A small muted line carries the day. ─────── */}
+      <header className="rise rise-1 mb-8">
+        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">{greeting}.</h1>
+        <p className="meta mt-1 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
       </header>
 
-      {/* ── Quick-log — one-tap logging, right under the greeting (mobile order) ─ */}
-      <section className="rise rise-2 mb-10 lg:mb-12">
+      {/* ── Quick log + the honest stat strip — a compact, dense band. ─── */}
+      <section className="rise rise-2 mb-8 space-y-4">
         <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
-      </section>
-
-      {/* ── Honest stat row — three real counts (logs / health / saved) ──────── */}
-      <section className="rise rise-2 mb-12 lg:mb-16">
         <HomeStatsRow stats={stats} />
       </section>
 
       {/* ── First-run activation — auto-hides once the loop is found ──────── */}
       {showActivation ? (
-        <section className="rise rise-3 mb-12 lg:mb-16">
+        <section className="rise rise-3 mb-8">
           <ActivationPanel steps={deriveActivationSteps(activationSignals)} />
         </section>
       ) : null}
 
-      {/* ── Ask Hale — the concierge, present but secondary (demoted from hero) ─ */}
-      <section className="rise rise-3 mb-12 lg:mb-16">
+      {/* ── Ask Hale — a clean, secondary entry (demoted from hero) ─ */}
+      <section className="rise rise-3 mb-8">
+        <SectionLabel>ask hale</SectionLabel>
         <ConciergeAsk canAsk={canAsk} seed={askSeed} />
       </section>
 
       {/* ── From the village — the agent-ranked, trusted feed ─────────────── */}
       {/* Streamed: the rank-recommendations agent must not block the shell. */}
-      <section className="rise rise-4 mb-12 lg:mb-16">
+      <section className="rise rise-4 mb-8">
+        <SectionLabel>from your village</SectionLabel>
         <Suspense fallback={<VillageFeedSkeleton />}>
           <HomeVillageFeed />
         </Suspense>

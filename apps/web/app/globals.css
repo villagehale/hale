@@ -208,8 +208,8 @@ h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
 
 /* Inside the authed main-stage the column is narrower (sidebar eats ~22vw),
  * so the page H1/H2 need a tighter ceiling or the headline overflows. */
-.main-stage h1 { font-size: clamp(2.3rem, 4.4vw, 3.75rem); }
-.main-stage h2 { font-size: clamp(1.65rem, 2.8vw, 2.4rem); }
+.main-stage h1 { font-size: clamp(1.9rem, 3.1vw, 2.85rem); }
+.main-stage h2 { font-size: clamp(1.4rem, 2.2vw, 1.95rem); }
 
 em { font-style: italic; }
 strong { font-weight: 700; }
@@ -784,6 +784,15 @@ strong { font-weight: 700; }
   background: var(--color-linen);
 }
 
+/* Contained content column (Notion/Linear-style) — content never stretches to the
+ * full stage width; it sits in a centered ~58rem column so cards and rows keep a
+ * comfortable density instead of spreading thin. The coach chat opts out (it owns
+ * its own full-height surface). */
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner) {
+  max-width: 58rem;
+  margin-inline: auto;
+}
+
 /* Ask Hale is a contained chat: the transcript scrolls inside its own region while
  * the composer stays pinned to the surface foot. So the STAGE itself must not
  * scroll — it becomes a flex column that hands the remaining height to the surface
@@ -816,8 +825,8 @@ strong { font-weight: 700; }
     align-items: baseline;
     justify-content: space-between;
     gap: 1.5rem;
-    padding-bottom: 1rem;
-    margin-bottom: clamp(2.5rem, 4vw, 4rem);
+    padding-bottom: 0.75rem;
+    margin-bottom: clamp(1rem, 2vw, 1.75rem);
     color: var(--color-faded-sage);
   }
 }
