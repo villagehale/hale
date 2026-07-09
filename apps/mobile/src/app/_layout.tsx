@@ -14,6 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SplashLoader } from '@/components/ui/splash-loader';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { submitOnboarding } from '@/lib/auth-api';
+import { postAuthHold, setPostAuthHold } from '@/lib/post-auth-hold';
 import { draftToOnboardingInput } from '@/lib/onboarding-draft';
 import { onboardingDraftStore } from '@/lib/onboarding-draft-store';
 import { usePushRegistration } from '@/lib/use-push-registration';
@@ -30,6 +31,13 @@ SplashScreen.preventAutoHideAsync();
  * redirect ONLY when the current group is neither — so an unauthenticated user
  * already in (onboarding) or on /sign-in is left alone (no oscillation). Likewise
  * an authenticated user is redirected only while parked in those two groups.
+ *
+ * The post-auth HOLD (a synchronous module ref, see post-auth-hold.ts) suppresses
+ * the tabs-bounce for a JUST-onboarded user: create-account sets it BEFORE the
+ * token commits (React state cannot win that same-flush race), and the resume
+ * effect provisions the family then routes to /connect itself, releasing the hold
+ * on every exit. `/connect` is a top-level route (neither pre-auth group), so once
+ * the user is there the gate leaves them alone.
  */
 function useProtectedRoute(ready: boolean) {
   const { token } = useAuth();
@@ -42,7 +50,7 @@ function useProtectedRoute(ready: boolean) {
     const inPreAuth = group === '(onboarding)' || group === 'sign-in';
     if (!token && !inPreAuth) {
       router.replace('/(onboarding)/welcome');
-    } else if (token && inPreAuth) {
+    } else if (token && inPreAuth && !postAuthHold()) {
       router.replace('/(tabs)');
     }
   }, [ready, token, segments, router]);
@@ -55,28 +63,50 @@ function useProtectedRoute(ready: boolean) {
  * saved — submit it. submitOnboarding is idempotent (a user who already has a
  * family gets `completed` with no re-provisioning), so a stale draft is safely
  * cleared. Runs once per authenticated session; the ref guards a re-entrant submit.
+ *
+ * A JUST-onboarded user (a draft was present) is then handed to the post-account
+ * /connect step — but only AFTER provisioning lands, because connecting a Google
+ * account needs the family to exist. While that submit is in flight the post-auth
+ * HOLD (set by create-account before the token committed) suppresses the gate's
+ * tabs-bounce; every exit path here releases it and navigates explicitly.
  */
 function useResumeOnboarding(ready: boolean) {
   const { token } = useAuth();
+  const router = useRouter();
   const submitting = useRef(false);
 
   useEffect(() => {
     if (!ready || !token || submitting.current) return;
     submitting.current = true;
     (async () => {
+      const held = postAuthHold();
       const draft = await onboardingDraftStore.load();
-      if (!draft || draft.children.length === 0) return;
+      if (!draft || draft.children.length === 0) {
+        if (held) {
+          // Hold set but nothing to submit (draft vanished): release and land in
+          // the app — the gate's bounce already deferred to us.
+          setPostAuthHold(false);
+          router.replace('/(tabs)');
+        }
+        return;
+      }
       try {
         await submitOnboarding(draftToOnboardingInput(draft));
         await onboardingDraftStore.clear();
+        setPostAuthHold(false);
+        router.replace('/connect');
       } catch {
         // A 401 already bounced to sign-in; a transient failure leaves the draft in
         // place to retry on the next authed load. Never crash the shell.
+        if (held) {
+          setPostAuthHold(false);
+          router.replace('/(tabs)');
+        }
       }
     })().finally(() => {
       submitting.current = false;
     });
-  }, [ready, token]);
+  }, [ready, token, router]);
 }
 
 function RootNavigator() {
@@ -115,6 +145,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(onboarding)" />
+      <Stack.Screen name="connect" />
       <Stack.Screen name="sign-in" />
     </Stack>
   );

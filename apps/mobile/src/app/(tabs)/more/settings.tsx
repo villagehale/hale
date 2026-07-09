@@ -3,7 +3,9 @@ import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
 import { Switch, View } from 'react-native';
 
+import { ConnectorsList, ConnectorsPrivacyNote } from '@/components/hale/connectors-list';
 import { AppText } from '@/components/ui/app-text';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
@@ -11,7 +13,12 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
-import type { MobilePushPrefsResponse, MobileSettingsResponse, PushPref } from '@/lib/api-types';
+import type {
+  MobileIntegrationsResponse,
+  MobilePushPrefsResponse,
+  MobileSettingsResponse,
+  PushPref,
+} from '@/lib/api-types';
 import { updatePushPref, updateSettings } from '@/lib/family-api';
 import { useApi } from '@/lib/use-api';
 
@@ -215,6 +222,44 @@ function NotificationsSection({
   );
 }
 
+/**
+ * The "Connected accounts" section: the three read-only Google connectors, each with
+ * its live status and a Connect/Disconnect affordance. Reads its own endpoint so the
+ * section refreshes independently after a connect returns from the browser. The
+ * section is hidden until the read resolves (a connector's status must be honest —
+ * we never render a row before we know it, rule #1).
+ */
+function ConnectedAccountsSection() {
+  const integrations = useApi<MobileIntegrationsResponse>('/api/mobile/integrations');
+  if (integrations.status === 'error') {
+    // A transient read failure must not silently drop the section (a vanished
+    // section reads as "no such feature"): keep the heading + offer a retry.
+    return (
+      <View className="gap-3">
+        <SectionTitle>Connected accounts</SectionTitle>
+        <Card className="gap-3">
+          <AppText variant="meta" className="text-ink-3">
+            Couldn't load your connected accounts.
+          </AppText>
+          <Button label="Try again" variant="secondary" onPress={integrations.reload} />
+        </Card>
+      </View>
+    );
+  }
+  if (integrations.status !== 'ready' || !integrations.data) return null;
+  return (
+    <View className="gap-3">
+      <SectionTitle>Connected accounts</SectionTitle>
+      <Card className="gap-5">
+        <ConnectorsList connectors={integrations.data.connectors} onRefresh={integrations.refresh} />
+        <View className="border-t border-rule pt-4">
+          <ConnectorsPrivacyNote />
+        </View>
+      </Card>
+    </View>
+  );
+}
+
 function SettingsBody({
   email,
   push,
@@ -225,6 +270,8 @@ function SettingsBody({
   return (
     <>
       <NotificationsSection email={email} push={push} />
+
+      <ConnectedAccountsSection />
 
       <View className="gap-2">
         <SectionTitle>Privacy</SectionTitle>

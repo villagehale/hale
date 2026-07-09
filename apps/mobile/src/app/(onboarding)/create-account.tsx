@@ -14,6 +14,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { useMeadowColor } from '@/constants/meadow';
 import { useAuth } from '@/lib/auth';
 import { exchangeGoogleIdToken, signInWithPassword, signUpWithPassword } from '@/lib/auth-api';
+import { setPostAuthHold } from '@/lib/post-auth-hold';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -51,7 +52,12 @@ function GoogleButton({
     if (!idToken) return;
     onBusy(true);
     exchangeGoogleIdToken(idToken)
-      .then(({ token }) => signIn(token))
+      .then(({ token }) => {
+        // Hold the gate's tabs-bounce BEFORE the token commits (see post-auth-hold):
+        // the resume hook provisions the family, then routes to /connect itself.
+        setPostAuthHold(true);
+        signIn(token);
+      })
       .catch((e: Error) => onError(e.message))
       .finally(() => onBusy(false));
   }, [response, signIn, onError, onBusy]);
@@ -177,6 +183,7 @@ function VerifyEmail({ email, password }: { email: string; password: string }) {
     attempting.current = true;
     try {
       const { token } = await signInWithPassword(email, password);
+      setPostAuthHold(true);
       await signIn(token);
       return true;
     } catch {
