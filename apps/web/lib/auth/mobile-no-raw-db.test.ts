@@ -14,10 +14,12 @@ import { describe, expect, it } from 'vitest';
 // email sign-up (delegates to registerCredential + the signup side-effect
 // dispatcher), the companion quick-log, the companion "mark done" (reuses the same
 // writeEpisode path), the companion logs read (reuses the shared, teen-redacted
-// readLogsPage), and the three docs-vault routes (reuse the shared, teen-redacted
-// documents lib for list / signed-url / soft-delete). They may import ~/lib/db ONLY,
-// and must contain NO query-building tokens themselves — the query building lives
-// behind the shared lib, never inline in the route.
+// readLogsPage), the three docs-vault routes (reuse the shared, teen-redacted
+// documents lib for list / signed-url / soft-delete), and the connector connect-url
+// route (resolves the family/user ids via the shared ~/lib/family helpers to sign
+// the OAuth state — it reads NO child data, so there is nothing to redact). They may
+// import ~/lib/db ONLY, and must contain NO query-building tokens themselves — the
+// query building lives behind the shared lib, never inline in the route.
 //
 // (Lives under lib/ because the vitest `include` glob only picks up lib/** and
 // components/**, not app/**.)
@@ -38,6 +40,7 @@ const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/docs/route.ts',
   'app/api/mobile/docs/[id]/route.ts',
   'app/api/mobile/docs/[id]/url/route.ts',
+  'app/api/mobile/integrations/connect-url/route.ts',
 ]);
 
 // Direct DB-access tokens forbidden in every mobile file (the allowlist relaxes

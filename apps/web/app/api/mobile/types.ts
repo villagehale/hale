@@ -237,3 +237,15 @@ export interface MobilePushPrefsUpdateRequest {
 export interface MobilePushPrefsUpdateResponse {
   status: 'updated';
 }
+
+// ── connectors (GET /api/mobile/integrations/connect-url) ─────────────────────
+//
+// The native app can't use the cookie-authed web connect route, so this Bearer
+// route returns the Google consent URL to open in a browser. The URL carries the
+// SAME signed state (familyId+userId+provider, surface=mobile), so the shared
+// callback needs no browser session — it redirects to the public /connected page.
+
+/** The Google consent URL to open in a browser for a connector connect flow. */
+export interface MobileConnectUrlResponse {
+  url: string;
+}

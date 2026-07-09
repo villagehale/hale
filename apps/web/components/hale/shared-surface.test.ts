@@ -48,7 +48,7 @@ describe('Ask Hale surfaces share one component', () => {
   });
 
   it('CoachConversation renders the shared AskHaleThread in the full variant', () => {
-    const el = CoachConversation({ canAsk: false, seed: SEED });
+    const el = CoachConversation({ canAsk: false, seed: SEED, connectors: [] });
 
     expect(el.type).toBe(AskHaleThread);
     expect(el.props).toMatchObject({ canAsk: false, seed: SEED, variant: 'full' });
