@@ -1,1 +1,1 @@
-ALTER TYPE "public"."integration_provider" ADD VALUE 'gdrive';
+ALTER TYPE "public"."integration_provider" ADD VALUE IF NOT EXISTS 'gdrive';
