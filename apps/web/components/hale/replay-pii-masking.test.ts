@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ToolCard } from '@hale/agent';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { AccountMenuView } from './account-menu-view';
-import { GrowthSection, RoutinesSection } from './companion-tabs';
+import { GrowthSection, OverviewSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
 import { TrailTimeline } from './trail-timeline';
 
@@ -185,6 +185,42 @@ describe('companion growth section masks the measurement readings', () => {
     expect(residue).not.toContain('7.3 kg');
     // The non-PII frame — the section label + disclaimer — survives the strip.
     expect(residue).toContain('no percentiles or WHO comparisons');
+  });
+});
+
+describe('companion overview section masks the child name + a logged summary', () => {
+  // A newborn so nextHealth/todayHealth populate the health-summary + upcoming cards.
+  const child = { id: 'c-1', ...companionForChild({ dateOfBirth: '2026-05-01', name: 'Noor' }) };
+  const recentLogs = [
+    {
+      id: 'l1',
+      childId: 'c-1',
+      episodeType: 'feed',
+      summary: 'fed 90 ml at 3pm',
+      occurredAt: '2026-06-01T15:00:00.000Z',
+    },
+  ];
+  const html = renderToStaticMarkup(
+    h(OverviewSection, {
+      child,
+      recentLogs,
+      timeZone: 'America/Toronto',
+      onNavigate: () => {},
+    }),
+  );
+
+  it('renders the child name + logged summary at all (guards against a vacuous pass)', () => {
+    expect(html).toContain('Noor');
+    expect(html).toContain('fed 90 ml at 3pm');
+  });
+
+  it('keeps the child name and the logged summary inside a [data-hale-pii] subtree', () => {
+    const residue = stripMaskedSubtrees(html);
+    expect(residue).not.toContain('Noor');
+    expect(residue).not.toContain('fed 90 ml at 3pm');
+    // The non-PII frame — the card eyebrows — survives the strip.
+    expect(residue).toContain('today at a glance');
+    expect(residue).toContain('health summary');
   });
 });
 
