@@ -1,6 +1,6 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { companionForChild, deriveStage } from '@hale/types';
+import { companionForChild, deriveStage, HEALTH_SOON_WEEKS } from '@hale/types';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
@@ -20,8 +20,7 @@ import { visibleCandidates } from '~/lib/village/visibility';
  */
 
 /** A health item this coarse window counts as "soon" for a daily-brief nudge —
- * mirrors the worker digest's HEALTH_SOON_WEEKS. */
-const HEALTH_SOON_WEEKS = 6;
+ * shares the worker digest's window via @hale/types (single source). */
 
 /** How many of the freshest candidates the brief considers. */
 const WEEK_VILLAGE_LIMIT = 10;

@@ -304,3 +304,8 @@ export function companionForChild(
     whatsNext: guidance.whatsNext,
   };
 }
+
+/** How many weeks ahead a not-done health item counts as "coming up soon" —
+ * the ONE window shared by the web digest tools and the worker daily digest
+ * (they duplicated this literal until it was made a single source). */
+export const HEALTH_SOON_WEEKS = 6;

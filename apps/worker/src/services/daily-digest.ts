@@ -1,6 +1,6 @@
 import { and, eq, gte, lt } from 'drizzle-orm';
 import { schema, type Database, type DigestPerChildBreakdown } from '@hale/db';
-import { companionForChild } from '@hale/types';
+import { companionForChild, HEALTH_SOON_WEEKS } from '@hale/types';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
 import { detectSiblingCalendarOverlaps } from './sibling-overlap.js';
@@ -13,7 +13,7 @@ interface DailyDigestJob {
 type CompanionHighlights = NonNullable<DigestPerChildBreakdown['companionHighlights']>;
 
 /** A health item this coarse window counts as "soon" for a daily-brief nudge. */
-const HEALTH_SOON_WEEKS = 6;
+
 
 /**
  * Personalized child-development nudges for the daily brief, derived per child

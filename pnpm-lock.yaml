@@ -142,6 +142,9 @@ importers:
         specifier: 0.8.3
         version: 0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
     devDependencies:
+      '@hale/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.15

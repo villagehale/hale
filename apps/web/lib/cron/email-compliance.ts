@@ -175,7 +175,7 @@ export async function processUnsubscribe(
 }
 
 /** The base URL the unsubscribe link points at. */
-function appBaseUrl(): string {
+export function appBaseUrl(): string {
   return process.env.APP_URL ?? 'https://app.villagehale.com';
 }
 

@@ -28,7 +28,7 @@ export function usePushRegistration(enabled: boolean) {
 
       const projectId =
         Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-      if (!projectId) return; // TODO(push): set EAS projectId once the project is linked.
+      if (!projectId) return; // Fails closed if app config ever loses extra.eas.projectId.
 
       const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
       if (cancelled) return;
