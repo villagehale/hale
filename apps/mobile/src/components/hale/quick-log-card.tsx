@@ -165,7 +165,7 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
     // fields — loggedRows shows only what the parser lifted.
     const rows = loggedRows(match, loggedAt);
     return (
-      <View className="mb-3 max-w-[92%] self-end gap-2 rounded-lg border border-rule bg-sage-tint px-4 py-3.5">
+      <View className="mb-3 max-w-[92%] self-end gap-2 rounded-lg border border-rule bg-card px-4 py-3.5">
         <View className="flex-row items-center gap-1.5">
           <Icon name={KIND_ICON[match.kind]} size={14} color={kindIconColor} />
           <AppText variant="meta" className="uppercase tracking-eyebrow text-sage">

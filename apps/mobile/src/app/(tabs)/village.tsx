@@ -457,11 +457,9 @@ function RecCard({
         ) : null}
         <AppText variant="body">{rec.summary}</AppText>
         {rec.accepted ? (
-          <View className="mt-1 h-7 items-center justify-center self-start rounded-full bg-sage-tint px-3">
-            <AppText variant="meta" className="leading-none text-sage">
-              Sent for your approval
-            </AppText>
-          </View>
+          <AppText variant="meta" className="mt-1 self-start text-ink-3">
+            Sent for your approval
+          </AppText>
         ) : null}
       </Pressable>
       <ShareRow shareHref={rec.shareHref} />
