@@ -3,18 +3,22 @@ import { CompanionTabs } from '~/components/hale/companion-tabs';
 import { PageCorner } from '~/components/hale/page-corner';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { QuickLog } from '~/components/hale/quick-log';
-import { RecentLogs } from '~/components/hale/recent-logs';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
+import { MEASUREMENT_EPISODE } from '~/lib/companion/log-types';
+import { loadLogsPage } from '~/lib/companion/logs-page';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadRecentLogs } from '~/lib/companion/recent-logs';
 import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadVillage } from '~/lib/village/queries';
 
 export default async function CompanionPage() {
-  const [children, recentLogs, basics, timeZone] = await Promise.all([
+  const [children, recentLogs, basics, timeZone, village, growthPage] = await Promise.all([
     loadCompanion(),
     loadRecentLogs(),
     loadFamilyBasics(),
     loadFamilyTimezone(),
+    loadVillage(),
+    loadLogsPage({ episodeType: MEASUREMENT_EPISODE }),
   ]);
 
   return (
@@ -62,7 +66,13 @@ export default async function CompanionPage() {
           </div>
         </section>
       ) : (
-        <CompanionTabs kids={children} />
+        <CompanionTabs
+          kids={children}
+          routine={village.routine}
+          growthLogs={growthPage.logs}
+          recentLogs={recentLogs}
+          timeZone={timeZone}
+        />
       )}
 
       {/* ── Booking — Hale can take this off your hands ─────────────────── */}
@@ -75,19 +85,18 @@ export default async function CompanionPage() {
         </div>
       ) : null}
 
-      {/* ── Recent logs + quick log ─────────────────────────────────────── */}
+      {/* ── Quick log — the write path (feeds · naps · milestones · growth) ── */}
       {children.length > 0 ? (
         <section className="rise rise-7 mt-16 lg:mt-24">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
             <div className="lg:col-span-3">
-              <span className="eyebrow">recent logs</span>
+              <span className="eyebrow">quick log</span>
               <p className="meta mt-2 text-slate-green">feeds · naps · milestones</p>
               <Link href="/companion/logs" className="link mt-4 inline-block">
                 see all logs →
               </Link>
             </div>
-            <div className="lg:col-span-9 space-y-8">
-              <RecentLogs logs={recentLogs} timeZone={timeZone} />
+            <div className="lg:col-span-9">
               <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
             </div>
           </div>

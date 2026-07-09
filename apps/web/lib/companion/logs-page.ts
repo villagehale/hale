@@ -157,7 +157,7 @@ function liftNumerics(payload: Record<string, unknown>): {
  * → an empty page. A genuine query failure once a DB exists surfaces (rule #8).
  */
 export async function loadLogsPage(
-  opts: { childId?: string; before?: string } = {},
+  opts: { childId?: string; episodeType?: string; before?: string } = {},
 ): Promise<LogsPage> {
   if (!process.env.DATABASE_URL) return { logs: [], nextCursor: null };
   const database = defaultDb();
