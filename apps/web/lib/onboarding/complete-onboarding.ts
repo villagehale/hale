@@ -7,7 +7,12 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { recordConsent } from '~/lib/consent';
-import { EmailInUseError, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import {
+  EmailInUseError,
+  ensureUserRow,
+  resolveFamilyForUser,
+  resolveUserIdForUser,
+} from '~/lib/family';
 import {
   type LocationInput,
   isOnboardingRegionSupported,
@@ -123,6 +128,35 @@ export async function completeOnboarding(
   };
 
   const existingFamilyId = await resolveFamilyForUser(externalAuthId, database);
+  // A repeat submit for a user who already has a family skips the write path: their
+  // profile, consents, and ToS were recorded on first provisioning. Re-running the
+  // writes would clobber the family row, duplicate the tos_accepted audit, and
+  // re-record consents the user gave once (a PIPEDA concern, rule #6). The legit
+  // email-verification resume case has NO family yet (existingFamilyId is null), so
+  // it takes the full write path below unchanged.
+  if (existingFamilyId) {
+    // The welcome send is the ONE post-commit side effect that must still run here:
+    // if the first submit committed but the process died before the send landed a
+    // ledger row, that welcome is otherwise lost forever (unlike discovery, which
+    // the cron eventually covers). sendWelcomeEmail is ledger-idempotent, so the
+    // normal repeat submit is a no-op ('already_sent'); this only sends in that
+    // crash-window recovery. Boundary-caught — a send failure must not fail
+    // completion (rule #8).
+    const existingUserId = await resolveUserIdForUser(externalAuthId, database);
+    if (existingUserId) {
+      try {
+        await sendWelcomeEmail(
+          database,
+          { userId: existingUserId, familyId: existingFamilyId, email, name: identity.name },
+          welcomeDeps,
+        );
+      } catch (err) {
+        console.error('welcome email retry failed (onboarding unaffected)', err);
+      }
+    }
+    return { status: 'completed', familyId: existingFamilyId };
+  }
+
   const location = normalizeLocation(input.location ?? {});
   // Compliance gate (hard rule #1): Hale is cleared to onboard Canada only. An
   // explicit non-Canadian country is blocked HERE — before any child PII (a full
@@ -152,20 +186,16 @@ export async function completeOnboarding(
   try {
     ({ familyId, userId } = await database.transaction(async (tx) => {
     const executor = tx as unknown as Database;
-    const familyId =
-      existingFamilyId ??
-      (
-        await provisionAndWriteChildren(
-          executor,
-          identity,
-          validated.map((child) => ({
-            name: child.name,
-            lastName: child.lastName,
-            dateOfBirth: child.dateOfBirth,
-            gender: child.gender,
-          })),
-        )
-      ).familyId;
+    const { familyId } = await provisionAndWriteChildren(
+      executor,
+      identity,
+      validated.map((child) => ({
+        name: child.name,
+        lastName: child.lastName,
+        dateOfBirth: child.dateOfBirth,
+        gender: child.gender,
+      })),
+    );
 
     const userId = await ensureUserRow(identity, executor);
 
@@ -206,15 +236,13 @@ export async function completeOnboarding(
     throw err;
   }
 
-  // The founding ordinal (first 100 families), only for a family provisioned in
-  // THIS run. Post-commit + boundary-caught on purpose: the badge is a
+  // The founding ordinal (first 100 families), assigned for the family just
+  // provisioned. Post-commit + boundary-caught on purpose: the badge is a
   // decoration, and a failure here must never fail (or roll back) onboarding.
-  if (!existingFamilyId) {
-    try {
-      await assignFoundingNumber(database, familyId);
-    } catch (err) {
-      console.error('founding-number assignment failed (onboarding unaffected)', err);
-    }
+  try {
+    await assignFoundingNumber(database, familyId);
+  } catch (err) {
+    console.error('founding-number assignment failed (onboarding unaffected)', err);
   }
 
   // The one-time welcome email, fired now that the family + children exist (so it
