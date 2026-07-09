@@ -13,10 +13,11 @@ export interface UseApi<T> {
   error: string | null;
   /** True during a pull-to-refresh (data already shown). */
   refreshing: boolean;
-  /** Retry after an error / initial load. */
-  reload: () => void;
-  /** Pull-to-refresh: re-fetch without clearing the visible data. */
-  refresh: () => void;
+  /** Retry after an error / initial load. Awaitable so a caller can wait for the
+   * re-read before clearing a transient UI state (e.g. a connector's "Checking…"). */
+  reload: () => Promise<void>;
+  /** Pull-to-refresh: re-fetch without clearing the visible data. Awaitable. */
+  refresh: () => Promise<void>;
 }
 
 /**

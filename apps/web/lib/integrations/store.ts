@@ -15,6 +15,10 @@ export interface ConnectionSummary {
   status: string;
   scopes: string[];
   lastSyncAt: Date | null;
+  /** When this connection was first made — an honest "connected at" for the UI.
+   * Always set by listConnections (the row's created_at); optional on the type so a
+   * summary can be constructed without it (e.g. a coach-panel fixture). */
+  connectedAt?: Date;
 }
 
 /** audit_log.action_taken values for a connector connect/disconnect (rule #6). */
@@ -122,9 +126,36 @@ export async function listConnections(
       status: schema.integrations.status,
       scopes: schema.integrations.scopes,
       lastSyncAt: schema.integrations.lastSyncAt,
+      connectedAt: schema.integrations.createdAt,
     })
     .from(schema.integrations)
     .where(eq(schema.integrations.familyId, familyId));
+}
+
+/** Connection summaries for one PARENT's own connections (NO tokens) — for the mobile
+ * connectors surface. Scoped to (family,user) so the list matches the revoke key: a
+ * co-parent never sees the other parent's connection (which they can't disconnect),
+ * and a provider carries at most one row so the status can't collapse ambiguously. */
+export async function listUserConnections(
+  database: Database,
+  familyId: string,
+  userId: string,
+): Promise<ConnectionSummary[]> {
+  return database
+    .select({
+      provider: schema.integrations.provider,
+      status: schema.integrations.status,
+      scopes: schema.integrations.scopes,
+      lastSyncAt: schema.integrations.lastSyncAt,
+      connectedAt: schema.integrations.createdAt,
+    })
+    .from(schema.integrations)
+    .where(
+      and(
+        eq(schema.integrations.familyId, familyId),
+        eq(schema.integrations.userId, userId),
+      ),
+    );
 }
 
 /** One active connector row the poll sync operates on — tokens decrypted, cursor
@@ -232,21 +263,22 @@ export async function markConnectionError(database: Database, id: string): Promi
 
 /** Disconnect: purge the encrypted tokens and mark revoked (stops sync). The
  * revoke and its immutable audit row (rule #6) land in one transaction; the audit
- * row carries provider + family only. A no-op revoke (no matching row) writes no
- * audit row — nothing was disconnected. */
+ * row carries provider + family only. Returns the number of rows revoked, so a
+ * no-op revoke (no matching row — nothing was disconnected, no audit row written)
+ * is surfaced to the caller as 'not_found' rather than a false 'revoked'. */
 export async function revokeConnection(
   database: Database,
   familyId: string,
   userId: string,
   provider: ConnectorProvider,
-): Promise<void> {
-  await database.transaction(async (tx) => {
+): Promise<number> {
+  return database.transaction(async (tx) => {
     const revoked = await tx
       .update(schema.integrations)
       .set({ oauthTokensEncrypted: null, status: 'revoked', updatedAt: new Date() })
       .where(byFamilyUserProvider(familyId, userId, provider))
       .returning({ id: schema.integrations.id });
-    if (revoked.length === 0) return;
+    if (revoked.length === 0) return 0;
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: userId,
@@ -255,5 +287,6 @@ export async function revokeConnection(
       targetId: revoked[0]?.id,
       after: { provider },
     });
+    return revoked.length;
   });
 }

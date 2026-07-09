@@ -31,8 +31,12 @@ function fakeDb(selectRows: unknown[]) {
     updated?: Record<string, unknown>;
     selectWhere?: SQL;
     conflict?: { target: unknown; targetWhere?: unknown; set: Record<string, unknown> };
+    /** Rows the revoke UPDATE ... RETURNING yields; defaults to one matched row. A
+     * test sets this to [] to model a no-op revoke (nothing matched the key). */
+    revokedRows?: { id: string }[];
   } = {};
   const returning = () => Promise.resolve([{ id: 'i1' }]);
+  const updateReturning = () => Promise.resolve(cap.revokedRows ?? [{ id: 'i1' }]);
   const database = {
     select: () => ({
       from: () => ({
@@ -58,7 +62,7 @@ function fakeDb(selectRows: unknown[]) {
     update: () => ({
       set: (v: Record<string, unknown>) => {
         cap.updated = v;
-        return { where: () => Object.assign(Promise.resolve(), { returning }) };
+        return { where: () => Object.assign(Promise.resolve(), { returning: updateReturning }) };
       },
     }),
     transaction: (cb: (tx: unknown) => Promise<unknown>) => cb(database),
@@ -120,9 +124,10 @@ describe('integrations store', () => {
     expect(await getConnectionTokens(database, FAMILY, USER, 'gmail')).toBeNull();
   });
 
-  it('revoke purges the tokens and marks the row revoked', async () => {
+  it('revoke purges the tokens, marks the row revoked, and returns the revoked count', async () => {
     const { database, cap } = fakeDb([]);
-    await revokeConnection(database, FAMILY, USER, 'gcal');
+    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal');
+    expect(revoked).toBe(1);
     expect(cap.updated?.oauthTokensEncrypted).toBeNull();
     expect(cap.updated?.status).toBe('revoked');
     // rule #6: a disconnect writes an immutable audit row (provider + family only).
@@ -130,6 +135,17 @@ describe('integrations store', () => {
     expect(cap.audit?.familyId).toBe(FAMILY);
     expect(cap.audit?.actor).toBe(USER);
     expect(cap.audit?.after).toEqual({ provider: 'gcal' });
+  });
+
+  it('revoke of a non-matching connection returns 0 and writes NO audit row (never a false success)', async () => {
+    const { database, cap } = fakeDb([]);
+    // Nothing matched the (family,user,provider) key — the UPDATE ... RETURNING is
+    // empty. The caller must learn nothing was revoked, and no audit row is minted
+    // (rule #6 rows only for real state changes).
+    cap.revokedRows = [];
+    const revoked = await revokeConnection(database, FAMILY, USER, 'gcal');
+    expect(revoked).toBe(0);
+    expect(cap.audit).toBeUndefined();
   });
 
   it('lists sweepable connections with the token blob OPAQUE (decryption is per-row, inside the sweep)', async () => {
