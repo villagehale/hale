@@ -2,7 +2,6 @@ import { Baby } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { auth } from '~/auth';
-import { ActivationPanel } from '~/components/hale/activation-panel';
 import { BookButton } from '~/components/hale/book-button';
 import { scopeChildren } from '~/components/hale/child-scope-core';
 import { ConciergeAsk } from '~/components/hale/concierge-ask';
@@ -12,14 +11,11 @@ import { QuickLog } from '~/components/hale/quick-log';
 import { HomeVillageFeed, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
-import { allStepsDone, deriveActivationSteps } from '~/lib/activation/checklist';
 import { authConfigured } from '~/lib/auth-config';
 import { loadThreadShellForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
-import { loadFamilyMembers } from '~/lib/dashboard/queries';
 import { loadHomeStats } from '~/lib/home/aggregates';
 import { homeGreeting, homeStatCells } from '~/lib/home/greeting';
-import { loadVillage } from '~/lib/village/queries';
 
 function duePhrase(dueInWeeks: number): string {
   if (dueInWeeks <= 0) return 'due now';
@@ -75,11 +71,9 @@ function HomeStatsRow({ stats }: { stats: Awaited<ReturnType<typeof loadHomeStat
 
 export default async function HomePage() {
   const canAsk = authConfigured();
-  const [children, askSeed, village, members, stats, name] = await Promise.all([
+  const [children, askSeed, stats, name] = await Promise.all([
     loadCompanion(),
     loadThreadShellForRequest(),
-    loadVillage(),
-    loadFamilyMembers(),
     loadHomeStats(),
     viewerName(),
   ]);
@@ -123,13 +117,6 @@ export default async function HomePage() {
     );
   }
 
-  const activationSignals = {
-    acceptedCandidateCount: village.candidates.filter((c) => c.accepted).length,
-    hasUserCoachMessage: askSeed.timeline.some((m) => m.role === 'user'),
-    hasCoParent: members.coParent !== null,
-  };
-  const showActivation = !allStepsDone(activationSignals);
-
   return (
     <div>
 
@@ -144,19 +131,6 @@ export default async function HomePage() {
       <section className="rise rise-2 mb-8 space-y-4">
         <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
         <HomeStatsRow stats={stats} />
-      </section>
-
-      {/* ── First-run activation — auto-hides once the loop is found ──────── */}
-      {showActivation ? (
-        <section className="rise rise-3 mb-8">
-          <ActivationPanel steps={deriveActivationSteps(activationSignals)} />
-        </section>
-      ) : null}
-
-      {/* ── Ask Hale — a clean, secondary entry (demoted from hero) ─ */}
-      <section className="rise rise-3 mb-8">
-        <SectionLabel>ask hale</SectionLabel>
-        <ConciergeAsk canAsk={canAsk} seed={askSeed} />
       </section>
 
       {/* ── From the village — the agent-ranked, trusted feed ─────────────── */}

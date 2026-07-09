@@ -14,35 +14,32 @@ export function ApprovalsHeader({ pendingCount }: { pendingCount: number }) {
   const draftWord = pendingCount === 1 ? 'draft' : 'drafts';
 
   return (
-    <header className="rise rise-1 mb-16 lg:mb-20">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
-        <div className="lg:col-span-3">
-          <span className="eyebrow">awaiting you</span>
-          <p className="meta mt-2 text-slate-green max-w-prose">
+    <header className="rise rise-1 mb-8">
+      <p className="eyebrow mb-3 text-faded-sage">awaiting you</p>
+      {hasPending ? (
+        <>
+          <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
+            <span className="text-apricot-deep">{pendingCount}</span> {draftWord} waiting for your
+            yes.
+          </h1>
+          <p className="meta mt-1 text-slate-green">
             Hale drafts the response — you decide. It never acts on its own.
           </p>
-        </div>
-        <div className="lg:col-span-9">
-          {hasPending ? (
-            <h1 className="font-display">
-              <span className="text-apricot-deep">{pendingCount}</span> {draftWord} waiting for your
-              yes.
-            </h1>
-          ) : (
-            <>
-              <h1 className="font-display">
-                all clear<span className="text-apricot-deep">.</span>
-              </h1>
-              <p className="meta mt-4 text-slate-green max-w-prose">
-                Nothing is waiting on you. When Hale drafts something, it parks it here for your yes.
-              </p>
-              <Link href="/trail" className="link mt-4 inline-block">
-                see what Hale has taken care of →
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
+        </>
+      ) : (
+        <>
+          <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
+            all clear<span className="text-apricot-deep">.</span>
+          </h1>
+          <p className="meta mt-1 text-slate-green">
+            Nothing is waiting on you. When Hale drafts something, it parks it here for your yes. It
+            never acts on its own.
+          </p>
+          <Link href="/trail" className="link mt-4 inline-block">
+            see what Hale has taken care of →
+          </Link>
+        </>
+      )}
     </header>
   );
 }

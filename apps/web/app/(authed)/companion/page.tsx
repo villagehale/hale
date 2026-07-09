@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { CompanionTabs } from '~/components/hale/companion-tabs';
-import { PageCorner } from '~/components/hale/page-corner';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { QuickLog } from '~/components/hale/quick-log';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
@@ -10,6 +9,12 @@ import { loadCompanion } from '~/lib/companion/queries';
 import { loadRecentLogs } from '~/lib/companion/recent-logs';
 import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
 import { loadVillage } from '~/lib/village/queries';
+
+/** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
+ * above its content. Replaces the editorial label-rail gutters. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
+}
 
 export default async function CompanionPage() {
   const [children, recentLogs, basics, timeZone, village, growthPage] = await Promise.all([
@@ -23,30 +28,21 @@ export default async function CompanionPage() {
 
   return (
     <div>
-      <PageCorner section="companion · 0–18" />
-
-      {/* ── Headline ────────────────────────────────────────────────────── */}
-      <header className="rise rise-1 mb-16 lg:mb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">your companion</span>
-            <p className="meta mt-2">where each child is · what’s next</p>
-          </div>
-          <div className="lg:col-span-9">
-            <h1 className="font-display">
-              {children.length === 0 ? (
-                <>
-                  growing up, <span className="text-apricot-deep">held</span> at every age.
-                </>
-              ) : (
-                <>
-                  {children.length} {children.length === 1 ? 'child' : 'children'},{' '}
-                  <span className="text-apricot-deep">growing</span> at their own pace.
-                </>
-              )}
-            </h1>
-          </div>
-        </div>
+      {/* ── Headline — a modest, app-like header (Notion/Linear register). ── */}
+      <header className="rise rise-1 mb-8">
+        <SectionLabel>your companion</SectionLabel>
+        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
+          {children.length === 0 ? (
+            <>
+              growing up, <span className="text-apricot-deep">held</span> at every age.
+            </>
+          ) : (
+            <>
+              {children.length} {children.length === 1 ? 'child' : 'children'},{' '}
+              <span className="text-apricot-deep">growing</span> at their own pace.
+            </>
+          )}
+        </h1>
       </header>
 
       {children.length === 0 ? (
@@ -77,7 +73,7 @@ export default async function CompanionPage() {
 
       {/* ── Booking — Hale can take this off your hands ─────────────────── */}
       {children.length > 0 ? (
-        <div className="rise rise-7 mt-12 lg:mt-16">
+        <div className="rise rise-7 mt-8">
           <UpgradePrompt planTier={basics.planTier} entitlement="portal_automation">
             Tired of booking these yourself? On Family, Hale can book a clinic appointment for you —
             you just confirm.
@@ -87,24 +83,19 @@ export default async function CompanionPage() {
 
       {/* ── Quick log — the write path (feeds · naps · milestones · growth) ── */}
       {children.length > 0 ? (
-        <section className="rise rise-7 mt-16 lg:mt-24">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-            <div className="lg:col-span-3">
-              <span className="eyebrow">quick log</span>
-              <p className="meta mt-2 text-slate-green">feeds · naps · milestones</p>
-              <Link href="/companion/logs" className="link mt-4 inline-block">
-                see all logs →
-              </Link>
-            </div>
-            <div className="lg:col-span-9">
-              <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
-            </div>
+        <section className="rise rise-7 mt-8">
+          <div className="flex items-baseline justify-between gap-4 mb-3">
+            <span className="eyebrow text-faded-sage">quick log</span>
+            <Link href="/companion/logs" className="link">
+              see all logs →
+            </Link>
           </div>
+          <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
         </section>
       ) : null}
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
-      <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
+      <section className="rise rise-7 mt-8 space-y-6">
         <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
           {[
             'supportive guidance, never a diagnosis',

@@ -4,7 +4,6 @@ import { scopeChildren } from '~/components/hale/child-scope-core';
 import { ChildTag } from '~/components/hale/child-tag';
 import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
-import { PageCorner } from '~/components/hale/page-corner';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
 import { Card } from '~/components/ui/card';
@@ -17,6 +16,12 @@ import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
 import { type DayColumn, buildPlanSpine, groupRoutineByDay } from '~/lib/plan/spine';
 import { type PlanChildItem, planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
+
+/** A clean, minimal section label (Notion/Linear register) — small, muted,
+ * spaced above its content. Replaces the editorial label-rail gutters. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
+}
 
 export default async function PlanPage() {
   const [village, children, authoredPlans, timeZone] = await Promise.all([
@@ -45,107 +50,77 @@ export default async function PlanPage() {
 
   return (
     <div>
-      <PageCorner folio="plan" section="your week" />
-
-      {/* ── Headline ────────────────────────────────────────────────────── */}
-      <header className="rise rise-1 mb-16 lg:mb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">your week</span>
-            <p className="meta mt-2">what&rsquo;s coming for your kids</p>
-          </div>
-          <div className="lg:col-span-9">
-            <h1 className="font-display">
-              {hasPlan ? (
-                <>
-                  here&rsquo;s your <span className="text-apricot-deep">week ahead</span>.
-                </>
-              ) : (
-                <>
-                  a quiet <span className="text-apricot-deep">week ahead</span>.
-                </>
-              )}
-            </h1>
-          </div>
-        </div>
+      {/* ── Greeting — a modest, app-like header (Notion/Linear register) ── */}
+      <header className="rise rise-1 mb-8">
+        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
+          {hasPlan ? (
+            <>
+              here&rsquo;s your <span className="text-apricot-deep">week ahead</span>.
+            </>
+          ) : (
+            <>
+              a quiet <span className="text-apricot-deep">week ahead</span>.
+            </>
+          )}
+        </h1>
+        <p className="meta mt-1 text-slate-green">what&rsquo;s coming for your kids.</p>
       </header>
 
       {/* ── Add a plan ──────────────────────────────────────────────────── */}
-      <section className="rise rise-2 mb-16 lg:mb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-          <div className="lg:col-span-3">
-            <span className="eyebrow text-spruce">your own plans</span>
-            <p className="meta mt-2">a private note for your week</p>
-          </div>
-          <div className="lg:col-span-9">
-            <AddPlan kids={kids} />
-          </div>
-        </div>
+      <section className="rise rise-2 mb-8">
+        <SectionLabel>your own plans · a private note for your week</SectionLabel>
+        <AddPlan kids={kids} />
       </section>
 
       {/* ── Plans you've written — a Mon–Sun week-spine ─────────────────── */}
       {hasAuthored ? (
-        <section className="rise rise-2 mb-16 lg:mb-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-            <div className="lg:col-span-3">
-              <span className="eyebrow text-spruce">plans you&rsquo;ve written</span>
-              <p className="meta mt-2">this week · private to your family</p>
-            </div>
-            <div className="lg:col-span-9 space-y-8">
-              {spineHasDated ? (
-                <div className="space-y-6">
-                  {spine.days
-                    .filter((day) => day.plans.length > 0)
-                    .map((day) => (
-                      <DaySpineRow key={day.dateKey} day={day} />
-                    ))}
-                </div>
-              ) : null}
+        <section className="rise rise-2 mb-8">
+          <SectionLabel>plans you&rsquo;ve written · private to your family</SectionLabel>
+          <div className="space-y-6">
+            {spineHasDated ? (
+              <div className="space-y-6">
+                {spine.days
+                  .filter((day) => day.plans.length > 0)
+                  .map((day) => (
+                    <DaySpineRow key={day.dateKey} day={day} />
+                  ))}
+              </div>
+            ) : null}
 
-              {spine.undated.length > 0 ? (
-                <div>
-                  <span className="eyebrow text-slate-green">sometime this week</span>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
-                    {spine.undated.map((plan) => (
-                      <AuthoredPlanCard key={plan.id} plan={plan} />
-                    ))}
-                  </div>
+            {spine.undated.length > 0 ? (
+              <div>
+                <span className="eyebrow text-slate-green">sometime this week</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                  {spine.undated.map((plan) => (
+                    <AuthoredPlanCard key={plan.id} plan={plan} />
+                  ))}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
 
       {/* ── Settled — completed or past-dated, rolled out of the active week ─ */}
       {spine.settled.length > 0 ? (
-        <section className="rise rise-2 mb-16 lg:mb-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-            <div className="lg:col-span-3">
-              <span className="eyebrow text-faded-sage">settled</span>
-              <p className="meta mt-2">done &amp; past — kept in your trail</p>
-            </div>
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {spine.settled.map((plan) => (
-                <AuthoredPlanCard key={plan.id} plan={plan} settled />
-              ))}
-            </div>
+        <section className="rise rise-2 mb-8">
+          <SectionLabel>settled · done &amp; past, kept in your trail</SectionLabel>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {spine.settled.map((plan) => (
+              <AuthoredPlanCard key={plan.id} plan={plan} settled />
+            ))}
           </div>
         </section>
       ) : null}
 
       {/* ── Added to your week ──────────────────────────────────────────── */}
       {addedActivities.length > 0 ? (
-        <section className="rise rise-2 mb-16 lg:mb-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-            <div className="lg:col-span-3">
-              <span className="eyebrow text-spruce">added to your week</span>
-              <p className="meta mt-2">activities you&rsquo;ve chosen</p>
-            </div>
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {addedActivities.map((candidate) => {
-                const kindLabel = villageKindLabel(candidate.kind);
-                return (
+        <section className="rise rise-2 mb-8">
+          <SectionLabel>added to your week · activities you&rsquo;ve chosen</SectionLabel>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {addedActivities.map((candidate) => {
+              const kindLabel = villageKindLabel(candidate.kind);
+              return (
                 <Card key={candidate.id} href="/village">
                   {kindLabel ? (
                     <span className="eyebrow text-spruce">{kindLabel}</span>
@@ -156,72 +131,63 @@ export default async function PlanPage() {
                     <Icon as={ArrowRight} size={14} />
                   </span>
                 </Card>
-                );
-              })}
-            </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
 
       {/* ── This week's routine ─────────────────────────────────────────── */}
       {routine && hasRoutine ? (
-        <section className="rise rise-2 mb-16 lg:mb-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-            <div className="lg:col-span-3">
-              <span className="eyebrow text-spruce">a gentle routine</span>
-              <p className="meta mt-2">week of {formatCalendarDate(routine.weekOf)}</p>
-              <div className="mt-5">
-                <ShareWeekButton />
-              </div>
-            </div>
-            <div className="lg:col-span-9 space-y-8">
-              {groupRoutineByDay(routine.items).map((strip) => (
-                <div key={strip.weekday ?? 'anytime'}>
-                  <span className="eyebrow text-slate-green">{strip.weekday ?? 'anytime'}</span>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
-                    {strip.items.map((item, idx) => {
-                      const kindLabel = villageKindLabel(item.kind);
-                      return (
-                        <Card key={`${strip.weekday ?? 'x'}-${item.kind}-${idx}`} href="/village">
-                          {kindLabel ? (
-                            <span className="eyebrow text-spruce">{kindLabel}</span>
+        <section className="rise rise-2 mb-8">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-y-2">
+            <p className="eyebrow text-faded-sage">
+              a gentle routine · week of {formatCalendarDate(routine.weekOf)}
+            </p>
+            <ShareWeekButton />
+          </div>
+          <div className="space-y-6">
+            {groupRoutineByDay(routine.items).map((strip) => (
+              <div key={strip.weekday ?? 'anytime'}>
+                <span className="eyebrow text-slate-green">{strip.weekday ?? 'anytime'}</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                  {strip.items.map((item, idx) => {
+                    const kindLabel = villageKindLabel(item.kind);
+                    return (
+                      <Card key={`${strip.weekday ?? 'x'}-${item.kind}-${idx}`} href="/village">
+                        {kindLabel ? (
+                          <span className="eyebrow text-spruce">{kindLabel}</span>
+                        ) : null}
+                        <div data-hale-pii>
+                          <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
+                          {item.stageNote ? (
+                            <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
                           ) : null}
-                          <div data-hale-pii>
-                            <p className="text-lg text-spruce leading-relaxed mt-3">{item.title}</p>
-                            {item.stageNote ? (
-                              <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
-                            ) : null}
-                          </div>
-                          <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
-                            open in village
-                            <Icon as={ArrowRight} size={14} />
-                          </span>
-                        </Card>
-                      );
-                    })}
-                  </div>
+                        </div>
+                        <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
+                          open in village
+                          <Icon as={ArrowRight} size={14} />
+                        </span>
+                      </Card>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </section>
       ) : null}
 
       {/* ── Coming up for your kids ─────────────────────────────────────── */}
       {childItems.length > 0 ? (
-        <section className="rise rise-3 mb-16">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-            <div className="lg:col-span-3">
-              <span className="eyebrow text-spruce">coming up</span>
-              <p className="meta mt-2">checkups · immunizations · milestones</p>
-            </div>
-            <div className="lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {childItems.map((item) => (
-                <PlanItemCard key={item.key} item={item} />
-              ))}
-            </div>
+        <section className="rise rise-3 mb-8">
+          <SectionLabel>coming up · checkups · immunizations · milestones</SectionLabel>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {childItems.map((item) => (
+              <PlanItemCard key={item.key} item={item} />
+            ))}
           </div>
-          <p className="meta mt-6 lg:ml-[25%] lg:pl-12 text-slate-green">
+          <p className="meta mt-4 text-slate-green">
             timing is the standard Canadian schedule — confirm with your provider or local public
             health.
           </p>
@@ -243,7 +209,7 @@ export default async function PlanPage() {
       ) : null}
 
       {/* ── Colophon ────────────────────────────────────────────────────── */}
-      <section className="rise rise-7 mt-16 lg:mt-24 space-y-10">
+      <section className="rise rise-7 mt-12 space-y-6">
         <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
           <span className="meta">always confirm health and milestones with your provider</span>
           <PrivacyNote />
@@ -267,7 +233,7 @@ function DaySpineRow({ day }: { day: DayColumn }) {
   return (
     <div>
       <span className="eyebrow text-slate-green">{day.weekday}</span>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
         {day.plans.map((plan) => (
           <AuthoredPlanCard key={plan.id} plan={plan} />
         ))}

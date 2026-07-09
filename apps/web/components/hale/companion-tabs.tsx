@@ -545,7 +545,7 @@ function SectionNav({
             aria-controls={`${baseId}-sec-panel`}
             tabIndex={isActive ? 0 : -1}
             onClick={() => onSelect(section.key)}
-            className={`inline-flex shrink-0 min-h-[44px] items-center gap-3 rounded-[var(--r-md)] px-4 py-2.5 text-left cursor-pointer touch-manipulation transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] ${
+            className={`inline-flex shrink-0 min-h-[44px] items-center gap-3 rounded-[var(--r-md)] px-4 py-2.5 text-left cursor-pointer touch-manipulation transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] lg:w-full lg:flex-col lg:items-start lg:gap-0.5 ${
               isActive
                 ? 'bg-apricot-tint text-spruce'
                 : 'text-slate-green hover:text-spruce hover:bg-oat'
@@ -554,7 +554,7 @@ function SectionNav({
             <span className="text-sm font-semibold lowercase tracking-[var(--tracking-eyebrow)]">
               {section.label}
             </span>
-            <span className="meta hidden lg:inline text-faded-sage">{section.hint}</span>
+            <span className="meta hidden lg:block text-faded-sage leading-tight">{section.hint}</span>
           </button>
         );
       })}
@@ -641,7 +641,7 @@ export function CompanionTabs({
       <section className="rise rise-2">
         <div className="border-b border-rule pb-6 mb-8" data-hale-pii>
           <span className="stamp inline-block">{STAGE_LABEL[only.stage]}</span>
-          <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight mt-3">
+          <h2 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight mt-3">
             {only.name ?? 'your child'}
           </h2>
           <p className="meta mt-2 text-slate-green">{agePhrase(only.ageMonths)} old</p>
@@ -712,7 +712,7 @@ export function CompanionTabs({
         tabIndex={-1}
       >
         <div className="border-b border-rule pb-6 mb-8" data-hale-pii>
-          <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
+          <h2 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
             {activeChild.name ?? 'your child'}
           </h2>
           <p className="meta mt-2 text-slate-green">{agePhrase(activeChild.ageMonths)} old</p>
