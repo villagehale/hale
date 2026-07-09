@@ -28,7 +28,7 @@ export interface NavItem {
 
 export const PRIMARY_NAV = [
   { href: '/home', label: 'home', icon: House },
-  { href: '/approvals', label: 'approvals', icon: CheckCircle2 },
+  { href: '/approvals', label: 'activity', icon: CheckCircle2 },
   { href: '/coach', label: 'Hale', icon: MessageCircleHeart },
   { href: '/companion', label: 'companion', icon: Sparkles },
   { href: '/village', label: 'village', icon: Users },
