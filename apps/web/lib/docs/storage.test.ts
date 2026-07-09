@@ -61,6 +61,9 @@ describe('uploadDocument', () => {
     expect(calls[0]?.url).toBe(`${SUPABASE_URL}/storage/v1/object/${DOCS_BUCKET}/${PATH}`);
     const headers = calls[0]?.init.headers as Record<string, string>;
     expect(headers.authorization).toBe(`Bearer ${SERVICE_KEY}`);
+    // Live-probed 2026-07-08: the storage gateway rejects the new sb_secret_ key
+    // format unless apikey accompanies the bearer (legacy JWTs accept both too).
+    expect(headers.apikey).toBe(SERVICE_KEY);
     expect(headers['content-type']).toBe('application/pdf');
     expect(headers['x-upsert']).toBe('false');
     expect(calls[0]?.init.method).toBe('POST');
@@ -101,6 +104,7 @@ describe('removeDocument', () => {
 
     expect(calls[0]?.url).toBe(`${SUPABASE_URL}/storage/v1/object/${DOCS_BUCKET}/${PATH}`);
     expect(calls[0]?.init.method).toBe('DELETE');
+    expect((calls[0]?.init.headers as Record<string, string>).apikey).toBe(SERVICE_KEY);
     expect((calls[0]?.init.headers as Record<string, string>).authorization).toBe(
       `Bearer ${SERVICE_KEY}`,
     );

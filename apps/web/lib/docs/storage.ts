@@ -59,6 +59,7 @@ export async function uploadDocument(
   const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/${DOCS_BUCKET}/${path}`, {
     method: 'POST',
     headers: {
+      apikey: serviceRoleKey,
       authorization: `Bearer ${serviceRoleKey}`,
       'content-type': mime,
       // Belt-and-suspenders: never clobber an existing object at this path.
@@ -87,6 +88,7 @@ export async function signDocumentUrl(
   const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/sign/${DOCS_BUCKET}/${path}`, {
     method: 'POST',
     headers: {
+      apikey: serviceRoleKey,
       authorization: `Bearer ${serviceRoleKey}`,
       'content-type': 'application/json',
     },
@@ -109,7 +111,7 @@ export async function removeDocument(path: string, fetchImpl: FetchLike = fetch)
   const { supabaseUrl, serviceRoleKey } = readConfig();
   const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/${DOCS_BUCKET}/${path}`, {
     method: 'DELETE',
-    headers: { authorization: `Bearer ${serviceRoleKey}` },
+    headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` },
   });
   if (!res.ok && res.status !== 404) {
     const detail = await res.text().catch(() => '');
