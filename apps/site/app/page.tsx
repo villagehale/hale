@@ -276,7 +276,7 @@ export default function LandingPage() {
         </ol>
 
         {/* the share hook, made concrete — a mocked share card families actually send */}
-        <div className="panel-sky-tint px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
+        <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
             <div className="lg:col-span-6 rise rise-1">
               <span className="eyebrow">See a family’s week</span>
