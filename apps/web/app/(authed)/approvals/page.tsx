@@ -1,13 +1,15 @@
+import Link from 'next/link';
 import { ApprovalsHeader } from '~/components/hale/approvals-header';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { ChildTag } from '~/components/hale/child-tag';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { DraftDetail } from '~/components/hale/draft-detail';
+import { HISTORY_NAV } from '~/components/hale/nav';
 import { RequestTeenAccessButton } from '~/components/hale/request-teen-access-button';
 import { ToneLabel } from '~/components/hale/tone';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
-import { actionTypeLabel } from '~/lib/format/labels';
 import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
+import { actionTypeLabel } from '~/lib/format/labels';
 
 /**
  * The Approvals surface — the parent-facing queue of drafts the inbound pipeline
@@ -82,6 +84,9 @@ export default async function ApprovalsPage() {
             Want Hale to handle the routine ones on its own? Plus lets it act for you, once
             you&rsquo;ve approved the kind.
           </UpgradePrompt>
+          <Link href={HISTORY_NAV.href} className="link mt-6 inline-block">
+            view the full record →
+          </Link>
         </div>
       ) : null}
     </div>
