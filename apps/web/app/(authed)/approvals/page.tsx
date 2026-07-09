@@ -3,7 +3,6 @@ import { ApproveButton } from '~/components/hale/approve-button';
 import { ChildTag } from '~/components/hale/child-tag';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { DraftDetail } from '~/components/hale/draft-detail';
-import { PageCorner } from '~/components/hale/page-corner';
 import { RequestTeenAccessButton } from '~/components/hale/request-teen-access-button';
 import { ToneLabel } from '~/components/hale/tone';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
@@ -34,8 +33,6 @@ export default async function ApprovalsPage() {
 
   return (
     <div>
-      <PageCorner section="approvals · awaiting you" />
-
       <ApprovalsHeader pendingCount={approvals.length} />
 
       {approvals.length > 0 ? (
@@ -80,7 +77,7 @@ export default async function ApprovalsPage() {
       ) : null}
 
       {approvals.length > 0 ? (
-        <div className="rise rise-3 mt-7">
+        <div className="rise rise-3 mt-8">
           <UpgradePrompt planTier={basics.planTier} entitlement="autonomy_l3">
             Want Hale to handle the routine ones on its own? Plus lets it act for you, once
             you&rsquo;ve approved the kind.

@@ -60,25 +60,19 @@ export function ActivityCard({
 
   if (variant === 'row') {
     return (
-      <article className={`${className} py-12 lg:py-14 border-t border-rule first:border-t-0`}>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
-          <div className="md:col-span-2">
-            {kindLabel ? <p className="eyebrow text-spruce">{kindLabel}</p> : null}
-          </div>
-          <div className="md:col-span-7 space-y-5">
-            <h2 className="font-display text-[1.75rem] lg:text-[2.25rem] leading-tight">
-              {candidate.title}
-            </h2>
-            {candidate.summary ? (
-              <p className="text-lg text-spruce leading-relaxed">{candidate.summary}</p>
-            ) : null}
-            {candidate.coverageNote ? (
-              <p className="meta text-slate-green">{candidate.coverageNote}</p>
-            ) : null}
-            {proof}
-            {actions}
-          </div>
-        </div>
+      <article className={`${className} py-6 border-t border-rule first:border-t-0 first:pt-0 space-y-3`}>
+        {kindLabel ? <p className="eyebrow text-spruce">{kindLabel}</p> : null}
+        <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight">
+          {candidate.title}
+        </h2>
+        {candidate.summary ? (
+          <p className="text-spruce leading-relaxed">{candidate.summary}</p>
+        ) : null}
+        {candidate.coverageNote ? (
+          <p className="meta text-slate-green">{candidate.coverageNote}</p>
+        ) : null}
+        {proof}
+        {actions}
       </article>
     );
   }
@@ -179,18 +173,12 @@ function TeenLocked({
 }) {
   if (variant === 'row') {
     return (
-      <article className={`${className} py-12 lg:py-14 border-t border-rule first:border-t-0`}>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-y-6 md:gap-x-8">
-          <div className="md:col-span-2">
-            {kindLabel ? <p className="eyebrow text-spruce">{kindLabel}</p> : null}
-          </div>
-          <div className="md:col-span-7">
-            <p className="flex items-center gap-2 text-spruce leading-relaxed">
-              <Icon as={Lock} size={18} className="shrink-0 text-slate-green" />
-              {candidate.title}
-            </p>
-          </div>
-        </div>
+      <article className={`${className} py-6 border-t border-rule first:border-t-0 first:pt-0 space-y-3`}>
+        {kindLabel ? <p className="eyebrow text-spruce">{kindLabel}</p> : null}
+        <p className="flex items-center gap-2 text-spruce leading-relaxed">
+          <Icon as={Lock} size={18} className="shrink-0 text-slate-green" />
+          {candidate.title}
+        </p>
       </article>
     );
   }

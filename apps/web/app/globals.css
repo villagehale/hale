@@ -36,14 +36,14 @@
 
 @theme {
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #faf7f1;       /* canvas — primary background, warm off-white */
-  --color-oat: #ffffff;         /* card surface — secondary surface, soft panels */
+  --color-linen: #faf8f5;       /* canvas — warm white, paper-like (design spec 2026-07-09) */
+  --color-oat: #ffffff;         /* card surface — pure white, floats on warm-white via shadow */
   --color-raised: #ffffff;      /* RAISED — lifted card */
-  --color-spruce: #003153;      /* primary ink / night-section fill — Prussian, 12.56:1 */
+  --color-spruce: #0d1b3d;      /* primary ink / Prussian brand — headlines, buttons, nav, logo */
   --color-slate-green: #47587a; /* secondary text, captions — 6.67:1 */
   --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 5.05:1 on Linen (AA on every surface: Oat 5.40, Raised 5.40) */
 
-  --color-apricot: #f97316;       /* FILL ONLY — sun & large graphics */
+  --color-apricot: #f28c45;       /* AI ORANGE — Hale AI actions only (draft ready, suggested, badge) */
   --color-apricot-deep: #c2410c;  /* text-safe accent: links, CTA fill — 4.84:1 on Linen */
   --color-apricot-tint: #fdeede;  /* warm wash panel / pill — Apricot-deep ink 4.55:1, Spruce 11.8:1 */
 
@@ -54,14 +54,17 @@
   --color-sea: #0a3d62;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
 
   --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
-  --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
+  --color-sage-tint: #eaf4ee;  /* SOFT SAGE — Health / Growth / Milestones */
+  --color-success: #6faf84;    /* positive confirmations */
+  --color-lavender: #ece9ff;   /* SOFT LAVENDER — Conversation / AI / Memory / Planning */
+  --color-alt-surface: #f5f3ef; /* alternate surface — large sections, grouped lists */
 
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
   /* Hairlines: warm Prussian at low alpha (reads like the mockup's #E7E2DA sand rules on the new canvas) */
-  --color-rule: rgb(0 49 83 / 0.10);
-  --color-rule-strong: rgb(0 49 83 / 0.20);
+  --color-rule: #e8e4dc;
+  --color-rule-strong: #ddd8cd;
 
   /* On-dark (Spruce night section) text alphas, canvas-based */
   --color-on-spruce: #FEFEFE;
@@ -208,8 +211,8 @@ h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
 
 /* Inside the authed main-stage the column is narrower (sidebar eats ~22vw),
  * so the page H1/H2 need a tighter ceiling or the headline overflows. */
-.main-stage h1 { font-size: clamp(2.3rem, 4.4vw, 3.75rem); }
-.main-stage h2 { font-size: clamp(1.65rem, 2.8vw, 2.4rem); }
+.main-stage h1 { font-size: clamp(1.9rem, 3.1vw, 2.85rem); }
+.main-stage h2 { font-size: clamp(1.4rem, 2.2vw, 1.95rem); }
 
 em { font-style: italic; }
 strong { font-weight: 700; }
@@ -383,6 +386,7 @@ strong { font-weight: 700; }
   flex-direction: column;
   height: 100%;
   background: var(--color-oat);
+  border-right: 1px solid var(--color-rule);
   padding: 2.25rem 1.5rem 1.5rem;
   overflow-y: auto;
   overflow-x: hidden;
@@ -784,6 +788,15 @@ strong { font-weight: 700; }
   background: var(--color-linen);
 }
 
+/* Contained content column (Notion/Linear-style) — content never stretches to the
+ * full stage width; it sits in a centered ~58rem column so cards and rows keep a
+ * comfortable density instead of spreading thin. The coach chat opts out (it owns
+ * its own full-height surface). */
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner) {
+  max-width: 58rem;
+  margin-inline: auto;
+}
+
 /* Ask Hale is a contained chat: the transcript scrolls inside its own region while
  * the composer stays pinned to the surface foot. So the STAGE itself must not
  * scroll — it becomes a flex column that hands the remaining height to the surface
@@ -816,8 +829,8 @@ strong { font-weight: 700; }
     align-items: baseline;
     justify-content: space-between;
     gap: 1.5rem;
-    padding-bottom: 1rem;
-    margin-bottom: clamp(2.5rem, 4vw, 4rem);
+    padding-bottom: 0.75rem;
+    margin-bottom: clamp(1rem, 2vw, 1.75rem);
     color: var(--color-faded-sage);
   }
 }
@@ -845,10 +858,11 @@ strong { font-weight: 700; }
 
 .panel {
   background: var(--color-oat);
+  box-shadow: 0 8px 32px rgba(13, 27, 61, 0.06);
   border-radius: var(--r-xl);
   padding: clamp(1.5rem, 2.4vw, 2.25rem) clamp(1.5rem, 3vw, 2.5rem);
 }
-.panel-oat { background: var(--color-oat); border-radius: var(--r-xl); }
+.panel-oat { background: var(--color-oat); box-shadow: 0 8px 32px rgba(13, 27, 61, 0.06); border-radius: var(--r-xl); }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
 
@@ -1504,6 +1518,7 @@ html, body, .sidebar, .panel, .card, .field {
 .card {
   display: block;
   background: var(--color-oat);
+  box-shadow: 0 8px 32px rgba(13, 27, 61, 0.06);
   border-radius: var(--r-xl);
   padding: clamp(1.25rem, 2vw, 1.75rem);
   color: inherit;
