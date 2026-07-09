@@ -11,6 +11,7 @@ import {
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
+import { buildConnectorTools } from './connector-tools';
 
 /**
  * The Ask Hale agent's tools — every one family-scoped (rule #1: a handler reads
@@ -269,7 +270,14 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     },
   });
 
-  return [getChildProfile, searchMemory, saveMemory, getFrameworkGuidance, searchVillage];
+  return [
+    getChildProfile,
+    searchMemory,
+    saveMemory,
+    getFrameworkGuidance,
+    searchVillage,
+    ...buildConnectorTools(database),
+  ];
 }
 
 /**

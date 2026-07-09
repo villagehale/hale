@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUp, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
 import type { ConnectorChip } from '~/components/hale/coach-context-panel';
+import { ConnectorCard } from '~/components/hale/connector-card';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
 import {
@@ -527,6 +528,15 @@ function Timeline({
                 {turn.activity && turn.activity.length > 0 ? (
                   <ActivityTrail activity={turn.activity} live={turn.id === streamingId} />
                 ) : null}
+                {turn.activity
+                  ?.filter(
+                    (a): a is Extract<Activity, { kind: 'tool_result' }> =>
+                      a.kind === 'tool_result' && a.card !== undefined,
+                  )
+                  .map((a, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: cards are an ordered, append-only slice of one turn's activity
+                    <ConnectorCard key={i} card={a.card as NonNullable<typeof a.card>} />
+                  ))}
                 <div data-hale-pii>
                   <Markdown>{turn.body}</Markdown>
                 </div>

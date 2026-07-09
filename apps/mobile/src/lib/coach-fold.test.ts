@@ -120,6 +120,47 @@ describe('foldCoachStream', () => {
     ]);
   });
 
+  it('carries a whitelisted connector card through the fold on the tool_result entry (rule #1)', () => {
+    const { activity } = foldCoachStream(
+      [
+        { type: 'tool_call', name: 'drive_search' },
+        {
+          type: 'tool_result',
+          name: 'drive_search',
+          ok: true,
+          preview: 'Ran drive_search',
+          card: {
+            kind: 'drive',
+            files: [
+              {
+                name: 'Permission form',
+                mimeType: 'application/pdf',
+                modifiedTime: '2026-07-01T09:00:00Z',
+                webViewLink: 'https://drive.google.com/file/d/f1/view',
+              },
+            ],
+          },
+        },
+        { type: 'delta', text: 'Found it.' },
+        { type: 'done', conversationId: 'c-card' },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n'),
+    );
+    expect(activity).toHaveLength(1);
+    expect(activity[0].card).toEqual({
+      kind: 'drive',
+      files: [
+        {
+          name: 'Permission form',
+          mimeType: 'application/pdf',
+          modifiedTime: '2026-07-01T09:00:00Z',
+          webViewLink: 'https://drive.google.com/file/d/f1/view',
+        },
+      ],
+    });
+  });
+
   it('returns an empty chip list when the done event carries no actionIntents', () => {
     const { actionIntents } = foldCoachStream(
       [

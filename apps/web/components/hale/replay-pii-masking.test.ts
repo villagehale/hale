@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import type { ToolCard } from '@hale/agent';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { AccountMenuView } from './account-menu-view';
+import { ConnectorCard } from './connector-card';
 import { TrailTimeline } from './trail-timeline';
 
 /**
@@ -146,6 +148,58 @@ describe('history timeline masks each entry summary + child name', () => {
     // The non-PII frame — day heading, the deep link — survives the strip.
     expect(residue).toContain('Thursday, Jun 11');
     expect(residue).toContain('view this draft');
+  });
+});
+
+/**
+ * The connector cards surface the PARENT's own Google Drive file names and Calendar
+ * event titles/locations — family PII that a session replay must mask (rule #1). The
+ * card FRAME (the "Google Drive" header, the file-type label, the day/time) is not
+ * PII and should survive. This fails if a future edit moves a file name / event
+ * title / location out of its `data-hale-pii` container.
+ */
+describe('connector cards mask the parent’s file names + event details', () => {
+  const DRIVE_CARD: ToolCard = {
+    kind: 'drive',
+    files: [
+      {
+        name: 'Custody agreement 2026.pdf',
+        mimeType: 'application/pdf',
+        modifiedTime: '2026-07-01T09:00:00Z',
+        webViewLink: 'https://drive.google.com/file/d/abc/view',
+      },
+    ],
+  };
+  const CALENDAR_CARD: ToolCard = {
+    kind: 'calendar',
+    events: [
+      {
+        title: 'Family therapy — Dr. Okafor',
+        start: '2026-07-11T14:00:00Z',
+        end: '2026-07-11T15:00:00Z',
+        location: '221 Bloor St W',
+      },
+    ],
+  };
+
+  it('renders the Drive file name at all, then masks it while the frame survives', () => {
+    const html = renderToStaticMarkup(h(ConnectorCard, { card: DRIVE_CARD }));
+    expect(html).toContain('Custody agreement 2026.pdf');
+    const residue = stripMaskedSubtrees(html);
+    expect(residue).not.toContain('Custody agreement 2026.pdf');
+    // The non-PII frame survives the strip.
+    expect(residue).toContain('Google Drive');
+    expect(residue).toContain('PDF');
+  });
+
+  it('renders the Calendar title + location at all, then masks both while the frame survives', () => {
+    const html = renderToStaticMarkup(h(ConnectorCard, { card: CALENDAR_CARD }));
+    expect(html).toContain('Family therapy');
+    expect(html).toContain('221 Bloor St W');
+    const residue = stripMaskedSubtrees(html);
+    expect(residue).not.toContain('Family therapy');
+    expect(residue).not.toContain('221 Bloor St W');
+    expect(residue).toContain('Next 7 days');
   });
 });
 

@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { z } from 'zod';
 import { pickModel } from './model.js';
 import type { Skill } from './skill.js';
 import {
@@ -76,18 +77,84 @@ export interface ToolCallEvent {
 }
 
 /**
+ * A whitelisted display card a tool may attach to its result for the CLIENT. It is
+ * the ONE exception to the "name+ok+preview only" firewall — and it is a closed,
+ * additive union carrying ONLY fields the tool explicitly declared safe to show
+ * (rule #1). Raw tool output still never rides this channel: a tool opts in by
+ * returning a `card` shaped exactly like one of these variants (the connector read
+ * tools do), and the union has no field a raw payload / token could flow into.
+ *
+ * - `drive`: Google Drive file rows — name/type/modified/open-link, NEVER content.
+ * - `calendar`: agenda rows — title/start/end (+location), NEVER attendees/notes.
+ * - `not_connected`: the honest empty state — the connector isn't linked.
+ */
+export type ToolCard =
+  | {
+      kind: 'drive';
+      files: Array<{
+        name: string;
+        mimeType: string;
+        modifiedTime: string;
+        webViewLink: string;
+      }>;
+    }
+  | {
+      kind: 'calendar';
+      events: Array<{ title: string; start: string; end: string; location?: string }>;
+    }
+  | { kind: 'not_connected'; provider: 'gdrive' | 'gcal' };
+
+/**
+ * The firewall itself: a STRICT, per-variant schema for {@link ToolCard}. Every
+ * object level strips unknown keys (Zod's default `.strip()`), so a field a tool
+ * never declared — a raw file body, a `smuggled` sibling, a token nested inside a
+ * file row — cannot ride the card to the client, no matter what a (future) tool
+ * returns under `card` (rule #1). This enforces the union BY CONSTRUCTION at the
+ * boundary rather than trusting each tool to map fields strictly.
+ */
+const toolCardSchema: z.ZodType<ToolCard> = z.union([
+  z.object({
+    kind: z.literal('drive'),
+    files: z.array(
+      z.object({
+        name: z.string(),
+        mimeType: z.string(),
+        modifiedTime: z.string(),
+        webViewLink: z.string(),
+      }),
+    ),
+  }),
+  z.object({
+    kind: z.literal('calendar'),
+    events: z.array(
+      z.object({
+        title: z.string(),
+        start: z.string(),
+        end: z.string(),
+        location: z.string().optional(),
+      }),
+    ),
+  }),
+  z.object({ kind: z.literal('not_connected'), provider: z.enum(['gdrive', 'gcal']) }),
+]);
+
+/**
  * A tool result, as surfaced AFTER the guarded invoker returns (post-cap / post-
  * teen-redaction / post-audit). Rule #1: `ok` (did it succeed) plus a `preview`
  * that is derived from the tool NAME and outcome ONLY — never from the tool's raw
  * output, which can contain a child's profile, memory facts, or teen-quoting
  * episodes. Carrying only name+ok makes a content leak structurally impossible:
- * there is no field the raw result could flow into.
+ * there is no field the raw result could flow into — EXCEPT the optional `card`, a
+ * closed whitelist a tool opts into (see ToolCard), populated only from the fields
+ * that tool declared display-safe.
  */
 export interface ToolResultEvent {
   name: string;
   ok: boolean;
   /** A safe, content-free label ("Ran X" / "X was blocked") — never raw output. */
   preview: string;
+  /** A whitelisted display card, present only when the tool attached one (rule #1). */
+  card?: ToolCard;
 }
 
 /**
@@ -122,6 +189,22 @@ type StreamingToolHooks = Pick<RunAgentStreamingArgs, 'onToolCall' | 'onToolResu
 /** A content-free result label in Cursor grammar — derived from name+outcome ONLY (rule #1). */
 function toolResultPreview(name: string, ok: boolean): string {
   return ok ? `Ran ${name}` : `${name} was blocked`;
+}
+
+/**
+ * A tool opts into a client display card by returning `{ card: ToolCard, ... }`.
+ * The card is PARSED against {@link toolCardSchema} — a strict per-variant schema
+ * that strips any field the union doesn't declare, at every depth. An unknown
+ * `kind`, a wrong-typed field, or a deep extra key (e.g. a raw file body or a
+ * `smuggled` sibling) never reaches the client: a parse failure drops the card
+ * entirely, a parse success returns ONLY the whitelisted fields (rule #1). The raw
+ * result still goes to the model regardless; this only decides what, if anything,
+ * the CLIENT is shown.
+ */
+function cardFromResult(result: unknown): ToolCard | undefined {
+  if (!result || typeof result !== 'object' || !('card' in result)) return undefined;
+  const parsed = toolCardSchema.safeParse((result as { card: unknown }).card);
+  return parsed.success ? parsed.data : undefined;
 }
 
 const DEFAULT_MAX_TOKENS = 2048;
@@ -203,11 +286,15 @@ async function handleToolUses(
       const result = await invokeTool(tool, block.input, args.toolContext, args.guardDeps);
       // POST-guard: the result may contain a child's profile / memory / teen
       // episodes, so ONLY the outcome + a content-free preview leaves the loop —
-      // the raw result goes back to the model, never to the client (rule #1).
+      // the raw result goes back to the model, never to the client (rule #1). The
+      // sole exception is a whitelisted `card` the tool explicitly attached, drawn
+      // only from fields it declared display-safe (see cardFromResult / ToolCard).
+      const card = cardFromResult(result);
       hooks?.onToolResult?.({
         name: block.name,
         ok: true,
         preview: toolResultPreview(block.name, true),
+        ...(card ? { card } : {}),
       });
       toolResults.push({
         type: 'tool_result',

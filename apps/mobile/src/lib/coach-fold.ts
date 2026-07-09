@@ -14,12 +14,37 @@
  * signals.
  */
 
+/**
+ * A whitelisted display card a connector read tool attached to its result. Mirrors
+ * the server `ToolCard` (packages/agent) — the ONE structured payload the firewall
+ * lets through, a closed union of connector rows the tool declared display-safe
+ * (rule #1: never file content, attendees, or a token). Re-declared here because
+ * the mobile app takes no @hale/* workspace dep (it talks to the API over HTTP).
+ */
+export type ToolCard =
+  | {
+      kind: 'drive';
+      files: Array<{
+        name: string;
+        mimeType: string;
+        modifiedTime: string;
+        webViewLink: string;
+      }>;
+    }
+  | {
+      kind: 'calendar';
+      events: Array<{ title: string; start: string; end: string; location?: string }>;
+    }
+  | { kind: 'not_connected'; provider: 'gdrive' | 'gcal' };
+
 /** One settled tool step in a turn's activity trail. Mirrors the web
- * `tool_result` event — name/ok/preview only (rule #1). */
+ * `tool_result` event — name/ok/preview only (rule #1), plus an optional
+ * whitelisted `card` when a connector read tool attached one. */
 export interface ActivityEvent {
   name: string;
   ok: boolean;
   preview: string;
+  card?: ToolCard;
 }
 
 /** Friendly, parent-facing label for a tool the concierge ran — so the trail reads
@@ -32,6 +57,8 @@ const TOOL_LABELS: Record<string, string> = {
   get_framework_guidance: 'Checked parenting guidance',
   search_memory: 'Searched your history',
   save_memory: 'Saved a note',
+  drive_search: 'Searched your Google Drive',
+  calendar_lookup: 'Checked your calendar',
 };
 
 export function humanizeTool(name: string): string {
@@ -53,7 +80,7 @@ export interface ActionIntent {
 export type CoachEvent =
   | { type: 'step'; step: number }
   | { type: 'tool_call'; name: string }
-  | { type: 'tool_result'; name: string; ok: boolean; preview: string }
+  | { type: 'tool_result'; name: string; ok: boolean; preview: string; card?: ToolCard }
   | { type: 'delta'; text: string }
   | { type: 'reset' }
   | { type: 'done'; conversationId: string; actionIntents?: ActionIntent[] }
@@ -128,7 +155,12 @@ export function foldCoachEvents(events: Iterable<CoachEvent>): CoachFold {
       conversationId = event.conversationId;
       actionIntents = event.actionIntents ?? [];
     } else if (event.type === 'tool_result') {
-      activity.push({ name: event.name, ok: event.ok, preview: event.preview });
+      activity.push({
+        name: event.name,
+        ok: event.ok,
+        preview: event.preview,
+        ...(event.card ? { card: event.card } : {}),
+      });
     } else if (event.type === 'error') failed = true;
   }
 

@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { type AgentClient, runAgent, runAgentStreaming } from './agent.js';
+import { type AgentClient, type ToolResultEvent, runAgent, runAgentStreaming } from './agent.js';
 import type { Skill } from './skill.js';
 import { type AuditEntry, type GuardDeps, defineTool } from './tool.js';
 
@@ -405,6 +405,182 @@ describe('runAgentStreaming', () => {
     // The answer path is unaffected.
     expect(result.answer).toBe('all good.');
     expect(result.steps).toBe(2);
+  });
+
+  it('forwards ONLY a whitelisted card on onToolResult — a non-card field of the tool output never leaks (rule #1)', async () => {
+    // The tool returns a whitelisted `card` AND a `secret` field. Only the card may
+    // reach the client; the rest of the result goes to the model, never the stream.
+    const cardTool = defineTool({
+      name: 'drive_search',
+      description: 'Search Drive.',
+      inputSchema: z.object({ query: z.string() }),
+      handler: async () => ({
+        status: 'ok',
+        secret: 'RAW-SERVER-ONLY-abc123',
+        card: {
+          kind: 'drive',
+          files: [
+            {
+              name: 'Permission form',
+              mimeType: 'application/pdf',
+              modifiedTime: '2026-07-01T09:00:00Z',
+              webViewLink: 'https://drive.google.com/file/d/f1/view',
+            },
+          ],
+        },
+      }),
+    });
+    const cardSkill: Skill = {
+      meta: { name: 'ask-hale', whenToUse: 't', task: 'converse', tools: ['drive_search'] },
+      instructions: 'You answer.',
+    };
+    const client = fakeStreamingClient([
+      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
+    ]);
+    const { deps } = guardDeps();
+    const results: ToolResultEvent[] = [];
+
+    await runAgentStreaming({
+      skill: cardSkill,
+      context: { question: 'is the form in my drive?' },
+      tools: [cardTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+      onToolResult: (e) => results.push(e),
+    });
+
+    expect(results).toHaveLength(1);
+    const event = results[0];
+    if (!event) throw new Error('expected one tool_result event');
+    // The card came through with exactly the whitelisted fields.
+    expect(event.card).toEqual({
+      kind: 'drive',
+      files: [
+        {
+          name: 'Permission form',
+          mimeType: 'application/pdf',
+          modifiedTime: '2026-07-01T09:00:00Z',
+          webViewLink: 'https://drive.google.com/file/d/f1/view',
+        },
+      ],
+    });
+    // The non-card server-only field never rode the stream event.
+    expect(JSON.stringify(event)).not.toContain('RAW-SERVER-ONLY-abc123');
+    expect('secret' in event).toBe(false);
+    expect('status' in event).toBe(false);
+  });
+
+  it('strips a deep extra field INSIDE a whitelisted card — a leak nested in card.files never reaches the client (rule #1)', async () => {
+    // The card's KIND is whitelisted, but a file row carries an undeclared `secret`
+    // (a raw file body would ride the exact same way). The firewall must parse the
+    // card against the strict per-variant schema and drop that field at depth — a
+    // check on `card.kind` alone would let it through.
+    const smugglingTool = defineTool({
+      name: 'drive_search',
+      description: 'Search Drive.',
+      inputSchema: z.object({ query: z.string() }),
+      handler: async () => ({
+        status: 'ok',
+        card: {
+          kind: 'drive',
+          smuggledSibling: 'LEAK-ON-CARD-xyz',
+          files: [
+            {
+              name: 'Permission form',
+              mimeType: 'application/pdf',
+              modifiedTime: '2026-07-01T09:00:00Z',
+              webViewLink: 'https://drive.google.com/file/d/f1/view',
+              secret: 'RAW-FILE-BODY-abc123',
+            },
+          ],
+        },
+      }),
+    });
+    const cardSkill: Skill = {
+      meta: { name: 'ask-hale', whenToUse: 't', task: 'converse', tools: ['drive_search'] },
+      instructions: 'You answer.',
+    };
+    const client = fakeStreamingClient([
+      { chunks: [], final: toolUseMessage('tu-1', 'drive_search', { query: 'permission' }, usage(50, 10)) },
+      { chunks: ['found ', 'it.'], final: textMessage('found it.', usage(60, 15)) },
+    ]);
+    const { deps } = guardDeps();
+    const results: ToolResultEvent[] = [];
+
+    await runAgentStreaming({
+      skill: cardSkill,
+      context: { question: 'is the form in my drive?' },
+      tools: [smugglingTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+      onToolResult: (e) => results.push(e),
+    });
+
+    expect(results).toHaveLength(1);
+    const event = results[0];
+    if (!event) throw new Error('expected one tool_result event');
+    // The card carries ONLY the whitelisted fields — the deep `secret` and the
+    // sibling `smuggledSibling` were both stripped by the schema.
+    expect(event.card).toEqual({
+      kind: 'drive',
+      files: [
+        {
+          name: 'Permission form',
+          mimeType: 'application/pdf',
+          modifiedTime: '2026-07-01T09:00:00Z',
+          webViewLink: 'https://drive.google.com/file/d/f1/view',
+        },
+      ],
+    });
+    // Neither smuggled value appears anywhere in the serialized event.
+    const serialized = JSON.stringify(event);
+    expect(serialized).not.toContain('RAW-FILE-BODY-abc123');
+    expect(serialized).not.toContain('LEAK-ON-CARD-xyz');
+  });
+
+  it('does NOT attach a card when the tool output has none or an unknown card kind (rule #1)', async () => {
+    // A tool whose `card.kind` is not one of the three whitelisted kinds must be
+    // ignored — a tool can't smuggle arbitrary data to the client through `card`.
+    const badCardTool = defineTool({
+      name: 'get_child_profile',
+      description: 'Read profile.',
+      inputSchema: z.object({ childId: z.string() }),
+      handler: async () => ({ card: { kind: 'evil', payload: 'leak-me' } }),
+    });
+    const client = fakeStreamingClient([
+      { chunks: [], final: toolUseMessage('t', 'get_child_profile', { childId: 'k' }, usage(10, 5)) },
+      { chunks: ['ok.'], final: textMessage('ok.', usage(10, 5)) },
+    ]);
+    const { deps } = guardDeps();
+    const results: ToolResultEvent[] = [];
+
+    await runAgentStreaming({
+      skill,
+      context: {},
+      tools: [badCardTool],
+      client,
+      maxSteps: 5,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+      onToolResult: (e) => results.push(e),
+    });
+
+    expect(results).toHaveLength(1);
+    const event = results[0];
+    if (!event) throw new Error('expected one tool_result event');
+    expect(event.card).toBeUndefined();
+    expect(JSON.stringify(event)).not.toContain('leak-me');
   });
 
   it('reports ok:false with a content-free preview when a tool call is refused (rule #1)', async () => {

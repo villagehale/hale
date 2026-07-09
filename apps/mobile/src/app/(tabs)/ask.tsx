@@ -16,6 +16,7 @@ import {
   LiveActivityTrail,
   type TrailEntry,
 } from '@/components/hale/activity-trail';
+import { ConnectorCard } from '@/components/hale/connector-card';
 import { QuickLogCard } from '@/components/hale/quick-log-card';
 import { StreamingCursor } from '@/components/hale/streaming-cursor';
 import { TypingDots } from '@/components/hale/typing-dots';
@@ -26,6 +27,7 @@ import { STARTER_CHIPS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
+import { cardsFromActivity } from '@/lib/connector-card';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
 import { useVoiceInput } from '@/lib/use-voice-input';
 import { viewerFirstName } from '@/lib/viewer-name';
@@ -100,6 +102,15 @@ function HaleBubble({ turn }: { turn: HaleTurn }) {
           </View>
         ) : null}
       </View>
+      {/* Honest connector cards settle with the answer — Drive files / Calendar
+          agenda / not-connected. Rule #1: whitelisted fields only, streamed by the
+          server; never raw content or a token. */}
+      {!streaming
+        ? cardsFromActivity(activity).map((card, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: cards are an ordered, append-only slice of one turn's activity
+            <ConnectorCard key={i} card={card} />
+          ))
+        : null}
       {/* Gated action chips settle once the answer stops streaming — each drafts a
           DRAFT the parent must approve (rule #4). Rule #1: only intent.label. */}
       {!streaming
