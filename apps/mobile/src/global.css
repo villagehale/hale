@@ -14,7 +14,7 @@ body {
  * Hale Mobile — Prussian-on-warm design system. Prussian Blue ink over a warm
  * off-white canvas, white rounded cards, orange kept scarce (important actions,
  * status, badges only). Dark mode follows the device (prefers-color-scheme) —
- * brand-ANCHORED charcoal-Prussian canvas, not brand-flooded. Orange #f97316 is
+ * brand-ANCHORED charcoal-Prussian canvas, not brand-flooded. Orange #f28c45 is
  * FILL ONLY; orange-deep #c2410c is the text-safe accent. Tone meaning by label +
  * shape, never color alone.
  */
@@ -26,17 +26,17 @@ body {
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* canvas / surfaces */
-  --color-canvas: #faf7f1; /* warm off-white */
+  --color-canvas: #faf8f5; /* warm off-white */
   --color-card: #ffffff; /* card surface */
   --color-raised: #ffffff; /* raised card lift (light) */
   /* ink — Prussian Blue family */
-  --color-ink: #003153; /* Prussian Blue — primary */
+  --color-ink: #0d1b3d; /* Prussian Blue — primary */
   --color-ink-2: #47587a; /* blue-gray — secondary/body, darker than meta so 16px body outranks 13px meta (AA 6.6:1 on the warm canvas) */
   --color-ink-3: #5b6b86; /* blue-gray — meta, the spec's muted tone (AA 5.0:1 on the warm canvas) */
   --color-on-ink: #ffffff; /* label ON an ink fill — pure white on Prussian (13.4:1). NEVER canvas off-white, which reads grey on Prussian. */
   /* accent — orange family, scarce on purpose (important actions / status / badges only) */
   --color-accent: #c2410c; /* orange-deep — TEXT-SAFE accent (AA 4.8:1 on canvas, 4.4:1 on accent-tint, 5.2:1 white-on-it) */
-  --color-accent-fill: #f97316; /* orange — FILL/large-graphic only */
+  --color-accent-fill: #f28c45; /* orange — FILL/large-graphic only */
   --color-accent-tint: #fdead9;
   /* secondary tones */
   --color-sea: #0a3d62; /* turtle / brand accent */

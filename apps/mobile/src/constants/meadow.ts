@@ -8,11 +8,11 @@ import { useColorScheme } from 'react-native';
  */
 const MEADOW = {
   light: {
-    ink: '#003153',
+    ink: '#0d1b3d',
     ink2: '#47587a',
     ink3: '#5b6b86',
-    canvas: '#faf7f1',
-    accentFill: '#f97316',
+    canvas: '#faf8f5',
+    accentFill: '#f28c45',
     onAccent: '#ffffff',
   },
   dark: {
