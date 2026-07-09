@@ -3,6 +3,7 @@
 import { ArrowRight, ArrowUp, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
+import type { ConnectorChip } from '~/components/hale/coach-context-panel';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
 import {
@@ -25,6 +26,8 @@ interface AskHaleThreadProps {
   seed: ThreadSeed;
   /** 'compact' = Home hero entry; 'full' = the /coach continuous timeline. */
   variant: AskHaleVariant;
+  /** The family's connectors, for the /coach Context section. Empty on the Home hero. */
+  connectors?: ConnectorChip[];
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
 }
@@ -49,13 +52,14 @@ export function AskHaleThread({
   canAsk,
   seed,
   variant,
+  connectors = [],
   initialFocusedChildId = null,
 }: AskHaleThreadProps) {
   const chat = useAskHale(seed, initialFocusedChildId);
   return variant === 'compact' ? (
     <CompactSurface canAsk={canAsk} chat={chat} seed={seed} />
   ) : (
-    <FullSurface canAsk={canAsk} chat={chat} seed={seed} />
+    <FullSurface canAsk={canAsk} chat={chat} seed={seed} connectors={connectors} />
   );
 }
 
@@ -775,7 +779,8 @@ function FullSurface({
   canAsk,
   chat,
   seed,
-}: { canAsk: boolean; chat: UseAskHale; seed: ThreadSeed }) {
+  connectors,
+}: { canAsk: boolean; chat: UseAskHale; seed: ThreadSeed; connectors: ConnectorChip[] }) {
   const {
     turns,
     visibleTurns,
@@ -837,15 +842,20 @@ function FullSurface({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[64rem] px-1 pb-6 pt-2">
           {isEmpty ? (
-            <EmptyState
-              canAsk={canAsk}
-              suggestions={seed.suggestions}
-              focusedChildId={focusedChildId}
-              kids={seed.children}
-              setFocusedChildId={setFocusedChildId}
-              onPick={ask}
-              disabled={status === 'pending'}
-            />
+            <>
+              <EmptyState
+                canAsk={canAsk}
+                suggestions={seed.suggestions}
+                focusedChildId={focusedChildId}
+                kids={seed.children}
+                setFocusedChildId={setFocusedChildId}
+                onPick={ask}
+                disabled={status === 'pending'}
+              />
+              <div className="mx-auto mt-2 max-w-[34rem]">
+                <ContextConnectorsPanel connectors={connectors} />
+              </div>
+            </>
           ) : visibleTurns.length === 0 ? (
             <output className="meta italic mt-6 block text-center">
               nothing here for this filter — clear it to see the rest of your conversation.
@@ -911,6 +921,37 @@ function FullSurface({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Context → Connectors: a chip per family connector, marked when it is linked.
+ * Read-only context; connectors feed drafts a parent approves, never auto-actions
+ * (rule #4). Shown on the first screen so the parent sees what Hale can draw on.
+ */
+function ContextConnectorsPanel({ connectors }: { connectors: ConnectorChip[] }) {
+  return (
+    <section className="panel-oat px-5 py-4">
+      <p className="eyebrow text-spruce">Context</p>
+      <p className="meta mt-1">Connectors</p>
+      {connectors.length === 0 ? (
+        <p className="meta mt-2">no connectors available.</p>
+      ) : (
+        <ul className="mt-2 flex flex-wrap gap-2">
+          {connectors.map((c) => (
+            <li key={c.provider}>
+              <span className={`pill ${c.connected ? 'pill-sky' : ''}`}>
+                {c.label}
+                {c.connected ? null : <span className="text-faded-sage"> · add</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <a href="/settings" className="link mt-3 inline-block text-[0.85rem]">
+        manage connectors
+      </a>
+    </section>
   );
 }
 

@@ -309,6 +309,27 @@
       "when": 1781462340000,
       "tag": "0044_curated_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1781462400000,
+      "tag": "0045_integration_provider_gdrive",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1781462460000,
+      "tag": "0046_integrations_family_user_provider_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1781462520000,
+      "tag": "0047_connector_connect_nonces",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ export * from './children.js';
 export * from './child-documents.js';
 export * from './plans.js';
 export * from './integrations.js';
+export * from './connector-connect-nonces.js';
 export * from './consent.js';
 export * from './memory.js';
 export * from './events.js';

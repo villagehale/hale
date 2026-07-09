@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { isNotNull } from 'drizzle-orm';
 import { families } from './families.js';
 import { users } from './users.js';
 import { integrationProviderEnum, integrationStatusEnum } from './enums.js';
@@ -28,6 +29,13 @@ export const integrations = pgTable(
   },
   (table) => ({
     familyProviderIdx: index('integrations_family_provider_idx').on(table.familyId, table.provider),
+    // One connection per (family, user, provider) for user-scoped integrations
+    // (the connector case), so two concurrent connect callbacks can't insert
+    // duplicate rows (double polling / double events). Partial (user_id NOT NULL)
+    // to leave family-wide integrations (null user_id, e.g. Stripe) unconstrained.
+    familyUserProviderUnique: uniqueIndex('integrations_family_user_provider_unique')
+      .on(table.familyId, table.userId, table.provider)
+      .where(isNotNull(table.userId)),
   }),
 );
 
