@@ -275,11 +275,9 @@ export function VillageDetailSheet({
       ) : null}
 
       {isAccepted ? (
-        <View className="mb-4 h-7 items-center justify-center self-start rounded-full bg-sage-tint px-3">
-          <AppText variant="meta" className="leading-none text-sage">
-            Sent for your approval
-          </AppText>
-        </View>
+        <AppText variant="meta" className="mb-4 self-start text-ink-3">
+          Sent for your approval
+        </AppText>
       ) : null}
 
       <View className="flex-row flex-wrap gap-2">

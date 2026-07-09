@@ -12,7 +12,7 @@ type CardProps = ViewProps & {
 // soft, wide Prussian ambient shadow — low opacity, generous blur, small offset —
 // so cards read as lifted paper (Apple-like), not a hard drop.
 const LIGHT_SHADOW = {
-  shadowColor: '#003153',
+  shadowColor: '#0d1b3d',
   shadowOpacity: 0.08,
   shadowRadius: 20,
   shadowOffset: { width: 0, height: 8 },

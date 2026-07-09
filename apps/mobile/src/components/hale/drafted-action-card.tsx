@@ -160,7 +160,7 @@ export function DraftedActionCard({
 
   if (status === 'approved') {
     return (
-      <View className="mb-3 max-w-[92%] self-start rounded-lg border border-rule bg-sage-tint px-4 py-3">
+      <View className="mb-3 max-w-[92%] self-start rounded-lg border border-rule bg-card px-4 py-3">
         <AppText variant="meta" className="text-sage">
           {approvedPostState(intent.actionType)}
         </AppText>

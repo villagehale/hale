@@ -187,11 +187,11 @@ function Teaser({ first, area, others }: { first: PreviewActivity; area: string;
 }
 
 function TeenLine() {
-  const sky = useMeadowColor('ink2');
+  const onInk = useMeadowColor('onAccent');
   return (
     <View className="gap-3 rounded-lg border border-rule bg-card p-4">
-      <View className="h-9 w-9 items-center justify-center rounded-full bg-sky-tint">
-        <Icon name="lock.shield.fill" size={17} color={sky} />
+      <View className="h-9 w-9 items-center justify-center rounded-full bg-ink">
+        <Icon name="lock.shield.fill" size={17} color={onInk} />
       </View>
       <AppText variant="section">Your teen's privacy comes first</AppText>
       <AppText variant="body" className="text-ink-2">
