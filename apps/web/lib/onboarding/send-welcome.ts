@@ -1,7 +1,15 @@
 import { type Database, schema } from '@hale/db';
+import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { recordEmailSend, unsubscribeUrl } from '~/lib/cron/email-compliance';
-import { type WelcomeEmailSender, createWelcomeEmailSender } from './welcome-email';
+import {
+  type WelcomeContent,
+  type WelcomeEmailSender,
+  createWelcomeEmailSender,
+  firstNameToken,
+  placePhrase,
+  stagePhrase,
+} from './welcome-email';
 
 /**
  * The idempotent welcome send, run once when a family completes onboarding. It is
@@ -13,6 +21,11 @@ import { type WelcomeEmailSender, createWelcomeEmailSender } from './welcome-ema
  * written only on an ACCEPTED send, so a provider rejection leaves nothing and a
  * later attempt can retry. The send is keyed to the user (not the family) so it
  * is one welcome per parent.
+ *
+ * The greeting and copy read from persisted rows, not the caller's session: the
+ * name falls back to users.name (the session token may carry none on mobile), and
+ * the family copy is derived from the family's coarse area and the children's
+ * stages (rule #1 — never a child name or DOB).
  */
 
 const WELCOME_EMAIL_TYPE = 'welcome' as const;
@@ -37,13 +50,9 @@ export interface WelcomeRecipient {
   userId: string;
   familyId: string;
   email: string;
-  /** The parent's full name (or null); only the first name is used in the copy. */
+  /** The parent's name from the session, if any. Falls back to users.name — the
+   * session token can carry no name on the mobile Bearer bridge. */
   name: string | null;
-}
-
-function firstNameOf(name: string | null): string | null {
-  const first = name?.trim().split(/\s+/)[0];
-  return first ? first : null;
 }
 
 /** True when a welcome email has already been recorded as sent to this user. */
@@ -61,6 +70,43 @@ async function alreadyWelcomed(database: Database, userId: string): Promise<bool
   return rows.length > 0;
 }
 
+/** Build the personalized, non-PII welcome content from persisted rows. The name
+ * prefers the session name and falls back to users.name; the place + stage phrases
+ * are derived coarsely (rule #1 — no child name, no DOB). */
+async function buildContent(
+  database: Database,
+  recipient: WelcomeRecipient,
+): Promise<WelcomeContent> {
+  let name = recipient.name;
+  if (!name) {
+    const [userRow] = await database
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, recipient.userId))
+      .limit(1);
+    name = userRow?.name ?? null;
+  }
+
+  const [familyRow] = await database
+    .select({ areaCoarse: schema.families.areaCoarse, city: schema.families.city })
+    .from(schema.families)
+    .where(eq(schema.families.id, recipient.familyId))
+    .limit(1);
+
+  const childRows = await database
+    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, recipient.familyId));
+
+  const stages = childRows.map((child) => deriveStage(child.dateOfBirth));
+
+  return {
+    firstName: firstNameToken(name),
+    place: placePhrase(familyRow?.areaCoarse ?? null, familyRow?.city ?? null),
+    stage: stagePhrase(stages),
+  };
+}
+
 export async function sendWelcomeEmail(
   database: Database,
   recipient: WelcomeRecipient,
@@ -75,11 +121,8 @@ export async function sendWelcomeEmail(
     return { status: 'skipped', reason: 'no_unsub_secret' };
   }
 
-  const sendResult = await deps.email.sendWelcome(
-    recipient.email,
-    firstNameOf(recipient.name),
-    unsubUrl,
-  );
+  const content = await buildContent(database, recipient);
+  const sendResult = await deps.email.sendWelcome(recipient.email, content, unsubUrl);
 
   if (!sendResult.accepted) {
     return { status: 'send_failed' };

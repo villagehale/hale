@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { ensureUserRow, resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { assignFoundingNumber } from '~/lib/onboarding/founding';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { completeOnboarding } from './complete-onboarding.js';
@@ -18,7 +18,12 @@ vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => fakeDbHandle }));
 vi.mock('~/lib/family', async () => {
   const actual = await vi.importActual<typeof import('~/lib/family')>('~/lib/family');
-  return { ...actual, resolveFamilyForUser: vi.fn(), ensureUserRow: vi.fn() };
+  return {
+    ...actual,
+    resolveFamilyForUser: vi.fn(),
+    ensureUserRow: vi.fn(),
+    resolveUserIdForUser: vi.fn(),
+  };
 });
 vi.mock('~/lib/onboarding/persist', () => ({ provisionAndWriteChildren: vi.fn() }));
 vi.mock('~/lib/onboarding/founding', () => ({ assignFoundingNumber: vi.fn() }));
@@ -52,7 +57,15 @@ function builder() {
 /** Fake tx that records each update/insert table + payload. The top-level db also
  * answers the welcome path's prior-send select (email_sends) and captures its
  * ledger insert — `priorWelcome` makes the prior-send lookup non-empty. */
-function makeDb(opts: { priorWelcome?: boolean } = {}) {
+function makeDb(
+  opts: {
+    priorWelcome?: boolean;
+    userName?: string | null;
+    areaCoarse?: string | null;
+    city?: string | null;
+    childDobs?: string[];
+  } = {},
+) {
   const updates: Array<{ table: unknown; values: unknown }> = [];
   const inserts: Array<{ table: unknown; values: unknown }> = [];
 
@@ -75,13 +88,31 @@ function makeDb(opts: { priorWelcome?: boolean } = {}) {
     }),
   };
 
+  // The welcome path reads a few rows off the top-level db to build the (coarse,
+  // non-PII) copy: the prior-send lookup, the users name fallback, the family's
+  // coarse area, and each child's DOB (for a stage word). Each read is table-aware;
+  // a where() result is awaitable directly (children) or via .limit() (the rest).
+  function rowsFor(table: unknown): unknown[] {
+    if (table === schema.emailSends) return opts.priorWelcome ? [{ id: 'prev' }] : [];
+    if (table === schema.users) return [{ name: opts.userName ?? null }];
+    if (table === schema.families)
+      return [{ areaCoarse: opts.areaCoarse ?? null, city: opts.city ?? null }];
+    if (table === schema.children) return (opts.childDobs ?? []).map((dateOfBirth) => ({ dateOfBirth }));
+    return [];
+  }
+
   const database = {
     transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
-    // The welcome prior-send lookup: select(email_sends).from().where().limit().
     select: vi.fn(() => ({
-      from: () => ({
-        where: () => ({ limit: async () => (opts.priorWelcome ? [{ id: 'prev' }] : []) }),
-      }),
+      from: (table: unknown) => {
+        const result = () => rowsFor(table);
+        const whereResult = {
+          limit: async () => result(),
+          // biome-ignore lint/suspicious/noThenProperty: the children read awaits where() directly
+          then: (resolve: (v: unknown[]) => unknown) => resolve(result()),
+        };
+        return { where: () => whereResult };
+      },
     })),
     // The welcome ledger write: insert(email_sends).values().
     insert: vi.fn((table: unknown) => ({
@@ -103,10 +134,24 @@ function makeDb(opts: { priorWelcome?: boolean } = {}) {
   };
 }
 
+/** A fake welcome sender that records whether a send was attempted (used to prove
+ * the welcome email does — or does not — fire on a given path). */
+function fakeWelcomeSender(accepted = true): {
+  deps: { email: WelcomeEmailSender };
+  send: ReturnType<typeof vi.fn>;
+} {
+  const send = vi.fn(async () => ({
+    accepted,
+    providerMessageId: accepted ? 'resend-welcome-1' : null,
+  }));
+  return { deps: { email: { sendWelcome: send } }, send };
+}
+
 beforeEach(() => {
   authMock.mockReset();
   vi.mocked(resolveFamilyForUser).mockReset();
   vi.mocked(ensureUserRow).mockReset();
+  vi.mocked(resolveUserIdForUser).mockReset();
   vi.mocked(provisionAndWriteChildren).mockReset();
   vi.mocked(assignFoundingNumber).mockReset();
 });
@@ -284,7 +329,8 @@ describe('completeOnboarding', () => {
   it('writes the structured location and derives a coarse area from the postal code (rule #1)', async () => {
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
 
     const s = makeDb();
@@ -297,7 +343,7 @@ describe('completeOnboarding', () => {
       location: { country: 'Canada', province: 'Ontario', city: 'Toronto', postalCode: ' m5v 2t6 ' },
     });
 
-    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     // Postal code is normalized (upper-cased, trimmed); areaCoarse is the DERIVED
     // FSA only (rule #1: never the full postal code surfaced to discovery).
     // No intents supplied → stored as null (column is nullable).
@@ -315,7 +361,8 @@ describe('completeOnboarding', () => {
   it('persists the chosen intents (validated + ordered) on the family', async () => {
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
 
     const s = makeDb();
@@ -329,7 +376,7 @@ describe('completeOnboarding', () => {
       intents: ['health', 'activities', 'health', 'groceries'],
     });
 
-    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     // Unknown 'groceries' dropped, duplicate collapsed, canonical order restored.
     expect(s.updateFor(schema.families)).toMatchObject({ intents: ['activities', 'health'] });
   });
@@ -337,7 +384,8 @@ describe('completeOnboarding', () => {
   it('stores intents as null when none are chosen (optional, defaults to none)', async () => {
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
 
     const s = makeDb();
@@ -384,7 +432,8 @@ describe('completeOnboarding', () => {
   it('leaves the users name untouched when no parent name is supplied', async () => {
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
 
     const s = makeDb();
@@ -395,24 +444,87 @@ describe('completeOnboarding', () => {
     expect(s.updateCount(schema.users)).toBe(0);
   });
 
-  it('reuses an existing family without provisioning a second one', async () => {
+  // Fix 1: a repeat submit by a user who already has a family skips every write —
+  // the first provisioning already recorded their profile, plan, consents, and ToS,
+  // so a second completeOnboarding (a re-login, or the mobile resume firing again)
+  // must NOT re-run any of them (no family update, no consents, no tos_accepted
+  // audit, no founding, no discovery). The ONE side effect that still runs is the
+  // ledger-idempotent welcome send: on the normal repeat submit a 'welcome' ledger
+  // row already exists, so the send is a no-op (the ledger backstops it here too).
+  it('skips every write for an existing family; the already-sent welcome is a no-op', async () => {
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
     vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
-    vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+    vi.mocked(resolveUserIdForUser).mockResolvedValue(USER_ID);
 
-    const s = makeDb();
+    const s = makeDb({ priorWelcome: true });
     fakeDbHandle = s.database;
+    const { deps, send } = fakeWelcomeSender();
+    const trigger = vi.fn<DiscoveryTrigger>();
 
-    const result = await completeOnboarding({
-      children: PHASE_C_CHILDREN,
-      planTier: 'family',
-      tosAccepted: true,
-    });
+    const result = await completeOnboarding(
+      { children: PHASE_C_CHILDREN, planTier: 'family', tosAccepted: true },
+      deps,
+      trigger,
+    );
 
     expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    // No provisioning, no transaction at all — so no family update, no consent
+    // rows, no tos_accepted audit are re-written.
     expect(provisionAndWriteChildren).not.toHaveBeenCalled();
-    expect(s.updateFor(schema.families)).toMatchObject({ planTier: 'family' });
+    expect(s.database.transaction).not.toHaveBeenCalled();
+    expect(s.updateCount(schema.families)).toBe(0);
+    expect(s.insertsFor(schema.consentRecords)).toEqual([]);
+    expect(s.insertFor(schema.auditLog)).toBeUndefined();
+    // No founding badge, no discovery kick on a repeat submit. The prior 'welcome'
+    // ledger row makes the send a no-op — no provider call, no new ledger row.
+    expect(assignFoundingNumber).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(s.insertFor(schema.emailSends)).toBeUndefined();
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  // The crash-window recovery Fix 1 leaves open: the first submit's tx committed but
+  // the process died before the welcome send landed a ledger row. On the user's
+  // retry, resolveFamilyForUser now finds the family (so the write path is skipped),
+  // but with NO 'welcome' ledger row the idempotent send fires and delivers the lost
+  // welcome — still writing nothing else (no family/consent/audit/founding/discovery).
+  it('recovers the lost welcome for an existing family when no ledger row exists yet', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveUserIdForUser).mockResolvedValue(USER_ID);
+    // The CASL unsubscribe link must be mintable for the send to proceed.
+    vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsub-secret');
+    vi.stubEnv('APP_URL', 'https://app.example.com');
+
+    const s = makeDb({ priorWelcome: false });
+    fakeDbHandle = s.database;
+    const { deps, send } = fakeWelcomeSender();
+    const trigger = vi.fn<DiscoveryTrigger>();
+
+    const result = await completeOnboarding(
+      { children: PHASE_C_CHILDREN, planTier: 'family', tosAccepted: true },
+      deps,
+      trigger,
+    );
+
+    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    // Still no re-write of the shared family state.
+    expect(provisionAndWriteChildren).not.toHaveBeenCalled();
+    expect(s.database.transaction).not.toHaveBeenCalled();
+    expect(s.updateCount(schema.families)).toBe(0);
+    expect(assignFoundingNumber).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveBeenCalled();
+    // The welcome DOES send (recovery) and records its ledger row for the existing
+    // family + user, keyed to the same idempotency anchor.
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(s.insertFor(schema.emailSends)).toMatchObject({
+      userId: USER_ID,
+      familyId: EXISTING_FAMILY_ID,
+      emailType: 'welcome',
+      providerMessageId: 'resend-welcome-1',
+    });
   });
 
   it('rejects when no children are supplied — nothing is written', async () => {
@@ -489,26 +601,18 @@ describe('completeOnboarding', () => {
 });
 
 // The welcome email fires AFTER the onboarding tx commits, keyed to the user via
-// the email_sends ledger so it sends exactly once. A fake sender stands in for
-// Resend; UNSUBSCRIBE_SECRET is set so the CASL link can be minted.
+// the email_sends ledger so it sends exactly once. It fires only on FIRST
+// provisioning (a new family); a repeat submit for an existing family no-ops
+// before this (see the no-op test above). A fake sender stands in for Resend;
+// UNSUBSCRIBE_SECRET is set so the CASL link can be minted.
 describe('completeOnboarding — welcome email', () => {
-  function fakeWelcomeSender(accepted = true): {
-    deps: { email: WelcomeEmailSender };
-    send: ReturnType<typeof vi.fn>;
-  } {
-    const send = vi.fn(async () => ({
-      accepted,
-      providerMessageId: accepted ? 'resend-welcome-1' : null,
-    }));
-    return { deps: { email: { sendWelcome: send } }, send };
-  }
-
   beforeEach(() => {
     configureAuth(true);
     authMock.mockResolvedValue({
       user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery Q' },
     });
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
     vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
     vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsub-secret');
     vi.stubEnv('APP_URL', 'https://app.example.com');
@@ -524,12 +628,12 @@ describe('completeOnboarding — welcome email', () => {
       deps,
     );
 
-    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
-    // Sent to the session email, personalized with the first name only.
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
+    // Sent to the session email; the content carries the greeting-ready first name.
     expect(send).toHaveBeenCalledTimes(1);
-    const [to, firstName] = send.mock.calls[0] as [string, string];
+    const [to, content] = send.mock.calls[0] as [string, { firstName: string }];
     expect(to).toBe('avery@example.com');
-    expect(firstName).toBe('Avery');
+    expect(content.firstName).toBe('Avery');
     // The accepted send is recorded as a 'welcome' row (the idempotency anchor).
     expect(s.insertFor(schema.emailSends)).toMatchObject({
       userId: USER_ID,
@@ -539,7 +643,9 @@ describe('completeOnboarding — welcome email', () => {
     });
   });
 
-  it('does NOT re-send when a prior welcome row exists (second completion / login)', async () => {
+  it('does NOT re-send when a prior welcome row exists (ledger backstop)', async () => {
+    // Even on a new-family path, a pre-existing 'welcome' ledger row makes the send
+    // a no-op — the ledger remains the idempotency backstop under Fix 1.
     const s = makeDb({ priorWelcome: true });
     fakeDbHandle = s.database;
     const { deps, send } = fakeWelcomeSender();
@@ -549,7 +655,7 @@ describe('completeOnboarding — welcome email', () => {
       deps,
     );
 
-    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     expect(send).not.toHaveBeenCalled();
     expect(s.insertFor(schema.emailSends)).toBeUndefined();
   });
@@ -566,7 +672,7 @@ describe('completeOnboarding — welcome email', () => {
       { email: { sendWelcome: send } },
     );
 
-    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     expect(send).toHaveBeenCalledTimes(1);
     // No ledger row written, so a later attempt can still send.
     expect(s.insertFor(schema.emailSends)).toBeUndefined();
@@ -622,7 +728,8 @@ describe('completeOnboarding — first-village discovery', () => {
   });
 
   it('completes onboarding even when the discovery trigger throws (failure swallowed)', async () => {
-    vi.mocked(resolveFamilyForUser).mockResolvedValue(EXISTING_FAMILY_ID);
+    vi.mocked(resolveFamilyForUser).mockResolvedValue(null);
+    vi.mocked(provisionAndWriteChildren).mockResolvedValue({ familyId: NEW_FAMILY_ID });
 
     const s = makeDb();
     fakeDbHandle = s.database;
@@ -636,7 +743,7 @@ describe('completeOnboarding — first-village discovery', () => {
       trigger,
     );
 
-    expect(result).toEqual({ status: 'completed', familyId: EXISTING_FAMILY_ID });
+    expect(result).toEqual({ status: 'completed', familyId: NEW_FAMILY_ID });
     expect(trigger).toHaveBeenCalledTimes(1);
   });
 });
