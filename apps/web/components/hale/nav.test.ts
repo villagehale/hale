@@ -22,9 +22,10 @@ describe('shared nav definition', () => {
     expect(family?.href).toBe('/family');
   });
 
-  it('ALL_NAV is the primary stops followed by history then settings, with no duplicate routes', () => {
+  it('ALL_NAV is the primary stops followed by settings, with history filed separately (retired from the sidebar) and no duplicate routes', () => {
     const hrefs = ALL_NAV.map((n) => n.href);
-    expect(hrefs).toEqual([...PRIMARY_NAV.map((n) => n.href), '/trail', '/settings']);
+    expect(hrefs).toEqual([...PRIMARY_NAV.map((n) => n.href), '/settings']);
+    expect(hrefs).not.toContain('/trail');
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
