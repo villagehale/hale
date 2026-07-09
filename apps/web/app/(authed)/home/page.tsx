@@ -3,9 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { auth } from '~/auth';
 import { BookButton } from '~/components/hale/book-button';
-import { scopeChildren } from '~/components/hale/child-scope-core';
 import { ConciergeAsk } from '~/components/hale/concierge-ask';
-import { HomeChildFilter } from '~/components/hale/home-child-filter';
 import { LongDate } from '~/components/hale/long-date';
 import { QuickLog } from '~/components/hale/quick-log';
 import { RecentLogs } from '~/components/hale/recent-logs';
@@ -74,29 +72,6 @@ function HomeStatsRow({ stats }: { stats: Awaited<ReturnType<typeof loadHomeStat
 
 /** A compact quick-action link tile for the actions row — icon + label, tinted to
  * its domain (lavender for the AI ask, oat for the utility care links). */
-function ActionTile({
-  href,
-  icon,
-  label,
-  tint,
-}: {
-  href: '/coach' | '/companion';
-  icon: typeof MessageCircle;
-  label: string;
-  tint: 'lavender' | 'oat';
-}) {
-  return (
-    <Link
-      href={href}
-      className={`card card-interactive flex items-center gap-3 ${tint === 'lavender' ? 'bg-lavender' : ''}`}
-    >
-      <span className="text-apricot-deep">
-        <Icon as={icon} size={20} />
-      </span>
-      <span className="font-display text-[1.05rem] leading-tight">{label}</span>
-    </Link>
-  );
-}
 
 export default async function HomePage() {
   const canAsk = authConfigured();
@@ -177,134 +152,96 @@ export default async function HomePage() {
         ) : null}
       </header>
 
-      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) plus an
-       * Ask-Hale link. QuickLog owns its own toggle + inline form; the Ask tile is a
-       * plain route link, so no handler is duplicated. ─────────────────────── */}
-      <section className="rise rise-2 mb-8 space-y-4">
+      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone). ─── */}
+      <section className="rise rise-2 mb-6">
         <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <ActionTile href="/coach" icon={MessageCircle} label="ask Hale" tint="lavender" />
-          <ActionTile href="/companion" icon={Baby} label="view companion" tint="oat" />
-        </div>
       </section>
 
-      {/* ── Dashboard grid — dense multi-column on desktop, single column on mobile.
-       * Every card traces to a real loader; nothing is fabricated. ─────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-6 mb-8">
-        {/* This week — the honest stat strip. */}
-        <section className="rise rise-3 lg:col-span-1">
+      {/* ── Dashboard masonry — dense, varying-height cards that pack tight
+       * (columns) and collapse to one column on mobile. Every card traces to a
+       * real loader; nothing is fabricated. ─────────────────────────── */}
+      <div className="columns-1 md:columns-2 xl:columns-3 gap-5 [&>*]:mb-5 [&>*]:break-inside-avoid mb-8">
+        <section className="rise rise-3">
           <SectionLabel>this week</SectionLabel>
           <HomeStatsRow stats={stats} />
         </section>
 
-        {/* Up next — each child's soonest health item within the horizon. */}
-        <section className="rise rise-3 lg:col-span-1">
-          <SectionLabel>up next</SectionLabel>
-          <div className="space-y-4">
-            {children.some((c) => c.todayHealth) ? (
-              children.map((child) =>
-                child.todayHealth ? (
-                  <Card key={child.id}>
-                    <span className="eyebrow text-apricot-deep">
-                      {duePhrase(child.todayHealth.dueInWeeks)}
-                    </span>
-                    <p className="font-display text-[1.15rem] mt-2 leading-snug" data-hale-pii>
-                      {child.todayHealth.what}
-                    </p>
-                    <p className="meta mt-1 text-slate-green" data-hale-pii>
-                      for {child.name ?? 'your child'}
-                    </p>
-                    <div className="mt-3">
-                      <BookButton what={child.todayHealth.what} childId={child.id} />
-                    </div>
-                  </Card>
-                ) : null,
-              )
-            ) : (
-              <Card>
-                <p className="meta text-slate-green">
-                  nothing on the standard schedule right now — keep up periodic visits.
-                </p>
-              </Card>
-            )}
-          </div>
-        </section>
+        {children.map((child) =>
+          child.todayHealth ? (
+            <Card key={`up-${child.id}`} className="rise rise-3">
+              <span className="eyebrow text-apricot-deep">
+                {duePhrase(child.todayHealth.dueInWeeks)}
+              </span>
+              <p className="font-display text-[1.15rem] mt-2 leading-snug" data-hale-pii>
+                {child.todayHealth.what}
+              </p>
+              <p className="meta mt-1 text-slate-green" data-hale-pii>
+                for {child.name ?? 'your child'}
+              </p>
+              <div className="mt-3">
+                <BookButton what={child.todayHealth.what} childId={child.id} />
+              </div>
+            </Card>
+          ) : null,
+        )}
 
-        {/* Quick care — a small card of real action links. */}
-        <section className="rise rise-3 lg:col-span-1">
+        {children.map((child) => {
+          const milestone = milestoneInWindow(child);
+          const childLogs = logsByChild.get(child.id) ?? [];
+          return (
+            <Card key={`child-${child.id}`} className="rise rise-4">
+              <div className="flex items-center gap-3 border-b border-rule pb-3 mb-4">
+                <Icon as={Baby} size={20} className="text-apricot-deep" />
+                <div>
+                  <h2 className="font-display text-[1.25rem] leading-tight" data-hale-pii>
+                    {child.name ?? 'your child'}
+                  </h2>
+                  <p className="meta text-faded-sage">{child.stage}</p>
+                </div>
+              </div>
+              {milestone ? (
+                <div className="mb-4">
+                  <span className="eyebrow text-faded-sage">around this age</span>
+                  <p className="text-base text-spruce leading-relaxed mt-1" data-hale-pii>
+                    {milestone.what}
+                  </p>
+                </div>
+              ) : null}
+              <span className="eyebrow text-faded-sage">recent logs</span>
+              <div className="mt-2">
+                <RecentLogs logs={childLogs} timeZone={timeZone} />
+              </div>
+              <Link href="/companion" className="link mt-4 inline-block">
+                open companion →
+              </Link>
+            </Card>
+          );
+        })}
+
+        <Card className="rise rise-3">
           <SectionLabel>quick care</SectionLabel>
-          <Card>
-            <ul className="space-y-3">
-              <li>
-                <Link href="/companion" className="link inline-flex items-center gap-2">
-                  <Icon as={Sparkles} size={16} />
-                  log a memory
-                </Link>
-              </li>
-              <li>
-                <Link href="/companion" className="link inline-flex items-center gap-2">
-                  <Icon as={Baby} size={16} />
-                  view companion
-                </Link>
-              </li>
-              <li>
-                <Link href="/coach" className="link inline-flex items-center gap-2">
-                  <Icon as={MessageCircle} size={16} />
-                  ask Hale anything
-                </Link>
-              </li>
-            </ul>
-          </Card>
-        </section>
+          <ul className="space-y-3">
+            <li>
+              <Link href="/companion" className="link inline-flex items-center gap-2">
+                <Icon as={Sparkles} size={16} />
+                log a memory
+              </Link>
+            </li>
+            <li>
+              <Link href="/companion" className="link inline-flex items-center gap-2">
+                <Icon as={Baby} size={16} />
+                view companion
+              </Link>
+            </li>
+            <li>
+              <Link href="/coach" className="link inline-flex items-center gap-2">
+                <Icon as={MessageCircle} size={16} />
+                ask Hale anything
+              </Link>
+            </li>
+          </ul>
+        </Card>
       </div>
-
-      {/* ── Per-child summary — each child (name / stage / age) with their around-this-
-       * age milestone and recent logs. Teen redaction is applied in loadRecentLogs
-       * (rule #1); the filter narrows to one child. ─────────────────────────── */}
-      <section className="rise rise-4 mb-8">
-        <SectionLabel>your children</SectionLabel>
-        <HomeChildFilter
-          kids={scopeChildren(children)}
-          sections={children.map((child) => {
-            const milestone = milestoneInWindow(child);
-            const childLogs = logsByChild.get(child.id) ?? [];
-            return {
-              childId: child.id,
-              node: (
-                <Card>
-                  <div className="flex items-center gap-3 border-b border-rule pb-3 mb-4">
-                    <Icon as={Baby} size={20} className="text-apricot-deep" />
-                    <div>
-                      <h2 className="font-display text-[1.25rem] leading-tight" data-hale-pii>
-                        {child.name ?? 'your child'}
-                      </h2>
-                      <p className="meta text-faded-sage">{child.stage}</p>
-                    </div>
-                  </div>
-
-                  {milestone ? (
-                    <div className="mb-4">
-                      <span className="eyebrow text-faded-sage">around this age</span>
-                      <p className="text-lg text-spruce leading-relaxed mt-1" data-hale-pii>
-                        {milestone.what}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <span className="eyebrow text-faded-sage">recent logs</span>
-                  <div className="mt-2">
-                    <RecentLogs logs={childLogs} timeZone={timeZone} />
-                  </div>
-
-                  <Link href="/companion" className="link mt-4 inline-block">
-                    open companion →
-                  </Link>
-                </Card>
-              ),
-            };
-          })}
-        />
-      </section>
 
       {/* ── From the village — the agent-ranked, trusted feed. Streamed so the
        * rank-recommendations agent never blocks the shell. No photos: the village
