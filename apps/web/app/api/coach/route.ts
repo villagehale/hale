@@ -100,8 +100,11 @@ export async function POST(req: Request) {
             // on the call, name + ok + content-free preview (no raw output) on the
             // result. The route never re-derives these from tool data.
             onToolCall: ({ name }) => send({ type: 'tool_call', name }),
-            onToolResult: ({ name, ok, preview }) =>
-              send({ type: 'tool_result', name, ok, preview }),
+            // The optional `card` is the ONE whitelisted display payload (rule #1):
+            // a closed union of connector rows the tool declared safe to show, never
+            // raw output. Forwarded verbatim from the harness, which built it.
+            onToolResult: ({ name, ok, preview, card }) =>
+              send({ type: 'tool_result', name, ok, preview, ...(card ? { card } : {}) }),
           },
         );
         send({ type: 'done', conversationId, actionIntents });
