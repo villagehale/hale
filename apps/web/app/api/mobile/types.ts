@@ -249,3 +249,34 @@ export interface MobilePushPrefsUpdateResponse {
 export interface MobileConnectUrlResponse {
   url: string;
 }
+
+// ── connectors state (GET /api/mobile/integrations) + disconnect ──────────────
+//
+// The family's connector state for the native "Connected accounts" UI: whether each
+// read-only Google connector is linked. The route normalizes the raw
+// integration_status into an honest UI status and NEVER serializes tokens or scopes
+// (rule #1) — connection plumbing only, nothing about mailbox/calendar content.
+
+export type ConnectorProviderSlug = 'gcal' | 'gmail' | 'gdrive';
+
+/** The honest, UI-facing connection status — 'connected' only when truly active;
+ * 'error' means "needs reconnecting"; 'not_connected' otherwise (fail closed). */
+export type IntegrationStatus = 'connected' | 'not_connected' | 'error';
+
+export interface ConnectorState {
+  provider: ConnectorProviderSlug;
+  status: IntegrationStatus;
+  /** ISO instant the connection was made — omitted when never linked. Activity
+   * signal only, never content. */
+  connectedAt?: string;
+}
+
+export interface MobileIntegrationsResponse {
+  connectors: ConnectorState[];
+}
+
+/** The disconnect result (the connection is revoked + audited server-side, rule #6). */
+export interface MobileIntegrationDisconnectResponse {
+  status: 'revoked';
+  provider: ConnectorProviderSlug;
+}

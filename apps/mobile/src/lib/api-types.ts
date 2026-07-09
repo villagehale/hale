@@ -486,3 +486,42 @@ export interface MobilePushPrefsUpdateRequest {
 export interface MobilePushPrefsUpdateResponse {
   status: 'updated';
 }
+
+// ── connectors (GET /api/mobile/integrations, POST .../[provider]/disconnect,
+//    GET /api/mobile/integrations/connect-url) ──────────────────────────────────
+//
+// Connection PLUMBING only: the app learns whether each read-only Google connector
+// is linked, opens a consent URL to link one, and revokes one. No token material,
+// no scopes, and nothing about mailbox/calendar CONTENT ever travels here (rule #1).
+
+export type ConnectorProvider = 'gcal' | 'gmail' | 'gdrive';
+
+/** The honest, UI-facing connection status the route normalizes the raw
+ * integration_status into — 'connected' only when the connection is truly active;
+ * 'error' means "needs reconnecting"; 'not_connected' otherwise. */
+export type IntegrationStatus = 'connected' | 'not_connected' | 'error';
+
+/** One connector's state for the family. Never carries tokens or scopes (rule #1). */
+export interface ConnectorState {
+  provider: ConnectorProvider;
+  status: IntegrationStatus;
+  /** ISO instant the connection was made — an activity signal only, never content.
+   * Omitted (never null) when the connector was never linked; mirrors the web wire
+   * type, which the server always emits as a string or omits the key. */
+  connectedAt?: string;
+}
+
+export interface MobileIntegrationsResponse {
+  connectors: ConnectorState[];
+}
+
+/** The disconnect result (the connection is revoked + audited server-side, rule #6). */
+export interface MobileIntegrationDisconnectResponse {
+  status: 'revoked';
+  provider: ConnectorProvider;
+}
+
+/** The Google consent URL to open in a browser for a connector connect flow. */
+export interface MobileConnectUrlResponse {
+  url: string;
+}
