@@ -355,12 +355,12 @@ function EmptyState({
   disabled: boolean;
 }) {
   return (
-    <div className="mx-auto flex max-w-[34rem] flex-col items-center gap-6 py-12 text-center sm:py-16">
-      <div className="space-y-3">
-        <p className="font-display text-balance text-[clamp(2.3rem,4.4vw,3.75rem)] font-semibold leading-[1.04] tracking-[-0.02em]">
-          your parenting <span className="text-apricot-deep">co-pilot</span>
+    <div className="mx-auto flex max-w-[34rem] flex-col items-center gap-6 py-8 text-center sm:py-10">
+      <div className="space-y-2">
+        <p className="font-display text-[1.75rem] lg:text-[2rem] font-semibold leading-tight">
+          how can I help?
         </p>
-        <p className="text-slate-green text-lg leading-relaxed">
+        <p className="text-slate-green leading-relaxed">
           one ongoing conversation, grounded in your family. I answer in plain language and cite the
           source — never medical advice.
         </p>
