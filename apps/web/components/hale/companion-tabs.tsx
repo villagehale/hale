@@ -47,6 +47,7 @@ const LOG_ICON: Record<string, LucideIcon> = {
  * page stays "companion" with one child in focus.
  */
 const SECTIONS = [
+  { key: 'overview', label: 'overview', hint: 'today at a glance' },
   { key: 'health', label: 'health', hint: 'checkups · immunizations' },
   { key: 'growth', label: 'growth', hint: 'weight · height · head' },
   { key: 'milestones', label: 'milestones', hint: 'most kids, this stage' },
@@ -106,9 +107,144 @@ function leadLine(child: ChildCompanionView): string {
   return 'Nothing on the standard schedule right now — keep up periodic visits.';
 }
 
+/** The single milestone worth surfacing now: prefer one inside its window. */
+function milestoneInWindow(child: ChildCompanionView) {
+  return child.milestones.find((m) => m.timing === 'in_window') ?? child.milestones[0] ?? null;
+}
+
+function firstName(name: string | null): string {
+  return name?.trim().split(/\s+/)[0] ?? 'your child';
+}
+
+// ── OVERVIEW ────────────────────────────────────────────────────────────────
+//
+// The default view: a per-child dashboard masonry (mirrors the home register)
+// over the SAME already-loaded, teen-redacted reads the detail sections use —
+// nothing fabricated. Health leads in a sage card; the AI entry is an honest LINK
+// to /coach, never a fabricated insight string.
+
+export function OverviewSection({
+  child,
+  recentLogs,
+  timeZone,
+  onNavigate,
+}: {
+  child: ChildCompanionView;
+  recentLogs: RecentLogView[];
+  timeZone: string;
+  onNavigate: (s: SectionKey) => void;
+}) {
+  const childLogs = recentLogs.filter((l) => l.childId === child.id);
+  const milestone = milestoneInWindow(child);
+  const lead = child.todayHealth ?? child.nextHealth[0] ?? null;
+  const upcoming = child.nextHealth.filter((item) => item.key !== lead?.key).slice(0, 4);
+
+  return (
+    <div className="columns-1 md:columns-2 gap-5 [&>*]:mb-5 [&>*]:break-inside-avoid">
+      <div className="card">
+        <span className="eyebrow text-faded-sage">today at a glance</span>
+        {childLogs.length === 0 ? (
+          <p className="meta mt-3 text-slate-green">
+            nothing logged yet — note a feed, a nap, or a milestone with quick log.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-4">
+            {childLogs.map((log) => (
+              <li
+                key={log.id}
+                className="flex items-baseline gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
+              >
+                <span className="shrink-0 text-apricot-deep">
+                  <Icon as={LOG_ICON[log.episodeType] ?? CalendarCheck} size={18} />
+                </span>
+                <span className="text-base text-spruce leading-relaxed flex-1" data-hale-pii>
+                  {log.summary}
+                </span>
+                <span className="eyebrow text-faded-sage shrink-0">
+                  {formatWhenPhrase(log.occurredAt, timeZone)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <span className="eyebrow text-faded-sage">health summary</span>
+        {lead ? (
+          <>
+            <span className="eyebrow text-apricot-deep mt-3 block">{duePhrase(lead.dueInWeeks)}</span>
+            <p className="font-display text-[1.15rem] mt-1 leading-snug" data-hale-pii>
+              {lead.what}
+            </p>
+          </>
+        ) : (
+          <p className="meta mt-3 text-slate-green">
+            nothing on the standard schedule right now — keep up periodic visits.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => onNavigate('health')}
+          className="link mt-4 inline-block cursor-pointer"
+        >
+          view health →
+        </button>
+      </div>
+
+      {upcoming.length > 0 ? (
+        <div className="card">
+          <span className="eyebrow text-faded-sage">upcoming</span>
+          <ul className="mt-3 space-y-3">
+            {upcoming.map((item) => (
+              <li
+                key={item.key}
+                className="flex items-baseline gap-4 border-t border-rule pt-3 first:border-t-0 first:pt-0"
+              >
+                <span className="eyebrow text-slate-green shrink-0 w-24">
+                  {duePhrase(item.dueInWeeks)}
+                </span>
+                <span className="text-base text-spruce leading-relaxed flex-1" data-hale-pii>
+                  {item.what}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {milestone ? (
+        <div className="card">
+          <span className="eyebrow text-faded-sage">around this age</span>
+          <p className="text-base text-spruce leading-relaxed mt-2" data-hale-pii>
+            {milestone.what}
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate('milestones')}
+            className="link mt-4 inline-block cursor-pointer"
+          >
+            view milestones →
+          </button>
+        </div>
+      ) : null}
+
+      <div className="card">
+        <span className="eyebrow text-faded-sage">companion insight</span>
+        <p className="text-base text-spruce leading-relaxed mt-2" data-hale-pii>
+          have a question about {firstName(child.name)}? ask Hale for calm, stage-aware guidance.
+        </p>
+        <Link href="/coach" className="link mt-4 inline-block">
+          ask Hale about <span data-hale-pii>{firstName(child.name)}</span> →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 // ── HEALTH ──────────────────────────────────────────────────────────────────
 
-function HealthSection({ child }: { child: ChildCompanionView }) {
+export function HealthSection({ child }: { child: ChildCompanionView }) {
   return (
     <div className="space-y-10">
       <div className="space-y-2">
@@ -577,7 +713,7 @@ function ChildBody({
   recentLogs: RecentLogView[];
   timeZone: string;
 }) {
-  const [section, setSection] = useState<SectionKey>('health');
+  const [section, setSection] = useState<SectionKey>('overview');
   const baseId = useId();
 
   return (
@@ -592,6 +728,14 @@ function ChildBody({
         tabIndex={-1}
         className="lg:col-span-9"
       >
+        {section === 'overview' ? (
+          <OverviewSection
+            child={child}
+            recentLogs={recentLogs}
+            timeZone={timeZone}
+            onNavigate={setSection}
+          />
+        ) : null}
         {section === 'health' ? <HealthSection child={child} /> : null}
         {section === 'growth' ? (
           <GrowthSection child={child} growthLogs={growthLogs} timeZone={timeZone} />

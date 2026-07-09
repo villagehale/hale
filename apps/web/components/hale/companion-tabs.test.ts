@@ -8,17 +8,24 @@ import type { ChildCompanionView } from '~/lib/companion/queries';
 // log module; stub the action so a static render doesn't pull the auth/db chain.
 vi.mock('~/lib/companion/log', () => ({ markCompanionItemDone: vi.fn() }));
 
-const { CompanionTabs, GrowthSection, MilestonesSection, RoutinesSection, nextTabIndex } =
-  await import('./companion-tabs');
+const {
+  CompanionTabs,
+  GrowthSection,
+  HealthSection,
+  MilestonesSection,
+  RoutinesSection,
+  nextTabIndex,
+} = await import('./companion-tabs');
 
 /**
  * The companion renders a plain header for one child and an accessible roving child
  * tablist for two or more (only the active child's body is mounted — no stacked
- * scroll). Below the header sits the six-section switcher (health / growth /
- * milestones / routines / diary / docs), defaulting to health. We render to static
- * HTML (the repo's component-test convention) for the DOM-structure guarantees, and
- * drive the pure keyboard reducer directly for the wraparound / Home / End model,
- * which a static render can't exercise.
+ * scroll). Below the header sits the section switcher, which leads with an OVERVIEW
+ * section (the default) followed by the six detail sections — health / growth /
+ * milestones / routines / diary / docs. We render to static HTML (the repo's
+ * component-test convention) for the DOM-structure guarantees, and drive the pure
+ * keyboard reducer directly for the wraparound / Home / End model, which a static
+ * render can't exercise.
  */
 
 function child(id: string, name: string, dateOfBirth: string): ChildCompanionView {
@@ -50,8 +57,8 @@ describe('CompanionTabs DOM structure', () => {
     const html = render([AVA, BEN, CY]);
     expect(html).toContain('aria-label="children"');
     expect(html).toContain('aria-label="companion sections"');
-    // Three child tabs + six section tabs = nine role="tab" buttons.
-    expect((html.match(/role="tab"/g) ?? []).length).toBe(3 + 6);
+    // Three child tabs + seven section tabs (overview + six details) = ten role="tab".
+    expect((html.match(/role="tab"/g) ?? []).length).toBe(3 + 7);
     // The mounted child body is Ava's (active); Ben/Cy bodies are absent.
     const panel = html.slice(html.indexOf('role="tabpanel"'));
     expect(panel).toContain('Ava');
@@ -59,20 +66,22 @@ describe('CompanionTabs DOM structure', () => {
     expect(panel).not.toContain('Cy');
   });
 
-  it('defaults to the health section (its content, not growth/routines/docs)', () => {
+  it('defaults to the overview section (its cards, not the health detail body)', () => {
     const html = render([AVA]);
-    // Health leads with "what's next" + the health-items block.
-    expect(html).toContain('what’s next');
-    expect(html).toContain('health items');
-    // The inactive sections' bodies are NOT mounted (single active section panel).
+    // Overview leads with the "today at a glance" + "health summary" cards.
+    expect(html).toContain('today at a glance');
+    expect(html).toContain('health summary');
+    // The health detail body ("health items" list) and other sections' bodies are
+    // NOT mounted — only the active overview panel renders.
+    expect(html).not.toContain('health items');
     expect(html).not.toContain('no measurements yet');
     expect(html).not.toContain('the vault lives in the Hale app');
     expect(html).not.toContain('no rhythm yet this week');
   });
 
-  it('lists all six section tabs by label', () => {
+  it('lists all seven section tabs by label (overview leads the details)', () => {
     const html = render([AVA]);
-    for (const label of ['health', 'growth', 'milestones', 'routines', 'diary', 'docs']) {
+    for (const label of ['overview', 'health', 'growth', 'milestones', 'routines', 'diary', 'docs']) {
       expect(html).toContain(`>${label}<`);
     }
   });
@@ -99,10 +108,12 @@ describe('CompanionTabs done + recently-passed affordances', () => {
   it('renders a recently-passed health item with a done affordance instead of hiding it', () => {
     // Born 2026-01-15 → 5mo: the 4-month set passed ~1mo ago and is not done, so it
     // must appear (not vanish) with the "scheduled at 4 months" phrasing + a done tap.
+    // recently-passed lives in the health section (not the default overview), so
+    // render it directly.
     const view = viewFor('2026-01-15');
     expect(view.recentlyPassedHealth.some((h) => h.ageMonths === 4)).toBe(true);
 
-    const html = render([view]);
+    const html = renderToStaticMarkup(createElement(HealthSection, { child: view }));
     expect(html).toContain('recently passed');
     expect(html).toContain('scheduled at 4 months');
     expect(html).toContain('4-month well-baby visit');
@@ -128,10 +139,11 @@ describe('CompanionTabs done + recently-passed affordances', () => {
 
   it('leads with the horizon note rather than a checkup years away', () => {
     // Born 2024-10-15 → 20mo: next real item is the 4–6y set (out of horizon), so
-    // the lead must NOT surface it and must fall back to the periodic-visits note.
+    // the health lead must NOT surface it and must fall back to the periodic-visits
+    // note. Render the health section directly (overview is the default panel).
     const view = viewFor('2024-10-15');
     expect(view.todayHealth).toBeNull();
-    const html = render([view]);
+    const html = renderToStaticMarkup(createElement(HealthSection, { child: view }));
     expect(html).toContain('keep up periodic visits');
     expect(html).not.toContain('4–6 year (pre-school) immunizations —');
   });
