@@ -85,6 +85,42 @@ export async function loadViewerName(database: Database = defaultDb()): Promise<
   return row?.name?.trim() || null;
 }
 
+/** The signed-in parent's own account profile — the real, per-viewer fields the
+ * Account page's Profile card shows. Only what the `users` row actually holds:
+ * name, email, timezone, locale. No phone, no units — those have no column, so
+ * the card never renders them (rule #1: never fabricate). */
+export interface ViewerProfile {
+  name: string | null;
+  email: string;
+  timezone: string;
+  locale: string;
+}
+
+/**
+ * The signed-in parent's account profile from their mirrored `users` row. Fails
+ * closed to null (never a fabricated profile) when auth is unconfigured (dev
+ * preview — no signed-in parent) or the signed-in user has no mirrored row yet
+ * (onboarding incomplete) — the counterpart to loadViewerName for the Account page.
+ */
+export async function loadViewerProfile(
+  database: Database = defaultDb(),
+): Promise<ViewerProfile | null> {
+  if (!authConfigured()) return null;
+  const userId = await currentUserId(database);
+  if (!userId) return null;
+  const [row] = await database
+    .select({
+      name: schema.users.name,
+      email: schema.users.email,
+      timezone: schema.users.timezone,
+      locale: schema.users.locale,
+    })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
 /**
  * Dev-preview family resolution: the earliest-created family. Used only when auth
  * is unconfigured (local screenshots / demo), never in production.
