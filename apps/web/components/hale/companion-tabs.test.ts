@@ -29,7 +29,7 @@ const {
  */
 
 function child(id: string, name: string, dateOfBirth: string): ChildCompanionView {
-  return { id, ...companionForChild({ dateOfBirth, name }) };
+  return { id, dateOfBirth, ...companionForChild({ dateOfBirth, name }) };
 }
 
 // Distinct DOBs → distinct stages/ages, so panels are distinguishable in the HTML.
@@ -66,11 +66,13 @@ describe('CompanionTabs DOM structure', () => {
     expect(panel).not.toContain('Cy');
   });
 
-  it('defaults to the overview section (its cards, not the health detail body)', () => {
+  it('defaults to the overview section (its two cards, not the health detail body)', () => {
     const html = render([AVA]);
-    // Overview leads with the "today at a glance" + "health summary" cards.
-    expect(html).toContain('today at a glance');
-    expect(html).toContain('health summary');
+    // Overview leads with the MILESTONES + HEALTH SCHEDULE cards (mockup panel 2)
+    // and their in-card links — never the detail-section bodies.
+    expect(html).toContain('health schedule');
+    expect(html).toContain('view all milestones');
+    expect(html).toContain('view health schedule');
     // The health detail body ("health items" list) and other sections' bodies are
     // NOT mounted — only the active overview panel renders.
     expect(html).not.toContain('health items');
@@ -102,7 +104,7 @@ describe('CompanionTabs done + recently-passed affordances', () => {
     dateOfBirth: string,
     done?: { milestones: Set<string>; health: Set<string> },
   ): ChildCompanionView {
-    return { id: 'c-1', ...companionForChild({ dateOfBirth, name: 'Ari' }, NOW, done) };
+    return { id: 'c-1', dateOfBirth, ...companionForChild({ dateOfBirth, name: 'Ari' }, NOW, done) };
   }
 
   it('renders a recently-passed health item with a done affordance instead of hiding it', () => {
