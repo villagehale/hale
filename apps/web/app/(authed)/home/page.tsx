@@ -1,22 +1,36 @@
-import { Baby, MapPin, MessageCircle, Sparkles } from 'lucide-react';
+import { Bell, ChevronRight, Files, MapPin, Route, Ruler, Sparkles } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import type { Route as NextRoute } from 'next';
 import Link from 'next/link';
-import { Suspense } from 'react';
 import { auth } from '~/auth';
-import { BookButton } from '~/components/hale/book-button';
-import { ConciergeAsk } from '~/components/hale/concierge-ask';
+import { AskBar } from '~/components/hale/ask-bar';
+import { HomeChildPanels, type HomeChildSnapshot } from '~/components/hale/home-child-panels';
 import { LongDate } from '~/components/hale/long-date';
 import { QuickLog } from '~/components/hale/quick-log';
-import { RecentLogs } from '~/components/hale/recent-logs';
-import { HomeVillageFeed, VillageFeedSkeleton } from '~/components/hale/village-feed-section';
-import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { authConfigured } from '~/lib/auth-config';
-import { loadThreadShellForRequest } from '~/lib/coach/thread';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
-import { loadRecentLogs, type RecentLogView } from '~/lib/companion/recent-logs';
-import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
+import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
 import { homeGreeting, homeStatCells } from '~/lib/home/greeting';
+import { loadVillageFeed } from '~/lib/village/feed';
+import type { VillageCandidateView } from '~/lib/village/mappers';
+
+const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
+  newborn: 'newborn',
+  toddler: 'toddler',
+  child: 'school-age',
+  teenager: 'teenager',
+};
+
+/** Human cadence labels — the village store keeps raw tokens; the UI never shows
+ * them raw (rule #1). Mirrors the /village CADENCE_PILL labels. */
+const CADENCE_LABEL: Record<string, string> = {
+  seasonal: 'seasonal',
+  'one-time': 'one-time',
+  ongoing: 'year-round',
+};
 
 function duePhrase(dueInWeeks: number): string {
   if (dueInWeeks <= 0) return 'due now';
@@ -26,9 +40,47 @@ function duePhrase(dueInWeeks: number): string {
   return `due in ~${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
-/** The single milestone worth nudging now: prefer one inside its window. */
-function milestoneInWindow(child: ChildCompanionView) {
-  return child.milestones.find((m) => m.timing === 'in_window') ?? child.milestones[0] ?? null;
+/** The "when" line for the top village pick: a dated event reads as its calendar
+ * day, an undated activity as its (human) cadence. Null when neither is known — the
+ * card then shows the title alone, never a fabricated date/distance (rule #1). */
+function villageWhen(candidate: VillageCandidateView): string | null {
+  if (candidate.eventDate) return formatCalendarDate(candidate.eventDate);
+  if (candidate.cadence) return CADENCE_LABEL[candidate.cadence] ?? candidate.cadence;
+  return null;
+}
+
+/** The top ranked village pick, or an honest "quiet for now" when the feed is
+ * empty. Title + when (cadence / calendar day) only — never a distance (village
+ * candidates carry none) and never a fabricated date (rule #1). */
+function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) {
+  return (
+    <div>
+      <p className="eyebrow mb-3 text-faded-sage">from your village</p>
+      <div className="card">
+        {topPick ? (
+          <>
+            <p className="font-display text-[1.05rem] leading-snug text-spruce" data-hale-pii>
+              {topPick.title}
+            </p>
+            {villageWhen(topPick) ? (
+              <p className="meta mt-1 text-slate-green">{villageWhen(topPick)}</p>
+            ) : null}
+            <Link href="/village" className="link mt-3 inline-block">
+              see your village &rarr;
+            </Link>
+          </>
+        ) : (
+          <p className="text-spruce leading-relaxed">
+            your village is quiet for now —{' '}
+            <Link href="/village" className="link">
+              find activities near you
+            </Link>
+            .
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** The warm front door: "good evening, Alex." — the time-of-day phrase warmed with
@@ -40,53 +92,33 @@ async function viewerName(): Promise<string | null> {
   return session?.user?.name ?? null;
 }
 
-/** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
- * above its content. Replaces the editorial label-rail gutters. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
+interface QuickActionRow {
+  icon: LucideIcon;
+  label: string;
+  href: NextRoute;
 }
 
-/** The honest stat strip — three counts (this week's logs, checkups coming up, saved
- * places), each a big number or a calm zero phrase. Counts only, teen-redacted in
- * the loader (rule #1). Mirrors the mobile HomeStatsRow. */
-function HomeStatsRow({ stats }: { stats: Awaited<ReturnType<typeof loadHomeStats>> }) {
-  return (
-    <div className="grid grid-cols-3 divide-x divide-rule overflow-hidden rounded-2xl border border-rule bg-oat">
-      {homeStatCells(stats).map((cell) => (
-        <div key={cell.label} className="flex min-h-[5.5rem] flex-col justify-center gap-0.5 px-4 py-4 lg:px-5">
-          {cell.count === null ? (
-            <p className="meta text-faded-sage leading-snug">{cell.label}</p>
-          ) : (
-            <>
-              <p className="font-display text-[1.6rem] lg:text-[1.9rem] leading-none text-spruce tabular">
-                {cell.count}
-              </p>
-              <p className="meta text-faded-sage leading-snug">{cell.label}</p>
-            </>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** A compact quick-action link tile for the actions row — icon + label, tinted to
- * its domain (lavender for the AI ask, oat for the utility care links). */
+const QUICK_ACTIONS: QuickActionRow[] = [
+  { icon: Sparkles, label: 'add a memory', href: '/companion' },
+  { icon: Ruler, label: 'track growth', href: '/companion' },
+  { icon: Route, label: 'view routines', href: '/village' },
+  { icon: Files, label: 'all documents', href: '/companion' },
+];
 
 export default async function HomePage() {
-  const canAsk = authConfigured();
-  const [children, askSeed, stats, name, recentLogs, timeZone, basics] = await Promise.all([
+  const [children, stats, name, basics, feed, pending] = await Promise.all([
     loadCompanion(),
-    loadThreadShellForRequest(),
     loadHomeStats(),
     viewerName(),
-    loadRecentLogs(),
-    loadFamilyTimezone(),
     loadFamilyBasics(),
+    loadVillageFeed(),
+    loadPendingApprovals(),
   ]);
 
   const greeting = homeGreeting(name);
   const area = basics.location.city;
+  const pendingCount = pending.length;
+  const topPick = feed.candidates[0] ?? null;
 
   if (children.length === 0) {
     return (
@@ -98,7 +130,9 @@ export default async function HomePage() {
         </div>
 
         <header className="rise rise-1 mb-10 lg:mb-14">
-          <h1 className="font-display">{greeting}.</h1>
+          <h1 className="font-display">
+            {greeting} <span aria-hidden>👋</span>
+          </h1>
           <p className="meta mt-3 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
         </header>
 
@@ -119,139 +153,99 @@ export default async function HomePage() {
         </section>
 
         <section className="rise rise-4 mt-12">
-          <ConciergeAsk canAsk={canAsk} seed={askSeed} />
+          <AskBar />
         </section>
       </div>
     );
   }
 
-  const logsByChild = new Map<string, RecentLogView[]>();
-  for (const log of recentLogs) {
-    if (!log.childId) continue;
-    const bucket = logsByChild.get(log.childId) ?? [];
-    bucket.push(log);
-    logsByChild.set(log.childId, bucket);
-  }
+  const snapshots: HomeChildSnapshot[] = children.map((child) => ({
+    id: child.id,
+    name: child.name ?? 'your child',
+    stageLabel: STAGE_LABEL[child.stage],
+    upNext: child.todayHealth
+      ? { what: child.todayHealth.what, duePhrase: duePhrase(child.todayHealth.dueInWeeks) }
+      : null,
+  }));
 
   return (
     <div>
-      {/* ── Header band — a modest, app-like greeting (Notion/Linear register), with
-       * the family's coarse area as a muted location chip on the right. ─────── */}
-      <header className="rise rise-1 mb-8 flex flex-wrap items-start justify-between gap-4">
+      {/* ── Header — greeting + the family's coarse area as a static location chip,
+       * and a bell into Approvals with an orange dot only when a decision waits. ── */}
+      <header className="rise rise-1 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
             {greeting} <span aria-hidden>👋</span>
           </h1>
           <p className="meta mt-1 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
         </div>
-        {area ? (
-          <span className="pill inline-flex items-center gap-1.5 text-faded-sage" data-hale-pii>
-            <Icon as={MapPin} size={14} />
-            {area}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {area ? (
+            <span className="pill inline-flex items-center gap-1.5 text-faded-sage" data-hale-pii>
+              <Icon as={MapPin} size={14} />
+              {area}
+            </span>
+          ) : null}
+          <Link
+            href="/approvals"
+            aria-label={
+              pendingCount > 0
+                ? `approvals — ${pendingCount} waiting`
+                : 'approvals'
+            }
+            className="relative inline-flex size-10 items-center justify-center rounded-full text-spruce transition-colors hover:bg-oat"
+          >
+            <Icon as={Bell} size={20} />
+            {pendingCount > 0 ? (
+              <span
+                aria-hidden
+                className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-apricot ring-2 ring-linen"
+              />
+            ) : null}
+          </Link>
+        </div>
       </header>
 
-      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone). ─── */}
+      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as three
+       * bordered action cards. ─────────────────────────────────────────────── */}
+      <section className="rise rise-2 mb-4">
+        <QuickLog
+          kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))}
+          variant="cards"
+        />
+      </section>
+
+      {/* ── Ask Hale — the compact single-line entry into the full conversation. ── */}
       <section className="rise rise-2 mb-6">
-        <QuickLog kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))} />
+        <AskBar />
       </section>
 
-      {/* ── Dashboard masonry — dense, varying-height cards that pack tight
-       * (columns) and collapse to one column on mobile. Every card traces to a
-       * real loader; nothing is fabricated. ─────────────────────────── */}
-      <div className="columns-1 md:columns-2 xl:columns-3 gap-5 [&>*]:mb-5 [&>*]:break-inside-avoid mb-8">
-        <section className="rise rise-3">
-          <SectionLabel>this week</SectionLabel>
-          <HomeStatsRow stats={stats} />
-        </section>
+      {/* ── The three columns: today's snapshot / up next + village / quick actions.
+       * Each grid item is one column stack; collapses 3 → 2 → 1 at lg / md / sm. ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-start gap-x-6 gap-y-8">
+        <HomeChildPanels
+          kids={snapshots}
+          statCells={homeStatCells(stats)}
+          villageSlot={<VillagePickCard topPick={topPick} />}
+        />
 
-        {children.map((child) =>
-          child.todayHealth ? (
-            <Card key={`up-${child.id}`} className="rise rise-3">
-              <span className="eyebrow text-apricot-deep">
-                {duePhrase(child.todayHealth.dueInWeeks)}
-              </span>
-              <p className="font-display text-[1.15rem] mt-2 leading-snug" data-hale-pii>
-                {child.todayHealth.what}
-              </p>
-              <p className="meta mt-1 text-slate-green" data-hale-pii>
-                for {child.name ?? 'your child'}
-              </p>
-              <div className="mt-3">
-                <BookButton what={child.todayHealth.what} childId={child.id} />
-              </div>
-            </Card>
-          ) : null,
-        )}
-
-        {children.map((child) => {
-          const milestone = milestoneInWindow(child);
-          const childLogs = logsByChild.get(child.id) ?? [];
-          return (
-            <Card key={`child-${child.id}`} className="rise rise-4">
-              <div className="flex items-center gap-3 border-b border-rule pb-3 mb-4">
-                <Icon as={Baby} size={20} className="text-apricot-deep" />
-                <div>
-                  <h2 className="font-display text-[1.25rem] leading-tight" data-hale-pii>
-                    {child.name ?? 'your child'}
-                  </h2>
-                  <p className="meta text-faded-sage">{child.stage}</p>
-                </div>
-              </div>
-              {milestone ? (
-                <div className="mb-4">
-                  <span className="eyebrow text-faded-sage">around this age</span>
-                  <p className="text-base text-spruce leading-relaxed mt-1" data-hale-pii>
-                    {milestone.what}
-                  </p>
-                </div>
-              ) : null}
-              <span className="eyebrow text-faded-sage">recent logs</span>
-              <div className="mt-2">
-                <RecentLogs logs={childLogs} timeZone={timeZone} />
-              </div>
-              <Link href="/companion" className="link mt-4 inline-block">
-                open companion →
+        <div className="rise rise-5">
+          <p className="eyebrow mb-3 text-faded-sage">quick actions</p>
+          <nav className="card overflow-hidden px-0 py-0">
+            {QUICK_ACTIONS.map((action) => (
+              <Link
+                key={action.label}
+                href={action.href}
+                className="flex items-center gap-3 border-b border-rule px-[clamp(1.25rem,2vw,1.75rem)] py-3.5 text-spruce transition-colors last:border-b-0 hover:bg-linen"
+              >
+                <Icon as={action.icon} size={18} className="text-slate-green" />
+                <span className="flex-1 font-medium">{action.label}</span>
+                <Icon as={ChevronRight} size={18} className="text-faded-sage" />
               </Link>
-            </Card>
-          );
-        })}
-
-        <Card className="rise rise-3">
-          <SectionLabel>quick care</SectionLabel>
-          <ul className="space-y-3">
-            <li>
-              <Link href="/companion" className="link inline-flex items-center gap-2">
-                <Icon as={Sparkles} size={16} />
-                log a memory
-              </Link>
-            </li>
-            <li>
-              <Link href="/companion" className="link inline-flex items-center gap-2">
-                <Icon as={Baby} size={16} />
-                view companion
-              </Link>
-            </li>
-            <li>
-              <Link href="/coach" className="link inline-flex items-center gap-2">
-                <Icon as={MessageCircle} size={16} />
-                ask Hale anything
-              </Link>
-            </li>
-          </ul>
-        </Card>
+            ))}
+          </nav>
+        </div>
       </div>
-
-      {/* ── From the village — the agent-ranked, trusted feed. Streamed so the
-       * rank-recommendations agent never blocks the shell. No photos: the village
-       * data has no image field, so the honest text card stays. ─────────────── */}
-      <section className="rise rise-5">
-        <SectionLabel>from your village</SectionLabel>
-        <Suspense fallback={<VillageFeedSkeleton />}>
-          <HomeVillageFeed />
-        </Suspense>
-      </section>
     </div>
   );
 }
