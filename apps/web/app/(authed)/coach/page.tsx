@@ -1,17 +1,14 @@
-import { auth } from '~/auth';
 import { CoachConversation } from '~/components/hale/coach-conversation';
 import { connectorChips } from '~/components/hale/coach-context-panel';
 import { authConfigured } from '~/lib/auth-config';
 import { loadThreadShellForRequest } from '~/lib/coach/thread';
+import { loadViewerName } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 
-/** The signed-in parent's name for the empty-state greeting ("Hi Alex, …"). In
- * preview (auth off) there is no session, so the greeting degrades to the bare
- * invite — mirrors the Home hero's viewerName. */
+/** The signed-in parent's first name for the empty-state greeting ("Hi Alex, …").
+ * Sourced robustly (session name → stored users.name) via loadViewerName. */
 async function viewerName(): Promise<string | null> {
-  if (!authConfigured()) return null;
-  const session = await auth();
-  return session?.user?.name ?? null;
+  return loadViewerName();
 }
 
 export default async function CoachPage({

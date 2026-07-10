@@ -2,14 +2,13 @@ import { Bell, ChevronRight, Files, MapPin, Route, Ruler, Sparkles } from 'lucid
 import type { LucideIcon } from 'lucide-react';
 import type { Route as NextRoute } from 'next';
 import Link from 'next/link';
-import { auth } from '~/auth';
 import { AskBar } from '~/components/hale/ask-bar';
 import { HomeChildPanels, type HomeChildSnapshot } from '~/components/hale/home-child-panels';
 import { LongDate } from '~/components/hale/long-date';
 import { QuickLog } from '~/components/hale/quick-log';
 import { Icon } from '~/components/ui/icon';
-import { authConfigured } from '~/lib/auth-config';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
+import { loadViewerName } from '~/lib/family';
 import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
@@ -87,9 +86,7 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
  * the signed-in viewer's first name. In preview (auth off) there is no session, so
  * the greeting degrades to the bare phrase. Mirrors the mobile Home hero. */
 async function viewerName(): Promise<string | null> {
-  if (!authConfigured()) return null;
-  const session = await auth();
-  return session?.user?.name ?? null;
+  return loadViewerName();
 }
 
 interface QuickActionRow {

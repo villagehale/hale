@@ -65,6 +65,27 @@ export async function currentUserId(database: Database = defaultDb()): Promise<s
 }
 
 /**
+ * The signed-in parent's display name for greetings ("Good evening, Alex" / "Hi
+ * Alex, …"), sourced robustly: the Auth.js session name first (Google supplies it),
+ * then a fallback to the stored `users.name` — so an email/password parent whose
+ * token carries no name still gets their name. Null when unauthed / no name on file.
+ */
+export async function loadViewerName(database: Database = defaultDb()): Promise<string | null> {
+  if (!authConfigured()) return null;
+  const session = await auth();
+  const sessionName = session?.user?.name?.trim();
+  if (sessionName) return sessionName;
+  const userId = await currentUserId(database);
+  if (!userId) return null;
+  const [row] = await database
+    .select({ name: schema.users.name })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  return row?.name?.trim() || null;
+}
+
+/**
  * Dev-preview family resolution: the earliest-created family. Used only when auth
  * is unconfigured (local screenshots / demo), never in production.
  */
