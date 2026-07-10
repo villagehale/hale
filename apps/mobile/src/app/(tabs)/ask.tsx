@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -51,7 +51,7 @@ type Message =
   | HaleTurn
   | { id: string; role: 'quicklog'; match: QuickLogMatch };
 
-function UserBubble({ text }: { text: string }) {
+const UserBubble = memo(function UserBubble({ text }: { text: string }) {
   return (
     <View className="mb-3 max-w-[85%] self-end rounded-lg rounded-br-sm bg-ink px-4 py-3">
       <AppText variant="body" className="text-on-ink">
@@ -59,9 +59,9 @@ function UserBubble({ text }: { text: string }) {
       </AppText>
     </View>
   );
-}
+});
 
-function HaleBubble({ turn }: { turn: HaleTurn }) {
+const HaleBubble = memo(function HaleBubble({ turn }: { turn: HaleTurn }) {
   const { text, trail, activity, actionIntents, streaming } = turn;
   // While streaming with no answer text yet: the trail carries the progress if a
   // tool is running; otherwise the typing dots keep the "working" signal alive so
@@ -120,7 +120,7 @@ function HaleBubble({ turn }: { turn: HaleTurn }) {
         : null}
     </>
   );
-}
+});
 
 function StarterChips({ onPick }: { onPick: (q: string) => void }) {
   // Warmed with the viewer's first name when Home has already loaded it; a

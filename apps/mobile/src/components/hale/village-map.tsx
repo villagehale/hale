@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
+import { Image } from 'expo-image';
 import { AppleMaps, GoogleMaps } from 'expo-maps';
-import { Image, Platform, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import type { VillageCandidateView } from '@/lib/api-types';
 import { VILLAGE_MAP_ZOOM, mapPointFor } from '@/lib/village-map';
@@ -77,7 +78,7 @@ export function VillageMap({
           source={{ uri: staticMapUri }}
           accessibilityLabel={`Map showing ${point.title ?? 'the venue'}`}
           style={{ flex: 1 }}
-          resizeMode="cover"
+          contentFit="cover"
         />
       ) : null}
     </View>

@@ -44,12 +44,12 @@ looks like it was barely designed — the content and the whitespace carry it.
 ## The system
 
 **Palette (token roles; hex live in `global.css`, light / dark):**
-- `canvas` linen `#f6f1e7` / charcoal-Prussian `#0b1626` — page background
-- `card` oat `#efe7d6` / `#13233a`; `raised` lifted surface
-- `ink` spruce/Prussian `#01204F` / cream — primary text; `ink-2` secondary;
-  `ink-3` meta
-- `accent` apricot-**deep** `#a84e20` — the **text-safe** accent (links, the one
-  emphasis); `accent-fill` apricot `#c8622d` — **FILL / large-graphic only,
+- `canvas` warm off-white `#faf8f5` / charcoal-Prussian `#0c1420` — page background
+- `card` white `#ffffff` / `#151e2c`; `raised` lifted surface
+- `ink` Prussian `#0d1b3d` / cream — primary text; `ink-2` `#47587a` secondary;
+  `ink-3` `#5b6b86` meta
+- `accent` apricot-**deep** `#c2410c` — the **text-safe** accent (links, the one
+  emphasis); `accent-fill` apricot `#f28c45` — **FILL / large-graphic only,
   never text or thin strokes, and used almost never**
 - tones: `sage` (done), `berry` (needs-you), `sky` (coach), `sea` (brand/turtle)
   — each with a tint; tone meaning is carried by **label + shape, never color
