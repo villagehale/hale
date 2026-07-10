@@ -77,7 +77,7 @@ describe('AskHaleThread — full surface', () => {
     expect(html).not.toContain('placeholder="search this conversation"');
   });
 
-  it('renders the chat arrangement — parent bubble, Hale card with an identity marker', () => {
+  it('renders the chat arrangement — parent bubble, Hale reply with a spark identity marker', () => {
     const html = render(
       seed([
         msg({ id: 'a', role: 'user', content: 'when do solids start?' }),
@@ -92,19 +92,35 @@ describe('AskHaleThread — full surface', () => {
     // Both turns render…
     expect(html).toContain('when do solids start?');
     expect(html).toContain('Around six months');
-    // …as a real transcript: the parent's turn in a chat bubble, Hale's answer in
-    // its card carrying the identity marker (not the editorial quote layout).
+    // …as a real transcript: the parent's turn in a navy chat bubble, Hale's answer
+    // as plain text beside a small spark that carries the (sr-only) "Hale" name — not
+    // a card, and not the editorial quote layout.
     expect(html).toContain('chat-bubble-you');
-    expect(html).toContain('chat-bubble-hale');
-    expect(html).toMatch(/>Hale</);
+    expect(html).not.toContain('chat-bubble-hale');
+    // The spark marker names the author for a screen reader.
+    expect(html).toMatch(/<span[^>]*class="sr-only">Hale<\/span>/);
   });
 
   it('shows the welcoming empty state when there is no conversation yet', () => {
     const html = render(seed([]));
 
-    // The first-screen invite + suggestion chip (which prefills the composer).
-    expect(html).toContain('one ongoing conversation, grounded in your family');
+    // The first-screen invite (mockup panel 3) + a suggestion row (which prefills
+    // the composer). No viewer name is supplied here, so the bare invite shows.
+    expect(html).toContain('How can I help?');
+    expect(html).toContain('Hale is your AI parenting assistant. Here for you, 24/7.');
     expect(html).toContain('how are naps going?');
+  });
+
+  it('greets the signed-in parent by first name when one is supplied', () => {
+    const html = renderToStaticMarkup(
+      createElement(AskHaleThread, {
+        canAsk: true,
+        seed: seed([]),
+        variant: 'full',
+        viewerName: 'Alex Dong',
+      }),
+    );
+    expect(html).toContain('Hi Alex, how can I help?');
   });
 
   it('announces via a discrete status node, not by making the transcript a live region', () => {

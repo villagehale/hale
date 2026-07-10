@@ -1112,13 +1112,14 @@ strong { font-weight: 700; }
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
 
 /* ── Ask Hale chat (the /coach transcript + composer) ──────────────────── *
- * The conversation is the hero: the parent's turns ride right in a warm apricot
- * bubble, Hale's answers sit left in an oat card. The composer is one rounded row
- * with the send affordance tucked at its trailing edge — a real chat input. */
+ * The conversation is the hero: the parent's turns ride right in a navy bubble
+ * (spruce fill, cream text); Hale's answers read left as plain text beside a small
+ * navy spark. The composer is one rounded row with the send affordance tucked at
+ * its trailing edge — a real chat input. */
 
 .chat-bubble-you {
-  background: var(--color-apricot-tint);
-  color: var(--color-spruce);
+  background: var(--color-spruce);
+  color: var(--color-on-spruce);
   border-radius: var(--r-xl) var(--r-xl) var(--r-sm) var(--r-xl);
   padding: 0.7rem 1.05rem;
   line-height: 1.5;
@@ -1126,11 +1127,42 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   overflow-wrap: anywhere;
 }
 
-.chat-bubble-hale {
+/* Empty-state suggestion row (mockup panel 3) — a full-width bordered pill: a navy
+ * spark, the question, a trailing chevron. A hover lift + press depress match the
+ * card/button idiom; the whole row is one tap target. */
+.suggestion-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.85rem 1.1rem;
   background: var(--color-oat);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04);
   color: var(--color-spruce);
-  border-radius: var(--r-xl) var(--r-xl) var(--r-xl) var(--r-sm);
-  padding: clamp(1rem, 2vw, 1.35rem) clamp(1.1rem, 2.4vw, 1.5rem);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: border-color 200ms var(--ease-breathe), box-shadow 200ms var(--ease-breathe),
+    transform 120ms var(--ease-breathe);
+}
+
+.suggestion-row:not(:disabled):hover {
+  border-color: var(--color-rule-strong);
+  box-shadow: 0 6px 18px rgba(13, 27, 61, 0.08);
+}
+.suggestion-row:not(:disabled):active { transform: translateY(1px); }
+
+.suggestion-row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .suggestion-row { transition: none; }
+  .suggestion-row:not(:disabled):active { transform: none; }
 }
 
 /* The composer row — a single rounded field that holds the textarea and the send
