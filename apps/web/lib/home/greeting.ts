@@ -3,13 +3,13 @@ import type { HomeStats } from './aggregates';
 /** Time-of-day phrase — mirrors the mobile `timeGreeting`. */
 export function timeGreeting(date: Date = new Date()): string {
   const hour = date.getHours();
-  if (hour < 12) return 'good morning';
-  if (hour < 17) return 'good afternoon';
-  return 'good evening';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 /**
- * "good evening, Alex" — the time-of-day phrase warmed with the SIGNED-IN parent's
+ * "Good evening, Alex" — the time-of-day phrase warmed with the SIGNED-IN parent's
  * first name (the viewer, so a co-parent sees their own name, not the primary slot).
  * A name-less account (preview mode / no session) reads the bare phrase, never a
  * dangling comma. Mirrors the mobile `homeGreeting`.

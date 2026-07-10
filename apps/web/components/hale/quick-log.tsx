@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { Moon, Sparkles, Utensils } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Field } from '~/components/ui/field';
+import { Icon } from '~/components/ui/icon';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
   FEED_EPISODE,
@@ -34,19 +35,28 @@ const FEED_KIND_LABEL: Record<FeedKind, string> = {
   solid: 'solid',
 };
 
-const KIND_META: Record<Kind, { label: string; icon: typeof Utensils; emptyError: string }> = {
+const KIND_META: Record<
+  Kind,
+  { label: string; cardTitle: string; cardSubtitle: string; icon: typeof Utensils; emptyError: string }
+> = {
   [FEED_EPISODE]: {
     label: 'log a feed',
+    cardTitle: 'log feed',
+    cardSubtitle: 'record a moment',
     icon: Utensils,
     emptyError: 'enter how much (ml) before saving',
   },
   [NAP_EPISODE]: {
     label: 'log a nap',
+    cardTitle: 'log nap',
+    cardSubtitle: 'track sleep',
     icon: Moon,
     emptyError: 'enter how long (minutes) before saving',
   },
   [MILESTONE_EPISODE]: {
     label: 'note a milestone',
+    cardTitle: 'milestone',
+    cardSubtitle: 'see progress',
     icon: Sparkles,
     emptyError: 'enter what happened before saving',
   },
@@ -66,7 +76,16 @@ type Status =
  * is persisted. Per child: when more than one child exists, the parent picks
  * which one before logging.
  */
-export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
+export function QuickLog({
+  kids,
+  variant = 'pills',
+}: {
+  kids: QuickLogChild[];
+  /** 'pills' — the compact "quick log" button row (default). 'cards' — three
+   * bordered action cards (icon-in-circle + title + subtitle), the Home mockup
+   * layout. The form + log handlers are identical; only the triggers differ. */
+  variant?: 'pills' | 'cards';
+}) {
   const selectId = useId();
   const whenId = useId();
   const feedKindId = useId();
@@ -148,23 +167,50 @@ export function QuickLog({ kids }: { kids: QuickLogChild[] }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <span className="eyebrow text-spruce mr-2">quick log</span>
-        {visibleKinds.map((kind) => {
-          const meta = KIND_META[kind];
-          return (
-            <Button
-              key={kind}
-              variant="secondary"
-              icon={meta.icon}
-              onClick={() => toggle(kind)}
-              aria-expanded={open === kind}
-            >
-              {meta.label}
-            </Button>
-          );
-        })}
-      </div>
+      {variant === 'cards' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleKinds.map((kind) => {
+            const meta = KIND_META[kind];
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => toggle(kind)}
+                aria-expanded={open === kind}
+                className="card-interactive flex items-center gap-3 rounded-[var(--r-xl)] border border-rule bg-oat px-4 py-4 text-left shadow-[0_1px_2px_rgba(13,27,61,0.04)]"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-linen text-spruce">
+                  <Icon as={meta.icon} size={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-display text-[1rem] leading-tight text-spruce">
+                    {meta.cardTitle}
+                  </span>
+                  <span className="meta block text-slate-green">{meta.cardSubtitle}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <span className="eyebrow text-spruce mr-2">quick log</span>
+          {visibleKinds.map((kind) => {
+            const meta = KIND_META[kind];
+            return (
+              <Button
+                key={kind}
+                variant="secondary"
+                icon={meta.icon}
+                onClick={() => toggle(kind)}
+                aria-expanded={open === kind}
+              >
+                {meta.label}
+              </Button>
+            );
+          })}
+        </div>
+      )}
 
       {open ? (
         <div className="panel-oat px-6 py-5 space-y-5">

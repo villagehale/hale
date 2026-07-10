@@ -3,12 +3,12 @@ import { homeGreeting, homeStatCells, timeGreeting } from './greeting';
 
 describe('timeGreeting', () => {
   it('reads morning before noon, afternoon midday, evening after 5pm', () => {
-    expect(timeGreeting(new Date(2026, 0, 1, 8, 0))).toBe('good morning');
-    expect(timeGreeting(new Date(2026, 0, 1, 11, 59))).toBe('good morning');
-    expect(timeGreeting(new Date(2026, 0, 1, 12, 0))).toBe('good afternoon');
-    expect(timeGreeting(new Date(2026, 0, 1, 16, 59))).toBe('good afternoon');
-    expect(timeGreeting(new Date(2026, 0, 1, 17, 0))).toBe('good evening');
-    expect(timeGreeting(new Date(2026, 0, 1, 23, 30))).toBe('good evening');
+    expect(timeGreeting(new Date(2026, 0, 1, 8, 0))).toBe('Good morning');
+    expect(timeGreeting(new Date(2026, 0, 1, 11, 59))).toBe('Good morning');
+    expect(timeGreeting(new Date(2026, 0, 1, 12, 0))).toBe('Good afternoon');
+    expect(timeGreeting(new Date(2026, 0, 1, 16, 59))).toBe('Good afternoon');
+    expect(timeGreeting(new Date(2026, 0, 1, 17, 0))).toBe('Good evening');
+    expect(timeGreeting(new Date(2026, 0, 1, 23, 30))).toBe('Good evening');
   });
 });
 
@@ -16,17 +16,17 @@ describe('homeGreeting', () => {
   const evening = new Date(2026, 0, 1, 19, 0);
 
   it('warms the phrase with the viewer first name only', () => {
-    expect(homeGreeting('Jordan Reyes', evening)).toBe('good evening, Jordan');
+    expect(homeGreeting('Jordan Reyes', evening)).toBe('Good evening, Jordan');
   });
 
   it('trims surrounding whitespace before splitting', () => {
-    expect(homeGreeting('  Alex  ', evening)).toBe('good evening, Alex');
+    expect(homeGreeting('  Alex  ', evening)).toBe('Good evening, Alex');
   });
 
   it('falls back to the bare phrase — never a dangling comma — with no name', () => {
-    expect(homeGreeting(null, evening)).toBe('good evening');
-    expect(homeGreeting('', evening)).toBe('good evening');
-    expect(homeGreeting('   ', evening)).toBe('good evening');
+    expect(homeGreeting(null, evening)).toBe('Good evening');
+    expect(homeGreeting('', evening)).toBe('Good evening');
+    expect(homeGreeting('   ', evening)).toBe('Good evening');
   });
 });
 

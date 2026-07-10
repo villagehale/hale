@@ -134,6 +134,8 @@
   --color-sage: #a9c49a;         /* "done" tone — 9.55:1 on canvas */
   --color-sage-tint: #18301f;
 
+  --color-alt-surface: #17233a;  /* alternate surface — subtle lift on the dark canvas */
+
   --color-berry: #e09aaa;        /* "needs your eye" — 8.10:1 on canvas */
   --color-berry-tint: #3a1f29;
 
@@ -160,8 +162,9 @@
 .dark .runninghead {
   background: var(--color-chrome);
   /* Lift surfaces, relative to the Prussian frame, for nested hover/active states */
-  --color-linen: #0c2b62;   /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
-  --color-oat: #0a2a5e;     /* theme-toggle track / menu hover — subtle on-chrome panel */
+  --color-linen: #0c2b62;        /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
+  --color-oat: #0a2a5e;          /* theme-toggle track / menu hover — subtle on-chrome panel */
+  --color-alt-surface: #0c2b62;  /* active-nav pill — a subtle Prussian lift on the chrome */
 }
 
 html {
@@ -970,7 +973,7 @@ strong { font-weight: 700; }
 /* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
 
 .link {
-  color: var(--color-apricot-deep);
+  color: var(--color-spruce);
   text-decoration: none;
   position: relative;
   font-weight: 700;
@@ -982,7 +985,7 @@ strong { font-weight: 700; }
   left: 0; right: 0; bottom: -2px;
   height: 2px;
   border-radius: 2px;
-  background: var(--color-apricot-deep);
+  background: var(--color-spruce);
   transform-origin: left;
   transform: scaleX(0);
   transition: transform 360ms var(--ease-breathe);
@@ -1313,13 +1316,13 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   white-space: nowrap;
 }
 
-.nav-item:hover .nav-folio { color: var(--color-apricot-deep); }
+.nav-item:hover .nav-folio { color: var(--color-spruce); }
 
 .nav-item[aria-current="page"] {
   color: var(--color-spruce);
-  background: var(--color-apricot-tint);
+  background: var(--color-alt-surface);
 }
-.nav-item[aria-current="page"] .nav-folio { color: var(--color-apricot-deep); }
+.nav-item[aria-current="page"] .nav-folio { color: var(--color-spruce); }
 
 /* Tooltip shown only in the collapsed rail (toggled on by the rail rule). It
  * sits to the right of the icon and appears on hover/focus. */
