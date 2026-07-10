@@ -2,6 +2,8 @@ import { api } from './api-client';
 import type {
   MobileFamilyUpdateRequest,
   MobileFamilyUpdateResponse,
+  MobilePreferencesUpdateRequest,
+  MobilePreferencesUpdateResponse,
   MobilePushPrefsUpdateRequest,
   MobilePushPrefsUpdateResponse,
   MobileSettingsUpdateRequest,
@@ -25,6 +27,16 @@ export async function updateFamily(body: MobileFamilyUpdateRequest): Promise<voi
 
 export async function updateSettings(body: MobileSettingsUpdateRequest): Promise<void> {
   await api<MobileSettingsUpdateResponse>('/api/mobile/settings', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Set the parent's display preferences (units + first day of week). POSTs the
+ * preferences route, which delegates to the SAME shared web action the browser
+ * uses — resolving the family and writing the audit row (rules #1/#6). */
+export async function updatePreferences(body: MobilePreferencesUpdateRequest): Promise<void> {
+  await api<MobilePreferencesUpdateResponse>('/api/mobile/preferences', {
     method: 'POST',
     body: JSON.stringify(body),
   });

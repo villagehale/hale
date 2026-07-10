@@ -6,6 +6,7 @@ import { loadFamilyTimezone } from '~/lib/dashboard/queries';
 import { loadAuthoredPlans } from '~/lib/plan/authored';
 import { completePlan, createPlan, deletePlan } from '~/lib/plan/plan-actions';
 import { planChildItems } from '~/lib/plan/week';
+import { readUserPreferences } from '~/lib/settings/user-preferences';
 import { loadVillage } from '~/lib/village/queries';
 import type { MobilePlanResponse, MobilePlanUpdateRequest, MobilePlanUpdateResponse } from '../types';
 
@@ -27,11 +28,12 @@ export async function GET(): Promise<Response> {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
-  const [village, children, authoredPlans, timeZone] = await Promise.all([
+  const [village, children, authoredPlans, timeZone, preferences] = await Promise.all([
     loadVillage(),
     loadCompanion(),
     loadAuthoredPlans(),
     loadFamilyTimezone(),
+    readUserPreferences(session.user.id),
   ]);
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children);
@@ -45,6 +47,7 @@ export async function GET(): Promise<Response> {
   const body: MobilePlanResponse = {
     authoredPlans,
     timeZone,
+    weekStartDay: preferences.weekStartDay,
     scopeChildren: scopeChildren(children),
     addedActivities,
     routine: village.routine,

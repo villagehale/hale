@@ -344,6 +344,9 @@ export interface MobilePlanResponse {
   /** The family's IANA zone, so the client builds the SAME current-week spine the
    * web page does. */
   timeZone: string;
+  /** The parent's chosen first day of the week (0=Sun, 1=Mon), so the client orders
+   * the same spine columns the web page does. Delivered alongside plan data. */
+  weekStartDay: number;
   /** The family's children as scope options for the AddPlan picker (whole-family +
    * each child), teen-safe (a scope chip disambiguates WHICH child, policy 1). */
   scopeChildren: ScopeChild[];
@@ -526,6 +529,26 @@ export interface MobileSettingsUpdateRequest {
 }
 
 export interface MobileSettingsUpdateResponse {
+  status: 'updated';
+}
+
+// ── preferences (GET + POST /api/mobile/preferences) ──────────────────────────
+
+/** Mirror of @hale/types UnitSystem — the display choice for growth measurements
+ * (storage is always metric). The native bundle mirrors the union locally. */
+export type UnitSystem = 'metric' | 'imperial';
+
+export interface MobilePreferencesResponse {
+  units: UnitSystem;
+  weekStartDay: number;
+}
+
+export interface MobilePreferencesUpdateRequest {
+  units: UnitSystem;
+  weekStartDay: number;
+}
+
+export interface MobilePreferencesUpdateResponse {
   status: 'updated';
 }
 

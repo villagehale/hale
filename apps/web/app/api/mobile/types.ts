@@ -20,6 +20,7 @@ import type { ShareLinkKind, SharedLink } from '~/lib/village/share-revoke';
 import type { CuratedResourceView } from '~/lib/village/curated-resources';
 import type { RoutineProposalView, VillageCandidateView } from '~/lib/village/mappers';
 import type { VillageData } from '~/lib/village/queries';
+import type { UnitSystem } from '@hale/types';
 
 /**
  * Response shapes for the mobile read API + the quick-log write. Types ONLY — the
@@ -68,6 +69,10 @@ export interface MobilePlanResponse {
   /** The family's IANA zone, so the client builds the SAME current-week spine the
    * web page does (a parent at 11pm ET is on today, not the server's UTC tomorrow). */
   timeZone: string;
+  /** The signed-in parent's chosen first day of the week (0=Sunday, 1=Monday), so the
+   * client orders the same spine columns the web page does. Delivered here so the plan
+   * screen gets it alongside plan data in one fetch. */
+  weekStartDay: number;
   /** The family's children as scope options for the AddPlan "who is this for" picker
    * (whole-family + each child), the same scopeChildren derivation the web page uses.
    * A teen's name is teen-safe here — a scope chip disambiguates WHICH child (policy 1). */
@@ -264,6 +269,27 @@ export interface MobileSettingsUpdateRequest {
 }
 
 export interface MobileSettingsUpdateResponse {
+  status: 'updated';
+}
+
+// ── preferences (GET + POST /api/mobile/preferences) ──────────────────────────
+//
+// The parent's display preferences off their `users` row: `units` (metric/imperial —
+// a DISPLAY choice; storage is always metric) and `weekStartDay` (0=Sun, 1=Mon). The
+// route delegates the write to the SAME shared lib the web card calls, so the audit
+// row (rule #6) is single-sourced.
+
+export interface MobilePreferencesResponse {
+  units: UnitSystem;
+  weekStartDay: number;
+}
+
+export interface MobilePreferencesUpdateRequest {
+  units: UnitSystem;
+  weekStartDay: number;
+}
+
+export interface MobilePreferencesUpdateResponse {
   status: 'updated';
 }
 
