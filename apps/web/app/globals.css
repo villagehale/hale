@@ -36,8 +36,8 @@
 
 @theme {
   /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #faf8f5;       /* canvas — warm white, paper-like (design spec 2026-07-09) */
-  --color-oat: #ffffff;         /* card surface — pure white, floats on warm-white via shadow */
+  --color-linen: #f8f9fb;       /* canvas — cool whisper white, crisp (mockup 2026-07-10; not warm) */
+  --color-oat: #ffffff;         /* card surface — pure white, separated by a light border + faint shadow */
   --color-raised: #ffffff;      /* RAISED — lifted card */
   --color-spruce: #0d1b3d;      /* primary ink / Prussian brand — headlines, buttons, nav, logo */
   --color-slate-green: #47587a; /* secondary text, captions — 6.67:1 */
@@ -57,14 +57,14 @@
   --color-sage-tint: #eaf4ee;  /* SOFT SAGE — Health / Growth / Milestones */
   --color-success: #6faf84;    /* positive confirmations */
   --color-lavender: #ece9ff;   /* SOFT LAVENDER — Conversation / AI / Memory / Planning */
-  --color-alt-surface: #f5f3ef; /* alternate surface — large sections, grouped lists */
+  --color-alt-surface: #f1f3f6; /* alternate surface — large sections, grouped lists (cool) */
 
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
-  /* Hairlines: warm Prussian at low alpha (reads like the mockup's #E7E2DA sand rules on the new canvas) */
-  --color-rule: #e8e4dc;
-  --color-rule-strong: #ddd8cd;
+  /* Hairlines: cool light-gray card borders (mockup's crisp #E6E8EC card outlines on white) */
+  --color-rule: #e6e8ec;
+  --color-rule-strong: #d8dbe0;
 
   /* On-dark (Spruce night section) text alphas, canvas-based */
   --color-on-spruce: #FEFEFE;
@@ -88,8 +88,8 @@
   /* ── Radius — a calm card ladder, not blobs (panels read as cards) ───── */
   --r-sm: 8px;
   --r-md: 14px;
-  --r-lg: 24px;
-  --r-xl: 28px;
+  --r-lg: 20px;
+  --r-xl: 16px;
   --r-full: 9999px;
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
@@ -858,11 +858,12 @@ strong { font-weight: 700; }
 
 .panel {
   background: var(--color-oat);
-  box-shadow: 0 8px 32px rgba(13, 27, 61, 0.06);
+  border: 1px solid var(--color-rule);
+  box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04);
   border-radius: var(--r-xl);
   padding: clamp(1.5rem, 2.4vw, 2.25rem) clamp(1.5rem, 3vw, 2.5rem);
 }
-.panel-oat { background: var(--color-oat); box-shadow: 0 8px 32px rgba(13, 27, 61, 0.06); border-radius: var(--r-xl); }
+.panel-oat { background: var(--color-oat); border: 1px solid var(--color-rule); box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04); border-radius: var(--r-xl); }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
 
@@ -1518,7 +1519,8 @@ html, body, .sidebar, .panel, .card, .field {
 .card {
   display: block;
   background: var(--color-oat);
-  box-shadow: 0 8px 32px rgba(13, 27, 61, 0.06);
+  border: 1px solid var(--color-rule);
+  box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04);
   border-radius: var(--r-xl);
   padding: clamp(1.25rem, 2vw, 1.75rem);
   color: inherit;
