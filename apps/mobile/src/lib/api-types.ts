@@ -218,6 +218,32 @@ export interface PlanChildItem {
   teenRedacted?: boolean;
 }
 
+/** One scope option for the AddPlan "who is this for" picker (mirrors web
+ * ScopeChild). `label` is the child's given name (teen-safe on a scope chip — it
+ * disambiguates WHICH child, policy 1), or null when the child has no name on file. */
+export interface ScopeChild {
+  id: string;
+  label: string | null;
+}
+
+/** One parent-authored plan, joined to the child it's scoped to (mirrors web
+ * AuthoredPlanView). A parent's OWN plan about their 13+ teen is the parent's own
+ * content (teen-exempt), so title/notes render in full and the tag shows the name. */
+export interface AuthoredPlanView {
+  id: string;
+  title: string;
+  notes: string | null;
+  /** ISO datetime, or null for an undated ("sometime this week") plan. */
+  scheduledFor: string | null;
+  /** When the parent marked this plan done, or null while open — drives the
+   * settled/dimmed treatment and the current-week scoping. */
+  completedAt: string | null;
+  /** null = whole family; otherwise the scoped child. */
+  childId: string | null;
+  /** The scoped child's given name, or null for a whole-family plan. */
+  childName: string | null;
+}
+
 // ── family + approvals (from apps/web lib/dashboard) ──────────────────────────
 
 export interface MemberView {
@@ -311,10 +337,48 @@ export interface MobileSavedResponse {
 }
 
 export interface MobilePlanResponse {
+  /** Parent-authored plans, chronological (soonest scheduledFor first), the same
+   * session-scoped, teen-exempt view web /plan leads with. Folded into a Mon–Sun
+   * spine client-side using `timeZone`. */
+  authoredPlans: AuthoredPlanView[];
+  /** The family's IANA zone, so the client builds the SAME current-week spine the
+   * web page does. */
+  timeZone: string;
+  /** The family's children as scope options for the AddPlan picker (whole-family +
+   * each child), teen-safe (a scope chip disambiguates WHICH child, policy 1). */
+  scopeChildren: ScopeChild[];
   addedActivities: VillageCandidateView[];
   routine: RoutineProposalView | null;
   childItems: PlanChildItem[];
   hasPlan: boolean;
+}
+
+// ── plan write (POST /api/mobile/plan) ────────────────────────────────────────
+
+export interface CreatePlanRequest {
+  action: 'create';
+  title: string;
+  notes: string | null;
+  /** ISO datetime the plan is scheduled for, or null for an undated plan. */
+  scheduledFor: string | null;
+  /** A child in the caller's family, or null for a whole-family plan. */
+  childId: string | null;
+}
+
+export interface CompletePlanRequest {
+  action: 'complete';
+  planId: string;
+}
+
+export interface DeletePlanRequest {
+  action: 'delete';
+  planId: string;
+}
+
+export type MobilePlanUpdateRequest = CreatePlanRequest | CompletePlanRequest | DeletePlanRequest;
+
+export interface MobilePlanUpdateResponse {
+  status: 'created' | 'completed' | 'deleted';
 }
 
 export interface MobileFamilyResponse {
