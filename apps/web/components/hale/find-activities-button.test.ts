@@ -43,10 +43,11 @@ describe('FindActivitiesButton — one re-runnable entry point, two voices', () 
 });
 
 /**
- * First-run guidance must be human and point at the REAL area editor (/family),
- * not "settings" (which has no area field). The no-area copy is a result state we
- * can't reach in a static render, so we assert against the source: the /family
- * link is wired, and the banned engineer-voice tokens are gone.
+ * First-run guidance must be human and point at the REAL area editor
+ * (/family/members, where FamilyLocation renders), not the /family hub (a nav
+ * index with no area field) nor "settings". The no-area copy is a result state we
+ * can't reach in a static render, so we assert against the source: the
+ * /family/members link is wired, and the banned engineer-voice tokens are gone.
  */
 describe('FindActivitiesButton — first-run copy points at the real area editor', () => {
   const source = readFileSync(
@@ -54,8 +55,8 @@ describe('FindActivitiesButton — first-run copy points at the real area editor
     'utf8',
   );
 
-  it('links the no-area guidance to the family page (where the area lives)', () => {
-    expect(source).toContain("href: '/family'");
+  it('links the no-area guidance to the family members page (where the area lives)', () => {
+    expect(source).toContain("href: '/family/members'");
     expect(source).toContain('add your area on the family page');
   });
 

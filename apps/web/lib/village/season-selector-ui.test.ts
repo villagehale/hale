@@ -59,11 +59,11 @@ describe('searchResultToUi — action result → next UI move', () => {
     expect(ui.text).toContain('15 min');
   });
 
-  it('explains a missing area and points at the family page', () => {
+  it('explains a missing area and points at the family members page', () => {
     const ui = searchResultToUi({ status: 'no_area' }, 'fall');
     expect(ui.kind).toBe('message');
     if (ui.kind !== 'message') throw new Error('expected message');
-    expect(ui.link).toEqual({ href: '/family', label: 'add your area' });
+    expect(ui.link).toEqual({ href: '/family/members', label: 'add your area' });
   });
 
   it('surfaces every other non-success as a real message, never a swallowed null', () => {

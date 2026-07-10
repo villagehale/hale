@@ -510,46 +510,48 @@ describe('setParentNameAction', () => {
 });
 
 describe('IA split — each mutation revalidates the page that renders it', () => {
-  // Family control (children, household location, tailoring intents) lives on
-  // /family; account config (profile name, plan) lives on /settings. A write must
-  // revalidate the page it actually appears on, or the moved surface goes stale.
-  it('revalidates /family for an added child', async () => {
+  // Family control (children, household location, tailoring intents) is
+  // server-rendered on /family/members (the editor), NOT the /family hub (a nav
+  // index of tiles). Account config (profile name, plan) lives on /settings. A
+  // write must revalidate the page it actually appears on, or the moved surface
+  // serves stale cached HTML until a hard reload.
+  it('revalidates /family/members for an added child', async () => {
     const { tx } = makeTx([]);
     fakeDbHandle = txDb(tx);
     await addChildAction({ name: 'Robin', dateOfBirth: '2024-01-01' });
-    expect(revalidatePath).toHaveBeenCalledWith('/family');
+    expect(revalidatePath).toHaveBeenCalledWith('/family/members');
     expect(revalidatePath).not.toHaveBeenCalledWith('/settings');
   });
 
-  it('revalidates /family for an edited child', async () => {
+  it('revalidates /family/members for an edited child', async () => {
     const { tx } = makeTx([{ name: 'Robin', dateOfBirth: '2024-01-01' }]);
     fakeDbHandle = txDb(tx);
     await editChildAction(CHILD_ID, { name: 'Robyn', dateOfBirth: '2024-02-02' });
-    expect(revalidatePath).toHaveBeenCalledWith('/family');
+    expect(revalidatePath).toHaveBeenCalledWith('/family/members');
     expect(revalidatePath).not.toHaveBeenCalledWith('/settings');
   });
 
-  it('revalidates /family for a removed child', async () => {
+  it('revalidates /family/members for a removed child', async () => {
     const { tx } = makeTx([{ name: 'Robin', dateOfBirth: '2024-01-01' }]);
     fakeDbHandle = txDb(tx);
     await removeChildAction(CHILD_ID);
-    expect(revalidatePath).toHaveBeenCalledWith('/family');
+    expect(revalidatePath).toHaveBeenCalledWith('/family/members');
     expect(revalidatePath).not.toHaveBeenCalledWith('/settings');
   });
 
-  it('revalidates /family for a household location change', async () => {
+  it('revalidates /family/members for a household location change', async () => {
     const { tx } = makeTx([{ country: null, province: null, city: null, postalCode: null, areaCoarse: null }]);
     fakeDbHandle = txDb(tx);
     await setLocationAction({ city: 'Toronto' });
-    expect(revalidatePath).toHaveBeenCalledWith('/family');
+    expect(revalidatePath).toHaveBeenCalledWith('/family/members');
     expect(revalidatePath).not.toHaveBeenCalledWith('/settings');
   });
 
-  it('revalidates /family for a tailoring-intents change', async () => {
+  it('revalidates /family/members for a tailoring-intents change', async () => {
     const { tx } = makeTx([{ intents: null }]);
     fakeDbHandle = txDb(tx);
     await setIntentsAction(['activities']);
-    expect(revalidatePath).toHaveBeenCalledWith('/family');
+    expect(revalidatePath).toHaveBeenCalledWith('/family/members');
     expect(revalidatePath).not.toHaveBeenCalledWith('/settings');
   });
 
@@ -558,7 +560,7 @@ describe('IA split — each mutation revalidates the page that renders it', () =
     fakeDbHandle = txDb(tx);
     await setPlanAction('plus');
     expect(revalidatePath).toHaveBeenCalledWith('/settings');
-    expect(revalidatePath).not.toHaveBeenCalledWith('/family');
+    expect(revalidatePath).not.toHaveBeenCalledWith('/family/members');
   });
 
   it('revalidates /settings for a profile-name change (account config, not family)', async () => {
@@ -566,6 +568,6 @@ describe('IA split — each mutation revalidates the page that renders it', () =
     fakeDbHandle = txDb(tx);
     await setParentNameAction('Avery Q');
     expect(revalidatePath).toHaveBeenCalledWith('/settings');
-    expect(revalidatePath).not.toHaveBeenCalledWith('/family');
+    expect(revalidatePath).not.toHaveBeenCalledWith('/family/members');
   });
 });

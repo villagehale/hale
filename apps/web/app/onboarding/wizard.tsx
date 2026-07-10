@@ -261,11 +261,11 @@ export function OnboardingWizard({
     if (result.status === 'completed') {
       capture('onboarding_completed', { kidCount: setupChildren.length, planTier });
       clearIntakeDraft();
-      // Co-parent inviters go straight to the family page to send the link; everyone
-      // else lands on the "getting things ready" moment while the first village
-      // fills in, then continues to /home.
+      // Co-parent inviters go straight to the family members page to send the link;
+      // everyone else lands on the "getting things ready" moment while the first
+      // village fills in, then continues to /home.
       if (inviteCoParent) {
-        router.push('/family');
+        router.push('/family/members');
         return;
       }
       setSetupState({ kind: 'idle' });
