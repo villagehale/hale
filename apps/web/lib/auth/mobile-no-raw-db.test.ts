@@ -41,6 +41,10 @@ const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/docs/[id]/route.ts',
   'app/api/mobile/docs/[id]/url/route.ts',
   'app/api/mobile/integrations/connect-url/route.ts',
+  'app/api/mobile/rights/export/route.ts',
+  'app/api/mobile/rights/delete/route.ts',
+  'app/api/mobile/village/shares/route.ts',
+  'app/api/mobile/village/shares/revoke/route.ts',
 ]);
 
 // Direct DB-access tokens forbidden in every mobile file (the allowlist relaxes
