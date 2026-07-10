@@ -28,6 +28,18 @@ export const WEEKDAYS = [
 
 export type Weekday = (typeof WEEKDAYS)[number];
 
+/**
+ * The seven weekdays rotated to start at the parent's chosen first day (0=Sunday,
+ * 1=Monday). weekStartDay 1 returns the Monday-first WEEKDAYS array unchanged (the
+ * default, so the spine is byte-identical to before this preference existed);
+ * weekStartDay 0 returns Sunday-first (['sunday','monday',…,'saturday']). WEEKDAYS
+ * is Monday-indexed (0=Mon…6=Sun), so the rotation offset is measured from Monday.
+ */
+export function orderedWeekdays(weekStartDay: number): readonly Weekday[] {
+  const offset = weekStartDay === 1 ? 0 : 6;
+  return WEEKDAYS.map((_, i) => WEEKDAYS[(i + offset) % 7] as Weekday);
+}
+
 export interface DayColumn {
   weekday: Weekday;
   /** The calendar-day key (YYYY-MM-DD) this column stands for, in the current week. */
@@ -79,13 +91,19 @@ export function buildPlanSpine(
   plans: readonly AuthoredPlanView[],
   now: Date,
   timeZone: string,
+  weekStartDay = 1,
 ): PlanSpine {
+  const ordered = orderedWeekdays(weekStartDay);
   const todayKey = dayKeyIn(now, timeZone);
-  const mondayKey = addDaysToKey(todayKey, -weekdayIndexIn(now, timeZone));
-  const dayKeys = WEEKDAYS.map((_, i) => addDaysToKey(mondayKey, i));
-  const sundayKey = dayKeys[6] as string;
+  // Today's position within the ordered week (0 = the chosen first day). WEEKDAYS
+  // is Monday-indexed, so measure the first day's Monday-index too and rotate.
+  const startOffset = weekStartDay === 1 ? 0 : 6;
+  const todayPos = (weekdayIndexIn(now, timeZone) - startOffset + 7) % 7;
+  const weekStartKey = addDaysToKey(todayKey, -todayPos);
+  const dayKeys = ordered.map((_, i) => addDaysToKey(weekStartKey, i));
+  const weekEndKey = dayKeys[6] as string;
 
-  const days: DayColumn[] = WEEKDAYS.map((weekday, i) => ({
+  const days: DayColumn[] = ordered.map((weekday, i) => ({
     weekday,
     dateKey: dayKeys[i] as string,
     plans: [],
@@ -103,12 +121,12 @@ export function buildPlanSpine(
       continue;
     }
     const planKey = dayKeyIn(plan.scheduledFor, 'UTC');
-    if (planKey < mondayKey) {
+    if (planKey < weekStartKey) {
       settled.push(plan);
       continue;
     }
     const column = days.find((d) => d.dateKey === planKey);
-    if (column && planKey <= sundayKey) {
+    if (column && planKey <= weekEndKey) {
       column.plans.push(plan);
     } else {
       undated.push(plan);

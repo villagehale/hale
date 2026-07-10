@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
-import { Switch, View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 
 import { ConnectorsList, ConnectorsPrivacyNote } from '@/components/hale/connectors-list';
 import { PrivacyDataSection } from '@/components/hale/privacy-data-section';
@@ -16,11 +16,13 @@ import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
 import type {
   MobileIntegrationsResponse,
+  MobilePreferencesResponse,
   MobilePushPrefsResponse,
   MobileSettingsResponse,
   PushPref,
+  UnitSystem,
 } from '@/lib/api-types';
-import { updatePushPref, updateSettings } from '@/lib/family-api';
+import { updatePreferences, updatePushPref, updateSettings } from '@/lib/family-api';
 import { useApi } from '@/lib/use-api';
 
 function SectionTitle({ children }: { children: string }) {
@@ -90,6 +92,58 @@ function useOptimisticToggle(initial: boolean, persist: (next: boolean) => Promi
   }
 
   return { on, saving, error, toggle };
+}
+
+/** A two-option segmented control matching the app's pill idiom (the growth sheet /
+ * plan ScopePicker): the active option is an ink fill, the rest outlined. Read-only
+ * label + a value chosen by tapping one of exactly two options. */
+function SegmentedRow<T extends string | number>({
+  title,
+  detail,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  title: string;
+  detail: string;
+  value: T;
+  options: { value: T; label: string }[];
+  disabled: boolean;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <View className="flex-1 gap-2">
+      <View>
+        <AppText variant="body" className="text-ink">
+          {title}
+        </AppText>
+        <AppText variant="meta">{detail}</AppText>
+      </View>
+      <View className="flex-row gap-2">
+        {options.map((opt) => {
+          const active = opt.value === value;
+          return (
+            <Pressable
+              key={String(opt.value)}
+              accessibilityRole="button"
+              accessibilityLabel={`${title}: ${opt.label}`}
+              accessibilityState={active ? { selected: true } : {}}
+              disabled={disabled}
+              onPress={() => onChange(opt.value)}
+              className={`h-11 flex-1 items-center justify-center rounded-full border ${
+                active ? 'border-ink bg-ink' : 'border-rule bg-card'
+              } ${disabled ? 'opacity-50' : 'active:opacity-80'}`}
+            >
+              <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
+                {opt.label}
+              </AppText>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 function ToggleRow({
@@ -261,16 +315,89 @@ function ConnectedAccountsSection() {
   );
 }
 
+/**
+ * The display-preferences section: Units (metric/imperial) and First day of week
+ * (Monday/Sunday). Both write together to /api/mobile/preferences (the route takes
+ * the pair), which delegates to the SAME shared web action — the audit row (rule
+ * #6) is single-sourced. Optimistic: the tapped value shows at once and reverts on
+ * a failed persist, mirroring the notification toggles.
+ */
+function PreferencesSection({ initial }: { initial: MobilePreferencesResponse }) {
+  const [prefs, setPrefs] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function persist(next: MobilePreferencesResponse) {
+    const previous = prefs;
+    setPrefs(next);
+    setSaving(true);
+    setError(null);
+    try {
+      await updatePreferences(next);
+    } catch (e) {
+      setPrefs(previous);
+      setError(
+        e instanceof ApiError && e.message === 'preview'
+          ? "Sign-in isn't configured in this preview, so nothing was saved."
+          : "Couldn't save just now — please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View className="gap-2">
+      <SectionTitle>Preferences</SectionTitle>
+      <Card className="gap-5">
+        <SegmentedRow<UnitSystem>
+          title="Units"
+          detail="How weights and lengths are shown. Your data is always stored the same way."
+          value={prefs.units}
+          options={[
+            { value: 'metric', label: 'Metric' },
+            { value: 'imperial', label: 'Imperial' },
+          ]}
+          disabled={saving}
+          onChange={(units) => persist({ ...prefs, units })}
+        />
+        <View className="border-t border-rule pt-5">
+          <SegmentedRow<number>
+            title="First day of week"
+            detail="Which day the weekly plan starts on."
+            value={prefs.weekStartDay}
+            options={[
+              { value: 1, label: 'Monday' },
+              { value: 0, label: 'Sunday' },
+            ]}
+            disabled={saving}
+            onChange={(weekStartDay) => persist({ ...prefs, weekStartDay })}
+          />
+        </View>
+        {error ? (
+          <AppText variant="meta" className="text-accent" accessibilityRole="alert">
+            {error}
+          </AppText>
+        ) : null}
+      </Card>
+    </View>
+  );
+}
+
 function SettingsBody({
   email,
   push,
+  preferences,
 }: {
   email: MobileSettingsResponse;
   push: MobilePushPrefsResponse | null;
+  preferences: MobilePreferencesResponse | null;
 }) {
   return (
     <>
       <NotificationsSection email={email} push={push} />
+
+      {preferences ? <PreferencesSection initial={preferences} /> : null}
 
       <ConnectedAccountsSection />
 
@@ -305,6 +432,7 @@ function SettingsBody({
 export default function SettingsScreen() {
   const email = useApi<MobileSettingsResponse>('/api/mobile/settings');
   const push = useApi<MobilePushPrefsResponse>('/api/mobile/settings/notifications');
+  const preferences = useApi<MobilePreferencesResponse>('/api/mobile/preferences');
 
   return (
     <Screen scroll className="gap-6" refreshControl={useTintedRefresh(email.refreshing, email.refresh)}>
@@ -312,7 +440,11 @@ export default function SettingsScreen() {
       {email.status === 'loading' ? <LoadingState /> : null}
       {email.status === 'error' ? <ErrorState message={email.error ?? ''} onRetry={email.reload} /> : null}
       {email.status === 'ready' && email.data ? (
-        <SettingsBody email={email.data} push={push.status === 'ready' ? push.data : null} />
+        <SettingsBody
+          email={email.data}
+          push={push.status === 'ready' ? push.data : null}
+          preferences={preferences.status === 'ready' ? preferences.data : null}
+        />
       ) : null}
     </Screen>
   );

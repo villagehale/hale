@@ -19,6 +19,7 @@ const loadVillageMock = vi.fn();
 const loadCompanionMock = vi.fn();
 const loadAuthoredPlansMock = vi.fn();
 const loadFamilyTimezoneMock = vi.fn();
+const readUserPreferencesMock = vi.fn();
 const planChildItemsMock = vi.fn();
 const createPlanMock = vi.fn();
 const completePlanMock = vi.fn();
@@ -29,6 +30,9 @@ vi.mock('~/lib/companion/queries', () => ({ loadCompanion: () => loadCompanionMo
 vi.mock('~/lib/plan/authored', () => ({ loadAuthoredPlans: () => loadAuthoredPlansMock() }));
 vi.mock('~/lib/dashboard/queries', () => ({
   loadFamilyTimezone: () => loadFamilyTimezoneMock(),
+}));
+vi.mock('~/lib/settings/user-preferences', () => ({
+  readUserPreferences: () => readUserPreferencesMock(),
 }));
 vi.mock('~/lib/plan/week', () => ({
   planChildItems: (...a: unknown[]) => planChildItemsMock(...a),
@@ -108,6 +112,7 @@ describe('GET /api/mobile/plan', () => {
     loadCompanionMock.mockReset();
     loadAuthoredPlansMock.mockReset();
     loadFamilyTimezoneMock.mockReset();
+    readUserPreferencesMock.mockReset();
     planChildItemsMock.mockReset();
     loadVillageMock.mockResolvedValue({
       candidates: [ACCEPTED, ACCEPTED_TEEN, NOT_ACCEPTED],
@@ -116,6 +121,7 @@ describe('GET /api/mobile/plan', () => {
     loadCompanionMock.mockResolvedValue(CHILDREN);
     loadAuthoredPlansMock.mockResolvedValue(AUTHORED);
     loadFamilyTimezoneMock.mockResolvedValue('America/Toronto');
+    readUserPreferencesMock.mockResolvedValue({ units: 'metric', weekStartDay: 1 });
     planChildItemsMock.mockReturnValue(CHILD_ITEMS);
   });
 
@@ -144,6 +150,7 @@ describe('GET /api/mobile/plan', () => {
     expect(await res.json()).toEqual({
       authoredPlans: AUTHORED,
       timeZone: 'America/Toronto',
+      weekStartDay: 1,
       scopeChildren: [{ id: 'child-1', label: 'Nadia' }],
       addedActivities: [ACCEPTED],
       routine: ROUTINE,
@@ -178,6 +185,7 @@ describe('GET /api/mobile/plan', () => {
     expect(await res.json()).toEqual({
       authoredPlans: [],
       timeZone: 'America/Toronto',
+      weekStartDay: 1,
       scopeChildren: [{ id: 'child-1', label: 'Nadia' }],
       addedActivities: [],
       routine: null,

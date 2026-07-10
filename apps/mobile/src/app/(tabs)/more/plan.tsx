@@ -383,13 +383,21 @@ function toDateKey(d: Date): string {
 }
 
 function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: () => void }) {
-  const { authoredPlans, timeZone, scopeChildren, addedActivities, routine, childItems, hasPlan } =
-    data;
+  const {
+    authoredPlans,
+    timeZone,
+    weekStartDay,
+    scopeChildren,
+    addedActivities,
+    routine,
+    childItems,
+    hasPlan,
+  } = data;
   const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const chevron = useMeadowColor('ink3');
 
-  const spine = buildPlanSpine(authoredPlans, new Date(), timeZone);
+  const spine = buildPlanSpine(authoredPlans, new Date(), timeZone, weekStartDay ?? 1);
   const datedDays = spine.days.filter((d) => d.plans.length > 0);
   const hasAuthored = datedDays.length > 0 || spine.undated.length > 0;
 

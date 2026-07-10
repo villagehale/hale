@@ -20,6 +20,7 @@ import type {
   LogView,
   MobileCompanionResponse,
   MobileLogsResponse,
+  MobilePreferencesResponse,
   MobileVillageResponse,
   RecentLogView,
   RoutineProposalView,
@@ -28,6 +29,7 @@ import type {
 import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
 import { groupLogsByDay } from '@/lib/logs-group';
 import { buildMeasureSeries, type MeasureKind } from '@/lib/measurement-series';
+import { displayMeasurement, type UnitSystem } from '@/lib/measurement-units';
 import { useApi } from '@/lib/use-api';
 
 const LOG_KINDS: { kind: LogKind; label: string }[] = [
@@ -599,6 +601,11 @@ function GrowthSection({ childId }: { childId: string }) {
   const { status, data, error, reload } = useApi<MobileLogsResponse>(
     `/api/mobile/companion/logs?child=${childId}&episodeType=measurement`,
   );
+  // The viewer's Units preference is a DISPLAY choice only — readings stay metric.
+  // Until it resolves (or if it errors), fall back to metric, which renders the
+  // stored kg/cm unchanged (byte-identical to before this preference existed).
+  const prefs = useApi<MobilePreferencesResponse>('/api/mobile/preferences');
+  const units: UnitSystem = prefs.data?.units ?? 'metric';
   const [addKind, setAddKind] = useState<MeasureKind | null>(null);
   const ink2 = useMeadowColor('ink2');
   const onAccent = useMeadowColor('onAccent');
@@ -621,13 +628,18 @@ function GrowthSection({ childId }: { childId: string }) {
         </Card>
       ) : (
         <View className="gap-4">
-          {series.map((s) => (
+          {series.map((s) => {
+            // Readings are STORED METRIC (kg/cm); the parent's Units preference is a
+            // display choice only, so convert per the series kind for what's shown.
+            const latest = s.readings[0];
+            const latestDisplay = latest ? displayMeasurement(latest.value, s.kind, units) : null;
+            return (
             <Card key={s.kind} className="gap-3">
               <View className="flex-row items-baseline justify-between">
                 <SectionEyebrow>{s.label}</SectionEyebrow>
-                {s.readings.length > 0 && s.unit ? (
+                {latestDisplay ? (
                   <AppText variant="meta" className="text-ink-3">
-                    latest {s.readings[0]?.value} {s.unit}
+                    latest {latestDisplay.value} {latestDisplay.unit}
                   </AppText>
                 ) : null}
               </View>
@@ -642,19 +654,22 @@ function GrowthSection({ childId }: { childId: string }) {
                     <MiniTrend readings={s.readings} peak={s.peak} />
                   ) : null}
                   <View className="gap-3">
-                    {s.readings.map((r, i) => (
+                    {s.readings.map((r, i) => {
+                      const shown = displayMeasurement(r.value, s.kind, units);
+                      return (
                       <View
                         key={r.id}
                         className={`flex-row items-baseline gap-3 ${i === 0 ? '' : 'border-t border-rule pt-3'}`}
                       >
                         <AppText variant="body" className="flex-1">
-                          {r.value} {r.unit}
+                          {shown.value} {shown.unit}
                         </AppText>
                         <AppText variant="mono" className="text-ink-3">
                           {whenPhrase(r.occurredAt)}
                         </AppText>
                       </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 </>
               )}
@@ -671,7 +686,8 @@ function GrowthSection({ childId }: { childId: string }) {
                 </AppText>
               </Pressable>
             </Card>
-          ))}
+            );
+          })}
         </View>
       )}
 
@@ -699,6 +715,7 @@ function GrowthSection({ childId }: { childId: string }) {
         childId={childId}
         visible={addKind !== null}
         initialKind={addKind ?? 'weight'}
+        units={units}
         onClose={() => setAddKind(null)}
         onLogged={reload}
       />

@@ -86,6 +86,33 @@ describe('buildPlanSpine — Mon–Sun week folding', () => {
     expect(spine.settled).toHaveLength(0);
   });
 
+  it('rotates the spine to Sunday-first when weekStartDay=0, keying each column to the same week', () => {
+    // Same anchor (Wed 2026-07-08 ET). Sunday-first, the week is Sun 2026-07-05 → Sat
+    // 2026-07-11, so the columns run sunday→saturday and a Friday-10 plan still lands
+    // on Friday (07-10) — the SAME dates, only the column order rotates.
+    const p = plan({ id: 'p1', scheduledFor: '2026-07-10T00:00:00.000Z' }); // Friday
+    const spine = buildPlanSpine([p], WED_JULY_8, TZ, 0);
+
+    expect(spine.days.map((d) => d.weekday)).toEqual([
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ]);
+    const sunday = spine.days[0];
+    expect(sunday.weekday).toBe('sunday');
+    expect(sunday.dateKey).toBe('2026-07-05');
+    const friday = spine.days.find((d) => d.weekday === 'friday');
+    expect(friday?.dateKey).toBe('2026-07-10');
+    expect(friday?.plans).toEqual([p]);
+    expect(spine.days.filter((d) => d.plans.length > 0)).toHaveLength(1);
+    expect(spine.undated).toHaveLength(0);
+    expect(spine.settled).toHaveLength(0);
+  });
+
   it('judges the week in the family zone: 11pm ET Sunday is still that Sunday, not Monday UTC', () => {
     // 2026-07-12 23:30 ET is 2026-07-13 03:30 UTC. The family is on Sunday the 12th,
     // so the week is Mon 07-06 → Sun 07-12 and a Sunday-12 plan lands on Sunday —

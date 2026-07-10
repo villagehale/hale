@@ -8,6 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
+import { writeUserPreferences } from '~/lib/settings/user-preferences';
 import { type PlanTier, type UnitSystem, parseIntents } from '@hale/types';
 import {
   type ChildError,
@@ -501,25 +502,7 @@ export async function setPreferencesAction(
   }
   const userId = await ensureUserRow(identity, database);
 
-  await database.transaction(async (tx) => {
-    const existing = await tx
-      .select({ units: schema.users.units, weekStartDay: schema.users.weekStartDay })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-
-    await tx.update(schema.users).set({ units, weekStartDay }).where(eq(schema.users.id, userId));
-
-    await tx.insert(schema.auditLog).values({
-      familyId,
-      actor: userId,
-      actionTaken: 'user_preferences_updated',
-      targetTable: 'users',
-      targetId: userId,
-      before: existing[0] ?? null,
-      after: { units, weekStartDay },
-    });
-  });
+  await writeUserPreferences(userId, familyId, { units, weekStartDay }, database);
 
   revalidatePath('/settings');
   return { status: 'updated' };

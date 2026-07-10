@@ -9,15 +9,22 @@ import { Icon } from '@/components/ui/icon';
 import { Sheet } from '@/components/ui/sheet';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
+import { composeMeasurementLog } from '@/lib/measurement-compose';
 import { MEASURE_KINDS, MEASURE_LABEL, type MeasureKind } from '@/lib/measurement-series';
+import { displayMeasurement, type UnitSystem } from '@/lib/measurement-units';
 
-/** The fixed unit per measure kind (server sets it too; shown here so the field
- * label reads "Value (kg)"). Weight is kg; height and head circumference are cm. */
-const MEASURE_UNIT: Record<MeasureKind, 'kg' | 'cm'> = {
-  weight: 'kg',
-  height: 'cm',
-  head: 'cm',
-};
+/** The entry unit shown in the field label per (kind, units) — the same unit
+ * displayMeasurement renders, so the label and the growth list never disagree.
+ * kg/cm in metric; lb/in in imperial. */
+function entryUnit(kind: MeasureKind, units: UnitSystem): string {
+  return displayMeasurement(0, kind, units).unit;
+}
+
+/** A plausible example value for the placeholder, per (kind, units). */
+function entryPlaceholder(kind: MeasureKind, units: UnitSystem): string {
+  if (units === 'imperial') return kind === 'weight' ? '23' : '24';
+  return kind === 'weight' ? '10.4' : '62';
+}
 
 const WHEN_PRESETS: { label: string; daysAgo: number }[] = [
   { label: 'today', daysAgo: 0 },
@@ -49,6 +56,7 @@ export function GrowthAddSheet({
   childId,
   visible,
   initialKind,
+  units,
   onClose,
   onLogged,
 }: {
@@ -56,6 +64,9 @@ export function GrowthAddSheet({
   visible: boolean;
   /** The kind pre-selected when opened from a specific series card. */
   initialKind: MeasureKind;
+  /** The parent's chosen unit system — drives the entry label/placeholder and the
+   * metric conversion on save (storage stays metric regardless). */
+  units: UnitSystem;
   onClose: () => void;
   onLogged: () => void;
 }) {
@@ -95,9 +106,19 @@ export function GrowthAddSheet({
   };
 
   const save = async () => {
-    const entry = value.trim();
-    if (!entry) {
-      setError(`Enter a ${MEASURE_LABEL[measureKind].toLowerCase()} (${MEASURE_UNIT[measureKind]}).`);
+    // Compose the metric-only wire body — an imperial entry (lb/in) is converted to
+    // metric HERE, before the POST, so storage stays metric (rule #1).
+    const composed = composeMeasurementLog({
+      entry: value,
+      measureKind,
+      units,
+      childId,
+      occurredAt: when.toISOString(),
+    });
+    if (!composed.ok) {
+      setError(
+        `Enter a ${MEASURE_LABEL[measureKind].toLowerCase()} (${entryUnit(measureKind, units)}).`,
+      );
       return;
     }
     setError(null);
@@ -105,13 +126,7 @@ export function GrowthAddSheet({
     try {
       await api('/api/mobile/companion/log', {
         method: 'POST',
-        body: JSON.stringify({
-          kind: 'measurement',
-          childId,
-          measureKind,
-          value: entry,
-          occurredAt: when.toISOString(),
-        }),
+        body: JSON.stringify(composed.body),
       });
       onLogged();
       onClose();
@@ -158,11 +173,11 @@ export function GrowthAddSheet({
 
       <View className="mb-5">
         <Field
-          label={`Value (${MEASURE_UNIT[measureKind]})`}
+          label={`Value (${entryUnit(measureKind, units)})`}
           value={value}
           onChangeText={setValue}
           keyboardType="numeric"
-          placeholder={measureKind === 'weight' ? '10.4' : '62'}
+          placeholder={entryPlaceholder(measureKind, units)}
           autoCapitalize="none"
           autoFocus
         />
