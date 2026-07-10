@@ -45,6 +45,7 @@ function child(
     : [];
   return {
     id: over.id,
+    dateOfBirth: over.dateOfBirth ?? '2025-01-01',
     stage: over.stage,
     ageMonths: over.ageMonths ?? 11,
     name: over.name ?? 'Nadia',

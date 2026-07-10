@@ -28,39 +28,32 @@ export default async function CompanionPage() {
 
   return (
     <div>
-      {/* ── Headline — a modest, app-like header (Notion/Linear register). ── */}
-      <header className="rise rise-1 mb-8">
-        <SectionLabel>your companion</SectionLabel>
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          {children.length === 0 ? (
-            <>
-              growing up, <span className="text-apricot-deep">held</span> at every age.
-            </>
-          ) : (
-            <>
-              {children.length} {children.length === 1 ? 'child' : 'children'},{' '}
-              <span className="text-apricot-deep">growing</span> at their own pace.
-            </>
-          )}
-        </h1>
-      </header>
-
       {children.length === 0 ? (
-        <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
-          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
-            no children added yet.
-          </p>
-          <p className="meta text-slate-green max-w-xl mx-auto">
-            once a child’s birthday is on file, this page gathers their stage, the next routine
-            checkups and immunizations, and the milestones worth watching for — all confirmed with
-            your own provider.
-          </p>
-          <div className="pt-2">
-            <Link href="/family" className="btn-primary">
-              add a child →
-            </Link>
-          </div>
-        </section>
+        <>
+          {/* Empty state keeps a modest headline; a populated page goes straight to
+           * the child header inside CompanionTabs (mockup panel 2). */}
+          <header className="rise rise-1 mb-8">
+            <SectionLabel>your companion</SectionLabel>
+            <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
+              growing up, <span className="text-apricot-deep">held</span> at every age.
+            </h1>
+          </header>
+          <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
+            <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
+              no children added yet.
+            </p>
+            <p className="meta text-slate-green max-w-xl mx-auto">
+              once a child’s birthday is on file, this page gathers their stage, the next routine
+              checkups and immunizations, and the milestones worth watching for — all confirmed with
+              your own provider.
+            </p>
+            <div className="pt-2">
+              <Link href="/family" className="btn-primary">
+                add a child →
+              </Link>
+            </div>
+          </section>
+        </>
       ) : (
         <CompanionTabs
           kids={children}

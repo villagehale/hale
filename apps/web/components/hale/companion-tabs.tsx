@@ -1,6 +1,19 @@
 'use client';
 
-import { CalendarCheck, Moon, Sparkles, Stethoscope, Utensils } from 'lucide-react';
+import {
+  Baby,
+  Brain,
+  CalendarCheck,
+  Check,
+  ChevronRight,
+  Footprints,
+  MessageCircle,
+  Moon,
+  Sparkles,
+  Stethoscope,
+  Users,
+  Utensils,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
@@ -15,7 +28,7 @@ import {
 import type { LogView } from '~/lib/companion/logs-view';
 import type { ChildCompanionView } from '~/lib/companion/queries';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
-import { formatWhenPhrase } from '~/lib/format/datetime';
+import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
 import type { RoutineProposalView } from '~/lib/village/mappers';
 import { BookButton } from './book-button';
 import { DoneButton } from './done-button';
@@ -40,20 +53,28 @@ const LOG_ICON: Record<string, LucideIcon> = {
   [BOOKING_EPISODE]: Stethoscope,
 };
 
+const MILESTONE_AREA_ICON: Record<ChildCompanionView['milestones'][number]['area'], LucideIcon> = {
+  motor: Footprints,
+  language: MessageCircle,
+  social: Users,
+  cognitive: Brain,
+  independence: Baby,
+};
+
 /**
- * The six sections of the Companion surface, mirroring the mobile section switcher.
- * On desktop they render as a sticky left-rail nav; below `lg` they collapse to a
- * horizontal chip row. Each key selects one section panel — no route change, the
- * page stays "companion" with one child in focus.
+ * The Companion sections, mirroring the mobile section switcher: a horizontal
+ * underline-style tab row (the active tab carries a navy underline). Each key
+ * selects one section panel — no route change, the page stays "companion" with
+ * one child in focus. On a narrow viewport the row scrolls horizontally.
  */
 const SECTIONS = [
-  { key: 'overview', label: 'overview', hint: 'today at a glance' },
-  { key: 'health', label: 'health', hint: 'checkups · immunizations' },
-  { key: 'growth', label: 'growth', hint: 'weight · height · head' },
-  { key: 'milestones', label: 'milestones', hint: 'most kids, this stage' },
-  { key: 'routines', label: 'routines', hint: 'Hale’s weekly rhythm' },
-  { key: 'diary', label: 'diary', hint: 'feeds · naps · notes' },
-  { key: 'docs', label: 'docs', hint: 'the family vault' },
+  { key: 'overview', label: 'overview' },
+  { key: 'health', label: 'health' },
+  { key: 'growth', label: 'growth' },
+  { key: 'milestones', label: 'milestones' },
+  { key: 'routines', label: 'routines' },
+  { key: 'diary', label: 'diary' },
+  { key: 'docs', label: 'docs' },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]['key'];
@@ -88,6 +109,26 @@ function duePhrase(dueInWeeks: number): string {
   return `in ~${months} ${months === 1 ? 'month' : 'months'}`;
 }
 
+/** "12-18 months" — the typical age window for a milestone, the overview row's
+ * subtitle. Years past 24 months so a school-age window doesn't read in the
+ * hundreds ("60-84 months" → "5-7 years"). */
+function windowPhrase(window: readonly [number, number]): string {
+  const [from, to] = window;
+  if (to < 24) return `${from}-${to} months`;
+  const yearOf = (m: number) => Math.round(m / 12);
+  return `${yearOf(from)}-${yearOf(to)} years`;
+}
+
+/** The calendar date a health item is scheduled for: the child's date of birth
+ * plus the item's scheduled age in months. Derived from the SAME date_of_birth
+ * the whole schedule is keyed on — not a stored field — so it can't drift from
+ * the age math. `dateOfBirth` is a bare `YYYY-MM-DD`, kept in UTC so the day the
+ * parent typed round-trips (formatCalendarDate reads it in UTC too). */
+function healthDate(dateOfBirth: string, ageMonths: number): Date {
+  const [y, m, d] = dateOfBirth.split('-').map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1 + ageMonths, d ?? 1));
+}
+
 /** "scheduled at 4 months" — the age a passed health item was set for. Warm, not
  * "overdue": a passed checkup is a gentle nudge, never a failing grade. */
 function passedAtPhrase(ageMonths: number): string {
@@ -107,136 +148,204 @@ function leadLine(child: ChildCompanionView): string {
   return 'Nothing on the standard schedule right now — keep up periodic visits.';
 }
 
-/** The single milestone worth surfacing now: prefer one inside its window. */
-function milestoneInWindow(child: ChildCompanionView) {
-  return child.milestones.find((m) => m.timing === 'in_window') ?? child.milestones[0] ?? null;
-}
-
 function firstName(name: string | null): string {
   return name?.trim().split(/\s+/)[0] ?? 'your child';
 }
 
+/** The child's first initial for the neutral avatar placeholder — we hold no
+ * child photo, so a calm monogram stands in (never a fabricated face). */
+function initialOf(name: string | null): string {
+  return firstName(name).charAt(0).toUpperCase() || '·';
+}
+
+/** "May 12, 2024" — a birth date always carries its year (a life event, not a
+ * this-year calendar entry). Read in UTC so the bare `YYYY-MM-DD` the parent
+ * typed round-trips, never shifted a day by the viewer's offset. */
+function birthDate(dateOfBirth: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${dateOfBirth}T00:00:00Z`));
+}
+
+/** The child header: a neutral monogram avatar, the child's name, and
+ * "{age} old · {DOB}". All child-identifying — name, DOB, initial — sits under
+ * [data-hale-pii] so session replay masks it (rule #1). */
+function ChildHeader({ child }: { child: ChildCompanionView }) {
+  return (
+    <div className="flex items-center gap-4 mb-8" data-hale-pii>
+      <span className="shrink-0 grid place-items-center size-14 rounded-full bg-apricot-tint text-apricot-deep font-display text-[1.5rem]">
+        {initialOf(child.name)}
+      </span>
+      <div className="min-w-0">
+        <h2 className="font-display text-[1.5rem] lg:text-[1.75rem] leading-tight truncate">
+          {child.name ?? 'your child'}
+        </h2>
+        <p className="meta mt-1 text-slate-green">
+          {agePhrase(child.ageMonths)} old · {birthDate(child.dateOfBirth)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── OVERVIEW ────────────────────────────────────────────────────────────────
 //
-// The default view: a per-child dashboard masonry (mirrors the home register)
-// over the SAME already-loaded, teen-redacted reads the detail sections use —
-// nothing fabricated. Health leads in a sage card; the AI entry is an honest LINK
-// to /coach, never a fabricated insight string.
+// The default view (mockup panel 2): two cards side by side — MILESTONES and
+// HEALTH SCHEDULE — over the same already-loaded, teen-redacted reads the detail
+// sections use, then an honest INSIGHT card. Nothing fabricated: milestone rows
+// come from child.milestones (what / window / done), health rows from
+// child.nextHealth (what / dueInWeeks → duePhrase, date derived from DOB). A teen
+// (rule #1) can have both lists empty → each card shows a calm empty state. The
+// AI entry is an honest LINK to /coach, never a fabricated per-child insight.
+
+/** A card header: a small-caps section label and a section-switching "see all". */
+function OverviewCardHead({
+  label,
+  onSeeAll,
+}: {
+  label: string;
+  onSeeAll: () => void;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 mb-4">
+      <span className="eyebrow text-faded-sage">{label}</span>
+      <button type="button" onClick={onSeeAll} className="link text-sm cursor-pointer">
+        see all
+      </button>
+    </div>
+  );
+}
+
+/** The done indicator on a milestone row: a filled navy check when done, an empty
+ * navy ring when not. STATIC — the tappable "mark done" lives in the detail
+ * Milestones section; this compact overview only reflects state. */
+function DoneCircle({ done }: { done: boolean }) {
+  return done ? (
+    <span
+      className="shrink-0 grid place-items-center size-6 rounded-full bg-spruce text-linen"
+      aria-label="done"
+    >
+      <Icon as={Check} size={14} strokeWidth={3} />
+    </span>
+  ) : (
+    <span
+      className="shrink-0 size-6 rounded-full border-2 border-rule-strong"
+      aria-label="not done"
+    />
+  );
+}
 
 export function OverviewSection({
   child,
-  recentLogs,
-  timeZone,
   onNavigate,
 }: {
   child: ChildCompanionView;
-  recentLogs: RecentLogView[];
-  timeZone: string;
   onNavigate: (s: SectionKey) => void;
 }) {
-  const childLogs = recentLogs.filter((l) => l.childId === child.id);
-  const milestone = milestoneInWindow(child);
-  const lead = child.todayHealth ?? child.nextHealth[0] ?? null;
-  const upcoming = child.nextHealth.filter((item) => item.key !== lead?.key).slice(0, 4);
+  const milestones = child.milestones.slice(0, 3);
+  const health = child.nextHealth.slice(0, 3);
 
   return (
-    <div className="columns-1 md:columns-2 gap-5 [&>*]:mb-5 [&>*]:break-inside-avoid">
-      <div className="card">
-        <span className="eyebrow text-faded-sage">today at a glance</span>
-        {childLogs.length === 0 ? (
-          <p className="meta mt-3 text-slate-green">
-            nothing logged yet — note a feed, a nap, or a milestone with quick log.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-4">
-            {childLogs.map((log) => (
-              <li
-                key={log.id}
-                className="flex items-baseline gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
-              >
-                <span className="shrink-0 text-apricot-deep">
-                  <Icon as={LOG_ICON[log.episodeType] ?? CalendarCheck} size={18} />
-                </span>
-                <span className="text-base text-spruce leading-relaxed flex-1" data-hale-pii>
-                  {log.summary}
-                </span>
-                <span className="eyebrow text-faded-sage shrink-0">
-                  {formatWhenPhrase(log.occurredAt, timeZone)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="card">
-        <span className="eyebrow text-faded-sage">health summary</span>
-        {lead ? (
-          <>
-            <span className="eyebrow text-apricot-deep mt-3 block">{duePhrase(lead.dueInWeeks)}</span>
-            <p className="font-display text-[1.15rem] mt-1 leading-snug" data-hale-pii>
-              {lead.what}
-            </p>
-          </>
-        ) : (
-          <p className="meta mt-3 text-slate-green">
-            nothing on the standard schedule right now — keep up periodic visits.
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={() => onNavigate('health')}
-          className="link mt-4 inline-block cursor-pointer"
-        >
-          view health →
-        </button>
-      </div>
-
-      {upcoming.length > 0 ? (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="card">
-          <span className="eyebrow text-faded-sage">upcoming</span>
-          <ul className="mt-3 space-y-3">
-            {upcoming.map((item) => (
-              <li
-                key={item.key}
-                className="flex items-baseline gap-4 border-t border-rule pt-3 first:border-t-0 first:pt-0"
-              >
-                <span className="eyebrow text-slate-green shrink-0 w-24">
-                  {duePhrase(item.dueInWeeks)}
-                </span>
-                <span className="text-base text-spruce leading-relaxed flex-1" data-hale-pii>
-                  {item.what}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {milestone ? (
-        <div className="card">
-          <span className="eyebrow text-faded-sage">around this age</span>
-          <p className="text-base text-spruce leading-relaxed mt-2" data-hale-pii>
-            {milestone.what}
-          </p>
+          <OverviewCardHead label="milestones" onSeeAll={() => onNavigate('milestones')} />
+          {milestones.length === 0 ? (
+            <p className="meta text-slate-green">no milestones tracked for this stage yet.</p>
+          ) : (
+            <ul className="space-y-1">
+              {milestones.map((m) => (
+                <li
+                  key={m.what}
+                  className="flex items-center gap-3 rounded-[var(--r-md)] px-3 py-3 -mx-3 hover:bg-oat"
+                >
+                  <span className="shrink-0 grid place-items-center size-9 rounded-[var(--r-md)] bg-apricot-tint text-apricot-deep">
+                    <Icon as={MILESTONE_AREA_ICON[m.area]} size={18} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[0.95rem] font-semibold text-spruce truncate">
+                      {m.what}
+                    </span>
+                    <span className="meta text-faded-sage">
+                      {windowPhrase(m.typicalWindowMonths)}
+                    </span>
+                  </span>
+                  <DoneCircle done={m.done} />
+                </li>
+              ))}
+            </ul>
+          )}
           <button
             type="button"
             onClick={() => onNavigate('milestones')}
-            className="link mt-4 inline-block cursor-pointer"
+            className="link mt-4 inline-flex items-center gap-1 cursor-pointer"
           >
-            view milestones →
+            view all milestones <Icon as={ChevronRight} size={16} />
           </button>
         </div>
-      ) : null}
 
-      <div className="card">
-        <span className="eyebrow text-faded-sage">companion insight</span>
-        <p className="text-base text-spruce leading-relaxed mt-2" data-hale-pii>
-          have a question about {firstName(child.name)}? ask Hale for calm, stage-aware guidance.
-        </p>
-        <Link href="/coach" className="link mt-4 inline-block">
-          ask Hale about <span data-hale-pii>{firstName(child.name)}</span> →
-        </Link>
+        <div className="card">
+          <OverviewCardHead label="health schedule" onSeeAll={() => onNavigate('health')} />
+          {health.length === 0 ? (
+            <p className="meta text-slate-green">
+              nothing on the standard schedule right now — keep up periodic visits.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {health.map((item) => (
+                <li key={item.key}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('health')}
+                    className="flex w-full items-center gap-3 rounded-[var(--r-md)] px-3 py-3 -mx-3 text-left cursor-pointer hover:bg-oat"
+                  >
+                    <span className="shrink-0 grid place-items-center size-9 rounded-[var(--r-md)] bg-sage-tint text-sage">
+                      <Icon as={CalendarCheck} size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.95rem] font-semibold text-spruce" data-hale-pii>
+                        {item.what}
+                      </span>
+                      <span className="meta text-faded-sage">
+                        {duePhrase(item.dueInWeeks)} · {formatCalendarDate(healthDate(child.dateOfBirth, item.ageMonths))}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-faded-sage">
+                      <Icon as={ChevronRight} size={18} />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={() => onNavigate('health')}
+            className="link mt-4 inline-flex items-center gap-1 cursor-pointer"
+          >
+            view health schedule <Icon as={ChevronRight} size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="card flex items-start gap-4">
+        <span className="shrink-0 grid place-items-center size-10 rounded-[var(--r-md)] bg-lavender text-spruce">
+          <Icon as={Sparkles} size={20} />
+        </span>
+        <div className="min-w-0">
+          <span className="eyebrow text-faded-sage">insight</span>
+          <p className="text-base text-spruce leading-relaxed mt-2">
+            have a question about <span data-hale-pii>{firstName(child.name)}</span>? ask Hale for
+            calm, stage-aware guidance.
+          </p>
+          <Link href="/coach" className="link mt-4 inline-flex items-center gap-1">
+            ask Hale about <span data-hale-pii>{firstName(child.name)}</span>{' '}
+            <Icon as={ChevronRight} size={16} />
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -662,9 +771,8 @@ function SectionNav({
     <div
       role="tablist"
       aria-label="companion sections"
-      aria-orientation="vertical"
       onKeyDown={onKeyDown}
-      className="flex flex-row gap-2 overflow-x-auto lg:flex-col lg:gap-1 lg:overflow-visible lg:sticky lg:top-8"
+      className="flex flex-row gap-1 overflow-x-auto border-b border-rule -mx-1 px-1"
     >
       {SECTIONS.map((section, idx) => {
         const isActive = idx === active;
@@ -681,16 +789,13 @@ function SectionNav({
             aria-controls={`${baseId}-sec-panel`}
             tabIndex={isActive ? 0 : -1}
             onClick={() => onSelect(section.key)}
-            className={`inline-flex shrink-0 min-h-[44px] items-center gap-3 rounded-[var(--r-md)] px-4 py-2.5 text-left cursor-pointer touch-manipulation transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] lg:w-full lg:flex-col lg:items-start lg:gap-0.5 ${
+            className={`shrink-0 min-h-[44px] px-3 pb-3 text-sm font-semibold capitalize cursor-pointer touch-manipulation transition-colors border-b-2 -mb-px focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] ${
               isActive
-                ? 'bg-apricot-tint text-spruce'
-                : 'text-slate-green hover:text-spruce hover:bg-oat'
+                ? 'border-spruce text-spruce'
+                : 'border-transparent text-slate-green hover:text-spruce'
             }`}
           >
-            <span className="text-sm font-semibold lowercase tracking-[var(--tracking-eyebrow)]">
-              {section.label}
-            </span>
-            <span className="meta hidden lg:block text-faded-sage leading-tight">{section.hint}</span>
+            {section.label}
           </button>
         );
       })}
@@ -717,24 +822,16 @@ function ChildBody({
   const baseId = useId();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-8 lg:gap-x-12">
-      <div className="lg:col-span-3">
-        <SectionNav value={section} onSelect={setSection} baseId={baseId} />
-      </div>
+    <div className="space-y-8">
+      <SectionNav value={section} onSelect={setSection} baseId={baseId} />
       <div
         role="tabpanel"
         id={`${baseId}-sec-panel`}
         aria-labelledby={`${baseId}-sec-tab-${SECTIONS.findIndex((s) => s.key === section)}`}
         tabIndex={-1}
-        className="lg:col-span-9"
       >
         {section === 'overview' ? (
-          <OverviewSection
-            child={child}
-            recentLogs={recentLogs}
-            timeZone={timeZone}
-            onNavigate={setSection}
-          />
+          <OverviewSection child={child} onNavigate={setSection} />
         ) : null}
         {section === 'health' ? <HealthSection child={child} /> : null}
         {section === 'growth' ? (
@@ -783,13 +880,7 @@ export function CompanionTabs({
   if (only) {
     return (
       <section className="rise rise-2">
-        <div className="border-b border-rule pb-6 mb-8" data-hale-pii>
-          <span className="stamp inline-block">{STAGE_LABEL[only.stage]}</span>
-          <h2 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight mt-3">
-            {only.name ?? 'your child'}
-          </h2>
-          <p className="meta mt-2 text-slate-green">{agePhrase(only.ageMonths)} old</p>
-        </div>
+        <ChildHeader child={only} />
         <ChildBody
           child={only}
           routine={routine}
@@ -855,12 +946,7 @@ export function CompanionTabs({
         aria-labelledby={`${baseId}-tab-${active}`}
         tabIndex={-1}
       >
-        <div className="border-b border-rule pb-6 mb-8" data-hale-pii>
-          <h2 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-            {activeChild.name ?? 'your child'}
-          </h2>
-          <p className="meta mt-2 text-slate-green">{agePhrase(activeChild.ageMonths)} old</p>
-        </div>
+        <ChildHeader child={activeChild} />
         <ChildBody
           child={activeChild}
           routine={routine}

@@ -158,7 +158,11 @@ describe('history timeline masks each entry summary + child name', () => {
 });
 
 describe('companion growth section masks the measurement readings', () => {
-  const child = { id: 'c-1', ...companionForChild({ dateOfBirth: '2025-06-01', name: 'Noor' }) };
+  const child = {
+    id: 'c-1',
+    dateOfBirth: '2025-06-01',
+    ...companionForChild({ dateOfBirth: '2025-06-01', name: 'Noor' }),
+  };
   // A unique reading string so the assertion can't pass on incidental markup.
   const growthLogs = [
     {
@@ -188,39 +192,29 @@ describe('companion growth section masks the measurement readings', () => {
   });
 });
 
-describe('companion overview section masks the child name + a logged summary', () => {
-  // A newborn so nextHealth/todayHealth populate the health-summary + upcoming cards.
-  const child = { id: 'c-1', ...companionForChild({ dateOfBirth: '2026-05-01', name: 'Noor' }) };
-  const recentLogs = [
-    {
-      id: 'l1',
-      childId: 'c-1',
-      episodeType: 'feed',
-      summary: 'fed 90 ml at 3pm',
-      occurredAt: '2026-06-01T15:00:00.000Z',
-    },
-  ];
-  const html = renderToStaticMarkup(
-    h(OverviewSection, {
-      child,
-      recentLogs,
-      timeZone: 'America/Toronto',
-      onNavigate: () => {},
-    }),
-  );
+describe('companion overview section masks the child name + a scheduled health item', () => {
+  // A newborn so nextHealth populates the HEALTH SCHEDULE card rows (mockup panel 2).
+  const child = {
+    id: 'c-1',
+    dateOfBirth: '2026-05-01',
+    ...companionForChild({ dateOfBirth: '2026-05-01', name: 'Noor' }),
+  };
+  const html = renderToStaticMarkup(h(OverviewSection, { child, onNavigate: () => {} }));
 
-  it('renders the child name + logged summary at all (guards against a vacuous pass)', () => {
+  it('renders the child name + a scheduled health item at all (guards against a vacuous pass)', () => {
+    // The insight card personalizes with the first name; the health card lists the
+    // child's next scheduled visit by name — both are the child-identifying fields.
     expect(html).toContain('Noor');
-    expect(html).toContain('fed 90 ml at 3pm');
+    expect(html).toContain('well-baby visit');
   });
 
-  it('keeps the child name and the logged summary inside a [data-hale-pii] subtree', () => {
+  it('keeps the child name and the health item inside a [data-hale-pii] subtree', () => {
     const residue = stripMaskedSubtrees(html);
     expect(residue).not.toContain('Noor');
-    expect(residue).not.toContain('fed 90 ml at 3pm');
-    // The non-PII frame — the card eyebrows — survives the strip.
-    expect(residue).toContain('today at a glance');
-    expect(residue).toContain('health summary');
+    expect(residue).not.toContain('well-baby visit');
+    // The non-PII frame — the card eyebrows + in-card links — survives the strip.
+    expect(residue).toContain('health schedule');
+    expect(residue).toContain('view all milestones');
   });
 });
 

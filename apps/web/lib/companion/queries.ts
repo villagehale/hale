@@ -6,9 +6,12 @@ import { currentFamilyId } from '~/lib/family';
 import { buildDoneByChild, doneForChild } from './done-markers.js';
 import { HEALTH_DONE_EPISODE, MILESTONE_EPISODE } from './log-types.js';
 
-/** One child's companion view, carrying the child id for stable list keys. */
+/** One child's companion view, carrying the child id for stable list keys and
+ * the raw date of birth (PII) so a header can echo it and health-item due dates
+ * can be derived from the same source-of-truth the schedule is keyed on. */
 export interface ChildCompanionView extends CompanionView {
   id: string;
+  dateOfBirth: string;
 }
 
 /**
@@ -57,6 +60,7 @@ export async function companionForFamily(
 
   return rows.map((row) => ({
     id: row.id,
+    dateOfBirth: row.dateOfBirth,
     ...companionForChild(
       { dateOfBirth: row.dateOfBirth, name: row.name },
       now,
