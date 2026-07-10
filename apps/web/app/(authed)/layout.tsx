@@ -7,7 +7,6 @@ import { TopHeader } from '~/components/hale/top-header';
 import { ScrollReset } from '~/components/hale/scroll-reset';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
-import { loadFamilyName } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser } from '~/lib/family';
 import { markFamilyActiveToday } from '~/lib/metrics/activity';
@@ -43,8 +42,6 @@ export default async function AuthedLayout({ children }: { children: React.React
     after(() => markFamilyActiveToday(db(), familyId));
   }
 
-  const familyName = await loadFamilyName();
-
   return (
     <>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: pre-paint collapse script must run before hydration to avoid a rail flash */}
@@ -59,7 +56,6 @@ export default async function AuthedLayout({ children }: { children: React.React
             authControls={authEnabled}
             signedIn={Boolean(session?.user?.id)}
             parentName={session?.user?.name ?? null}
-            familyName={familyName}
           />
         }
         header={<TopHeader />}

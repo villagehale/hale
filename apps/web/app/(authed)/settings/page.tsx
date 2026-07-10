@@ -77,7 +77,7 @@ export default async function SettingsPage() {
         <div className="flex min-w-0 flex-col gap-y-12">
           {/* ── Profile ──────────────────────────────────────────────────── */}
           <section>
-            <SectionHeading id="profile">Profile information</SectionHeading>
+            <SectionHeading id="profile">profile information</SectionHeading>
             {profile ? (
               <AccountProfileCard profile={profile} />
             ) : (
@@ -89,13 +89,13 @@ export default async function SettingsPage() {
 
           {/* ── Connected apps ───────────────────────────────────────────── */}
           <section>
-            <SectionHeading id="connected-apps">Connected apps</SectionHeading>
+            <SectionHeading id="connected-apps">connected apps</SectionHeading>
             <Connectors connections={connections} />
           </section>
 
           {/* ── Notifications ────────────────────────────────────────────── */}
           <section>
-            <SectionHeading id="notifications">Notifications</SectionHeading>
+            <SectionHeading id="notifications">notifications</SectionHeading>
             <p className="text-spruce leading-relaxed max-w-md">
               For now Hale only surfaces what needs your eye inside the app, on the approvals queue.
               Email and push preferences are coming soon.
@@ -104,7 +104,7 @@ export default async function SettingsPage() {
 
           {/* ── Appearance ───────────────────────────────────────────────── */}
           <section>
-            <SectionHeading id="appearance">Appearance</SectionHeading>
+            <SectionHeading id="appearance">appearance</SectionHeading>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
               <p className="text-spruce leading-relaxed max-w-md">
                 Choose a theme, or let Hale follow your device. Dark mode is the brand&rsquo;s own
@@ -116,7 +116,7 @@ export default async function SettingsPage() {
 
           {/* ── Privacy & data ───────────────────────────────────────────── */}
           <section>
-            <SectionHeading id="privacy">Privacy &amp; data</SectionHeading>
+            <SectionHeading id="privacy">privacy &amp; data</SectionHeading>
             <div className="flex flex-col gap-y-8">
               <div className="panel-oat px-6 py-5 flex flex-wrap items-center gap-x-6 gap-y-2">
                 {[
@@ -158,7 +158,7 @@ export default async function SettingsPage() {
 
           {/* ── Billing ──────────────────────────────────────────────────── */}
           <section>
-            <SectionHeading id="billing">Billing</SectionHeading>
+            <SectionHeading id="billing">billing</SectionHeading>
             <FamilyPlan planTier={basics.planTier} />
           </section>
         </div>
