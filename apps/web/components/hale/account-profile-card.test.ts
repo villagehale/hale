@@ -27,6 +27,8 @@ function render(): string {
         email: 'alex@example.com',
         timezone: 'America/Toronto',
         locale: 'en-CA',
+        units: 'metric',
+        weekStartDay: 1,
       },
     }),
   );

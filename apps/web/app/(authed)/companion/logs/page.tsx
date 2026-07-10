@@ -4,6 +4,7 @@ import { LogsBrowser } from '~/components/hale/logs-browser';
 import { PageCorner } from '~/components/hale/page-corner';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadLogsPage } from '~/lib/companion/logs-page';
+import { loadViewerProfile } from '~/lib/family';
 
 /**
  * The dedicated, scalable logs surface — the full history of the family's
@@ -13,9 +14,14 @@ import { loadLogsPage } from '~/lib/companion/logs-page';
  * scopeChildren; a teen's LOG CONTENT is redacted upstream by loadLogsPage.
  */
 export default async function CompanionLogsPage() {
-  const [initial, children] = await Promise.all([loadLogsPage(), loadCompanion()]);
+  const [initial, children, profile] = await Promise.all([
+    loadLogsPage(),
+    loadCompanion(),
+    loadViewerProfile(),
+  ]);
 
   const kids = scopeChildren(children);
+  const units = profile?.units ?? 'metric';
 
   return (
     <div>
@@ -42,7 +48,7 @@ export default async function CompanionLogsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
           <div className="lg:col-span-3" />
           <div className="lg:col-span-9">
-            <LogsBrowser initial={initial} kids={kids} />
+            <LogsBrowser initial={initial} kids={kids} units={units} />
           </div>
         </div>
       </section>

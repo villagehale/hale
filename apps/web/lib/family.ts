@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import type { UnitSystem } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
@@ -87,13 +88,16 @@ export async function loadViewerName(database: Database = defaultDb()): Promise<
 
 /** The signed-in parent's own account profile — the real, per-viewer fields the
  * Account page's Profile card shows. Only what the `users` row actually holds:
- * name, email, timezone, locale. No phone, no units — those have no column, so
- * the card never renders them (rule #1: never fabricate). */
+ * name, email, timezone, locale, and the display preferences (units, week start).
+ * No phone — that has no column, so the card never renders it (rule #1: never
+ * fabricate). */
 export interface ViewerProfile {
   name: string | null;
   email: string;
   timezone: string;
   locale: string;
+  units: UnitSystem;
+  weekStartDay: number;
 }
 
 /**
@@ -114,11 +118,14 @@ export async function loadViewerProfile(
       email: schema.users.email,
       timezone: schema.users.timezone,
       locale: schema.users.locale,
+      units: schema.users.units,
+      weekStartDay: schema.users.weekStartDay,
     })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, units: row.units as UnitSystem };
 }
 
 /**

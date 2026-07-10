@@ -8,7 +8,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
-import { type PlanTier, parseIntents } from '@hale/types';
+import { type PlanTier, type UnitSystem, parseIntents } from '@hale/types';
 import {
   type ChildError,
   type ChildInput,
@@ -464,6 +464,60 @@ export async function setParentNameAction(rawName: string): Promise<SetParentNam
       targetId: userId,
       before: { name: existing[0]?.name ?? null },
       after: { name },
+    });
+  });
+
+  revalidatePath('/settings');
+  return { status: 'updated' };
+}
+
+const UNIT_SYSTEMS: ReadonlySet<string> = new Set<UnitSystem>(['metric', 'imperial']);
+const WEEK_START_DAYS: ReadonlySet<number> = new Set([0, 1]);
+
+/**
+ * Sets the signed-in parent's display preferences on their own `users` row: `units`
+ * (metric/imperial — a DISPLAY choice, storage is always metric) and `weekStartDay`
+ * (0=Sunday, 1=Monday). Validated at the boundary since the columns carry no CHECK.
+ * Writes an immutable audit_log row alongside the update (rule #6), carrying the
+ * before/after preference values only.
+ */
+export async function setPreferencesAction(
+  units: UnitSystem,
+  weekStartDay: number,
+): Promise<SetParentNameResult> {
+  if (!UNIT_SYSTEMS.has(units) || !WEEK_START_DAYS.has(weekStartDay)) {
+    return { status: 'invalid' };
+  }
+
+  const ctx = await mutationContext();
+  if (ctx.status !== 'ready') {
+    return { status: ctx.status };
+  }
+
+  const { database, identity } = ctx;
+  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  if (!familyId) {
+    return { status: 'not_found' };
+  }
+  const userId = await ensureUserRow(identity, database);
+
+  await database.transaction(async (tx) => {
+    const existing = await tx
+      .select({ units: schema.users.units, weekStartDay: schema.users.weekStartDay })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    await tx.update(schema.users).set({ units, weekStartDay }).where(eq(schema.users.id, userId));
+
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: userId,
+      actionTaken: 'user_preferences_updated',
+      targetTable: 'users',
+      targetId: userId,
+      before: existing[0] ?? null,
+      after: { units, weekStartDay },
     });
   });
 

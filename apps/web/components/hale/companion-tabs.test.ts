@@ -37,7 +37,13 @@ const AVA = child('c-ava', 'Ava', '2025-01-01'); // ~newborn/infant
 const BEN = child('c-ben', 'Ben', '2022-01-01'); // ~toddler
 const CY = child('c-cy', 'Cy', '2016-01-01'); // ~school-age
 
-const NO_PROPS = { routine: null, growthLogs: [], recentLogs: [], timeZone: 'America/Toronto' };
+const NO_PROPS = {
+  routine: null,
+  growthLogs: [],
+  recentLogs: [],
+  units: 'metric' as const,
+  timeZone: 'America/Toronto',
+};
 
 function render(kids: ChildCompanionView[]): string {
   return renderToStaticMarkup(createElement(CompanionTabs, { kids, ...NO_PROPS }));
@@ -166,7 +172,7 @@ describe('GrowthSection', () => {
 
   it('shows the calm empty state when the child has no measurements', () => {
     const html = renderToStaticMarkup(
-      createElement(GrowthSection, { child: AVA, growthLogs: [], timeZone: TZ }),
+      createElement(GrowthSection, { child: AVA, growthLogs: [], units: 'metric', timeZone: TZ }),
     );
     expect(html).toContain('no measurements yet');
     // Honest disclaimer: never a percentile / WHO curve.
@@ -179,12 +185,24 @@ describe('GrowthSection', () => {
       { id: 'w-ben', childId: 'c-ben', episodeType: 'measurement', summary: '11 kg', occurredAt: '2026-06-01T10:00:00.000Z', measureKind: 'weight', value: 11, unit: 'kg' },
     ];
     const html = renderToStaticMarkup(
-      createElement(GrowthSection, { child: AVA, growthLogs, timeZone: TZ }),
+      createElement(GrowthSection, { child: AVA, growthLogs, units: 'metric', timeZone: TZ }),
     );
     // Ava's reading is charted; Ben's (a different child) is filtered out.
     expect(html).toContain('6.4 kg');
     expect(html).not.toContain('11 kg');
     expect(html).not.toContain('no measurements yet');
+  });
+
+  it('renders readings in the viewer’s unit — imperial converts the stored metric value', () => {
+    const growthLogs = [
+      { id: 'w-ava', childId: 'c-ava', episodeType: 'measurement', summary: '6.4 kg', occurredAt: '2026-06-01T10:00:00.000Z', measureKind: 'weight', value: 6.4, unit: 'kg' },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(GrowthSection, { child: AVA, growthLogs, units: 'imperial', timeZone: TZ }),
+    );
+    // 6.4 kg × 2.20462 = 14.11 → 14.1 lb. Stored value is metric; only the display converts.
+    expect(html).toContain('14.1 lb');
+    expect(html).not.toContain('6.4 kg');
   });
 });
 

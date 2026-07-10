@@ -1482,6 +1482,13 @@ html, body, .sidebar, .panel, .card, .field {
   box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
 }
 
+/* A text-labelled option (Preferences card) sizes to its label rather than the
+ * icon square, so "Metric" / "Imperial" read without truncation. */
+.theme-toggle-option--text {
+  width: auto;
+  padding: 0.3rem 0.9rem;
+}
+
 /* ── Field group — label + control + hint/error (UI <Field>) ───────────── */
 
 .field-group { display: flex; flex-direction: column; gap: 0.45rem; }

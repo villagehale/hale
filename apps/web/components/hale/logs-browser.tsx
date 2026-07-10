@@ -11,10 +11,13 @@ import {
   type DeleteResult,
   type EditResult,
   FEED_EPISODE,
+  MEASURE_META,
+  MEASUREMENT_EPISODE,
   MILESTONE_EPISODE,
   NAP_EPISODE,
 } from '~/lib/companion/log-types';
 import { groupLogsByDay, type LogsPage, type LogView } from '~/lib/companion/logs-view';
+import { displayMeasurement, type MeasureKind, type UnitSystem } from '@hale/types';
 
 const ICON: Record<string, LucideIcon> = {
   [FEED_EPISODE]: Utensils,
@@ -36,6 +39,27 @@ function dayHeading(dayKey: string): string {
   return DAY_LABEL.format(new Date(`${dayKey}T12:00:00`));
 }
 
+function isMeasureKind(v: string | undefined): v is MeasureKind {
+  return v === 'weight' || v === 'height' || v === 'head';
+}
+
+/**
+ * The text a log row shows. A measurement row's summary is baked from the STORED
+ * METRIC value, so under an imperial preference we re-format it from the lifted
+ * value + kind rather than showing the stale metric string — keeping the diary
+ * consistent with the growth card. The phrasing mirrors the write path (a weight
+ * "Weighed", other kinds "{label}"). Any non-measurement row (or a measurement
+ * missing its lifted numerics) keeps its own summary untouched.
+ */
+function logRowText(log: LogView, units: UnitSystem): string {
+  if (log.episodeType === MEASUREMENT_EPISODE && typeof log.value === 'number' && isMeasureKind(log.measureKind)) {
+    const shown = displayMeasurement(log.value, log.measureKind, units);
+    const prefix = log.measureKind === 'weight' ? 'Weighed' : MEASURE_META[log.measureKind].label;
+    return `${prefix} ${shown.value} ${shown.unit}`;
+  }
+  return log.summary;
+}
+
 /**
  * The dedicated, scalable logs view: a per-child ChildScope filter over a
  * day-grouped, load-more list of the family's quick-logs, with inline edit +
@@ -46,7 +70,15 @@ function dayHeading(dayKey: string): string {
  * Meadow-styled with existing tokens only (oat panels, pills, .link, .btn-*);
  * radius ≤ 16px (--r-lg/--r-xl); tone by label + icon shape, never colour alone.
  */
-export function LogsBrowser({ initial, kids }: { initial: LogsPage; kids: ScopeChild[] }) {
+export function LogsBrowser({
+  initial,
+  kids,
+  units,
+}: {
+  initial: LogsPage;
+  kids: ScopeChild[];
+  units: UnitSystem;
+}) {
   const [childId, setChildId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogView[]>(initial.logs);
   const [cursor, setCursor] = useState<string | null>(initial.nextCursor);
@@ -129,7 +161,13 @@ export function LogsBrowser({ initial, kids }: { initial: LogsPage; kids: ScopeC
               <h2 className="eyebrow text-slate-green">{dayHeading(group.dayKey)}</h2>
               <ul className="space-y-3">
                 {group.logs.map((log) => (
-                  <LogRow key={log.id} log={log} onEdited={onEdited} onDeleted={onDeleted} />
+                  <LogRow
+                    key={log.id}
+                    log={log}
+                    units={units}
+                    onEdited={onEdited}
+                    onDeleted={onDeleted}
+                  />
                 ))}
               </ul>
             </section>
@@ -177,10 +215,12 @@ type RowState =
 
 function LogRow({
   log,
+  units,
   onEdited,
   onDeleted,
 }: {
   log: LogView;
+  units: UnitSystem;
   onEdited: (id: string, summary: string, occurredAt: string) => void;
   onDeleted: (id: string) => void;
 }) {
@@ -291,7 +331,7 @@ function LogRow({
         <Icon as={ICON[log.episodeType] ?? CalendarCheck} size={18} />
       </span>
       <span className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
-        {log.summary}
+        {logRowText(log, units)}
       </span>
       <span className="eyebrow text-faded-sage shrink-0">{TIME_LABEL.format(new Date(log.occurredAt))}</span>
 
@@ -320,7 +360,7 @@ function LogRow({
             type="button"
             className="p-2 text-slate-green hover:text-spruce cursor-pointer"
             onClick={() => setState({ kind: 'editing' })}
-            aria-label={`edit log: ${log.summary}`}
+            aria-label={`edit log: ${logRowText(log, units)}`}
           >
             <Icon as={Pencil} size={16} />
           </button>
@@ -328,7 +368,7 @@ function LogRow({
             type="button"
             className="p-2 text-slate-green hover:text-apricot-deep cursor-pointer"
             onClick={() => setState({ kind: 'confirm-delete' })}
-            aria-label={`remove log: ${log.summary}`}
+            aria-label={`remove log: ${logRowText(log, units)}`}
           >
             <Icon as={Trash2} size={16} />
           </button>

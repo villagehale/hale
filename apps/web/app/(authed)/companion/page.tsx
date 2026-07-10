@@ -8,6 +8,7 @@ import { loadLogsPage } from '~/lib/companion/logs-page';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadRecentLogs } from '~/lib/companion/recent-logs';
 import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadViewerProfile } from '~/lib/family';
 import { loadVillage } from '~/lib/village/queries';
 
 /** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
@@ -17,14 +18,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export default async function CompanionPage() {
-  const [children, recentLogs, basics, timeZone, village, growthPage] = await Promise.all([
+  const [children, recentLogs, basics, timeZone, village, growthPage, profile] = await Promise.all([
     loadCompanion(),
     loadRecentLogs(),
     loadFamilyBasics(),
     loadFamilyTimezone(),
     loadVillage(),
     loadLogsPage({ episodeType: MEASUREMENT_EPISODE }),
+    loadViewerProfile(),
   ]);
+  const units = profile?.units ?? 'metric';
 
   return (
     <div>
@@ -60,6 +63,7 @@ export default async function CompanionPage() {
           routine={village.routine}
           growthLogs={growthPage.logs}
           recentLogs={recentLogs}
+          units={units}
           timeZone={timeZone}
         />
       )}

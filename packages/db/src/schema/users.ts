@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, smallint, timestamp, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -8,6 +8,8 @@ export const users = pgTable(
     name: text('name'),
     locale: text('locale').notNull().default('en-CA'),
     timezone: text('timezone').notNull().default('America/Toronto'),
+    units: text('units').notNull().default('metric'),
+    weekStartDay: smallint('week_start_day').notNull().default(1),
     /** External auth provider id (Clerk user id). Auth lives in Clerk; this is the mirror. */
     externalAuthId: text('external_auth_id').unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

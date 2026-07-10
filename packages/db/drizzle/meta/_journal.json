@@ -330,6 +330,13 @@
       "when": 1781462520000,
       "tag": "0047_connector_connect_nonces",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1781462580000,
+      "tag": "0048_user_preferences",
+      "breakpoints": true
     }
   ]
 }
