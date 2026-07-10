@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { ConnectorsList, ConnectorsPrivacyNote } from '@/components/hale/connectors-list';
+import { PrivacyDataSection } from '@/components/hale/privacy-data-section';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -272,6 +273,8 @@ function SettingsBody({
       <NotificationsSection email={email} push={push} />
 
       <ConnectedAccountsSection />
+
+      <PrivacyDataSection />
 
       <View className="gap-2">
         <SectionTitle>Privacy</SectionTitle>
