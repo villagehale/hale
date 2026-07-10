@@ -10,6 +10,7 @@ import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadViewerProfile } from '~/lib/family';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
@@ -24,18 +25,20 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export default async function PlanPage() {
-  const [village, children, authoredPlans, timeZone] = await Promise.all([
+  const [village, children, authoredPlans, timeZone, profile] = await Promise.all([
     loadVillage(),
     loadCompanion(),
     loadAuthoredPlans(),
     loadFamilyTimezone(),
+    loadViewerProfile(),
   ]);
   const { routine } = village;
+  const weekStartDay = profile?.weekStartDay ?? 1;
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
-  const spine = buildPlanSpine(authoredPlans, new Date(), timeZone);
+  const spine = buildPlanSpine(authoredPlans, new Date(), timeZone, weekStartDay);
   const spineHasDated = spine.days.some((d) => d.plans.length > 0);
   const hasAuthored = spineHasDated || spine.undated.length > 0;
 
@@ -147,7 +150,7 @@ export default async function PlanPage() {
             <ShareWeekButton />
           </div>
           <div className="space-y-6">
-            {groupRoutineByDay(routine.items).map((strip) => (
+            {groupRoutineByDay(routine.items, weekStartDay).map((strip) => (
               <div key={strip.weekday ?? 'anytime'}>
                 <span className="eyebrow text-slate-green">{strip.weekday ?? 'anytime'}</span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RoutineItemView } from '../village/mappers.js';
 import type { AuthoredPlanView } from './authored.js';
-import { buildPlanSpine, groupRoutineByDay } from './spine.js';
+import { buildPlanSpine, groupRoutineByDay, orderedWeekdays } from './spine.js';
 
 const TZ = 'America/Toronto';
 // Friday, 2026-07-03, mid-afternoon ET. The family's current week is Mon 2026-06-29
@@ -36,6 +36,58 @@ describe('buildPlanSpine — week window', () => {
     // Monday of the week containing Fri Jul 3 is Mon Jun 29; Sunday is Jul 5.
     expect(days[0]?.dateKey).toBe('2026-06-29');
     expect(days[6]?.dateKey).toBe('2026-07-05');
+  });
+});
+
+describe('buildPlanSpine — week-start preference', () => {
+  it('rotates the spine to Sunday-first when weekStartDay is 0', () => {
+    // Sunday of the week containing Fri Jul 3 is Sun Jun 28; Saturday is Jul 4.
+    const { days } = buildPlanSpine([], NOW, TZ, 0);
+    expect(days.map((d) => d.weekday)).toEqual([
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ]);
+    expect(days[0]?.dateKey).toBe('2026-06-28');
+    expect(days[6]?.dateKey).toBe('2026-07-04');
+  });
+
+  it('drops a dated plan onto its weekday in the Sunday-first order', () => {
+    // Wednesday of this week is 2026-07-01, column index 3 in Sunday-first order.
+    const wed = plan({ id: 'wed', scheduledFor: '2026-07-01T00:00:00.000Z' });
+    const { days } = buildPlanSpine([wed], NOW, TZ, 0);
+    expect(days[3]?.weekday).toBe('wednesday');
+    expect(days[3]?.plans.map((p) => p.id)).toEqual(['wed']);
+  });
+});
+
+describe('orderedWeekdays', () => {
+  it('leaves Monday-first (weekStartDay 1) identical to WEEKDAYS', () => {
+    expect(orderedWeekdays(1)).toEqual([
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ]);
+  });
+
+  it('rotates to Sunday-first for weekStartDay 0', () => {
+    expect(orderedWeekdays(0)).toEqual([
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ]);
   });
 });
 
@@ -135,5 +187,16 @@ describe('groupRoutineByDay', () => {
     ]);
     expect(strips.map((s) => s.weekday)).toEqual(['friday', null]);
     expect(strips[1]?.items.map((i) => i.title)).toEqual(['loose']);
+  });
+
+  it('orders strips Sunday-first when weekStartDay is 0', () => {
+    const strips = groupRoutineByDay(
+      [
+        routineItem({ title: 'mon', day: 'monday' }),
+        routineItem({ title: 'sun', day: 'sunday' }),
+      ],
+      0,
+    );
+    expect(strips.map((s) => s.weekday)).toEqual(['sunday', 'monday']);
   });
 });

@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import { Icon } from '~/components/ui/icon';
 import { buildMeasureSeries, type MeasureSeries } from '~/lib/companion/growth-series';
+import { displayMeasurement, type UnitSystem } from '@hale/types';
 import {
   BOOKING_EPISODE,
   FEED_EPISODE,
@@ -469,18 +470,24 @@ function MiniTrend({ readings, peak }: { readings: { id: string; value: number }
 
 function GrowthSeriesCard({
   series,
+  units,
   timeZone,
 }: {
   series: MeasureSeries;
+  units: UnitSystem;
   timeZone: string;
 }) {
+  // Readings are STORED METRIC (kg/cm); the parent's Units preference is a display
+  // choice only, so convert per the series kind for what's shown here.
+  const latest = series.readings[0];
+  const latestDisplay = latest ? displayMeasurement(latest.value, series.kind, units) : null;
   return (
     <div className="card space-y-4">
       <div className="flex items-baseline justify-between gap-4">
         <span className="eyebrow text-spruce">{series.label}</span>
-        {series.readings.length > 0 && series.unit ? (
+        {latestDisplay ? (
           <span className="meta text-slate-green" data-hale-pii>
-            latest {series.readings[0]?.value} {series.unit}
+            latest {latestDisplay.value} {latestDisplay.unit}
           </span>
         ) : null}
       </div>
@@ -493,19 +500,22 @@ function GrowthSeriesCard({
             <MiniTrend readings={series.readings} peak={series.peak} />
           ) : null}
           <ul className="space-y-3">
-            {series.readings.map((r) => (
-              <li
-                key={r.id}
-                className="flex items-baseline gap-4 border-t border-rule pt-3 first:border-t-0 first:pt-0"
-              >
-                <span className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
-                  {r.value} {r.unit}
-                </span>
-                <span className="eyebrow text-faded-sage shrink-0">
-                  {formatWhenPhrase(r.occurredAt, timeZone)}
-                </span>
-              </li>
-            ))}
+            {series.readings.map((r) => {
+              const shown = displayMeasurement(r.value, series.kind, units);
+              return (
+                <li
+                  key={r.id}
+                  className="flex items-baseline gap-4 border-t border-rule pt-3 first:border-t-0 first:pt-0"
+                >
+                  <span className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
+                    {shown.value} {shown.unit}
+                  </span>
+                  <span className="eyebrow text-faded-sage shrink-0">
+                    {formatWhenPhrase(r.occurredAt, timeZone)}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
@@ -516,10 +526,12 @@ function GrowthSeriesCard({
 export function GrowthSection({
   child,
   growthLogs,
+  units,
   timeZone,
 }: {
   child: ChildCompanionView;
   growthLogs: LogView[];
+  units: UnitSystem;
   timeZone: string;
 }) {
   const childLogs = growthLogs.filter((l) => l.childId === child.id);
@@ -536,7 +548,7 @@ export function GrowthSection({
       {hasAny ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {series.map((s) => (
-            <GrowthSeriesCard key={s.kind} series={s} timeZone={timeZone} />
+            <GrowthSeriesCard key={s.kind} series={s} units={units} timeZone={timeZone} />
           ))}
         </div>
       ) : (
@@ -810,12 +822,14 @@ function ChildBody({
   routine,
   growthLogs,
   recentLogs,
+  units,
   timeZone,
 }: {
   child: ChildCompanionView;
   routine: RoutineProposalView | null;
   growthLogs: LogView[];
   recentLogs: RecentLogView[];
+  units: UnitSystem;
   timeZone: string;
 }) {
   const [section, setSection] = useState<SectionKey>('overview');
@@ -835,7 +849,7 @@ function ChildBody({
         ) : null}
         {section === 'health' ? <HealthSection child={child} /> : null}
         {section === 'growth' ? (
-          <GrowthSection child={child} growthLogs={growthLogs} timeZone={timeZone} />
+          <GrowthSection child={child} growthLogs={growthLogs} units={units} timeZone={timeZone} />
         ) : null}
         {section === 'milestones' ? <MilestonesSection child={child} /> : null}
         {section === 'routines' ? <RoutinesSection routine={routine} /> : null}
@@ -864,12 +878,14 @@ export function CompanionTabs({
   routine,
   growthLogs,
   recentLogs,
+  units,
   timeZone,
 }: {
   kids: ChildCompanionView[];
   routine: RoutineProposalView | null;
   growthLogs: LogView[];
   recentLogs: RecentLogView[];
+  units: UnitSystem;
   timeZone: string;
 }) {
   const [active, setActive] = useState(0);
@@ -886,6 +902,7 @@ export function CompanionTabs({
           routine={routine}
           growthLogs={growthLogs}
           recentLogs={recentLogs}
+          units={units}
           timeZone={timeZone}
         />
       </section>
@@ -952,6 +969,7 @@ export function CompanionTabs({
           routine={routine}
           growthLogs={growthLogs}
           recentLogs={recentLogs}
+          units={units}
           timeZone={timeZone}
         />
       </div>

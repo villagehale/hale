@@ -41,7 +41,7 @@ const KIDS: ScopeChild[] = [
 ];
 
 function render(page = PAGE, kids = KIDS) {
-  return renderToStaticMarkup(createElement(LogsBrowser, { initial: page, kids }));
+  return renderToStaticMarkup(createElement(LogsBrowser, { initial: page, kids, units: 'metric' }));
 }
 
 describe('LogsBrowser', () => {
@@ -66,6 +66,31 @@ describe('LogsBrowser', () => {
     expect(html).toContain('Mara');
     expect(html).toContain('your teen');
     // The teen id may appear as a value, but the withheld given name must not be invented.
+  });
+
+  it('reformats a measurement row into the viewer’s unit (imperial converts the stored metric)', () => {
+    const measurementPage: LogsPage = {
+      logs: [
+        {
+          id: 'm1',
+          childId: null,
+          episodeType: 'measurement',
+          summary: 'Height 62 cm',
+          occurredAt: '2026-06-30T18:00:00Z',
+          measureKind: 'height',
+          value: 62,
+          unit: 'cm',
+        },
+      ],
+      nextCursor: null,
+    };
+    const html = renderToStaticMarkup(
+      createElement(LogsBrowser, { initial: measurementPage, kids: KIDS, units: 'imperial' }),
+    );
+    // 62 cm ÷ 2.54 = 24.4 in. The baked "Height 62 cm" summary is NOT shown raw for
+    // measurement rows — the diary reformats from {value, unit} so it agrees with the growth card.
+    expect(html).toContain('24.4 in');
+    expect(html).not.toContain('62 cm');
   });
 
   it('renders the calm empty state (no day headings) for an empty page', () => {

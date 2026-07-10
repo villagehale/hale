@@ -1,3 +1,4 @@
+import { AccountPreferencesCard } from '~/components/hale/account-preferences-card';
 import { AccountProfileCard } from '~/components/hale/account-profile-card';
 import { Connectors } from '~/components/hale/connectors';
 import { DeleteAccountButton } from '~/components/hale/delete-account-button';
@@ -11,13 +12,14 @@ import { loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
 
 /** The account sub-nav: every entry points at a section that really renders below
- * (no Security / Preferences — those have no backing store, so listing them would
- * dead-end or fabricate; rule #1). The first is the anchor a jump lands on. */
+ * (no Security — that has no backing store, so listing it would dead-end or
+ * fabricate; rule #1). The first is the anchor a jump lands on. */
 const SECTIONS = [
   { id: 'profile', label: 'Profile' },
   { id: 'connected-apps', label: 'Connected apps' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'preferences', label: 'Preferences' },
   { id: 'privacy', label: 'Privacy & data' },
   { id: 'billing', label: 'Billing' },
 ] as const;
@@ -35,11 +37,12 @@ function SectionHeading({ id, children }: { id: string; children: React.ReactNod
 /**
  * Account: the signed-in parent's own account + app configuration, sectioned to
  * match the founder mockup (panel 6) — Profile, Connected apps, Notifications,
- * Appearance, Privacy & data, Billing. Two columns on desktop: a sticky sub-nav
- * beside the content. The family itself (children, co-parent, household) lives on
- * /family — this is the account. The mockup's Phone, Preferences (units /
- * temperature / week-start), and Security sections are OMITTED: the `users` row has
- * no column to back them, and this product never fabricates data (rule #1).
+ * Appearance, Preferences, Privacy & data, Billing. Two columns on desktop: a
+ * sticky sub-nav beside the content. The family itself (children, co-parent,
+ * household) lives on /family — this is the account. Preferences now shows the two
+ * columns the `users` row actually holds — units and week-start; the mockup's Phone
+ * and Security sections stay OMITTED (no column to back them), and temperature is
+ * never added (no data backs it) — this product never fabricates data (rule #1).
  */
 export default async function SettingsPage() {
   const [profile, basics, connections] = await Promise.all([
@@ -112,6 +115,18 @@ export default async function SettingsPage() {
               </p>
               <ThemeToggle />
             </div>
+          </section>
+
+          {/* ── Preferences ──────────────────────────────────────────────── */}
+          <section>
+            <SectionHeading id="preferences">preferences</SectionHeading>
+            {profile ? (
+              <AccountPreferencesCard profile={profile} />
+            ) : (
+              <p className="text-spruce leading-relaxed max-w-md">
+                Sign in to see and edit your account details.
+              </p>
+            )}
           </section>
 
           {/* ── Privacy & data ───────────────────────────────────────────── */}

@@ -173,7 +173,7 @@ describe('companion growth section masks the measurement readings', () => {
     },
   ];
   const html = renderToStaticMarkup(
-    h(GrowthSection, { child, growthLogs, timeZone: 'America/Toronto' }),
+    h(GrowthSection, { child, growthLogs, units: 'metric', timeZone: 'America/Toronto' }),
   );
 
   it('renders the reading at all (guards against a vacuous pass)', () => {

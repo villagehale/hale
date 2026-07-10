@@ -27,6 +27,14 @@ export function humanizeLocale(locale: string): string {
   }
 }
 
+/** "metric" → "Metric (kg, cm)", "imperial" → "Imperial (lb, in)". Guards an
+ * unknown value by returning it raw — honest, never a throw. */
+export function humanizeUnits(units: string): string {
+  if (units === 'metric') return 'Metric (kg, cm)';
+  if (units === 'imperial') return 'Imperial (lb, in)';
+  return units;
+}
+
 /** "America/Toronto" → "Toronto (GMT−4)". The city comes from the IANA zone's last
  * segment; the offset from a formatted short zone name in that zone. Guards an
  * invalid zone by falling back to the raw string — honest, never a throw. */
