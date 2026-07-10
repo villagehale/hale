@@ -1,10 +1,11 @@
 'use client';
 
-import { ArrowRight, ArrowUp, Search, Trash2, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, ChevronRight, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
 import type { ConnectorChip } from '~/components/hale/coach-context-panel';
 import { ConnectorCard } from '~/components/hale/connector-card';
+import { HaleContextRail } from '~/components/hale/hale-context-rail';
 import { InputIntentWidgets } from '~/components/hale/input-intent-widget';
 import { Markdown } from '~/components/hale/markdown';
 import {
@@ -31,6 +32,8 @@ interface AskHaleThreadProps {
   connectors?: ConnectorChip[];
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
+  /** Signed-in parent's first name, for the full surface's empty-state greeting. */
+  viewerName?: string | null;
 }
 
 /** Disabled-state affordance for pills/buttons — globals.css carries no :disabled. */
@@ -55,12 +58,19 @@ export function AskHaleThread({
   variant,
   connectors = [],
   initialFocusedChildId = null,
+  viewerName = null,
 }: AskHaleThreadProps) {
   const chat = useAskHale(seed, initialFocusedChildId);
   return variant === 'compact' ? (
     <CompactSurface canAsk={canAsk} chat={chat} seed={seed} />
   ) : (
-    <FullSurface canAsk={canAsk} chat={chat} seed={seed} connectors={connectors} />
+    <FullSurface
+      canAsk={canAsk}
+      chat={chat}
+      seed={seed}
+      connectors={connectors}
+      viewerName={viewerName}
+    />
   );
 }
 
@@ -332,10 +342,52 @@ function ConversationHeader({
 }
 
 /**
- * The first-screen welcome — centered in the transcript region before any turn
- * exists. A warm one-line invite, the per-child scope chips, the stage-aware
- * suggestion chips (which prefill + send), and the calm privacy note. Mirrors a
- * chat app's empty state rather than an editorial header.
+ * The stage-aware suggestion ROWS for the empty state — full-width bordered pills
+ * (a navy spark, the question, a trailing chevron), one per row, that prefill + send.
+ * Distinct from the composer's inline `Suggestions` chips: on the first screen the
+ * prompts are the primary call to action, so they read as a tappable list, not a
+ * cluster of small chips (mockup panel 3).
+ */
+function SuggestionRows({
+  suggestions,
+  focusedChildId,
+  onPick,
+  disabled,
+}: {
+  suggestions: SuggestionGroup[];
+  focusedChildId: string | null;
+  onPick: (prompt: string) => void;
+  disabled: boolean;
+}) {
+  const group =
+    suggestions.find((g) => g.childId === focusedChildId) ??
+    suggestions.find((g) => g.childId === null);
+  if (!group) return null;
+  return (
+    <ul className="flex flex-col gap-3">
+      {group.prompts.map((prompt) => (
+        <li key={prompt}>
+          <button
+            type="button"
+            onClick={() => onPick(prompt)}
+            disabled={disabled}
+            className={`suggestion-row cursor-pointer ${DISABLED_AFFORDANCE}`}
+          >
+            <Sparkles aria-hidden size={18} className="shrink-0 text-spruce" />
+            <span className="min-w-0 flex-1 text-left">{prompt}</span>
+            <ChevronRight aria-hidden size={18} className="shrink-0 text-faded-sage" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The first-screen welcome — the landing before any turn exists (mockup panel 3): a
+ * large "Hi {name}, how can I help?", the warm one-liner, the per-child scope chips,
+ * and the stage-aware suggestion rows (which prefill + send). Mirrors a chat app's
+ * empty state rather than an editorial header.
  */
 function EmptyState({
   canAsk,
@@ -345,6 +397,7 @@ function EmptyState({
   setFocusedChildId,
   onPick,
   disabled,
+  viewerName,
 }: {
   canAsk: boolean;
   suggestions: SuggestionGroup[];
@@ -353,34 +406,32 @@ function EmptyState({
   setFocusedChildId: (id: string | null) => void;
   onPick: (prompt: string) => void;
   disabled: boolean;
+  viewerName: string | null;
 }) {
+  const firstName = viewerName?.trim().split(/\s+/)[0];
   return (
-    <div className="mx-auto flex max-w-[34rem] flex-col items-center gap-6 py-8 text-center sm:py-10">
+    <div className="mx-auto flex max-w-[36rem] flex-col gap-6 py-6 sm:py-10">
       <div className="space-y-2">
-        <p className="font-display text-[1.75rem] lg:text-[2rem] font-semibold leading-tight">
-          how can I help?
+        <p className="font-display text-[1.9rem] lg:text-[2.35rem] font-semibold leading-tight">
+          {firstName ? `Hi ${firstName}, how can I help?` : 'How can I help?'}
         </p>
         <p className="text-slate-green leading-relaxed">
-          one ongoing conversation, grounded in your family. I answer in plain language and cite the
-          source — never medical advice.
+          Hale is your AI parenting assistant. Here for you, 24/7.
         </p>
       </div>
       {kids.length > 0 ? (
-        <div className="flex justify-center">
-          <ScopeChips
-            kids={kids}
-            focusedChildId={focusedChildId}
-            setFocusedChildId={setFocusedChildId}
-          />
-        </div>
+        <ScopeChips
+          kids={kids}
+          focusedChildId={focusedChildId}
+          setFocusedChildId={setFocusedChildId}
+        />
       ) : null}
       {canAsk ? (
-        <Suggestions
+        <SuggestionRows
           suggestions={suggestions}
           focusedChildId={focusedChildId}
           onPick={onPick}
           disabled={disabled}
-          align="center"
         />
       ) : null}
     </div>
@@ -447,14 +498,28 @@ function ActivityTrail({ activity, live }: { activity: Activity[]; live: boolean
 }
 
 /**
+ * The small navy spark that marks a Hale reply (mockup panel 2). It carries the
+ * turn's author as a visually-hidden name so a screen reader announces "Hale" even
+ * though the visible identity is the glyph.
+ */
+function HaleSpark() {
+  return (
+    <span className="mt-0.5 shrink-0 text-spruce">
+      <Sparkles size={18} aria-hidden />
+      <span className="sr-only">Hale</span>
+    </span>
+  );
+}
+
+/**
  * The grouped timeline of turns. Mobile-first: one column, bounded line-length, a
  * scope chip shown only when the turn's scope CHANGES from the prior turn (message
  * grouping). Assistant turns render markdown + any gated action chips.
  *
  * Two arrangements share this one component: `quote` (the Home hero's editorial
  * read — the parent's turn as a display quote) and `chat` (the /coach surface — a
- * real transcript: the parent's turn right, in an apricot bubble; Hale's answer
- * left, in an oat card with a small identity marker).
+ * real transcript: the parent's turn right, in a navy (spruce) bubble; Hale's
+ * answer left, beside a small spark identity marker).
  */
 function Timeline({
   turns,
@@ -516,15 +581,44 @@ function Timeline({
                   />
                 ) : null}
               </>
+            ) : chat ? (
+              // The /coach transcript reads Hale's answer as plain text beside a small
+              // navy spark marker (mockup panel 2) — not a bubble card. The spark
+              // carries a visually-hidden "Hale" so the turn's author is still named.
+              <article className="flex gap-3">
+                <HaleSpark />
+                <div className="min-w-0 flex-1 space-y-2">
+                  {turn.activity && turn.activity.length > 0 ? (
+                    <ActivityTrail activity={turn.activity} live={turn.id === streamingId} />
+                  ) : null}
+                  {turn.activity
+                    ?.filter(
+                      (a): a is Extract<Activity, { kind: 'tool_result' }> =>
+                        a.kind === 'tool_result' && a.card !== undefined,
+                    )
+                    .map((a, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: cards are an ordered, append-only slice of one turn's activity
+                      <ConnectorCard key={i} card={a.card as NonNullable<typeof a.card>} />
+                    ))}
+                  <div data-hale-pii className="max-w-prose leading-relaxed">
+                    <Markdown>{turn.body}</Markdown>
+                  </div>
+                  {turn.actionIntents && turn.actionIntents.length > 0 ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {turn.actionIntents.map((intent) => (
+                        <ActionChip
+                          key={intent.kind}
+                          intent={intent}
+                          focusedChildId={turn.childId}
+                          sourceAnswer={turn.body}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </article>
             ) : (
-              <article
-                className={
-                  chat
-                    ? 'chat-bubble-hale w-fit max-w-[92%] sm:max-w-prose'
-                    : 'panel max-w-prose'
-                }
-              >
-                {chat ? <p className="eyebrow mb-2 text-sky-deep">Hale</p> : null}
+              <article className="panel max-w-prose">
                 {turn.activity && turn.activity.length > 0 ? (
                   <ActivityTrail activity={turn.activity} live={turn.id === streamingId} />
                 ) : null}
@@ -790,7 +884,14 @@ function FullSurface({
   chat,
   seed,
   connectors,
-}: { canAsk: boolean; chat: UseAskHale; seed: ThreadSeed; connectors: ConnectorChip[] }) {
+  viewerName,
+}: {
+  canAsk: boolean;
+  chat: UseAskHale;
+  seed: ThreadSeed;
+  connectors: ConnectorChip[];
+  viewerName: string | null;
+}) {
   const {
     turns,
     visibleTurns,
@@ -822,37 +923,47 @@ function FullSurface({
   );
 
   // `.coach-surface` turns the stage into a non-scrolling flex column (globals.css
-  // `:has`): this surface fills the remaining height, and the TRANSCRIPT scrolls
-  // inside its own region while the composer stays pinned to the surface foot — a
-  // real chat layout, not the whole page scrolling.
+  // `:has`): this row fills the remaining height. On lg+ it is a two-column app view —
+  // the chat column (its transcript scrolls inside its own region, composer pinned to
+  // the foot) beside a bordered context rail. Below lg the rail drops away and the
+  // chat is single-column, full-width.
   return (
-    <div className="coach-surface flex min-h-0 flex-1 flex-col">
-      {/* The page's sole heading. The empty state shows a large editorial invite,
-          but once the conversation starts that invite is gone — so /coach carries a
-          persistent visually-hidden h1 so the document is never headingless. */}
-      <h1 className="sr-only">Hale</h1>
-      {/* Quiet header — the conversation's scope + a secondary search, never a box
-          stacked above the chat. Hidden until there's history to scope or search. */}
-      {!isEmpty ? (
-        <ConversationHeader
-          kids={seed.children}
-          focusedChildId={focusedChildId}
-          setFocusedChildId={setFocusedChildId}
-          topicsInUse={topicsInUse}
-          topicFilter={topicFilter}
-          setTopicFilter={setTopicFilter}
-          search={search}
-          setSearch={setSearch}
-          onErase={eraseConversation}
-        />
-      ) : null}
+    <div className="coach-surface flex min-h-0 flex-1 gap-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* The page's sole heading (mockup 9: "Hale" top-left). On the empty state
+            the large greeting is the visible hero, so the h1 stays visually hidden
+            there; once the conversation starts it becomes the visible page title —
+            but there is always exactly ONE h1, so the document is never headingless. */}
+        <h1
+          className={
+            isEmpty
+              ? 'sr-only'
+              : 'mb-3 font-display text-[1.75rem] lg:text-[2rem] font-semibold leading-tight'
+          }
+        >
+          Hale
+        </h1>
+        {/* Quiet header — the conversation's scope + a secondary search, never a box
+            stacked above the chat. Hidden until there's history to scope or search. */}
+        {!isEmpty ? (
+          <ConversationHeader
+            kids={seed.children}
+            focusedChildId={focusedChildId}
+            setFocusedChildId={setFocusedChildId}
+            topicsInUse={topicsInUse}
+            topicFilter={topicFilter}
+            setTopicFilter={setTopicFilter}
+            search={search}
+            setSearch={setSearch}
+            onErase={eraseConversation}
+          />
+        ) : null}
 
-      {/* The transcript — the hero. Its own scroll region; the composer sits below
-          it, not over it, so nothing is hidden behind a floating bar. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[64rem] px-1 pb-6 pt-2">
-          {isEmpty ? (
-            <>
+        {/* The transcript — the hero. Its own scroll region; the composer sits below
+            it, not over it, so nothing is hidden behind a floating bar. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[64rem] px-1 pb-6 pt-2">
+            {isEmpty ? (
               <EmptyState
                 canAsk={canAsk}
                 suggestions={seed.suggestions}
@@ -861,107 +972,79 @@ function FullSurface({
                 setFocusedChildId={setFocusedChildId}
                 onPick={ask}
                 disabled={status === 'pending'}
+                viewerName={viewerName}
               />
-              <div className="mx-auto mt-2 max-w-[34rem]">
-                <ContextConnectorsPanel connectors={connectors} />
+            ) : visibleTurns.length === 0 ? (
+              <output className="meta italic mt-6 block text-center">
+                nothing here for this filter — clear it to see the rest of your conversation.
+              </output>
+            ) : (
+              <Timeline
+                turns={visibleTurns}
+                childLabelOf={childLabelOf}
+                kids={seed.children}
+                layout="chat"
+                streamingId={streamingId}
+                deletableIds={deletableIds}
+                onDeleteTurn={deleteTurn}
+              />
+            )}
+
+            {status === 'pending' && streamingId === null ? (
+              <div className="rise mt-6 flex items-center gap-3" aria-hidden>
+                <Sparkles size={18} className="shrink-0 text-spruce" />
+                <span className="typing-dots">
+                  <span />
+                  <span />
+                  <span />
+                </span>
               </div>
-            </>
-          ) : visibleTurns.length === 0 ? (
-            <output className="meta italic mt-6 block text-center">
-              nothing here for this filter — clear it to see the rest of your conversation.
-            </output>
-          ) : (
-            <Timeline
-              turns={visibleTurns}
-              childLabelOf={childLabelOf}
-              kids={seed.children}
-              layout="chat"
-              streamingId={streamingId}
-              deletableIds={deletableIds}
-              onDeleteTurn={deleteTurn}
-            />
-          )}
+            ) : null}
+            <AssistantLiveStatus status={status} />
+            <div ref={threadEndRef} />
+          </div>
+        </div>
 
-          {status === 'pending' && streamingId === null ? (
-            <div className="rise mt-6 flex" aria-hidden>
-              <p className="chat-bubble-hale typing-dots">
-                <span />
-                <span />
-                <span />
-              </p>
-            </div>
-          ) : null}
-          <AssistantLiveStatus status={status} />
-          <div ref={threadEndRef} />
+        {/* Pinned composer — solid canvas bar (flips with the theme via --color-linen)
+            with a hairline top seam, anchored to the surface foot. The safe-area pad
+            keeps the input clear of the mobile keyboard / home bar. */}
+        <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+          <div className="mx-auto w-full max-w-[64rem]">
+            {canAsk ? (
+              // The footer stays short so the transcript keeps the viewport on a
+              // narrow phone: the stage-aware suggestion rows live in the empty
+              // state's transcript (not stacked here), and the medical disclaimer
+              // shows only on the first screen — once the parent is chatting, an
+              // error is the only thing worth the extra row.
+              <div className="space-y-3">
+                <Composer
+                  inputRef={inputRef}
+                  draft={draft}
+                  setDraft={setDraft}
+                  ask={ask}
+                  status={status}
+                />
+                {status === 'error' ? (
+                  <p className="meta italic text-apricot-deep" role="alert">
+                    Couldn&rsquo;t reach Hale — try again in a moment.
+                  </p>
+                ) : isEmpty ? (
+                  <p className="meta text-center">
+                    Hale is AI-powered and not a substitute for professional medical advice.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <output className="dev-preview-banner">
+                Sign in to ask Hale. In this preview the thread is read-only — no question is sent.
+              </output>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Pinned composer — solid canvas bar (flips with the theme via --color-linen)
-          with a hairline top seam, anchored to the surface foot. The safe-area pad
-          keeps the input clear of the mobile keyboard / home bar. */}
-      <div className="sticky bottom-0 border-t border-rule bg-linen pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="mx-auto w-full max-w-[64rem]">
-          {canAsk ? (
-            // The footer stays short so the transcript keeps the viewport on a
-            // narrow phone: the stage-aware suggestion chips live in the empty
-            // state's transcript (not stacked here), and the two-line privacy note
-            // collapses after the first send — once the parent is chatting, an
-            // error is the only thing worth the extra row.
-            <div className="space-y-3">
-              <Composer
-                inputRef={inputRef}
-                draft={draft}
-                setDraft={setDraft}
-                ask={ask}
-                status={status}
-              />
-              {status === 'error' ? (
-                <p className="meta italic text-apricot-deep" role="alert">
-                  Couldn&rsquo;t reach Hale — try again in a moment.
-                </p>
-              ) : isEmpty ? (
-                <ComposerNote />
-              ) : null}
-            </div>
-          ) : (
-            <output className="dev-preview-banner">
-              Sign in to ask Hale. In this preview the thread is read-only — no question is sent.
-            </output>
-          )}
-        </div>
-      </div>
+      <HaleContextRail connectors={connectors} />
     </div>
-  );
-}
-
-/**
- * Context → Connectors: a chip per family connector, marked when it is linked.
- * Read-only context; connectors feed drafts a parent approves, never auto-actions
- * (rule #4). Shown on the first screen so the parent sees what Hale can draw on.
- */
-function ContextConnectorsPanel({ connectors }: { connectors: ConnectorChip[] }) {
-  return (
-    <section className="panel-oat px-5 py-4">
-      <p className="eyebrow text-spruce">Context</p>
-      <p className="meta mt-1">Connectors</p>
-      {connectors.length === 0 ? (
-        <p className="meta mt-2">no connectors available.</p>
-      ) : (
-        <ul className="mt-2 flex flex-wrap gap-2">
-          {connectors.map((c) => (
-            <li key={c.provider}>
-              <span className={`pill ${c.connected ? 'pill-sky' : ''}`}>
-                {c.label}
-                {c.connected ? null : <span className="text-faded-sage"> · add</span>}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <a href="/settings" className="link mt-3 inline-block text-[0.85rem]">
-        manage connectors
-      </a>
-    </section>
   );
 }
 

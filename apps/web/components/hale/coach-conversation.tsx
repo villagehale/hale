@@ -14,6 +14,7 @@ export function CoachConversation({
   seed,
   connectors,
   initialFocusedChildId = null,
+  viewerName = null,
 }: {
   canAsk: boolean;
   seed: ThreadSeed;
@@ -21,6 +22,8 @@ export function CoachConversation({
   connectors: ConnectorChip[];
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
+  /** Signed-in parent's name, for the empty-state greeting ("Hi Alex, …"). */
+  viewerName?: string | null;
 }) {
   return (
     <AskHaleThread
@@ -29,6 +32,7 @@ export function CoachConversation({
       variant="full"
       connectors={connectors}
       initialFocusedChildId={initialFocusedChildId}
+      viewerName={viewerName}
     />
   );
 }
