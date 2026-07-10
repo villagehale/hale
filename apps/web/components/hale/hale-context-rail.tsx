@@ -34,23 +34,23 @@ export function HaleContextRail({ connectors }: { connectors: ConnectorChip[] })
 
         <hr className="rule" />
 
-        <RailSection icon={FolderOpen} title="From Drive">
-          {driveConnected ? (
-            <EmptyNote>No recent files.</EmptyNote>
-          ) : (
-            <ConnectPrompt line="Connect Google Drive to surface your family's files." />
-          )}
-        </RailSection>
+        {driveConnected ? (
+          <>
+            <RailSection icon={FolderOpen} title="From Drive">
+              <EmptyNote>No recent files.</EmptyNote>
+            </RailSection>
 
-        <hr className="rule" />
+            <hr className="rule" />
 
-        <RailSection icon={FileText} title="Related from Drive">
-          {driveConnected ? (
-            <EmptyNote>No related files yet.</EmptyNote>
-          ) : (
+            <RailSection icon={FileText} title="Related from Drive">
+              <EmptyNote>No related files yet.</EmptyNote>
+            </RailSection>
+          </>
+        ) : (
+          <RailSection icon={FolderOpen} title="From Drive">
             <ConnectPrompt line="Connect Google Drive to surface your family's files." />
-          )}
-        </RailSection>
+          </RailSection>
+        )}
       </div>
     </aside>
   );
