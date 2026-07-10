@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, Share, View } from 'react-native';
 
 import { ResourcesRail } from '@/components/hale/resources-rail';
@@ -404,7 +404,7 @@ function SaveToggle({ rec, onChanged }: { rec: VillageCandidateView; onChanged: 
   );
 }
 
-function RecCard({
+const RecCard = memo(function RecCard({
   rec,
   onOpen,
   onChanged,
@@ -465,7 +465,7 @@ function RecCard({
       <ShareRow shareHref={rec.shareHref} />
     </Card>
   );
-}
+});
 
 function VillageBody({
   data,

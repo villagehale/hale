@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { DocsAddSheet } from '@/components/hale/docs-add-sheet';
@@ -68,23 +68,24 @@ function FilterRow({
   );
 }
 
-function DocRow({
+const DocRow = memo(function DocRow({
   doc,
   first,
-  onPress,
+  iconColor,
+  onOpen,
 }: {
   doc: DocumentView;
   first: boolean;
-  onPress: () => void;
+  iconColor: string;
+  onOpen: (doc: DocumentView) => void;
 }) {
-  const iconColor = useMeadowColor('ink3');
   const kindIcon = KIND_ICON[doc.kind as DocKind] ?? 'doc.text.fill';
   const kindLabel = DOC_KIND_LABEL[doc.kind as DocKind] ?? doc.kind;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open document: ${doc.title}`}
-      onPress={onPress}
+      onPress={() => onOpen(doc)}
       className={`flex-row items-center gap-3 active:opacity-80 ${
         first ? '' : 'border-t border-rule pt-3'
       }`}
@@ -101,7 +102,7 @@ function DocRow({
       <Icon name="chevron.right" size={13} color={iconColor} />
     </Pressable>
   );
-}
+});
 
 /**
  * The Docs vault: a filterable list of the family's documents (teen-redacted by the
@@ -122,6 +123,8 @@ export function DocsSection({
   const [adding, setAdding] = useState(false);
   const [viewing, setViewing] = useState<DocumentView | null>(null);
   const onAccent = useMeadowColor('onAccent');
+  const rowIcon = useMeadowColor('ink3');
+  const openDoc = useCallback((doc: DocumentView) => setViewing(doc), []);
 
   if (status === 'loading') return <LoadingState />;
   if (status === 'error') return <ErrorState message={error ?? ''} onRetry={reload} />;
@@ -150,7 +153,7 @@ export function DocsSection({
       ) : (
         <Card className="gap-3">
           {shown.map((doc, i) => (
-            <DocRow key={doc.id} doc={doc} first={i === 0} onPress={() => setViewing(doc)} />
+            <DocRow key={doc.id} doc={doc} first={i === 0} iconColor={rowIcon} onOpen={openDoc} />
           ))}
         </Card>
       )}

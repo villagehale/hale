@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
@@ -23,7 +23,7 @@ import { historyStatusTag, humanizeActionType, verdictTag } from '@/lib/approval
 import { useApi } from '@/lib/use-api';
 import { ApprovalPayloadBlock } from '@/components/hale/approval-payload';
 
-function ActionCard({
+const ActionCard = memo(function ActionCard({
   action,
   onResolve,
 }: {
@@ -102,7 +102,7 @@ function ActionCard({
       </View>
     </Card>
   );
-}
+});
 
 function ApprovalsBody({
   data,
@@ -149,7 +149,7 @@ function ApprovalsBody({
 /** A read-only History row: a past, resolved action with its outcome chip, the same
  * teen-safe intent label the live card shows, and when it resolved. No decision
  * buttons — history is settled. */
-function HistoryCard({ item }: { item: HistoryView }) {
+const HistoryCard = memo(function HistoryCard({ item }: { item: HistoryView }) {
   const tag = historyStatusTag(item.status);
   return (
     <Card className="gap-2">
@@ -167,7 +167,7 @@ function HistoryCard({ item }: { item: HistoryView }) {
       <ApprovalPayloadBlock action={item} />
     </Card>
   );
-}
+});
 
 function HistoryBody({ history }: { history: HistoryView[] }) {
   if (history.length === 0) {
@@ -229,6 +229,9 @@ export default function ApprovalsScreen() {
   const pending = useApi<MobileApprovalsResponse>('/api/mobile/approvals');
   const history = useApi<MobileApprovalsHistoryResponse>('/api/mobile/approvals/history');
   const [resolved, setResolved] = useState<Set<string>>(new Set());
+  const onResolve = useCallback((id: string) => {
+    setResolved((prev) => new Set(prev).add(id));
+  }, []);
 
   const active = segment === 'pending' ? pending : history;
   const visiblePending = pending.data
@@ -248,10 +251,7 @@ export default function ApprovalsScreen() {
         <ErrorState message={active.error ?? ''} onRetry={active.reload} />
       ) : null}
       {segment === 'pending' && pending.status === 'ready' && visiblePending ? (
-        <ApprovalsBody
-          data={visiblePending}
-          onResolve={(id) => setResolved((prev) => new Set(prev).add(id))}
-        />
+        <ApprovalsBody data={visiblePending} onResolve={onResolve} />
       ) : null}
       {segment === 'history' && history.status === 'ready' && history.data ? (
         <HistoryBody history={history.data.history} />

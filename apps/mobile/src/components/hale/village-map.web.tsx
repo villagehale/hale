@@ -1,4 +1,5 @@
-import { Image, View } from 'react-native';
+import { Image } from 'expo-image';
+import { View } from 'react-native';
 
 import type { VillageCandidateView } from '@/lib/api-types';
 import { mapPointFor } from '@/lib/village-map';
@@ -25,7 +26,7 @@ export function VillageMap({
         source={{ uri: staticMapUri }}
         accessibilityLabel={`Map showing ${candidate.venueName ?? candidate.title}`}
         style={{ flex: 1 }}
-        resizeMode="cover"
+        contentFit="cover"
       />
     </View>
   );
