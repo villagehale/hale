@@ -10,9 +10,11 @@ import type { FamilyMembersView } from '~/lib/dashboard/family-members';
 import type { MessageView } from '~/lib/messages/mappers';
 import type { PlanChildItem } from '~/lib/plan/week';
 import type { PlanCatalogView } from '~/lib/plan/catalog';
+import type { FamilyExportDocument } from '~/lib/rights/export';
 import type { NotificationPref, NotificationPrefsView } from '~/lib/settings/notification-prefs';
 import type { PushPref } from '~/lib/settings/push-notification-prefs';
 import type { PushPrefsView } from '~/lib/push/prefs';
+import type { ShareLinkKind, SharedLink } from '~/lib/village/share-revoke';
 import type { CuratedResourceView } from '~/lib/village/curated-resources';
 import type { RoutineProposalView, VillageCandidateView } from '~/lib/village/mappers';
 import type { VillageData } from '~/lib/village/queries';
@@ -279,4 +281,45 @@ export interface MobileIntegrationsResponse {
 export interface MobileIntegrationDisconnectResponse {
   status: 'revoked';
   provider: ConnectorProviderSlug;
+}
+
+// ── privacy & data (rights export/delete + shared links) ──────────────────────
+//
+// The native "Privacy & data" account-management surface, matching web /settings.
+// Every route delegates to the SAME web lib the browser uses (assembleFamilyExport
+// / scheduleFamilyDeletion / listSharedLinks / revokeShareLink), so the teen
+// redaction, the reversible-by-grace deletion, and the audit writes are single-
+// sourced (rules #1/#6).
+
+/** GET /api/mobile/rights/export — the full teen-redacted export document the app
+ * shares via the RN Share sheet. The shape is the lib's FamilyExportDocument. */
+export type MobileExportResponse = FamilyExportDocument;
+
+/** POST /api/mobile/rights/delete body — confirm-gated (literal true), never a bare
+ * POST, so a deletion is only ever scheduled on an explicit intent. */
+export interface MobileDeleteRequest {
+  confirm: true;
+}
+
+/** The scheduled-deletion result: the reversible grace-period instant (ISO). The
+ * worker erases only after this passes; clearing the stamp cancels it. */
+export interface MobileDeleteResponse {
+  status: 'scheduled';
+  scheduledDeletionAt: string;
+}
+
+/** GET /api/mobile/village/shares — the family's currently-live shared links. */
+export interface MobileSharedLinksResponse {
+  links: SharedLink[];
+}
+
+/** POST /api/mobile/village/shares/revoke body — addresses ONE link by (kind, id). */
+export interface MobileRevokeShareRequest {
+  kind: ShareLinkKind;
+  id: string;
+}
+
+/** The revoke result — the token is nulled + audited server-side (rules #1/#6). */
+export interface MobileRevokeShareResponse {
+  status: 'revoked';
 }

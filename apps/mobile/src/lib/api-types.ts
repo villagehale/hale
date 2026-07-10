@@ -525,3 +525,83 @@ export interface MobileIntegrationDisconnectResponse {
 export interface MobileConnectUrlResponse {
   url: string;
 }
+
+// ── privacy & data (rights export/delete + shared links) ──────────────────────
+//
+// The "Privacy & data" account-management surface, matching web /settings. Every
+// route delegates to the SAME web lib the browser uses, so the teen redaction, the
+// reversible-by-grace deletion, and the audit writes are single-sourced (rules
+// #1/#6). MIRRORED from apps/web/app/api/mobile/types.ts + lib/rights/export.ts.
+
+/** One teen-redacted trail row in the export (mirrors the web TrailView on the
+ * wire; the enum-typed tone/actor serialize as strings). The app never renders
+ * these — it shares the whole document as JSON — so the mirror stays structural. */
+export interface ExportTrailEntry {
+  id: string;
+  time: string;
+  date: string;
+  dayKey: string;
+  tone: string;
+  actor: string;
+  summary: string;
+  noun: string;
+  link: string | null;
+  childLabel: string | null;
+}
+
+/** GET /api/mobile/rights/export — the full teen-redacted export document (PIPEDA/
+ * Law 25 right-to-access). Shared as JSON via the RN Share sheet. */
+export interface FamilyExportDocument {
+  exportedAt: string;
+  family: {
+    id: string;
+    displayName: string;
+    location: FamilyLocationView;
+    planTier: FamilyBasicsView['planTier'];
+    intents: string[];
+  };
+  children: FamilyChildBasics[];
+  members: FamilyMembersView;
+  savedActivities: { title: string; savedAt: string }[];
+  trail: ExportTrailEntry[];
+}
+
+export type MobileExportResponse = FamilyExportDocument;
+
+/** POST /api/mobile/rights/delete body — confirm-gated (literal true). */
+export interface MobileDeleteRequest {
+  confirm: true;
+}
+
+/** The scheduled-deletion result: the reversible grace-period instant (ISO). */
+export interface MobileDeleteResponse {
+  status: 'scheduled';
+  scheduledDeletionAt: string;
+}
+
+export type ShareLinkKind = 'week_plan' | 'activity';
+
+/** One currently-live shared link the family owns (a week plan or a local pick). */
+export interface SharedLink {
+  kind: ShareLinkKind;
+  id: string;
+  token: string;
+  /** A human label — the week's date, or the activity's title. */
+  title: string;
+}
+
+/** GET /api/mobile/village/shares — the family's currently-live shared links. */
+export interface MobileSharedLinksResponse {
+  links: SharedLink[];
+}
+
+/** POST /api/mobile/village/shares/revoke body — addresses ONE link by (kind, id). */
+export interface MobileRevokeShareRequest {
+  kind: ShareLinkKind;
+  id: string;
+}
+
+/** The revoke result — the token is nulled + audited server-side (rules #1/#6). */
+export interface MobileRevokeShareResponse {
+  status: 'revoked';
+}
