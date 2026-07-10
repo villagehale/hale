@@ -43,7 +43,7 @@ export function FindActivitiesButton({
         return {
           tone: 'note',
           text: 'tell Hale where you are — add your area on the family page and Hale can gather what is near you.',
-          link: { href: '/family', label: 'add your area' },
+          link: { href: '/family/members', label: 'add your area' },
         };
       case 'no_non_teen_children':
         return {
