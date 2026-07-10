@@ -9,7 +9,6 @@ import { ThemeToggle } from '~/components/hale/theme-toggle';
 export interface AccountMenuViewProps {
   open: boolean;
   parentName: string | null;
-  familyName: string | null;
   canSignOut: boolean;
   menuId: string;
   onToggle: () => void;
@@ -30,7 +29,6 @@ export interface AccountMenuViewProps {
 export function AccountMenuView({
   open,
   parentName,
-  familyName,
   canSignOut,
   menuId,
   onToggle,
@@ -40,7 +38,6 @@ export function AccountMenuView({
   triggerRef,
 }: AccountMenuViewProps) {
   const displayName = parentName?.trim() || 'your account';
-  const familyLine = familyName?.trim() || 'your family';
 
   return (
     <div className="account-menu" ref={rootRef}>
@@ -98,7 +95,7 @@ export function AccountMenuView({
         <LogoMark size={32} />
         <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{displayName}</span>
-          <span className="account-chip-family meta">{familyLine}</span>
+          <span className="account-chip-family meta">View profile</span>
         </span>
         <Icon as={ChevronsUpDown} size={16} className="account-chip-caret" />
       </button>

@@ -51,12 +51,10 @@ export function Sidebar({
   authControls = false,
   signedIn = false,
   parentName = null,
-  familyName = null,
 }: {
   authControls?: boolean;
   signedIn?: boolean;
   parentName?: string | null;
-  familyName?: string | null;
 }) {
   const pathname = usePathname();
   const { collapsed, toggleCollapsed, closeDrawer } = useShell();
@@ -119,7 +117,6 @@ export function Sidebar({
         {showAccount ? (
           <AccountMenu
             parentName={parentName}
-            familyName={familyName}
             canSignOut={authControls && signedIn}
           />
         ) : (

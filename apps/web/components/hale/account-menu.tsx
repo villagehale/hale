@@ -6,21 +6,19 @@ import { useShell } from '~/components/hale/app-shell';
 import { signOutAction } from '~/lib/auth-actions';
 
 /**
- * The account chip at the foot of the sidebar — the signed-in parent and their
- * family identity (Hale's two-parent model, so the family name earns its place).
- * Clicking it opens the account menu; Escape and a click outside dismiss it. The
- * markup lives in AccountMenuView; this wrapper owns the open-state and dismissal.
+ * The account chip at the foot of the sidebar — the signed-in parent's name over a
+ * "View profile" line into the account page. Clicking it opens the account menu;
+ * Escape and a click outside dismiss it. The markup lives in AccountMenuView; this
+ * wrapper owns the open-state and dismissal.
  *
- * Falls back to a neutral name when the Google profile / family carry none yet
- * (onboarding incomplete): the chip never shows an empty identity.
+ * Falls back to a neutral name when the Google profile carries none yet (onboarding
+ * incomplete): the chip never shows an empty identity.
  */
 export function AccountMenu({
   parentName,
-  familyName,
   canSignOut = false,
 }: {
   parentName: string | null;
-  familyName: string | null;
   /** Sign out only appears for a real session — never in the dev preview. */
   canSignOut?: boolean;
 }) {
@@ -57,7 +55,6 @@ export function AccountMenu({
     <AccountMenuView
       open={open}
       parentName={parentName}
-      familyName={familyName}
       canSignOut={canSignOut}
       menuId={menuId}
       onToggle={() => setOpen((prev) => !prev)}

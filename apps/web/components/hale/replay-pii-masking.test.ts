@@ -96,15 +96,13 @@ describe('stripMaskedSubtrees (the test harness itself)', () => {
   });
 });
 
-describe('account chip (every authed page) masks the parent + family identity', () => {
+describe('account chip (every authed page) masks the parent identity', () => {
   const PARENT = 'Priya Raman';
-  const FAMILY = 'The Raman household';
 
   const html = renderToStaticMarkup(
     h(AccountMenuView, {
       open: false,
       parentName: PARENT,
-      familyName: FAMILY,
       canSignOut: true,
       menuId: 'm',
       onToggle: () => {},
@@ -115,13 +113,11 @@ describe('account chip (every authed page) masks the parent + family identity', 
 
   it('renders the identity at all (guards against a vacuous pass)', () => {
     expect(html).toContain(PARENT);
-    expect(html).toContain(FAMILY);
   });
 
-  it('keeps the parent name and family name inside a [data-hale-pii] subtree', () => {
+  it('keeps the parent name inside a [data-hale-pii] subtree', () => {
     const residue = stripMaskedSubtrees(html);
     expect(residue).not.toContain(PARENT);
-    expect(residue).not.toContain(FAMILY);
   });
 });
 
