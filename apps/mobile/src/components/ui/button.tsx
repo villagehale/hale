@@ -21,7 +21,7 @@ type ButtonProps = {
 const VARIANT: Record<ButtonVariant, { surface: string; label: string }> = {
   primary: { surface: 'bg-brand border border-brand', label: 'text-on-ink' },
   secondary: { surface: 'border border-rule-strong bg-card active:bg-canvas', label: 'text-ink' },
-  ghost: { surface: 'bg-transparent', label: 'text-caption' },
+  ghost: { surface: 'bg-transparent', label: 'text-ink-3' },
 };
 
 export function Button({
