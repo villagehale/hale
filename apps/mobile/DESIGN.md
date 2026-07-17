@@ -1,7 +1,7 @@
 # Hale — Design north star ("Hale Shore")
 
 Read this before building any screen. It is the durable intent; the code is the
-expression. Hale Shore is the design-handoff system — a deep Prussian navy on a
+expression. Hale Shore is the design-handoff system — a deep Hale navy on a
 warm-white canvas, with scarce warm cream and apricot — applied verbatim from the
 interactive prototype and mirrored with `apps/web` so the product reads as one
 thing across web and mobile.
@@ -27,7 +27,7 @@ it was barely designed — the content and the whitespace carry it.
 1. **Content-first, chrome-light.** The village feed, the "right now," the child
    are the stars. Tab bars, headers, accents recede. If an element isn't the
    parent's content or their next action, make it quieter or delete it.
-2. **One primary, used with intent.** Prussian navy (`brand`) is the single
+2. **One primary, used with intent.** Hale navy (`brand`) is the single
    committed color — active nav, the primary button, the user's chat bubble, a
    selected chip's border. Apricot (`accent`) is the rare second emphasis, and its
    fill form is large-graphic only. Most screens are warm-white + ink + one or two
@@ -42,7 +42,7 @@ it was barely designed — the content and the whitespace carry it.
    (night feeds), type readable at arm's length, reduced-motion respected, inputs
    with real labels + correct keyboards.
 6. **Committed identity, not AI-default.** Hale Shore is a *specific* choice
-   (Prussian navy + warm white + scarce cream/apricot + Source Serif display). Its
+   (Hale navy + warm white + scarce cream/apricot + Source Serif display). Its
    cream cards and serif greetings are intentional, drawn from the prototype — not
    the generic "cream + serif + terracotta" reflex. Keep making specific choices;
    never sprinkle a treatment because it "looks designed."
@@ -68,7 +68,7 @@ drift-checked against the literal-color mirror in `src/constants/meadow.ts` by
 - `brand` `#1b2160` / `#9aa6e6` — primary actions, active nav tint, user chat
   bubbles, selected-chip borders. White label on brand is 14.7:1 (light). On dark
   the navy **lightens** to `#9aa6e6` so it still reads as the accent against a dark
-  canvas, and `on-ink` inverts to Prussian.
+  canvas, and `on-ink` inverts to ink text (`#17294a`).
 - `on-ink` `#ffffff` / `#17294a` — the label on an ink/brand fill
 
 **Ink text** (contrast on canvas, light)
@@ -156,7 +156,7 @@ This is a short allow-list, not a decorative free-for-all.
 The dark palette is **derived**, not a separate design. Surfaces go warm-dark
 (near-black `#14120e` canvas, cards one/two notches up), ink inverts to cream, and
 the navy brand **lightens to `#9aa6e6`** so it still reads as the primary accent
-against dark (with `on-ink` inverting to Prussian). Tones, cream, and tint chips each
+against dark (with `on-ink` inverting to ink `#17294a`). Tones, cream, and tint chips each
 get a hand-tuned dark pair — deepened backgrounds, lightened icons/text — kept in the
 same `global.css` block and drift-checked. Dark mode follows the device
 (`prefers-color-scheme` / Tailwind `darkMode: "media"`); it is a real feature for
