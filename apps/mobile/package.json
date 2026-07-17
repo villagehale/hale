@@ -3,8 +3,9 @@
   "main": "expo-router/entry",
   "version": "0.1.0",
   "dependencies": {
+    "@expo-google-fonts/instrument-sans": "^0.4.2",
     "@expo-google-fonts/inter": "^0.4.2",
-    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/source-serif-4": "^0.4.1",
     "@expo/dom-webview": "~56.0.6",
     "@expo/metro-runtime": "~56.0.16",
     "@expo/ui": "~56.0.21",

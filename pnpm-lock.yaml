@@ -25,10 +25,13 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@expo-google-fonts/instrument-sans':
+        specifier: ^0.4.2
+        version: 0.4.2
       '@expo-google-fonts/inter':
         specifier: ^0.4.2
         version: 0.4.2
-      '@expo-google-fonts/jetbrains-mono':
+      '@expo-google-fonts/source-serif-4':
         specifier: ^0.4.1
         version: 0.4.1
       '@expo/dom-webview':
@@ -1505,14 +1508,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@expo-google-fonts/instrument-sans@0.4.2':
+    resolution: {integrity: sha512-YR0jemCJ/eUlknOfxxxiLnJWpFDaT0KgLiB1q333jIDPlRAERfuMpOislkWA1A7HGX85N9LCsjWLlB3QOZo1wg==}
+
   '@expo-google-fonts/inter@0.4.2':
     resolution: {integrity: sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ==}
 
-  '@expo-google-fonts/jetbrains-mono@0.4.1':
-    resolution: {integrity: sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug==}
-
   '@expo-google-fonts/material-symbols@0.4.38':
     resolution: {integrity: sha512-IJkBtN1o8u9BW5fvSii1MyHPQ7Q0HxbWcVBvOrOzgMLpVtZw7R2w94wBTVR7kZwv3w1JNTESMmLA5Sqn1+Z36A==}
+
+  '@expo-google-fonts/source-serif-4@0.4.1':
+    resolution: {integrity: sha512-Ej4UXDjW1kwYPHG8YLq6fK1bqnJGb3K35J3S5atSL0ScKFAFLKvndxoTWeCls7mybtlS9x99hzwDeXCBkiI3rA==}
 
   '@expo/cli@56.1.19':
     resolution: {integrity: sha512-k+oipwbu83WFnACtybvGZvDbbItarY4lfjkKgP9F5lml2ilvL/VvzsPhbhT7nRyFB3zPJq9SbNNKa45VDLoihA==}
@@ -6939,11 +6945,13 @@ snapshots:
   '@esbuild/win32-x64@0.28.0':
     optional: true
 
+  '@expo-google-fonts/instrument-sans@0.4.2': {}
+
   '@expo-google-fonts/inter@0.4.2': {}
 
-  '@expo-google-fonts/jetbrains-mono@0.4.1': {}
-
   '@expo-google-fonts/material-symbols@0.4.38': {}
+
+  '@expo-google-fonts/source-serif-4@0.4.1': {}
 
   '@expo/cli@56.1.19(@expo/dom-webview@56.0.6)(@expo/metro-runtime@56.0.16)(expo-constants@56.0.20)(expo-font@56.0.7)(expo-router@56.2.14)(expo@56.0.15)(react-dom@19.2.3(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)':
     dependencies:
@@ -8043,9 +8051,7 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 
