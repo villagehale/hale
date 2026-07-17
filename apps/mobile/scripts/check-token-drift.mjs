@@ -23,8 +23,15 @@ const TOKEN_MAP = {
   ink: '--color-ink',
   ink2: '--color-ink-2',
   ink3: '--color-ink-3',
+  brand: '--color-brand',
   canvas: '--color-canvas',
   accentFill: '--color-accent-fill',
+  chipBlueIcon: '--color-chip-blue-icon',
+  chipGreenIcon: '--color-chip-green-icon',
+  chipYellowIcon: '--color-chip-yellow-icon',
+  chipRedIcon: '--color-chip-red-icon',
+  chipTealIcon: '--color-chip-teal-icon',
+  chipGrayIcon: '--color-chip-gray-icon',
 };
 
 /** Pull the light (:root) and dark (@media prefers-color-scheme: dark) blocks. */

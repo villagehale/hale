@@ -1,27 +1,44 @@
 import { useColorScheme } from 'react-native';
 
 /**
- * Concrete hex for the Meadow tokens, mirroring src/global.css. NativeWind
+ * Concrete hex for the handoff tokens, mirroring src/global.css. NativeWind
  * className tokens cover styling; this exists only for APIs that need a literal
  * color value and can't read a className — SF Symbols (expo-symbols tintColor).
- * Keep in sync with global.css.
+ * `brand` mirrors the primary navy so a literal consumer (e.g. the tab-bar active
+ * tint) can adopt it; the chip*Icon entries mirror the six tint-chip icon colors so
+ * an icon rendered inside a tint chip can be tinted to match. Keep in sync with
+ * global.css (drift-gated by scripts/check-token-drift.mjs).
  */
 const MEADOW = {
   light: {
-    ink: '#0d1b3d',
-    ink2: '#47587a',
-    ink3: '#5b6b86',
-    canvas: '#f8f9fb',
+    ink: '#17294a',
+    ink2: '#3d4c68',
+    ink3: '#5c6b87',
+    brand: '#1b2160',
+    canvas: '#fdfcfa',
     accentFill: '#f28c45',
     onAccent: '#ffffff',
+    chipBlueIcon: '#3b5bdb',
+    chipGreenIcon: '#1f8a4c',
+    chipYellowIcon: '#b26b1f',
+    chipRedIcon: '#c2543f',
+    chipTealIcon: '#0f766e',
+    chipGrayIcon: '#5c6b87',
   },
   dark: {
     ink: '#f6f1e7',
     ink2: '#c7d3e6',
     ink3: '#9bb0d0',
-    canvas: '#0c1420',
+    brand: '#9aa6e6',
+    canvas: '#14120e',
     accentFill: '#f97316',
-    onAccent: '#003153',
+    onAccent: '#17294a',
+    chipBlueIcon: '#a3b6f0',
+    chipGreenIcon: '#78c795',
+    chipYellowIcon: '#dba64f',
+    chipRedIcon: '#e79f8e',
+    chipTealIcon: '#57bab1',
+    chipGrayIcon: '#a6aebd',
   },
 } as const;
 
