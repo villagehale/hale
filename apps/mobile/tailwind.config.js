@@ -30,6 +30,40 @@ module.exports = {
           DEFAULT: "var(--color-rule)",
           strong: "var(--color-rule-strong)",
         },
+        // handoff primary navy — distinct from ink text (buttons, active nav, user
+        // bubbles, selected-chip borders). See global.css --color-brand.
+        brand: "var(--color-brand)",
+        // handoff hairline / border aliases (card-border == rule, input-border ==
+        // rule-strong; named here so the handoff class names resolve too)
+        hairline: "var(--color-hairline)",
+        "card-border": "var(--color-card-border)",
+        "input-border": "var(--color-input-border)",
+        // handoff extended text + status tones
+        caption: "var(--color-caption)",
+        success: "var(--color-success)",
+        badge: "var(--color-badge)",
+        destructive: "var(--color-destructive)",
+        // handoff cream highlight card
+        cream: {
+          DEFAULT: "var(--color-cream)",
+          border: "var(--color-cream-border)",
+          accent: "var(--color-cream-accent)",
+        },
+        // handoff tint chips — six icon-chip backgrounds + their icon colors
+        chip: {
+          blue: "var(--color-chip-blue)",
+          "blue-icon": "var(--color-chip-blue-icon)",
+          green: "var(--color-chip-green)",
+          "green-icon": "var(--color-chip-green-icon)",
+          yellow: "var(--color-chip-yellow)",
+          "yellow-icon": "var(--color-chip-yellow-icon)",
+          red: "var(--color-chip-red)",
+          "red-icon": "var(--color-chip-red-icon)",
+          teal: "var(--color-chip-teal)",
+          "teal-icon": "var(--color-chip-teal-icon)",
+          gray: "var(--color-chip-gray)",
+          "gray-icon": "var(--color-chip-gray-icon)",
+        },
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

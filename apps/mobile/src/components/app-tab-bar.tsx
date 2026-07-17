@@ -22,7 +22,7 @@ const TABS: Record<string, TabMeta> = {
 
 export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const activeTint = useMeadowColor('ink');
+  const activeTint = useMeadowColor('brand');
   const inactiveTint = useMeadowColor('ink3');
 
   return (
@@ -64,7 +64,7 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
             </View>
             <AppText
               variant="meta"
-              className={`text-[11px] ${isFocused ? 'text-ink' : 'text-ink-3'}`}
+              className={`text-[11px] ${isFocused ? 'text-brand' : 'text-ink-3'}`}
             >
               {meta.label}
             </AppText>
