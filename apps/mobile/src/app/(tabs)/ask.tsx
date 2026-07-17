@@ -306,7 +306,7 @@ export default function AskScreen() {
           <AppText variant={empty ? 'title' : 'display'}>Hale</AppText>
           {!empty ? (
             <IconButton
-              icon="square.and.pencil"
+              icon="square-pen"
               accessibilityLabel="New conversation"
               onPress={newConversation}
               className="bg-raised"
@@ -368,14 +368,14 @@ export default function AskScreen() {
             />
             {draft.trim() ? (
               <IconButton
-                icon="arrow.up"
+                icon="arrow-up"
                 accessibilityLabel="Send question"
                 onPress={() => send(draft)}
                 className="bg-raised"
               />
             ) : (
               <IconButton
-                icon={voice.listening ? 'stop.fill' : 'mic'}
+                icon={voice.listening ? 'circle-stop' : 'mic'}
                 accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Hale by voice'}
                 onPress={voice.toggle}
                 className="bg-raised"

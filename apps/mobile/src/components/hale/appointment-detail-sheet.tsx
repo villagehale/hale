@@ -130,7 +130,7 @@ export function AppointmentDetailSheet({
               busy ? 'opacity-50' : 'active:opacity-80'
             }`}
           >
-            <Icon name="checkmark" size={15} color={onInk} />
+            <Icon name="check" size={15} color={onInk} />
             <AppText variant="meta" className="text-on-ink">
               {busy ? 'Marking…' : 'Mark done'}
             </AppText>
@@ -142,7 +142,7 @@ export function AppointmentDetailSheet({
           onPress={onShare}
           className="min-h-11 flex-row items-center gap-2 rounded-full border border-rule bg-raised px-4 py-2.5 active:opacity-80"
         >
-          <Icon name="square.and.arrow.up" size={15} color={iconColor} />
+          <Icon name="share" size={15} color={iconColor} />
           <AppText variant="meta" className="text-ink-2">
             Share
           </AppText>

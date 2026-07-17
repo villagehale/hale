@@ -9,14 +9,14 @@ import { useMeadowColor } from '@/constants/meadow';
 type TabMeta = { label: string; icon: IconName; activeIcon: IconName };
 
 const TABS: Record<string, TabMeta> = {
-  index: { label: 'Home', icon: 'house', activeIcon: 'house.fill' },
+  index: { label: 'Home', icon: 'house', activeIcon: 'house' },
   companion: {
     label: 'Companion',
-    icon: 'figure.2.and.child.holdinghands',
-    activeIcon: 'figure.2.and.child.holdinghands',
+    icon: 'user',
+    activeIcon: 'user',
   },
   ask: { label: 'Hale', icon: 'sparkles', activeIcon: 'sparkles' },
-  village: { label: 'Village', icon: 'map', activeIcon: 'map.fill' },
+  village: { label: 'Village', icon: 'building-2', activeIcon: 'building-2' },
   more: { label: 'More', icon: 'ellipsis', activeIcon: 'ellipsis' },
 };
 

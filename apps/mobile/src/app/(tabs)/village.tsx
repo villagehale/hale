@@ -209,7 +209,7 @@ function SeasonSearch({
   if (activeSeason) {
     return (
       <View className="flex-row items-center gap-2 rounded-full border border-accent bg-accent-tint px-4 py-2.5">
-        <Icon name="magnifyingglass" size={15} color={accentIcon} />
+        <Icon name="search" size={15} color={accentIcon} />
         <AppText variant="meta" className="flex-1 capitalize text-ink">
           {activeSeason} activities
         </AppText>
@@ -220,7 +220,7 @@ function SeasonSearch({
           onPress={onClear}
           className="active:opacity-70"
         >
-          <Icon name="xmark.circle.fill" size={18} color={iconColor} />
+          <Icon name="circle-x" size={18} color={iconColor} />
         </Pressable>
       </View>
     );
@@ -238,11 +238,11 @@ function SeasonSearch({
           disabled ? 'opacity-50' : ''
         }`}
       >
-        <Icon name="magnifyingglass" size={16} color={iconColor} />
+        <Icon name="search" size={16} color={iconColor} />
         <AppText variant="body" className="flex-1 text-ink-3">
           Search activities by season
         </AppText>
-        <Icon name={open ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
       </Pressable>
 
       {open ? (
@@ -346,7 +346,7 @@ function ShareRow({ shareHref }: { shareHref: string }) {
           busy ? 'opacity-50' : 'active:opacity-80'
         }`}
       >
-        <Icon name="square.and.arrow.up" size={15} color={iconColor} />
+        <Icon name="share" size={15} color={iconColor} />
         <AppText variant="meta" className="text-ink-2">
           {busy ? 'Making a link…' : 'Share'}
         </AppText>
@@ -396,7 +396,7 @@ function SaveToggle({ rec, onChanged }: { rec: VillageCandidateView; onChanged: 
       className={busy ? 'opacity-50' : 'active:opacity-70'}
     >
       <Icon
-        name={isSaved ? 'bookmark.fill' : 'bookmark'}
+        name={isSaved ? 'bookmark-check' : 'bookmark'}
         size={18}
         color={isSaved ? accentIcon : inkIcon}
       />
@@ -507,7 +507,7 @@ function VillageBody({
           onPress={() => setFiltersOpen(true)}
           className="min-h-11 flex-row items-center gap-2 self-start rounded-full border border-rule bg-card px-4 py-2.5 active:opacity-80"
         >
-          <Icon name="slider.horizontal.3" size={15} color={chevron} />
+          <Icon name="sliders-horizontal" size={15} color={chevron} />
           <AppText variant="meta" className="text-ink-2">
             Filters
           </AppText>

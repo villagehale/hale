@@ -12,13 +12,13 @@ import { useOnboardingDraft } from '@/lib/use-onboarding-draft';
  * has an icon.web.tsx fallback so the RN-web preview reads true too. */
 const INTENT_ICON: Record<string, IconName> = {
   activities: 'sparkles',
-  childcare: 'figure.2.and.child.holdinghands',
-  milestones: 'star.fill',
+  childcare: 'user',
+  milestones: 'star',
   planning: 'calendar',
-  sitter: 'person.2',
+  sitter: 'users',
   health: 'heart',
-  community: 'person.3',
-  exploring: 'magnifyingglass',
+  community: 'users',
+  exploring: 'search',
 };
 
 /**

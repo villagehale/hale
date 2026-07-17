@@ -118,7 +118,7 @@ export function DocsViewerSheet({
           onPress={openExternally}
           className="mb-4 min-h-12 flex-row items-center justify-center gap-2 rounded-full border border-ink bg-ink px-4 py-3.5 active:opacity-80"
         >
-          <Icon name="square.and.arrow.up" size={15} color={onInk} />
+          <Icon name="share" size={15} color={onInk} />
           <AppText variant="meta" className="text-on-ink">
             Open document
           </AppText>
@@ -164,7 +164,7 @@ export function DocsViewerSheet({
           onPress={() => setConfirmingDelete(true)}
           className="mt-1 min-h-11 flex-row items-center justify-center gap-2 active:opacity-70"
         >
-          <Icon name="trash" size={15} color={iconColor} />
+          <Icon name="trash-2" size={15} color={iconColor} />
           <AppText variant="meta" className="text-ink-3">
             Remove this document
           </AppText>

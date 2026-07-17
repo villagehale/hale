@@ -90,7 +90,7 @@ function AuthoredPlanCard({
           onPress={() => onDelete(plan.id)}
           className="active:opacity-70"
         >
-          <Icon name="trash" size={16} color={deleteIcon} />
+          <Icon name="trash-2" size={16} color={deleteIcon} />
         </Pressable>
       </View>
       <AppText variant="title">{plan.title}</AppText>
@@ -103,7 +103,7 @@ function AuthoredPlanCard({
           onPress={() => onComplete(plan.id)}
           className="mt-1 min-h-11 flex-row items-center gap-2 self-start rounded-full border border-rule bg-card px-4 active:opacity-80"
         >
-          <Icon name="checkmark" size={14} color={inkIcon} />
+          <Icon name="check" size={14} color={inkIcon} />
           <AppText variant="meta" className="text-ink-2">
             Mark done
           </AppText>
@@ -509,7 +509,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
                 <Card className="gap-1">
                   <View className="flex-row items-start justify-between gap-3">
                     <Tag label={activity.kind} tone="coach" />
-                    <Icon name="chevron.right" size={13} color={chevron} />
+                    <Icon name="chevron-right" size={13} color={chevron} />
                   </View>
                   <AppText variant="title" className="mt-1">
                     {activity.title}
@@ -580,7 +580,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
                         <AppText variant="mono" className="text-ink-3">
                           {item.childName}
                         </AppText>
-                        <Icon name="chevron.right" size={13} color={chevron} />
+                        <Icon name="chevron-right" size={13} color={chevron} />
                       </View>
                     </View>
                     <AppText variant="title" className="mt-1">

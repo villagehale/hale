@@ -68,7 +68,7 @@ export function ChildFields({
         </View>
         {removable && onRemove ? (
           <View className="pt-6">
-            <IconButton icon="trash" accessibilityLabel="Remove this child" onPress={onRemove} />
+            <IconButton icon="trash-2" accessibilityLabel="Remove this child" onPress={onRemove} />
           </View>
         ) : null}
       </View>
@@ -101,7 +101,7 @@ export function ChildFields({
               <AppText variant="body" className={child.dateOfBirth ? 'text-ink' : 'text-ink-3'}>
                 {child.dateOfBirth ? dobLabel(child.dateOfBirth) : 'Tap to choose'}
               </AppText>
-              <Icon name={showPicker ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+              <Icon name={showPicker ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
             </Pressable>
             {showPicker ? (
               <View className="items-center">

@@ -3,7 +3,7 @@ import { useColorScheme } from 'react-native';
 /**
  * Concrete hex for the handoff tokens, mirroring src/global.css. NativeWind
  * className tokens cover styling; this exists only for APIs that need a literal
- * color value and can't read a className — SF Symbols (expo-symbols tintColor).
+ * color value and can't read a className — Lucide icons (the Icon color prop).
  * `brand` mirrors the primary navy so a literal consumer (e.g. the tab-bar active
  * tint) can adopt it; the chip*Icon entries mirror the six tint-chip icon colors so
  * an icon rendered inside a tint chip can be tinted to match. Keep in sync with

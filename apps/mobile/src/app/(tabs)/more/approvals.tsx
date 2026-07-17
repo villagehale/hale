@@ -65,7 +65,7 @@ const ActionCard = memo(function ActionCard({
                 for {action.childLabel}
               </AppText>
             ) : null}
-            <Icon name="chevron.right" size={13} color={chevron} />
+            <Icon name="chevron-right" size={13} color={chevron} />
           </View>
         </View>
 

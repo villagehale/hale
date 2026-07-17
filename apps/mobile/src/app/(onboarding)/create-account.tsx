@@ -225,7 +225,7 @@ function VerifyEmail({ email, password }: { email: string; password: string }) {
     <Screen className="justify-center gap-6">
       <View className="items-center gap-5">
         <View className="h-20 w-20 items-center justify-center rounded-full bg-accent-tint">
-          <Icon name="envelope.fill" size={32} color={accent} />
+          <Icon name="mail" size={32} color={accent} />
         </View>
         <View className="items-center gap-3">
           <AppText variant="display" className="text-center">

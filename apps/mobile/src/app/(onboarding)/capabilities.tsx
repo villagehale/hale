@@ -18,12 +18,12 @@ import { useMeadowColor } from '@/constants/meadow';
  */
 const SAMPLES: { icon: IconName; title: string; body: string }[] = [
   {
-    icon: 'syringe.fill',
+    icon: 'syringe',
     title: 'A gentle vaccine reminder',
     body: '“Maya’s 6-month shots are coming up in two weeks — want me to find a nearby clinic?”',
   },
   {
-    icon: 'book.fill',
+    icon: 'book-open',
     title: 'A storytime worth the trip',
     body: '“There’s a toddler storytime at the library Saturday morning — a short walk from you.”',
   },

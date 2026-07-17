@@ -22,17 +22,17 @@ import { useOnboardingDraft } from '@/lib/use-onboarding-draft';
  */
 const PILLARS: { icon: IconName; title: string; body: string }[] = [
   {
-    icon: 'mappin.and.ellipse',
+    icon: 'map-pin',
     title: 'Your data stays in Canada',
     body: "Stored and processed in Canada, never sold. It's your family's, not a product.",
   },
   {
-    icon: 'checkmark.shield.fill',
+    icon: 'shield-check',
     title: 'Nothing happens without your say-so',
     body: 'Hale suggests; you approve. It never acts on your behalf until you tell it to.',
   },
   {
-    icon: 'lock.shield.fill',
+    icon: 'shield',
     title: 'Teen privacy is held',
     body: 'For children 13+, their world stays private by default — surfaced only with their assent.',
   },
@@ -102,7 +102,7 @@ export default function ConsentScreen() {
             acknowledged ? 'border-ink bg-ink' : 'border-rule-strong'
           }`}
         >
-          {acknowledged ? <Icon name="checkmark" size={14} color={checkColor} /> : null}
+          {acknowledged ? <Icon name="check" size={14} color={checkColor} /> : null}
         </View>
         <AppText variant="body" className="flex-1 text-ink-2">
           I agree to the Terms, Privacy Policy, cross-border processing, and AI processing of my

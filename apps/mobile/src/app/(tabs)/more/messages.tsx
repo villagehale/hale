@@ -45,7 +45,7 @@ function MessageRow({ message }: { message: MessageView }) {
           {message.body}
         </AppText>
       </View>
-      {navigates ? <Icon name="chevron.right" size={14} color={chevron} /> : null}
+      {navigates ? <Icon name="chevron-right" size={14} color={chevron} /> : null}
     </View>
   );
 

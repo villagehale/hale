@@ -233,7 +233,7 @@ export function GrowthAddSheet({
                   {whenLabel(when)}
                 </AppText>
               </View>
-              <Icon name={showPicker ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+              <Icon name={showPicker ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
             </Pressable>
 
             {showPicker ? (

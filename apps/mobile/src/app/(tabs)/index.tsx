@@ -106,19 +106,19 @@ function HomeBody({
         <View className="flex-row items-center gap-2">
           <Pill
             label="Log feed"
-            icon="drop.fill"
+            icon="droplet"
             className="flex-1"
             onPress={() => setLogKind('feed')}
           />
           <Pill
             label="Log nap"
-            icon="moon.fill"
+            icon="moon"
             className="flex-1"
             onPress={() => setLogKind('nap')}
           />
           <Pill
             label="Milestone"
-            icon="star.fill"
+            icon="star"
             accent
             className="flex-1"
             onPress={() => setLogKind('milestone')}

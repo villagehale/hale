@@ -82,7 +82,7 @@ function DriveCard({ files }: { files: Extract<ToolCard, { kind: 'drive' }>['fil
                 }}
                 className="flex-row items-center gap-3 active:opacity-80"
               >
-                <Icon name="doc.text" size={18} color={iconColor} />
+                <Icon name="file-text" size={18} color={iconColor} />
                 <View className="flex-1">
                   <AppText variant="body" numberOfLines={1}>
                     {file.name}
@@ -92,7 +92,7 @@ function DriveCard({ files }: { files: Extract<ToolCard, { kind: 'drive' }>['fil
                     {modified ? ` · ${modified}` : ''}
                   </AppText>
                 </View>
-                <Icon name="arrow.up.right.square" size={16} color={iconColor} />
+                <Icon name="square-arrow-out-up-right" size={16} color={iconColor} />
               </Pressable>
             );
           })

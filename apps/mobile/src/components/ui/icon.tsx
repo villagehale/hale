@@ -1,6 +1,102 @@
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import {
+  ArrowUp,
+  BookOpen,
+  Bookmark,
+  BookmarkCheck,
+  BriefcaseMedical,
+  Building2,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CircleCheck,
+  CircleStop,
+  CircleX,
+  Clock,
+  CreditCard,
+  Droplet,
+  Ellipsis,
+  FileText,
+  Heart,
+  House,
+  LogOut,
+  type LucideIcon,
+  Mail,
+  Map as MapIcon,
+  MapPin,
+  Mic,
+  Moon,
+  Pencil,
+  Plus,
+  Search,
+  Settings,
+  Share,
+  Shield,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  SquareArrowOutUpRight,
+  SquarePen,
+  Star,
+  Syringe,
+  Trash2,
+  User,
+  Users,
+} from 'lucide-react-native';
 
-export type IconName = SymbolViewProps['name'];
+// Lucide outline set, 1.8px stroke per the design handoff. `MapIcon` is imported
+// but the Village tab intentionally maps to `building-2` (the handoff draws a
+// cluster of homes, not a folded map).
+const ICONS = {
+  'arrow-up': ArrowUp,
+  bookmark: Bookmark,
+  'bookmark-check': BookmarkCheck,
+  'book-open': BookOpen,
+  'briefcase-medical': BriefcaseMedical,
+  'building-2': Building2,
+  calendar: Calendar,
+  check: Check,
+  'chevron-down': ChevronDown,
+  'chevron-left': ChevronLeft,
+  'chevron-right': ChevronRight,
+  'chevron-up': ChevronUp,
+  'circle-check': CircleCheck,
+  'circle-stop': CircleStop,
+  'circle-x': CircleX,
+  clock: Clock,
+  'credit-card': CreditCard,
+  droplet: Droplet,
+  ellipsis: Ellipsis,
+  'file-text': FileText,
+  heart: Heart,
+  house: House,
+  'log-out': LogOut,
+  mail: Mail,
+  map: MapIcon,
+  'map-pin': MapPin,
+  mic: Mic,
+  moon: Moon,
+  pencil: Pencil,
+  plus: Plus,
+  search: Search,
+  settings: Settings,
+  share: Share,
+  shield: Shield,
+  'shield-check': ShieldCheck,
+  'sliders-horizontal': SlidersHorizontal,
+  sparkles: Sparkles,
+  'square-arrow-out-up-right': SquareArrowOutUpRight,
+  'square-pen': SquarePen,
+  star: Star,
+  syringe: Syringe,
+  'trash-2': Trash2,
+  user: User,
+  users: Users,
+} satisfies Record<string, LucideIcon>;
+
+export type IconName = keyof typeof ICONS;
 
 export type IconProps = {
   name: IconName;
@@ -9,5 +105,6 @@ export type IconProps = {
 };
 
 export function Icon({ name, size = 20, color }: IconProps) {
-  return <SymbolView name={name} size={size} tintColor={color} />;
+  const Glyph = ICONS[name];
+  return <Glyph size={size} color={color} strokeWidth={1.8} />;
 }
