@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DIAPER_EPISODE,
+  type DiaperKind,
   FEED_EPISODE,
   HEALTH_DONE_EPISODE,
   type MarkDoneInput,
@@ -120,6 +122,55 @@ describe('buildEpisodeInsert', () => {
     expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID).payload).toEqual({
       amountMl: 90,
       note: 'spit up a little',
+    });
+  });
+
+  it('shapes a diaper episode with the kind in the payload and a capitalized summary', () => {
+    const input: QuickLogInput = { kind: DIAPER_EPISODE, childId: CHILD_ID, diaperKind: 'wet' };
+
+    expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID)).toEqual({
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      authoredBy: AUTHOR_ID,
+      occurredAt: NOW,
+      episodeType: 'diaper',
+      summary: 'Wet diaper',
+      payload: { diaperKind: 'wet' },
+    });
+  });
+
+  it('summarizes every diaper kind as "<Kind> diaper" (label derived from the spec)', () => {
+    const cases: [DiaperKind, string][] = [
+      ['wet', 'Wet diaper'],
+      ['dirty', 'Dirty diaper'],
+      ['mixed', 'Mixed diaper'],
+      ['dry', 'Dry diaper'],
+    ];
+
+    for (const [diaperKind, summary] of cases) {
+      const episode = buildEpisodeInsert(
+        { kind: DIAPER_EPISODE, childId: CHILD_ID, diaperKind },
+        FAMILY_ID,
+        NOW,
+        AUTHOR_ID,
+      );
+      expect(episode.episodeType).toBe('diaper');
+      expect(episode.summary).toBe(summary);
+      expect(episode.payload).toEqual({ diaperKind });
+    }
+  });
+
+  it('includes an optional note in the diaper payload when given', () => {
+    const input: QuickLogInput = {
+      kind: DIAPER_EPISODE,
+      childId: CHILD_ID,
+      diaperKind: 'dirty',
+      note: 'blowout',
+    };
+
+    expect(buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID).payload).toEqual({
+      diaperKind: 'dirty',
+      note: 'blowout',
     });
   });
 });

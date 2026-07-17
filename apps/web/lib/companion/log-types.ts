@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 export const FEED_EPISODE = 'feed';
 export const NAP_EPISODE = 'nap';
+export const DIAPER_EPISODE = 'diaper';
 export const MILESTONE_EPISODE = 'milestone';
 /** A logged growth measurement (weight / height / head circumference). A raw data
  * point only — NO percentile or WHO comparison is ever derived (that would be
@@ -24,6 +25,12 @@ export const HEALTH_DONE_EPISODE = 'health_done';
  * parent doesn't pick one (kept out of the summary). */
 export const FEED_KINDS = ['bottle', 'breast', 'solid'] as const;
 export type FeedKind = (typeof FEED_KINDS)[number];
+
+/** A diaper's kind — the one required datum of a diaper log (the prototype's
+ * Log-diaper chips). 'dry' is a real logged state (checked, still dry), not a
+ * missing value. */
+export const DIAPER_KINDS = ['wet', 'dirty', 'mixed', 'dry'] as const;
+export type DiaperKind = (typeof DIAPER_KINDS)[number];
 
 /** The kinds of growth measurement a parent may log. Each has ONE fixed unit and a
  * sane upper bound (a child's real range — a mistyped value is rejected, never
@@ -81,6 +88,21 @@ export const napSchema = z.object({
   occurredAt: occurredAtField,
 });
 
+/**
+ * A diaper quick-log. `diaperKind` (wet/dirty/mixed/dry) is the one required datum;
+ * there is no numeric field and no boundary rule (unlike nap/measurement), so this
+ * plain ZodObject fully validates a diaper on its own while staying a valid member
+ * of the quickLogSchema discriminated union. The optional note + occurredAt ride
+ * along like every other quick-log.
+ */
+export const diaperSchema = z.object({
+  kind: z.literal(DIAPER_EPISODE),
+  childId: z.string().uuid(),
+  diaperKind: z.enum(DIAPER_KINDS),
+  note: z.string().trim().max(280).optional(),
+  occurredAt: occurredAtField,
+});
+
 export const milestoneSchema = z.object({
   kind: z.literal(MILESTONE_EPISODE),
   childId: z.string().uuid(),
@@ -109,6 +131,7 @@ export const measurementSchema = z.object({
 export const quickLogSchema = z.discriminatedUnion('kind', [
   feedSchema,
   napSchema,
+  diaperSchema,
   milestoneSchema,
   measurementSchema,
 ]);

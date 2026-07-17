@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DIAPER_EPISODE,
+  DIAPER_KINDS,
+  diaperSchema,
   MEASUREMENT_EPISODE,
   measurementSchema,
   NAP_EPISODE,
   napSchema,
+  quickLogSchema,
   resolveMeasurement,
   resolveNapWindow,
 } from './log-types.js';
@@ -153,5 +157,62 @@ describe('resolveMeasurement — the per-kind ceiling at the boundary', () => {
   it('rejects a head circumference over 70 cm', () => {
     expect(resolveMeasurement('head', 41).ok).toBe(true);
     expect(resolveMeasurement('head', 90).ok).toBe(false);
+  });
+});
+
+/**
+ * The diaper quick-log is a plain ZodObject member of the discriminated union (like
+ * napSchema / measurementSchema). Its one required datum is the diaperKind — one of
+ * the fixed set wet/dirty/mixed/dry (the prototype's Log-diaper chips) — plus the
+ * optional note + occurredAt every quick-log carries. There is no numeric field and
+ * no boundary rule (unlike nap/measurement), so the schema alone fully validates it.
+ * Expected values are derived from the spec (the four kinds), not copied from output.
+ */
+describe('diaperSchema — a diaper quick-log (plain ZodObject for the union)', () => {
+  const CHILD = '33333333-3333-4333-8333-333333333333';
+
+  it('accepts each diaper kind in the fixed set (wet/dirty/mixed/dry)', () => {
+    for (const diaperKind of DIAPER_KINDS) {
+      const parsed = diaperSchema.safeParse({ kind: DIAPER_EPISODE, childId: CHILD, diaperKind });
+      expect(parsed.success).toBe(true);
+    }
+  });
+
+  it('accepts an optional note and occurredAt alongside the kind', () => {
+    const parsed = diaperSchema.safeParse({
+      kind: DIAPER_EPISODE,
+      childId: CHILD,
+      diaperKind: 'mixed',
+      note: 'small leak',
+      occurredAt: '2026-07-07T14:00:00Z',
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects a diaperKind outside the fixed set', () => {
+    const parsed = diaperSchema.safeParse({
+      kind: DIAPER_EPISODE,
+      childId: CHILD,
+      diaperKind: 'soaked',
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('rejects a diaper with no diaperKind', () => {
+    const parsed = diaperSchema.safeParse({ kind: DIAPER_EPISODE, childId: CHILD });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('is reachable through the quickLogSchema discriminated union', () => {
+    // Proves diaperSchema was actually added to the union — a valid diaper routes to
+    // it, and an invalid diaperKind is still rejected once routed by `kind`.
+    const ok = quickLogSchema.safeParse({ kind: DIAPER_EPISODE, childId: CHILD, diaperKind: 'wet' });
+    expect(ok.success).toBe(true);
+    const bad = quickLogSchema.safeParse({
+      kind: DIAPER_EPISODE,
+      childId: CHILD,
+      diaperKind: 'soaked',
+    });
+    expect(bad.success).toBe(false);
   });
 });

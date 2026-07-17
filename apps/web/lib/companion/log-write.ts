@@ -1,6 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import {
+  DIAPER_EPISODE,
+  type DiaperKind,
   FEED_EPISODE,
   HEALTH_DONE_EPISODE,
   type MarkDoneInput,
@@ -30,6 +32,15 @@ export interface EpisodeInsert {
   summary: string;
   payload: Record<string, unknown>;
 }
+
+/** Display word per diaper kind for the timeline one-liner ("Wet diaper"). The
+ * kind itself (lowercase) is the structured datum kept in the payload. */
+const DIAPER_LABEL: Record<DiaperKind, string> = {
+  wet: 'Wet',
+  dirty: 'Dirty',
+  mixed: 'Mixed',
+  dry: 'Dry',
+};
 
 /**
  * Pure: turns a validated quick-log input into the episode row to insert. The
@@ -79,6 +90,16 @@ export function buildEpisodeInsert(
         },
       };
     }
+    case DIAPER_EPISODE:
+      return {
+        ...base,
+        episodeType: DIAPER_EPISODE,
+        summary: `${DIAPER_LABEL[input.diaperKind]} diaper`,
+        payload: {
+          diaperKind: input.diaperKind,
+          ...(input.note ? { note: input.note } : {}),
+        },
+      };
     case MILESTONE_EPISODE:
       return {
         ...base,
