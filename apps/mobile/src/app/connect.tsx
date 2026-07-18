@@ -10,29 +10,26 @@ import type { MobileIntegrationsResponse } from '@/lib/api-types';
 import { useApi } from '@/lib/use-api';
 
 /**
- * The post-account connect step. Reached AFTER account creation succeeds (the root
- * layout's resume effect provisions the family, then routes here) — so the user is
- * authed and their family exists, which the connect-url flow needs. It lives as a
- * TOP-LEVEL route (not in the (onboarding) group) precisely so the routing gate,
- * which bounces authed users OUT of onboarding, leaves them here.
- *
- * Skippable: "Maybe later" and "Continue" both go to the tabs. Nothing here is
- * required — connecting is opt-in, read-only, and reversible (rule #1/#4).
+ * Step 12 — "Connect to unlock even more." The post-auth connect step, reached from
+ * the getting-ready screen once provisioning has landed — so the user is authed and
+ * their family exists, which the connect-url flow needs. A TOP-LEVEL route (not the
+ * (onboarding) group) so the routing gate, which bounces authed users OUT of
+ * onboarding, leaves the post-auth tail alone. "Maybe later" and "Continue" both go
+ * on to the closer (step 13); nothing here is required — connecting is opt-in,
+ * read-only, and reversible (rule #1/#4).
  */
 export default function ConnectScreen() {
   const integrations = useApi<MobileIntegrationsResponse>('/api/mobile/integrations');
-  const toApp = () => router.replace('/(tabs)');
+  const toClose = () => router.replace('/consent');
 
   return (
     <Screen scroll className="gap-6">
-      <View className="gap-2 pt-4">
-        <AppText variant="eyebrow" className="text-accent">
-          You're in control
+      <View className="items-center gap-2 pt-4">
+        <AppText variant="display" className="text-center text-[27px] leading-[34px]">
+          Connect to unlock{'\n'}even more.
         </AppText>
-        <AppText variant="display">Connect to unlock even more</AppText>
-        <AppText variant="body">
-          Link a read-only Google account and Hale can help with what's already on your plate.
-          Everything below is optional — connect what you like, skip the rest.
+        <AppText variant="meta" className="text-center text-caption">
+          You can always add these later.
         </AppText>
       </View>
 
@@ -51,17 +48,17 @@ export default function ConnectScreen() {
       ) : null}
 
       <View className="gap-3">
-        <Button label="Continue" onPress={toApp} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Skip for now"
-          onPress={toApp}
+          onPress={toClose}
           className="items-center py-1 active:opacity-70"
         >
           <AppText variant="meta" className="text-ink-3">
             Maybe later
           </AppText>
         </Pressable>
+        <Button label="Continue" onPress={toClose} />
       </View>
     </Screen>
   );

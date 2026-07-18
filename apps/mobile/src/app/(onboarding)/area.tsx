@@ -1,29 +1,39 @@
 import { router } from 'expo-router';
 import { View } from 'react-native';
 
-import { StepScreen } from '@/components/onboarding/step-screen';
+import { ChatBubble } from '@/components/onboarding/chat-bubble';
+import { OnboardingScreen } from '@/components/onboarding/onboarding-screen';
+import { AppText } from '@/components/ui/app-text';
+import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
+import { Icon } from '@/components/ui/icon';
+import { useMeadowColor } from '@/constants/meadow';
 import { useOnboardingDraft } from '@/lib/use-onboarding-draft';
 
 /**
- * Screen 7 — "Where should I look for your village?" A coarse area only (rule #1):
- * a city and an optional postal code, never a precise address. No map — the
- * pre-auth flow has no honest map to show (the map proxy is authed + candidate-
- * keyed), so the copy carries the neighbourhood idea instead. Both fields are
- * optional; discovery just narrows with more.
+ * Step 8 — "Where should I look for your village?" A coarse area only (rule #1): a
+ * city and an optional postal code, never a precise address. The handoff draws a map
+ * slot + "use my current location" rows; the honest mechanism the app actually has is
+ * these two coarse fields (no device geolocation is wired, and precise coordinates
+ * would violate rule #1), so the map slot is an illustrative placeholder over the
+ * same city/postalCode draft the previous steps used. Both fields optional; discovery
+ * just narrows with more.
  */
 export default function AreaScreen() {
   const { draft, update } = useOnboardingDraft();
+  const accent = useMeadowColor('accentFill');
 
   return (
-    <StepScreen
-      step={3}
-      total={5}
-      eyebrow="Your area"
-      title="Where should I look for your village?"
-      hint="A neighbourhood, not an address — Hale only ever needs a coarse area to find what's nearby."
-      onContinue={() => router.push('/(onboarding)/intents')}
-    >
+    <OnboardingScreen scroll>
+      <ChatBubble prompt="Where should I look for your village?" />
+
+      <View className="my-5 h-[150px] items-center justify-center gap-2 rounded-[20px] bg-accent-tint">
+        <Icon name="map-pin" size={28} color={accent} />
+        <AppText variant="meta" className="text-ink-3">
+          A neighbourhood, not an address
+        </AppText>
+      </View>
+
       <View className="gap-3">
         <Field
           label="City"
@@ -41,6 +51,16 @@ export default function AreaScreen() {
           hint="Drives neighbourhood discovery — never a precise address. Optional."
         />
       </View>
-    </StepScreen>
+
+      <View className="flex-1" />
+      <Button
+        label="Continue"
+        onPress={() => router.push('/(onboarding)/intents')}
+        className="mt-6"
+      />
+      <AppText variant="meta" className="mt-3 text-center text-caption">
+        We never store your exact address.
+      </AppText>
+    </OnboardingScreen>
   );
 }

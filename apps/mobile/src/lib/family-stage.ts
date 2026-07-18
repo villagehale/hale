@@ -64,21 +64,3 @@ export function stageFromAgeInMonths(months: number): FamilyStage {
 export function deriveStage(dateOfBirth: string | Date, now: Date = new Date()): FamilyStage {
   return stageFromAgeInMonths(completedMonths(toCalendarDate(dateOfBirth), toCalendarDate(now)));
 }
-
-/**
- * The stage of the YOUNGEST dated child — the stage the anonymous preview asks
- * for, because discovery is tailored to the newest arrival and a teen sibling must
- * not suppress a newborn's activities. Children without a birthday are skipped;
- * `null` means there is nothing to preview yet. The result is `teenager` only when
- * every dated child is a teenager, which is the honest teen-only preview boundary
- * (the API returns no activities for that stage by design, rule #1).
- */
-export function youngestChildStage(
-  children: ReadonlyArray<{ dateOfBirth: string }>,
-  now: Date = new Date(),
-): FamilyStage | null {
-  const dated = children.filter((c) => c.dateOfBirth);
-  if (dated.length === 0) return null;
-  const youngest = dated.reduce((a, b) => (a.dateOfBirth > b.dateOfBirth ? a : b));
-  return deriveStage(youngest.dateOfBirth, now);
-}

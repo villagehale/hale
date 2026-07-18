@@ -1,6 +1,9 @@
 import { Pressable } from 'react-native';
 
+import { type MeadowColor, useMeadowColor } from '@/constants/meadow';
+
 import { AppText } from './app-text';
+import { Icon, type IconName } from './icon';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -11,7 +14,17 @@ type ButtonProps = {
   /** Blocks onPress and dims the control — pass while a submit is in flight so a
    * slow network can't double-fire (sign-in, approvals, family save). */
   disabled?: boolean;
+  /** Optional glyph after the label (e.g. the onboarding "Let's begin →" arrow),
+   * tinted to match the label of the chosen variant. */
+  trailingIcon?: IconName;
   className?: string;
+};
+
+// The label color literal per variant, for tinting a trailing icon to match.
+const ICON_TINT: Record<ButtonVariant, MeadowColor> = {
+  primary: 'onAccent',
+  secondary: 'ink',
+  ghost: 'ink3',
 };
 
 // Handoff button set. primary = navy brand fill + white 15/600 label; secondary =
@@ -29,10 +42,12 @@ export function Button({
   onPress,
   variant = 'primary',
   disabled = false,
+  trailingIcon,
   className,
 }: ButtonProps) {
   const { surface, label: labelColor } = VARIANT[variant];
-  const base = `min-h-12 flex-row items-center justify-center rounded-[16px] px-6 py-4 ${
+  const iconColor = useMeadowColor(ICON_TINT[variant]);
+  const base = `min-h-12 flex-row items-center justify-center gap-2 rounded-[16px] px-6 py-4 ${
     disabled ? 'opacity-50' : 'active:opacity-90'
   }`;
 
@@ -47,6 +62,7 @@ export function Button({
       <AppText variant="section" className={labelColor}>
         {label}
       </AppText>
+      {trailingIcon ? <Icon name={trailingIcon} size={17} color={iconColor} /> : null}
     </Pressable>
   );
 }
