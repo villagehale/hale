@@ -1,6 +1,7 @@
 import {
   ArrowUp,
   Baby,
+  Bell,
   BookOpen,
   Bookmark,
   BookmarkCheck,
@@ -55,6 +56,7 @@ import {
 const ICONS = {
   'arrow-up': ArrowUp,
   baby: Baby,
+  bell: Bell,
   bookmark: Bookmark,
   'bookmark-check': BookmarkCheck,
   'book-open': BookOpen,
