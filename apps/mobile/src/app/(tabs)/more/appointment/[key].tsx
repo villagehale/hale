@@ -1,14 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
-import { Sheet } from '@/components/ui/sheet';
+import { Screen } from '@/components/ui/screen';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
-import type { UpcomingHealthItem } from '@/lib/api-types';
+import type {
+  ChildCompanionView,
+  MobileCompanionResponse,
+  UpcomingHealthItem,
+} from '@/lib/api-types';
 import { duePhrase } from '@/lib/format';
+import { useApi } from '@/lib/use-api';
 
 /** The plain, honest text a Share hands off — the item, its timing, and the
  * standard-schedule caveat. No fabricated calendar link (expo-calendar isn't
@@ -18,30 +27,35 @@ function shareText(item: UpcomingHealthItem, childName: string | null): string {
   return `${who}${item.what} — ${duePhrase(item.dueInWeeks)}.\nTiming is the standard Canadian schedule — confirm with your provider.`;
 }
 
+/** Resolve the upcoming health item by its stable key across the child's three
+ * health lists (the item can be opened from Up-next, the schedule, or a recently
+ * passed row). Null when the key doesn't match — the route then shows the empty
+ * state instead of crashing (deep-link safety). */
+function findHealthItem(child: ChildCompanionView, key: string): UpcomingHealthItem | null {
+  const all = [
+    child.todayHealth,
+    ...child.nextHealth,
+    ...child.recentlyPassedHealth,
+  ].filter((i): i is UpcomingHealthItem => i !== null);
+  return all.find((i) => i.key === key) ?? null;
+}
+
 /**
- * The appointment detail sheet opened by tapping an Up-next health row: the item's
- * what / when / done state, the standard-schedule provenance line (the screen's
- * register), a Share affordance (native Share of the plain details — free and
- * honest), and a real "Mark done" that POSTs the audited /api/mobile/companion/done
- * (rule #6, the same lib the web markCompanionItemDone action uses). There is NO
- * add-to-calendar write — expo-calendar isn't installed and the executor is not
- * configured, so the sheet never fakes one.
+ * The appointment detail body (moved verbatim from AppointmentDetailSheet): the
+ * item's what / when / done state, the standard-schedule provenance line, a Share
+ * affordance (native Share of the plain details), and a real "Mark done" that POSTs
+ * the audited /api/mobile/companion/done (rule #6). There is NO add-to-calendar
+ * write — expo-calendar isn't installed and the executor is not configured, so the
+ * page never fakes one.
  */
-export function AppointmentDetailSheet({
+function AppointmentBody({
   item,
   childId,
   childName,
-  visible,
-  onClose,
-  onDone,
 }: {
-  item: UpcomingHealthItem | null;
+  item: UpcomingHealthItem;
   childId: string;
   childName: string | null;
-  visible: boolean;
-  onClose: () => void;
-  /** Called after a successful mark-done so the caller can refresh its view. */
-  onDone: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [marked, setMarked] = useState(false);
@@ -49,15 +63,6 @@ export function AppointmentDetailSheet({
   const iconColor = useMeadowColor('ink2');
   const onInk = useMeadowColor('onAccent');
 
-  useEffect(() => {
-    if (visible) {
-      setBusy(false);
-      setMarked(false);
-      setError(null);
-    }
-  }, [visible]);
-
-  if (!item) return null;
   const isDone = marked || item.done;
 
   const onShare = async () => {
@@ -82,7 +87,6 @@ export function AppointmentDetailSheet({
         }),
       });
       setMarked(true);
-      onDone();
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401) {
         setError("Couldn't mark it done just now — try again in a moment.");
@@ -93,7 +97,7 @@ export function AppointmentDetailSheet({
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose}>
+    <Card className="gap-0">
       <View className="mb-3 flex-row items-start justify-between gap-3">
         <AppText variant="title" className="flex-1">
           {item.what}
@@ -154,6 +158,39 @@ export function AppointmentDetailSheet({
           {error}
         </AppText>
       ) : null}
-    </Sheet>
+    </Card>
+  );
+}
+
+/**
+ * The pushed Appointment-details route (sheet→stack conversion). Takes the health
+ * item's stable `key` and its `child` id, re-reads /api/mobile/companion and resolves
+ * the item the SAME way the sheet derived it from props — no stale object threaded
+ * through navigation. A missing child / key renders an honest empty state, never a
+ * crash (deep-link safety).
+ */
+export default function AppointmentDetailScreen() {
+  const { key, child } = useLocalSearchParams<{ key: string; child: string }>();
+  const { status, data, error, reload } = useApi<MobileCompanionResponse>('/api/mobile/companion');
+  const childView = data?.children.find((c) => c.id === child) ?? null;
+  const item = childView ? findHealthItem(childView, key) : null;
+
+  return (
+    <Screen scroll className="gap-5">
+      <DetailHeader title="Appointment details" />
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && item && childView ? (
+        <AppointmentBody item={item} childId={childView.id} childName={childView.name} />
+      ) : null}
+      {status === 'ready' && !item ? (
+        <Card className="mt-2 items-center gap-2 py-10">
+          <AppText variant="title">Nothing to show</AppText>
+          <AppText variant="meta" className="text-center">
+            This visit isn&rsquo;t on the schedule anymore. Head back to see what&rsquo;s next.
+          </AppText>
+        </Card>
+      ) : null}
+    </Screen>
   );
 }

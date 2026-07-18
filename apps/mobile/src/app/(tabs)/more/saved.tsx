@@ -1,7 +1,7 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
@@ -117,7 +117,6 @@ function SavedBody({
   data: MobileSavedResponse;
   onRefresh: () => void;
 }) {
-  const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
   const { candidates } = data;
 
   if (candidates.length === 0) {
@@ -133,19 +132,16 @@ function SavedBody({
   }
 
   return (
-    <>
-      <View className="gap-3">
-        {candidates.map((rec) => (
-          <SavedCard key={rec.id} rec={rec} onOpen={setOpenRec} onRefresh={onRefresh} />
-        ))}
-      </View>
-      <VillageDetailSheet
-        rec={openRec}
-        visible={openRec !== null}
-        onClose={() => setOpenRec(null)}
-        onChanged={onRefresh}
-      />
-    </>
+    <View className="gap-3">
+      {candidates.map((rec) => (
+        <SavedCard
+          key={rec.id}
+          rec={rec}
+          onOpen={(r) => router.push(`/more/activity/${r.id}`)}
+          onRefresh={onRefresh}
+        />
+      ))}
+    </View>
   );
 }
 

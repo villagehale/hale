@@ -2,8 +2,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { AppointmentDetailSheet } from '@/components/hale/appointment-detail-sheet';
-import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -170,16 +168,12 @@ function SnapshotStat({ cell }: { cell: StatCell }) {
 function HomeBody({
   data,
   onLogged,
-  onRefresh,
 }: {
   data: MobileHomeResponse;
   onLogged: () => void;
-  onRefresh: () => void;
 }) {
   const rec = firstVillageRec(data.village.candidates);
   const [logKind, setLogKind] = useState<LogKind | null>(null);
-  const [villageOpen, setVillageOpen] = useState(false);
-  const [apptOpen, setApptOpen] = useState(false);
   const leadChild = data.children[0] ?? null;
   const upNext = leadChild ? leadHealth(leadChild) : null;
   const greeting = homeGreeting(data.viewer);
@@ -306,7 +300,14 @@ function HomeBody({
       {upNext ? (
         <View className="gap-2.5">
           <SectionLabel>Up next</SectionLabel>
-          <Card onPress={() => setApptOpen(true)} className="flex-row items-center gap-3">
+          <Card
+            onPress={() =>
+              leadChild
+                ? router.push(`/more/appointment/${upNext.key}?child=${leadChild.id}`)
+                : undefined
+            }
+            className="flex-row items-center gap-3"
+          >
             <TintChip icon="calendar" tone="blue" size={38} />
             <View className="flex-1">
               <AppText
@@ -328,7 +329,10 @@ function HomeBody({
       {rec ? (
         <View className="gap-2.5">
           <SectionLabel>From your village</SectionLabel>
-          <Card onPress={() => setVillageOpen(true)} className="flex-row items-center gap-3">
+          <Card
+            onPress={() => router.push(`/more/activity/${rec.id}`)}
+            className="flex-row items-center gap-3"
+          >
             <TintChip icon="map-pin" tone="yellow" size={38} />
             <View className="flex-1">
               <AppText
@@ -358,24 +362,6 @@ function HomeBody({
         onClose={() => setLogKind(null)}
         onLogged={onLogged}
       />
-
-      {leadChild ? (
-        <AppointmentDetailSheet
-          item={upNext}
-          childId={leadChild.id}
-          childName={leadChild.name}
-          visible={apptOpen}
-          onClose={() => setApptOpen(false)}
-          onDone={onRefresh}
-        />
-      ) : null}
-
-      <VillageDetailSheet
-        rec={rec}
-        visible={villageOpen}
-        onClose={() => setVillageOpen(false)}
-        onChanged={onRefresh}
-      />
     </>
   );
 }
@@ -388,9 +374,7 @@ export default function HomeScreen() {
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? (
-        <HomeBody data={data} onLogged={refresh} onRefresh={refresh} />
-      ) : null}
+      {status === 'ready' && data ? <HomeBody data={data} onLogged={refresh} /> : null}
     </Screen>
   );
 }

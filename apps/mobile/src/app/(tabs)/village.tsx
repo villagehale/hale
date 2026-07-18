@@ -1,9 +1,9 @@
+import { router } from 'expo-router';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
 
 import { ResourcesRail } from '@/components/hale/resources-rail';
 import { TypingDots } from '@/components/hale/typing-dots';
-import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
@@ -604,7 +604,11 @@ function VillageBody({
   const [cadence, setCadence] = useState<CadenceFilter>('all');
   const [seasons, setSeasons] = useState<Set<SeasonFilterKey>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
+  // Stable so RecCard's memo holds — pushes the shared Activity route by candidate id.
+  const openActivity = useCallback(
+    (rec: VillageCandidateView) => router.push(`/more/activity/${rec.id}`),
+    [],
+  );
   const recs = useMemo(
     () => applyFilters(data.candidates, cadence, seasons),
     [data.candidates, cadence, seasons],
@@ -647,17 +651,10 @@ function VillageBody({
       ) : (
         <View className="gap-3">
           {recs.map((rec) => (
-            <RecCard key={rec.id} rec={rec} onOpen={setOpenRec} onChanged={onRefresh} />
+            <RecCard key={rec.id} rec={rec} onOpen={openActivity} onChanged={onRefresh} />
           ))}
         </View>
       )}
-
-      <VillageDetailSheet
-        rec={openRec}
-        visible={openRec !== null}
-        onClose={() => setOpenRec(null)}
-        onChanged={onRefresh}
-      />
 
       <FiltersSheet
         visible={filtersOpen}

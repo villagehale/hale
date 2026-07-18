@@ -1,35 +1,35 @@
 import { Image } from 'expo-image';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
-import { Sheet } from '@/components/ui/sheet';
+import { Screen } from '@/components/ui/screen';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
-import type { DocumentView, MobileDocDeleteResponse, MobileDocUrlResponse } from '@/lib/api-types';
+import type {
+  DocumentView,
+  MobileDocDeleteResponse,
+  MobileDocsResponse,
+  MobileDocUrlResponse,
+} from '@/lib/api-types';
 import { DOC_KIND_LABEL, type DocKind } from '@/lib/docs';
 import { whenPhrase } from '@/lib/format';
+import { useApi } from '@/lib/use-api';
 
 /**
- * The document viewer: given a selected doc, mints a short-TTL signed URL via
- * GET /api/mobile/docs/[id]/url (rule #1, per-view). An image renders inline via
- * expo-image; a PDF opens externally through the system browser — HONEST v1, no
- * faked inline PDF. A delete affordance DELETEs the doc after an in-sheet confirm
- * (rule #6 audit on the route). expo-image + expo-web-browser are imported only here.
+ * The document viewer body (moved from DocsViewerSheet): mints a short-TTL signed URL
+ * via GET /api/mobile/docs/:id/url (rule #1, per-view). An image renders inline via
+ * expo-image; a PDF opens externally through the system browser — HONEST v1, no faked
+ * inline PDF. A delete affordance DELETEs the doc after an in-page confirm (rule #6
+ * audit on the route), then pops back to the vault.
  */
-export function DocsViewerSheet({
-  doc,
-  visible,
-  onClose,
-  onDeleted,
-}: {
-  doc: DocumentView | null;
-  visible: boolean;
-  onClose: () => void;
-  onDeleted: () => void;
-}) {
+function DocViewerBody({ doc }: { doc: DocumentView }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,13 +39,10 @@ export function DocsViewerSheet({
   const onInk = useMeadowColor('onAccent');
 
   useEffect(() => {
-    if (!visible || !doc) return;
     let live = true;
     setUrl(null);
     setLoading(true);
     setError(null);
-    setConfirmingDelete(false);
-    setDeleting(false);
     api<MobileDocUrlResponse>(`/api/mobile/docs/${doc.id}/url`)
       .then((res) => {
         if (live) setUrl(res.url);
@@ -61,9 +58,8 @@ export function DocsViewerSheet({
     return () => {
       live = false;
     };
-  }, [visible, doc]);
+  }, [doc.id]);
 
-  if (!doc) return null;
   const isImage = doc.mime.startsWith('image/');
   const kindLabel = DOC_KIND_LABEL[doc.kind as DocKind] ?? doc.kind;
 
@@ -76,8 +72,7 @@ export function DocsViewerSheet({
     setError(null);
     try {
       await api<MobileDocDeleteResponse>(`/api/mobile/docs/${doc.id}`, { method: 'DELETE' });
-      onDeleted();
-      onClose();
+      router.back();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
       setError((e as Error).message);
@@ -86,7 +81,7 @@ export function DocsViewerSheet({
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose}>
+    <>
       <View className="mb-1 flex-row items-start justify-between gap-3">
         <AppText variant="title" className="flex-1">
           {doc.title}
@@ -128,7 +123,7 @@ export function DocsViewerSheet({
       {confirmingDelete ? (
         <View className="mt-1 gap-3 rounded-md border border-rule bg-raised p-4">
           <AppText variant="body" className="text-ink">
-            Remove this document? This can't be undone.
+            Remove this document? This can&rsquo;t be undone.
           </AppText>
           <View className="flex-row gap-2">
             <Pressable
@@ -170,6 +165,36 @@ export function DocsViewerSheet({
           </AppText>
         </Pressable>
       )}
-    </Sheet>
+    </>
+  );
+}
+
+/**
+ * The pushed Document-viewer route (sheet→stack conversion). Takes the doc id and
+ * re-reads the vault list to resolve it the SAME way the sheet derived it from props;
+ * the signed URL is still minted per-view inside the body (rule #1). A missing /
+ * redacted id (the list already drops a teen-redacted doc, rule #1) renders an honest
+ * empty state, never a crash.
+ */
+export default function DocsDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { status, data, error, reload } = useApi<MobileDocsResponse>('/api/mobile/docs');
+  const doc = data?.documents.find((d) => d.id === id) ?? null;
+
+  return (
+    <Screen scroll className="gap-5">
+      <DetailHeader title="Document" />
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && doc ? <DocViewerBody doc={doc} /> : null}
+      {status === 'ready' && !doc ? (
+        <Card className="mt-2 items-center gap-2 py-10">
+          <AppText variant="title">Not available</AppText>
+          <AppText variant="meta" className="text-center">
+            This document is no longer available. Head back to your documents.
+          </AppText>
+        </Card>
+      ) : null}
+    </Screen>
   );
 }

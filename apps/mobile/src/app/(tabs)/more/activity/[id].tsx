@@ -1,16 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { Linking, Platform, Pressable, Share, View } from 'react-native';
 
 import { VillageMap } from '@/components/hale/village-map';
 import { AppText } from '@/components/ui/app-text';
+import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { Sheet } from '@/components/ui/sheet';
+import { Screen } from '@/components/ui/screen';
+import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
-import type { VillageCandidateView } from '@/lib/api-types';
+import type { MobileVillageCandidateResponse, VillageCandidateView } from '@/lib/api-types';
 import { foundStamp, indoorOutdoorLabel, priceBandLabel } from '@/lib/format';
 import { registerLinkHref } from '@/lib/register-link';
+import { useApi } from '@/lib/use-api';
 import { useMapThumbnail } from '@/lib/use-map-thumbnail';
 
 /** Maps a failed action (accept / endorse / share) to an honest, parent-facing
@@ -88,67 +93,30 @@ function MetaChips({ rec }: { rec: VillageCandidateView }) {
 }
 
 /**
- * The shared Village detail sheet — one component behind BOTH Home's "from the
- * village" card and the Village tab's RecCard. Shows the pick's title / kind /
- * cadence / seasons / summary / coverage / venue, then the actions wired EXACTLY
- * like the Village ShareRow: Accept and Endorse POST their hrefs via api(); "I'm
- * interested" privately toggles a save (never surfaced, neither enrolls nor sends
- * for approval — distinct from Accept and from the public Endorse count); Share
- * mints a link then hands it to the native Share sheet; "Open in Maps" opens the
- * public venue coordinates via Linking (never the family's address — rule #1);
- * Register always resolves (the source URL or a Google-search fallback). Accepting
- * does NOT add the activity to the
- * week — it re-enters the pipeline as a draft the parent must approve (rule #4), so
- * the post-accept pill reads "Sent for your approval", never "added to your week"
- * (mirrors the web AcceptButton). A teen-redacted card never opens a detail (guarded
- * at the call site AND here as a fail-closed backstop — rule #1).
+ * The Activity detail body (moved from VillageDetailSheet): the pick's title / kind /
+ * cadence / seasons / summary / coverage / venue, then the actions wired EXACTLY like
+ * the Village ShareRow — Accept and Endorse POST their hrefs via api(); "I'm
+ * interested" privately toggles a save (never surfaced, neither enrolls nor sends for
+ * approval); Share mints a link then hands it to the native Share sheet; "Open in
+ * Maps" opens the PUBLIC venue coordinates (never the family's address — rule #1);
+ * Register always resolves (source URL or a Google-search fallback). Accepting does
+ * NOT add the activity to the week — it re-enters the pipeline as a draft the parent
+ * must approve (rule #4), so the post-accept line reads "Sent for your approval". Only
+ * ever mounted for a non-teen rec (the route guards teenAttributed above — rule #1).
  */
-export function VillageDetailSheet({
-  rec,
-  visible,
-  onClose,
-  onChanged,
-}: {
-  rec: VillageCandidateView | null;
-  visible: boolean;
-  onClose: () => void;
-  /** Called after a successful accept/endorse so the caller can refresh its feed. */
-  onChanged?: () => void;
-}) {
+function ActivityBody({ rec }: { rec: VillageCandidateView }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [endorsed, setEndorsed] = useState(false);
   const [saved, setSaved] = useState<boolean | null>(null);
   const accentIcon = useMeadowColor('accentFill');
-  // A teen-redacted card carries no venue point (lat/lng nulled at the mapper), so
-  // its id yields 204 and no map renders — the hook is safe to call for any rec.
-  // Web-only: native renders the interactive expo-maps view and ignores the
-  // static thumbnail, so fetching it there is a discarded Static Maps call.
-  const mapUri = useMapThumbnail(
-    Platform.OS === 'web' && rec && !rec.teenAttributed ? rec.id : null,
-  );
-
-  // Drop this session's optimistic action state whenever a DIFFERENT candidate opens
-  // in the same (reused) sheet — otherwise a save toggled on candidate A would bleed
-  // into candidate B's bookmark. The server flags on `rec` then drive the state.
-  const recId = rec?.id ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on the candidate id only
-  useEffect(() => {
-    setAccepted(false);
-    setEndorsed(false);
-    setSaved(null);
-    setError(null);
-  }, [recId]);
-
-  // Fail closed: a redacted card carries no raw fields, so never render a detail
-  // for it even if a caller slips one through (rule #1).
-  if (!rec || rec.teenAttributed) return null;
+  // Web-only: native renders the interactive expo-maps view and ignores the static
+  // thumbnail. This body only mounts for a non-teen rec, so the id is safe to fetch.
+  const mapUri = useMapThumbnail(Platform.OS === 'web' ? rec.id : null);
 
   const isAccepted = accepted || rec.accepted;
   const isEndorsed = endorsed || rec.endorsedByFamily;
-  // Save is a private toggle: the local optimistic state wins once tapped, else the
-  // server's saved flag. A save neither enrolls nor approves — distinct from Accept.
   const isSaved = saved ?? rec.saved;
   const hasPin = rec.lat !== null && rec.lng !== null;
   const registerUrl = registerLinkHref(rec.sourceUrl, rec.title);
@@ -159,7 +127,6 @@ export function VillageDetailSheet({
     try {
       await api(href, { method: 'POST' });
       onOk();
-      onChanged?.();
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401) {
         setError(actionErrorMessage(e instanceof ApiError ? e.status : 0));
@@ -173,10 +140,8 @@ export function VillageDetailSheet({
     setBusy(true);
     setError(null);
     try {
-      // The route is a toggle; it returns the resulting private saved state.
       const { saved: nowSaved } = await api<{ saved: boolean }>(rec.saveHref, { method: 'POST' });
       setSaved(nowSaved);
-      onChanged?.();
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401) {
         setError(actionErrorMessage(e instanceof ApiError ? e.status : 0));
@@ -209,7 +174,6 @@ export function VillageDetailSheet({
   };
 
   const openMaps = () => {
-    // A geo: URI on Android, an Apple Maps URL on iOS — the public venue point only.
     const label = encodeURIComponent(rec.venueName ?? rec.title);
     const url =
       Platform.OS === 'ios'
@@ -219,13 +183,11 @@ export function VillageDetailSheet({
   };
 
   const openRegister = () => {
-    // Always resolves (source URL, or a Google-search fallback) — parity with web
-    // so the Register/Source affordance is never missing (rule #1: title only).
     Linking.openURL(registerUrl).catch(() => setError("Couldn't open the link."));
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose}>
+    <>
       <View className="mb-3 flex-row items-start justify-between gap-3">
         <AppText variant="title" className="flex-1">
           {rec.title}
@@ -233,11 +195,10 @@ export function VillageDetailSheet({
         <Tag label={rec.kind} tone="coach" />
       </View>
 
-      {/* The venue map: on native this is an INTERACTIVE expo-maps view plotting the
-          public venue pin (rule #1: a public place, never the family's home); on
-          RN-web (no expo-maps) it degrades to the static Static-Maps thumbnail the
-          hook fetched. Either way it renders NOTHING when there is no coordinate or
-          no thumbnail — never a broken/empty map box. */}
+      {/* The venue map: on native an INTERACTIVE expo-maps view plotting the PUBLIC
+          venue pin (rule #1: a public place, never the family's home); on RN-web it
+          degrades to the static thumbnail. Renders NOTHING when there is no coordinate
+          or thumbnail — never a broken/empty map box. */}
       <VillageMap candidate={rec} staticMapUri={mapUri} />
 
       <AppText variant="meta" className="mb-3 text-ink-3">
@@ -308,17 +269,13 @@ export function VillageDetailSheet({
           disabled={busy}
           onPress={onShare}
         />
-        {hasPin ? (
-          <ActionButton icon="map" label="Open in Maps" onPress={openMaps} />
-        ) : null}
-        {/* Always resolves (register fallback), so a parent is never left without a
-            way through to registration — parity with the web card. */}
+        {hasPin ? <ActionButton icon="map" label="Open in Maps" onPress={openMaps} /> : null}
         <ActionButton icon="square-arrow-out-up-right" label="Register" onPress={openRegister} />
       </View>
 
       {isSaved ? (
         <AppText variant="meta" className="mt-3 text-ink-3">
-          Saved privately — just for you. It's not enrolled or sent for approval.
+          Saved privately — just for you. It&rsquo;s not enrolled or sent for approval.
         </AppText>
       ) : null}
 
@@ -327,6 +284,55 @@ export function VillageDetailSheet({
           {error}
         </AppText>
       ) : null}
-    </Sheet>
+    </>
+  );
+}
+
+/** The fail-closed teen state (rule #1): a 13+ child's activity surfaces its category
+ * only — never the raw title/summary/venue — even on a direct deep-link. Mirrors the
+ * Saved screen's locked card copy. This is the route's guard: raw content is NEVER
+ * rendered for a teen-attributed id. */
+function TeenRedactedCard({ rec }: { rec: VillageCandidateView }) {
+  return (
+    <Card className="gap-2">
+      <Tag label="Redacted · teen privacy" tone="attention" />
+      <AppText variant="meta">
+        Category: {rec.kind}. Raw content is hidden by default to protect a teen&rsquo;s privacy.
+      </AppText>
+    </Card>
+  );
+}
+
+/**
+ * The pushed Activity-details route (sheet→stack conversion). Takes the candidate id
+ * and re-reads /api/mobile/village/:id — one canonical, teen-redacted read (rule #1),
+ * so any opener (Home, Village, Saved, the week) resolves the SAME way and a bad /
+ * unknown id lands on an honest empty state, never a crash. The teenAttributed
+ * fail-close survives as this route's guard: a redacted id renders category only,
+ * deep-link included.
+ */
+export default function ActivityDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { status, data, error, reload } = useApi<MobileVillageCandidateResponse>(
+    `/api/mobile/village/${id}`,
+  );
+  const rec = data?.candidate ?? null;
+
+  return (
+    <Screen scroll className="gap-5">
+      <DetailHeader title="Activity details" />
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' && rec && rec.teenAttributed ? <TeenRedactedCard rec={rec} /> : null}
+      {status === 'ready' && rec && !rec.teenAttributed ? <ActivityBody rec={rec} /> : null}
+      {status === 'ready' && !rec ? (
+        <Card className="mt-2 items-center gap-2 py-10">
+          <AppText variant="title">Not available</AppText>
+          <AppText variant="meta" className="text-center">
+            This activity is no longer available. Head back to explore your village.
+          </AppText>
+        </Card>
+      ) : null}
+    </Screen>
   );
 }

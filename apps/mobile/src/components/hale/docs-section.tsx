@@ -1,8 +1,8 @@
+import { router } from 'expo-router';
 import { memo, useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { DocsAddSheet } from '@/components/hale/docs-add-sheet';
-import { DocsViewerSheet } from '@/components/hale/docs-viewer-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
@@ -121,10 +121,9 @@ export function DocsSection({
   const { status, data, error, reload } = useApi<MobileDocsResponse>('/api/mobile/docs');
   const [filter, setFilter] = useState<DocFilter>('all');
   const [adding, setAdding] = useState(false);
-  const [viewing, setViewing] = useState<DocumentView | null>(null);
   const onAccent = useMeadowColor('onAccent');
   const rowIcon = useMeadowColor('ink3');
-  const openDoc = useCallback((doc: DocumentView) => setViewing(doc), []);
+  const openDoc = useCallback((doc: DocumentView) => router.push(`/more/docs/${doc.id}`), []);
 
   if (status === 'loading') return <LoadingState />;
   if (status === 'error') return <ErrorState message={error ?? ''} onRetry={reload} />;
@@ -176,12 +175,6 @@ export function DocsSection({
         visible={adding}
         onClose={() => setAdding(false)}
         onUploaded={reload}
-      />
-      <DocsViewerSheet
-        doc={viewing}
-        visible={viewing !== null}
-        onClose={() => setViewing(null)}
-        onDeleted={reload}
       />
     </>
   );

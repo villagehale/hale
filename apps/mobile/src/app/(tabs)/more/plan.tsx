@@ -3,7 +3,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, TextInput, View } from 'react-native';
 
-import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
@@ -13,12 +12,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
-import type {
-  AuthoredPlanView,
-  MobilePlanResponse,
-  ScopeChild,
-  VillageCandidateView,
-} from '@/lib/api-types';
+import type { AuthoredPlanView, MobilePlanResponse, ScopeChild } from '@/lib/api-types';
 import { ApiError } from '@/lib/api-client';
 import { completePlan, createPlan, deletePlan } from '@/lib/plan-api';
 import { composeCreatePlan } from '@/lib/plan-compose';
@@ -393,7 +387,6 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
     childItems,
     hasPlan,
   } = data;
-  const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const chevron = useMeadowColor('ink3');
 
@@ -503,7 +496,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
                 key={activity.id}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${activity.title}`}
-                onPress={() => setOpenRec(activity)}
+                onPress={() => router.push(`/more/activity/${activity.id}`)}
                 className="active:opacity-80"
               >
                 <Card className="gap-1">
@@ -598,12 +591,6 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
         </View>
       ) : null}
 
-      <VillageDetailSheet
-        rec={openRec}
-        visible={openRec !== null}
-        onClose={() => setOpenRec(null)}
-        onChanged={onRefresh}
-      />
     </>
   );
 }

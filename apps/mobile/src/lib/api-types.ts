@@ -336,6 +336,14 @@ export interface MobileSavedResponse {
   candidates: VillageCandidateView[];
 }
 
+/** GET /api/mobile/village/:id — one candidate for the pushed Activity route,
+ * teen-redacted at the mapper (rule #1). `candidate` is null when the id is unknown
+ * or belongs to another family (never reveals a redacted card exists), so the route
+ * lands on its honest empty state. */
+export interface MobileVillageCandidateResponse {
+  candidate: VillageCandidateView | null;
+}
+
 export interface MobilePlanResponse {
   /** Parent-authored plans, chronological (soonest scheduledFor first), the same
    * session-scoped, teen-exempt view web /plan leads with. Folded into a Mon–Sun

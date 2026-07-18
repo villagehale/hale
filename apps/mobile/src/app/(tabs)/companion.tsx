@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
-import { AppointmentDetailSheet } from '@/components/hale/appointment-detail-sheet';
 import { DocsAddSheet } from '@/components/hale/docs-add-sheet';
 import { DocsSection } from '@/components/hale/docs-section';
 import { GrowthAddSheet } from '@/components/hale/growth-add-sheet';
@@ -1241,7 +1240,6 @@ function CompanionBody({
   const [selectedId, setSelectedId] = useState(data.children[0]?.id ?? '');
   const [section, setSection] = useState<SectionKey>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [healthItem, setHealthItem] = useState<UpcomingHealthItem | null>(null);
   const [pendingMilestone, setPendingMilestone] = useState<string | null>(null);
   const prefs = useApi<MobilePreferencesResponse>('/api/mobile/preferences');
   const units: UnitSystem = prefs.data?.units ?? 'metric';
@@ -1259,6 +1257,11 @@ function CompanionBody({
   }
 
   const childLogs = data.recentLogs.filter((l) => l.childId === child.id);
+
+  // Push the Appointment-details route the SAME way Home does — the item's stable key
+  // + the active child id (the route re-reads /api/mobile/companion and resolves it).
+  const openHealth = (item: UpcomingHealthItem) =>
+    router.push(`/more/appointment/${item.key}?child=${child.id}`);
 
   const markMilestoneDone = async (what: string) => {
     setPendingMilestone(what);
@@ -1323,14 +1326,14 @@ function CompanionBody({
         <OverviewSection
           child={child}
           logs={childLogs}
-          onOpenHealth={setHealthItem}
+          onOpenHealth={openHealth}
           onMarkMilestone={markMilestoneDone}
           pendingMilestone={pendingMilestone}
           onNavigate={setSection}
         />
       ) : null}
       {section === 'health' ? (
-        <HealthSection child={child} units={units} onOpen={setHealthItem} onNavigate={setSection} />
+        <HealthSection child={child} units={units} onOpen={openHealth} onNavigate={setSection} />
       ) : null}
       {section === 'growth' ? <GrowthSection childId={child.id} /> : null}
       {section === 'milestones' ? (
@@ -1349,15 +1352,6 @@ function CompanionBody({
           kids={data.children.map((c) => ({ id: c.id, name: c.name }))}
         />
       ) : null}
-
-      <AppointmentDetailSheet
-        item={healthItem}
-        childId={child.id}
-        childName={child.name}
-        visible={healthItem !== null}
-        onClose={() => setHealthItem(null)}
-        onDone={onLogged}
-      />
     </>
   );
 }
