@@ -54,7 +54,7 @@ const ActionCard = memo(function ActionCard({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Open ${humanizeActionType(action.actionType)} details`}
-        onPress={() => router.push(`/more/approval/${action.id}`)}
+        onPress={() => router.push(`/approval/${action.id}`)}
         className="gap-2 active:opacity-80"
       >
         <View className="flex-row items-start justify-between gap-3">

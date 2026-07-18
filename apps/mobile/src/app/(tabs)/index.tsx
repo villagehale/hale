@@ -81,7 +81,7 @@ function NotifBell() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={hasUnread ? 'Notifications, unread' : 'Notifications'}
-      onPress={() => router.push('/more/notifications')}
+      onPress={() => router.push('/notifications')}
       className="relative p-1 active:opacity-70"
     >
       <Icon name="bell" size={22} color={iconColor} />
@@ -234,7 +234,7 @@ function HomeBody({
             Add a child and Hale unlocks one-tap logging for feeds and naps, their milestones and
             checkups, and a companion guide tuned to their stage.
           </AppText>
-          <Button label="Add a child" onPress={() => router.push('/more/family')} />
+          <Button label="Add a child" onPress={() => router.push('/family')} />
         </Card>
       )}
 
@@ -303,7 +303,7 @@ function HomeBody({
           <Card
             onPress={() =>
               leadChild
-                ? router.push(`/more/appointment/${upNext.key}?child=${leadChild.id}`)
+                ? router.push(`/appointment/${upNext.key}?child=${leadChild.id}`)
                 : undefined
             }
             className="flex-row items-center gap-3"
@@ -330,7 +330,7 @@ function HomeBody({
         <View className="gap-2.5">
           <SectionLabel>From your village</SectionLabel>
           <Card
-            onPress={() => router.push(`/more/activity/${rec.id}`)}
+            onPress={() => router.push(`/activity/${rec.id}`)}
             className="flex-row items-center gap-3"
           >
             <TintChip icon="map-pin" tone="yellow" size={38} />

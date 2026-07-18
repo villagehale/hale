@@ -496,7 +496,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
                 key={activity.id}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${activity.title}`}
-                onPress={() => router.push(`/more/activity/${activity.id}`)}
+                onPress={() => router.push(`/activity/${activity.id}`)}
                 className="active:opacity-80"
               >
                 <Card className="gap-1">

@@ -137,7 +137,7 @@ function SavedBody({
         <SavedCard
           key={rec.id}
           rec={rec}
-          onOpen={(r) => router.push(`/more/activity/${r.id}`)}
+          onOpen={(r) => router.push(`/activity/${r.id}`)}
           onRefresh={onRefresh}
         />
       ))}

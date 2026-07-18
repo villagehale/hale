@@ -123,7 +123,7 @@ export function DocsSection({
   const [adding, setAdding] = useState(false);
   const onAccent = useMeadowColor('onAccent');
   const rowIcon = useMeadowColor('ink3');
-  const openDoc = useCallback((doc: DocumentView) => router.push(`/more/docs/${doc.id}`), []);
+  const openDoc = useCallback((doc: DocumentView) => router.push(`/docs/${doc.id}`), []);
 
   if (status === 'loading') return <LoadingState />;
   if (status === 'error') return <ErrorState message={error ?? ''} onRetry={reload} />;

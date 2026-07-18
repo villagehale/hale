@@ -44,7 +44,7 @@ function NotConnectedCard({ provider }: { provider: 'gdrive' | 'gcal' }) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Connect in Settings"
-          onPress={() => router.push('/more/settings')}
+          onPress={() => router.push('/settings')}
           className="active:opacity-80"
         >
           <AppText variant="meta" className="text-accent underline">

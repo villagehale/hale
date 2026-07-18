@@ -1261,7 +1261,7 @@ function CompanionBody({
   // Push the Appointment-details route the SAME way Home does — the item's stable key
   // + the active child id (the route re-reads /api/mobile/companion and resolves it).
   const openHealth = (item: UpcomingHealthItem) =>
-    router.push(`/more/appointment/${item.key}?child=${child.id}`);
+    router.push(`/appointment/${item.key}?child=${child.id}`);
 
   const markMilestoneDone = async (what: string) => {
     setPendingMilestone(what);
@@ -1314,7 +1314,7 @@ function CompanionBody({
             onSelect={selectChild}
             onAddChild={() => {
               setMenuOpen(false);
-              router.push('/more/family');
+              router.push('/family');
             }}
           />
         ) : null}

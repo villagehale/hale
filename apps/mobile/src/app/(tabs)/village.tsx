@@ -606,7 +606,7 @@ function VillageBody({
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Stable so RecCard's memo holds — pushes the shared Activity route by candidate id.
   const openActivity = useCallback(
-    (rec: VillageCandidateView) => router.push(`/more/activity/${rec.id}`),
+    (rec: VillageCandidateView) => router.push(`/activity/${rec.id}`),
     [],
   );
   const recs = useMemo(

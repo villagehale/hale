@@ -52,7 +52,7 @@ function MessageRow({ message }: { message: MessageView }) {
   if (navigates) {
     return (
       <Card
-        onPress={() => router.push('/more/approvals')}
+        onPress={() => router.push('/approvals')}
         accessibilityRole="button"
         accessibilityLabel={`${message.body} Opens Activity.`}
       >
