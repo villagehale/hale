@@ -51,3 +51,16 @@ export function notifDotOn(
   if (pendingApprovals > 0) return true;
   return messageCount > 0 && !acknowledgedThisSession;
 }
+
+/**
+ * A Messages-list row's unread dot: lit only for a note stamped on the family's
+ * current local day that the parent hasn't acknowledged this session. Both inputs are
+ * REAL signals — `today` is computed server-side in the family zone, `acknowledged` is
+ * the same session flag "Mark all read" flips — so the dot never invents per-message
+ * unread state (data honesty). It shares the whole-stream acknowledgement the bell
+ * uses (`notifDotOn`), so tapping "Mark all read" on Notifications clears every dot at
+ * once; there is deliberately no per-message read tracking to fabricate.
+ */
+export function messageUnread(today: boolean, acknowledgedThisSession: boolean): boolean {
+  return today && !acknowledgedThisSession;
+}

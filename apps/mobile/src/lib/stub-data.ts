@@ -194,3 +194,98 @@ export const GUIDES: readonly GuideContent[] = [
 export function findGuide(id: string): GuideContent | undefined {
   return GUIDES.find((guide) => guide.id === id);
 }
+
+/** One bubble in a sample conversation — `them` is an incoming provider/parent
+ * message, `you` is the family's own reply (part of the sample story). */
+export interface SampleThreadRow {
+  from: 'them' | 'you';
+  text: string;
+}
+
+/**
+ * A demo conversation for the Messages "Sample" section and its Thread drill-in.
+ * STUB: Hale has NO threaded-conversation or outbound-messaging backend — a daycare,
+ * another parent, or a clinic cannot actually message a family yet. These are the
+ * prototype's three sample threads, shown ONLY under an explicit "Sample" disclosure
+ * so no parent believes a real provider wrote to them (DATA HONESTY: this sample lane
+ * is never blended with the real Hale feed). The content is deliberately generic — no
+ * real child's name, no named clinician — so a disclosed sample never reads as a
+ * specific real message. `quickActions` are DISPLAY-ONLY labels (the prototype's
+ * daycare View details / Add to calendar chips), rendered inert in the sample: there
+ * is no real event behind a sample message, so they fire no action. Replace the whole
+ * export with a real conversations source before treating any of it as truth.
+ */
+export interface SampleThread {
+  /** Route segment for `/thread/[id]` — prefixed `sample-` so it can never collide
+   * with a real message id (`digest-…` / `action-…`) and the lane stays unambiguous. */
+  id: string;
+  /** Sender name — the thread header title and the list-row title. */
+  name: string;
+  /** Single-letter avatar for the tinted initial disc (prototype). */
+  initial: string;
+  /** Avatar tint — one of the shared chip tones. */
+  tone: 'blue' | 'green' | 'yellow';
+  /** The list-row preview line (the last message, as the prototype phrases it). */
+  preview: string;
+  /** Illustrative relative time for the list row — sample, never a real timestamp. */
+  when: string;
+  rows: readonly SampleThreadRow[];
+  /** Display-only quick-action labels (daycare only, per prototype); [] for none. */
+  quickActions: readonly string[];
+}
+
+export const SAMPLE_THREADS: readonly SampleThread[] = [
+  {
+    id: 'sample-daycare',
+    name: 'Little Steps Daycare',
+    initial: 'L',
+    tone: 'yellow',
+    preview: 'Reminder: Water play tomorrow',
+    when: '3d',
+    rows: [
+      {
+        from: 'them',
+        text: 'Hi! Just a reminder that water play is scheduled for tomorrow. Please pack a swimsuit and towel. Thanks! — The Little Steps team',
+      },
+      { from: 'you', text: 'Thank you! We’ll pack it tonight.' },
+    ],
+    quickActions: ['View details', 'Add to calendar'],
+  },
+  {
+    id: 'sample-sarah',
+    name: 'Sarah',
+    initial: 'S',
+    tone: 'blue',
+    preview: 'Anyone want to meet up at the splash pad?',
+    when: '1d',
+    rows: [
+      { from: 'them', text: 'Anyone want to meet up at the splash pad tomorrow?' },
+      { from: 'you', text: 'We’d love to! What time works?' },
+      { from: 'them', text: 'Around 10 AM — see you there!' },
+    ],
+    quickActions: [],
+  },
+  {
+    id: 'sample-peds',
+    name: 'Georgetown Pediatrics',
+    initial: 'G',
+    tone: 'green',
+    preview: 'Appointment confirmed for May 27',
+    when: '6d',
+    rows: [
+      {
+        from: 'them',
+        text: 'Hi! This confirms your 15-month well-baby visit on May 27 at 10:30 AM.',
+      },
+      { from: 'you', text: 'Thank you, see you then!' },
+    ],
+    quickActions: [],
+  },
+];
+
+/** Resolve a sample conversation by its `/thread/[id]` segment; undefined for a real
+ * message id or an unknown segment — this is the lane switch the Thread route uses to
+ * keep the sample threads and the live Hale feed strictly separate. */
+export function findSampleThread(id: string): SampleThread | undefined {
+  return SAMPLE_THREADS.find((thread) => thread.id === id);
+}

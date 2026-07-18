@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { findGuide } from './stub-data';
+import { findGuide, findSampleThread } from './stub-data';
 
 // The guide ids + titles the prototype's Resources list routes to (`/guide/[id]`).
 // Deriving the expectations from the prototype spec — not from GUIDES itself — is what
@@ -29,5 +29,39 @@ describe('findGuide — Resources → Guide page lookup', () => {
   it('returns undefined for an unknown id (e.g. a malformed deep link)', () => {
     expect(findGuide('rainy')).toBeUndefined();
     expect(findGuide('')).toBeUndefined();
+  });
+});
+
+// The three demo conversations the prototype's Messages "Sample" section routes to
+// (`/thread/[id]`). Expectations come from the prototype spec — not from SAMPLE_THREADS
+// itself — so a renamed id, a dropped thread, or a real-id collision fails here.
+const EXPECTED_THREADS = {
+  'sample-daycare': { name: 'Little Steps Daycare', hasQuickActions: true },
+  'sample-sarah': { name: 'Sarah', hasQuickActions: false },
+  'sample-peds': { name: 'Georgetown Pediatrics', hasQuickActions: false },
+} as const;
+
+describe('findSampleThread — Messages → sample Thread lookup', () => {
+  it('resolves every sample thread the Messages list links to, with its prototype sender', () => {
+    for (const [id, expected] of Object.entries(EXPECTED_THREADS)) {
+      const thread = findSampleThread(id);
+      expect(thread, `sample thread "${id}" is missing`).toBeDefined();
+      expect(thread?.id).toBe(id);
+      expect(thread?.name).toBe(expected.name);
+      // Quick actions are the prototype's daycare-only View details / Add to calendar.
+      expect((thread?.quickActions.length ?? 0) > 0).toBe(expected.hasQuickActions);
+      // A conversation must open on an incoming message (someone messaged the parent).
+      expect(thread?.rows[0]?.from).toBe('them');
+      expect(thread?.rows.every((row) => row.text.trim().length > 0)).toBe(true);
+    }
+  });
+
+  it('never resolves a REAL message id — the sample and Hale-feed lanes stay separate', () => {
+    // Real ids are `digest-…` / `action-…` (web mappers). Resolving one here would blend
+    // the lanes and open a live note as a fabricated conversation.
+    expect(findSampleThread('action-a1')).toBeUndefined();
+    expect(findSampleThread('digest-d1')).toBeUndefined();
+    expect(findSampleThread('daycare')).toBeUndefined();
+    expect(findSampleThread('')).toBeUndefined();
   });
 });
