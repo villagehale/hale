@@ -18,10 +18,12 @@ import { IconButton } from './icon-button';
  */
 export type OverflowAction = { label: string; icon: IconName; onPress?: () => void };
 
+// The default menu carries only the page-agnostic action — "Get help" opens the Ask
+// surface. Share/Save need per-page content and a per-entity save target, so a page
+// that supports them passes its own `menu`; a page that doesn't never ships them as
+// dead rows (brief — honest beats literal).
 const DEFAULT_MENU: OverflowAction[] = [
-  { label: 'Share', icon: 'share' },
-  { label: 'Save', icon: 'bookmark' },
-  { label: 'Get help', icon: 'circle-help' },
+  { label: 'Get help', icon: 'circle-help', onPress: () => router.push('/ask') },
 ];
 
 // The spec's menu shadow is `0 12px 32px rgba(23,41,74,0.14)`. On iOS RN's

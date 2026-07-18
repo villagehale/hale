@@ -1,10 +1,12 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Share, View } from 'react-native';
+import { Share, View } from 'react-native';
 
+import { DetailSuccess } from '@/components/hale/detail-success';
 import { AppText } from '@/components/ui/app-text';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DetailHeader } from '@/components/ui/detail-header';
+import { DetailHeader, type OverflowAction } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
@@ -16,6 +18,7 @@ import type {
   MobileCompanionResponse,
   UpcomingHealthItem,
 } from '@/lib/api-types';
+import { BOOK_ACTION_PATH, buildBookRequestBody } from '@/lib/book-action';
 import { duePhrase } from '@/lib/format';
 import { useApi } from '@/lib/use-api';
 
@@ -40,36 +43,50 @@ function findHealthItem(child: ChildCompanionView, key: string): UpcomingHealthI
   return all.find((i) => i.key === key) ?? null;
 }
 
+type Phase = 'idle' | 'booking' | 'booked';
+
 /**
- * The appointment detail body (moved verbatim from AppointmentDetailSheet): the
- * item's what / when / done state, the standard-schedule provenance line, a Share
- * affordance (native Share of the plain details), and a real "Mark done" that POSTs
- * the audited /api/mobile/companion/done (rule #6). There is NO add-to-calendar
- * write — expo-calendar isn't installed and the executor is not configured, so the
- * page never fakes one.
+ * The appointment detail body. Two prototype actions (Reschedule + Add to calendar)
+ * plus the shipped, audited "Mark done".
+ *
+ * "Add to calendar" NEVER writes a calendar — there is no mobile calendar executor
+ * (expo-calendar isn't installed). It routes the item through the SAME approval
+ * engine the web BookButton uses (POST /api/coach/action → a create_calendar_event
+ * action HELD at drafted_for_approval, rule #4), so the success state honestly reads
+ * "Added to your approvals" — never "Added to Google Calendar" (no false integration
+ * claim). "Reschedule" has no backend path yet, so it is present-but-disabled per the
+ * brief. "Mark done" POSTs the audited /api/mobile/companion/done (rule #6), the same
+ * shipped path the Companion Health card uses.
  */
 function AppointmentBody({
   item,
   childId,
-  childName,
 }: {
   item: UpcomingHealthItem;
   childId: string;
-  childName: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [marked, setMarked] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const iconColor = useMeadowColor('ink2');
-  const onInk = useMeadowColor('onAccent');
 
   const isDone = marked || item.done;
 
-  const onShare = async () => {
+  const addToCalendar = async () => {
+    setPhase('booking');
+    setError(null);
     try {
-      await Share.share({ message: shareText(item, childName) });
-    } catch {
-      setError("Couldn't open the share sheet — try again.");
+      await api(BOOK_ACTION_PATH, {
+        method: 'POST',
+        body: JSON.stringify(buildBookRequestBody(item.what, childId)),
+      });
+      setPhase('booked');
+    } catch (e) {
+      setPhase('idle');
+      if (!(e instanceof ApiError) || e.status !== 401) {
+        setError("Couldn't draft that just now — try again in a moment.");
+      }
     }
   };
 
@@ -95,6 +112,31 @@ function AppointmentBody({
       setBusy(false);
     }
   };
+
+  if (phase === 'booked') {
+    return (
+      <DetailSuccess
+        headline="Added to your approvals"
+        subcopy="Nothing reaches your calendar until you approve it."
+        primaryLabel="Done"
+        onPrimary={() => router.back()}
+        secondaryLabel="View approvals"
+        onSecondary={() => router.push('/approvals')}
+      >
+        <Card>
+          <AppText
+            className="text-[14px] text-ink"
+            style={{ fontFamily: 'InstrumentSans_700Bold' }}
+          >
+            {item.what}
+          </AppText>
+          <AppText variant="meta" className="mt-0.5 text-ink-3">
+            {duePhrase(item.dueInWeeks)}
+          </AppText>
+        </Card>
+      </DetailSuccess>
+    );
+  }
 
   return (
     <Card className="gap-0">
@@ -122,36 +164,27 @@ function AppointmentBody({
         Timing is the standard Canadian schedule — confirm with your provider.
       </AppText>
 
-      <View className="flex-row flex-wrap gap-2">
-        {!isDone ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Mark done"
-            accessibilityState={{ disabled: busy }}
-            disabled={busy}
-            onPress={markDone}
-            className={`min-h-11 flex-row items-center gap-2 rounded-full border border-ink bg-ink px-4 py-2.5 ${
-              busy ? 'opacity-50' : 'active:opacity-80'
-            }`}
-          >
-            <Icon name="check" size={15} color={onInk} />
-            <AppText variant="meta" className="text-on-ink">
-              {busy ? 'Marking…' : 'Mark done'}
-            </AppText>
-          </Pressable>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Share these details"
-          onPress={onShare}
-          className="min-h-11 flex-row items-center gap-2 rounded-full border border-rule bg-raised px-4 py-2.5 active:opacity-80"
-        >
-          <Icon name="share" size={15} color={iconColor} />
-          <AppText variant="meta" className="text-ink-2">
-            Share
-          </AppText>
-        </Pressable>
-      </View>
+      {!isDone ? (
+        <View className="gap-2.5">
+          <View className="flex-row gap-2.5">
+            {/* No reschedule backend exists yet — present-but-disabled per the brief,
+                never a button that silently does nothing. */}
+            <Button
+              label="Reschedule"
+              variant="secondary"
+              disabled
+              className="flex-1"
+            />
+            <Button
+              label={phase === 'booking' ? 'Adding…' : 'Add to calendar'}
+              onPress={addToCalendar}
+              disabled={phase === 'booking'}
+              className="flex-1"
+            />
+          </View>
+          <Button label={busy ? 'Marking…' : 'Mark as done'} variant="secondary" onPress={markDone} disabled={busy} />
+        </View>
+      ) : null}
 
       {error ? (
         <AppText variant="meta" className="mt-3 text-berry" accessibilityLiveRegion="polite">
@@ -167,7 +200,9 @@ function AppointmentBody({
  * item's stable `key` and its `child` id, re-reads /api/mobile/companion and resolves
  * the item the SAME way the sheet derived it from props — no stale object threaded
  * through navigation. A missing child / key renders an honest empty state, never a
- * crash (deep-link safety).
+ * crash (deep-link safety). The ⋯ menu carries a real Share (the honest plain-text
+ * details) and Get help (the Ask surface); appointments have no saved semantic, so
+ * Save is omitted rather than shipped dead (brief — honest beats literal).
  */
 export default function AppointmentDetailScreen() {
   const { key, child } = useLocalSearchParams<{ key: string; child: string }>();
@@ -175,13 +210,32 @@ export default function AppointmentDetailScreen() {
   const childView = data?.children.find((c) => c.id === child) ?? null;
   const item = childView ? findHealthItem(childView, key) : null;
 
+  const helpItem: OverflowAction = {
+    label: 'Get help',
+    icon: 'circle-help',
+    onPress: () => router.push('/ask'),
+  };
+  const menu: OverflowAction[] =
+    item && childView
+      ? [
+          {
+            label: 'Share',
+            icon: 'share',
+            onPress: () => {
+              void Share.share({ message: shareText(item, childView.name) }).catch(() => {});
+            },
+          },
+          helpItem,
+        ]
+      : [helpItem];
+
   return (
     <Screen scroll className="gap-5">
-      <DetailHeader title="Appointment details" />
+      <DetailHeader title="Appointment details" menu={menu} />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
       {status === 'ready' && item && childView ? (
-        <AppointmentBody item={item} childId={childView.id} childName={childView.name} />
+        <AppointmentBody item={item} childId={childView.id} />
       ) : null}
       {status === 'ready' && !item ? (
         <Card className="mt-2 items-center gap-2 py-10">
