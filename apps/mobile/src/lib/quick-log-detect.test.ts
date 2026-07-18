@@ -33,7 +33,40 @@ describe('detectQuickLog', () => {
   it('detects a feed with no amount (parent fills it in)', () => {
     const match = detectQuickLog('she had a feed');
     expect(match?.kind).toBe('feed');
-    if (match?.kind === 'feed') expect(match.amountMl).toBeUndefined();
+    if (match?.kind === 'feed') {
+      expect(match.amountMl).toBeUndefined();
+      expect(match.feedAmount).toBeUndefined();
+    }
+  });
+
+  it('lifts a qualitative feed amount from "ate all" (→ all), no invented millilitres', () => {
+    const match = detectQuickLog('Sebastian had a bottle and ate all his lunch');
+    expect(match?.kind).toBe('feed');
+    if (match?.kind === 'feed') {
+      expect(match.amountMl).toBeUndefined();
+      expect(match.feedAmount).toBe('all');
+    }
+  });
+
+  it('lifts "most of it" (→ most) and "a little" (→ little)', () => {
+    const most = detectQuickLog('had a bottle and ate most of it');
+    expect(most?.kind === 'feed' && most.feedAmount).toBe('most');
+    const little = detectQuickLog('had a little bottle');
+    expect(little?.kind === 'feed' && little.feedAmount).toBe('little');
+  });
+
+  it('lifts "half" (→ half)', () => {
+    const match = detectQuickLog('had half a bottle');
+    expect(match?.kind === 'feed' && match.feedAmount).toBe('half');
+  });
+
+  it('prefers a numeric amount over a qualitative one (4oz wins, feedAmount stays unset)', () => {
+    const match = detectQuickLog('had a 4oz bottle and finished it all');
+    expect(match?.kind).toBe('feed');
+    if (match?.kind === 'feed') {
+      expect(match.amountMl).toBe(120);
+      expect(match.feedAmount).toBeUndefined();
+    }
   });
 
   it('detects a nap and reads its duration in minutes', () => {
@@ -60,6 +93,24 @@ describe('detectQuickLog', () => {
     }
   });
 
+  it('detects a diaper from a diaper mention and reads a dirty kind', () => {
+    const match = detectQuickLog('changed a dirty diaper for Mira');
+    expect(match?.kind).toBe('diaper');
+    if (match?.kind === 'diaper') expect(match.diaperKind).toBe('dirty');
+  });
+
+  it('detects a diaper from a poop mention with no "diaper" word (dirty kind)', () => {
+    const match = detectQuickLog('she pooped after lunch');
+    expect(match?.kind).toBe('diaper');
+    if (match?.kind === 'diaper') expect(match.diaperKind).toBe('dirty');
+  });
+
+  it('reads a wet diaper kind', () => {
+    const match = detectQuickLog('just a wet diaper');
+    expect(match?.kind).toBe('diaper');
+    if (match?.kind === 'diaper') expect(match.diaperKind).toBe('wet');
+  });
+
   it('returns null for an ordinary question (no false log surface)', () => {
     expect(detectQuickLog('is it normal for a toddler to skip a nap?')).toBeNull();
     expect(detectQuickLog('how much should a 6-month-old eat?')).toBeNull();
@@ -68,6 +119,11 @@ describe('detectQuickLog', () => {
   it('feed wins when a message reads as both a feed and a nap', () => {
     // Episode order mirrors the web rule set: feed is checked before nap.
     const match = detectQuickLog('had a bottle before her nap');
+    expect(match?.kind).toBe('feed');
+  });
+
+  it('feed still wins over diaper (episode order feed → nap → diaper → milestone)', () => {
+    const match = detectQuickLog('had a bottle then a wet diaper');
     expect(match?.kind).toBe('feed');
   });
 });

@@ -1,11 +1,47 @@
-/**
- * Starter questions offered on the empty Ask Hale screen. Illustrative prompts
- * only — the answer comes live from POST /api/coach.
- */
+import type { ChipTone } from '@/components/ui/tint-chip';
+import type { IconName } from '@/components/ui/icon';
 
-export const STARTER_CHIPS = [
-  'Why is my baby fighting the afternoon nap?',
-  'When do we start solids?',
-  'Is my toddler’s vocabulary on track?',
-  'How do I handle the 4-month sleep regression?',
+/**
+ * "Suggestions for you" — the four starter rows on the empty Ask screen (handoff).
+ * Each row's `prompt` is sent verbatim to the LIVE coach (POST /api/coach); these are
+ * real requests, not canned replies, so what Hale does with them is genuine (an action
+ * draft, a quick-log, a Drive lookup). Tone/icon mirror the prototype's tinted chips.
+ */
+export type AskSuggestion = {
+  title: string;
+  sub: string;
+  icon: IconName;
+  tone: ChipTone;
+  prompt: string;
+};
+
+export const ASK_SUGGESTIONS: readonly AskSuggestion[] = [
+  {
+    title: 'Add the well-baby visit',
+    sub: 'Calendar & approval',
+    icon: 'calendar',
+    tone: 'blue',
+    prompt: 'Add the next well-baby visit to my calendar.',
+  },
+  {
+    title: 'Log a quick update',
+    sub: 'Nap, meal & mood',
+    icon: 'pencil',
+    tone: 'yellow',
+    prompt: 'Napped 1h 20m and ate most of lunch.',
+  },
+  {
+    title: 'Draft a daycare email',
+    sub: 'Late arrival tomorrow',
+    icon: 'mail',
+    tone: 'red',
+    prompt: 'Draft an email to daycare letting them know we will be arriving late tomorrow.',
+  },
+  {
+    title: 'Find a document',
+    sub: 'Search Google Drive',
+    icon: 'file-text',
+    tone: 'green',
+    prompt: 'Find the daycare waiver form in my Google Drive.',
+  },
 ];

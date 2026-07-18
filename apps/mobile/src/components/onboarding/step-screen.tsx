@@ -70,7 +70,7 @@ export function StepScreen({
           showsVerticalScrollIndicator={false}
         >
           <View className="gap-2">
-            <AppText variant="meta" className="uppercase tracking-eyebrow text-accent">
+            <AppText variant="eyebrow" className="text-accent">
               {eyebrow}
             </AppText>
             <AppText variant="display">{title}</AppText>

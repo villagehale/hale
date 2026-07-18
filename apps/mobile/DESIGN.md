@@ -116,12 +116,15 @@ Two families, paired:
 - **Source Serif 4** — display and title only: greetings, page h1s, the child-name
   header, card confirmations. `display` = 600 (34 / 40, tracking `-0.02em`),
   `title` = 500 (22 / 28).
-- **Instrument Sans** — everything else: `section`/eyebrow 600, `body` 400 (14 / 21),
-  `meta` 500 (13 / 18), and 700 for detail-header titles.
+- **Instrument Sans** — everything else: `section` 600 (15 / 20), `body` 400 (14 / 21),
+  `meta` 500 (13 / 18), `eyebrow` 700, and 700 for detail-header titles.
 - Numbers, dates, and payloads render in Instrument Sans too — the prior JetBrains
   Mono "mono" role is retired (the `mono` variant maps to Instrument Sans).
-- The **eyebrow / section label** pattern is the `meta` variant + `uppercase
-  tracking-eyebrow` (0.12em), in `ink-3` — not a numbered section header.
+- The **eyebrow / section label** is a first-class `eyebrow` variant (AppText),
+  prototype-exact: **11.5px / 700 / uppercase / `tracking-eyebrow-tight` (0.07em) /
+  caption gray** — not a numbered section header. Use `variant="eyebrow"`; never
+  re-roll the old `meta + uppercase + tracking-eyebrow + ink-3` idiom. The 0.12em
+  `tracking-eyebrow` token stays, but only for tag / chip / timing small-caps.
 
 Source of truth for type is `components/ui/app-text.tsx` (`VARIANT_FAMILY`) plus the
 `useFonts` load in `app/_layout.tsx`; on native, text sets `fontFamily` directly, so
@@ -175,6 +178,10 @@ below the WCAG AA floor of 4.5:1 for small text. So:
   **redundant or decorative subtext** — a label already stated elsewhere, a soft
   timestamp beside a bold value, ornamental helper copy. The test: if deleting the
   caption would cost the reader no information, caption gray is fine.
+- **Section-label eyebrows pass this test.** The `eyebrow` variant renders in caption
+  gray by design: an eyebrow is a non-essential wayfinding label — the content
+  beneath it carries the meaning, so deleting it costs the reader nothing. Caption
+  gray on eyebrows is therefore policy-compliant, and it matches the prototype exactly.
 - **Essential small text is never caption-only.** Any value a user must read — a
   count, a due date, a status, a measurement, an error or validation message, a
   state a decision depends on — renders in `ink-3` `#5C6B87` (5.2:1) or stronger,

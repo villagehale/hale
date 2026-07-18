@@ -110,6 +110,25 @@ describe('detectInputIntents', () => {
     }
   });
 
+  it('detects a quick_log diaper from a diaper mention', () => {
+    const intent = detectInputIntents('changed a dirty diaper for Mira')[0];
+    expect(intent?.category).toBe('log');
+    if (intent?.category === 'log') expect(intent.parsed.episode).toBe('diaper');
+  });
+
+  it('detects a quick_log diaper from a poop / soiled mention with no "diaper" word', () => {
+    const intent = detectInputIntents('she pooped after lunch')[0];
+    expect(intent?.category).toBe('log');
+    if (intent?.category === 'log') expect(intent.parsed.episode).toBe('diaper');
+  });
+
+  it('feed still wins when a message reads as both a feed and a diaper', () => {
+    // Episode order is feed → nap → diaper → milestone; the first match wins.
+    const intent = detectInputIntents('had a bottle then a wet diaper')[0];
+    expect(intent?.category).toBe('log');
+    if (intent?.category === 'log') expect(intent.parsed.episode).toBe('feed');
+  });
+
   it('returns [] for an ordinary question with no instruction', () => {
     expect(detectInputIntents('is it normal for a toddler to skip a nap?')).toEqual([]);
     expect(detectInputIntents('how much should a 6-month-old eat?')).toEqual([]);

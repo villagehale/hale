@@ -46,7 +46,7 @@ function SampleCard({ icon, title, body }: { icon: IconName; title: string; body
           <AppText variant="section">{title}</AppText>
         </View>
         <View className="rounded-full bg-raised px-2 py-0.5">
-          <AppText variant="meta" className="text-[11px] uppercase tracking-eyebrow text-ink-3">
+          <AppText variant="eyebrow">
             Example
           </AppText>
         </View>

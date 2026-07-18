@@ -4,8 +4,8 @@ import {
   InstrumentSans_500Medium,
   InstrumentSans_600SemiBold,
   InstrumentSans_700Bold,
+  useFonts,
 } from '@expo-google-fonts/instrument-sans';
-import { Inter_400Regular, Inter_600SemiBold, useFonts } from '@expo-google-fonts/inter';
 import {
   SourceSerif4_500Medium,
   SourceSerif4_600SemiBold,
@@ -122,8 +122,6 @@ function RootNavigator() {
     InstrumentSans_500Medium,
     InstrumentSans_600SemiBold,
     InstrumentSans_700Bold,
-    Inter_400Regular,
-    Inter_600SemiBold,
   });
   const [minElapsed, setMinElapsed] = useState(false);
   const ready = fontsLoaded && !isLoading;

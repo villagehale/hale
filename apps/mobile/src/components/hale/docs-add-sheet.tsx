@@ -111,7 +111,7 @@ export function DocsAddSheet({
       </AppText>
 
       <View className="mb-5 gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           Type
         </AppText>
         <View className="flex-row gap-2">
@@ -151,7 +151,7 @@ export function DocsAddSheet({
 
       {kids.length > 1 ? (
         <View className="mb-5 gap-2">
-          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+          <AppText variant="eyebrow">
             For
           </AppText>
           <View className="flex-row flex-wrap gap-2">
@@ -192,7 +192,7 @@ export function DocsAddSheet({
       ) : null}
 
       <View className="mb-5 gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           File
         </AppText>
         <Pressable

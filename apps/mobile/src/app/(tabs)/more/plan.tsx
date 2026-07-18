@@ -27,7 +27,7 @@ import { useApi } from '@/lib/use-api';
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+    <AppText variant="eyebrow">
       {children}
     </AppText>
   );
@@ -257,7 +257,7 @@ function AddPlan({ kids, onCreated }: { kids: ScopeChild[]; onCreated: () => voi
           }}
           placeholder="swimming registration"
           placeholderTextColor={placeholderColor}
-          style={{ color: inputColor, fontFamily: 'Inter_400Regular' }}
+          style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular' }}
           className="min-h-11 rounded-md border border-rule bg-canvas px-4 py-3 text-[16px]"
           autoFocus
         />
@@ -274,7 +274,7 @@ function AddPlan({ kids, onCreated }: { kids: ScopeChild[]; onCreated: () => voi
           placeholder="anything you want to remember"
           placeholderTextColor={placeholderColor}
           multiline
-          style={{ color: inputColor, fontFamily: 'Inter_400Regular', minHeight: 72 }}
+          style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular', minHeight: 72 }}
           className="rounded-md border border-rule bg-canvas px-4 py-3 text-[16px]"
         />
       </View>
@@ -428,7 +428,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
         <View className="gap-4">
           {datedDays.map((day) => (
             <View key={day.dateKey} className="gap-2">
-              <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+              <AppText variant="eyebrow">
                 {day.weekday}
               </AppText>
               <View className="gap-3">

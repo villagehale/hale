@@ -4,6 +4,7 @@ import { MEASUREMENT_EPISODE, quickLogSchema, resolveMeasurement, resolveOccurre
 import {
   buildEpisodeInsert,
   childBelongsToFamily,
+  resolveFeed,
   resolveNap,
   writeEpisode,
 } from '~/lib/companion/log-write';
@@ -54,6 +55,11 @@ export async function POST(req: Request): Promise<Response> {
   const nap = resolveNap(parsed.data, now);
   if (!nap.ok) {
     return NextResponse.json({ error: nap.error }, { status: 400 });
+  }
+
+  const feed = resolveFeed(parsed.data);
+  if (!feed.ok) {
+    return NextResponse.json({ error: feed.error }, { status: 400 });
   }
 
   if (parsed.data.kind === MEASUREMENT_EPISODE) {

@@ -26,7 +26,7 @@ export default function ConnectScreen() {
   return (
     <Screen scroll className="gap-6">
       <View className="gap-2 pt-4">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-accent">
+        <AppText variant="eyebrow" className="text-accent">
           You're in control
         </AppText>
         <AppText variant="display">Connect to unlock even more</AppText>

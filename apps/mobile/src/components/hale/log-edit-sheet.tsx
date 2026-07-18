@@ -151,7 +151,7 @@ export function LogEditSheet({
       </View>
 
       <View className="mb-5 gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           When
         </AppText>
         {Platform.OS === 'web' ? (

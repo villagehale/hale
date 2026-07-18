@@ -3,6 +3,9 @@ import {
   DIAPER_EPISODE,
   DIAPER_KINDS,
   diaperSchema,
+  FEED_AMOUNTS,
+  FEED_EPISODE,
+  feedSchema,
   MEASUREMENT_EPISODE,
   measurementSchema,
   NAP_EPISODE,
@@ -26,6 +29,46 @@ import {
 
 const CHILD_ID = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-07-07T18:00:00Z');
+
+describe('feedSchema — additive qualitative amount (a plain ZodObject for the union)', () => {
+  it('accepts a numeric amountMl (the original entry still works)', () => {
+    const parsed = feedSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 120 });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts a qualitative feedAmount with no amountMl', () => {
+    const parsed = feedSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'most' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts each qualitative amount in the fixed set (little/half/most/all)', () => {
+    for (const feedAmount of FEED_AMOUNTS) {
+      const parsed = feedSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID, feedAmount });
+      expect(parsed.success, feedAmount).toBe(true);
+    }
+  });
+
+  it('rejects a feedAmount outside the fixed set', () => {
+    const parsed = feedSchema.safeParse({
+      kind: FEED_EPISODE,
+      childId: CHILD_ID,
+      feedAmount: 'loads',
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('parses a bare feed with neither amount — the boundary (resolveFeed) rejects it, not the schema', () => {
+    // Like napSchema: both amount fields are optional so the schema stays a plain
+    // ZodObject in the union; "at least one amount" is a boundary rule (resolveFeed).
+    const parsed = feedSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('routes a qualitative feed through the discriminated union by kind', () => {
+    const ok = quickLogSchema.safeParse({ kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'all' });
+    expect(ok.success).toBe(true);
+  });
+});
 
 describe('napSchema — additive window fields (a plain ZodObject for the union)', () => {
   it('accepts a plain durationMin with no window (the original entry still works)', () => {

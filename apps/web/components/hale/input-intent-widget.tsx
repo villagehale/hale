@@ -6,6 +6,9 @@ import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
 import type { InputIntent, PlanLogParse, QuickLogParse } from '~/components/hale/use-ask-hale';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
+  DIAPER_EPISODE,
+  DIAPER_KINDS,
+  type DiaperKind,
   FEED_EPISODE,
   type LogResult,
   MILESTONE_EPISODE,
@@ -173,12 +176,14 @@ type LogEpisode = QuickLogParse['episode'];
 const EPISODE_LABEL: Record<LogEpisode, string> = {
   feed: 'Log a feed',
   nap: 'Log a nap',
+  diaper: 'Log a diaper',
   milestone: 'Note a milestone',
 };
 
 const EMPTY_ERROR: Record<LogEpisode, string> = {
   feed: 'enter how much (ml) before saving',
   nap: 'enter how long (minutes) before saving',
+  diaper: 'pick a diaper kind before saving',
   milestone: 'enter what happened before saving',
 };
 
@@ -224,6 +229,7 @@ function QuickLogCard({
   );
   const [amountMl, setAmountMl] = useState('');
   const [durationMin, setDurationMin] = useState('');
+  const [diaperKind, setDiaperKind] = useState<DiaperKind>('wet');
   const [milestone, setMilestone] = useState(parsed.milestone ?? '');
   const [when, setWhen] = useState(() => toLocalInputValue(new Date()));
   const [status, setStatus] = useState<LogState>({ kind: 'idle' });
@@ -244,6 +250,8 @@ function QuickLogCard({
         if (!durationMin || Number.isNaN(value)) return null;
         return { kind: NAP_EPISODE, childId, durationMin: value, occurredAt };
       }
+      case 'diaper':
+        return { kind: DIAPER_EPISODE, childId, diaperKind, occurredAt };
       case 'milestone': {
         const text = milestone.trim();
         if (!text) return null;
@@ -360,6 +368,26 @@ function QuickLogCard({
           onChange={(e) => setDurationMin(e.currentTarget.value)}
           placeholder="45"
         />
+      ) : null}
+
+      {episode === 'diaper' ? (
+        <div className="field-group">
+          <label htmlFor={`${headingId}-kind`} className="field-label">
+            what kind
+          </label>
+          <select
+            id={`${headingId}-kind`}
+            className="field cursor-pointer capitalize"
+            value={diaperKind}
+            onChange={(e) => setDiaperKind(e.currentTarget.value as DiaperKind)}
+          >
+            {DIAPER_KINDS.map((kind) => (
+              <option key={kind} value={kind} className="capitalize">
+                {kind}
+              </option>
+            ))}
+          </select>
+        </div>
       ) : null}
 
       {episode === 'milestone' ? (

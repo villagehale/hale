@@ -16,8 +16,8 @@ const TABS: Record<string, TabMeta> = {
     activeIcon: 'user',
   },
   ask: { label: 'Hale', icon: 'sparkles', activeIcon: 'sparkles' },
-  village: { label: 'Village', icon: 'building-2', activeIcon: 'building-2' },
-  more: { label: 'More', icon: 'ellipsis', activeIcon: 'ellipsis' },
+  village: { label: 'Village', icon: 'houses', activeIcon: 'houses' },
+  more: { label: 'More', icon: 'ellipsis-filled', activeIcon: 'ellipsis-filled' },
 };
 
 export function AppTabBar({ state, navigation }: BottomTabBarProps) {

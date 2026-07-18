@@ -101,7 +101,7 @@ export function actionTypeForIntent(kind: string): ActionType | null {
  *    sub-shape the widget pre-fills and the parent can edit before confirming.
  */
 
-export type QuickLogEpisode = 'feed' | 'nap' | 'milestone';
+export type QuickLogEpisode = 'feed' | 'nap' | 'diaper' | 'milestone';
 
 export interface QuickLogParse {
   episode: QuickLogEpisode;
@@ -159,6 +159,15 @@ const QUICK_LOG_EPISODE_RULES: readonly { episode: QuickLogEpisode; patterns: re
     {
       episode: 'nap',
       patterns: [/\b(?:had|took|went\s+down\s+for|log(?:ged)?)\s+(?:a\s+)?nap\b/i, /\bnapped\b/i],
+    },
+    {
+      episode: 'diaper',
+      patterns: [
+        /\bdiaper\b/i,
+        /\bnappy\b/i,
+        /\b(?:pooped|poop|soiled)\b/i,
+        /\bpee(?:d|ing)?\b/i,
+      ],
     },
     {
       episode: 'milestone',

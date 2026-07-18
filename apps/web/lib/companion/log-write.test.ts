@@ -11,7 +11,13 @@ import {
   NAP_EPISODE,
   type QuickLogInput,
 } from './log-types.js';
-import { buildDoneEpisodeInsert, buildEpisodeInsert, resolveNap, writeEpisode } from './log-write.js';
+import {
+  buildDoneEpisodeInsert,
+  buildEpisodeInsert,
+  resolveFeed,
+  resolveNap,
+  writeEpisode,
+} from './log-write.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const CHILD_ID = '33333333-3333-4333-8333-333333333333';
@@ -31,6 +37,57 @@ describe('buildEpisodeInsert', () => {
       summary: 'Fed 120 ml',
       payload: { amountMl: 120 },
     });
+  });
+
+  it('shapes a qualitative feed with feedAmount in the payload and prototype-worded summary', () => {
+    const input: QuickLogInput = { kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'most' };
+
+    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID);
+    expect(episode.episodeType).toBe('feed');
+    expect(episode.summary).toBe('Fed — most of it');
+    expect(episode.payload).toEqual({ feedAmount: 'most' });
+  });
+
+  it('words each qualitative amount from the prototype language (derived from the spec)', () => {
+    const cases: [('little' | 'half' | 'most' | 'all'), string][] = [
+      ['little', 'Fed — a little'],
+      ['half', 'Fed — half'],
+      ['most', 'Fed — most of it'],
+      ['all', 'Fed — all of it'],
+    ];
+    for (const [feedAmount, summary] of cases) {
+      const episode = buildEpisodeInsert(
+        { kind: FEED_EPISODE, childId: CHILD_ID, feedAmount },
+        FAMILY_ID,
+        NOW,
+        AUTHOR_ID,
+      );
+      expect(episode.summary, feedAmount).toBe(summary);
+    }
+  });
+
+  it('appends the feedKind to a qualitative summary when given', () => {
+    const episode = buildEpisodeInsert(
+      { kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'most', feedKind: 'solid' },
+      FAMILY_ID,
+      NOW,
+      AUTHOR_ID,
+    );
+    expect(episode.summary).toBe('Fed — most of it (solid)');
+    expect(episode.payload).toEqual({ feedAmount: 'most', feedKind: 'solid' });
+  });
+
+  it('prefers numeric amountMl over feedAmount for the summary, keeping BOTH in the payload', () => {
+    // A payload carrying both amounts is well-formed (each schema-optional). Defined
+    // behavior: the numeric amount words the summary; both are retained in the payload.
+    const episode = buildEpisodeInsert(
+      { kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 120, feedAmount: 'most' },
+      FAMILY_ID,
+      NOW,
+      AUTHOR_ID,
+    );
+    expect(episode.summary).toBe('Fed 120 ml');
+    expect(episode.payload).toEqual({ amountMl: 120, feedAmount: 'most' });
   });
 
   it('shapes a nap episode with durationMin in the payload', () => {
@@ -253,6 +310,36 @@ describe('resolveNap — the boundary guard now that the schema no longer requir
       NOW,
     );
     expect(r).toEqual({ ok: true, durationMin: 90 });
+  });
+});
+
+describe('resolveFeed — the boundary guard for the additive qualitative amount', () => {
+  it('rejects a feed carrying NEITHER amountMl nor feedAmount (the case the schema stopped catching)', () => {
+    // feedSchema now has BOTH amount fields optional (so it stays a plain ZodObject in
+    // the union), so {kind, childId} parses. resolveFeed is the boundary that keeps a
+    // no-amount feed from reaching buildEpisodeInsert.
+    expect(resolveFeed({ kind: FEED_EPISODE, childId: CHILD_ID })).toEqual({
+      ok: false,
+      error: 'enter how much — a millilitre amount or how much they took',
+    });
+  });
+
+  it('passes a numeric feed through', () => {
+    expect(resolveFeed({ kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 120 })).toEqual({
+      ok: true,
+    });
+  });
+
+  it('passes a qualitative feed through', () => {
+    expect(resolveFeed({ kind: FEED_EPISODE, childId: CHILD_ID, feedAmount: 'half' })).toEqual({
+      ok: true,
+    });
+  });
+
+  it('is a no-op (ok) for a non-feed input', () => {
+    expect(resolveFeed({ kind: NAP_EPISODE, childId: CHILD_ID, durationMin: 30 })).toEqual({
+      ok: true,
+    });
   });
 });
 

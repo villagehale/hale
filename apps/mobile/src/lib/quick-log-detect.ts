@@ -11,13 +11,25 @@
  * data, so there's no approval gate (Regime A).
  *
  * Beyond the web parse (episode / time / child / milestone) this also lifts the
- * numeric amount the web leaves to the form — amountMl for a feed, durationMin
- * for a nap — so the mobile confirm card is actionable in a single tap.
+ * field the web leaves to the form — amountMl for a feed, durationMin for a nap,
+ * diaperKind for a diaper — so the mobile confirm card is actionable in a single tap.
  */
 
+import type { DiaperKindValue, FeedAmountValue } from './quick-log-payload';
+
 export type QuickLogMatch =
-  | { kind: 'feed'; amountMl?: number; timeHint?: string; childName?: string }
+  | {
+      kind: 'feed';
+      amountMl?: number;
+      /** The QUALITATIVE amount ("all"/"most"/"half"/"little") when the words imply
+       * one but give no millilitre figure — an honest alternative to a fabricated
+       * number. Never set alongside amountMl (a numeric amount wins). */
+      feedAmount?: FeedAmountValue;
+      timeHint?: string;
+      childName?: string;
+    }
   | { kind: 'nap'; durationMin?: number; timeHint?: string; childName?: string }
+  | { kind: 'diaper'; diaperKind?: DiaperKindValue; timeHint?: string; childName?: string }
   | { kind: 'milestone'; milestone?: string; timeHint?: string; childName?: string };
 
 type Episode = QuickLogMatch['kind'];
@@ -48,6 +60,12 @@ const EPISODE_RULES: readonly { episode: Episode; patterns: readonly RegExp[] }[
       new RegExp(`\\b(?:had|took|went\\s+down\\s+for|log(?:ged)?)\\s+(?:a\\s+)?${QTY}nap\\b`, 'i'),
       /\bnapped\b/i,
     ],
+  },
+  // Diaper patterns mirror the web coach parser EXACTLY (no amount to widen, unlike
+  // feed/nap). Keep in exact sync with QUICK_LOG_EPISODE_RULES.
+  {
+    episode: 'diaper',
+    patterns: [/\bdiaper\b/i, /\bnappy\b/i, /\b(?:pooped|poop|soiled)\b/i, /\bpee(?:d|ing)?\b/i],
   },
   {
     episode: 'milestone',
@@ -85,9 +103,33 @@ function feedAmountMl(text: string): number | undefined {
   return m[2].toLowerCase() === 'oz' ? Math.round(value * ML_PER_OZ) : value;
 }
 
+/** A qualitative feed amount from the words — the server's little/half/most/all enum,
+ * the same "How much" chips the log sheet offers. Checked most-complete first so
+ * "ate all" reads as 'all', "most of it" as 'most'. Best-effort and only consulted
+ * when no numeric amount was given; undefined when the words imply none (the confirm
+ * card then asks the parent to pick — never a fabricated figure). */
+function feedAmountQual(text: string): FeedAmountValue | undefined {
+  if (/\b(?:all|finished|whole|everything)\b/i.test(text)) return 'all';
+  if (/\bmost\b/i.test(text)) return 'most';
+  if (/\bhalf\b/i.test(text)) return 'half';
+  if (/\b(?:a little|a bit|little|some)\b/i.test(text)) return 'little';
+  return undefined;
+}
+
 function napDurationMin(text: string): number | undefined {
   const m = text.match(NAP_MINUTES_RE);
   return m ? Number(m[1]) : undefined;
+}
+
+/** Best-effort diaper kind from the words (mobile-only, like feed's amountMl): a
+ * dirty/poop/soiled mention → dirty, an explicit mixed/dry → those, else wet when
+ * the word appears; undefined otherwise (the confirm card then asks the parent). */
+function diaperKindFrom(text: string): DiaperKindValue | undefined {
+  if (/\bmixed\b/i.test(text)) return 'mixed';
+  if (/\b(?:dirty|pooped|poop|soiled)\b/i.test(text)) return 'dirty';
+  if (/\bdry\b/i.test(text)) return 'dry';
+  if (/\bwet\b/i.test(text)) return 'wet';
+  return undefined;
 }
 
 /**
@@ -102,11 +144,18 @@ export function detectQuickLog(text: string): QuickLogMatch | null {
   const hints = commonHints(text);
   if (rule.episode === 'feed') {
     const amountMl = feedAmountMl(text);
-    return { kind: 'feed', ...(amountMl !== undefined ? { amountMl } : {}), ...hints };
+    // A numeric amount wins; only when there's none do we lift a qualitative one.
+    if (amountMl !== undefined) return { kind: 'feed', amountMl, ...hints };
+    const feedAmount = feedAmountQual(text);
+    return { kind: 'feed', ...(feedAmount ? { feedAmount } : {}), ...hints };
   }
   if (rule.episode === 'nap') {
     const durationMin = napDurationMin(text);
     return { kind: 'nap', ...(durationMin !== undefined ? { durationMin } : {}), ...hints };
+  }
+  if (rule.episode === 'diaper') {
+    const diaperKind = diaperKindFrom(text);
+    return { kind: 'diaper', ...(diaperKind ? { diaperKind } : {}), ...hints };
   }
   const milestone = text.match(MILESTONE_TEXT_RE)?.[1]?.trim();
   return { kind: 'milestone', ...(milestone ? { milestone } : {}), ...hints };

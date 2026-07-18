@@ -30,7 +30,7 @@ import {
 export function PrivacyDataSection() {
   return (
     <View className="gap-2">
-      <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="eyebrow">
         Privacy & data
       </AppText>
       <Card className="gap-5">
@@ -258,7 +258,7 @@ function SharedLinkItem({
     <View className="gap-1 border-t border-rule py-3 first:border-t-0 first:pt-0">
       <View className="flex-row items-center justify-between gap-3">
         <View className="flex-1 gap-0.5">
-          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+          <AppText variant="eyebrow">
             {shareLinkLabel(link.kind)}
           </AppText>
           <AppText variant="body" className="text-ink">

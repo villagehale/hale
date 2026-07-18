@@ -14,7 +14,7 @@ import type { ApprovalView } from '@/lib/api-types';
 export function ApprovalPayloadBlock({ action }: { action: ApprovalView }) {
   if (action.payload !== null) return null;
   return (
-    <View className="gap-1.5 rounded-md border border-rule bg-canvas p-3">
+    <View className="gap-1.5 rounded-[12px] border border-rule bg-canvas p-3">
       <Tag label="Redacted · teen privacy" tone="attention" />
       <AppText variant="meta" className="mt-1">
         Raw content is hidden by default. Your teen can grant time-limited access if you ask.

@@ -139,13 +139,9 @@ export function GrowthAddSheet({
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose}>
-      <AppText variant="title" className="mb-4">
-        Add a measurement
-      </AppText>
-
+    <Sheet visible={visible} onClose={onClose} title="Add a measurement">
       <View className="mb-5 gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           What
         </AppText>
         <View className="flex-row gap-2">
@@ -184,7 +180,7 @@ export function GrowthAddSheet({
       </View>
 
       <View className="mb-5 gap-2">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           When
         </AppText>
         <View className="flex-row gap-2">

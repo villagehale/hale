@@ -21,7 +21,7 @@ import { useApi } from '@/lib/use-api';
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <View className="gap-1">
-      <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="eyebrow">
         {label}
       </AppText>
       <AppText variant="body">{value}</AppText>
