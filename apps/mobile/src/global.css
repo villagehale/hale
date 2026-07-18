@@ -11,12 +11,16 @@ body {
 }
 
 /*
- * Hale Mobile — Prussian-on-white design system. Prussian Blue ink over a cool
- * whisper-white canvas, white rounded cards, orange kept scarce (important actions,
- * status, badges only). Dark mode follows the device (prefers-color-scheme) —
- * brand-ANCHORED charcoal-Prussian canvas, not brand-flooded. Orange #f28c45 is
- * FILL ONLY; orange-deep #c2410c is the text-safe accent. Tone meaning by label +
- * shape, never color alone.
+ * Hale Mobile — design-handoff palette, applied verbatim. Brand and ink are
+ * distinct per the handoff: --color-brand #1b2160 is the primary (primary actions,
+ * active nav tint, user chat bubbles, selected-chip borders); --color-ink #17294a
+ * is ink text. Body/meta are the handoff blue-grays. Component tasks wire buttons
+ * and the tab tint to --color-brand; the token layer just makes it exist +
+ * drift-checked. Warm-white canvas, white rounded cards, warm cream + orange kept
+ * scarce (highlight cards, count badges, status). Six tint-chip tone pairs (bg +
+ * icon) back the handoff's icon chips. Dark mode follows the device
+ * (prefers-color-scheme): warm-dark surfaces, brand stays the primary accent.
+ * Tone meaning is carried by label + shape, never color alone.
  */
 
 :root {
@@ -26,43 +30,74 @@ body {
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* canvas / surfaces */
-  --color-canvas: #f8f9fb; /* cool whisper white (mockup 2026-07-10; not warm) */
+  --color-canvas: #fdfcfa; /* warm white — handoff page background */
   --color-card: #ffffff; /* card surface */
   --color-raised: #ffffff; /* raised card lift (light) */
-  /* ink — Prussian Blue family */
-  --color-ink: #0d1b3d; /* Prussian Blue — primary */
-  --color-ink-2: #47587a; /* blue-gray — secondary/body, darker than meta so 16px body outranks 13px meta (AA 6.6:1 on the warm canvas) */
-  --color-ink-3: #5b6b86; /* blue-gray — meta, the spec's muted tone (AA 5.0:1 on the warm canvas) */
-  --color-on-ink: #ffffff; /* label ON an ink fill — pure white on Prussian (13.4:1). NEVER canvas off-white, which reads grey on Prussian. */
-  /* accent — orange family, scarce on purpose (important actions / status / badges only) */
-  --color-accent: #c2410c; /* orange-deep — TEXT-SAFE accent (AA 4.8:1 on canvas, 4.4:1 on accent-tint, 5.2:1 white-on-it) */
-  --color-accent-fill: #f28c45; /* orange — FILL/large-graphic only */
+  /* brand / primary — handoff navy; component tasks wire buttons, active nav tint,
+   * user bubbles + selected-chip borders here (distinct from ink text) */
+  --color-brand: #1b2160; /* handoff brand navy — primary (white label 14.7:1) */
+  /* ink — handoff text tones (blue-gray family) */
+  --color-ink: #17294a; /* handoff ink text (AA 14.1:1 on canvas) */
+  --color-ink-2: #3d4c68; /* handoff body/secondary text (AA 8.4:1 on canvas) */
+  --color-ink-3: #5c6b87; /* handoff muted/meta text (AA 5.2:1 on canvas) */
+  --color-on-ink: #ffffff; /* label ON an ink/brand fill — white (14:1+) */
+  /* accent — apricot, scarce on purpose (important actions / status / badges only) */
+  --color-accent: #c2410c; /* apricot-deep — TEXT-SAFE accent (AA 5.0:1 on canvas) */
+  --color-accent-fill: #f28c45; /* apricot — FILL / large-graphic only */
   --color-accent-tint: #fdeede;
-  /* secondary tones */
+  /* secondary tones (Meadow semantic set; tone = label + shape, never color alone) */
   --color-sea: #0a3d62; /* turtle / brand accent */
   --color-sage: #4a5a3c; /* done/handled */
   --color-sage-tint: #dde4d2;
   --color-berry: #9c3b54; /* needs-you */
   --color-berry-tint: #f3d7dd;
-  --color-sky: #2a6478; /* coach tone (darkened from #2f6f86 for AA 4.5:1 on sky-tint, 5.0:1) */
+  --color-sky: #2a6478; /* coach tone */
   --color-sky-tint: #cfe3e7;
-  /* hairline — cool light-gray card borders (mockup #E6E8EC) */
-  --color-rule: #e6e8ec;
-  --color-rule-strong: #d8dbe0;
+  /* hairline / borders — handoff cool grays */
+  --color-rule: #e4e7ee; /* card border (handoff) */
+  --color-rule-strong: #d9dee8; /* input / stronger border (handoff) */
+  --color-hairline: #f0f2f6; /* list-row divider (handoff) */
+  --color-card-border: #e4e7ee; /* card border (handoff) */
+  --color-input-border: #d9dee8; /* input border (handoff) */
+  /* extended text tones (handoff) */
+  --color-caption: #8b95a9; /* caption gray — row subs / disabled */
+  --color-muted: #5c6b87; /* muted text (handoff) */
+  /* status (handoff) */
+  --color-success: #2ea35e; /* success green */
+  --color-badge: #e8853d; /* orange count badge */
+  --color-destructive: #c2543f; /* destructive */
+  /* cream highlight card (handoff) */
+  --color-cream: #fff6e9;
+  --color-cream-border: #f5e5c9;
+  --color-cream-accent: #b26b1f;
+  /* tint chips — icon-chip background + its icon color (handoff) */
+  --color-chip-blue: #edf0fa;
+  --color-chip-blue-icon: #3b5bdb;
+  --color-chip-green: #e7f6ec;
+  --color-chip-green-icon: #1f8a4c;
+  --color-chip-yellow: #fef0c7;
+  --color-chip-yellow-icon: #b26b1f;
+  --color-chip-red: #fdebe8;
+  --color-chip-red-icon: #c2543f;
+  --color-chip-teal: #e0f2f1;
+  --color-chip-teal-icon: #0f766e;
+  --color-chip-gray: #f0f2f6;
+  --color-chip-gray-icon: #5c6b87;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #0c1420; /* deep Prussian-charcoal */
-    --color-card: #151e2c; /* one notch above canvas */
-    --color-raised: #1c2636; /* two notches up */
-    --color-chrome: #021e4e; /* exact logo Prussian — app frame */
+    --color-canvas: #14120e; /* warm-dark near-black */
+    --color-card: #1e1b15; /* one notch above canvas */
+    --color-raised: #282318; /* two notches up */
+    --color-chrome: #1b2160; /* handoff brand navy — app frame */
+    --color-brand: #9aa6e6; /* brand navy lightened to read as the primary accent on dark */
     --color-ink: #f6f1e7; /* cream */
     --color-ink-2: #c7d3e6;
     --color-ink-3: #9bb0d0;
-    --color-on-ink: #003153; /* on the cream ink fill, the label inverts to Prussian (mirrors web dark --color-on-spruce) */
-    --color-accent: #fb923c; /* orange, text-safe on dark */
-    --color-accent-fill: #f97316; /* orange fill on dark */
+    --color-on-ink: #17294a; /* on the cream ink/brand fill, the label inverts to ink text */
+    --color-accent: #fb923c; /* apricot, text-safe on dark */
+    --color-accent-fill: #f97316; /* apricot fill on dark */
     --color-accent-tint: #2f2318;
     --color-sea: #6fb3c9;
     --color-sage: #a9c49a;
@@ -73,5 +108,28 @@ body {
     --color-sky-tint: #142b48;
     --color-rule: rgba(246, 241, 231, 0.12);
     --color-rule-strong: rgba(246, 241, 231, 0.24);
+    --color-hairline: rgba(246, 241, 231, 0.08);
+    --color-card-border: rgba(246, 241, 231, 0.12);
+    --color-input-border: rgba(246, 241, 231, 0.2);
+    --color-caption: #8b93a1;
+    --color-muted: #9bb0d0;
+    --color-success: #57c98a;
+    --color-badge: #ef9350;
+    --color-destructive: #e59484;
+    --color-cream: #2a2114;
+    --color-cream-border: #3c3020;
+    --color-cream-accent: #e0b877;
+    --color-chip-blue: #1b2440;
+    --color-chip-blue-icon: #a3b6f0;
+    --color-chip-green: #16301f;
+    --color-chip-green-icon: #78c795;
+    --color-chip-yellow: #2e2614;
+    --color-chip-yellow-icon: #dba64f;
+    --color-chip-red: #3a211d;
+    --color-chip-red-icon: #e79f8e;
+    --color-chip-teal: #12302d;
+    --color-chip-teal-icon: #57bab1;
+    --color-chip-gray: #262a31;
+    --color-chip-gray-icon: #a6aebd;
   }
 }

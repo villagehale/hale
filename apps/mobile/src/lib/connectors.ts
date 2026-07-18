@@ -5,7 +5,7 @@ import type { ConnectorProvider, IntegrationStatus } from './api-types';
 /**
  * Framework-free connector metadata + status presentation, shared by the Settings
  * "Connected accounts" section and the onboarding connect step. No native imports
- * (bar the SF-Symbol NAME + Tag tone types), so it's unit-tested under src/lib.
+ * (bar the Lucide icon NAME + Tag tone types), so it's unit-tested under src/lib.
  *
  * A connector is connection PLUMBING only — the benefit copy describes what Hale
  * can help WITH, never what it reads from the mailbox/calendar (rule #1). The raw→UI
@@ -34,13 +34,13 @@ export const CONNECTORS: readonly ConnectorMeta[] = [
     provider: 'gmail',
     name: 'Gmail',
     benefit: 'So Hale can catch the details that arrive by email.',
-    icon: 'envelope.fill',
+    icon: 'mail',
   },
   {
     provider: 'gdrive',
     name: 'Google Drive',
     benefit: 'So Hale can reach the documents you point it to.',
-    icon: 'doc.text.fill',
+    icon: 'file-text',
   },
 ];
 

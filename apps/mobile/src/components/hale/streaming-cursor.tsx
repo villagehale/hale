@@ -49,7 +49,7 @@ export function StreamingCursor() {
     <Animated.Text
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[{ fontFamily: 'Inter_400Regular' }, style]}
+      style={[{ fontFamily: 'InstrumentSans_400Regular' }, style]}
       className="text-accent"
     >
       {' ▍'}

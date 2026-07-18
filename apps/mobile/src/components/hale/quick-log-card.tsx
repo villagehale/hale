@@ -61,9 +61,9 @@ const KIND_LABEL: Record<QuickLogMatch['kind'], string> = {
 /** The leading glyph for a logged row, by kind — the same drop/moon/star language
  * the Home quick-log pills use, so a logged card reads at a glance. */
 const KIND_ICON: Record<QuickLogMatch['kind'], IconName> = {
-  feed: 'drop.fill',
-  nap: 'moon.fill',
-  milestone: 'star.fill',
+  feed: 'droplet',
+  nap: 'moon',
+  milestone: 'star',
 };
 
 /** One `{ label, value }` line per field the log ACTUALLY captured — the kind and

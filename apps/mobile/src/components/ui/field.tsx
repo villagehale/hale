@@ -20,7 +20,7 @@ export function Field({ label, hint, ...inputProps }: FieldProps) {
       <TextInput
         accessibilityLabel={label}
         placeholderTextColor={placeholderColor}
-        style={{ color: inputColor, fontFamily: 'Inter_400Regular' }}
+        style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular' }}
         className="min-h-11 rounded-md border border-rule bg-canvas px-4 py-3 text-[16px]"
         {...inputProps}
       />

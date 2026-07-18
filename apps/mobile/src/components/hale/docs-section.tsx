@@ -25,9 +25,9 @@ type ChildOption = { id: string; name: string | null };
 
 /** The SF Symbol per doc kind for the row glyph (web-mapped in icon.web.tsx). */
 const KIND_ICON: Record<DocKind, IconName> = {
-  health: 'cross.case.fill',
-  insurance: 'lock.shield.fill',
-  other: 'doc.text.fill',
+  health: 'briefcase-medical',
+  insurance: 'shield',
+  other: 'file-text',
 };
 
 /** The list-filter chip row — the SectionRow horizontal-pill idiom (companion.tsx):
@@ -79,7 +79,7 @@ const DocRow = memo(function DocRow({
   iconColor: string;
   onOpen: (doc: DocumentView) => void;
 }) {
-  const kindIcon = KIND_ICON[doc.kind as DocKind] ?? 'doc.text.fill';
+  const kindIcon = KIND_ICON[doc.kind as DocKind] ?? 'file-text';
   const kindLabel = DOC_KIND_LABEL[doc.kind as DocKind] ?? doc.kind;
   return (
     <Pressable
@@ -99,7 +99,7 @@ const DocRow = memo(function DocRow({
           {kindLabel} · {whenPhrase(doc.createdAt)}
         </AppText>
       </View>
-      <Icon name="chevron.right" size={13} color={iconColor} />
+      <Icon name="chevron-right" size={13} color={iconColor} />
     </Pressable>
   );
 });

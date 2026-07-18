@@ -41,7 +41,7 @@ function TierCard({ view, isCurrent }: { view: PlanTierView; isCurrent: boolean 
         {view.features.map((feature) => (
           <View key={feature} className="flex-row items-start gap-2">
             <View className="mt-0.5">
-              <Icon name="checkmark.circle" size={15} color={check} />
+              <Icon name="circle-check" size={15} color={check} />
             </View>
             <AppText variant="body" className="flex-1 text-ink-2">
               {feature}

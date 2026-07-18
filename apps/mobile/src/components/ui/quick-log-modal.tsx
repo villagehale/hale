@@ -464,7 +464,7 @@ export function QuickLogModal({
                         </AppText>
                       </View>
                       <Icon
-                        name={showPicker ? 'chevron.up' : 'chevron.down'}
+                        name={showPicker ? 'chevron-up' : 'chevron-down'}
                         size={13}
                         color={iconColor}
                       />
@@ -598,7 +598,7 @@ function NapBoundRow({
                 {display}
               </AppText>
             </View>
-            <Icon name={open ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
           </Pressable>
           {Platform.OS === 'ios' ? (
             open ? (

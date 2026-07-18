@@ -1,11 +1,15 @@
 import '@/global.css';
 import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  useFonts,
-} from '@expo-google-fonts/inter';
-import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
+  InstrumentSans_400Regular,
+  InstrumentSans_500Medium,
+  InstrumentSans_600SemiBold,
+  InstrumentSans_700Bold,
+} from '@expo-google-fonts/instrument-sans';
+import { Inter_400Regular, Inter_600SemiBold, useFonts } from '@expo-google-fonts/inter';
+import {
+  SourceSerif4_500Medium,
+  SourceSerif4_600SemiBold,
+} from '@expo-google-fonts/source-serif-4';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
@@ -112,10 +116,14 @@ function useResumeOnboarding(ready: boolean) {
 function RootNavigator() {
   const { isLoading, token } = useAuth();
   const [fontsLoaded] = useFonts({
+    SourceSerif4_500Medium,
+    SourceSerif4_600SemiBold,
+    InstrumentSans_400Regular,
+    InstrumentSans_500Medium,
+    InstrumentSans_600SemiBold,
+    InstrumentSans_700Bold,
     Inter_400Regular,
-    Inter_500Medium,
     Inter_600SemiBold,
-    JetBrainsMono_500Medium,
   });
   const [minElapsed, setMinElapsed] = useState(false);
   const ready = fontsLoaded && !isLoading;

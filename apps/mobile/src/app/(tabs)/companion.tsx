@@ -174,7 +174,7 @@ function InfoRow({
       <AppText variant="body" className={`flex-1 ${done ? 'text-ink-3' : ''}`}>
         {what}
       </AppText>
-      {onPress ? <Icon name="chevron.right" size={13} color={iconColor} /> : null}
+      {onPress ? <Icon name="chevron-right" size={13} color={iconColor} /> : null}
     </>
   );
 
@@ -802,7 +802,7 @@ function DiarySection({ childId }: { childId: string }) {
                   <AppText variant="mono" className="text-ink-3">
                     {whenPhrase(log.occurredAt)}
                   </AppText>
-                  <Icon name="chevron.right" size={13} color={iconColor} />
+                  <Icon name="chevron-right" size={13} color={iconColor} />
                 </Pressable>
               ))}
             </Card>

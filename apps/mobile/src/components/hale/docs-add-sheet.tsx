@@ -201,7 +201,7 @@ export function DocsAddSheet({
           onPress={pickFile}
           className="min-h-12 flex-row items-center gap-2.5 rounded-md border border-rule bg-card px-4 py-3 active:opacity-80"
         >
-          <Icon name="doc.text.fill" size={16} color={iconColor} />
+          <Icon name="file-text" size={16} color={iconColor} />
           <AppText variant="body" numberOfLines={1} className={file ? 'flex-1 text-ink' : 'flex-1 text-ink-3'}>
             {file ? file.name : 'Choose an image or PDF'}
           </AppText>

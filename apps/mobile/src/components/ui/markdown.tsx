@@ -43,7 +43,7 @@ function Inline({ line }: { line: string }) {
           // biome-ignore lint/suspicious/noArrayIndexKey: inline segments are positional, not identity-bearing
           key={i}
           style={{
-            fontFamily: seg.bold ? 'Inter_600SemiBold' : 'Inter_400Regular',
+            fontFamily: seg.bold ? 'InstrumentSans_600SemiBold' : 'InstrumentSans_400Regular',
             fontStyle: seg.italic ? 'italic' : 'normal',
           }}
         >

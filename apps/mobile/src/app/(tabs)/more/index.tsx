@@ -27,7 +27,7 @@ const SECTIONS: { items: MenuItem[] }[] = [
       {
         label: 'Family',
         detail: 'Parents, children, area',
-        icon: 'person.2',
+        icon: 'users',
         href: '/more/family',
       },
       { label: 'Plan', detail: 'Your week ahead', icon: 'calendar', href: '/more/plan' },
@@ -40,13 +40,13 @@ const SECTIONS: { items: MenuItem[] }[] = [
       {
         label: 'Activity',
         detail: 'Actions waiting for you',
-        icon: 'checkmark.circle',
+        icon: 'circle-check',
         href: '/more/approvals',
       },
       {
         label: 'Messages',
         detail: "Hale's notes to you",
-        icon: 'envelope',
+        icon: 'mail',
         href: '/more/messages',
       },
     ],
@@ -56,25 +56,25 @@ const SECTIONS: { items: MenuItem[] }[] = [
       {
         label: 'Plan & billing',
         detail: 'Your plan and what it includes',
-        icon: 'creditcard',
+        icon: 'credit-card',
         href: '/more/plan-tiers',
       },
       {
         label: 'Resources',
         detail: 'Guides & answers from Hale',
-        icon: 'book',
+        icon: 'book-open',
         externalUrl: 'https://www.villagehale.com/faq',
       },
       {
         label: 'Settings',
         detail: 'Notifications, privacy',
-        icon: 'gearshape',
+        icon: 'settings',
         href: '/more/settings',
       },
       {
         label: 'Sign out',
         detail: '',
-        icon: 'rectangle.portrait.and.arrow.right',
+        icon: 'log-out',
         action: 'signOut',
       },
     ],
@@ -163,7 +163,7 @@ function MenuRow({
         {item.detail ? <AppText variant="meta">{item.detail}</AppText> : null}
       </View>
       {badge && badge > 0 ? <CountBadge count={badge} /> : null}
-      {item.href ? <Icon name="chevron.right" size={14} color={chevron} /> : null}
+      {item.href ? <Icon name="chevron-right" size={14} color={chevron} /> : null}
     </Pressable>
   );
 }

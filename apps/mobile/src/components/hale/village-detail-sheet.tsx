@@ -261,7 +261,7 @@ export function VillageDetailSheet({
 
       {rec.venueName ? (
         <View className="mb-3 flex-row items-center gap-2">
-          <Icon name="mappin.and.ellipse" size={15} color={accentIcon} />
+          <Icon name="map-pin" size={15} color={accentIcon} />
           <AppText variant="meta" className="flex-1 text-ink-2">
             {rec.venueName}
           </AppText>
@@ -283,7 +283,7 @@ export function VillageDetailSheet({
       <View className="flex-row flex-wrap gap-2">
         {!isAccepted ? (
           <ActionButton
-            icon="checkmark"
+            icon="check"
             label={busy ? 'Working…' : 'Accept'}
             filled
             disabled={busy}
@@ -291,19 +291,19 @@ export function VillageDetailSheet({
           />
         ) : null}
         <ActionButton
-          icon={isSaved ? 'bookmark.fill' : 'bookmark'}
+          icon={isSaved ? 'bookmark-check' : 'bookmark'}
           label={isSaved ? 'Saved' : "I'm interested"}
           disabled={busy}
           onPress={onToggleSave}
         />
         <ActionButton
-          icon="checkmark.circle"
+          icon="circle-check"
           label={isEndorsed ? 'Endorsed' : 'Endorse'}
           disabled={busy || isEndorsed}
           onPress={() => runAction(rec.endorseHref, () => setEndorsed(true))}
         />
         <ActionButton
-          icon="square.and.arrow.up"
+          icon="share"
           label={busy ? 'Making a link…' : 'Share'}
           disabled={busy}
           onPress={onShare}
@@ -313,7 +313,7 @@ export function VillageDetailSheet({
         ) : null}
         {/* Always resolves (register fallback), so a parent is never left without a
             way through to registration — parity with the web card. */}
-        <ActionButton icon="arrow.up.right.square" label="Register" onPress={openRegister} />
+        <ActionButton icon="square-arrow-out-up-right" label="Register" onPress={openRegister} />
       </View>
 
       {isSaved ? (

@@ -332,7 +332,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
                 {dobLabel(dob)}
               </AppText>
               <Icon
-                name={showPicker ? 'chevron.up' : 'chevron.down'}
+                name={showPicker ? 'chevron-up' : 'chevron-down'}
                 size={13}
                 color={iconColor}
               />
@@ -477,7 +477,7 @@ function AddChildForm({ onSaved }: { onSaved: () => void }) {
               <AppText variant="body" className={dob ? 'text-ink' : 'text-ink-3'}>
                 {dob ? dobLabel(dob) : 'Pick a date'}
               </AppText>
-              <Icon name={showPicker ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+              <Icon name={showPicker ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
             </Pressable>
             {showPicker ? (
               <View className="items-center">
@@ -551,7 +551,7 @@ function LocationForm({
             Drives local discovery using a coarse area only — never your exact address.
           </AppText>
         </View>
-        <Pill label="Set your area" icon="mappin.and.ellipse" onPress={() => setEditing(true)} />
+        <Pill label="Set your area" icon="map-pin" onPress={() => setEditing(true)} />
       </Card>
     );
   }

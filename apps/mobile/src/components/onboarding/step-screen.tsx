@@ -44,7 +44,7 @@ export function StepScreen({
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View className="flex-row items-center gap-3 px-5 pt-2">
           <IconButton
-            icon="chevron.left"
+            icon="chevron-left"
             accessibilityLabel="Go back"
             size={18}
             onPress={() => router.back()}

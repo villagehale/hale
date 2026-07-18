@@ -9,19 +9,19 @@ export type AppTextProps = TextProps & {
 // On native each weight is a separate font file, so a single family + fontWeight
 // won't switch files — we set the weight-named family that _layout.tsx loads.
 const VARIANT_FAMILY: Record<AppTextVariant, string> = {
-  display: 'Inter_600SemiBold',
-  title: 'Inter_600SemiBold',
-  section: 'Inter_600SemiBold',
-  body: 'Inter_400Regular',
-  meta: 'Inter_500Medium',
-  mono: 'JetBrainsMono_500Medium',
+  display: 'SourceSerif4_600SemiBold',
+  title: 'SourceSerif4_500Medium',
+  section: 'InstrumentSans_600SemiBold',
+  body: 'InstrumentSans_400Regular',
+  meta: 'InstrumentSans_500Medium',
+  mono: 'InstrumentSans_500Medium',
 };
 
 const VARIANT_CLASS: Record<AppTextVariant, string> = {
   display: 'text-[34px] leading-[40px] tracking-display text-ink',
-  title: 'text-[20px] leading-[26px] tracking-display text-ink',
+  title: 'text-[22px] leading-[28px] tracking-display text-ink',
   section: 'text-[15px] leading-[20px] tracking-display text-ink',
-  body: 'text-[16px] leading-[24px] text-ink-2',
+  body: 'text-[14px] leading-[21px] text-ink-2',
   meta: 'text-[13px] leading-[18px] text-ink-3',
   mono: 'text-[14px] leading-[20px] text-ink-2',
 };

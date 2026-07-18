@@ -9,20 +9,20 @@ import { useMeadowColor } from '@/constants/meadow';
 type TabMeta = { label: string; icon: IconName; activeIcon: IconName };
 
 const TABS: Record<string, TabMeta> = {
-  index: { label: 'Home', icon: 'house', activeIcon: 'house.fill' },
+  index: { label: 'Home', icon: 'house', activeIcon: 'house' },
   companion: {
     label: 'Companion',
-    icon: 'figure.2.and.child.holdinghands',
-    activeIcon: 'figure.2.and.child.holdinghands',
+    icon: 'user',
+    activeIcon: 'user',
   },
   ask: { label: 'Hale', icon: 'sparkles', activeIcon: 'sparkles' },
-  village: { label: 'Village', icon: 'map', activeIcon: 'map.fill' },
+  village: { label: 'Village', icon: 'building-2', activeIcon: 'building-2' },
   more: { label: 'More', icon: 'ellipsis', activeIcon: 'ellipsis' },
 };
 
 export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const activeTint = useMeadowColor('ink');
+  const activeTint = useMeadowColor('brand');
   const inactiveTint = useMeadowColor('ink3');
 
   return (
@@ -64,7 +64,7 @@ export function AppTabBar({ state, navigation }: BottomTabBarProps) {
             </View>
             <AppText
               variant="meta"
-              className={`text-[11px] ${isFocused ? 'text-ink' : 'text-ink-3'}`}
+              className={`text-[11px] ${isFocused ? 'text-brand' : 'text-ink-3'}`}
             >
               {meta.label}
             </AppText>

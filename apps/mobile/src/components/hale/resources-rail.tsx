@@ -60,7 +60,7 @@ function ResourceCard({ resource }: { resource: CuratedResourceView }) {
               {resource.name}
             </AppText>
           </View>
-          <Icon name="arrow.up.right.square" size={18} color={iconColor} />
+          <Icon name="square-arrow-out-up-right" size={18} color={iconColor} />
         </View>
         <AppText variant="body" className="text-ink-2">
           {resource.description}

@@ -176,7 +176,7 @@ export function LogEditSheet({
                   {whenLabel(when)}
                 </AppText>
               </View>
-              <Icon name={showPicker ? 'chevron.up' : 'chevron.down'} size={13} color={iconColor} />
+              <Icon name={showPicker ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
             </Pressable>
             {showPicker ? (
               <View className="items-center">
@@ -240,7 +240,7 @@ export function LogEditSheet({
           onPress={() => setConfirmingDelete(true)}
           className="mt-4 min-h-11 flex-row items-center justify-center gap-2 active:opacity-70"
         >
-          <Icon name="trash" size={15} color={iconColor} />
+          <Icon name="trash-2" size={15} color={iconColor} />
           <AppText variant="meta" className="text-ink-3">
             Remove this log
           </AppText>

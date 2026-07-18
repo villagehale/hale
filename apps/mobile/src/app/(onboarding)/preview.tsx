@@ -159,7 +159,7 @@ function Teaser({ first, area, others }: { first: PreviewActivity; area: string;
       <View className="gap-3 rounded-lg border border-rule bg-card p-4">
         <View className="flex-row items-center gap-3">
           <View className="h-9 w-9 items-center justify-center rounded-full bg-accent-tint">
-            <Icon name="mappin.and.ellipse" size={17} color={accent} />
+            <Icon name="map-pin" size={17} color={accent} />
           </View>
           <AppText variant="meta" className="text-ink-3">
             Near {area}
@@ -191,7 +191,7 @@ function TeenLine() {
   return (
     <View className="gap-3 rounded-lg border border-rule bg-card p-4">
       <View className="h-9 w-9 items-center justify-center rounded-full bg-ink">
-        <Icon name="lock.shield.fill" size={17} color={onInk} />
+        <Icon name="shield" size={17} color={onInk} />
       </View>
       <AppText variant="section">Your teen's privacy comes first</AppText>
       <AppText variant="body" className="text-ink-2">
