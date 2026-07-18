@@ -6,12 +6,12 @@ import { Image } from 'expo-image';
  * dark shells without adapting. Decorative beside the "Hale" wordmark — the
  * wordmark carries the accessible name.
  */
-export function LogoMark({ size = 28 }: { size?: number }) {
+export function LogoMark({ size = 28, radius = 8 }: { size?: number; radius?: number }) {
   return (
     <Image
       source={require('../../../assets/images/icon.png')}
       accessibilityIgnoresInvertColors
-      style={{ width: size, height: size, borderRadius: 8 }}
+      style={{ width: size, height: size, borderRadius: radius }}
     />
   );
 }

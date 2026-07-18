@@ -134,7 +134,7 @@ function RootNavigator() {
   usePushRegistration(ready && !!token);
 
   useEffect(() => {
-    const timer = setTimeout(() => setMinElapsed(true), 1600);
+    const timer = setTimeout(() => setMinElapsed(true), 2400);
     return () => clearTimeout(timer);
   }, []);
 
@@ -145,7 +145,7 @@ function RootNavigator() {
   }, [fontsLoaded]);
 
   if (!fontsLoaded) return null;
-  if (showSplash) return <SplashLoader />;
+  if (showSplash) return <SplashLoader onSkip={() => setMinElapsed(true)} />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import {
+  ArrowRight,
   ArrowUp,
   Baby,
   Bell,
@@ -48,6 +49,7 @@ import {
   User,
   Users,
   Utensils,
+  Volume2,
   X,
 } from 'lucide-react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -109,6 +111,7 @@ function EllipsisFilled({ size = 24, color = 'currentColor' }: { size?: number; 
 // hand-authored glyphs above. `MapIcon` is imported but the Village tab maps to
 // the custom `houses` mark (the handoff draws a cluster of homes, not a folded map).
 const ICONS = {
+  'arrow-right': ArrowRight,
   'arrow-up': ArrowUp,
   baby: Baby,
   bell: Bell,
@@ -160,6 +163,7 @@ const ICONS = {
   user: User,
   users: Users,
   utensils: Utensils,
+  'volume-2': Volume2,
   x: X,
 } satisfies Record<string, IconGlyph>;
 

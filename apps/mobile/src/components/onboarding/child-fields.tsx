@@ -62,7 +62,7 @@ export function ChildFields({
             label="First name"
             value={child.name}
             onChangeText={(name) => onChange({ ...child, name })}
-            placeholder="Maya"
+            placeholder="Sebastian"
             autoCapitalize="words"
           />
         </View>
