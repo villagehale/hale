@@ -1,6 +1,5 @@
 import Constants from 'expo-constants';
 import { type Href, router, useFocusEffect } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useCallback } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
@@ -29,8 +28,6 @@ type MenuItem = {
   /** Sign out — the one destructive row (red icon + label). */
   destructive?: boolean;
   badge?: BadgeKey;
-  /** Opens outside the app (guides on villagehale.com) — real content, no dead rows. */
-  externalUrl?: string;
 };
 
 const SECTIONS: { header: string; items: MenuItem[] }[] = [
@@ -41,14 +38,14 @@ const SECTIONS: { header: string; items: MenuItem[] }[] = [
         label: 'Approvals',
         detail: 'Actions waiting for you',
         icon: 'circle-check',
-        href: '/more/approvals',
+        href: '/approvals',
         badge: 'approvals',
       },
       {
         label: 'Messages',
         detail: 'Updates from your village',
         icon: 'mail',
-        href: '/more/messages',
+        href: '/messages',
         badge: 'messages',
       },
     ],
@@ -60,14 +57,14 @@ const SECTIONS: { header: string; items: MenuItem[] }[] = [
         label: 'Saved',
         detail: 'Your saved items',
         icon: 'bookmark',
-        href: '/more/saved',
+        href: '/saved',
       },
-      { label: 'Plan', detail: 'Your week ahead', icon: 'calendar', href: '/more/plan' },
+      { label: 'Plan', detail: 'Your week ahead', icon: 'calendar', href: '/plan' },
       {
         label: 'Resources',
         detail: 'Guides and articles',
         icon: 'book-open',
-        externalUrl: 'https://www.villagehale.com/faq',
+        href: '/resources',
       },
     ],
   },
@@ -78,13 +75,13 @@ const SECTIONS: { header: string; items: MenuItem[] }[] = [
         label: 'Plan & billing',
         detail: 'Your plan and what it includes',
         icon: 'credit-card',
-        href: '/more/plan-tiers',
+        href: '/plan-tiers',
       },
       {
         label: 'Settings',
         detail: 'Notifications, privacy',
         icon: 'settings',
-        href: '/more/settings',
+        href: '/settings',
       },
       {
         label: 'Sign out',
@@ -133,7 +130,7 @@ function ProfileCard({ viewer }: { viewer: MobileFamilyResponse['viewer'] | unde
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${primary}. Profile and family`}
-      onPress={() => router.push('/more/family')}
+      onPress={() => router.push('/profile')}
       className="flex-row items-center gap-3 rounded-[20px] border border-rule bg-card px-4 py-3.5 active:opacity-80"
     >
       <View className="h-11 w-11 items-center justify-center rounded-full bg-accent">
@@ -222,10 +219,6 @@ export default function MoreScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign out', style: 'destructive', onPress: signOut },
       ]);
-      return;
-    }
-    if (item.externalUrl) {
-      void WebBrowser.openBrowserAsync(item.externalUrl);
       return;
     }
     if (item.href) router.push(item.href);

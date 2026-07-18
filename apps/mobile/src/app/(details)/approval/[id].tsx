@@ -6,8 +6,8 @@ import { ApprovalPayloadBlock } from '@/components/hale/approval-payload';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import type { ApprovalView, MobileApprovalsResponse } from '@/lib/api-types';
@@ -121,7 +121,7 @@ export default function ApprovalDetailScreen() {
 
   return (
     <Screen scroll className="gap-5">
-      <ScreenHeader title="Approval" back />
+      <DetailHeader title="Approval" />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
       {status === 'ready' && action ? <ApprovalDetailBody action={action} /> : null}

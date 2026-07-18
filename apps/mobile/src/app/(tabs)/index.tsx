@@ -2,8 +2,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { AppointmentDetailSheet } from '@/components/hale/appointment-detail-sheet';
-import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,14 +15,16 @@ import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
 import type {
   ChildCompanionView,
+  MobileApprovalsResponse,
   MobileHomeResponse,
+  MobileMessagesResponse,
   UpcomingHealthItem,
   VillageCandidateView,
 } from '@/lib/api-types';
 import { agePhrase, duePhrase } from '@/lib/format';
 import { timeGreeting } from '@/lib/greeting';
 import { homeStatCells, type StatCell } from '@/lib/home-stats';
-import { useHasUnreadNotifs } from '@/lib/notif-dot';
+import { notifDotOn, useNotifsAcknowledged } from '@/lib/notif-dot';
 import { useApi } from '@/lib/use-api';
 import { rememberViewerFirstName } from '@/lib/viewer-name';
 
@@ -74,16 +74,29 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
-/** The greeting-row bell: navigates to Notifications, with a client-side unread dot
- * that persists until the Notifications page marks all read (Task 12). */
+/** The greeting-row bell: navigates to Notifications, its dot DERIVED from real state
+ * — lit when there are pending approvals or unacknowledged messages (see notifDotOn).
+ * It reads the same two lists the Notifications page and the More badges do, opted
+ * into refetch-on-focus so resolving an approval and returning clears the dot. */
 function NotifBell() {
-  const hasUnread = useHasUnreadNotifs();
+  const acknowledged = useNotifsAcknowledged();
+  const approvals = useApi<MobileApprovalsResponse>('/api/mobile/approvals', {
+    refetchOnFocus: true,
+  });
+  const messages = useApi<MobileMessagesResponse>('/api/mobile/messages', {
+    refetchOnFocus: true,
+  });
+  const hasUnread = notifDotOn(
+    approvals.data?.approvals.length ?? 0,
+    messages.data?.messages.length ?? 0,
+    acknowledged,
+  );
   const iconColor = useMeadowColor('ink');
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={hasUnread ? 'Notifications, unread' : 'Notifications'}
-      onPress={() => router.push('/more/notifications')}
+      onPress={() => router.push('/notifications')}
       className="relative p-1 active:opacity-70"
     >
       <Icon name="bell" size={22} color={iconColor} />
@@ -170,16 +183,12 @@ function SnapshotStat({ cell }: { cell: StatCell }) {
 function HomeBody({
   data,
   onLogged,
-  onRefresh,
 }: {
   data: MobileHomeResponse;
   onLogged: () => void;
-  onRefresh: () => void;
 }) {
   const rec = firstVillageRec(data.village.candidates);
   const [logKind, setLogKind] = useState<LogKind | null>(null);
-  const [villageOpen, setVillageOpen] = useState(false);
-  const [apptOpen, setApptOpen] = useState(false);
   const leadChild = data.children[0] ?? null;
   const upNext = leadChild ? leadHealth(leadChild) : null;
   const greeting = homeGreeting(data.viewer);
@@ -240,7 +249,7 @@ function HomeBody({
             Add a child and Hale unlocks one-tap logging for feeds and naps, their milestones and
             checkups, and a companion guide tuned to their stage.
           </AppText>
-          <Button label="Add a child" onPress={() => router.push('/more/family')} />
+          <Button label="Add a child" onPress={() => router.push('/family')} />
         </Card>
       )}
 
@@ -306,7 +315,14 @@ function HomeBody({
       {upNext ? (
         <View className="gap-2.5">
           <SectionLabel>Up next</SectionLabel>
-          <Card onPress={() => setApptOpen(true)} className="flex-row items-center gap-3">
+          <Card
+            onPress={() =>
+              leadChild
+                ? router.push(`/appointment/${upNext.key}?child=${leadChild.id}`)
+                : undefined
+            }
+            className="flex-row items-center gap-3"
+          >
             <TintChip icon="calendar" tone="blue" size={38} />
             <View className="flex-1">
               <AppText
@@ -328,7 +344,10 @@ function HomeBody({
       {rec ? (
         <View className="gap-2.5">
           <SectionLabel>From your village</SectionLabel>
-          <Card onPress={() => setVillageOpen(true)} className="flex-row items-center gap-3">
+          <Card
+            onPress={() => router.push(`/activity/${rec.id}`)}
+            className="flex-row items-center gap-3"
+          >
             <TintChip icon="map-pin" tone="yellow" size={38} />
             <View className="flex-1">
               <AppText
@@ -358,39 +377,19 @@ function HomeBody({
         onClose={() => setLogKind(null)}
         onLogged={onLogged}
       />
-
-      {leadChild ? (
-        <AppointmentDetailSheet
-          item={upNext}
-          childId={leadChild.id}
-          childName={leadChild.name}
-          visible={apptOpen}
-          onClose={() => setApptOpen(false)}
-          onDone={onRefresh}
-        />
-      ) : null}
-
-      <VillageDetailSheet
-        rec={rec}
-        visible={villageOpen}
-        onClose={() => setVillageOpen(false)}
-        onChanged={onRefresh}
-      />
     </>
   );
 }
 
 export default function HomeScreen() {
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobileHomeResponse>('/api/mobile/home');
+    useApi<MobileHomeResponse>('/api/mobile/home', { refetchOnFocus: true });
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? (
-        <HomeBody data={data} onLogged={refresh} onRefresh={refresh} />
-      ) : null}
+      {status === 'ready' && data ? <HomeBody data={data} onLogged={refresh} /> : null}
     </Screen>
   );
 }

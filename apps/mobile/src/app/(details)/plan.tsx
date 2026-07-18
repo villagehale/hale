@@ -3,22 +3,16 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Platform, Pressable, TextInput, View } from 'react-native';
 
-import { VillageDetailSheet } from '@/components/hale/village-detail-sheet';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
-import type {
-  AuthoredPlanView,
-  MobilePlanResponse,
-  ScopeChild,
-  VillageCandidateView,
-} from '@/lib/api-types';
+import type { AuthoredPlanView, MobilePlanResponse, ScopeChild } from '@/lib/api-types';
 import { ApiError } from '@/lib/api-client';
 import { completePlan, createPlan, deletePlan } from '@/lib/plan-api';
 import { composeCreatePlan } from '@/lib/plan-compose';
@@ -393,7 +387,6 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
     childItems,
     hasPlan,
   } = data;
-  const [openRec, setOpenRec] = useState<VillageCandidateView | null>(null);
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
   const chevron = useMeadowColor('ink3');
 
@@ -503,7 +496,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
                 key={activity.id}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${activity.title}`}
-                onPress={() => setOpenRec(activity)}
+                onPress={() => router.push(`/activity/${activity.id}`)}
                 className="active:opacity-80"
               >
                 <Card className="gap-1">
@@ -598,23 +591,17 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
         </View>
       ) : null}
 
-      <VillageDetailSheet
-        rec={openRec}
-        visible={openRec !== null}
-        onClose={() => setOpenRec(null)}
-        onChanged={onRefresh}
-      />
     </>
   );
 }
 
 export default function PlanScreen() {
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobilePlanResponse>('/api/mobile/plan');
+    useApi<MobilePlanResponse>('/api/mobile/plan', { refetchOnFocus: true });
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <ScreenHeader title="Plan" back />
+      <DetailHeader title="Plan" />
       <AppText variant="meta" className="-mt-2">
         The week ahead — your own plans, endorsed activities, your routine, and what's coming up per
         child.

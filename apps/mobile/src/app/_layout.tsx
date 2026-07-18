@@ -150,6 +150,7 @@ function RootNavigator() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(details)" />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="connect" />
       <Stack.Screen name="sign-in" />

@@ -1,5 +1,5 @@
-import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, Switch, View } from 'react-native';
 
@@ -8,9 +8,10 @@ import { PrivacyDataSection } from '@/components/hale/privacy-data-section';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
+import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
@@ -161,7 +162,9 @@ function ToggleRow({
   error: string | null;
   onValueChange: (next: boolean) => void;
 }) {
-  const trackOn = useMeadowColor('accentFill');
+  // The "on" track is brand navy — the prototype's switch colour and the app's
+  // committed primary for a selected/active state (apricot stays scarce; DESIGN.md).
+  const trackOn = useMeadowColor('brand');
   return (
     <Card className="gap-3">
       <View className="flex-row items-center justify-between gap-4">
@@ -384,6 +387,38 @@ function PreferencesSection({ initial }: { initial: MobilePreferencesResponse })
   );
 }
 
+/** One chevron row in the "Other" card (Help & support / About Hale). */
+function OtherRow({ label, onPress, last }: { label: string; onPress: () => void; last?: boolean }) {
+  const chevron = useMeadowColor('ink3');
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      className={`flex-row items-center gap-3 px-4 py-3.5 active:opacity-80 ${last ? '' : 'border-b border-hairline'}`}
+    >
+      <AppText className="flex-1 text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+        {label}
+      </AppText>
+      <Icon name="chevron-right" size={15} color={chevron} />
+    </Pressable>
+  );
+}
+
+/** The prototype's "Other" section — routes to the Help & support and About Hale
+ * pages (the app version now lives on the About page, not inline here). */
+function OtherSection() {
+  return (
+    <View className="gap-2">
+      <SectionTitle>Other</SectionTitle>
+      <Card className="gap-0 p-0">
+        <OtherRow label="Help & support" onPress={() => router.push('/help')} />
+        <OtherRow label="About Hale" onPress={() => router.push('/about')} last />
+      </Card>
+    </View>
+  );
+}
+
 function SettingsBody({
   email,
   push,
@@ -419,12 +454,7 @@ function SettingsBody({
         </Card>
       </View>
 
-      <View className="gap-2">
-        <SectionTitle>About</SectionTitle>
-        <Card>
-          <InfoRow title="Village Hale" detail={`Version ${Constants.expoConfig?.version ?? '—'}`} />
-        </Card>
-      </View>
+      <OtherSection />
     </>
   );
 }
@@ -436,7 +466,7 @@ export default function SettingsScreen() {
 
   return (
     <Screen scroll className="gap-6" refreshControl={useTintedRefresh(email.refreshing, email.refresh)}>
-      <ScreenHeader title="Settings" back />
+      <DetailHeader title="Settings" />
       {email.status === 'loading' ? <LoadingState /> : null}
       {email.status === 'error' ? <ErrorState message={email.error ?? ''} onRetry={email.reload} /> : null}
       {email.status === 'ready' && email.data ? (

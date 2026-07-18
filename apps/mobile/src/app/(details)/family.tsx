@@ -1,16 +1,16 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { Platform, Pressable, Share, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Field } from '@/components/ui/field';
 import { Icon } from '@/components/ui/icon';
 import { Pill } from '@/components/ui/pill';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
@@ -21,7 +21,7 @@ import type {
   MemberView,
   MobileFamilyResponse,
 } from '@/lib/api-types';
-import { updateFamily } from '@/lib/family-api';
+import { createInvite, updateFamily } from '@/lib/family-api';
 import { useApi } from '@/lib/use-api';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -113,9 +113,27 @@ function dobLabel(value: string): string {
   });
 }
 
+/** First letter of a name (or email) for an avatar disc — Hale has no uploaded photos,
+ * so an initial stands in (mirrors the More profile card + Profile page). */
+function initialOf(source: string): string {
+  return source.trim().charAt(0).toUpperCase() || '?';
+}
+
+/** The tinted initial disc shared by the parent + child rows (prototype avatar slot). */
+function AvatarDisc({ initial }: { initial: string }) {
+  return (
+    <View className="h-[38px] w-[38px] items-center justify-center rounded-full bg-chip-blue">
+      <AppText className="text-[15px] text-brand" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
+        {initial}
+      </AppText>
+    </View>
+  );
+}
+
 function ParentRow({ member }: { member: MemberView }) {
   return (
-    <View className="flex-row items-center justify-between">
+    <View className="flex-row items-center gap-3">
+      <AvatarDisc initial={initialOf(member.name ?? member.email)} />
       <View className="flex-1">
         <AppText variant="body" numberOfLines={1} className="text-ink">
           {member.name ?? member.email}
@@ -245,17 +263,21 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
 
   if (!editing) {
     return (
-      <Card className="flex-row items-center justify-between">
+      <Card
+        onPress={() => setEditing(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${child.name}'s profile`}
+        className="flex-row items-center gap-3"
+      >
+        <AvatarDisc initial={initialOf(child.name)} />
         <View className="flex-1">
           <AppText variant="body" className="text-ink">
             {child.name}
           </AppText>
           <AppText variant="meta">{dobLabel(child.dateOfBirth)}</AppText>
         </View>
-        <View className="flex-row items-center gap-2">
-          <Tag label={child.stageLabel} tone="coach" />
-          <Pill label="Edit" icon="pencil" onPress={() => setEditing(true)} />
-        </View>
+        <Tag label={child.stageLabel} tone="coach" />
+        <Icon name="chevron-right" size={15} color={iconColor} />
       </Card>
     );
   }
@@ -609,12 +631,104 @@ function LocationForm({
   );
 }
 
+type InviteState =
+  | { kind: 'idle' }
+  | { kind: 'generating' }
+  | { kind: 'ready'; link: string }
+  | { kind: 'unavailable' }
+  | { kind: 'error' };
+
+/**
+ * The prototype's "Invite family member" — mints a real co-parent invite via
+ * createInvite (the mobile route reusing the web createFamilyInvite lib: rule #5
+ * consent + rule #6 audit) and hands the single-use link to the native Share sheet.
+ * The link is ALSO shown inline once ready, so a web build where Share is a no-op
+ * still surfaces something to copy. Honest failure: a 403 (no family yet) / 501 (auth
+ * unconfigured) reads as "not ready yet", never a silent dead button.
+ */
+function InviteFamilyButton() {
+  const [state, setState] = useState<InviteState>({ kind: 'idle' });
+  const icon = useMeadowColor('ink2');
+
+  async function share(link: string) {
+    // Share is a native module; on the RN-web preview it can reject or be a no-op, so
+    // failure is swallowed — the link stays visible inline for manual sharing.
+    try {
+      await Share.share({ message: `Join our family on Hale: ${link}` });
+    } catch {}
+  }
+
+  async function generate() {
+    setState({ kind: 'generating' });
+    try {
+      const link = await createInvite();
+      setState({ kind: 'ready', link });
+      await share(link);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      setState(
+        e instanceof ApiError && (e.status === 403 || e.status === 501)
+          ? { kind: 'unavailable' }
+          : { kind: 'error' },
+      );
+    }
+  }
+
+  return (
+    <View className="gap-2">
+      <SectionTitle>Invite family</SectionTitle>
+      <AppText variant="meta">
+        Invite a co-parent to share the load. Until they join, anything that touches their data waits
+        for your tap.
+      </AppText>
+
+      {state.kind === 'ready' ? (
+        <Card className="gap-2">
+          <AppText variant="meta" className="text-ink-2">
+            Share this one-time link — it expires in 14 days.
+          </AppText>
+          <AppText variant="body" selectable className="text-ink">
+            {state.link}
+          </AppText>
+          <Pill label="Share link" icon="share" onPress={() => share(state.link)} className="self-start" />
+        </Card>
+      ) : null}
+
+      {state.kind === 'unavailable' ? (
+        <AppText variant="meta" className="text-ink-3">
+          Your invite link will be ready once your family is set up.
+        </AppText>
+      ) : null}
+      {state.kind === 'error' ? (
+        <AppText variant="meta" className="text-accent" accessibilityRole="alert">
+          Couldn&rsquo;t create an invite just now — please try again.
+        </AppText>
+      ) : null}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Invite family member"
+        disabled={state.kind === 'generating'}
+        onPress={generate}
+        className={`min-h-12 flex-row items-center justify-center gap-2 rounded-[15px] border border-rule bg-card ${
+          state.kind === 'generating' ? 'opacity-50' : 'active:opacity-80'
+        }`}
+      >
+        <Icon name="users" size={16} color={icon} />
+        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+          {state.kind === 'generating' ? 'Creating…' : 'Invite family member'}
+        </AppText>
+      </Pressable>
+    </View>
+  );
+}
+
 function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: () => void }) {
   const { members, basics } = data;
   return (
     <>
       <View className="gap-2">
-        <SectionTitle>Parents</SectionTitle>
+        <SectionTitle>Parents &amp; guardians</SectionTitle>
         {members.primary ? (
           <ParentNameForm member={members.primary} onSaved={onSaved} />
         ) : null}
@@ -646,7 +760,7 @@ function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: ()
       </View>
 
       <View className="gap-2">
-        <SectionTitle>Your area</SectionTitle>
+        <SectionTitle>Family area</SectionTitle>
         <LocationForm location={basics.location} onSaved={onSaved} />
       </View>
 
@@ -662,6 +776,8 @@ function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: ()
           </Card>
         </View>
       ) : null}
+
+      <InviteFamilyButton />
     </>
   );
 }
@@ -672,7 +788,7 @@ export default function FamilyScreen() {
 
   return (
     <Screen scroll className="gap-6" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <ScreenHeader title="Family" back />
+      <DetailHeader title="Family" />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
       {status === 'ready' && data ? <FamilyBody data={data} onSaved={reload} /> : null}

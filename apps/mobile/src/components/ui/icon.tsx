@@ -47,6 +47,7 @@ import {
   Trash2,
   User,
   Users,
+  Utensils,
   X,
 } from 'lucide-react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -158,6 +159,7 @@ const ICONS = {
   'trash-2': Trash2,
   user: User,
   users: Users,
+  utensils: Utensils,
   x: X,
 } satisfies Record<string, IconGlyph>;
 

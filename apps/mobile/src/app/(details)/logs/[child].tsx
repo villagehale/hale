@@ -1,17 +1,19 @@
+import { useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
+import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
-import { Sheet } from '@/components/ui/sheet';
 import type { LogView, MobileLogsResponse } from '@/lib/api-types';
 import { whenPhrase } from '@/lib/format';
 import { groupLogsByDay } from '@/lib/logs-group';
-import { computeNapsTrend, MIN_DAYS_WITH_DATA, type NapsTrend } from '@/lib/naps-trend';
+import { MIN_DAYS_WITH_DATA, type NapsTrend, computeNapsTrend } from '@/lib/naps-trend';
 import { useApi } from '@/lib/use-api';
 
-/** The tallest a trend bar draws (px). Heights scale off the peak day so the
- * chart reads relatively; the codebase idiom is inline pixel heights (no chart
- * dependency exists). */
+/** The tallest a trend bar draws (px). Heights scale off the peak day so the chart
+ * reads relatively; the codebase idiom is inline pixel heights (no chart dependency). */
 const MAX_BAR_H = 88;
 const MIN_BAR_H = 4;
 
@@ -79,7 +81,7 @@ function LogMetrics({ log }: { log: LogView }) {
   );
 }
 
-function LogsDetailBody({ childId }: { childId: string }) {
+function LogsBody({ childId }: { childId: string }) {
   const { status, data, error, reload } = useApi<MobileLogsResponse>(
     `/api/mobile/companion/logs?child=${childId}`,
   );
@@ -97,12 +99,11 @@ function LogsDetailBody({ childId }: { childId: string }) {
     );
   }
 
-  // When more pages remain (nextCursor set), this page only covers back to its
-  // oldest row (last, newest-first) — days older than that are "not loaded", not
-  // "no naps". A null cursor means the whole history was read, so coverage is full.
+  // When more pages remain (nextCursor set), this page only covers back to its oldest
+  // row — days older than that are "not loaded", not "no naps". A null cursor means
+  // the whole history was read, so coverage is full.
   const oldest = logs[logs.length - 1]?.occurredAt;
-  const coveredSince =
-    data.nextCursor !== null && oldest ? new Date(oldest) : undefined;
+  const coveredSince = data.nextCursor !== null && oldest ? new Date(oldest) : undefined;
   const trend = computeNapsTrend(logs, new Date(), coveredSince);
   const groups = groupLogsByDay(logs);
 
@@ -112,9 +113,7 @@ function LogsDetailBody({ childId }: { childId: string }) {
         <NapsTrendChart trend={trend} />
       ) : (
         <View className="gap-1.5">
-          <AppText variant="eyebrow">
-            Naps · last 7 days
-          </AppText>
+          <AppText variant="eyebrow">Naps · last 7 days</AppText>
           <AppText variant="body" className="text-ink-3">
             A naps trend needs at least {MIN_DAYS_WITH_DATA} days of naps logged. Keep logging and a
             pattern will appear here.
@@ -125,9 +124,7 @@ function LogsDetailBody({ childId }: { childId: string }) {
       <View className="gap-4">
         {groups.map((group) => (
           <View key={group.dayKey} className="gap-2">
-            <AppText variant="eyebrow">
-              {group.label}
-            </AppText>
+            <AppText variant="eyebrow">{group.label}</AppText>
             <View className="gap-3">
               {group.logs.map((log, i) => (
                 <View
@@ -154,29 +151,30 @@ function LogsDetailBody({ childId }: { childId: string }) {
 }
 
 /**
- * The glance-detail sheet opened by tapping a child's Home glance card: a
- * day-grouped list of that child's recent logs plus a last-7-days naps trend,
- * computed client-side from the widened logs (durationMin lifted from payload). All
- * data comes from the shared, teen-redacted /api/mobile/companion/logs read (rule
- * #1) — the body only mounts (and fetches) while the sheet is open.
+ * The pushed recent-logs route (sheet→stack conversion of the orphaned
+ * LogsDetailSheet): a day-grouped list of a child's recent logs plus a last-7-days
+ * naps trend, computed client-side from the widened logs. All data comes from the
+ * shared, teen-redacted /api/mobile/companion/logs read (rule #1). Takes the child id
+ * (and an optional name for the heading); a missing id renders the empty list, never
+ * a crash.
  */
-export function LogsDetailSheet({
-  childId,
-  childName,
-  visible,
-  onClose,
-}: {
-  childId: string | null;
-  childName: string | null;
-  visible: boolean;
-  onClose: () => void;
-}) {
+export default function LogsDetailScreen() {
+  const { child, name } = useLocalSearchParams<{ child: string; name?: string }>();
+
   return (
-    <Sheet visible={visible} onClose={onClose}>
-      <AppText variant="title" className="mb-4">
-        {childName ?? 'Your child'} · recent
-      </AppText>
-      {visible && childId ? <LogsDetailBody childId={childId} /> : null}
-    </Sheet>
+    <Screen scroll className="gap-5">
+      <DetailHeader title="Recent logs" />
+      <AppText variant="title">{name ?? 'Your child'} · recent</AppText>
+      {child ? (
+        <LogsBody childId={child} />
+      ) : (
+        <Card className="mt-2 items-center gap-2 py-10">
+          <AppText variant="title">Nothing to show</AppText>
+          <AppText variant="meta" className="text-center">
+            No child selected. Head back and open a child&rsquo;s day to see their logs.
+          </AppText>
+        </Card>
+      )}
+    </Screen>
   );
 }

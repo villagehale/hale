@@ -5,10 +5,10 @@ import { Pressable, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
@@ -54,7 +54,7 @@ const ActionCard = memo(function ActionCard({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Open ${humanizeActionType(action.actionType)} details`}
-        onPress={() => router.push(`/more/approval/${action.id}`)}
+        onPress={() => router.push(`/approval/${action.id}`)}
         className="gap-2 active:opacity-80"
       >
         <View className="flex-row items-start justify-between gap-3">
@@ -226,8 +226,14 @@ function Segmented({ value, onChange }: { value: Segment; onChange: (s: Segment)
 
 export default function ApprovalsScreen() {
   const [segment, setSegment] = useState<Segment>('pending');
-  const pending = useApi<MobileApprovalsResponse>('/api/mobile/approvals');
-  const history = useApi<MobileApprovalsHistoryResponse>('/api/mobile/approvals/history');
+  // Refetch on focus so acting inside a pushed /approval/[id] (which router.back()s
+  // here) reflects immediately — the resolved item leaves Pending and enters History.
+  const pending = useApi<MobileApprovalsResponse>('/api/mobile/approvals', {
+    refetchOnFocus: true,
+  });
+  const history = useApi<MobileApprovalsHistoryResponse>('/api/mobile/approvals/history', {
+    refetchOnFocus: true,
+  });
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const onResolve = useCallback((id: string) => {
     setResolved((prev) => new Set(prev).add(id));
@@ -244,7 +250,7 @@ export default function ApprovalsScreen() {
       className="gap-5"
       refreshControl={useTintedRefresh(active.refreshing, active.refresh)}
     >
-      <ScreenHeader title="Activity" back />
+      <DetailHeader title="Approvals" />
       <Segmented value={segment} onChange={setSegment} />
       {active.status === 'loading' ? <LoadingState /> : null}
       {active.status === 'error' ? (

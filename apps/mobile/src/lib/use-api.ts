@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError, api } from './api-client';
 
@@ -20,13 +21,22 @@ export interface UseApi<T> {
   refresh: () => Promise<void>;
 }
 
+export interface UseApiOptions {
+  /** Re-read the endpoint whenever the screen regains focus, so a list reflects a
+   * change made on a pushed detail (a deleted doc drops, a marked-done item updates)
+   * the moment you navigate back. The refetch is SILENT — it updates data in place
+   * with no loading/refreshing flip (no phantom RefreshControl spinner) and keeps the
+   * shown data on a transient failure. Off by default. */
+  refetchOnFocus?: boolean;
+}
+
 /**
  * Fetches a GET endpoint through the shared api() client, tracking loading, a
  * user-facing error (for the retry state), and a separate pull-to-refresh flag so
  * a refresh keeps the current data on screen. A 401 is handled by the client
  * (clears the session, bounces to sign-in), so it never lands here as an error.
  */
-export function useApi<T>(path: string): UseApi<T> {
+export function useApi<T>(path: string, opts?: UseApiOptions): UseApi<T> {
   const [state, setState] = useState<ApiState<T>>({ status: 'loading', data: null, error: null });
   const [refreshing, setRefreshing] = useState(false);
 
@@ -52,6 +62,34 @@ export function useApi<T>(path: string): UseApi<T> {
   useEffect(() => {
     load(false);
   }, [load]);
+
+  // Opt-in silent refetch-on-focus. useFocusEffect also fires on the initial mount
+  // focus, where the effect above already loaded, so the ref skips that first run and
+  // only re-reads on a SUBSEQUENT focus (i.e. returning from a pushed detail).
+  const refetchOnFocus = opts?.refetchOnFocus ?? false;
+  const skipInitialFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (!refetchOnFocus) return;
+      if (skipInitialFocus.current) {
+        skipInitialFocus.current = false;
+        return;
+      }
+      let live = true;
+      api<T>(path)
+        .then((data) => {
+          if (live) setState({ status: 'ready', data, error: null });
+        })
+        .catch((e) => {
+          // 401 already redirected; on any other transient failure keep the shown
+          // data rather than flipping a healthy list into an error state.
+          if (e instanceof ApiError && e.status === 401) return;
+        });
+      return () => {
+        live = false;
+      };
+    }, [refetchOnFocus, path]),
+  );
 
   const reload = useCallback(() => load(false), [load]);
   const refresh = useCallback(() => load(true), [load]);

@@ -336,6 +336,14 @@ export interface MobileSavedResponse {
   candidates: VillageCandidateView[];
 }
 
+/** GET /api/mobile/village/:id — one candidate for the pushed Activity route,
+ * teen-redacted at the mapper (rule #1). `candidate` is null when the id is unknown
+ * or belongs to another family (never reveals a redacted card exists), so the route
+ * lands on its honest empty state. */
+export interface MobileVillageCandidateResponse {
+  candidate: VillageCandidateView | null;
+}
+
 export interface MobilePlanResponse {
   /** Parent-authored plans, chronological (soonest scheduledFor first), the same
    * session-scoped, teen-exempt view web /plan leads with. Folded into a Mon–Sun
@@ -433,6 +441,9 @@ export interface MessageView {
   actionState?: MessageActionState;
   /** True when the action's content is redacted for a 13+ teen (rule #1). */
   teenRedacted?: boolean;
+  /** True when this note is stamped on the family's current local day — the Notifications
+   * page buckets on it ("Today" vs "Earlier"). Computed server-side in the family zone. */
+  today?: boolean;
 }
 
 export interface MobileMessagesResponse {
@@ -509,6 +520,19 @@ export type MobileFamilyUpdateRequest =
 
 export interface MobileFamilyUpdateResponse {
   status: 'updated';
+}
+
+// ── invite (POST /api/mobile/invite) ──────────────────────────────────────────
+//
+// Mints a co-parent invite via the SAME server lib the web /api/invite route uses
+// (createFamilyInvite → rule #5 consent + rule #6 audit). The app shares the returned
+// redeem link; acceptance happens web-side. No token material travels beyond the
+// single-use redeem URL.
+
+/** The absolute redeem link for a freshly-minted co-parent invite (expires in 14
+ * days, single-use). */
+export interface MobileInviteResponse {
+  link: string;
 }
 
 // ── settings (GET + POST /api/mobile/settings) ────────────────────────────────

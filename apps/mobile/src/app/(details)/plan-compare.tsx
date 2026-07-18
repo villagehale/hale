@@ -2,10 +2,10 @@ import { View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
@@ -13,14 +13,13 @@ import type { MobilePlanTiersResponse, PlanCatalogView, PlanTierView } from '@/l
 import { useApi } from '@/lib/use-api';
 
 /**
- * Plan & billing (More): the family's CURRENT tier + what each tier includes, from
- * the server's plan catalog (derived from the @hale/types source of truth — never a
- * hardcoded feature list). Honest posture: billing isn't wired, so there is NO
- * upgrade/checkout button — the paid tiers are shown for context with a calm "coming
- * soon" note, matching the actual entitlement posture (Free drafts for approval;
- * autonomous execution is a paid entitlement, not unlocked on Free).
+ * Compare plans (handoff), reached from Plan & benefits. The family's CURRENT tier +
+ * what every tier includes, from the server plan catalog (derived from @hale/types —
+ * never hardcoded). Honest posture: billing isn't wired, so there is NO upgrade /
+ * checkout button — the paid tiers are shown for context with a calm "coming soon"
+ * note, matching the actual entitlement posture (Free drafts for approval; autonomous
+ * execution is a paid entitlement, not unlocked on Free).
  */
-
 function TierCard({ view, isCurrent }: { view: PlanTierView; isCurrent: boolean }) {
   const check = useMeadowColor('ink2');
   return (
@@ -53,11 +52,11 @@ function TierCard({ view, isCurrent }: { view: PlanTierView; isCurrent: boolean 
   );
 }
 
-function PlanBody({ catalog }: { catalog: PlanCatalogView }) {
+function CompareBody({ catalog }: { catalog: PlanCatalogView }) {
   const onFree = catalog.currentTier === 'free';
   return (
     <>
-      <AppText variant="meta" className="-mt-2">
+      <AppText variant="meta">
         {onFree
           ? "You're on Free — Hale drafts and you approve. Paid plans are coming soon; there's nothing to buy yet."
           : "Here's your plan and what each tier includes."}
@@ -69,17 +68,17 @@ function PlanBody({ catalog }: { catalog: PlanCatalogView }) {
   );
 }
 
-export default function PlanTiersScreen() {
+export default function PlanCompareScreen() {
   const { status, data, error, refreshing, reload, refresh } = useApi<MobilePlanTiersResponse>(
     '/api/mobile/plan-tiers',
   );
 
   return (
     <Screen scroll className="gap-4" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <ScreenHeader title="Plan & billing" back />
+      <DetailHeader title="Compare plans" />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? <PlanBody catalog={data.catalog} /> : null}
+      {status === 'ready' && data ? <CompareBody catalog={data.catalog} /> : null}
     </Screen>
   );
 }
