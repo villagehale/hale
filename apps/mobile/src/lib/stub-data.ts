@@ -39,3 +39,29 @@ export const SUGGESTED_DAILY_ROUTINE: readonly SuggestedRoutineRow[] = [
   { time: '6:00 PM', label: 'Dinner' },
   { time: '7:30 PM', label: 'Bedtime' },
 ];
+
+/** A childcare provider's live-capacity status — the prototype's Accepting / Waitlist
+ * badge. This is the ONE datum Hale has no source for yet (there is no childcare
+ * capacity backend), so it is stubbed here and disclosed in the UI. */
+export type ChildcareStatus = 'accepting' | 'waitlist';
+
+export interface StubChildcareProvider {
+  name: string;
+  /** "Licensed centre" / "Home care" — the provider kind, illustrative. */
+  kind: string;
+  status: ChildcareStatus;
+}
+
+/**
+ * Sample childcare listings for the Village tab. STUB: Hale has no childcare directory
+ * or live-capacity feed yet, so these providers and their Accepting/Waitlist status are
+ * illustrative — NOT real availability. Rendered under an explicit "sample listings"
+ * caveat so no parent mistakes them for verified openings. Deliberately carries NO
+ * fabricated distances / ratings / review counts (DATA HONESTY: no invented numbers).
+ * Replace with a real provider source before treating any of this as truth.
+ */
+export const STUB_CHILDCARE: readonly StubChildcareProvider[] = [
+  { name: 'Bright Steps Daycare', kind: 'Licensed centre', status: 'accepting' },
+  { name: 'Little Explorers Home Care', kind: 'Home care', status: 'waitlist' },
+  { name: 'KidsTown Early Learning', kind: 'Licensed centre', status: 'accepting' },
+];

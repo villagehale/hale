@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
-import { Platform, Pressable, Share, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
 
 import { ResourcesRail } from '@/components/hale/resources-rail';
 import { TypingDots } from '@/components/hale/typing-dots';
@@ -16,13 +16,13 @@ import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { MobileVillageResponse, VillageCandidateView } from '@/lib/api-types';
 import { foundStamp } from '@/lib/format';
+import { STUB_CHILDCARE, type StubChildcareProvider } from '@/lib/stub-data';
 import { useApi } from '@/lib/use-api';
 import {
   CADENCE_OPTIONS,
   type CadenceFilter,
   SEASON_FILTER_KEYS,
   type SeasonFilterKey,
-  activeFilterCount,
   applyFilters,
   cadenceChip,
 } from '@/lib/village-filter';
@@ -65,13 +65,15 @@ function FilterChip({
 }
 
 /**
- * The Filters sheet: cadence chips + season chips that narrow the ALREADY-LOADED
- * feed client-side (no request, no new location signal — rule #1). This is the
- * loaded-feed FILTER, kept deliberately distinct from the season SEARCH (a separate
- * LLM discovery run in SeasonSearch). Only these two honest axes are offered: kind
- * is a single hardcoded value today and distance has no family centroid, so both are
+ * The Filters sheet: season chips that narrow the ALREADY-LOADED feed client-side
+ * (no request, no new location signal — rule #1). This is the loaded-feed SEASON
+ * filter, kept deliberately distinct from the season SEARCH (a separate LLM discovery
+ * run in SeasonSearch). The other honest axis — cadence — lives inline as the chip row
+ * (the handoff's primary filter chips), so the sheet holds only seasons. Kind is a
+ * single hardcoded value today and distance has no family centroid, so both are
  * omitted rather than faked. Selections are staged locally and applied on "Show N
- * results", so the count reflects the pending choice before the sheet closes.
+ * results", so the count reflects the pending choice (against the applied cadence)
+ * before the sheet closes.
  */
 function FiltersSheet({
   visible,
@@ -86,16 +88,12 @@ function FiltersSheet({
   cadence: CadenceFilter;
   seasons: ReadonlySet<SeasonFilterKey>;
   resultCountFor: (cadence: CadenceFilter, seasons: ReadonlySet<SeasonFilterKey>) => number;
-  onApply: (cadence: CadenceFilter, seasons: ReadonlySet<SeasonFilterKey>) => void;
+  onApply: (seasons: ReadonlySet<SeasonFilterKey>) => void;
 }) {
-  const [draftCadence, setDraftCadence] = useState<CadenceFilter>(cadence);
   const [draftSeasons, setDraftSeasons] = useState<Set<SeasonFilterKey>>(new Set(seasons));
 
-  // Re-seed the draft from the applied filters each time the sheet opens.
-  const seed = () => {
-    setDraftCadence(cadence);
-    setDraftSeasons(new Set(seasons));
-  };
+  // Re-seed the draft from the applied filter each time the sheet opens.
+  const seed = () => setDraftSeasons(new Set(seasons));
 
   const toggleSeason = (s: SeasonFilterKey) => {
     setDraftSeasons((prev) => {
@@ -106,14 +104,14 @@ function FiltersSheet({
     });
   };
 
-  const count = resultCountFor(draftCadence, draftSeasons);
-  const anyActive = activeFilterCount(draftCadence, draftSeasons) > 0;
+  const count = resultCountFor(cadence, draftSeasons);
+  const anyActive = draftSeasons.size > 0;
 
   return (
     <Sheet
       visible={visible}
       onClose={() => {
-        // Discard an unapplied draft on dismiss — the applied filters stand.
+        // Discard an unapplied draft on dismiss — the applied filter stands.
         seed();
         onClose();
       }}
@@ -123,12 +121,9 @@ function FiltersSheet({
         {anyActive ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Clear all filters"
+            accessibilityLabel="Clear season filters"
             hitSlop={8}
-            onPress={() => {
-              setDraftCadence('all');
-              setDraftSeasons(new Set());
-            }}
+            onPress={() => setDraftSeasons(new Set())}
             className="active:opacity-70"
           >
             <AppText variant="meta" className="text-accent">
@@ -136,20 +131,6 @@ function FiltersSheet({
             </AppText>
           </Pressable>
         ) : null}
-      </View>
-
-      <AppText variant="eyebrow" className="mb-2">
-        Cadence
-      </AppText>
-      <View className="mb-5 flex-row flex-wrap gap-2">
-        {CADENCE_OPTIONS.map((option) => (
-          <FilterChip
-            key={option.value}
-            label={option.label}
-            active={draftCadence === option.value}
-            onPress={() => setDraftCadence(option.value)}
-          />
-        ))}
       </View>
 
       <AppText variant="eyebrow" className="mb-2">
@@ -170,7 +151,7 @@ function FiltersSheet({
         accessibilityRole="button"
         accessibilityLabel={`Show ${count} result${count === 1 ? '' : 's'}`}
         onPress={() => {
-          onApply(draftCadence, draftSeasons);
+          onApply(draftSeasons);
           onClose();
         }}
         className="min-h-12 items-center justify-center rounded-full bg-ink px-4 active:opacity-80"
@@ -180,6 +161,148 @@ function FiltersSheet({
         </AppText>
       </Pressable>
     </Sheet>
+  );
+}
+
+/** A location chip beside the Village title (handoff). Static — Hale keeps only a
+ * coarse area (never an exact address), and there is no area picker, so this reads
+ * "Near you" without a chevron rather than implying a selector that doesn't exist. */
+function LocationChip() {
+  const pin = useMeadowColor('ink2');
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <Icon name="map-pin" size={14} color={pin} />
+      <AppText variant="meta" className="text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+        Near you
+      </AppText>
+    </View>
+  );
+}
+
+/** One cadence filter pill in the inline chip row (handoff's primary filter chips):
+ * navy fill when active, quiet card otherwise. Labels are the real cadence model. */
+function CadencePill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Filter: ${label}`}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      className={`rounded-full border px-4 py-2 active:opacity-80 ${
+        active ? 'border-brand bg-brand' : 'border-rule bg-card'
+      }`}
+    >
+      <AppText variant="meta" className={`capitalize ${active ? 'text-on-ink' : 'text-ink-2'}`}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
+
+/** The inline filter row: a Filters (season) button + the cadence pills, one
+ * horizontal scroll, matching the handoff's chip row. The button carries a count
+ * badge when a season filter is active. */
+function FilterRow({
+  cadence,
+  seasonCount,
+  onSetCadence,
+  onOpenFilters,
+}: {
+  cadence: CadenceFilter;
+  seasonCount: number;
+  onSetCadence: (c: CadenceFilter) => void;
+  onOpenFilters: () => void;
+}) {
+  const sliders = useMeadowColor('ink2');
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="gap-2 pr-5"
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={seasonCount > 0 ? `Filters, ${seasonCount} active` : 'Filters'}
+        onPress={onOpenFilters}
+        className="flex-row items-center gap-1.5 rounded-full border border-rule bg-card px-3.5 py-2 active:opacity-80"
+      >
+        <Icon name="sliders-horizontal" size={15} color={sliders} />
+        {seasonCount > 0 ? (
+          <View className="h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5">
+            <AppText variant="meta" className="text-[11px] leading-none text-on-ink">
+              {seasonCount}
+            </AppText>
+          </View>
+        ) : null}
+      </Pressable>
+      {CADENCE_OPTIONS.map((option) => (
+        <CadencePill
+          key={option.value}
+          label={option.label}
+          active={cadence === option.value}
+          onPress={() => onSetCadence(option.value)}
+        />
+      ))}
+    </ScrollView>
+  );
+}
+
+/** A childcare capacity badge — the prototype's Accepting / Waitlist stamp, mapped to
+ * the design's Tag tones (done = green accepting, accent = amber waitlist). */
+function ChildcareBadge({ status }: { status: StubChildcareProvider['status'] }) {
+  return status === 'accepting' ? (
+    <Tag label="Accepting" tone="done" />
+  ) : (
+    <Tag label="Waitlist" tone="accent" />
+  );
+}
+
+/**
+ * The "Childcare near you" section (handoff). STUB: Hale has no childcare directory or
+ * live-capacity feed, so these are SAMPLE listings from stub-data — disclosed by the
+ * caveat line, and carrying no fabricated distances/ratings. The rows are inert (no
+ * dead links to detail pages that don't exist); only the Accepting/Waitlist badge and
+ * provider kind are shown.
+ */
+function ChildcareSection() {
+  return (
+    <View className="gap-2.5">
+      <AppText variant="eyebrow">Childcare near you</AppText>
+      <View className="overflow-hidden rounded-[20px] border border-rule bg-card">
+        {STUB_CHILDCARE.map((provider, i) => (
+          <View
+            key={provider.name}
+            className={`flex-row items-center gap-3 px-4 py-3.5 ${
+              i === STUB_CHILDCARE.length - 1 ? '' : 'border-b border-hairline'
+            }`}
+          >
+            <View className="flex-1">
+              <AppText
+                className="text-[14px] text-ink"
+                style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
+              >
+                {provider.name}
+              </AppText>
+              <AppText variant="meta" className="text-caption">
+                {provider.kind}
+              </AppText>
+            </View>
+            <ChildcareBadge status={provider.status} />
+          </View>
+        ))}
+      </View>
+      <AppText variant="meta" className="text-caption">
+        Sample listings — Hale&rsquo;s live childcare search is coming.
+      </AppText>
+    </View>
   );
 }
 
@@ -487,8 +610,6 @@ function VillageBody({
     [data.candidates, cadence, seasons],
   );
   const hasAny = data.candidates.length > 0;
-  const filterCount = activeFilterCount(cadence, seasons);
-  const chevron = useMeadowColor('ink2');
 
   const resultCountFor = useCallback(
     (c: CadenceFilter, s: ReadonlySet<SeasonFilterKey>) => applyFilters(data.candidates, c, s).length,
@@ -498,27 +619,12 @@ function VillageBody({
   return (
     <>
       {hasAny && showFilter ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            filterCount > 0 ? `Filters, ${filterCount} active` : 'Filters'
-          }
-          accessibilityState={{ expanded: filtersOpen }}
-          onPress={() => setFiltersOpen(true)}
-          className="min-h-11 flex-row items-center gap-2 self-start rounded-full border border-rule bg-card px-4 py-2.5 active:opacity-80"
-        >
-          <Icon name="sliders-horizontal" size={15} color={chevron} />
-          <AppText variant="meta" className="text-ink-2">
-            Filters
-          </AppText>
-          {filterCount > 0 ? (
-            <View className="h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5">
-              <AppText variant="meta" className="text-[11px] leading-none text-on-ink">
-                {filterCount}
-              </AppText>
-            </View>
-          ) : null}
-        </Pressable>
+        <FilterRow
+          cadence={cadence}
+          seasonCount={seasons.size}
+          onSetCadence={setCadence}
+          onOpenFilters={() => setFiltersOpen(true)}
+        />
       ) : null}
 
       {recs.length === 0 ? (
@@ -559,15 +665,13 @@ function VillageBody({
         cadence={cadence}
         seasons={seasons}
         resultCountFor={resultCountFor}
-        onApply={(c, s) => {
-          setCadence(c);
-          setSeasons(new Set(s));
-        }}
+        onApply={(s) => setSeasons(new Set(s))}
       />
 
-      {/* The Resources rail is directory-style reference data — it belongs on the
-          standing feed only (not a season search), and the server only sends
-          `resources` on the standing read. Renders nothing when absent/empty. */}
+      {/* Childcare + Resources are directory-style reference content — they belong on
+          the standing feed only (not a season search). Childcare is a disclosed stub;
+          the server only sends `resources` on the standing read. */}
+      {searchSeason === null ? <ChildcareSection /> : null}
       {searchSeason === null ? <ResourcesRail resources={data.resources} /> : null}
 
       <AppText variant="meta" className="mt-2 text-center">
@@ -618,10 +722,13 @@ export default function VillageScreen() {
 
   return (
     <Screen scroll className="gap-4" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <View className="gap-0.5 pt-2">
-        <AppText variant="display">Village</AppText>
-        <AppText variant="meta" className="text-ink-3">
-          Activities, events &amp; resources for your family.
+      <View className="pt-2">
+        <View className="flex-row items-center justify-between">
+          <AppText variant="display">Village</AppText>
+          <LocationChip />
+        </View>
+        <AppText variant="meta" className="mt-0.5 text-ink-3">
+          Find support, activities &amp; resources near you.
         </AppText>
       </View>
 
