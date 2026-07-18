@@ -22,6 +22,7 @@ import {
   buildDoneEpisodeInsert,
   buildEpisodeInsert,
   childBelongsToFamily,
+  resolveFeed,
   resolveNap,
   softDeleteEpisode,
   updateEpisode,
@@ -56,6 +57,11 @@ export async function logQuickEpisode(raw: unknown, now: Date = new Date()): Pro
   const nap = resolveNap(parsed.data, now);
   if (!nap.ok) {
     return { status: 'invalid', error: nap.error };
+  }
+
+  const feed = resolveFeed(parsed.data);
+  if (!feed.ok) {
+    return { status: 'invalid', error: feed.error };
   }
 
   if (parsed.data.kind === MEASUREMENT_EPISODE) {

@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import {
   DIAPER_EPISODE,
   type DiaperKind,
+  type FeedAmount,
   FEED_EPISODE,
   HEALTH_DONE_EPISODE,
   type MarkDoneInput,
@@ -42,6 +43,16 @@ const DIAPER_LABEL: Record<DiaperKind, string> = {
   dry: 'Dry',
 };
 
+/** Timeline phrasing per qualitative feed amount, in the design prototype's own
+ * language ("A little" / "Half" / "Most of it" / "All of it"). The stored datum is
+ * the lowercase enum; this only shapes the "Fed — most of it" summary. */
+const FEED_AMOUNT_PHRASE: Record<FeedAmount, string> = {
+  little: 'a little',
+  half: 'half',
+  most: 'most of it',
+  all: 'all of it',
+};
+
 /**
  * Pure: turns a validated quick-log input into the episode row to insert. The
  * summary is a plain-language one-liner; the structured fields live in payload so
@@ -63,17 +74,31 @@ export function buildEpisodeInsert(
 ): EpisodeInsert {
   const base = { familyId, childId: input.childId, authoredBy, occurredAt };
   switch (input.kind) {
-    case FEED_EPISODE:
+    case FEED_EPISODE: {
+      // A feed is EITHER numeric (amountMl) OR qualitative (feedAmount) — resolveFeed
+      // guarantees one is present before we reach here, so a feed with neither is a
+      // programming error, thrown like the nap branch rather than masked with a default.
+      const kindSuffix = input.feedKind ? ` (${input.feedKind})` : '';
+      let summary: string;
+      if (input.amountMl !== undefined) {
+        summary = `Fed ${input.amountMl} ml${kindSuffix}`;
+      } else if (input.feedAmount !== undefined) {
+        summary = `Fed — ${FEED_AMOUNT_PHRASE[input.feedAmount]}${kindSuffix}`;
+      } else {
+        throw new Error('buildEpisodeInsert: feed missing both amountMl and feedAmount');
+      }
       return {
         ...base,
         episodeType: FEED_EPISODE,
-        summary: input.feedKind ? `Fed ${input.amountMl} ml (${input.feedKind})` : `Fed ${input.amountMl} ml`,
+        summary,
         payload: {
-          amountMl: input.amountMl,
+          ...(input.amountMl !== undefined ? { amountMl: input.amountMl } : {}),
+          ...(input.feedAmount !== undefined ? { feedAmount: input.feedAmount } : {}),
           ...(input.feedKind ? { feedKind: input.feedKind } : {}),
           ...(input.note ? { note: input.note } : {}),
         },
       };
+    }
     case NAP_EPISODE: {
       const durationMin = napDurationMin ?? input.durationMin;
       if (durationMin === undefined) {
@@ -128,6 +153,21 @@ export function buildEpisodeInsert(
       };
     }
   }
+}
+
+/**
+ * The feed-amount boundary rule shared by both write paths (log.ts action + the
+ * mobile route): a feed needs EITHER a numeric amountMl OR a qualitative feedAmount.
+ * Both are optional in feedSchema (so it stays a plain ZodObject in the discriminated
+ * union), so this is where a no-amount feed is rejected — mirroring resolveNap. A
+ * non-feed input is a no-op.
+ */
+export function resolveFeed(input: QuickLogInput): { ok: true } | { ok: false; error: string } {
+  if (input.kind !== FEED_EPISODE) return { ok: true };
+  if (input.amountMl === undefined && input.feedAmount === undefined) {
+    return { ok: false, error: 'enter how much — a millilitre amount or how much they took' };
+  }
+  return { ok: true };
 }
 
 /**

@@ -29,19 +29,20 @@ const baseInput = {
   napQuality: 'Good',
   napStartAt: null,
   napEndAt: null,
+  napDurationMin: null,
   diaperKind: 'wet' as const,
   milestone: '',
   note: '',
 };
 
 describe('buildLogPayload — feed', () => {
-  it('maps "Milk" + "Most of it" to bottle feedKind and a nominal 150 ml', () => {
+  it('maps "Milk" + "Most of it" to bottle feedKind and the qualitative "most" amount', () => {
     const payload = buildLogPayload({ ...baseInput, kind: 'feed' });
     expect(payload).toEqual({
       kind: 'feed',
       childId: CHILD,
       occurredAt: OCCURRED,
-      amountMl: 150,
+      feedAmount: 'most',
       feedKind: 'bottle',
     });
   });
@@ -67,13 +68,17 @@ describe('buildLogPayload — feed', () => {
     );
   });
 
-  it('maps each "How much" chip to its representative amountMl', () => {
-    const ml = (feedAmount: string) =>
-      buildLogPayload({ ...baseInput, kind: 'feed', feedAmount }).amountMl;
-    expect(ml('A little')).toBe(30);
-    expect(ml('Half')).toBe(90);
-    expect(ml('Most of it')).toBe(150);
-    expect(ml('All of it')).toBe(210);
+  it('never sends a numeric amountMl — the feed is qualitative', () => {
+    expect(buildLogPayload({ ...baseInput, kind: 'feed' })).not.toHaveProperty('amountMl');
+  });
+
+  it('maps each "How much" chip to its qualitative feedAmount enum', () => {
+    const amt = (feedAmount: string) =>
+      buildLogPayload({ ...baseInput, kind: 'feed', feedAmount }).feedAmount;
+    expect(amt('A little')).toBe('little');
+    expect(amt('Half')).toBe('half');
+    expect(amt('Most of it')).toBe('most');
+    expect(amt('All of it')).toBe('all');
   });
 
   it('includes a trimmed note only when the parent typed one', () => {
@@ -100,6 +105,22 @@ describe('buildLogPayload — nap', () => {
       startAt: '2026-07-17T13:15:00.000Z',
       endAt: '2026-07-17T15:00:00.000Z',
       note: 'Quality: Excellent',
+    });
+  });
+
+  it('sends a direct durationMin (the RN-web path) when there is no window', () => {
+    const payload = buildLogPayload({
+      ...baseInput,
+      kind: 'nap',
+      napDurationMin: 45,
+      napQuality: 'Okay',
+    });
+    expect(payload).toEqual({
+      kind: 'nap',
+      childId: CHILD,
+      occurredAt: OCCURRED,
+      durationMin: 45,
+      note: 'Quality: Okay',
     });
   });
 });

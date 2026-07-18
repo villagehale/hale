@@ -35,6 +35,9 @@ function summarise(match: QuickLogMatch): string {
   if (match.kind === 'nap') {
     return match.durationMin !== undefined ? `${match.durationMin}min nap` : 'a nap';
   }
+  if (match.kind === 'diaper') {
+    return match.diaperKind ? `a ${match.diaperKind} diaper` : 'a diaper';
+  }
   return match.milestone ? `milestone: ${match.milestone}` : 'a milestone';
 }
 
@@ -49,12 +52,16 @@ function buildBody(match: QuickLogMatch, childId: string, occurredAt: string): R
   if (match.kind === 'nap') {
     return { kind: 'nap', childId, durationMin: match.durationMin ?? 30, occurredAt };
   }
+  if (match.kind === 'diaper') {
+    return { kind: 'diaper', childId, diaperKind: match.diaperKind ?? 'wet', occurredAt };
+  }
   return { kind: 'milestone', childId, milestone: match.milestone ?? 'Milestone', occurredAt };
 }
 
 const KIND_LABEL: Record<QuickLogMatch['kind'], string> = {
   feed: 'Feed',
   nap: 'Nap',
+  diaper: 'Diaper',
   milestone: 'Milestone',
 };
 
@@ -63,6 +70,7 @@ const KIND_LABEL: Record<QuickLogMatch['kind'], string> = {
 const KIND_ICON: Record<QuickLogMatch['kind'], IconName> = {
   feed: 'droplet',
   nap: 'moon',
+  diaper: 'baby',
   milestone: 'star',
 };
 
@@ -80,6 +88,8 @@ function loggedRows(match: QuickLogMatch, occurredAt: string): { label: string; 
     rows.push({ label: 'Amount', value: `${match.amountMl}ml` });
   } else if (match.kind === 'nap' && match.durationMin !== undefined) {
     rows.push({ label: 'Duration', value: `${match.durationMin}min` });
+  } else if (match.kind === 'diaper' && match.diaperKind) {
+    rows.push({ label: 'Type', value: `${match.diaperKind[0].toUpperCase()}${match.diaperKind.slice(1)}` });
   } else if (match.kind === 'milestone' && match.milestone) {
     rows.push({ label: 'Detail', value: match.milestone });
   }

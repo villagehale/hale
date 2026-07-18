@@ -60,6 +60,24 @@ describe('detectQuickLog', () => {
     }
   });
 
+  it('detects a diaper from a diaper mention and reads a dirty kind', () => {
+    const match = detectQuickLog('changed a dirty diaper for Mira');
+    expect(match?.kind).toBe('diaper');
+    if (match?.kind === 'diaper') expect(match.diaperKind).toBe('dirty');
+  });
+
+  it('detects a diaper from a poop mention with no "diaper" word (dirty kind)', () => {
+    const match = detectQuickLog('she pooped after lunch');
+    expect(match?.kind).toBe('diaper');
+    if (match?.kind === 'diaper') expect(match.diaperKind).toBe('dirty');
+  });
+
+  it('reads a wet diaper kind', () => {
+    const match = detectQuickLog('just a wet diaper');
+    expect(match?.kind).toBe('diaper');
+    if (match?.kind === 'diaper') expect(match.diaperKind).toBe('wet');
+  });
+
   it('returns null for an ordinary question (no false log surface)', () => {
     expect(detectQuickLog('is it normal for a toddler to skip a nap?')).toBeNull();
     expect(detectQuickLog('how much should a 6-month-old eat?')).toBeNull();
@@ -68,6 +86,11 @@ describe('detectQuickLog', () => {
   it('feed wins when a message reads as both a feed and a nap', () => {
     // Episode order mirrors the web rule set: feed is checked before nap.
     const match = detectQuickLog('had a bottle before her nap');
+    expect(match?.kind).toBe('feed');
+  });
+
+  it('feed still wins over diaper (episode order feed → nap → diaper → milestone)', () => {
+    const match = detectQuickLog('had a bottle then a wet diaper');
     expect(match?.kind).toBe('feed');
   });
 });

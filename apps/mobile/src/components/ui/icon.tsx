@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  Baby,
   BookOpen,
   Bookmark,
   BookmarkCheck,
@@ -53,6 +54,7 @@ import {
 // cluster of homes, not a folded map).
 const ICONS = {
   'arrow-up': ArrowUp,
+  baby: Baby,
   bookmark: Bookmark,
   'bookmark-check': BookmarkCheck,
   'book-open': BookOpen,

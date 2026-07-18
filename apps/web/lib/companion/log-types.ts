@@ -26,6 +26,13 @@ export const HEALTH_DONE_EPISODE = 'health_done';
 export const FEED_KINDS = ['bottle', 'breast', 'solid'] as const;
 export type FeedKind = (typeof FEED_KINDS)[number];
 
+/** A feed's QUALITATIVE amount — the design's "How much" chips (A little / Half /
+ * Most of it / All of it). An additive alternative to a numeric amountMl: a parent
+ * logs what they actually observed ("most of it") without inventing a millilitre
+ * figure. Stored verbatim; the summary words it (buildEpisodeInsert). */
+export const FEED_AMOUNTS = ['little', 'half', 'most', 'all'] as const;
+export type FeedAmount = (typeof FEED_AMOUNTS)[number];
+
 /** A diaper's kind — the one required datum of a diaper log (the prototype's
  * Log-diaper chips). 'dry' is a real logged state (checked, still dry), not a
  * missing value. */
@@ -58,10 +65,16 @@ export const MAX_BACKDATE_MS = 365 * 24 * 60 * 60 * 1000;
  * clock (validateOccurredAt), since "now" is only authoritative there. */
 const occurredAtField = z.string().trim().min(1).datetime({ offset: true }).optional();
 
+// A feed carries EITHER a numeric amountMl OR a qualitative feedAmount. Both are
+// OPTIONAL here so feedSchema stays a plain ZodObject (a valid member of the
+// discriminated union, like napSchema). The "at least one amount" rule is enforced at
+// the action boundary by resolveFeed — the same place the nap window / occurredAt
+// range rules live — never by a schema .refine (which would break the union).
 export const feedSchema = z.object({
   kind: z.literal(FEED_EPISODE),
   childId: z.string().uuid(),
-  amountMl: z.coerce.number().positive().max(2000),
+  amountMl: z.coerce.number().positive().max(2000).optional(),
+  feedAmount: z.enum(FEED_AMOUNTS).optional(),
   feedKind: z.enum(FEED_KINDS).optional(),
   note: z.string().trim().max(280).optional(),
   occurredAt: occurredAtField,

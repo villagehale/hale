@@ -11,13 +11,16 @@
  * data, so there's no approval gate (Regime A).
  *
  * Beyond the web parse (episode / time / child / milestone) this also lifts the
- * numeric amount the web leaves to the form — amountMl for a feed, durationMin
- * for a nap — so the mobile confirm card is actionable in a single tap.
+ * field the web leaves to the form — amountMl for a feed, durationMin for a nap,
+ * diaperKind for a diaper — so the mobile confirm card is actionable in a single tap.
  */
+
+import type { DiaperKindValue } from './quick-log-payload';
 
 export type QuickLogMatch =
   | { kind: 'feed'; amountMl?: number; timeHint?: string; childName?: string }
   | { kind: 'nap'; durationMin?: number; timeHint?: string; childName?: string }
+  | { kind: 'diaper'; diaperKind?: DiaperKindValue; timeHint?: string; childName?: string }
   | { kind: 'milestone'; milestone?: string; timeHint?: string; childName?: string };
 
 type Episode = QuickLogMatch['kind'];
@@ -48,6 +51,12 @@ const EPISODE_RULES: readonly { episode: Episode; patterns: readonly RegExp[] }[
       new RegExp(`\\b(?:had|took|went\\s+down\\s+for|log(?:ged)?)\\s+(?:a\\s+)?${QTY}nap\\b`, 'i'),
       /\bnapped\b/i,
     ],
+  },
+  // Diaper patterns mirror the web coach parser EXACTLY (no amount to widen, unlike
+  // feed/nap). Keep in exact sync with QUICK_LOG_EPISODE_RULES.
+  {
+    episode: 'diaper',
+    patterns: [/\bdiaper\b/i, /\bnappy\b/i, /\b(?:pooped|poop|soiled)\b/i, /\bpee(?:d|ing)?\b/i],
   },
   {
     episode: 'milestone',
@@ -90,6 +99,17 @@ function napDurationMin(text: string): number | undefined {
   return m ? Number(m[1]) : undefined;
 }
 
+/** Best-effort diaper kind from the words (mobile-only, like feed's amountMl): a
+ * dirty/poop/soiled mention → dirty, an explicit mixed/dry → those, else wet when
+ * the word appears; undefined otherwise (the confirm card defaults). */
+function diaperKindFrom(text: string): DiaperKindValue | undefined {
+  if (/\bmixed\b/i.test(text)) return 'mixed';
+  if (/\b(?:dirty|pooped|poop|soiled)\b/i.test(text)) return 'dirty';
+  if (/\bdry\b/i.test(text)) return 'dry';
+  if (/\bwet\b/i.test(text)) return 'wet';
+  return undefined;
+}
+
 /**
  * Detect the quick-log episode a parent's message reports, or null for an
  * ordinary message (the common case). At most one episode — the first match in
@@ -107,6 +127,10 @@ export function detectQuickLog(text: string): QuickLogMatch | null {
   if (rule.episode === 'nap') {
     const durationMin = napDurationMin(text);
     return { kind: 'nap', ...(durationMin !== undefined ? { durationMin } : {}), ...hints };
+  }
+  if (rule.episode === 'diaper') {
+    const diaperKind = diaperKindFrom(text);
+    return { kind: 'diaper', ...(diaperKind ? { diaperKind } : {}), ...hints };
   }
   const milestone = text.match(MILESTONE_TEXT_RE)?.[1]?.trim();
   return { kind: 'milestone', ...(milestone ? { milestone } : {}), ...hints };

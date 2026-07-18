@@ -150,10 +150,12 @@ export function QuickLogModal({
   // highlight is unambiguous instead of guessed from fragile time math.
   const [activePreset, setActivePreset] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
-  // A nap's start/end window drives the duration (the server derives it). Both are
-  // required to save a nap — the prototype nap is window-based, with no minutes field.
+  // A nap's start/end window drives the duration (the server derives it) on native.
+  // RN-web has no native time picker, so there the nap is a plain minutes entry
+  // instead (napMinutes) — the QA path stays saveable.
   const [napStart, setNapStart] = useState<Date | null>(null);
   const [napEnd, setNapEnd] = useState<Date | null>(null);
+  const [napMinutes, setNapMinutes] = useState('');
   const [openNapPicker, setOpenNapPicker] = useState<'start' | 'end' | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +175,7 @@ export function QuickLogModal({
       setShowPicker(false);
       setNapStart(null);
       setNapEnd(null);
+      setNapMinutes('');
       setOpenNapPicker(null);
       setError(null);
       setSaving(false);
@@ -220,11 +223,16 @@ export function QuickLogModal({
       return;
     }
     if (kind === 'nap') {
-      if (!hasNapWindow) {
+      if (Platform.OS === 'web') {
+        const mins = Number(napMinutes.trim());
+        if (!napMinutes.trim() || Number.isNaN(mins) || mins <= 0) {
+          setError('Enter how many minutes the nap was.');
+          return;
+        }
+      } else if (!hasNapWindow) {
         setError("Set the nap's start and end times.");
         return;
-      }
-      if (napEnd.getTime() <= napStart.getTime()) {
+      } else if (napEnd.getTime() <= napStart.getTime()) {
         setError('The nap end must be after its start.');
         return;
       }
@@ -248,6 +256,7 @@ export function QuickLogModal({
       napQuality,
       napStartAt: napStart?.toISOString() ?? null,
       napEndAt: napEnd?.toISOString() ?? null,
+      napDurationMin: napMinutes.trim() ? Number(napMinutes.trim()) : null,
       diaperKind,
       milestone,
       note,
@@ -320,35 +329,52 @@ export function QuickLogModal({
 
       {kind === 'nap' ? (
         <>
-          <SheetLabel>{`What time did ${childName} nap?`}</SheetLabel>
-          <View className="mb-4 gap-2.5">
-            <NapBoundRow
-              label="Start"
-              value={napStart}
-              open={openNapPicker === 'start'}
-              onToggle={() => setOpenNapPicker((p) => (p === 'start' ? null : 'start'))}
-              onChange={onNapPickerChange('start')}
-              iconColor={iconColor}
-            />
-            <NapBoundRow
-              label="End"
-              value={napEnd}
-              open={openNapPicker === 'end'}
-              onToggle={() => setOpenNapPicker((p) => (p === 'end' ? null : 'end'))}
-              onChange={onNapPickerChange('end')}
-              iconColor={iconColor}
-            />
-            {hasNapWindow ? (
-              <View className="flex-row items-center justify-between rounded-[13px] border border-rule px-3.5 py-3">
-                <AppText variant="meta" className="text-ink-2">
-                  Duration
-                </AppText>
-                <AppText variant="meta" className="text-ink">
-                  {durationLabel(napStart, napEnd)}
-                </AppText>
+          {Platform.OS === 'web' ? (
+            // RN-web has no native time picker, so the window rows can't be set here;
+            // a plain minutes entry keeps the QA path saveable (server takes durationMin).
+            <View className="mb-4">
+              <Field
+                label="Duration (minutes)"
+                value={napMinutes}
+                onChangeText={setNapMinutes}
+                keyboardType="numeric"
+                placeholder="45"
+                autoCapitalize="none"
+              />
+            </View>
+          ) : (
+            <>
+              <SheetLabel>{`What time did ${childName} nap?`}</SheetLabel>
+              <View className="mb-4 gap-2.5">
+                <NapBoundRow
+                  label="Start"
+                  value={napStart}
+                  open={openNapPicker === 'start'}
+                  onToggle={() => setOpenNapPicker((p) => (p === 'start' ? null : 'start'))}
+                  onChange={onNapPickerChange('start')}
+                  iconColor={iconColor}
+                />
+                <NapBoundRow
+                  label="End"
+                  value={napEnd}
+                  open={openNapPicker === 'end'}
+                  onToggle={() => setOpenNapPicker((p) => (p === 'end' ? null : 'end'))}
+                  onChange={onNapPickerChange('end')}
+                  iconColor={iconColor}
+                />
+                {hasNapWindow ? (
+                  <View className="flex-row items-center justify-between rounded-[13px] border border-rule px-3.5 py-3">
+                    <AppText variant="meta" className="text-ink-2">
+                      Duration
+                    </AppText>
+                    <AppText variant="meta" className="text-ink">
+                      {durationLabel(napStart, napEnd)}
+                    </AppText>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
-          </View>
+            </>
+          )}
           <SheetLabel>Quality</SheetLabel>
           <View className="mb-4">
             <ChipGrid
