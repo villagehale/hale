@@ -230,7 +230,7 @@ function EmptyState({
 }) {
   const first = viewerFirstName();
   const sparkleColor = useMeadowColor('accentFill');
-  const greeting = first ? `${timeGreeting()}, ${first}.` : timeGreeting();
+  const greeting = first ? `${timeGreeting()}, ${first}.` : `${timeGreeting()}.`;
   return (
     <ScrollView
       className="flex-1"
