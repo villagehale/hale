@@ -116,3 +116,81 @@ export const STUB_BENEFITS: readonly StubBenefitProgram[] = [
   { name: 'Ontario Child Benefit', detail: 'Up to $1,607 / child / year', jurisdiction: 'Ontario' },
   { name: 'Child Care Fee Subsidy', detail: 'Based on family income', jurisdiction: 'Ontario' },
 ];
+
+/** One editorial guide (Resources → Guide page). */
+export interface GuideContent {
+  /** URL id — the `/guide/[id]` segment the Resources rows route to. */
+  id: string;
+  /** Serif page title, e.g. "Sleep & settling". */
+  title: string;
+  /** Honest reading-time estimate, e.g. "4 min read". */
+  readTime: string;
+  intro: string;
+  /** Ordered tips rendered as a numbered card. */
+  tips: readonly string[];
+}
+
+/**
+ * The Resources guide library. NOT a stub for a missing backend: these are genuine,
+ * static editorial articles written for the app — static copy IS the honest, correct
+ * representation of editorial content (there is no per-family "guide feed" this stands
+ * in for). General parenting guidance for a Canadian audience; it deliberately carries
+ * NO medical dosing or diagnosis — every health cue is framed as "when to seek care",
+ * and each guide points parents back to their own provider, 811, or 911.
+ *
+ * Attribution is honest: the Guide page meta reads "From Hale's guide library", NOT the
+ * prototype's "Reviewed by Hale's care team" — Hale has no clinical care-team review
+ * process, so that claim would be false (see task-14-report.md).
+ *
+ * These three are the guides reachable from the Resources list. (The prototype also
+ * sketches a 4th, rainy-day "indoor places", but only from a hardcoded Saved-list mock;
+ * the real Saved screen is village-candidate data with no guide rows, so shipping that
+ * guide would be an unreachable dead route — omitted per Simplicity First.)
+ */
+export const GUIDES: readonly GuideContent[] = [
+  {
+    id: 'sleep',
+    title: 'Sleep & settling',
+    readTime: '4 min read',
+    intro:
+      'Gentle, age-appropriate ways to help your child settle — and what to expect as sleep changes from the newborn months through toddlerhood. Every child is different, so treat these as starting points rather than rules.',
+    tips: [
+      'Keep a short, consistent wind-down — the same few steps in the same order every night. Predictability signals sleep more reliably than any single technique.',
+      'Watch wake windows rather than the clock. An overtired child is harder to settle, so catching early sleepy cues — yawning, looking away, fussing — makes bedtime smoother.',
+      'When you can, put your baby down drowsy but awake so they practise settling themselves. Follow safe-sleep basics: on the back, on a firm flat surface, with nothing loose in the crib.',
+      'Expect brief regressions around 4, 12, and 18 months, often tied to a developmental leap or teething. Hold your routine steady — most pass within a week or two.',
+    ],
+  },
+  {
+    id: 'solids',
+    title: 'Starting solids',
+    readTime: '5 min read',
+    intro:
+      'Most babies are ready for first foods around 6 months, once they can sit with support and show interest in eating. Here is how to start simply and safely. If your baby was born early or has a health condition, check timing with your provider first.',
+    tips: [
+      'Offer iron-rich foods first — iron-fortified infant cereal, well-cooked lentils or beans, and finely minced meat. Iron stores run low around 6 months, so these matter most.',
+      'Introduce common allergens (such as peanut and egg) early and one at a time, then keep offering them regularly. If there is a strong family history of allergy, talk to your provider before you start.',
+      'Let your child set the pace — appetite varies a lot day to day. Food alongside breast milk or formula is about learning and exploring at this stage, not hitting a quota.',
+      'Lower choking risk: no whole nuts, popcorn, or hard raw chunks. Cut round foods like grapes lengthwise, and always stay with your baby while they eat.',
+    ],
+  },
+  {
+    id: 'firstaid',
+    title: 'First aid basics',
+    readTime: '6 min read',
+    intro:
+      'A calm, quick reference for common moments — and, just as important, when to reach for help. This is general guidance, not medical advice: when in doubt, call your provider or your provincial health line (811 in most provinces), and call 911 for an emergency.',
+    tips: [
+      'A fever over 38°C in a baby under 3 months is always a reason to call your provider or 811 right away, even if your baby seems otherwise well.',
+      'For a minor burn, cool it under cool running water for 10–20 minutes — no ice, butter, or creams. Cover loosely with a clean, non-stick dressing and seek care for anything larger than the palm of the hand.',
+      'Call 911 immediately for trouble breathing, choking that does not clear, a seizure, a stiff neck with fever, or if your child is hard to wake. Trust your instinct — you know your child best.',
+      'Keep emergency numbers and your poison-control line where a caregiver can find them fast, and save them in Hale so they are always a tap away.',
+    ],
+  },
+];
+
+/** Look up an editorial guide by its `/guide/[id]` segment; undefined for an unknown
+ * id (e.g. a malformed deep link), which the Guide page renders as a not-found state. */
+export function findGuide(id: string): GuideContent | undefined {
+  return GUIDES.find((guide) => guide.id === id);
+}

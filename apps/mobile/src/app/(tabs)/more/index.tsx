@@ -1,6 +1,5 @@
 import Constants from 'expo-constants';
 import { type Href, router, useFocusEffect } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useCallback } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
@@ -29,8 +28,6 @@ type MenuItem = {
   /** Sign out — the one destructive row (red icon + label). */
   destructive?: boolean;
   badge?: BadgeKey;
-  /** Opens outside the app (guides on villagehale.com) — real content, no dead rows. */
-  externalUrl?: string;
 };
 
 const SECTIONS: { header: string; items: MenuItem[] }[] = [
@@ -67,7 +64,7 @@ const SECTIONS: { header: string; items: MenuItem[] }[] = [
         label: 'Resources',
         detail: 'Guides and articles',
         icon: 'book-open',
-        externalUrl: 'https://www.villagehale.com/faq',
+        href: '/resources',
       },
     ],
   },
@@ -222,10 +219,6 @@ export default function MoreScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign out', style: 'destructive', onPress: signOut },
       ]);
-      return;
-    }
-    if (item.externalUrl) {
-      void WebBrowser.openBrowserAsync(item.externalUrl);
       return;
     }
     if (item.href) router.push(item.href);
