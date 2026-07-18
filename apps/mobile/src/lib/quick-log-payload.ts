@@ -67,12 +67,12 @@ export function feedAmountForLabel(label: string): FeedAmountValue | undefined {
 }
 
 /**
- * Shapes the POST body for the tapped kind. A feed carries the representative
- * amountMl + optional feedKind from its chips; a nap sends its start/end WINDOW (the
- * server derives the duration) with the quality folded into the note; a diaper sends
- * its diaperKind; a milestone sends its text. An optional parent note rides on feed
- * and diaper. The caller has already resolved `occurredAt` (a nap uses its window
- * end; every other kind uses the picked "when").
+ * Shapes the POST body for the tapped kind. A feed carries its qualitative feedAmount
+ * + optional feedKind from its chips; a nap sends its start/end WINDOW (native — the
+ * server derives the duration) or a direct durationMin (RN-web), with the quality
+ * folded into the note; a diaper sends its diaperKind; a milestone sends its text. An
+ * optional parent note rides on feed and diaper. The caller has already resolved
+ * `occurredAt` (a nap window uses its end; every other kind uses the picked "when").
  */
 export function buildLogPayload(input: {
   kind: LogKind;

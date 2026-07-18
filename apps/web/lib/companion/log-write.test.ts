@@ -77,6 +77,19 @@ describe('buildEpisodeInsert', () => {
     expect(episode.payload).toEqual({ feedAmount: 'most', feedKind: 'solid' });
   });
 
+  it('prefers numeric amountMl over feedAmount for the summary, keeping BOTH in the payload', () => {
+    // A payload carrying both amounts is well-formed (each schema-optional). Defined
+    // behavior: the numeric amount words the summary; both are retained in the payload.
+    const episode = buildEpisodeInsert(
+      { kind: FEED_EPISODE, childId: CHILD_ID, amountMl: 120, feedAmount: 'most' },
+      FAMILY_ID,
+      NOW,
+      AUTHOR_ID,
+    );
+    expect(episode.summary).toBe('Fed 120 ml');
+    expect(episode.payload).toEqual({ amountMl: 120, feedAmount: 'most' });
+  });
+
   it('shapes a nap episode with durationMin in the payload', () => {
     const input: QuickLogInput = { kind: NAP_EPISODE, childId: CHILD_ID, durationMin: 45 };
 

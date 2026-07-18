@@ -119,11 +119,11 @@ function SheetLabel({ children }: { children: string }) {
 
 /**
  * The shared in-place quick-log sheet, in the handoff's four-kind form: feed (what +
- * how-much chips), nap (a start/end window + quality chips), diaper (kind chips), and
- * milestone (stage rows + free text). Each POSTs the SAME audited
- * /api/mobile/companion/log route the companion uses — one write path, one audit row
- * (rule #6). Errors surface in place, never a silent success. See task-9-report for
- * the feed chip → amountMl/feedKind mapping.
+ * how-much chips → feedKind + qualitative feedAmount), nap (a start/end window, or a
+ * minutes entry on RN-web, + quality chips), diaper (kind chips), and milestone (stage
+ * rows + free text). Each POSTs the SAME audited /api/mobile/companion/log route the
+ * companion uses — one write path, one audit row (rule #6). Errors surface in place,
+ * never a silent success.
  */
 export function QuickLogModal({
   visible,
