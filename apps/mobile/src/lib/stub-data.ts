@@ -195,6 +195,73 @@ export function findGuide(id: string): GuideContent | undefined {
   return GUIDES.find((guide) => guide.id === id);
 }
 
+/** One paid invoice on the Billing "History" list (date + amount, always "paid"). */
+export interface StubInvoice {
+  /** Illustrative statement date, e.g. "May 12, 2025" — a sample, never a real charge. */
+  date: string;
+  /** Illustrative amount, e.g. "$12.99". */
+  amount: string;
+}
+
+/**
+ * The Billing & payments SAMPLE (prototype's Visa •••• 4242 + three paid invoices).
+ * STUB: Hale has NO billing backend — Stripe is a 501 stub and launch is free-first,
+ * so there is no payment method, next charge, or invoice to read. These are the
+ * prototype's illustrative figures, rendered ONLY under an explicit "billing isn't
+ * live yet" banner so no parent mistakes them for a real card or charge (DATA
+ * HONESTY). Deliberately generic (no real cardholder, no real statement). Replace the
+ * whole export with a real billing source before treating any of it as truth.
+ */
+export const STUB_BILLING = {
+  brand: 'Visa',
+  last4: '4242',
+  expiry: '08 / 27',
+  nextPaymentDate: 'Jun 12, 2025',
+  nextPaymentAmount: '$12.99',
+  invoices: [
+    { date: 'May 12, 2025', amount: '$12.99' },
+    { date: 'Apr 12, 2025', amount: '$12.99' },
+    { date: 'Mar 12, 2025', amount: '$12.99' },
+  ] as readonly StubInvoice[],
+} as const;
+
+/** One activity row on the Usage "this month" SAMPLE (label + a whole-number count). */
+export interface StubUsageActivity {
+  label: string;
+  /** Icon tone for the row's tint chip. */
+  tone: 'blue' | 'red';
+  icon: 'sparkles' | 'mail' | 'calendar';
+  /** The sample count as a string, e.g. "47". */
+  count: string;
+  /** An optional cap line under the count, e.g. "Unlimited" (present on the lead row). */
+  cap?: string;
+}
+
+/**
+ * The Usage "this month" activity SAMPLE (prototype's Actions/Emails/Events rows).
+ * STUB: Hale has NO usage-metering backend — nothing counts a family's actions,
+ * drafts, or events per month, and no plan limit is enforced (free-first). These are
+ * the prototype's illustrative counts, shown ONLY under an explicit "sample" heading
+ * so no parent reads them as their real activity. The one genuinely-real number on the
+ * Usage page is the family-member count (read live from /api/mobile/family). Replace
+ * this export with a real metering source before treating any figure as truth.
+ */
+export const STUB_USAGE_ACTIVITY: readonly StubUsageActivity[] = [
+  { label: 'Actions completed', tone: 'blue', icon: 'sparkles', count: '47', cap: 'Unlimited' },
+  { label: 'Emails drafted', tone: 'red', icon: 'mail', count: '6' },
+  { label: 'Events added', tone: 'blue', icon: 'calendar', count: '9' },
+];
+
+/** The Usage document-storage SAMPLE meter (prototype's 2.4 GB of 20 GB). STUB: Hale
+ * has no per-family storage meter or enforced cap, so both numbers are illustrative —
+ * disclosed alongside the sample activity, never presented as a real limit. */
+export const STUB_USAGE_STORAGE = {
+  usedLabel: '2.4 GB',
+  limitLabel: '20 GB',
+  /** Fraction filled (0–1) for the bar — matches the sample used/limit ratio. */
+  fraction: 0.12,
+} as const;
+
 /** One bubble in a sample conversation — `them` is an incoming provider/parent
  * message, `you` is the family's own reply (part of the sample story). */
 export interface SampleThreadRow {
