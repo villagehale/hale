@@ -209,6 +209,7 @@ export default function AppointmentDetailScreen() {
   const { status, data, error, reload } = useApi<MobileCompanionResponse>('/api/mobile/companion');
   const childView = data?.children.find((c) => c.id === child) ?? null;
   const item = childView ? findHealthItem(childView, key) : null;
+  const [shareError, setShareError] = useState<string | null>(null);
 
   const helpItem: OverflowAction = {
     label: 'Get help',
@@ -222,7 +223,9 @@ export default function AppointmentDetailScreen() {
             label: 'Share',
             icon: 'share',
             onPress: () => {
-              void Share.share({ message: shareText(item, childView.name) }).catch(() => {});
+              void Share.share({ message: shareText(item, childView.name) }).catch(() =>
+                setShareError("Couldn't open the share sheet — try again."),
+              );
             },
           },
           helpItem,
@@ -232,6 +235,11 @@ export default function AppointmentDetailScreen() {
   return (
     <Screen scroll className="gap-5">
       <DetailHeader title="Appointment details" menu={menu} />
+      {shareError ? (
+        <AppText variant="meta" className="-mt-2 text-berry" accessibilityLiveRegion="polite">
+          {shareError}
+        </AppText>
+      ) : null}
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
       {status === 'ready' && item && childView ? (

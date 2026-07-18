@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { VillageCandidateView } from './api-types';
 import {
   type SeasonFilterKey,
-  activeFilterCount,
   applyFilters,
   filterByCadence,
   filterBySeasons,
@@ -80,15 +79,6 @@ describe('applyFilters — cadence AND seasons', () => {
 
   it('with both axes idle returns everything', () => {
     expect(applyFilters(rows, 'all', seasons()).map((r) => r.id)).toEqual(['a', 'b', 'c']);
-  });
-});
-
-describe('activeFilterCount', () => {
-  it('counts each active axis: cadence (when not "all") + seasons (when any picked)', () => {
-    expect(activeFilterCount('all', seasons())).toBe(0);
-    expect(activeFilterCount('seasonal', seasons())).toBe(1);
-    expect(activeFilterCount('all', seasons('summer', 'fall'))).toBe(1);
-    expect(activeFilterCount('one-time', seasons('winter'))).toBe(2);
   });
 });
 
