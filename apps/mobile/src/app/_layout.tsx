@@ -23,6 +23,7 @@ import { rememberOnboardingChildName } from '@/lib/onboarding-child-name';
 import { draftToOnboardingInput } from '@/lib/onboarding-draft';
 import { onboardingDraftStore } from '@/lib/onboarding-draft-store';
 import { resumeDestination } from '@/lib/resume-destination';
+import { useReducedMotion } from '@/lib/use-reduced-motion';
 import { usePushRegistration } from '@/lib/use-push-registration';
 
 SplashScreen.preventAutoHideAsync();
@@ -134,6 +135,7 @@ function RootNavigator() {
     InstrumentSans_700Bold,
   });
   const [minElapsed, setMinElapsed] = useState(false);
+  const reduced = useReducedMotion();
   const ready = fontsLoaded && !isLoading;
   // Hold the animated splash for a short minimum so it reads as a deliberate intro,
   // not a flash — then hand off to Get started / sign-in / the app.
@@ -158,7 +160,15 @@ function RootNavigator() {
   if (showSplash) return <SplashLoader onSkip={() => setMinElapsed(true)} />;
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        // The post-auth tail (preview → connect → consent) and the group entries
+        // arrive with the handoff fade-up; Reduce Motion drops to a cross-dissolve.
+        animation: reduced ? 'fade' : 'fade_from_bottom',
+        animationDuration: 400,
+      }}
+    >
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(details)" />
       <Stack.Screen name="(onboarding)" />
