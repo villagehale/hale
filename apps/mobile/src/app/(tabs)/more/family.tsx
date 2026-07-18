@@ -79,7 +79,7 @@ function errorMessage(e: unknown): string {
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+    <AppText variant="eyebrow">
       {children}
     </AppText>
   );

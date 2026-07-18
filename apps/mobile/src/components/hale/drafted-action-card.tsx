@@ -174,7 +174,7 @@ export function DraftedActionCard({
 
   return (
     <View className="mb-3 max-w-[92%] self-start rounded-lg border border-rule bg-card px-4 py-3.5">
-      <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-accent">
+      <AppText variant="eyebrow" className="mb-1 text-accent">
         {categoryLabel(intent.actionType)}
       </AppText>
       <View className="gap-1.5">

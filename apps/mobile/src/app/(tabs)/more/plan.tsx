@@ -27,7 +27,7 @@ import { useApi } from '@/lib/use-api';
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+    <AppText variant="eyebrow">
       {children}
     </AppText>
   );
@@ -428,7 +428,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
         <View className="gap-4">
           {datedDays.map((day) => (
             <View key={day.dateKey} className="gap-2">
-              <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+              <AppText variant="eyebrow">
                 {day.weekday}
               </AppText>
               <View className="gap-3">

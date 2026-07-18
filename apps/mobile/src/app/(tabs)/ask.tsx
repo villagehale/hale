@@ -72,7 +72,7 @@ const HaleBubble = memo(function HaleBubble({ turn }: { turn: HaleTurn }) {
   return (
     <>
       <View className="mb-3 max-w-[92%] self-start">
-        <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow" className="mb-1">
           Hale
         </AppText>
         {/* Live while working (each step reveals with a breathing dot), then folds
@@ -333,7 +333,7 @@ export default function AskScreen() {
             })}
             {pending ? (
               <View className="mb-3 max-w-[92%] self-start">
-                <AppText variant="meta" className="mb-1 uppercase tracking-eyebrow text-ink-3">
+                <AppText variant="eyebrow" className="mb-1">
                   Hale
                 </AppText>
                 <View className="self-start rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
@@ -345,7 +345,7 @@ export default function AskScreen() {
         )}
 
         <View className="border-t border-rule bg-card px-5 pb-3 pt-3">
-          <AppText variant="meta" className="mb-1.5 uppercase tracking-eyebrow text-ink-3">
+          <AppText variant="eyebrow" className="mb-1.5">
             {voice.listening ? 'Listening…' : 'Ask a question'}
           </AppText>
           <View className="flex-row items-center gap-2">

@@ -32,7 +32,7 @@ function NapsTrendChart({ trend }: { trend: NapsTrend }) {
   return (
     <View className="gap-2">
       <View className="flex-row items-baseline justify-between">
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           {trend.partial ? `Naps · last ${loadedCount} days` : 'Naps · last 7 days'}
         </AppText>
         <AppText variant="meta" className="text-ink-3">
@@ -112,7 +112,7 @@ function LogsDetailBody({ childId }: { childId: string }) {
         <NapsTrendChart trend={trend} />
       ) : (
         <View className="gap-1.5">
-          <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+          <AppText variant="eyebrow">
             Naps · last 7 days
           </AppText>
           <AppText variant="body" className="text-ink-3">
@@ -125,7 +125,7 @@ function LogsDetailBody({ childId }: { childId: string }) {
       <View className="gap-4">
         {groups.map((group) => (
           <View key={group.dayKey} className="gap-2">
-            <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+            <AppText variant="eyebrow">
               {group.label}
             </AppText>
             <View className="gap-3">

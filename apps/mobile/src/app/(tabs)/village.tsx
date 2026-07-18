@@ -138,7 +138,7 @@ function FiltersSheet({
         ) : null}
       </View>
 
-      <AppText variant="meta" className="mb-2 uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="eyebrow" className="mb-2">
         Cadence
       </AppText>
       <View className="mb-5 flex-row flex-wrap gap-2">
@@ -152,7 +152,7 @@ function FiltersSheet({
         ))}
       </View>
 
-      <AppText variant="meta" className="mb-2 uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="eyebrow" className="mb-2">
         Season
       </AppText>
       <View className="mb-6 flex-row flex-wrap gap-2">

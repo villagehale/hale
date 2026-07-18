@@ -68,7 +68,7 @@ function villageLine(rec: VillageCandidateView): string {
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+    <AppText variant="eyebrow">
       {children}
     </AppText>
   );
@@ -206,7 +206,7 @@ function HomeBody({
       {leadChild ? (
         <Card variant="cream" className="flex-row items-center gap-3">
           <View className="flex-1 gap-1.5">
-            <AppText variant="meta" className="uppercase tracking-eyebrow text-cream-accent">
+            <AppText variant="eyebrow" className="text-cream-accent">
               {leadChild.name ? `For ${leadChild.name}` : 'Today'}
             </AppText>
             <AppText

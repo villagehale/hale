@@ -106,7 +106,7 @@ export function LiveActivityTrail({ entries }: { entries: TrailEntry[] }) {
   if (entries.length === 0) return null;
   return (
     <View className="mb-2 border-l-2 border-rule pl-3">
-      <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+      <AppText variant="eyebrow">
         Exploring
       </AppText>
       <TrailLines entries={entries} />
@@ -139,7 +139,7 @@ export function ActivityTrail({ activity }: { activity: ActivityEvent[] }) {
         <AppText variant="meta" className="text-ink-3">
           {expanded ? '▾' : '▸'}
         </AppText>
-        <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
+        <AppText variant="eyebrow">
           {summary}
         </AppText>
       </Pressable>
