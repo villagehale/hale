@@ -5,9 +5,11 @@ import { useColorScheme } from 'react-native';
  * className tokens cover styling; this exists only for APIs that need a literal
  * color value and can't read a className — Lucide icons (the Icon color prop).
  * `brand` mirrors the primary navy so a literal consumer (e.g. the tab-bar active
- * tint) can adopt it; the chip*Icon entries mirror the six tint-chip icon colors so
- * an icon rendered inside a tint chip can be tinted to match. Keep in sync with
- * global.css (drift-gated by scripts/check-token-drift.mjs).
+ * tint) can adopt it; `card` mirrors the card surface so a literal consumer (e.g. the
+ * growth chart's hollow latest-point) reads on the same surface in both schemes; the
+ * chip*Icon entries mirror the six tint-chip icon colors so an icon rendered inside a
+ * tint chip can be tinted to match. Keep in sync with global.css (drift-gated by
+ * scripts/check-token-drift.mjs).
  */
 const MEADOW = {
   light: {
@@ -16,6 +18,7 @@ const MEADOW = {
     ink3: '#5c6b87',
     brand: '#1b2160',
     canvas: '#fdfcfa',
+    card: '#ffffff',
     accentFill: '#f28c45',
     onAccent: '#ffffff',
     chipBlueIcon: '#3b5bdb',
@@ -31,6 +34,7 @@ const MEADOW = {
     ink3: '#9bb0d0',
     brand: '#9aa6e6',
     canvas: '#14120e',
+    card: '#1e1b15',
     accentFill: '#f97316',
     onAccent: '#17294a',
     chipBlueIcon: '#a3b6f0',

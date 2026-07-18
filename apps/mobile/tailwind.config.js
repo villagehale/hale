@@ -65,10 +65,6 @@ module.exports = {
           "gray-icon": "var(--color-chip-gray-icon)",
         },
       },
-      fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
-      },
       borderRadius: { sm: "10px", md: "16px", lg: "24px", xl: "28px" },
       // `eyebrow` (0.12em) = tag / chip / timing small-caps; `eyebrow-tight` (0.07em)
       // = the prototype-exact section-label eyebrow (AppText `eyebrow` variant).
