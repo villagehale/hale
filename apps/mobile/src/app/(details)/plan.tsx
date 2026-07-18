@@ -5,10 +5,10 @@ import { Platform, Pressable, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
@@ -601,7 +601,7 @@ export default function PlanScreen() {
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <ScreenHeader title="Plan" back />
+      <DetailHeader title="Plan" />
       <AppText variant="meta" className="-mt-2">
         The week ahead — your own plans, endorsed activities, your routine, and what's coming up per
         child.

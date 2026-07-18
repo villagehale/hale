@@ -4,10 +4,10 @@ import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Icon } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { TintChip } from '@/components/ui/tint-chip';
@@ -170,7 +170,7 @@ export default function SavedScreen() {
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <ScreenHeader title="Saved" back />
+      <DetailHeader title="Saved" />
       <AppText variant="meta" className="-mt-2">
         Activities you saved for later — private to you, never enrolled or sent for approval.
       </AppText>
