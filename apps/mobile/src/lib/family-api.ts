@@ -2,6 +2,7 @@ import { api } from './api-client';
 import type {
   MobileFamilyUpdateRequest,
   MobileFamilyUpdateResponse,
+  MobileInviteResponse,
   MobilePreferencesUpdateRequest,
   MobilePreferencesUpdateResponse,
   MobilePushPrefsUpdateRequest,
@@ -23,6 +24,16 @@ export async function updateFamily(body: MobileFamilyUpdateRequest): Promise<voi
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+/** Mint a co-parent invite and return its single-use redeem link. POSTs the mobile
+ * invite route, which reuses the SAME createFamilyInvite lib the browser uses —
+ * resolving the caller's family (rule #5 consent) and writing the audit row (rule
+ * #6). A 403 (no family) / 501 (auth unconfigured) surfaces as an ApiError the caller
+ * maps to an honest "not ready yet" state. */
+export async function createInvite(): Promise<string> {
+  const { link } = await api<MobileInviteResponse>('/api/mobile/invite', { method: 'POST' });
+  return link;
 }
 
 export async function updateSettings(body: MobileSettingsUpdateRequest): Promise<void> {

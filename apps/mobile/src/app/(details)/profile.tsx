@@ -50,7 +50,7 @@ function ProfileBody({ data }: { data: MobileFamilyResponse }) {
     <>
       <View className="items-center gap-2.5 py-2">
         <View className="h-[76px] w-[76px] items-center justify-center rounded-full bg-accent">
-          <AppText className="text-[28px] text-on-ink" style={{ color: accentText, fontFamily: 'SourceSerif4_600SemiBold' }}>
+          <AppText className="text-[28px]" style={{ color: accentText, fontFamily: 'SourceSerif4_600SemiBold' }}>
             {avatarInitial(viewer.name, viewer.email)}
           </AppText>
         </View>

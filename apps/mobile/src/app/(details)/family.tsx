@@ -1,6 +1,6 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { Platform, Pressable, Share, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import type {
   MemberView,
   MobileFamilyResponse,
 } from '@/lib/api-types';
-import { updateFamily } from '@/lib/family-api';
+import { createInvite, updateFamily } from '@/lib/family-api';
 import { useApi } from '@/lib/use-api';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -631,6 +631,98 @@ function LocationForm({
   );
 }
 
+type InviteState =
+  | { kind: 'idle' }
+  | { kind: 'generating' }
+  | { kind: 'ready'; link: string }
+  | { kind: 'unavailable' }
+  | { kind: 'error' };
+
+/**
+ * The prototype's "Invite family member" — mints a real co-parent invite via
+ * createInvite (the mobile route reusing the web createFamilyInvite lib: rule #5
+ * consent + rule #6 audit) and hands the single-use link to the native Share sheet.
+ * The link is ALSO shown inline once ready, so a web build where Share is a no-op
+ * still surfaces something to copy. Honest failure: a 403 (no family yet) / 501 (auth
+ * unconfigured) reads as "not ready yet", never a silent dead button.
+ */
+function InviteFamilyButton() {
+  const [state, setState] = useState<InviteState>({ kind: 'idle' });
+  const icon = useMeadowColor('ink2');
+
+  async function share(link: string) {
+    // Share is a native module; on the RN-web preview it can reject or be a no-op, so
+    // failure is swallowed — the link stays visible inline for manual sharing.
+    try {
+      await Share.share({ message: `Join our family on Hale: ${link}` });
+    } catch {}
+  }
+
+  async function generate() {
+    setState({ kind: 'generating' });
+    try {
+      const link = await createInvite();
+      setState({ kind: 'ready', link });
+      await share(link);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      setState(
+        e instanceof ApiError && (e.status === 403 || e.status === 501)
+          ? { kind: 'unavailable' }
+          : { kind: 'error' },
+      );
+    }
+  }
+
+  return (
+    <View className="gap-2">
+      <SectionTitle>Invite family</SectionTitle>
+      <AppText variant="meta">
+        Invite a co-parent to share the load. Until they join, anything that touches their data waits
+        for your tap.
+      </AppText>
+
+      {state.kind === 'ready' ? (
+        <Card className="gap-2">
+          <AppText variant="meta" className="text-ink-2">
+            Share this one-time link — it expires in 14 days.
+          </AppText>
+          <AppText variant="body" selectable className="text-ink">
+            {state.link}
+          </AppText>
+          <Pill label="Share link" icon="share" onPress={() => share(state.link)} className="self-start" />
+        </Card>
+      ) : null}
+
+      {state.kind === 'unavailable' ? (
+        <AppText variant="meta" className="text-ink-3">
+          Your invite link will be ready once your family is set up.
+        </AppText>
+      ) : null}
+      {state.kind === 'error' ? (
+        <AppText variant="meta" className="text-accent" accessibilityRole="alert">
+          Couldn&rsquo;t create an invite just now — please try again.
+        </AppText>
+      ) : null}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Invite family member"
+        disabled={state.kind === 'generating'}
+        onPress={generate}
+        className={`min-h-12 flex-row items-center justify-center gap-2 rounded-[15px] border border-rule bg-card ${
+          state.kind === 'generating' ? 'opacity-50' : 'active:opacity-80'
+        }`}
+      >
+        <Icon name="users" size={16} color={icon} />
+        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+          {state.kind === 'generating' ? 'Creating…' : 'Invite family member'}
+        </AppText>
+      </Pressable>
+    </View>
+  );
+}
+
 function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: () => void }) {
   const { members, basics } = data;
   return (
@@ -684,6 +776,8 @@ function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: ()
           </Card>
         </View>
       ) : null}
+
+      <InviteFamilyButton />
     </>
   );
 }

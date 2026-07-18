@@ -522,6 +522,19 @@ export interface MobileFamilyUpdateResponse {
   status: 'updated';
 }
 
+// ── invite (POST /api/mobile/invite) ──────────────────────────────────────────
+//
+// Mints a co-parent invite via the SAME server lib the web /api/invite route uses
+// (createFamilyInvite → rule #5 consent + rule #6 audit). The app shares the returned
+// redeem link; acceptance happens web-side. No token material travels beyond the
+// single-use redeem URL.
+
+/** The absolute redeem link for a freshly-minted co-parent invite (expires in 14
+ * days, single-use). */
+export interface MobileInviteResponse {
+  link: string;
+}
+
 // ── settings (GET + POST /api/mobile/settings) ────────────────────────────────
 
 export type NotificationPref = 'dailyBriefEmail';
