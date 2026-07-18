@@ -5,12 +5,12 @@ import { Platform, Pressable, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DetailHeader } from '@/components/ui/detail-header';
 import { Field } from '@/components/ui/field';
 import { Icon } from '@/components/ui/icon';
 import { Pill } from '@/components/ui/pill';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { Screen } from '@/components/ui/screen';
-import { ScreenHeader } from '@/components/ui/screen-header';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { useMeadowColor } from '@/constants/meadow';
@@ -113,9 +113,27 @@ function dobLabel(value: string): string {
   });
 }
 
+/** First letter of a name (or email) for an avatar disc — Hale has no uploaded photos,
+ * so an initial stands in (mirrors the More profile card + Profile page). */
+function initialOf(source: string): string {
+  return source.trim().charAt(0).toUpperCase() || '?';
+}
+
+/** The tinted initial disc shared by the parent + child rows (prototype avatar slot). */
+function AvatarDisc({ initial }: { initial: string }) {
+  return (
+    <View className="h-[38px] w-[38px] items-center justify-center rounded-full bg-chip-blue">
+      <AppText className="text-[15px] text-brand" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
+        {initial}
+      </AppText>
+    </View>
+  );
+}
+
 function ParentRow({ member }: { member: MemberView }) {
   return (
-    <View className="flex-row items-center justify-between">
+    <View className="flex-row items-center gap-3">
+      <AvatarDisc initial={initialOf(member.name ?? member.email)} />
       <View className="flex-1">
         <AppText variant="body" numberOfLines={1} className="text-ink">
           {member.name ?? member.email}
@@ -245,17 +263,21 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
 
   if (!editing) {
     return (
-      <Card className="flex-row items-center justify-between">
+      <Card
+        onPress={() => setEditing(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${child.name}'s profile`}
+        className="flex-row items-center gap-3"
+      >
+        <AvatarDisc initial={initialOf(child.name)} />
         <View className="flex-1">
           <AppText variant="body" className="text-ink">
             {child.name}
           </AppText>
           <AppText variant="meta">{dobLabel(child.dateOfBirth)}</AppText>
         </View>
-        <View className="flex-row items-center gap-2">
-          <Tag label={child.stageLabel} tone="coach" />
-          <Pill label="Edit" icon="pencil" onPress={() => setEditing(true)} />
-        </View>
+        <Tag label={child.stageLabel} tone="coach" />
+        <Icon name="chevron-right" size={15} color={iconColor} />
       </Card>
     );
   }
@@ -614,7 +636,7 @@ function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: ()
   return (
     <>
       <View className="gap-2">
-        <SectionTitle>Parents</SectionTitle>
+        <SectionTitle>Parents &amp; guardians</SectionTitle>
         {members.primary ? (
           <ParentNameForm member={members.primary} onSaved={onSaved} />
         ) : null}
@@ -646,7 +668,7 @@ function FamilyBody({ data, onSaved }: { data: MobileFamilyResponse; onSaved: ()
       </View>
 
       <View className="gap-2">
-        <SectionTitle>Your area</SectionTitle>
+        <SectionTitle>Family area</SectionTitle>
         <LocationForm location={basics.location} onSaved={onSaved} />
       </View>
 
@@ -672,7 +694,7 @@ export default function FamilyScreen() {
 
   return (
     <Screen scroll className="gap-6" refreshControl={useTintedRefresh(refreshing, refresh)}>
-      <ScreenHeader title="Family" back />
+      <DetailHeader title="Family" />
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
       {status === 'ready' && data ? <FamilyBody data={data} onSaved={reload} /> : null}

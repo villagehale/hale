@@ -130,7 +130,7 @@ function ProfileCard({ viewer }: { viewer: MobileFamilyResponse['viewer'] | unde
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${primary}. Profile and family`}
-      onPress={() => router.push('/family')}
+      onPress={() => router.push('/profile')}
       className="flex-row items-center gap-3 rounded-[20px] border border-rule bg-card px-4 py-3.5 active:opacity-80"
     >
       <View className="h-11 w-11 items-center justify-center rounded-full bg-accent">
