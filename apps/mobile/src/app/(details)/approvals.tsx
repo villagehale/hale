@@ -226,8 +226,14 @@ function Segmented({ value, onChange }: { value: Segment; onChange: (s: Segment)
 
 export default function ApprovalsScreen() {
   const [segment, setSegment] = useState<Segment>('pending');
-  const pending = useApi<MobileApprovalsResponse>('/api/mobile/approvals');
-  const history = useApi<MobileApprovalsHistoryResponse>('/api/mobile/approvals/history');
+  // Refetch on focus so acting inside a pushed /approval/[id] (which router.back()s
+  // here) reflects immediately — the resolved item leaves Pending and enters History.
+  const pending = useApi<MobileApprovalsResponse>('/api/mobile/approvals', {
+    refetchOnFocus: true,
+  });
+  const history = useApi<MobileApprovalsHistoryResponse>('/api/mobile/approvals/history', {
+    refetchOnFocus: true,
+  });
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const onResolve = useCallback((id: string) => {
     setResolved((prev) => new Set(prev).add(id));

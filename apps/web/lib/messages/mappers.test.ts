@@ -84,6 +84,31 @@ describe('toActionMessage — lifecycle framing', () => {
   });
 });
 
+describe('today flag — the notifications TODAY/EARLIER split (family zone)', () => {
+  // 2026-06-17T13:00:00Z is Jun 17 in America/Toronto.
+  it('is true when the row falls on the same family-zone day as now', () => {
+    const now = new Date('2026-06-17T22:00:00.000Z'); // still Jun 17, 18:00 ET
+    expect(toDigestMessage(DIGEST, TZ, now).today).toBe(true);
+    expect(toActionMessage(ACTION, TZ, now).today).toBe(true);
+  });
+
+  it('is false when the row is on an earlier family-zone day than now', () => {
+    const now = new Date('2026-06-20T13:00:00.000Z'); // Jun 20 ET
+    expect(toDigestMessage(DIGEST, TZ, now).today).toBe(false);
+    expect(toActionMessage(ACTION, TZ, now).today).toBe(false);
+  });
+
+  it('judges the day in the family zone, not UTC (a 01:00Z row is the prior ET day)', () => {
+    // 2026-06-18T01:00:00Z is Jun 17, 21:00 in America/Toronto — the family's
+    // Jun 17, not UTC's Jun 18.
+    const row: DigestMessageRow = { ...DIGEST, generatedAt: new Date('2026-06-18T01:00:00.000Z') };
+    const nowSameEtDay = new Date('2026-06-18T02:00:00.000Z'); // Jun 17, 22:00 ET
+    const nowNextEtDay = new Date('2026-06-18T05:00:00.000Z'); // Jun 18, 01:00 ET
+    expect(toDigestMessage(row, TZ, nowSameEtDay).today).toBe(true);
+    expect(toDigestMessage(row, TZ, nowNextEtDay).today).toBe(false);
+  });
+});
+
 describe('toActionMessage — teen redaction (rule #1)', () => {
   it('redacts the body AND eyebrow for a teen action — the raw action type never reaches the view', () => {
     const view = toActionMessage(

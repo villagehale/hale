@@ -1,4 +1,4 @@
-import { formatDateTime } from '~/lib/format/datetime';
+import { dayKeyOf, formatDateTime } from '~/lib/format/datetime';
 import { actionTypeLabel } from '~/lib/format/labels';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
 
@@ -41,6 +41,11 @@ export interface MessageView {
   actionState?: MessageActionState;
   /** True when the action's content is redacted for a 13+ teen (rule #1). */
   teenRedacted?: boolean;
+  /** True when this note is stamped on the family's current local day — the split
+   * the mobile Notifications page buckets on ("Today" vs "Earlier"). Computed at
+   * request time in the family's zone (like `when`), so it never leaks the server's
+   * UTC day. */
+  today?: boolean;
 }
 
 export interface DigestMessageRow {
@@ -87,25 +92,40 @@ function actionBody(row: ActionMessageRow, label: string): string {
 
 const DIGEST_EYEBROW = 'Daily brief';
 
-export function toDigestMessage(row: DigestMessageRow, timeZone: string): MessageView {
+/** Whether `instant` lands on the same family-zone calendar day as `now`. */
+function isToday(instant: Date, timeZone: string, now: Date): boolean {
+  return dayKeyOf(instant, timeZone) === dayKeyOf(now, timeZone);
+}
+
+export function toDigestMessage(
+  row: DigestMessageRow,
+  timeZone: string,
+  now: Date = new Date(),
+): MessageView {
   return {
     id: `digest-${row.id}`,
     kind: 'digest',
     eyebrow: DIGEST_EYEBROW,
     body: row.briefText,
-    when: formatDateTime(row.generatedAt, timeZone),
+    when: formatDateTime(row.generatedAt, timeZone, now),
+    today: isToday(row.generatedAt, timeZone, now),
   };
 }
 
-export function toActionMessage(row: ActionMessageRow, timeZone: string): MessageView {
+export function toActionMessage(
+  row: ActionMessageRow,
+  timeZone: string,
+  now: Date = new Date(),
+): MessageView {
   const label = row.teenContent ? TEEN_REDACTED_PLACEHOLDER : actionTypeLabel(row.actionType);
   return {
     id: `action-${row.id}`,
     kind: 'action',
     eyebrow: row.teenContent ? 'Private' : actionTypeLabel(row.actionType),
     body: row.teenContent ? TEEN_REDACTED_PLACEHOLDER : actionBody(row, label),
-    when: formatDateTime(row.at, timeZone),
+    when: formatDateTime(row.at, timeZone, now),
     actionState: row.state,
     teenRedacted: row.teenContent,
+    today: isToday(row.at, timeZone, now),
   };
 }

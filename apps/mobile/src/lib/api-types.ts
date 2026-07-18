@@ -441,6 +441,9 @@ export interface MessageView {
   actionState?: MessageActionState;
   /** True when the action's content is redacted for a 13+ teen (rule #1). */
   teenRedacted?: boolean;
+  /** True when this note is stamped on the family's current local day — the Notifications
+   * page buckets on it ("Today" vs "Earlier"). Computed server-side in the family zone. */
+  today?: boolean;
 }
 
 export interface MobileMessagesResponse {

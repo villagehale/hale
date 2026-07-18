@@ -15,14 +15,16 @@ import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
 import type {
   ChildCompanionView,
+  MobileApprovalsResponse,
   MobileHomeResponse,
+  MobileMessagesResponse,
   UpcomingHealthItem,
   VillageCandidateView,
 } from '@/lib/api-types';
 import { agePhrase, duePhrase } from '@/lib/format';
 import { timeGreeting } from '@/lib/greeting';
 import { homeStatCells, type StatCell } from '@/lib/home-stats';
-import { useHasUnreadNotifs } from '@/lib/notif-dot';
+import { notifDotOn, useNotifsAcknowledged } from '@/lib/notif-dot';
 import { useApi } from '@/lib/use-api';
 import { rememberViewerFirstName } from '@/lib/viewer-name';
 
@@ -72,10 +74,23 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
-/** The greeting-row bell: navigates to Notifications, with a client-side unread dot
- * that persists until the Notifications page marks all read (Task 12). */
+/** The greeting-row bell: navigates to Notifications, its dot DERIVED from real state
+ * — lit when there are pending approvals or unacknowledged messages (see notifDotOn).
+ * It reads the same two lists the Notifications page and the More badges do, opted
+ * into refetch-on-focus so resolving an approval and returning clears the dot. */
 function NotifBell() {
-  const hasUnread = useHasUnreadNotifs();
+  const acknowledged = useNotifsAcknowledged();
+  const approvals = useApi<MobileApprovalsResponse>('/api/mobile/approvals', {
+    refetchOnFocus: true,
+  });
+  const messages = useApi<MobileMessagesResponse>('/api/mobile/messages', {
+    refetchOnFocus: true,
+  });
+  const hasUnread = notifDotOn(
+    approvals.data?.approvals.length ?? 0,
+    messages.data?.messages.length ?? 0,
+    acknowledged,
+  );
   const iconColor = useMeadowColor('ink');
   return (
     <Pressable
