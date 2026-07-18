@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
-import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { LogoMark } from '@/components/ui/logo-mark';
 import { useMeadowColor } from '@/constants/meadow';
 import { API_BASE, ApiError, signalUnauthorized } from '@/lib/api-client';
 import { approveResult, approvedPostState, declineResult } from '@/lib/approval-gate';
@@ -81,6 +81,23 @@ function categoryLabel(actionType: string): string {
   return CATEGORY_LABEL[actionType] ?? CATEGORY_FALLBACK;
 }
 
+/** The eyebrow glyph per action category — the prototype leads its "Adding to your
+ * schedule" card with the same calendar mark. Unknown types fall back to a neutral
+ * check-circle (never a raw enum). */
+const CATEGORY_ICON: Record<string, IconName> = {
+  create_calendar_event: 'calendar',
+  update_calendar_event: 'calendar',
+  send_email: 'mail',
+  reply_to_email: 'mail',
+  add_to_digest_only: 'file-text',
+  add_to_routine: 'clock',
+  place_supply_order: 'credit-card',
+};
+
+function categoryIcon(actionType: string): IconName {
+  return CATEGORY_ICON[actionType] ?? 'circle-check';
+}
+
 /** The provenance note — a short, quiet slice of the answer that implied this
  * draft, so the parent sees WHY Hale suggested it. Trimmed to one legible line;
  * empty (no note rendered) when there's nothing meaningful to show. */
@@ -133,6 +150,8 @@ export function DraftedActionCard({
   const [status, setStatus] = useState<Status>('idle');
   const busy = status === 'approving' || status === 'declining';
   const rowIconColor = useMeadowColor('ink3');
+  const eyebrowColor = useMeadowColor('accentFill');
+  const approveCheck = useMeadowColor('onAccent');
 
   const approve = async () => {
     if (busy) return;
@@ -160,10 +179,13 @@ export function DraftedActionCard({
 
   if (status === 'approved') {
     return (
-      <View className="mb-3 max-w-[92%] self-start rounded-lg border border-rule bg-card px-4 py-3">
-        <AppText variant="meta" className="text-sage">
-          {approvedPostState(intent.actionType)}
-        </AppText>
+      <View className="mb-3 max-w-[92%] flex-row gap-2.5 self-start">
+        <LogoMark size={24} />
+        <View className="flex-1 rounded-[12px] bg-sage-tint px-3 py-2.5">
+          <AppText variant="meta" className="text-sage">
+            {approvedPostState(intent.actionType)}
+          </AppText>
+        </View>
       </View>
     );
   }
@@ -173,44 +195,70 @@ export function DraftedActionCard({
   const rows = detailRows(intent.label);
 
   return (
-    <View className="mb-3 max-w-[92%] self-start rounded-lg border border-rule bg-card px-4 py-3.5">
-      <AppText variant="eyebrow" className="mb-1 text-accent">
-        {categoryLabel(intent.actionType)}
-      </AppText>
-      <View className="gap-1.5">
-        {rows.map((row) => (
-          <View key={row.text} className="flex-row items-center gap-2">
-            <Icon name={row.icon} size={14} color={rowIconColor} />
-            <AppText variant="body" className="flex-1 text-ink">
-              {row.text}
+    <View className="mb-3 max-w-[92%] flex-row gap-2.5 self-start">
+      <LogoMark size={24} />
+      <View className="flex-1 rounded-[20px] border border-rule bg-card px-4 py-3.5">
+        <View className="mb-2.5 flex-row items-center gap-2">
+          <Icon name={categoryIcon(intent.actionType)} size={13} color={eyebrowColor} />
+          <AppText variant="eyebrow" className="text-accent">
+            {categoryLabel(intent.actionType)}
+          </AppText>
+        </View>
+        <View className="gap-1.5">
+          {rows.map((row) => (
+            <View key={row.text} className="flex-row items-center gap-2">
+              <Icon name={row.icon} size={14} color={rowIconColor} />
+              <AppText variant="body" className="flex-1 text-ink">
+                {row.text}
+              </AppText>
+            </View>
+          ))}
+        </View>
+        {note ? (
+          <View className="mt-3 rounded-[12px] bg-canvas px-3 py-2.5">
+            <AppText variant="meta" className="text-ink-3">
+              {note}
             </AppText>
           </View>
-        ))}
-      </View>
-      {note ? (
-        <AppText variant="meta" className="mt-1 text-ink-3">
-          {note}
-        </AppText>
-      ) : null}
+        ) : null}
 
-      {errored ? (
-        <AppText variant="meta" className="mt-2 text-berry" accessibilityLiveRegion="polite">
-          Something went wrong. Try again.
-        </AppText>
-      ) : null}
+        {errored ? (
+          <AppText variant="meta" className="mt-2 text-berry" accessibilityLiveRegion="polite">
+            Something went wrong. Try again.
+          </AppText>
+        ) : null}
 
-      <View className="mt-3 flex-row gap-2">
-        <Button
-          label={status === 'declining' ? 'Denying…' : 'Deny'}
-          variant="secondary"
-          onPress={reject}
-          className="h-11 flex-1"
-        />
-        <Button
-          label={status === 'approving' ? 'Approving…' : errored ? 'Try again' : 'Approve'}
-          onPress={approve}
-          className="h-11 flex-1"
-        />
+        <View className="mt-3.5 flex-row gap-2">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Deny this action"
+            accessibilityState={{ disabled: busy }}
+            disabled={busy}
+            onPress={reject}
+            className={`flex-1 items-center justify-center rounded-[12px] border border-rule bg-card py-3 ${
+              busy ? 'opacity-50' : 'active:opacity-80'
+            }`}
+          >
+            <AppText variant="meta" className="text-ink">
+              {status === 'declining' ? 'Denying…' : 'Deny'}
+            </AppText>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Approve this action"
+            accessibilityState={{ disabled: busy }}
+            disabled={busy}
+            onPress={approve}
+            className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-[12px] bg-brand py-3 ${
+              busy ? 'opacity-50' : 'active:opacity-90'
+            }`}
+          >
+            <AppText variant="meta" className="text-on-ink">
+              {status === 'approving' ? 'Approving…' : errored ? 'Try again' : 'Approve'}
+            </AppText>
+            {status === 'idle' ? <Icon name="check" size={13} color={approveCheck} /> : null}
+          </Pressable>
+        </View>
       </View>
     </View>
   );

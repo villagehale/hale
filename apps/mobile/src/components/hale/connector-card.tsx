@@ -4,6 +4,7 @@ import { Linking, Pressable, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
+import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
 import type { ToolCard } from '@/lib/coach-api';
 import {
@@ -82,7 +83,7 @@ function DriveCard({ files }: { files: Extract<ToolCard, { kind: 'drive' }>['fil
                 }}
                 className="flex-row items-center gap-3 active:opacity-80"
               >
-                <Icon name="file-text" size={18} color={iconColor} />
+                <TintChip icon="file-text" tone="green" />
                 <View className="flex-1">
                   <AppText variant="body" numberOfLines={1}>
                     {file.name}
@@ -103,7 +104,6 @@ function DriveCard({ files }: { files: Extract<ToolCard, { kind: 'drive' }>['fil
 }
 
 function CalendarCard({ events }: { events: Extract<ToolCard, { kind: 'calendar' }>['events'] }) {
-  const iconColor = useMeadowColor('ink3');
   return (
     <View className="mb-3 max-w-[92%] self-start">
       <Card className="gap-2">
@@ -123,7 +123,7 @@ function CalendarCard({ events }: { events: Extract<ToolCard, { kind: 'calendar'
                 key={i}
                 className="flex-row items-start gap-3"
               >
-                <Icon name="calendar" size={16} color={iconColor} />
+                <TintChip icon="calendar" tone="blue" />
                 <View className="flex-1">
                   <AppText variant="body">{event.title}</AppText>
                   <AppText variant="meta" className="text-ink-3">

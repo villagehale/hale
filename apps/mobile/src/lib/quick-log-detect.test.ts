@@ -33,7 +33,40 @@ describe('detectQuickLog', () => {
   it('detects a feed with no amount (parent fills it in)', () => {
     const match = detectQuickLog('she had a feed');
     expect(match?.kind).toBe('feed');
-    if (match?.kind === 'feed') expect(match.amountMl).toBeUndefined();
+    if (match?.kind === 'feed') {
+      expect(match.amountMl).toBeUndefined();
+      expect(match.feedAmount).toBeUndefined();
+    }
+  });
+
+  it('lifts a qualitative feed amount from "ate all" (→ all), no invented millilitres', () => {
+    const match = detectQuickLog('Sebastian had a bottle and ate all his lunch');
+    expect(match?.kind).toBe('feed');
+    if (match?.kind === 'feed') {
+      expect(match.amountMl).toBeUndefined();
+      expect(match.feedAmount).toBe('all');
+    }
+  });
+
+  it('lifts "most of it" (→ most) and "a little" (→ little)', () => {
+    const most = detectQuickLog('had a bottle and ate most of it');
+    expect(most?.kind === 'feed' && most.feedAmount).toBe('most');
+    const little = detectQuickLog('had a little bottle');
+    expect(little?.kind === 'feed' && little.feedAmount).toBe('little');
+  });
+
+  it('lifts "half" (→ half)', () => {
+    const match = detectQuickLog('had half a bottle');
+    expect(match?.kind === 'feed' && match.feedAmount).toBe('half');
+  });
+
+  it('prefers a numeric amount over a qualitative one (4oz wins, feedAmount stays unset)', () => {
+    const match = detectQuickLog('had a 4oz bottle and finished it all');
+    expect(match?.kind).toBe('feed');
+    if (match?.kind === 'feed') {
+      expect(match.amountMl).toBe(120);
+      expect(match.feedAmount).toBeUndefined();
+    }
   });
 
   it('detects a nap and reads its duration in minutes', () => {

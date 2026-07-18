@@ -15,10 +15,19 @@
  * diaperKind for a diaper — so the mobile confirm card is actionable in a single tap.
  */
 
-import type { DiaperKindValue } from './quick-log-payload';
+import type { DiaperKindValue, FeedAmountValue } from './quick-log-payload';
 
 export type QuickLogMatch =
-  | { kind: 'feed'; amountMl?: number; timeHint?: string; childName?: string }
+  | {
+      kind: 'feed';
+      amountMl?: number;
+      /** The QUALITATIVE amount ("all"/"most"/"half"/"little") when the words imply
+       * one but give no millilitre figure — an honest alternative to a fabricated
+       * number. Never set alongside amountMl (a numeric amount wins). */
+      feedAmount?: FeedAmountValue;
+      timeHint?: string;
+      childName?: string;
+    }
   | { kind: 'nap'; durationMin?: number; timeHint?: string; childName?: string }
   | { kind: 'diaper'; diaperKind?: DiaperKindValue; timeHint?: string; childName?: string }
   | { kind: 'milestone'; milestone?: string; timeHint?: string; childName?: string };
@@ -94,6 +103,19 @@ function feedAmountMl(text: string): number | undefined {
   return m[2].toLowerCase() === 'oz' ? Math.round(value * ML_PER_OZ) : value;
 }
 
+/** A qualitative feed amount from the words — the server's little/half/most/all enum,
+ * the same "How much" chips the log sheet offers. Checked most-complete first so
+ * "ate all" reads as 'all', "most of it" as 'most'. Best-effort and only consulted
+ * when no numeric amount was given; undefined when the words imply none (the confirm
+ * card then asks the parent to pick — never a fabricated figure). */
+function feedAmountQual(text: string): FeedAmountValue | undefined {
+  if (/\b(?:all|finished|whole|everything)\b/i.test(text)) return 'all';
+  if (/\bmost\b/i.test(text)) return 'most';
+  if (/\bhalf\b/i.test(text)) return 'half';
+  if (/\b(?:a little|a bit|little|some)\b/i.test(text)) return 'little';
+  return undefined;
+}
+
 function napDurationMin(text: string): number | undefined {
   const m = text.match(NAP_MINUTES_RE);
   return m ? Number(m[1]) : undefined;
@@ -122,7 +144,10 @@ export function detectQuickLog(text: string): QuickLogMatch | null {
   const hints = commonHints(text);
   if (rule.episode === 'feed') {
     const amountMl = feedAmountMl(text);
-    return { kind: 'feed', ...(amountMl !== undefined ? { amountMl } : {}), ...hints };
+    // A numeric amount wins; only when there's none do we lift a qualitative one.
+    if (amountMl !== undefined) return { kind: 'feed', amountMl, ...hints };
+    const feedAmount = feedAmountQual(text);
+    return { kind: 'feed', ...(feedAmount ? { feedAmount } : {}), ...hints };
   }
   if (rule.episode === 'nap') {
     const durationMin = napDurationMin(text);

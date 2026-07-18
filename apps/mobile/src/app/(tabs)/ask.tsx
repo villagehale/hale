@@ -21,13 +21,17 @@ import { QuickLogCard } from '@/components/hale/quick-log-card';
 import { StreamingCursor } from '@/components/hale/streaming-cursor';
 import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
-import { IconButton } from '@/components/ui/icon-button';
+import { Card } from '@/components/ui/card';
+import { Icon } from '@/components/ui/icon';
+import { LogoMark } from '@/components/ui/logo-mark';
 import { Markdown } from '@/components/ui/markdown';
-import { STARTER_CHIPS } from '@/constants/ask-data';
+import { TintChip } from '@/components/ui/tint-chip';
+import { type AskSuggestion, ASK_SUGGESTIONS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
 import { cardsFromActivity } from '@/lib/connector-card';
+import { timeGreeting } from '@/lib/greeting';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
 import { useVoiceInput } from '@/lib/use-voice-input';
 import { viewerFirstName } from '@/lib/viewer-name';
@@ -52,8 +56,10 @@ type Message =
   | { id: string; role: 'quicklog'; match: QuickLogMatch };
 
 const UserBubble = memo(function UserBubble({ text }: { text: string }) {
+  // Brand navy, right-aligned — the handoff's user chat bubble (distinct from the
+  // ink used for body text).
   return (
-    <View className="mb-3 max-w-[85%] self-end rounded-lg rounded-br-sm bg-ink px-4 py-3">
+    <View className="mb-3 max-w-[85%] self-end rounded-[18px] rounded-br-sm bg-brand px-4 py-3">
       <AppText variant="body" className="text-on-ink">
         {text}
       </AppText>
@@ -71,36 +77,31 @@ const HaleBubble = memo(function HaleBubble({ turn }: { turn: HaleTurn }) {
   const showDots = streaming && text.length === 0 && trail.length === 0;
   return (
     <>
-      <View className="mb-3 max-w-[92%] self-start">
-        <AppText variant="eyebrow" className="mb-1">
-          Hale
-        </AppText>
-        {/* Live while working (each step reveals with a breathing dot), then folds
-            to "▸ Explored N steps" above the settled answer. */}
-        {streaming ? (
-          <LiveActivityTrail entries={trail} />
-        ) : (
-          <ActivityTrail activity={activity} />
-        )}
-        {showBubble ? (
-          <View className="rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-            {/* While streaming, render raw text token-by-token with a live cursor so
-                the answer reads as it arrives; on settle, render real markdown (bold,
-                lists, headings) with no leftover cursor bar. */}
-            {streaming ? (
-              <AppText variant="body">
+      {/* Handoff: the Hale reply is a small logo chip + plain text — no bordered
+          bubble (the connector/action cards below carry the borders). */}
+      <View className="mb-3 max-w-[92%] flex-row gap-2.5 self-start">
+        <LogoMark size={24} />
+        <View className="flex-1 pt-0.5">
+          {streaming ? (
+            <LiveActivityTrail entries={trail} />
+          ) : (
+            <ActivityTrail activity={activity} />
+          )}
+          {showBubble ? (
+            // While streaming, render raw text token-by-token with a live cursor so
+            // the answer reads as it arrives; on settle, render real markdown.
+            streaming ? (
+              <AppText variant="body" className="text-ink">
                 {text}
                 <StreamingCursor />
               </AppText>
             ) : (
               <Markdown>{text}</Markdown>
-            )}
-          </View>
-        ) : showDots ? (
-          <View className="self-start rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
+            )
+          ) : showDots ? (
             <TypingDots />
-          </View>
-        ) : null}
+          ) : null}
+        </View>
       </View>
       {/* Honest connector cards settle with the answer — Drive files / Calendar
           agenda / not-connected. Rule #1: whitelisted fields only, streamed by the
@@ -122,41 +123,155 @@ const HaleBubble = memo(function HaleBubble({ turn }: { turn: HaleTurn }) {
   );
 });
 
-function StarterChips({ onPick }: { onPick: (q: string) => void }) {
-  // Warmed with the viewer's first name when Home has already loaded it; a
-  // greeting is never worth its own network call (see viewer-name.ts).
-  const first = viewerFirstName();
+/** The rounded input pill (handoff): a text field with a voice toggle and a navy
+ * send button. Shared by the empty-state and the in-conversation composer. */
+function Composer({
+  draft,
+  setDraft,
+  onSend,
+  listening,
+  onToggleVoice,
+}: {
+  draft: string;
+  setDraft: (t: string) => void;
+  onSend: () => void;
+  listening: boolean;
+  onToggleVoice: () => void;
+}) {
+  const placeholderColor = useMeadowColor('ink3');
+  const inputColor = useMeadowColor('ink');
+  const micColor = useMeadowColor('ink3');
+  const sendColor = useMeadowColor('onAccent');
   return (
-    <View className="flex-1 gap-4 pt-6">
-      <AppText variant="display">
-        {first ? `Hi ${first}, how can I help?` : 'How can I help you today?'}
+    <View className="flex-row items-center gap-1.5 rounded-[18px] border-[1.5px] border-rule-strong bg-card py-1.5 pl-4 pr-1.5">
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        placeholder="Ask Hale anything…"
+        placeholderTextColor={placeholderColor}
+        accessibilityLabel="Ask Hale a question"
+        multiline
+        returnKeyType="send"
+        onSubmitEditing={onSend}
+        style={{
+          color: inputColor,
+          fontFamily: 'InstrumentSans_400Regular',
+          minHeight: 40,
+          maxHeight: 120,
+        }}
+        className="flex-1 text-[16px] leading-[22px]"
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={listening ? 'Stop listening' : 'Ask Hale by voice'}
+        onPress={onToggleVoice}
+        hitSlop={6}
+        className="h-9 w-9 items-center justify-center active:opacity-70"
+      >
+        <Icon name={listening ? 'circle-stop' : 'mic'} size={18} color={micColor} />
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Send question"
+        onPress={onSend}
+        className="h-10 w-10 items-center justify-center rounded-[14px] bg-brand active:opacity-90"
+      >
+        <Icon name="arrow-up" size={18} color={sendColor} />
+      </Pressable>
+    </View>
+  );
+}
+
+/** One "Suggestions for you" row — a tinted chip + title/sub, tapping sends its live
+ * prompt to Hale. */
+function SuggestionRow({
+  suggestion,
+  onPick,
+}: {
+  suggestion: AskSuggestion;
+  onPick: (prompt: string) => void;
+}) {
+  const chevron = useMeadowColor('ink3');
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${suggestion.title}. ${suggestion.sub}`}
+      onPress={() => onPick(suggestion.prompt)}
+      className="flex-row items-center gap-3 rounded-[16px] border border-rule bg-card px-3.5 py-3.5 active:opacity-80"
+    >
+      <TintChip icon={suggestion.icon} tone={suggestion.tone} />
+      <View className="flex-1">
+        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+          {suggestion.title}
+        </AppText>
+        <AppText variant="meta" className="text-caption">
+          {suggestion.sub}
+        </AppText>
+      </View>
+      <Icon name="chevron-right" size={14} color={chevron} />
+    </Pressable>
+  );
+}
+
+function EmptyState({
+  draft,
+  setDraft,
+  onSend,
+  onPick,
+  listening,
+  onToggleVoice,
+}: {
+  draft: string;
+  setDraft: (t: string) => void;
+  onSend: () => void;
+  onPick: (prompt: string) => void;
+  listening: boolean;
+  onToggleVoice: () => void;
+}) {
+  const first = viewerFirstName();
+  const sparkleColor = useMeadowColor('accentFill');
+  const greeting = first ? `${timeGreeting()}, ${first}.` : timeGreeting();
+  return (
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="px-5 pb-6"
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <AppText variant="display" className="mb-5 mt-6">
+        {greeting} What can I do for your family today?
       </AppText>
-      <AppText variant="meta" className="text-ink-3">
-        Hale is your AI parenting co-pilot.
+
+      <Composer
+        draft={draft}
+        setDraft={setDraft}
+        onSend={onSend}
+        listening={listening}
+        onToggleVoice={onToggleVoice}
+      />
+      <AppText variant="meta" className="mt-2 text-center text-caption">
+        {listening ? 'Listening…' : 'Try: “Napped 1h 20m and ate most of lunch”'}
       </AppText>
-      <AppText variant="meta" className="text-ink-3">
-        Here for you, 24/7.
+
+      <AppText variant="eyebrow" className="mb-2.5 mt-6">
+        Suggestions for you
       </AppText>
-      <View className="mt-1 gap-2">
-        {STARTER_CHIPS.map((q) => (
-          <Pressable
-            key={q}
-            accessibilityRole="button"
-            accessibilityLabel={q}
-            onPress={() => onPick(q)}
-            className="rounded-lg border border-rule bg-card px-4 py-3.5 active:opacity-80"
-          >
-            <AppText variant="body" className="text-ink">
-              {q}
-            </AppText>
-          </Pressable>
+      <View className="gap-2.5">
+        {ASK_SUGGESTIONS.map((s) => (
+          <SuggestionRow key={s.title} suggestion={s} onPick={onPick} />
         ))}
       </View>
-      <AppText variant="meta" className="mt-1">
-        Hale offers general guidance, never medical advice. For anything urgent, contact your care
-        provider.
-      </AppText>
-    </View>
+
+      <Card variant="cream" className="mt-6 items-center gap-1.5 py-5">
+        <Icon name="sparkle-filled" size={20} color={sparkleColor} />
+        <AppText className="text-[13.5px] text-ink" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
+          Hale is here to help
+        </AppText>
+        <AppText variant="meta" className="text-center text-cream-accent">
+          Your AI parenting partner. Always here, always in your corner.
+        </AppText>
+      </Card>
+    </ScrollView>
   );
 }
 
@@ -166,8 +281,7 @@ export default function AskScreen() {
   const [pending, setPending] = useState(false);
   const conversationId = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const placeholderColor = useMeadowColor('ink3');
-  const inputColor = useMeadowColor('ink');
+  const sparkleColor = useMeadowColor('brand');
   const voice = useVoiceInput(setDraft);
 
   const send = async (text: string) => {
@@ -299,109 +413,84 @@ export default function AskScreen() {
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View className="flex-row items-center justify-between px-5 pt-2">
-          {/* On the empty state the big display title is the question below, so the
-              header demotes to a small nav-size label (mockup); once a conversation
-              starts there's no competing title, so it reads at full display size. */}
-          <AppText variant={empty ? 'title' : 'display'}>Hale</AppText>
-          {!empty ? (
-            <IconButton
-              icon="square-pen"
-              accessibilityLabel="New conversation"
-              onPress={newConversation}
-              className="bg-raised"
-            />
-          ) : null}
+        <View className="flex-row items-center justify-between px-5 pb-1 pt-2">
+          <View className="flex-row items-center gap-2.5">
+            <LogoMark size={30} />
+            <AppText variant="title">Hale</AppText>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="New conversation"
+            onPress={newConversation}
+            className="h-11 w-11 items-center justify-center rounded-full border border-rule bg-raised active:opacity-80"
+          >
+            <Icon name="sparkle-filled" size={18} color={sparkleColor} />
+          </Pressable>
         </View>
 
         {empty ? (
-          <View className="flex-1 px-5">
-            <StarterChips onPick={send} />
-          </View>
+          <EmptyState
+            draft={draft}
+            setDraft={setDraft}
+            onSend={() => send(draft)}
+            onPick={send}
+            listening={voice.listening}
+            onToggleVoice={voice.toggle}
+          />
         ) : (
-          <ScrollView
-            ref={scrollRef}
-            className="flex-1"
-            contentContainerClassName="px-5 pt-4 pb-2"
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-          >
-            {messages.map((m) => {
-              if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
-              if (m.role === 'quicklog') return <QuickLogCard key={m.id} match={m.match} />;
-              return <HaleBubble key={m.id} turn={m} />;
-            })}
-            {pending ? (
-              <View className="mb-3 max-w-[92%] self-start">
-                <AppText variant="eyebrow" className="mb-1">
-                  Hale
-                </AppText>
-                <View className="self-start rounded-lg rounded-bl-sm border border-rule bg-card px-4 py-3">
-                  <TypingDots />
+          <>
+            <ScrollView
+              ref={scrollRef}
+              className="flex-1"
+              contentContainerClassName="px-5 pt-4 pb-2"
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+            >
+              {messages.map((m) => {
+                if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
+                if (m.role === 'quicklog') return <QuickLogCard key={m.id} match={m.match} />;
+                return <HaleBubble key={m.id} turn={m} />;
+              })}
+              {pending ? (
+                <View className="mb-3 max-w-[92%] flex-row gap-2.5 self-start">
+                  <LogoMark size={24} />
+                  <View className="pt-0.5">
+                    <TypingDots />
+                  </View>
                 </View>
-              </View>
-            ) : null}
-          </ScrollView>
-        )}
+              ) : null}
+            </ScrollView>
 
-        <View className="border-t border-rule bg-card px-5 pb-3 pt-3">
-          <AppText variant="eyebrow" className="mb-1.5">
-            {voice.listening ? 'Listening…' : 'Ask a question'}
-          </AppText>
-          <View className="flex-row items-center gap-2">
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Ask or type a parenting question"
-              placeholderTextColor={placeholderColor}
-              accessibilityLabel="Ask Hale a question"
-              multiline
-              returnKeyType="send"
-              onSubmitEditing={() => send(draft)}
-              style={{
-                color: inputColor,
-                fontFamily: 'Inter_400Regular',
-                minHeight: 44,
-                maxHeight: 120,
-              }}
-              className="flex-1 rounded-md border border-rule bg-canvas px-4 py-2.5 text-[16px] leading-[22px]"
-            />
-            {draft.trim() ? (
-              <IconButton
-                icon="arrow-up"
-                accessibilityLabel="Send question"
-                onPress={() => send(draft)}
-                className="bg-raised"
+            <View className="border-t border-rule bg-canvas px-5 pb-3 pt-3">
+              <Composer
+                draft={draft}
+                setDraft={setDraft}
+                onSend={() => send(draft)}
+                listening={voice.listening}
+                onToggleVoice={voice.toggle}
               />
-            ) : (
-              <IconButton
-                icon={voice.listening ? 'circle-stop' : 'mic'}
-                accessibilityLabel={voice.listening ? 'Stop listening' : 'Ask Hale by voice'}
-                onPress={voice.toggle}
-                className="bg-raised"
-              />
-            )}
-          </View>
-          {voice.error ? (
-            <View className="mt-1.5 flex-row items-baseline gap-2">
-              <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
-                {voice.error}
-              </AppText>
-              {voice.permissionBlocked ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open Settings to enable the microphone"
-                  onPress={() => Linking.openSettings()}
-                  className="active:opacity-80"
-                >
-                  <AppText variant="meta" className="text-accent underline">
-                    Open Settings
+              {voice.error ? (
+                <View className="mt-1.5 flex-row items-baseline gap-2">
+                  <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
+                    {voice.error}
                   </AppText>
-                </Pressable>
+                  {voice.permissionBlocked ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Open Settings to enable the microphone"
+                      onPress={() => Linking.openSettings()}
+                      className="active:opacity-80"
+                    >
+                      <AppText variant="meta" className="text-accent underline">
+                        Open Settings
+                      </AppText>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : null}
             </View>
-          ) : null}
-        </View>
+          </>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
