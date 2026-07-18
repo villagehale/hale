@@ -72,7 +72,7 @@ export default function ConsentScreen() {
         className="mt-5"
       />
       <AppText variant="meta" className="mt-3 text-center text-caption">
-        By continuing you agree to the Terms & Privacy Policy.
+        You agreed to the Terms & Privacy Policy when you created your account.
       </AppText>
     </SafeAreaView>
   );

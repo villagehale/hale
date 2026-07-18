@@ -401,6 +401,13 @@ export default function ActivityDetailScreen() {
     `/api/mobile/village/${id}`,
   );
   const rec = data?.candidate ?? null;
+  const [menuError, setMenuError] = useState<string | null>(null);
+
+  // A menu action's failure surfaces inline (mirroring the in-body Share), never
+  // swallowed — except a 401, which the client already redirected on.
+  const surface = (e: unknown, message: string) => {
+    if (!(e instanceof ApiError) || e.status !== 401) setMenuError(message);
+  };
 
   const helpItem: OverflowAction = {
     label: 'Get help',
@@ -420,7 +427,9 @@ export default function ActivityDetailScreen() {
                 try {
                   const { link } = await api<{ link: string }>(rec.shareHref, { method: 'POST' });
                   await Share.share(Platform.OS === 'ios' ? { url: link } : { message: link });
-                } catch {}
+                } catch (e) {
+                  surface(e, "Couldn't share just now — try again.");
+                }
               })();
             },
           },
@@ -428,7 +437,9 @@ export default function ActivityDetailScreen() {
             label: 'Save',
             icon: 'bookmark',
             onPress: () => {
-              void api(rec.saveHref, { method: 'POST' }).catch(() => {});
+              void api(rec.saveHref, { method: 'POST' }).catch((e) =>
+                surface(e, "Couldn't save just now — try again."),
+              );
             },
           },
           helpItem,
@@ -438,6 +449,11 @@ export default function ActivityDetailScreen() {
   return (
     <Screen scroll className="gap-5">
       <DetailHeader title="Activity details" menu={menu} />
+      {menuError ? (
+        <AppText variant="meta" className="-mt-2 text-berry" accessibilityLiveRegion="polite">
+          {menuError}
+        </AppText>
+      ) : null}
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
       {status === 'ready' && rec && rec.teenAttributed ? <TeenRedactedCard rec={rec} /> : null}

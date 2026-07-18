@@ -11,6 +11,9 @@ const CHART_H = 130;
 const PLOT_TOP = 14;
 const PLOT_BOTTOM = 112;
 const INSET_X = 12;
+/** Height of the latest-value tag, so it can be pinned next to the newest point
+ * (clamped in-bounds) instead of floating at a fixed top corner. */
+const TAG_H = 36;
 
 /** "May 12" — the compact month+day the value tag and axis use. */
 function monthDay(iso: string): string {
@@ -49,6 +52,9 @@ export function GrowthChart({
   const [width, setWidth] = useState(0);
   const line = useMeadowColor('chipBlueIcon');
   const grid = useMeadowColor('ink3');
+  // The newest point draws hollow (its center is the card surface, so it reads as a
+  // ring in both schemes — a white literal would be a solid white dot on dark).
+  const pointHollow = useMeadowColor('card');
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
@@ -69,6 +75,10 @@ export function GrowthChart({
   const latest = readings[0];
   const latestDisplay = displayMeasurement(latest.value, kind, units);
   const months = monthLabels(ordered);
+  // Pin the value tag just above the newest point (clamped in-bounds) so it stays
+  // tethered to the reading it labels — on a downtrend the point sits low, and a
+  // fixed top-corner tag would float disconnected above it.
+  const tagTop = Math.max(2, Math.min(CHART_H - TAG_H - 2, y(latest.value) - TAG_H - 4));
 
   return (
     <View className="gap-2">
@@ -101,7 +111,7 @@ export function GrowthChart({
                   cx={x(i)}
                   cy={y(r.value)}
                   r={isLast ? 4 : 3}
-                  fill={isLast ? '#ffffff' : line}
+                  fill={isLast ? pointHollow : line}
                   stroke={line}
                   strokeWidth={isLast ? 2.4 : 0}
                 />
@@ -109,7 +119,7 @@ export function GrowthChart({
             })}
           </Svg>
         ) : null}
-        <View className="absolute right-0 top-1.5 items-center rounded-lg bg-ink px-2 py-1">
+        <View className="absolute right-0 items-center rounded-lg bg-ink px-2 py-1" style={{ top: tagTop }}>
           <AppText className="text-[11px] leading-[14px] text-on-ink" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
             {latestDisplay.value} {latestDisplay.unit}
           </AppText>

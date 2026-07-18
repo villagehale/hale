@@ -2,8 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Web only: match the web app's antialiasing so Inter doesn't render heavier
- * in the RN-web preview than it does in apps/web. No effect on native. */
+/* Web only: match the web app's antialiasing so the body font doesn't render
+ * heavier in the RN-web preview than intended. No effect on native. */
 html,
 body {
   -webkit-font-smoothing: antialiased;
@@ -24,11 +24,6 @@ body {
  */
 
 :root {
-  /* type — Inter (display/body) + JetBrains Mono (data), mirroring web */
-  --font-display: Inter, system-ui, sans-serif;
-  --font-body: Inter, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-
   /* canvas / surfaces */
   --color-canvas: #fdfcfa; /* warm white — handoff page background */
   --color-card: #ffffff; /* card surface */

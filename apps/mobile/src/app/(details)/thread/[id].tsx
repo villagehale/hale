@@ -197,8 +197,10 @@ function SampleThreadView({ thread }: { thread: SampleThread }) {
           // biome-ignore lint/suspicious/noArrayIndexKey: fixed, ordered sample seed
           <InBubble key={i} text={row.text} />
         ) : (
+          // Seed "you" bubbles carry the same never-sent stamp as a live reply, so no
+          // outgoing bubble in a sample thread reads as if it were delivered.
           // biome-ignore lint/suspicious/noArrayIndexKey: fixed, ordered sample seed
-          <OutBubble key={i} text={row.text} />
+          <OutBubble key={i} text={row.text} notDelivered />
         ),
       )}
       {replies.map((text, i) => (

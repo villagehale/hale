@@ -112,10 +112,14 @@ function ApprovalsBody({
   onResolve: (id: string) => void;
 }) {
   const { approvals } = data;
+  const emptyCheck = useMeadowColor('chipGreenIcon');
   return (
     <>
       {approvals.length === 0 ? (
         <Card className="mt-2 items-center gap-2 py-10">
+          <View className="mb-2 h-16 w-16 items-center justify-center rounded-full bg-chip-green">
+            <Icon name="check" size={28} color={emptyCheck} />
+          </View>
           <AppText variant="title">You're all caught up</AppText>
           <AppText variant="meta" className="text-center">
             When Hale drafts something — an email, a sign-up, a booking — it waits here

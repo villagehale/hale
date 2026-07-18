@@ -178,6 +178,14 @@ export type IconProps = {
 };
 
 export function Icon({ name, size = 20, color }: IconProps) {
-  const Glyph = ICONS[name];
+  // `name` is typed to the known set, but callers pass data-derived values (a
+  // category → glyph map, a server-supplied field). An unmapped name renders the
+  // help glyph rather than crashing the screen on `undefined` — a missing icon is a
+  // recoverable, expected boundary, not a reason to blank the page.
+  const Glyph = (ICONS as Record<string, IconGlyph | undefined>)[name];
+  if (!Glyph) {
+    if (__DEV__) console.warn(`Icon: unknown glyph "${name}" — rendering fallback`);
+    return <CircleHelp size={size} color={color} strokeWidth={1.8} />;
+  }
   return <Glyph size={size} color={color} strokeWidth={1.8} />;
 }

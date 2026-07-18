@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
 
 import { useMeadowColor } from '@/constants/meadow';
+import { useReducedMotion } from '@/lib/use-reduced-motion';
 
 import { AppText } from './app-text';
 import { Icon } from './icon';
@@ -32,8 +33,16 @@ export function Sheet({
   children: ReactNode;
 }) {
   const closeIcon = useMeadowColor('ink3');
+  // The handoff sheet slides up (~320ms native). Under Reduce Motion it cross-fades
+  // in place instead, dropping the upward travel.
+  const reduced = useReducedMotion();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reduced ? 'fade' : 'slide'}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"

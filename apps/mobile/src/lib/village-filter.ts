@@ -73,15 +73,6 @@ export function applyFilters(
   return filterBySeasons(filterByCadence(candidates, cadence), seasons);
 }
 
-/** How many filter axes are active — drives the count badge on the Filters trigger.
- * Cadence counts when it isn't "all"; seasons count as one axis when any is picked. */
-export function activeFilterCount(
-  cadence: CadenceFilter,
-  seasons: ReadonlySet<SeasonFilterKey>,
-): number {
-  return (cadence === 'all' ? 0 : 1) + (seasons.size > 0 ? 1 : 0);
-}
-
 /** A card's cadence → its chip treatment (label + tint classes). Meaning is carried
  * by label + shape, never colour alone (rule #1 / DESIGN.md). Mirrors web
  * CADENCE_PILL: seasonal = time-boxed (apricot tint), one-time = single event (sky),
