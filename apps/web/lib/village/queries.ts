@@ -168,3 +168,72 @@ export function loadVillage(opts?: VillageReadOptions): Promise<VillageData> {
 export function loadSavedVillageCandidates(): Promise<VillageCandidateView[]> {
   return readForFamily((database, familyId) => readSavedVillageCandidates(database, familyId), []);
 }
+
+/**
+ * Reads ONE candidate by id for the native pushed Activity route, teen-safe. Scoped
+ * to the resolving family (a foreign id → null, never a cross-family read) and
+ * DELIBERATELY not visibility-gated: a saved / accepted candidate that has aged out
+ * of the standing feed (out of season, superseded) must still resolve so its detail
+ * route opens from Saved / the week. Teen attribution is derived LIVE from the
+ * child's date_of_birth and redacted at the SAME mapper the feed uses (rule #1), so
+ * a 13+ child's candidate returns the locked view — the raw fields never reach it.
+ */
+export async function readVillageCandidateById(
+  database: Database,
+  familyId: string,
+  id: string,
+): Promise<VillageCandidateView | null> {
+  const rows = await database
+    .select()
+    .from(schema.villageCandidates)
+    .where(and(eq(schema.villageCandidates.id, id), eq(schema.villageCandidates.familyId, familyId)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  const teenAttributed =
+    row.childId !== null &&
+    (await isTeenChild(database, familyId, row.childId));
+
+  const [endorsementCounts, familyEndorsed, familyAccepted, familySaved] = await Promise.all([
+    countEndorsementsForCandidates(database, [id]),
+    listFamilyEndorsedCandidateIds(database, familyId),
+    listFamilyAcceptedCandidateIds(database, familyId),
+    listFamilySavedCandidateIds(database, familyId),
+  ]);
+
+  return toVillageCandidateView(row, teenAttributed, {
+    endorsementCount: endorsementCounts.get(id) ?? 0,
+    endorsedByFamily: familyEndorsed.has(id),
+    accepted: familyAccepted.has(id),
+    saved: familySaved.has(id),
+  });
+}
+
+/** Whether a candidate's child is a 13+ teen (rule #1), derived live from DOB. */
+async function isTeenChild(
+  database: Database,
+  familyId: string,
+  childId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)))
+    .limit(1);
+  const dob = rows[0]?.dateOfBirth;
+  return dob !== undefined && deriveStage(dob) === 'teenager';
+}
+
+/**
+ * The preview/unauthed-boundary wrapper around readVillageCandidateById for the
+ * mobile Activity-by-id route: no DATABASE_URL (preview) or no resolved family →
+ * null (the route then renders its honest empty state). A genuine query failure
+ * once a DB exists surfaces (rule #8).
+ */
+export function loadVillageCandidateById(id: string): Promise<VillageCandidateView | null> {
+  return readForFamily(
+    (database, familyId) => readVillageCandidateById(database, familyId, id),
+    null,
+  );
+}
