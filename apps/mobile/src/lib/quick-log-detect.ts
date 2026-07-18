@@ -123,7 +123,7 @@ function napDurationMin(text: string): number | undefined {
 
 /** Best-effort diaper kind from the words (mobile-only, like feed's amountMl): a
  * dirty/poop/soiled mention → dirty, an explicit mixed/dry → those, else wet when
- * the word appears; undefined otherwise (the confirm card defaults). */
+ * the word appears; undefined otherwise (the confirm card then asks the parent). */
 function diaperKindFrom(text: string): DiaperKindValue | undefined {
   if (/\bmixed\b/i.test(text)) return 'mixed';
   if (/\b(?:dirty|pooped|poop|soiled)\b/i.test(text)) return 'dirty';
