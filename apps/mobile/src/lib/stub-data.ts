@@ -65,3 +65,54 @@ export const STUB_CHILDCARE: readonly StubChildcareProvider[] = [
   { name: 'Little Explorers Home Care', kind: 'Home care', status: 'waitlist' },
   { name: 'KidsTown Early Learning', kind: 'Licensed centre', status: 'accepting' },
 ];
+
+/** One vaccine on the sample immunization record (Immunizations page → Record card). */
+export interface StubImmunizationEntry {
+  /** Vaccine abbreviation as it appears on a Canadian immunization record. */
+  vaccine: string;
+  /** What the vaccine protects against — stable, general reference (not per-child). */
+  protects: string;
+}
+
+/**
+ * A SAMPLE immunization record for the Immunizations page. STUB: Hale has no
+ * per-child immunization-record store yet, so this is an ILLUSTRATIVE list of the
+ * routine early-childhood vaccines (the prototype's five) — NOT any child's actual
+ * record. It deliberately carries NO administration dates: a fabricated "given on"
+ * date presented as this child's record would be dishonest (DATA HONESTY, and the
+ * task's explicit "do not invent a fake per-child record" rule). Rendered under an
+ * explicit "sample record" disclosure pointing parents to Documents for the real one.
+ */
+export const STUB_IMMUNIZATION_RECORD: readonly StubImmunizationEntry[] = [
+  { vaccine: 'Hep B', protects: 'Hepatitis B' },
+  { vaccine: 'DTaP', protects: 'Diphtheria, tetanus & pertussis' },
+  { vaccine: 'Hib', protects: 'Haemophilus influenzae type b' },
+  { vaccine: 'PCV-13', protects: 'Pneumococcal disease' },
+  { vaccine: 'IPV', protects: 'Polio' },
+];
+
+/** One program row on the Government Benefits page. */
+export interface StubBenefitProgram {
+  name: string;
+  /** The program's amount / eligibility summary, e.g. "Up to $7,787 / child / year". */
+  detail: string;
+  /** Which government runs it — "Federal" | "Ontario". Factual per program (CCB is
+   * federal, OCB/subsidy are Ontario), NOT derived from the family's actual province. */
+  jurisdiction: string;
+}
+
+/**
+ * The Government Benefits programs (prototype's three rows). STUB: Hale does NOT
+ * check eligibility or personalize these to a family — they are a general reference
+ * to well-known Canadian child-benefit programs, disclosed as such, with the real
+ * action being "Ask Hale about eligibility". Amounts are the program's published
+ * maximums framing ("up to …"), which change each benefit year — surfaced with a
+ * "check the official program for current amounts" caveat so no figure reads as a
+ * personalized entitlement. Replace with a real, location-aware programs source
+ * before treating any of this as tailored advice.
+ */
+export const STUB_BENEFITS: readonly StubBenefitProgram[] = [
+  { name: 'Canada Child Benefit', detail: 'Up to $7,787 / child / year', jurisdiction: 'Federal' },
+  { name: 'Ontario Child Benefit', detail: 'Up to $1,607 / child / year', jurisdiction: 'Ontario' },
+  { name: 'Child Care Fee Subsidy', detail: 'Based on family income', jurisdiction: 'Ontario' },
+];
