@@ -45,6 +45,7 @@ import {
   Trash2,
   User,
   Users,
+  X,
 } from 'lucide-react-native';
 
 // Lucide outline set, 1.8px stroke per the design handoff. `MapIcon` is imported
@@ -96,6 +97,7 @@ const ICONS = {
   'trash-2': Trash2,
   user: User,
   users: Users,
+  x: X,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

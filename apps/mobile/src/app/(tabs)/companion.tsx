@@ -35,6 +35,7 @@ import { useApi } from '@/lib/use-api';
 const LOG_KINDS: { kind: LogKind; label: string }[] = [
   { kind: 'feed', label: 'Log feed' },
   { kind: 'nap', label: 'Log nap' },
+  { kind: 'diaper', label: 'Diaper' },
   { kind: 'milestone', label: 'Milestone' },
 ];
 
@@ -223,9 +224,9 @@ function QuickLogCard({ child, onLogged }: { child: ChildCompanionView; onLogged
             accessibilityRole="button"
             accessibilityLabel={k.label}
             onPress={() => setLogKind(k.kind)}
-            className="h-11 flex-1 items-center justify-center rounded-full border border-rule bg-card active:opacity-80"
+            className="h-11 flex-1 items-center justify-center rounded-full border border-rule bg-card px-1 active:opacity-80"
           >
-            <AppText variant="meta" className="text-ink-2">
+            <AppText variant="meta" numberOfLines={1} className="text-ink-2">
               {k.label}
             </AppText>
           </Pressable>

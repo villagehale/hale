@@ -1,70 +1,39 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
+import {
+  buildLogPayload,
+  DIAPER_KIND,
+  type DiaperKindValue,
+  FEED_AMOUNT,
+  FEED_WHAT,
+  type LogKind,
+  NAP_QUALITY,
+  SHEET_TITLE,
+} from '@/lib/quick-log-payload';
 
 import { AppText } from './app-text';
 import { Button } from './button';
 import { Field } from './field';
 import { Icon } from './icon';
+import { Sheet } from './sheet';
 
-export type LogKind = 'feed' | 'nap' | 'milestone';
+export type { LogKind };
 
 /** A child in the picker. `milestoneSuggestions` are the `what` strings from that
  * child's stage catalog (MILESTONES_BY_STAGE via the companion payload) — the
- * tappable milestone chips, filtered to the selected child's stage. */
+ * tappable milestone rows, filtered to the selected child's stage. */
 type ChildOption = { id: string; name: string | null; milestoneSuggestions: string[] };
 
-/** How many stage milestone chips to offer before the free-text field. */
-const MILESTONE_CHIP_LIMIT = 6;
-
-/** The feed kinds the server accepts (log-types FEED_KINDS) with their sheet
- * labels. Selecting one sends feedKind so the summary reads "Fed 200 ml (bottle)". */
-const FEED_KINDS: { value: 'bottle' | 'breast' | 'solid'; label: string }[] = [
-  { value: 'bottle', label: 'Bottle' },
-  { value: 'breast', label: 'Breast' },
-  { value: 'solid', label: 'Solids' },
-];
-
-const KIND_META: Record<
-  LogKind,
-  {
-    title: string;
-    field: string;
-    placeholder: string;
-    keyboard: 'numeric' | 'default';
-    empty: string;
-  }
-> = {
-  feed: {
-    title: 'Log a feed',
-    field: 'Amount (ml)',
-    placeholder: '120',
-    keyboard: 'numeric',
-    empty: 'Enter how much (ml) before saving.',
-  },
-  nap: {
-    title: 'Log a nap',
-    field: 'Duration (min)',
-    placeholder: '45',
-    keyboard: 'numeric',
-    empty: 'Enter how long (minutes), or set a start and end.',
-  },
-  milestone: {
-    title: 'Note a milestone',
-    field: 'What happened',
-    placeholder: 'Rolled over for the first time',
-    keyboard: 'default',
-    empty: 'Enter what happened before saving.',
-  },
-};
+/** How many stage milestone rows to offer before the free-text field. */
+const MILESTONE_ROW_LIMIT = 6;
 
 /** Minutes-ago shortcuts for the "when" control. A quick-log is usually "just now"
  * or a short while ago, so these one-tap chips stay — but the exact date+time is
- * always adjustable below via a real picker (an earlier feed the next morning, a
- * milestone from last week). */
+ * always adjustable below via a real picker (an earlier feed the next morning). */
 const WHEN_PRESETS: { label: string; minutesAgo: number }[] = [
   { label: 'now', minutesAgo: 0 },
   { label: '30m ago', minutesAgo: 30 },
@@ -96,40 +65,65 @@ function durationLabel(startAt: Date, endAt: Date): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-/** Builds the POST body for the tapped kind. A nap sends a start/end WINDOW when the
- * parent set one (the server derives the duration); otherwise the plain duration.
- * A feed carries feedKind when picked. An optional note rides all three. */
-function buildPayload(args: {
-  kind: LogKind;
-  childId: string;
-  entry: string;
-  occurredAt: string;
-  feedKind: string | null;
-  napWindow: { startAt: string; endAt: string } | null;
-  note: string;
+/** A grid of selectable chips, filled brand-blue when active (handoff selected-chip:
+ * 1.5px brand border + #EDF0FA face). Chunked into rows of `cols` so each chip keeps
+ * an equal flex width and the 9px gutter stays aligned across rows. */
+function ChipGrid({
+  cols,
+  items,
+}: {
+  cols: number;
+  items: { label: string; active: boolean; onPress: () => void }[];
 }) {
-  const { kind, childId, entry, occurredAt, feedKind, napWindow, note } = args;
-  const trimmedNote = note.trim();
-  const base: Record<string, unknown> = { kind, childId, occurredAt };
-  if (trimmedNote) base.note = trimmedNote;
-  if (kind === 'feed') {
-    return { ...base, amountMl: entry, ...(feedKind ? { feedKind } : {}) };
-  }
-  if (kind === 'nap') {
-    if (napWindow) return { ...base, startAt: napWindow.startAt, endAt: napWindow.endAt };
-    return { ...base, durationMin: entry };
-  }
-  return { ...base, milestone: entry };
+  const rows: (typeof items)[] = [];
+  for (let i = 0; i < items.length; i += cols) rows.push(items.slice(i, i + cols));
+  return (
+    <View className="gap-2.5">
+      {rows.map((row) => (
+        <View key={row[0]?.label} className="flex-row gap-2.5">
+          {row.map((it) => (
+            <Pressable
+              key={it.label}
+              accessibilityRole="button"
+              accessibilityLabel={it.label}
+              accessibilityState={it.active ? { selected: true } : {}}
+              onPress={it.onPress}
+              className={`flex-1 items-center justify-center rounded-[13px] border-[1.5px] px-1.5 py-3 active:opacity-80 ${
+                it.active ? 'border-brand bg-chip-blue' : 'border-rule bg-card'
+              }`}
+            >
+              <AppText variant="meta" className="text-center text-ink">
+                {it.label}
+              </AppText>
+            </Pressable>
+          ))}
+          {row.length < cols
+            ? Array.from({ length: cols - row.length }).map((_, k) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: pad cells, no identity
+                <View key={`pad-${k}`} className="flex-1" />
+              ))
+            : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function SheetLabel({ children }: { children: string }) {
+  return (
+    <AppText variant="meta" className="mb-2.5 text-ink-2">
+      {children}
+    </AppText>
+  );
 }
 
 /**
- * The shared in-place quick-log sheet. Opens for the tapped kind with the right
- * field (feed=amount + kind chips, nap=duration OR a start/end window, milestone=
- * text) plus a "when" control that defaults to now and one quiet optional note.
- * Sends occurredAt (ISO) so an earlier event lands at the right time; a nap window
- * sends startAt/endAt (ISO) and the server derives the duration. POSTs the SAME
- * /api/mobile/companion/log endpoint the companion uses — one write path, one audit
- * row (rule #6). Errors surface in place, never a silent success.
+ * The shared in-place quick-log sheet, in the handoff's four-kind form: feed (what +
+ * how-much chips), nap (a start/end window + quality chips), diaper (kind chips), and
+ * milestone (stage rows + free text). Each POSTs the SAME audited
+ * /api/mobile/companion/log route the companion uses — one write path, one audit row
+ * (rule #6). Errors surface in place, never a silent success. See task-9-report for
+ * the feed chip → amountMl/feedKind mapping.
  */
 export function QuickLogModal({
   visible,
@@ -145,16 +139,19 @@ export function QuickLogModal({
   onLogged: () => void;
 }) {
   const [childId, setChildId] = useState('');
-  const [value, setValue] = useState('');
-  const [feedKind, setFeedKind] = useState<string | null>(null);
+  const [feedWhat, setFeedWhat] = useState('Milk');
+  const [feedAmount, setFeedAmount] = useState('Most of it');
+  const [napQuality, setNapQuality] = useState<string>('Good');
+  const [diaperKind, setDiaperKind] = useState<DiaperKindValue>('wet');
+  const [milestone, setMilestone] = useState('');
   const [note, setNote] = useState('');
   const [when, setWhen] = useState<Date>(() => new Date());
-  // The preset chip that produced `when`, or null once an exact time is picked —
-  // so the highlight is unambiguous instead of guessed from fragile time math.
+  // The preset chip that produced `when`, or -1 once an exact time is picked — so the
+  // highlight is unambiguous instead of guessed from fragile time math.
   const [activePreset, setActivePreset] = useState(0);
   const [showPicker, setShowPicker] = useState(false);
-  // A nap's optional start/end window. When both are set, they drive the duration
-  // (the plain minutes field is ignored); until then the minutes field is used.
+  // A nap's start/end window drives the duration (the server derives it). Both are
+  // required to save a nap — the prototype nap is window-based, with no minutes field.
   const [napStart, setNapStart] = useState<Date | null>(null);
   const [napEnd, setNapEnd] = useState<Date | null>(null);
   const [openNapPicker, setOpenNapPicker] = useState<'start' | 'end' | null>(null);
@@ -165,8 +162,11 @@ export function QuickLogModal({
   useEffect(() => {
     if (visible) {
       setChildId(kids[0]?.id ?? '');
-      setValue('');
-      setFeedKind(null);
+      setFeedWhat('Milk');
+      setFeedAmount('Most of it');
+      setNapQuality('Good');
+      setDiaperKind('wet');
+      setMilestone('');
       setNote('');
       setWhen(new Date());
       setActivePreset(0);
@@ -195,58 +195,67 @@ export function QuickLogModal({
     }
   };
 
-  const onNapPickerChange = (which: 'start' | 'end') => (event: DateTimePickerEvent, picked?: Date) => {
-    if (Platform.OS !== 'ios') setOpenNapPicker(null);
-    if (event.type === 'set' && picked) {
-      if (which === 'start') setNapStart(picked);
-      else setNapEnd(picked);
-    }
-  };
+  const onNapPickerChange =
+    (which: 'start' | 'end') => (event: DateTimePickerEvent, picked?: Date) => {
+      if (Platform.OS !== 'ios') setOpenNapPicker(null);
+      if (event.type === 'set' && picked) {
+        if (which === 'start') setNapStart(picked);
+        else setNapEnd(picked);
+      }
+    };
 
   if (!kind) return null;
-  const meta = KIND_META[kind];
   const hasNapWindow = napStart !== null && napEnd !== null;
-  // The tappable stage-milestone chips for the CURRENTLY selected child — so the
+  const childName = kids.find((k) => k.id === childId)?.name ?? 'your little one';
+  // The tappable stage-milestone rows for the CURRENTLY selected child — so the
   // suggestions track the picker. Capped to keep the sheet head compact.
   const milestoneSuggestions =
     kind === 'milestone'
-      ? (kids.find((k) => k.id === childId)?.milestoneSuggestions ?? []).slice(
-          0,
-          MILESTONE_CHIP_LIMIT,
-        )
+      ? (kids.find((k) => k.id === childId)?.milestoneSuggestions ?? []).slice(0, MILESTONE_ROW_LIMIT)
       : [];
 
   const save = async () => {
-    const entry = value.trim();
-    // A nap with a complete window doesn't need the minutes field; every other
-    // shape needs its primary entry.
-    if (!(kind === 'nap' && hasNapWindow) && !entry) {
-      setError(meta.empty);
-      return;
-    }
     if (!childId) {
       setError('Add a child first.');
       return;
     }
-    if (kind === 'nap' && hasNapWindow && napEnd.getTime() <= napStart.getTime()) {
-      setError('The nap end must be after its start.');
+    if (kind === 'nap') {
+      if (!hasNapWindow) {
+        setError("Set the nap's start and end times.");
+        return;
+      }
+      if (napEnd.getTime() <= napStart.getTime()) {
+        setError('The nap end must be after its start.');
+        return;
+      }
+    }
+    if (kind === 'milestone' && !milestone.trim()) {
+      setError('Choose a milestone, or write your own.');
       return;
     }
     setError(null);
     setSaving(true);
-    const napWindow =
-      kind === 'nap' && hasNapWindow
-        ? { startAt: napStart.toISOString(), endAt: napEnd.toISOString() }
-        : null;
-    // A window nap belongs to the day it ENDED, not the moment it was typed —
-    // a 23:00–23:45 nap logged at 00:30 must not bucket under "today".
-    const occurredAt = napWindow ? napWindow.endAt : when.toISOString();
+    // A window nap belongs to the day it ENDED, not the moment it was typed — a
+    // 23:00–23:45 nap logged at 00:30 must not bucket under "today".
+    const occurredAt =
+      kind === 'nap' && hasNapWindow ? napEnd.toISOString() : when.toISOString();
+    const payload = buildLogPayload({
+      kind,
+      childId,
+      occurredAt,
+      feedWhat,
+      feedAmount,
+      napQuality,
+      napStartAt: napStart?.toISOString() ?? null,
+      napEndAt: napEnd?.toISOString() ?? null,
+      diaperKind,
+      milestone,
+      note,
+    });
     try {
       await api('/api/mobile/companion/log', {
         method: 'POST',
-        body: JSON.stringify(
-          buildPayload({ kind, childId, entry, occurredAt, feedKind, napWindow, note }),
-        ),
+        body: JSON.stringify(payload),
       });
       onLogged();
       onClose();
@@ -259,265 +268,261 @@ export function QuickLogModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1"
-      >
-        <Pressable
-          className="flex-1 justify-end bg-black/40"
-          onPress={onClose}
-          accessibilityLabel="Close"
-        >
-          {/* Sheet: a Pressable so taps inside don't dismiss; the inner ScrollView keeps
-              the field + Save reachable above the keyboard / a tall inline picker. */}
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="max-h-[88%] rounded-t-[28px] border-t border-rule bg-canvas"
-          >
-            <ScrollView
-              className="px-5 pt-3"
-              contentContainerClassName="pb-8"
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View className="mb-5 h-1.5 w-10 self-center rounded-full bg-rule-strong" />
-
-              <AppText variant="title" className="mb-4">
-                {meta.title}
-              </AppText>
-
-              {kids.length > 1 ? (
-                <View className="mb-4 flex-row gap-2 rounded-full border border-rule bg-card p-1">
-                  {kids.map((child) => {
-                    const active = child.id === childId;
-                    return (
-                      <Pressable
-                        key={child.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Log for ${child.name ?? 'child'}`}
-                        accessibilityState={active ? { selected: true } : {}}
-                        onPress={() => setChildId(child.id)}
-                        className={`flex-1 items-center rounded-full py-2 ${active ? 'bg-raised' : ''}`}
-                      >
-                        <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-3'}>
-                          {child.name ?? 'Child'}
-                        </AppText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
-
-              {milestoneSuggestions.length > 0 ? (
-                <View className="mb-4 gap-2">
-                  <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-                    Common for this stage
-                  </AppText>
-                  <View className="flex-row flex-wrap gap-2">
-                    {milestoneSuggestions.map((suggestion) => {
-                      const active = value.trim() === suggestion;
-                      return (
-                        <Pressable
-                          key={suggestion}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Milestone: ${suggestion}`}
-                          accessibilityState={active ? { selected: true } : {}}
-                          onPress={() => setValue(suggestion)}
-                          className={`rounded-full border px-3.5 py-2 active:opacity-80 ${
-                            active ? 'border-ink bg-ink' : 'border-rule bg-card'
-                          }`}
-                        >
-                          <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
-                            {suggestion}
-                          </AppText>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              <View className="mb-5">
-                <Field
-                  label={meta.field}
-                  value={value}
-                  onChangeText={setValue}
-                  keyboardType={meta.keyboard}
-                  placeholder={meta.placeholder}
-                  autoCapitalize={kind === 'milestone' ? 'sentences' : 'none'}
-                  autoFocus
-                />
-                {kind === 'nap' && hasNapWindow ? (
-                  <AppText variant="meta" className="mt-1.5 text-ink-3">
-                    Using the start and end below — the minutes field is optional.
-                  </AppText>
-                ) : null}
-              </View>
-
-              {kind === 'feed' ? (
-                <View className="mb-5 gap-2">
-                  <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-                    Kind (optional)
-                  </AppText>
-                  <View className="flex-row gap-2">
-                    {FEED_KINDS.map((fk) => {
-                      const active = fk.value === feedKind;
-                      return (
-                        <Pressable
-                          key={fk.value}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Feed kind: ${fk.label}`}
-                          accessibilityState={active ? { selected: true } : {}}
-                          onPress={() => setFeedKind(active ? null : fk.value)}
-                          className={`h-11 flex-1 items-center justify-center rounded-full border ${
-                            active ? 'border-ink bg-ink' : 'border-rule bg-card'
-                          }`}
-                        >
-                          <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
-                            {fk.label}
-                          </AppText>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              {kind === 'nap' ? (
-                <View className="mb-5 gap-2">
-                  <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-                    Start &amp; end (optional)
-                  </AppText>
-                  <NapBoundRow
-                    label="Start"
-                    value={napStart}
-                    open={openNapPicker === 'start'}
-                    onToggle={() => setOpenNapPicker((p) => (p === 'start' ? null : 'start'))}
-                    onChange={onNapPickerChange('start')}
-                    iconColor={iconColor}
-                  />
-                  <NapBoundRow
-                    label="End"
-                    value={napEnd}
-                    open={openNapPicker === 'end'}
-                    onToggle={() => setOpenNapPicker((p) => (p === 'end' ? null : 'end'))}
-                    onChange={onNapPickerChange('end')}
-                    iconColor={iconColor}
-                  />
-                  {hasNapWindow ? (
-                    <AppText variant="meta" className="text-ink-2">
-                      Duration: {durationLabel(napStart, napEnd)}
-                    </AppText>
-                  ) : null}
-                </View>
-              ) : null}
-
-              <View className="mb-5 gap-2">
-                <AppText variant="meta" className="uppercase tracking-eyebrow text-ink-3">
-                  When
+    <Sheet visible={visible} onClose={onClose} title={SHEET_TITLE[kind]}>
+      {kids.length > 1 ? (
+        <View className="mb-4 flex-row gap-2 rounded-full border border-rule bg-card p-1">
+          {kids.map((child) => {
+            const active = child.id === childId;
+            return (
+              <Pressable
+                key={child.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Log for ${child.name ?? 'child'}`}
+                accessibilityState={active ? { selected: true } : {}}
+                onPress={() => setChildId(child.id)}
+                className={`flex-1 items-center rounded-full py-2 ${active ? 'bg-raised' : ''}`}
+              >
+                <AppText variant="meta" className={active ? 'text-ink' : 'text-ink-3'}>
+                  {child.name ?? 'Child'}
                 </AppText>
-                <View className="flex-row gap-2">
-                  {WHEN_PRESETS.map((preset) => {
-                    const active = preset.minutesAgo === activePreset;
-                    return (
-                      <Pressable
-                        key={preset.label}
-                        accessibilityRole="button"
-                        accessibilityLabel={`When: ${preset.label}`}
-                        accessibilityState={active ? { selected: true } : {}}
-                        onPress={() => pickPreset(preset.minutesAgo)}
-                        className={`h-11 flex-1 items-center justify-center rounded-full border ${
-                          active ? 'border-ink bg-ink' : 'border-rule bg-card'
-                        }`}
-                      >
-                        <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
-                          {preset.label}
-                        </AppText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
-                {/* The exact date+time picker is a native module (no web impl), so on the
-                    RN-web preview we show the resolved time read-only; presets still set it. */}
-                {Platform.OS === 'web' ? (
-                  <View className="mt-1 h-12 flex-row items-center gap-2.5 rounded-md border border-rule bg-card px-4">
-                    <Icon name="calendar" size={16} color={iconColor} />
-                    <AppText variant="body" className="text-ink">
-                      {whenLabel(when)}
+      {kind === 'feed' ? (
+        <>
+          <SheetLabel>{`What did ${childName} have?`}</SheetLabel>
+          <View className="mb-4">
+            <ChipGrid
+              cols={3}
+              items={FEED_WHAT.map((w) => ({
+                label: w.label,
+                active: w.label === feedWhat,
+                onPress: () => setFeedWhat(w.label),
+              }))}
+            />
+          </View>
+          <SheetLabel>How much</SheetLabel>
+          <View className="mb-4">
+            <ChipGrid
+              cols={4}
+              items={FEED_AMOUNT.map((a) => ({
+                label: a.label,
+                active: a.label === feedAmount,
+                onPress: () => setFeedAmount(a.label),
+              }))}
+            />
+          </View>
+        </>
+      ) : null}
+
+      {kind === 'nap' ? (
+        <>
+          <SheetLabel>{`What time did ${childName} nap?`}</SheetLabel>
+          <View className="mb-4 gap-2.5">
+            <NapBoundRow
+              label="Start"
+              value={napStart}
+              open={openNapPicker === 'start'}
+              onToggle={() => setOpenNapPicker((p) => (p === 'start' ? null : 'start'))}
+              onChange={onNapPickerChange('start')}
+              iconColor={iconColor}
+            />
+            <NapBoundRow
+              label="End"
+              value={napEnd}
+              open={openNapPicker === 'end'}
+              onToggle={() => setOpenNapPicker((p) => (p === 'end' ? null : 'end'))}
+              onChange={onNapPickerChange('end')}
+              iconColor={iconColor}
+            />
+            {hasNapWindow ? (
+              <View className="flex-row items-center justify-between rounded-[13px] border border-rule px-3.5 py-3">
+                <AppText variant="meta" className="text-ink-2">
+                  Duration
+                </AppText>
+                <AppText variant="meta" className="text-ink">
+                  {durationLabel(napStart, napEnd)}
+                </AppText>
+              </View>
+            ) : null}
+          </View>
+          <SheetLabel>Quality</SheetLabel>
+          <View className="mb-4">
+            <ChipGrid
+              cols={4}
+              items={NAP_QUALITY.map((q) => ({
+                label: q,
+                active: q === napQuality,
+                onPress: () => setNapQuality(q),
+              }))}
+            />
+          </View>
+        </>
+      ) : null}
+
+      {kind === 'diaper' ? (
+        <>
+          <SheetLabel>What kind?</SheetLabel>
+          <View className="mb-4">
+            <ChipGrid
+              cols={4}
+              items={DIAPER_KIND.map((d) => ({
+                label: d.label,
+                active: d.value === diaperKind,
+                onPress: () => setDiaperKind(d.value),
+              }))}
+            />
+          </View>
+        </>
+      ) : null}
+
+      {kind === 'milestone' ? (
+        <>
+          <SheetLabel>Choose a milestone</SheetLabel>
+          {milestoneSuggestions.length > 0 ? (
+            <View className="mb-4 overflow-hidden rounded-2xl border border-rule">
+              {milestoneSuggestions.map((suggestion, i) => {
+                const active = milestone.trim() === suggestion;
+                return (
+                  <Pressable
+                    key={suggestion}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Milestone: ${suggestion}`}
+                    accessibilityState={active ? { selected: true } : {}}
+                    onPress={() => setMilestone(suggestion)}
+                    className={`flex-row items-center gap-3 px-4 py-3.5 active:opacity-80 ${
+                      i === 0 ? '' : 'border-t border-hairline'
+                    } ${active ? 'bg-chip-blue' : ''}`}
+                  >
+                    <AppText variant="body" className="flex-1 text-ink">
+                      {suggestion}
                     </AppText>
-                  </View>
-                ) : (
-                  <>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Exact time: ${whenLabel(when)}. Tap to change.`}
-                      accessibilityState={{ expanded: showPicker }}
-                      onPress={() => setShowPicker((s) => !s)}
-                      className="mt-1 h-12 flex-row items-center justify-between rounded-md border border-rule bg-card px-4 active:opacity-80"
-                    >
-                      <View className="flex-row items-center gap-2.5">
-                        <Icon name="calendar" size={16} color={iconColor} />
-                        <AppText variant="body" className="text-ink">
-                          {whenLabel(when)}
-                        </AppText>
-                      </View>
-                      <Icon
-                        name={showPicker ? 'chevron-up' : 'chevron-down'}
-                        size={13}
-                        color={iconColor}
-                      />
-                    </Pressable>
+                    <Icon
+                      name={active ? 'check' : 'chevron-right'}
+                      size={active ? 16 : 14}
+                      color={iconColor}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+          <View className="mb-4">
+            <Field
+              label={milestoneSuggestions.length > 0 ? 'Or write your own' : 'What happened'}
+              value={milestone}
+              onChangeText={setMilestone}
+              placeholder="Rolled over for the first time"
+              autoCapitalize="sentences"
+              maxLength={280}
+            />
+          </View>
+        </>
+      ) : null}
 
-                    {showPicker ? (
-                      <View className="items-center">
-                        <DateTimePicker
-                          value={when}
-                          mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
-                          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                          maximumDate={new Date()}
-                          onChange={onPickerChange}
-                        />
-                      </View>
-                    ) : null}
-                  </>
-                )}
-              </View>
+      {kind === 'feed' || kind === 'diaper' ? (
+        <View className="mb-4">
+          <Field
+            label="Notes (optional)"
+            value={note}
+            onChangeText={setNote}
+            placeholder={
+              kind === 'diaper' ? 'e.g. Slight rash, applied cream' : 'e.g. Ate avocado and sweet potato'
+            }
+            autoCapitalize="sentences"
+            maxLength={280}
+            multiline
+          />
+        </View>
+      ) : null}
 
-              <View className="mb-5">
-                <Field
-                  label="Note (optional)"
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="Anything worth remembering"
-                  autoCapitalize="sentences"
-                  maxLength={280}
-                  multiline
-                />
-              </View>
-
-              {error ? (
-                <AppText
-                  variant="meta"
-                  className="mb-3 text-berry"
-                  accessibilityLiveRegion="polite"
+      {kind === 'feed' || kind === 'diaper' ? (
+        <View className="mb-5 gap-2.5">
+          <SheetLabel>Time</SheetLabel>
+          <View className="flex-row gap-2.5">
+            {WHEN_PRESETS.map((preset) => {
+              const active = preset.minutesAgo === activePreset;
+              return (
+                <Pressable
+                  key={preset.label}
+                  accessibilityRole="button"
+                  accessibilityLabel={`When: ${preset.label}`}
+                  accessibilityState={active ? { selected: true } : {}}
+                  onPress={() => pickPreset(preset.minutesAgo)}
+                  className={`h-11 flex-1 items-center justify-center rounded-full border-[1.5px] ${
+                    active ? 'border-brand bg-chip-blue' : 'border-rule bg-card'
+                  }`}
                 >
-                  {error}
-                </AppText>
-              ) : null}
+                  <AppText variant="meta" className="text-ink">
+                    {preset.label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
 
-              <Button
-                label={
-                  saving ? 'Saving…' : kind === 'milestone' ? 'Create milestone' : 'Save log'
-                }
-                onPress={save}
-              />
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+          {/* The exact date+time picker is a native module (no web impl), so on the
+              RN-web preview we show the resolved time read-only; presets still set it. */}
+          {Platform.OS === 'web' ? (
+            <View className="h-12 flex-row items-center gap-2.5 rounded-[13px] border border-rule px-4">
+              <Icon name="calendar" size={16} color={iconColor} />
+              <AppText variant="body" className="text-ink">
+                {whenLabel(when)}
+              </AppText>
+            </View>
+          ) : (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Exact time: ${whenLabel(when)}. Tap to change.`}
+                accessibilityState={{ expanded: showPicker }}
+                onPress={() => setShowPicker((s) => !s)}
+                className="h-12 flex-row items-center justify-between rounded-[13px] border border-rule px-4 active:opacity-80"
+              >
+                <View className="flex-row items-center gap-2.5">
+                  <Icon name="calendar" size={16} color={iconColor} />
+                  <AppText variant="body" className="text-ink">
+                    {whenLabel(when)}
+                  </AppText>
+                </View>
+                <Icon
+                  name={showPicker ? 'chevron-up' : 'chevron-down'}
+                  size={13}
+                  color={iconColor}
+                />
+              </Pressable>
+
+              {showPicker ? (
+                <View className="items-center">
+                  <DateTimePicker
+                    value={when}
+                    mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
+                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                    maximumDate={new Date()}
+                    onChange={onPickerChange}
+                  />
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+      ) : null}
+
+      {error ? (
+        <AppText variant="meta" className="mb-3 text-berry" accessibilityLiveRegion="polite">
+          {error}
+        </AppText>
+      ) : null}
+
+      <Button
+        label={saving ? 'Saving…' : kind === 'milestone' ? 'Create milestone' : 'Save'}
+        onPress={save}
+        disabled={saving}
+      />
+    </Sheet>
   );
 }
 
@@ -573,13 +578,12 @@ function NapBoundRow({
 
   return (
     <View className="gap-1.5">
-      <AppText variant="meta" className="text-ink-2">
-        {label}
-      </AppText>
       {Platform.OS === 'web' ? (
-        <View className="h-12 flex-row items-center gap-2.5 rounded-md border border-rule bg-card px-4">
-          <Icon name="calendar" size={16} color={iconColor} />
-          <AppText variant="body" className={value ? 'text-ink' : 'text-ink-3'}>
+        <View className="flex-row items-center justify-between rounded-[13px] border border-rule px-3.5 py-3">
+          <AppText variant="meta" className="text-ink-2">
+            {label}
+          </AppText>
+          <AppText variant="meta" className={value ? 'text-ink' : 'text-ink-3'}>
             {display}
           </AppText>
         </View>
@@ -590,15 +594,17 @@ function NapBoundRow({
             accessibilityLabel={`${label}: ${display}. Tap to change.`}
             accessibilityState={{ expanded: open }}
             onPress={onToggle}
-            className="h-12 flex-row items-center justify-between rounded-md border border-rule bg-card px-4 active:opacity-80"
+            className="flex-row items-center justify-between rounded-[13px] border border-rule px-3.5 py-3 active:opacity-80"
           >
-            <View className="flex-row items-center gap-2.5">
-              <Icon name="calendar" size={16} color={iconColor} />
-              <AppText variant="body" className={value ? 'text-ink' : 'text-ink-3'}>
+            <AppText variant="meta" className="text-ink-2">
+              {label}
+            </AppText>
+            <View className="flex-row items-center gap-2">
+              <AppText variant="meta" className={value ? 'text-ink' : 'text-ink-3'}>
                 {display}
               </AppText>
+              <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
             </View>
-            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
           </Pressable>
           {Platform.OS === 'ios' ? (
             open ? (
