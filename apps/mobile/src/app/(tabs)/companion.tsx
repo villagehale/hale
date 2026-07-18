@@ -1359,6 +1359,7 @@ function CompanionBody({
 export default function CompanionScreen() {
   const { status, data, error, refreshing, reload, refresh } = useApi<MobileCompanionResponse>(
     '/api/mobile/companion',
+    { refetchOnFocus: true },
   );
 
   return (

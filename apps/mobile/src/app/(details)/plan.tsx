@@ -597,7 +597,7 @@ function PlanBody({ data, onRefresh }: { data: MobilePlanResponse; onRefresh: ()
 
 export default function PlanScreen() {
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobilePlanResponse>('/api/mobile/plan');
+    useApi<MobilePlanResponse>('/api/mobile/plan', { refetchOnFocus: true });
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>

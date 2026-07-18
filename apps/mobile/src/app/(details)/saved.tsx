@@ -147,7 +147,7 @@ function SavedBody({
 
 export default function SavedScreen() {
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobileSavedResponse>('/api/mobile/village/saved');
+    useApi<MobileSavedResponse>('/api/mobile/village/saved', { refetchOnFocus: true });
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>

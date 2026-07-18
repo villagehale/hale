@@ -118,7 +118,9 @@ export function DocsSection({
   childId: string;
   kids: ChildOption[];
 }) {
-  const { status, data, error, reload } = useApi<MobileDocsResponse>('/api/mobile/docs');
+  const { status, data, error, reload } = useApi<MobileDocsResponse>('/api/mobile/docs', {
+    refetchOnFocus: true,
+  });
   const [filter, setFilter] = useState<DocFilter>('all');
   const [adding, setAdding] = useState(false);
   const onAccent = useMeadowColor('onAccent');

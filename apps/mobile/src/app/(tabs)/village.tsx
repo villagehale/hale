@@ -685,7 +685,7 @@ export default function VillageScreen() {
 
   const readPath = activeSeason ? searchReadPath(activeSeason) : STANDING_PATH;
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobileVillageResponse>(readPath);
+    useApi<MobileVillageResponse>(readPath, { refetchOnFocus: true });
 
   const clearToFeed = useCallback(() => {
     setActiveSeason(null);

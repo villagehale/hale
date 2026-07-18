@@ -368,7 +368,7 @@ function HomeBody({
 
 export default function HomeScreen() {
   const { status, data, error, refreshing, reload, refresh } =
-    useApi<MobileHomeResponse>('/api/mobile/home');
+    useApi<MobileHomeResponse>('/api/mobile/home', { refetchOnFocus: true });
 
   return (
     <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
