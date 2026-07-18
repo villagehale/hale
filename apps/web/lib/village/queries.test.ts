@@ -125,11 +125,13 @@ describe('readVillageCandidateById', () => {
     expect(view?.kind).toBe('class');
   });
 
-  it('returns null for an id not owned by the family (no cross-family read)', async () => {
-    // The family-scoped WHERE finds no row for a foreign / unknown id.
+  it('returns null when no row is found', async () => {
+    // The candidate select resolves empty, so the function returns null before
+    // touching engagement. (This fake ignores the WHERE predicate, so it does NOT
+    // prove family scoping — the real cross-family probe is a Phase E live-QA case.)
     const db = fakeDb({ candidateRows: [] });
 
-    const view = await readVillageCandidateById(db, FAMILY_ID, 'someone-elses-candidate');
+    const view = await readVillageCandidateById(db, FAMILY_ID, 'no-such-candidate');
 
     expect(view).toBeNull();
   });
