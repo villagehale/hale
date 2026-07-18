@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
+import { Card } from '@/components/ui/card';
 import { Field } from '@/components/ui/field';
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
@@ -55,7 +56,7 @@ export function ChildFields({
   };
 
   return (
-    <View className="gap-4 rounded-lg border border-rule bg-card p-4">
+    <Card className="gap-4">
       <View className="flex-row items-start gap-3">
         <View className="flex-1">
           <Field
@@ -118,6 +119,6 @@ export function ChildFields({
         )}
         <AppText variant="meta">Birthday sets the stage Hale tailors to.</AppText>
       </View>
-    </View>
+    </Card>
   );
 }
