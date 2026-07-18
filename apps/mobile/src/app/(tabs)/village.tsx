@@ -12,6 +12,7 @@ import { Screen } from '@/components/ui/screen';
 import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Sheet } from '@/components/ui/sheet';
 import { Tag } from '@/components/ui/tag';
+import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { MobileVillageResponse, VillageCandidateView } from '@/lib/api-types';
@@ -302,7 +303,38 @@ function ChildcareSection() {
       <AppText variant="meta" className="text-caption">
         Sample listings — Hale&rsquo;s live childcare search is coming.
       </AppText>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="View all childcare options"
+        onPress={() => router.push('/childcare')}
+        className="min-h-12 flex-row items-center justify-center gap-2 rounded-[14px] border border-rule bg-card active:opacity-80"
+      >
+        <AppText variant="meta" className="text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+          View all childcare options
+        </AppText>
+      </Pressable>
     </View>
+  );
+}
+
+/** A quiet directory link to the Government Benefits page (handoff's Resources →
+ * Government Benefits row). Kept on the standing feed only, beside the childcare and
+ * resources directories it belongs with. */
+function BenefitsLink() {
+  const chevron = useMeadowColor('ink3');
+  return (
+    <Card onPress={() => router.push('/benefits')} className="flex-row items-center gap-3">
+      <TintChip icon="credit-card" tone="yellow" />
+      <View className="flex-1">
+        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
+          Government Benefits
+        </AppText>
+        <AppText variant="meta" className="text-caption">
+          Programs your family may qualify for
+        </AppText>
+      </View>
+      <Icon name="chevron-right" size={15} color={chevron} />
+    </Card>
   );
 }
 
@@ -670,6 +702,7 @@ function VillageBody({
           the server only sends `resources` on the standing read. */}
       {searchSeason === null ? <ChildcareSection /> : null}
       {searchSeason === null ? <ResourcesRail resources={data.resources} /> : null}
+      {searchSeason === null ? <BenefitsLink /> : null}
 
       <AppText variant="meta" className="mt-2 text-center">
         Recommendations use your coarse area only — never your exact address. Data stays in Canada.

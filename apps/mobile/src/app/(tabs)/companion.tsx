@@ -569,7 +569,10 @@ function HealthSection({
       </View>
 
       {nextImmunization ? (
-        <Card onPress={() => onOpen(nextImmunization)} className="flex-row items-center gap-3">
+        <Card
+          onPress={() => router.push(`/immunizations?child=${child.id}`)}
+          className="flex-row items-center gap-3"
+        >
           <TintChip icon="shield-check" tone="green" />
           <View className="flex-1">
             <AppText
