@@ -30,6 +30,14 @@ describe('draftToOnboardingInput', () => {
     expect(input.planTier).toBe('plus');
   });
 
+  it('defaults consent OFF and never fabricates it (rule #1 — tosAccepted only from an explicit act)', () => {
+    // A fresh draft must start un-consented, and the mapper must not invent consent:
+    // the create-account gate is the ONLY thing that flips tosAccepted true, and the
+    // server's tos_required gate rejects a submit without it.
+    expect(emptyDraft().tosAccepted).toBe(false);
+    expect(draftToOnboardingInput(emptyDraft()).tosAccepted).toBe(false);
+  });
+
   it('omits location entirely when no coarse fields are set', () => {
     const input = draftToOnboardingInput(draft({ location: {} }));
     expect(input.location).toBeUndefined();
