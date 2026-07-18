@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { Icon } from '@/components/ui/icon';
@@ -9,7 +9,8 @@ import { type MeadowColor, useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type { ChildCompanionView, MobileCompanionResponse } from '@/lib/api-types';
 import type { QuickLogMatch } from '@/lib/quick-log-detect';
-import { FEED_AMOUNT, type FeedAmountValue } from '@/lib/quick-log-payload';
+import { type DraftPicks, EMPTY_PICKS, buildDraftBody, draftNeedsInput } from '@/lib/quick-log-draft';
+import { DIAPER_KIND, FEED_AMOUNT, type FeedAmountValue } from '@/lib/quick-log-payload';
 import { useApi } from '@/lib/use-api';
 
 /**
@@ -22,11 +23,11 @@ import { useApi } from '@/lib/use-api';
  * retryable message (never silent — CLAUDE.md #8). Rule #1: family scoping and audit
  * are enforced server-side by POST /api/mobile/companion/log (the exact web write path).
  *
- * HONEST AMOUNT (the binding fix): a feed writes the parent's ACTUAL amount — a numeric
- * amountMl when the words gave one, else the qualitative feedAmount the words implied
- * ("ate all his lunch" → all). When the words imply NO amount, the card shows the
- * "How much" chips and Approve stays disabled until the parent picks — the server
- * accepts either an amount or a feedAmount, and never a fabricated millilitre figure.
+ * NO FABRICATION: the card writes only what the parent actually gave. Each kind has one
+ * datum the server requires — feed amount, nap duration, diaper kind, milestone text —
+ * and when the detector didn't lift it the card shows the picker (chips / a text field)
+ * and holds Approve disabled until it's set (see quick-log-draft.ts, which mirrors the
+ * server resolvers). No 120 ml, no 30 min, no default "wet", no literal "Milestone".
  *
  * The card lazily loads the family's children (only mounts when a log is detected)
  * since the write needs a childId; with more than one child it shows a compact picker,
@@ -52,68 +53,52 @@ const KIND_TAG: Record<QuickLogMatch['kind'], { tag: string; bg: string; fg: Mea
   milestone: { tag: 'M', bg: 'bg-chip-red', fg: 'chipRedIcon' },
 };
 
+/** The nap-duration chips (card presentation; each maps to a durationMin the server
+ * accepts). Common toddler nap lengths — the parent taps the closest, or refines later
+ * from the Companion timeline. */
+const NAP_DURATIONS: readonly { label: string; min: number }[] = [
+  { label: '30m', min: 30 },
+  { label: '45m', min: 45 },
+  { label: '1h', min: 60 },
+  { label: '1h 30m', min: 90 },
+  { label: '2h', min: 120 },
+];
+
+const cap = (s: string) => `${s[0].toUpperCase()}${s.slice(1)}`;
+
 /** value → human phrase for a qualitative feed amount, reusing the sheet's chip labels
  * so the draft and the picker read the same ("All of it", "A little"). */
 function feedAmountPhrase(value: FeedAmountValue): string {
   return FEED_AMOUNT.find((a) => a.value === value)?.label ?? value;
 }
 
-/** The sub-line under the tagged kind — only what the parser actually lifted, suffixed
- * "from your message" like the prototype. A feed with no amount yet reads honestly as
- * "amount not set" (the chips below resolve it); no field is ever invented. */
-function draftSub(match: QuickLogMatch, pickedAmount: FeedAmountValue | null): string {
+/**
+ * The sub-line under the tagged kind. A DETECTED value reads "<value> · from your
+ * message"; a value the parent PICKED in the card reads as just the value (no false
+ * "from your message" attribution); an unresolved field reads as a "pick below" prompt.
+ * No field is ever invented.
+ */
+function draftSub(match: QuickLogMatch, picks: DraftPicks): string {
   const from = 'from your message';
   if (match.kind === 'feed') {
     if (match.amountMl !== undefined) return `${match.amountMl} ml · ${from}`;
-    const amount = match.feedAmount ?? pickedAmount ?? undefined;
-    return amount ? `${feedAmountPhrase(amount)} · ${from}` : 'How much? Pick below';
+    if (match.feedAmount) return `${feedAmountPhrase(match.feedAmount)} · ${from}`;
+    if (picks.feedAmount) return feedAmountPhrase(picks.feedAmount);
+    return 'How much? Pick below';
   }
   if (match.kind === 'nap') {
-    return match.durationMin !== undefined ? `${match.durationMin} min · ${from}` : from;
+    if (match.durationMin !== undefined) return `${match.durationMin} min · ${from}`;
+    if (picks.durationMin !== null) return `${picks.durationMin} min`;
+    return 'How long? Pick below';
   }
   if (match.kind === 'diaper') {
-    const kind = match.diaperKind;
-    return kind ? `${kind[0].toUpperCase()}${kind.slice(1)} · ${from}` : from;
+    if (match.diaperKind) return `${cap(match.diaperKind)} · ${from}`;
+    if (picks.diaperKind) return cap(picks.diaperKind);
+    return 'Which kind? Pick below';
   }
-  return match.milestone ? `${match.milestone} · ${from}` : from;
-}
-
-/**
- * Build the POST body from the drafted match. A feed carries its numeric amountMl when
- * the words gave one, else the qualitative feedAmount (detected or picked) — NEVER a
- * fabricated default (the binding fix; the server's resolveFeed requires one or the
- * other, and Approve is blocked until it exists). Nap / diaper / milestone fall back to
- * a small sensible default the parent can refine from the Companion timeline.
- */
-function buildBody(
-  match: QuickLogMatch,
-  childId: string,
-  occurredAt: string,
-  pickedAmount: FeedAmountValue | null,
-): Record<string, unknown> {
-  if (match.kind === 'feed') {
-    if (match.amountMl !== undefined) return { kind: 'feed', childId, amountMl: match.amountMl, occurredAt };
-    const feedAmount = match.feedAmount ?? pickedAmount ?? undefined;
-    return { kind: 'feed', childId, occurredAt, ...(feedAmount ? { feedAmount } : {}) };
-  }
-  if (match.kind === 'nap') {
-    return { kind: 'nap', childId, durationMin: match.durationMin ?? 30, occurredAt };
-  }
-  if (match.kind === 'diaper') {
-    return { kind: 'diaper', childId, diaperKind: match.diaperKind ?? 'wet', occurredAt };
-  }
-  return { kind: 'milestone', childId, milestone: match.milestone ?? 'Milestone', occurredAt };
-}
-
-/** True when a feed draft has no amount at all (neither numeric nor qualitative,
- * detected or picked) — Approve is withheld and the chips are shown until it's set. */
-function feedNeedsAmount(match: QuickLogMatch, pickedAmount: FeedAmountValue | null): boolean {
-  return (
-    match.kind === 'feed' &&
-    match.amountMl === undefined &&
-    match.feedAmount === undefined &&
-    pickedAmount === null
-  );
+  if (match.milestone) return `${match.milestone} · ${from}`;
+  const typed = picks.milestone.trim();
+  return typed ? typed : 'Add a note to log it';
 }
 
 function ChildPicker({
@@ -150,40 +135,115 @@ function ChildPicker({
   );
 }
 
-/** The qualitative "How much" chips — shown only when a feed draft carries no amount.
- * Picking one resolves the honest amount so Approve can write a valid feed. */
-function AmountChips({
-  picked,
-  onPick,
+/** The picker chip row — shown for the datum a draft still needs (feed amount / nap
+ * duration / diaper kind). Picking one resolves the honest value so Approve unlocks. */
+function PickerChips({
+  label,
+  chips,
 }: {
-  picked: FeedAmountValue | null;
-  onPick: (v: FeedAmountValue) => void;
+  label: string;
+  chips: { key: string; label: string; active: boolean; onPress: () => void }[];
 }) {
   return (
-    <View className="mt-2 gap-1.5">
-      <AppText variant="eyebrow">How much?</AppText>
+    <View className="mt-3 gap-1.5">
+      <AppText variant="eyebrow">{label}</AppText>
       <View className="flex-row flex-wrap gap-2">
-        {FEED_AMOUNT.map((a) => {
-          const active = picked === a.value;
-          return (
-            <Pressable
-              key={a.value}
-              accessibilityRole="button"
-              accessibilityLabel={a.label}
-              accessibilityState={active ? { selected: true } : {}}
-              onPress={() => onPick(a.value)}
-              className={`rounded-full border px-3 py-1.5 active:opacity-80 ${
-                active ? 'border-ink bg-ink' : 'border-rule bg-card'
-              }`}
-            >
-              <AppText variant="meta" className={active ? 'text-on-ink' : 'text-ink-2'}>
-                {a.label}
-              </AppText>
-            </Pressable>
-          );
-        })}
+        {chips.map((c) => (
+          <Pressable
+            key={c.key}
+            accessibilityRole="button"
+            accessibilityLabel={c.label}
+            accessibilityState={c.active ? { selected: true } : {}}
+            onPress={c.onPress}
+            className={`rounded-full border px-3 py-1.5 active:opacity-80 ${
+              c.active ? 'border-ink bg-ink' : 'border-rule bg-card'
+            }`}
+          >
+            <AppText variant="meta" className={c.active ? 'text-on-ink' : 'text-ink-2'}>
+              {c.label}
+            </AppText>
+          </Pressable>
+        ))}
       </View>
     </View>
+  );
+}
+
+/** The milestone note field — a draft with no lifted text prefills EMPTY and Approve
+ * stays disabled until the parent types something (never the literal "Milestone"). */
+function MilestoneInput({ value, onChange }: { value: string; onChange: (t: string) => void }) {
+  const placeholderColor = useMeadowColor('ink3');
+  const inputColor = useMeadowColor('ink');
+  return (
+    <View className="mt-3 gap-1.5">
+      <AppText variant="eyebrow">What did they do?</AppText>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="e.g. first steps"
+        placeholderTextColor={placeholderColor}
+        accessibilityLabel="Milestone description"
+        style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular' }}
+        className="min-h-10 rounded-[12px] border border-rule bg-canvas px-3 py-2 text-[15px]"
+      />
+    </View>
+  );
+}
+
+/** The picker for whatever datum the draft still needs, by kind. */
+function DraftInput({
+  match,
+  picks,
+  setPicks,
+}: {
+  match: QuickLogMatch;
+  picks: DraftPicks;
+  setPicks: (fn: (p: DraftPicks) => DraftPicks) => void;
+}) {
+  if (match.kind === 'feed') {
+    return (
+      <PickerChips
+        label="How much?"
+        chips={FEED_AMOUNT.map((a) => ({
+          key: a.value,
+          label: a.label,
+          active: picks.feedAmount === a.value,
+          onPress: () => setPicks((p) => ({ ...p, feedAmount: a.value })),
+        }))}
+      />
+    );
+  }
+  if (match.kind === 'nap') {
+    return (
+      <PickerChips
+        label="How long?"
+        chips={NAP_DURATIONS.map((d) => ({
+          key: String(d.min),
+          label: d.label,
+          active: picks.durationMin === d.min,
+          onPress: () => setPicks((p) => ({ ...p, durationMin: d.min })),
+        }))}
+      />
+    );
+  }
+  if (match.kind === 'diaper') {
+    return (
+      <PickerChips
+        label="Which kind?"
+        chips={DIAPER_KIND.map((d) => ({
+          key: d.value,
+          label: d.label,
+          active: picks.diaperKind === d.value,
+          onPress: () => setPicks((p) => ({ ...p, diaperKind: d.value })),
+        }))}
+      />
+    );
+  }
+  return (
+    <MilestoneInput
+      value={picks.milestone}
+      onChange={(t) => setPicks((p) => ({ ...p, milestone: t }))}
+    />
   );
 }
 
@@ -191,7 +251,7 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
   const { data } = useApi<MobileCompanionResponse>('/api/mobile/companion');
   const kids = useMemo(() => data?.children ?? [], [data]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pickedAmount, setPickedAmount] = useState<FeedAmountValue | null>(null);
+  const [picks, setPicks] = useState<DraftPicks>(EMPTY_PICKS);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const tag = KIND_TAG[match.kind];
@@ -202,7 +262,8 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
 
   const childId = selectedId ?? kids[0]?.id ?? null;
   const childName = kids.find((k) => k.id === childId)?.name ?? null;
-  const needsAmount = feedNeedsAmount(match, pickedAmount);
+  const needsInput = draftNeedsInput(match, picks);
+  const editable = status !== 'logged' && status !== 'rejected';
 
   const approve = async () => {
     if (!childId) {
@@ -210,14 +271,14 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
       setError('Add a child in Family first, then log this.');
       return;
     }
-    if (needsAmount) return;
+    if (needsInput) return;
     setStatus('saving');
     setError(null);
     const occurredAt = new Date().toISOString();
     try {
       await api('/api/mobile/companion/log', {
         method: 'POST',
-        body: JSON.stringify(buildBody(match, childId, occurredAt, pickedAmount)),
+        body: JSON.stringify(buildDraftBody(match, childId, occurredAt, picks)),
       });
       setStatus('logged');
     } catch (e) {
@@ -253,19 +314,19 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
               {KIND_LABEL[match.kind]}
             </AppText>
             <AppText variant="meta" className="text-caption">
-              {draftSub(match, pickedAmount)}
+              {draftSub(match, picks)}
             </AppText>
           </View>
         </View>
 
-        {kids.length > 1 && status !== 'logged' && status !== 'rejected' ? (
+        {kids.length > 1 && editable ? (
           <View className="mt-3">
             <ChildPicker kids={kids} selectedId={childId ?? ''} onSelect={setSelectedId} />
           </View>
         ) : null}
 
-        {needsAmount && status !== 'logged' && status !== 'rejected' ? (
-          <AmountChips picked={pickedAmount} onPick={setPickedAmount} />
+        {needsInput && editable ? (
+          <DraftInput match={match} picks={picks} setPicks={setPicks} />
         ) : null}
 
         {status === 'error' && error ? (
@@ -301,12 +362,12 @@ export function QuickLogCard({ match }: { match: QuickLogMatch }) {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={needsAmount ? 'Pick how much first, then approve' : 'Approve and log this'}
-              accessibilityState={{ disabled: needsAmount || status === 'saving' }}
-              disabled={needsAmount || status === 'saving'}
+              accessibilityLabel={needsInput ? 'Add the missing detail first, then approve' : 'Approve and log this'}
+              accessibilityState={{ disabled: needsInput || status === 'saving' }}
+              disabled={needsInput || status === 'saving'}
               onPress={approve}
               className={`flex-[1.3] flex-row items-center justify-center gap-1.5 rounded-[12px] bg-brand py-3 ${
-                needsAmount ? 'opacity-50' : 'active:opacity-90'
+                needsInput ? 'opacity-50' : 'active:opacity-90'
               }`}
             >
               <AppText variant="meta" className="text-on-ink">
