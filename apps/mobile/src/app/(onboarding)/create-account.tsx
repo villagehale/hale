@@ -222,6 +222,11 @@ export default function CreateAccountScreen() {
           </AppText>
         </View>
 
+        <AppText variant="body" className="text-ink-2">
+          Your family&rsquo;s data is stored in Canada — AI processing runs with our US-based
+          provider, exactly as the Privacy Policy describes. Built to PIPEDA and Quebec Law 25.
+        </AppText>
+
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: acknowledged }}
