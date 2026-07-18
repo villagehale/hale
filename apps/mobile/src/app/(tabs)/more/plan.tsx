@@ -257,7 +257,7 @@ function AddPlan({ kids, onCreated }: { kids: ScopeChild[]; onCreated: () => voi
           }}
           placeholder="swimming registration"
           placeholderTextColor={placeholderColor}
-          style={{ color: inputColor, fontFamily: 'Inter_400Regular' }}
+          style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular' }}
           className="min-h-11 rounded-md border border-rule bg-canvas px-4 py-3 text-[16px]"
           autoFocus
         />
@@ -274,7 +274,7 @@ function AddPlan({ kids, onCreated }: { kids: ScopeChild[]; onCreated: () => voi
           placeholder="anything you want to remember"
           placeholderTextColor={placeholderColor}
           multiline
-          style={{ color: inputColor, fontFamily: 'Inter_400Regular', minHeight: 72 }}
+          style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular', minHeight: 72 }}
           className="rounded-md border border-rule bg-canvas px-4 py-3 text-[16px]"
         />
       </View>

@@ -28,9 +28,6 @@ importers:
       '@expo-google-fonts/instrument-sans':
         specifier: ^0.4.2
         version: 0.4.2
-      '@expo-google-fonts/inter':
-        specifier: ^0.4.2
-        version: 0.4.2
       '@expo-google-fonts/source-serif-4':
         specifier: ^0.4.1
         version: 0.4.1
@@ -1510,9 +1507,6 @@ packages:
 
   '@expo-google-fonts/instrument-sans@0.4.2':
     resolution: {integrity: sha512-YR0jemCJ/eUlknOfxxxiLnJWpFDaT0KgLiB1q333jIDPlRAERfuMpOislkWA1A7HGX85N9LCsjWLlB3QOZo1wg==}
-
-  '@expo-google-fonts/inter@0.4.2':
-    resolution: {integrity: sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ==}
 
   '@expo-google-fonts/material-symbols@0.4.38':
     resolution: {integrity: sha512-IJkBtN1o8u9BW5fvSii1MyHPQ7Q0HxbWcVBvOrOzgMLpVtZw7R2w94wBTVR7kZwv3w1JNTESMmLA5Sqn1+Z36A==}
@@ -6972,8 +6966,6 @@ snapshots:
     optional: true
 
   '@expo-google-fonts/instrument-sans@0.4.2': {}
-
-  '@expo-google-fonts/inter@0.4.2': {}
 
   '@expo-google-fonts/material-symbols@0.4.38': {}
 
