@@ -86,12 +86,29 @@ export interface LogView {
   unit?: string;
 }
 
+/** The band of a computed WHO z-score: 'typical' when |z| ≤ 2, else 'review' (a
+ * neutral "worth a look", never a diagnosis). Mirrors web GrowthBand. */
+export type GrowthBand = 'typical' | 'review';
+
+/** The deterministic WHO growth read of one measure's LATEST reading (mirrors web
+ * GrowthAssessmentView). A discriminated union so the app renders exactly one honest
+ * state per kind; a kind with no reading (or one outside WHO's 0–5y range) is simply
+ * absent. Never LLM-derived — pure math over committed WHO tables (server-side). */
+export type GrowthAssessmentView =
+  | { measureKind: string; state: 'assessed'; z: number; band: GrowthBand }
+  | { measureKind: string; state: 'needs-details' }
+  | { measureKind: string; state: 'preterm' };
+
 /** One keyset page of logs, newest first, with the cursor for the next page
  * (mirrors web LogsPage / MobileLogsResponse). */
 export interface MobileLogsResponse {
   logs: LogView[];
   /** occurredAt to page before on the next request, or null on the last page. */
   nextCursor: string | null;
+  /** WHO growth read per measure — present only on a single-child measurement page
+   * (the Growth tab's query), omitted for the family-wide Diary read. Built from the
+   * already-redacted logs server-side (a teen's reading never contributes, rule #1). */
+  growthAssessments?: GrowthAssessmentView[];
 }
 
 // ── docs vault (from apps/web lib/docs/documents DocumentView + route envelopes) ──

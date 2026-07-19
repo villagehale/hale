@@ -5,16 +5,6 @@
  * with a real source before treating it as truth. See task-7-report.md.
  */
 
-/**
- * The Growth "overview" verdict + reference line (Growth tab). STUB: Hale does NOT
- * compute WHO percentiles — there is deliberately no server-side growth derivation
- * (a plain record of readings, not a clinical assessment). These are the prototype's
- * placeholder labels; the accompanying caveat copy keeps the screen honest until a
- * real percentile computation exists. Do not treat "On track" as a clinical verdict.
- */
-export const GROWTH_VERDICT = 'On track' as const;
-export const GROWTH_DATA_SOURCE = 'WHO Growth Standards' as const;
-
 /** One row of the suggested daily rhythm (Routines → Daily). */
 export interface SuggestedRoutineRow {
   /** Local clock label, e.g. "7:00 AM". */
