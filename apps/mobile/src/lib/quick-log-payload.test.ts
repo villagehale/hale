@@ -90,7 +90,7 @@ describe('buildLogPayload — feed', () => {
 });
 
 describe('buildLogPayload — nap', () => {
-  it('sends the start/end window and folds the quality into the note', () => {
+  it('sends the start/end window and the structured quality (no note-folding)', () => {
     const payload = buildLogPayload({
       ...baseInput,
       kind: 'nap',
@@ -104,11 +104,11 @@ describe('buildLogPayload — nap', () => {
       occurredAt: OCCURRED,
       startAt: '2026-07-17T13:15:00.000Z',
       endAt: '2026-07-17T15:00:00.000Z',
-      note: 'Quality: Excellent',
+      quality: 'excellent',
     });
   });
 
-  it('sends a direct durationMin (the RN-web path) when there is no window', () => {
+  it('sends a direct durationMin (the RN-web path) with the mapped quality', () => {
     const payload = buildLogPayload({
       ...baseInput,
       kind: 'nap',
@@ -120,8 +120,26 @@ describe('buildLogPayload — nap', () => {
       childId: CHILD,
       occurredAt: OCCURRED,
       durationMin: 45,
-      note: 'Quality: Okay',
+      quality: 'okay',
     });
+  });
+
+  it('never folds the quality into the note (the note stays free-text only)', () => {
+    const payload = buildLogPayload({ ...baseInput, kind: 'nap', napDurationMin: 30, napQuality: 'Good' });
+    expect(payload).not.toHaveProperty('note');
+  });
+
+  it('omits quality entirely when no chip was tapped (no fabricated default)', () => {
+    // The sheet has no preselected quality; an untouched nap sends no quality at all,
+    // rather than recording an unengaged "good".
+    const payload = buildLogPayload({ ...baseInput, kind: 'nap', napDurationMin: 30, napQuality: '' });
+    expect(payload).toEqual({
+      kind: 'nap',
+      childId: CHILD,
+      occurredAt: OCCURRED,
+      durationMin: 30,
+    });
+    expect(payload).not.toHaveProperty('quality');
   });
 });
 
@@ -180,7 +198,8 @@ describe('chip sets mirror the prototype', () => {
 
   it('exposes the four "how much" and four quality labels', () => {
     expect(FEED_AMOUNT.map((a) => a.label)).toEqual(['A little', 'Half', 'Most of it', 'All of it']);
-    expect([...NAP_QUALITY]).toEqual(['Poor', 'Okay', 'Good', 'Excellent']);
+    expect(NAP_QUALITY.map((q) => q.label)).toEqual(['Poor', 'Okay', 'Good', 'Excellent']);
+    expect(NAP_QUALITY.map((q) => q.value)).toEqual(['poor', 'okay', 'good', 'excellent']);
   });
 
   it('exposes the four diaper kinds as the server fixed set', () => {

@@ -19,9 +19,11 @@ function render(
       current: 'free',
       period: 'monthly',
       state: { kind: 'idle' },
+      billingConfigured: false,
       onPeriodChange: () => {},
       onSelectFree: () => {},
       onNotify: () => {},
+      onUpgrade: () => {},
       ...overrides,
     }),
   );
@@ -54,9 +56,17 @@ describe('FamilyPlanView (settings plan section)', () => {
     expect(html).toContain('annual');
   });
 
-  it('marks the current tier and softens the paid CTA (no checkout)', () => {
-    const html = render({ current: 'free' });
+  it('softens the paid CTA to "notify me" when billing is not configured (dormant)', () => {
+    const html = render({ current: 'free', billingConfigured: false });
     expect(html).toContain('your plan');
     expect(html).toContain('notify me');
+    expect(html).not.toContain('upgrade to');
+  });
+
+  it('shows an Upgrade CTA on the paid tiers only when billing is configured', () => {
+    const html = render({ current: 'free', billingConfigured: true });
+    expect(html).toContain(`upgrade to ${PLAN_DISPLAY.plus.name}`);
+    expect(html).toContain(`upgrade to ${PLAN_DISPLAY.family.name}`);
+    expect(html).not.toContain('notify me');
   });
 });

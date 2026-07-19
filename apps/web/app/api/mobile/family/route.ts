@@ -106,6 +106,7 @@ async function dispatch(body: MobileFamilyUpdateRequest): Promise<DispatchResult
         dateOfBirth: body.dateOfBirth,
         lastName: body.lastName,
         gender: body.gender,
+        biologicalSex: body.biologicalSex,
         interests: body.interests,
       });
       if (result.status === 'invalid') {

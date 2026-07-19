@@ -12,6 +12,15 @@ const EXPECTED: Record<string, string> = {
   firstaid: 'First aid basics',
 };
 
+// The onboarding intent each guide is tagged with — the key the Resources list floats
+// on for a family that stated it. Spec-derived (not read from GUIDES) so a mis-tag that
+// would silently break the reorder fails here.
+const EXPECTED_INTENT: Record<string, string> = {
+  sleep: 'sleep',
+  solids: 'feeding',
+  firstaid: 'health',
+};
+
 describe('findGuide — Resources → Guide page lookup', () => {
   it('resolves every guide the Resources list links to, with its prototype title', () => {
     for (const [id, title] of Object.entries(EXPECTED)) {
@@ -23,6 +32,8 @@ describe('findGuide — Resources → Guide page lookup', () => {
       expect(guide?.readTime).toMatch(/min read/);
       expect(guide?.tips.length).toBeGreaterThanOrEqual(3);
       expect(guide?.tips.every((tip) => tip.trim().length > 0)).toBe(true);
+      // Intent tag drives the Resources reorder — must match the spec mapping.
+      expect(guide?.intent).toBe(EXPECTED_INTENT[id]);
     }
   });
 

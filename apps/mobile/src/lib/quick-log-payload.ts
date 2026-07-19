@@ -13,10 +13,11 @@
 
 export type LogKind = 'feed' | 'nap' | 'diaper' | 'milestone';
 
-/** The feed-kind / feed-amount / diaper-kind literals the server accepts. */
+/** The feed-kind / feed-amount / diaper-kind / nap-quality literals the server accepts. */
 export type FeedKindValue = 'bottle' | 'breast' | 'solid';
 export type FeedAmountValue = 'little' | 'half' | 'most' | 'all';
 export type DiaperKindValue = 'wet' | 'dirty' | 'mixed' | 'dry';
+export type NapQualityValue = 'poor' | 'okay' | 'good' | 'excellent';
 
 export const SHEET_TITLE: Record<LogKind, string> = {
   feed: 'Log feed',
@@ -46,9 +47,14 @@ export const FEED_AMOUNT: { label: string; value: FeedAmountValue }[] = [
   { label: 'All of it', value: 'all' },
 ];
 
-/** The prototype's nap "Quality" chips. The nap contract has no quality field, so the
- * pick is folded into the note ("Quality: Good"). */
-export const NAP_QUALITY = ['Poor', 'Okay', 'Good', 'Excellent'] as const;
+/** The prototype's nap "Quality" chips → the server nap `quality` enum. Stored as a
+ * structured field (superseding the old note-folded "Quality: Good" string). */
+export const NAP_QUALITY: { label: string; value: NapQualityValue }[] = [
+  { label: 'Poor', value: 'poor' },
+  { label: 'Okay', value: 'okay' },
+  { label: 'Good', value: 'good' },
+  { label: 'Excellent', value: 'excellent' },
+];
 
 /** The prototype's diaper "What kind?" chips → the server diaperKind. */
 export const DIAPER_KIND: { label: string; value: DiaperKindValue }[] = [
@@ -66,11 +72,15 @@ export function feedAmountForLabel(label: string): FeedAmountValue | undefined {
   return FEED_AMOUNT.find((a) => a.label === label)?.value;
 }
 
+export function napQualityForLabel(label: string): NapQualityValue | undefined {
+  return NAP_QUALITY.find((q) => q.label === label)?.value;
+}
+
 /**
  * Shapes the POST body for the tapped kind. A feed carries its qualitative feedAmount
  * + optional feedKind from its chips; a nap sends its start/end WINDOW (native — the
- * server derives the duration) or a direct durationMin (RN-web), with the quality
- * folded into the note; a diaper sends its diaperKind; a milestone sends its text. An
+ * server derives the duration) or a direct durationMin (RN-web), plus its structured
+ * quality chip; a diaper sends its diaperKind; a milestone sends its text. An
  * optional parent note rides on feed and diaper. The caller has already resolved
  * `occurredAt` (a nap window uses its end; every other kind uses the picked "when").
  */
@@ -105,12 +115,14 @@ export function buildLogPayload(input: {
   }
   if (kind === 'nap') {
     // A start/end window (native) drives the duration server-side; a direct minutes
-    // entry (RN-web) sends durationMin. The quality rides in the note either way.
+    // entry (RN-web) sends durationMin. The quality chip is a structured field now,
+    // not folded into the note (the nap note stays free-text — unused by this sheet).
     const window =
       input.napStartAt && input.napEndAt
         ? { startAt: input.napStartAt, endAt: input.napEndAt }
         : { durationMin: input.napDurationMin ?? undefined };
-    return { ...base, ...window, note: `Quality: ${input.napQuality}` };
+    const quality = napQualityForLabel(input.napQuality);
+    return { ...base, ...window, ...(quality ? { quality } : {}) };
   }
   if (kind === 'diaper') {
     return {

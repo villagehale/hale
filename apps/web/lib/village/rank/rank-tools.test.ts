@@ -21,6 +21,7 @@ const TEEN_DOB = '2010-06-01'; // ~16y → teenager
 function fakeDb(args: {
   children: Array<{ id: string; dateOfBirth: string }>;
   candidates: Array<Record<string, unknown>>;
+  family?: { areaCoarse: string | null; intents: string[] | null };
 }) {
   const build = (rows: unknown[]) => {
     // `.where()` is both awaitable (the children/families/facts reads await it
@@ -40,6 +41,7 @@ function fakeDb(args: {
         if (table === schema.children) return build(args.children);
         if (table === schema.villageCandidates) return build(args.candidates);
         if (table === schema.villageEndorsements) return build([]);
+        if (table === schema.families) return build(args.family ? [args.family] : []);
         return build([]);
       },
     }),
@@ -155,6 +157,29 @@ describe('get_family_fit_context — excludes teens from the fit signal (rule #1
 
     expect(result.childStages).toContain('toddler');
     expect(result.childStages).not.toContain('teenager');
+  });
+
+  it('carries the family stored intents to the ranking LLM as free text', async () => {
+    // The fit signal hands stored intents straight through — so a baby-care intent
+    // ('sleep', added to the canonical set) reaches ranking with no extra plumbing.
+    const db = fakeDb({
+      children: [{ id: TODDLER_ID, dateOfBirth: TODDLER_DOB }],
+      candidates: [],
+      family: { areaCoarse: 'M5V', intents: ['sleep', 'activities'] },
+    });
+    const audits: Array<{ actionTaken: string }> = [];
+
+    const result = (await invokeTool(
+      toolByName(db, 'get_family_fit_context'),
+      {},
+      { familyId: FAMILY_ID, actor: 'system' },
+      captureGuardDeps(audits),
+    )) as { intents: string[]; areaCoarse: string | null };
+
+    expect(result.intents).toContain('sleep');
+    expect(result.intents).toEqual(['sleep', 'activities']);
+    expect(result.areaCoarse).toBe('M5V');
+    expect(audits).toEqual([{ actionTaken: 'tool:get_family_fit_context' }]);
   });
 });
 

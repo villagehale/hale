@@ -10,8 +10,11 @@ import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
-import type { CuratedResourceView, MobileVillageResponse } from '@/lib/api-types';
-import { childcareResources } from '@/lib/childcare';
+import {
+  CHILDCARE_RESOURCE_CATEGORY,
+  type CuratedResourceView,
+  type MobileVillageResponse,
+} from '@/lib/api-types';
 import { STUB_CHILDCARE, type StubChildcareProvider } from '@/lib/stub-data';
 import { useApi } from '@/lib/use-api';
 
@@ -60,9 +63,10 @@ function ChildcareBadge({ status }: { status: StubChildcareProvider['status'] })
 /**
  * The Childcare Options page (handoff), reached from the Village tab. Two clearly
  * separated, honestly-sourced sections:
- *  - "Near you": REAL curated childcare programs (EarlyON centres) from the same
- *    Village `resources` read the tab uses — filtered to the childcare category
- *    (mirrors web's board-filter). These open the official page in the browser.
+ *  - "Near you": REAL curated childcare programs (EarlyON centres). The read is
+ *    narrowed to the childcare category SERVER-SIDE (the ?category= param), so the
+ *    page receives only childcare rows — no client-side category filter, no mobile
+ *    copy of the category string. These open the official page in the browser.
  *    Curated resources are family-agnostic and carry a coarse area only, so there is
  *    no teen-attributable content to redact (rule #1 is satisfied by construction).
  *  - "Sample availability": the Task-8 stub providers with Accepting/Waitlist badges.
@@ -75,7 +79,8 @@ function ChildcareBadge({ status }: { status: StubChildcareProvider['status'] })
  * curated-resource category. Built against reality; flagged to the lead.
  */
 function ChildcareBody({ data }: { data: MobileVillageResponse }) {
-  const real = childcareResources(data.resources);
+  // The server already narrowed the Resources rail to the childcare category.
+  const real = data.resources ?? [];
 
   return (
     <>
@@ -144,7 +149,7 @@ function ChildcareBody({ data }: { data: MobileVillageResponse }) {
 
 export default function ChildcareScreen() {
   const { status, data, error, refreshing, reload, refresh } = useApi<MobileVillageResponse>(
-    '/api/mobile/village',
+    `/api/mobile/village?category=${encodeURIComponent(CHILDCARE_RESOURCE_CATEGORY)}`,
     { refetchOnFocus: true },
   );
 

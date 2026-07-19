@@ -1,8 +1,10 @@
 import type { FamilyStage } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import {
+  buildInput,
   eligibleKidsFor,
   type QuickLogChild,
+  type QuickLogFormValues,
   visibleKindsFor,
 } from './quick-log-kinds';
 
@@ -56,5 +58,96 @@ describe('quick-log eligible children per kind', () => {
 
   it('allows milestone for every child', () => {
     expect(eligibleKidsFor(kids, 'milestone').map((c) => c.id)).toEqual(['teen', 'baby', 'kid']);
+  });
+});
+
+/**
+ * buildInput turns the open form's raw values into the typed server-action input.
+ * Expected shapes are derived from the quickLogSchema contract (a feed carries
+ * EITHER a numeric amountMl OR a qualitative feedAmount ∈ little/half/most/all),
+ * not copied from the builder's output. The qualitative "how much" chips and the
+ * ml field are mutually exclusive in the UI; buildInput encodes which wins.
+ */
+const CHILD = '22222222-2222-4222-8222-222222222222';
+
+function values(over: Partial<QuickLogFormValues> = {}): QuickLogFormValues {
+  return {
+    amountMl: '',
+    feedAmount: '',
+    feedKind: '',
+    durationMin: '',
+    milestone: '',
+    milestoneNote: '',
+    when: '',
+    ...over,
+  };
+}
+
+describe('quick-log buildInput — feed amount (numeric vs qualitative)', () => {
+  it('posts a numeric amountMl when the ml field is filled and no chip is picked', () => {
+    expect(buildInput('feed', CHILD, values({ amountMl: '120' }))).toEqual({
+      kind: 'feed',
+      childId: CHILD,
+      amountMl: 120,
+    });
+  });
+
+  it('posts the qualitative feedAmount when a chip is picked and no ml is typed', () => {
+    expect(buildInput('feed', CHILD, values({ feedAmount: 'most' }))).toEqual({
+      kind: 'feed',
+      childId: CHILD,
+      feedAmount: 'most',
+    });
+  });
+
+  it('carries the optional feedKind alongside a qualitative amount', () => {
+    expect(buildInput('feed', CHILD, values({ feedAmount: 'half', feedKind: 'breast' }))).toEqual({
+      kind: 'feed',
+      childId: CHILD,
+      feedAmount: 'half',
+      feedKind: 'breast',
+    });
+  });
+
+  it('prefers the qualitative chip over a stray ml value (the chip is the explicit pick)', () => {
+    expect(buildInput('feed', CHILD, values({ feedAmount: 'all', amountMl: '90' }))).toEqual({
+      kind: 'feed',
+      childId: CHILD,
+      feedAmount: 'all',
+    });
+  });
+
+  it('returns null for a feed with neither an ml value nor a chip', () => {
+    expect(buildInput('feed', CHILD, values())).toBeNull();
+  });
+});
+
+describe('quick-log buildInput — nap, milestone, occurredAt', () => {
+  it('posts a nap durationMin from the minutes field', () => {
+    expect(buildInput('nap', CHILD, values({ durationMin: '45' }))).toEqual({
+      kind: 'nap',
+      childId: CHILD,
+      durationMin: 45,
+    });
+  });
+
+  it('posts a milestone with its trimmed text and optional note', () => {
+    expect(
+      buildInput('milestone', CHILD, values({ milestone: '  rolled over  ', milestoneNote: ' yay ' })),
+    ).toEqual({
+      kind: 'milestone',
+      childId: CHILD,
+      milestone: 'rolled over',
+      note: 'yay',
+    });
+  });
+
+  it('threads a picked "when" through as an ISO occurredAt', () => {
+    const input = buildInput('feed', CHILD, values({ feedAmount: 'little', when: '2026-07-17T15:30' }));
+    expect(input?.occurredAt).toBe(new Date('2026-07-17T15:30').toISOString());
+  });
+
+  it('returns null when no child is selected', () => {
+    expect(buildInput('feed', '', values({ amountMl: '120' }))).toBeNull();
   });
 });

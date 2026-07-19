@@ -55,6 +55,12 @@ export interface MobileVillageResponse extends VillageData {
   resources?: CuratedResourceView[];
 }
 
+/** The `?category=` value the Childcare page sends to narrow the Resources rail
+ * server-side. THE single canonical definition lives in board-filter.ts; this
+ * re-export makes it part of the mobile request contract, which the native
+ * api-types mirror follows. (No separate mobile copy of the category string.) */
+export { CHILDCARE_RESOURCE_CATEGORY } from '~/lib/village/board-filter';
+
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true),
  * newest-save-first. Reuses the same teen-redacted view shape as the feed. */
 export interface MobileSavedResponse {
@@ -149,6 +155,22 @@ export interface MobileMessagesResponse {
   messages: MessageView[];
 }
 
+/** One turn of a note's reply thread — the parent's reply (`user`) or Hale's coach
+ * answer (`assistant`). Carries only the transcript text (never raw note content or
+ * teen detail — the transcript never holds it, rule #1). */
+export interface NoteThreadTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** GET /api/mobile/note-thread?noteKey=… — the prior reply exchange for one Hale
+ * note, replayed when the thread re-opens. `conversationId` is null (and `turns`
+ * empty) until the first reply opens the note's thread. */
+export interface MobileNoteThreadResponse {
+  conversationId: string | null;
+  turns: NoteThreadTurn[];
+}
+
 /** The native Plan surface (More → Plan & billing): the family's current tier + the
  * plan catalog from the @hale/types source of truth. Informational only — no
  * billing/checkout is wired. */
@@ -228,6 +250,9 @@ export interface EditChildRequest {
   lastName?: string;
   /** One of the ChildGender values; absent / unknown → 'unspecified' server-side. */
   gender?: string;
+  /** Natal sex for the WHO growth comparison: 'male' | 'female'; anything else /
+   * "prefer not to say" → null server-side. Distinct from gender (rule #1). */
+  biologicalSex?: string;
   /** Comma-separated free-text interests, e.g. "swimming, music". Optional. */
   interests?: string;
 }

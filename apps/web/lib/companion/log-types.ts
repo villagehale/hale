@@ -11,9 +11,10 @@ export const FEED_EPISODE = 'feed';
 export const NAP_EPISODE = 'nap';
 export const DIAPER_EPISODE = 'diaper';
 export const MILESTONE_EPISODE = 'milestone';
-/** A logged growth measurement (weight / height / head circumference). A raw data
- * point only — NO percentile or WHO comparison is ever derived (that would be
- * fabricated medical framing); the companion shows the plain series alone. */
+/** A logged growth measurement (weight / height / head circumference). The stored row
+ * is a raw data point; a DETERMINISTIC WHO z-score/band is derived from it at read time
+ * (growth-standards.ts, over committed official WHO LMS tables). That derivation is pure
+ * math, never an LLM medical judgement — LLM-derived medical framing stays forbidden. */
 export const MEASUREMENT_EPISODE = 'measurement';
 export const BOOKING_EPISODE = 'booking_requested';
 /** A completed curated health item (a checkup / immunization set the parent
@@ -38,6 +39,13 @@ export type FeedAmount = (typeof FEED_AMOUNTS)[number];
  * missing value. */
 export const DIAPER_KINDS = ['wet', 'dirty', 'mixed', 'dry'] as const;
 export type DiaperKind = (typeof DIAPER_KINDS)[number];
+
+/** A nap's QUALITATIVE rating — the prototype's Quality chips (Poor / Okay / Good /
+ * Excellent). An additive structured field: stored verbatim in the payload and
+ * worded into the summary. Supersedes the old note-folded "Quality: Good" string —
+ * old note-folded rows keep rendering (the formatter only words a structured value). */
+export const NAP_QUALITIES = ['poor', 'okay', 'good', 'excellent'] as const;
+export type NapQuality = (typeof NAP_QUALITIES)[number];
 
 /** The kinds of growth measurement a parent may log. Each has ONE fixed unit and a
  * sane upper bound (a child's real range — a mistyped value is rejected, never
@@ -97,6 +105,7 @@ export const napSchema = z.object({
   durationMin: z.coerce.number().positive().max(1440).optional(),
   startAt: napBoundField,
   endAt: napBoundField,
+  quality: z.enum(NAP_QUALITIES).optional(),
   note: z.string().trim().max(280).optional(),
   occurredAt: occurredAtField,
 });

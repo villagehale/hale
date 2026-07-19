@@ -9,7 +9,7 @@ const loadResourcesMock = vi.fn();
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/village/queries', () => ({ loadVillage: () => loadVillageMock() }));
 vi.mock('~/lib/village/curated-resources', () => ({
-  loadCuratedResources: () => loadResourcesMock(),
+  loadCuratedResources: (...a: unknown[]) => loadResourcesMock(...a),
 }));
 
 vi.mock('@hale/db', async (importActual) => {
@@ -34,9 +34,9 @@ const RESOURCES = [
   },
 ];
 
-async function callGet(): Promise<Response> {
+async function callGet(query = ''): Promise<Response> {
   const { GET } = await import('~/app/api/mobile/village/route');
-  return GET(new Request('http://localhost/api/mobile/village'));
+  return GET(new Request(`http://localhost/api/mobile/village${query}`));
 }
 
 describe('GET /api/mobile/village', () => {
@@ -73,6 +73,30 @@ describe('GET /api/mobile/village', () => {
     // The standing feed merges the village data with the Resources rail.
     expect(await res.json()).toEqual({ ...VILLAGE, resources: RESOURCES });
     expect(loadVillageMock).toHaveBeenCalledTimes(1);
+    // No ?category → the full directory (no category argument).
     expect(loadResourcesMock).toHaveBeenCalledTimes(1);
+    expect(loadResourcesMock).toHaveBeenCalledWith();
+  });
+
+  it('passes a ?category= through to the curated-resources read (server-side filter)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callGet('?category=EarlyON%20child%20%26%20family%20centres');
+
+    expect(res.status).toBe(200);
+    // The childcare page narrows the Resources server-side by category.
+    expect(loadResourcesMock).toHaveBeenCalledWith('EarlyON child & family centres');
+  });
+
+  it('skips loadVillage for a ?category= read (only the Resources rail is wanted)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callGet('?category=EarlyON%20child%20%26%20family%20centres');
+
+    expect(res.status).toBe(200);
+    // A childcare read returns the empty village shell + the filtered resources; the
+    // candidates/routine query is skipped since the page discards them.
+    expect(loadVillageMock).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ candidates: [], routine: null, resources: RESOURCES });
   });
 });

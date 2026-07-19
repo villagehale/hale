@@ -36,6 +36,15 @@ export async function GET(req: Request): Promise<Response> {
     const searchBody: MobileVillageResponse = await loadVillage({ searchSeason: season });
     return NextResponse.json(searchBody);
   }
+  // An optional ?category= narrows the Resources rail server-side. A childcare read
+  // wants ONLY that rail (the page discards candidates/routine), so skip loadVillage
+  // entirely and return the empty village shell + the server-filtered resources.
+  const category = new URL(req.url).searchParams.get('category')?.trim() || undefined;
+  if (category) {
+    const resources = await loadCuratedResources(category);
+    const childcareBody: MobileVillageResponse = { candidates: [], routine: null, resources };
+    return NextResponse.json(childcareBody);
+  }
   const [village, resources] = await Promise.all([loadVillage(), loadCuratedResources()]);
   const body: MobileVillageResponse = { ...village, resources };
   return NextResponse.json(body);

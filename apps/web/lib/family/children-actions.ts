@@ -139,6 +139,7 @@ export async function editChildAction(
         lastName: schema.children.lastName,
         dateOfBirth: schema.children.dateOfBirth,
         gender: schema.children.gender,
+        biologicalSex: schema.children.biologicalSex,
         interests: schema.children.interests,
       })
       .from(schema.children)
@@ -159,6 +160,7 @@ export async function editChildAction(
       dateOfBirth: string;
       lastName?: string | null;
       gender?: (typeof validated.child)['gender'];
+      biologicalSex?: string | null;
       interests?: string[];
     } = {
       name: validated.child.name,
@@ -166,6 +168,7 @@ export async function editChildAction(
     };
     if (input.lastName !== undefined) after.lastName = validated.child.lastName;
     if (input.gender !== undefined) after.gender = validated.child.gender;
+    if (input.biologicalSex !== undefined) after.biologicalSex = validated.child.biologicalSex;
     if (input.interests !== undefined) after.interests = interests;
 
     await tx

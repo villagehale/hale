@@ -20,6 +20,7 @@ import { useMeadowColor } from '@/constants/meadow';
 import { api } from '@/lib/api-client';
 import type {
   ChildCompanionView,
+  GrowthAssessmentView,
   LogView,
   MobileCompanionResponse,
   MobileLogsResponse,
@@ -33,7 +34,7 @@ import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase }
 import { groupLogsByDay } from '@/lib/logs-group';
 import { buildMeasureSeries, MEASURE_KINDS, type MeasureKind } from '@/lib/measurement-series';
 import { displayMeasurement, type UnitSystem } from '@/lib/measurement-units';
-import { GROWTH_DATA_SOURCE, GROWTH_VERDICT, SUGGESTED_DAILY_ROUTINE } from '@/lib/stub-data';
+import { SUGGESTED_DAILY_ROUTINE } from '@/lib/stub-data';
 import { useApi } from '@/lib/use-api';
 
 /** The seven sections of the Companion tab, in order. Diary is app-only (not in the
@@ -707,14 +708,86 @@ function HealthSection({
 // The one NEW data concept, read via the paginated logs route (episodeType=measurement),
 // re-gated client-side in buildMeasureSeries (teen redaction applies by construction —
 // the same shared read). A real react-native-svg line chart of the selected measure's
-// actual readings, an Add-measurement sheet POSTing the same log route, plus the
-// prototype's "On track" verdict + WHO source — which are STUBS (stub-data.ts): the app
-// does NOT compute percentiles (no server-side derivation).
+// actual readings, an Add-measurement sheet POSTing the same log route, plus a REAL
+// verdict: the server now computes a deterministic WHO z-score/band for each measure's
+// latest reading (growth-standards.ts, over committed official WHO LMS tables) and
+// serves it as `growthAssessments`. It is pure math, never an LLM medical judgement —
+// and it defers to the provider on the always-present caveat line. The old "no
+// percentiles / no server-side derivation" stub is superseded.
 
 const GROWTH_TOGGLE: { kind: MeasureKind; label: string }[] = MEASURE_KINDS.map((kind) => ({
   kind,
   label: kind === 'head' ? 'Head' : kind[0].toUpperCase() + kind.slice(1),
 }));
+
+/** The always-present provider-deferral caveat under the Growth verdict — Hale reads,
+ * it never diagnoses. */
+const GROWTH_CAVEAT =
+  'An early read from your own logs, never a diagnosis — confirm anything with your provider.';
+/** The now-TRUE data-source label (a real WHO computation stands behind it). */
+const GROWTH_DATA_SOURCE = 'WHO Growth Standards';
+
+/**
+ * Map the selected measure's WHO read to what the Growth overview renders. Every
+ * state stays neutral and honest: no reading for this measure yet is distinct from a
+ * child outside WHO's 0–5y range; 'review' is "worth a look", never alarming; missing
+ * sex points to the profile; a preterm baby gets the corrected-age caveat.
+ */
+function growthVerdict(
+  assessment: GrowthAssessmentView | undefined,
+  hasReading: boolean,
+): {
+  pill: { label: string; tone: 'done' | 'neutral' } | null;
+  note: string;
+  showSource: boolean;
+  addDetails: boolean;
+} {
+  if (!hasReading) {
+    return {
+      pill: null,
+      note: 'No reading logged for this measure yet — add one to see its WHO growth read.',
+      showSource: false,
+      addDetails: false,
+    };
+  }
+  if (assessment?.state === 'assessed') {
+    return assessment.band === 'typical'
+      ? {
+          pill: { label: 'On track', tone: 'done' },
+          note: 'This reading sits in the typical range for age and sex.',
+          showSource: true,
+          addDetails: false,
+        }
+      : {
+          pill: { label: 'Worth reviewing', tone: 'neutral' },
+          note: 'This reading is outside the typical range — worth reviewing with your provider.',
+          showSource: true,
+          addDetails: false,
+        };
+  }
+  if (assessment?.state === 'preterm') {
+    return {
+      pill: { label: 'Born early', tone: 'neutral' },
+      note: 'Born early, so age-based standards may not fit — adjusted guidance may apply.',
+      showSource: false,
+      addDetails: false,
+    };
+  }
+  if (assessment?.state === 'needs-details') {
+    return {
+      pill: null,
+      note: 'Add your child’s biological sex in Family to compare against WHO growth standards.',
+      showSource: false,
+      addDetails: true,
+    };
+  }
+  return {
+    pill: null,
+    note: 'WHO growth standards cover ages 0–5. Keep sharing readings with your provider.',
+    showSource: false,
+    addDetails: false,
+  };
+}
 
 function GrowthSection({ childId }: { childId: string }) {
   const { status, data, error, reload } = useApi<MobileLogsResponse>(
@@ -734,6 +807,10 @@ function GrowthSection({ childId }: { childId: string }) {
   const series = buildMeasureSeries(data.logs);
   const selected = series.find((s) => s.kind === selectedKind) ?? series[0];
   const hasAny = series.some((s) => s.readings.length > 0);
+  const verdict = growthVerdict(
+    data.growthAssessments?.find((a) => a.measureKind === selectedKind),
+    selected.readings.length > 0,
+  );
 
   if (!hasAny) {
     return (
@@ -777,7 +854,7 @@ function GrowthSection({ childId }: { childId: string }) {
           >
             Growth overview
           </AppText>
-          <Tag label={GROWTH_VERDICT} tone="done" />
+          {verdict.pill ? <Tag label={verdict.pill.label} tone={verdict.pill.tone} /> : null}
         </View>
 
         <View className="flex-row gap-2">
@@ -813,23 +890,45 @@ function GrowthSection({ childId }: { childId: string }) {
         )}
 
         <AppText variant="meta" className="text-ink-3">
-          An early read — no percentiles. Confirm any concern with your provider.
+          {verdict.note}
+        </AppText>
+        {verdict.addDetails ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add child details"
+            onPress={() => router.push('/family')}
+            className="min-h-11 flex-row items-center justify-center gap-2 rounded-[12px] border border-rule bg-card active:opacity-80"
+          >
+            <Icon name="plus" size={14} color={addIcon} />
+            <AppText
+              variant="meta"
+              className="text-ink"
+              style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
+            >
+              Add child details
+            </AppText>
+          </Pressable>
+        ) : null}
+        <AppText variant="meta" className="text-ink-3">
+          {GROWTH_CAVEAT}
         </AppText>
       </Card>
 
-      <Card className="flex-row items-center gap-3">
-        <View className="flex-1">
-          <AppText variant="meta" className="text-ink-3">
-            Data source
-          </AppText>
-          <AppText
-            className="text-[14px] text-ink"
-            style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
-          >
-            {GROWTH_DATA_SOURCE}
-          </AppText>
-        </View>
-      </Card>
+      {verdict.showSource ? (
+        <Card className="flex-row items-center gap-3">
+          <View className="flex-1">
+            <AppText variant="meta" className="text-ink-3">
+              Data source
+            </AppText>
+            <AppText
+              className="text-[14px] text-ink"
+              style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
+            >
+              {GROWTH_DATA_SOURCE}
+            </AppText>
+          </View>
+        </Card>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"

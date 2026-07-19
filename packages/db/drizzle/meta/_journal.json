@@ -337,6 +337,20 @@
       "when": 1781462580000,
       "tag": "0048_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1781462640000,
+      "tag": "0049_conversation_note_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781462700000,
+      "tag": "0050_stripe_billing_events",
+      "breakpoints": true
     }
   ]
 }

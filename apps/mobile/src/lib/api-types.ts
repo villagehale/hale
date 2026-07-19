@@ -86,12 +86,29 @@ export interface LogView {
   unit?: string;
 }
 
+/** The band of a computed WHO z-score: 'typical' when |z| ≤ 2, else 'review' (a
+ * neutral "worth a look", never a diagnosis). Mirrors web GrowthBand. */
+export type GrowthBand = 'typical' | 'review';
+
+/** The deterministic WHO growth read of one measure's LATEST reading (mirrors web
+ * GrowthAssessmentView). A discriminated union so the app renders exactly one honest
+ * state per kind; a kind with no reading (or one outside WHO's 0–5y range) is simply
+ * absent. Never LLM-derived — pure math over committed WHO tables (server-side). */
+export type GrowthAssessmentView =
+  | { measureKind: string; state: 'assessed'; z: number; band: GrowthBand }
+  | { measureKind: string; state: 'needs-details' }
+  | { measureKind: string; state: 'preterm' };
+
 /** One keyset page of logs, newest first, with the cursor for the next page
  * (mirrors web LogsPage / MobileLogsResponse). */
 export interface MobileLogsResponse {
   logs: LogView[];
   /** occurredAt to page before on the next request, or null on the last page. */
   nextCursor: string | null;
+  /** WHO growth read per measure — present only on a single-child measurement page
+   * (the Growth tab's query), omitted for the family-wide Diary read. Built from the
+   * already-redacted logs server-side (a teen's reading never contributes, rule #1). */
+  growthAssessments?: GrowthAssessmentView[];
 }
 
 // ── docs vault (from apps/web lib/docs/documents DocumentView + route envelopes) ──
@@ -206,6 +223,12 @@ export interface CuratedResourceView {
   description: string;
 }
 
+/** The `?category=` value the Childcare page sends to narrow the Resources rail
+ * server-side. MIRRORS the canonical export in apps/web/app/api/mobile/types.ts
+ * (re-exported from apps/web/lib/village/board-filter.ts — the ONE definition of the
+ * category string). Keep in sync with that value. */
+export const CHILDCARE_RESOURCE_CATEGORY = 'EarlyON child & family centres';
+
 // ── plan (from apps/web lib/plan/week) ────────────────────────────────────────
 
 export interface PlanChildItem {
@@ -274,6 +297,9 @@ export interface FamilyChildBasics {
   dateOfBirth: string;
   /** Stored gender enum, so an edit form prefills it. */
   gender: ChildGender;
+  /** Stored natal sex ('male' | 'female') or null, so the edit form prefills it and
+   * the WHO growth read works. Distinct from gender (rule #1). Mirrors web. */
+  biologicalSex: string | null;
   /** Free-text interest tags driving discovery, so an edit form prefills them. */
   interests: string[];
   stageLabel: string;
@@ -450,6 +476,21 @@ export interface MobileMessagesResponse {
   messages: MessageView[];
 }
 
+/** One turn of a note's reply thread — the parent's reply (`user`) or Hale's coach
+ * answer (`assistant`). Transcript text only; never raw note content (rule #1). */
+export interface NoteThreadTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** GET /api/mobile/note-thread?noteKey=… — the prior reply exchange for one Hale
+ * note, replayed when the thread re-opens. `conversationId` is null (turns empty)
+ * until the first reply opens the note's thread. */
+export interface MobileNoteThreadResponse {
+  conversationId: string | null;
+  turns: NoteThreadTurn[];
+}
+
 // ── plan tiers (from apps/web lib/plan/catalog, derived from @hale/types) ──────
 
 export type PlanTier = 'free' | 'plus' | 'family';
@@ -469,6 +510,9 @@ export interface PlanTierView {
 export interface PlanCatalogView {
   currentTier: PlanTier;
   tiers: PlanTierView[];
+  /** True when Stripe checkout is live on the web. Checkout is WEB-ONLY (Apple IAP
+   * policy) — the native plan page never links to Stripe; this only softens copy. */
+  billingConfigured: boolean;
 }
 
 export interface MobilePlanTiersResponse {
@@ -485,6 +529,9 @@ export interface EditChildRequest {
   dateOfBirth: string;
   lastName?: string;
   gender?: string;
+  /** Natal sex for the WHO growth comparison: 'male' | 'female' | '' (prefer not to
+   * say → cleared server-side). Distinct from gender (rule #1). */
+  biologicalSex?: string;
   /** Comma-separated free-text interests, e.g. "swimming, music". */
   interests?: string;
 }

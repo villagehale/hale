@@ -17,6 +17,9 @@ export type OnboardingIntent =
   | 'sitter'
   | 'health'
   | 'community'
+  | 'sleep'
+  | 'feeding'
+  | 'potty'
   | 'exploring';
 
 /** Ordered list of the selectable intents with their display labels. */
@@ -28,6 +31,9 @@ export const ONBOARDING_INTENTS: readonly { value: OnboardingIntent; label: stri
   { value: 'sitter', label: 'Trusted sitter/nanny' },
   { value: 'health', label: 'Health & specialists' },
   { value: 'community', label: 'Meeting other families' },
+  { value: 'sleep', label: 'Sleep & naps' },
+  { value: 'feeding', label: 'Feeding & meals' },
+  { value: 'potty', label: 'Potty training' },
   { value: 'exploring', label: 'Just exploring' },
 ];
 

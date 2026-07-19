@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index, check } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, index, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { families } from './families.js';
 import { children } from './children.js';
@@ -10,6 +10,13 @@ import { children } from './children.js';
  * messages are never visible to another). The transcript carries only what the
  * parent typed and Hale's plain-prose answers; raw child content never enters it
  * (the teen-redaction guard runs upstream at the tool boundary).
+ *
+ * `noteKey` anchors a conversation to a single Hale note (a mobile Messages row —
+ * `digest-…` / `action-…`) so replying on that note continues ONE persistent coach
+ * thread across app restarts. It is nullable: the general Ask Hale thread carries a
+ * null key, and only note-anchored threads set it. The partial unique index makes
+ * "at most one conversation per (family, note)" true by construction, so a re-open
+ * resolves the same thread rather than forking a new one.
  */
 export const conversations = pgTable(
   'conversations',
@@ -18,10 +25,19 @@ export const conversations = pgTable(
     familyId: uuid('family_id')
       .notNull()
       .references(() => families.id, { onDelete: 'cascade' }),
+    /** The Hale note this thread is anchored to (`digest-…` / `action-…`), or null
+     * for the general Ask Hale thread. NOT a content field — an opaque anchor only;
+     * the note's content is never stored here (rule #1). */
+    noteKey: text('note_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     familyIdx: index('conversations_family_idx').on(table.familyId),
+    // At most one note-anchored conversation per (family, note). Partial (note_key
+    // NOT NULL) so the general thread — which leaves note_key null — is unconstrained.
+    familyNoteKeyIdx: uniqueIndex('conversations_family_note_key_idx')
+      .on(table.familyId, table.noteKey)
+      .where(sql`${table.noteKey} IS NOT NULL`),
   }),
 );
 

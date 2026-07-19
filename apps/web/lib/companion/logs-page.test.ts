@@ -7,6 +7,7 @@ vi.mock('~/lib/db', () => ({ db: vi.fn() }));
 vi.mock('~/lib/family', () => ({ currentFamilyId: vi.fn(), currentUserId: vi.fn() }));
 
 const { readLogsPage } = await import('./logs-page.js');
+const { MEASUREMENT_EPISODE } = await import('./log-types.js');
 
 /**
  * readLogsPage is the shared, family-scoped, teen-redacted read behind BOTH the web
@@ -39,7 +40,12 @@ interface EpisodeRow {
 }
 
 function fakeDb(
-  children: Array<{ id: string; dateOfBirth: string }>,
+  children: Array<{
+    id: string;
+    dateOfBirth: string;
+    biologicalSex?: string | null;
+    gestationalWeeks?: number | null;
+  }>,
   episodes: EpisodeRow[],
 ): Database {
   const db = {
@@ -128,6 +134,61 @@ describe('readLogsPage — teen redaction (rule #1)', () => {
     expect(ids).not.toContain('teen-e');
     // No teen number leaks through the widening either.
     expect(JSON.stringify(page.logs)).not.toContain('55');
+  });
+});
+
+describe('readLogsPage — WHO growth read (additive, single-child measurement page)', () => {
+  function weightRow(childId: string, value: number, occurredAt: string): EpisodeRow {
+    return {
+      id: 'gm',
+      childId,
+      authoredBy: PARENT_ID,
+      episodeType: 'measurement',
+      summary: `Weighed ${value} kg`,
+      occurredAt: new Date(occurredAt),
+      payload: { measureKind: 'weight', value, unit: 'kg' },
+    };
+  }
+
+  it('serves a per-kind assessment only when scoped to one child AND measurements', async () => {
+    // Male toddler born 2024-05-01; a median-weight reading taken at exactly 12
+    // months → z 0 / typical.
+    const child = {
+      id: TODDLER_ID,
+      dateOfBirth: '2024-05-01',
+      biologicalSex: 'male',
+      gestationalWeeks: null,
+    };
+    const row = weightRow(TODDLER_ID, 9.646, '2025-05-01T08:00:00Z');
+    const db = fakeDb([child], [row]);
+
+    const scoped = await readLogsPage(db, FAMILY_ID, PARENT_ID, {
+      childId: TODDLER_ID,
+      episodeType: MEASUREMENT_EPISODE,
+    });
+    expect(scoped.growthAssessments).toEqual([
+      { measureKind: 'weight', state: 'assessed', z: expect.closeTo(0, 6), band: 'typical' },
+    ]);
+
+    // Family-wide (no childId) → the read can't apply a per-child standard → omitted.
+    const wide = await readLogsPage(db, FAMILY_ID, PARENT_ID, { episodeType: MEASUREMENT_EPISODE });
+    expect(wide.growthAssessments).toBeUndefined();
+  });
+
+  it('surfaces needs-details when the child has no usable biological sex', async () => {
+    const child = {
+      id: TODDLER_ID,
+      dateOfBirth: '2024-05-01',
+      biologicalSex: null,
+      gestationalWeeks: null,
+    };
+    const db = fakeDb([child], [weightRow(TODDLER_ID, 9.646, '2025-05-01T08:00:00Z')]);
+
+    const page = await readLogsPage(db, FAMILY_ID, PARENT_ID, {
+      childId: TODDLER_ID,
+      episodeType: MEASUREMENT_EPISODE,
+    });
+    expect(page.growthAssessments).toEqual([{ measureKind: 'weight', state: 'needs-details' }]);
   });
 });
 

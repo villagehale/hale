@@ -24,7 +24,8 @@ export type AnalyticsEvent =
   | 'share'
   | 'ask_hale'
   | 'village_save'
-  | 'plan_notify_requested';
+  | 'plan_notify_requested'
+  | 'plan_upgrade_started';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

@@ -4,6 +4,7 @@ import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { getAdapter } from '~/lib/webhooks/registry';
 import { resolveFamilyFromWebhook } from '~/lib/webhooks/resolve-family';
+import { applyStripeBillingEvent } from '~/lib/webhooks/stripe-billing-apply';
 import { verifyStripeBillingSignature } from '~/lib/webhooks/stripe-billing';
 
 interface RouteContext {
@@ -26,9 +27,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
   // they transition plan_tier, they do NOT flow to events.ingested. Stripe LIVE
   // is blocked (no keys), so the verify gate is a named TODO that returns 501
   // until STRIPE_WEBHOOK_SECRET exists. We NEVER process an unverified billing
-  // event — a forged event could grant a paid tier for free. The plan_tier
-  // transition (planTierFromStripeEvent → families.plan_tier) lands behind this
-  // gate when keys arrive; see lib/webhooks/stripe-billing.ts for the mapping.
+  // event — a forged event could grant a paid tier for free. On `verified` the
+  // event is applied to families.plan_tier idempotently (applyStripeBillingEvent);
+  // absent STRIPE_WEBHOOK_SECRET the gate returns not_configured → 501 and nothing
+  // is applied, byte-identical to the dormant no-op.
   if (provider === 'stripe') {
     const verification = verifyStripeBillingSignature(signature, rawBody);
     if (verification.status === 'not_configured') {
@@ -43,8 +45,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
         { status: 401 },
       );
     }
-    // status === 'verified' — live plan_tier application wires here at go-live.
-    return NextResponse.json({ status: 'verified' }, { status: 200 });
+    let billingEvent: unknown;
+    try {
+      billingEvent = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
+    }
+    const applied = await applyStripeBillingEvent(billingEvent);
+    return NextResponse.json({ status: applied.status }, { status: 200 });
   }
 
   // ── Signal providers dispatch through the registry ────────────────────────

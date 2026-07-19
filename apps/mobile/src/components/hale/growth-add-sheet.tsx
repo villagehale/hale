@@ -49,8 +49,9 @@ function whenLabel(when: Date): string {
  * The Add-measurement sheet: pick a kind (weight / height / head), enter the value in
  * its fixed unit, and pick when it was taken. POSTs the SAME audited
  * /api/mobile/companion/log route a quick-log uses (rule #6, one write path, one audit
- * row) with kind 'measurement'. NO percentile or WHO comparison is offered — the
- * register stays "confirm with your provider". Errors surface in place.
+ * row) with kind 'measurement'. This form only records the reading; its deterministic
+ * WHO growth read is computed server-side and shown on the Growth tab, never here.
+ * Errors surface in place.
  */
 export function GrowthAddSheet({
   childId,
@@ -256,8 +257,7 @@ export function GrowthAddSheet({
       <Button label={saving ? 'Saving…' : 'Save measurement'} onPress={save} disabled={saving} />
 
       <AppText variant="meta" className="mt-4 text-center text-ink-3">
-        A plain record of your child's growth — no percentiles or comparisons. Confirm any concern
-        with your provider.
+        A plain record of your child's growth. Confirm any concern with your provider.
       </AppText>
     </Sheet>
   );

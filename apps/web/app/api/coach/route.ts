@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { askHale } from '~/lib/coach/agent';
+import { NOTE_KEY_RE } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
@@ -20,6 +21,18 @@ const bodySchema = z.object({
   intent: z.string().trim().min(1).max(200).optional(),
   /** The child the parent focused the conversation on (per-child chip), if any. */
   focusedChildId: z.string().uuid().optional(),
+  /** Anchor this reply to a Hale note's persistent thread (mobile Messages reply). */
+  noteKey: z.string().trim().regex(NOTE_KEY_RE).optional(),
+  /** The redacted note view the reply grounds on — seeds the note's content into the
+   * agent context (rule #2: structured, no prompt strings). Bounded; never re-fetched
+   * server-side, so it can only be the app's already-redacted note (rule #1). */
+  sourceNote: z
+    .object({
+      eyebrow: z.string().trim().min(1).max(200),
+      body: z.string().trim().min(1).max(4000),
+      when: z.string().trim().min(1).max(100),
+    })
+    .optional(),
 });
 
 /**
@@ -89,6 +102,8 @@ export async function POST(req: Request) {
             conversationId: parsed.data.conversationId ?? null,
             focusedChildId: parsed.data.focusedChildId ?? null,
             actor: actorUserId,
+            noteKey: parsed.data.noteKey ?? null,
+            sourceNote: parsed.data.sourceNote ?? null,
           },
           database,
           undefined,

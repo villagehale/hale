@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { StreamingCursor } from '@/components/hale/streaming-cursor';
+import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
 import { Card } from '@/components/ui/card';
 import { DetailHeader } from '@/components/ui/detail-header';
@@ -18,7 +20,9 @@ import { ErrorState, LoadingState } from '@/components/ui/screen-state';
 import { Tag } from '@/components/ui/tag';
 import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
-import type { MessageView, MobileMessagesResponse } from '@/lib/api-types';
+import { ApiError } from '@/lib/api-client';
+import type { MessageView, MobileMessagesResponse, MobileNoteThreadResponse } from '@/lib/api-types';
+import { askHale } from '@/lib/coach-api';
 import { type SampleThread, findSampleThread } from '@/lib/stub-data';
 import { useApi } from '@/lib/use-api';
 
@@ -27,8 +31,12 @@ import { useApi } from '@/lib/use-api';
  * composer, over the two lanes the Messages list keeps separate (never blended):
  *
  *  - Real Hale note (`digest-…` / `action-…`): renders the note as a Hale bubble.
- *    A drafted-for-approval note carries a REAL "Review in Approvals" action; the rest
- *    are read-only (the feed is read-only, so a real note has no reply composer).
+ *    A drafted-for-approval note carries a REAL "Review in Approvals" action. Replying
+ *    is REAL: the composer starts/continues a coach conversation anchored to the note
+ *    (POST /api/coach with noteKey + the redacted note as seeded context), streams
+ *    Hale's answer back as bubbles, and persists — re-opening replays the exchange
+ *    (GET /api/mobile/note-thread). Delivery is honest: sent → streaming → replied,
+ *    and a failure shows a retry, never a fake success.
  *    Rule #1: a teenRedacted note NEVER opens into a raw thread — it degrades to the
  *    same category-only pattern the list shows, with no bubbles and no composer.
  *
@@ -231,10 +239,154 @@ function RedactedThreadView({ message }: { message: MessageView }) {
   );
 }
 
+/** One turn of the REAL reply exchange, live in this session: the parent's reply
+ * (`you`) or Hale's coach answer (`hale`, which streams then settles, or errors with
+ * a retry). Prior persisted turns render straight from the server as In/Out bubbles;
+ * this shape only tracks the turns added since the thread opened. */
+type ReplyTurn =
+  | { id: string; role: 'you'; text: string }
+  | {
+      id: string;
+      role: 'hale';
+      text: string;
+      streaming: boolean;
+      errored: boolean;
+      /** The reply that produced this answer — re-sent on retry. */
+      question: string;
+    };
+
+type HaleReplyTurn = Extract<ReplyTurn, { role: 'hale' }>;
+
+/** Hale's reply bubble while it's live: typing dots until the first token, a growing
+ * answer with a blinking cursor as it streams, or — on failure — an honest error in
+ * berry with a "Try again" affordance (never a fake-delivered bubble). */
+function HaleReplyBubble({ turn, onRetry }: { turn: HaleReplyTurn; onRetry: () => void }) {
+  if (turn.errored) {
+    return (
+      <View className="mb-3 max-w-[82%] self-start">
+        <View className="rounded-[16px] rounded-tl-sm bg-chip-gray px-4 py-3">
+          <AppText variant="body" className="text-berry">
+            {turn.text}
+          </AppText>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+          onPress={onRetry}
+          className="mt-1 self-start active:opacity-70"
+        >
+          <AppText
+            variant="meta"
+            className="text-accent"
+            style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
+          >
+            Try again
+          </AppText>
+        </Pressable>
+      </View>
+    );
+  }
+  if (turn.streaming && turn.text.length === 0) {
+    return (
+      <View className="mb-3 max-w-[82%] self-start rounded-[16px] rounded-tl-sm bg-chip-gray px-4 py-3">
+        <TypingDots />
+      </View>
+    );
+  }
+  return (
+    <View className="mb-3 max-w-[82%] self-start rounded-[16px] rounded-tl-sm bg-chip-gray px-4 py-3">
+      <AppText variant="body" className="text-ink">
+        {turn.text}
+        {turn.streaming ? <StreamingCursor /> : null}
+      </AppText>
+    </View>
+  );
+}
+
+/**
+ * A real Hale note as a two-way coach thread. The note renders as a Hale bubble; the
+ * composer starts/continues the note's persistent coach conversation (POST /api/coach
+ * carries the noteKey + the ALREADY-REDACTED note as seeded context — the app never
+ * re-fetches raw content, rule #1). Hale's answer streams in as a Hale bubble and
+ * persists, so a re-open replays the exchange from GET /api/mobile/note-thread.
+ *
+ * Delivery is honest (data honesty): a reply goes sent → streaming → replied, and a
+ * failed run leaves an error bubble with "Try again" — never a fake-delivered bubble.
+ * Replies aren't gated on each other; each streams independently on its own turn.
+ */
 function RealHaleThreadView({ message }: { message: MessageView }) {
   const actionColor = useMeadowColor('ink3');
-  return (
-    <ThreadShell title="Hale">
+  // Prior persisted exchange for this note, replayed on open. Never carries raw note
+  // content (the transcript holds only replies + answers — rule #1).
+  const { status, data, error, reload } = useApi<MobileNoteThreadResponse>(
+    `/api/mobile/note-thread?noteKey=${encodeURIComponent(message.id)}`,
+  );
+  // Turns added THIS session. Server turns render separately (static — no refetch on
+  // focus), so a just-sent reply never double-renders against a re-read.
+  const [turns, setTurns] = useState<ReplyTurn[]>([]);
+
+  const patchHale = (id: string, fn: (t: HaleReplyTurn) => HaleReplyTurn) =>
+    setTurns((prev) =>
+      prev.map((t) => (t.id === id && t.role === 'hale' ? fn(t) : t)),
+    );
+
+  const runStream = async (haleId: string, question: string) => {
+    try {
+      await askHale(
+        {
+          question,
+          // The note anchors ONE persistent thread; the server resolves-or-creates it
+          // by noteKey, so every reply continues the same conversation (no client id
+          // to carry across restarts). The redacted note seeds the agent's context.
+          noteKey: message.id,
+          sourceNote: {
+            eyebrow: message.eyebrow,
+            body: message.body,
+            when: message.when,
+          },
+        },
+        {
+          onDelta: (delta) => patchHale(haleId, (t) => ({ ...t, text: t.text + delta })),
+          // An intermediate tool turn streamed text that is NOT the answer — drop it.
+          onReset: () => patchHale(haleId, (t) => ({ ...t, text: '' })),
+          onDone: () => patchHale(haleId, (t) => ({ ...t, streaming: false })),
+        },
+      );
+      // Settle by construction even if the stream closed without a `done` event, so a
+      // cursor is never left blinking forever.
+      patchHale(haleId, (t) => (t.streaming ? { ...t, streaming: false } : t));
+    } catch (e) {
+      // A 401 already bounced to sign-in; leave the bubble as-is on the way out.
+      if (e instanceof ApiError && e.status === 401) return;
+      const messageText = (e as Error).message;
+      patchHale(haleId, (t) => ({
+        ...t,
+        streaming: false,
+        errored: true,
+        text: t.text || messageText,
+      }));
+    }
+  };
+
+  const sendReply = (text: string) => {
+    const q = text.trim();
+    if (!q) return;
+    const haleId = `hale-${Date.now()}`;
+    setTurns((prev) => [
+      ...prev,
+      { id: `you-${Date.now()}`, role: 'you', text: q },
+      { id: haleId, role: 'hale', text: '', streaming: true, errored: false, question: q },
+    ]);
+    void runStream(haleId, q);
+  };
+
+  const retry = (haleId: string, question: string) => {
+    patchHale(haleId, (t) => ({ ...t, text: '', streaming: true, errored: false }));
+    void runStream(haleId, question);
+  };
+
+  const note = (
+    <>
       <AppText variant="meta" className="mb-3 text-center text-ink-3">
         {message.eyebrow} · {message.when}
       </AppText>
@@ -254,6 +406,37 @@ function RealHaleThreadView({ message }: { message: MessageView }) {
             Review in Approvals
           </AppText>
         </Pressable>
+      ) : null}
+    </>
+  );
+
+  return (
+    <ThreadShell
+      title="Hale"
+      composer={status === 'ready' ? <ReplyComposer onSend={sendReply} /> : undefined}
+    >
+      {note}
+      {status === 'loading' ? <LoadingState /> : null}
+      {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
+      {status === 'ready' ? (
+        <>
+          {data?.turns.map((t, i) =>
+            t.role === 'user' ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: persisted turns are a fixed, ordered replay
+              <OutBubble key={`prior-${i}`} text={t.content} />
+            ) : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: persisted turns are a fixed, ordered replay
+              <InBubble key={`prior-${i}`} text={t.content} />
+            ),
+          )}
+          {turns.map((t) =>
+            t.role === 'you' ? (
+              <OutBubble key={t.id} text={t.text} />
+            ) : (
+              <HaleReplyBubble key={t.id} turn={t} onRetry={() => retry(t.id, t.question)} />
+            ),
+          )}
+        </>
       ) : null}
     </ThreadShell>
   );

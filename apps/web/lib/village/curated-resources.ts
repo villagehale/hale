@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { asc, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { CURATED_RESOURCES, type CuratedResourceSeed } from './curated-resources-data.js';
 
@@ -34,14 +34,21 @@ function toView(row: typeof schema.curatedResources.$inferSelect): CuratedResour
 /**
  * Read the curated resources in rail order (sortOrder, then name). No family scope
  * and no teen redaction — these are public reference data, not discovered content.
+ * An optional `category` narrows the read server-side (e.g. the childcare category),
+ * so a caller that wants one kind never over-fetches the whole directory.
  */
 export async function readCuratedResources(
   database: Database,
+  category?: string,
 ): Promise<CuratedResourceView[]> {
-  const rows = await database
-    .select()
-    .from(schema.curatedResources)
-    .orderBy(asc(schema.curatedResources.sortOrder), asc(schema.curatedResources.name));
+  const base = database.select().from(schema.curatedResources);
+  const scoped = category
+    ? base.where(eq(schema.curatedResources.category, category))
+    : base;
+  const rows = await scoped.orderBy(
+    asc(schema.curatedResources.sortOrder),
+    asc(schema.curatedResources.name),
+  );
   return rows.map(toView);
 }
 
@@ -51,9 +58,11 @@ export async function readCuratedResources(
  * exists surfaces (rule #8). Resources are family-agnostic, so unlike loadVillage
  * there is no family resolution — the rail is the same for everyone.
  */
-export async function loadCuratedResources(): Promise<CuratedResourceView[]> {
+export async function loadCuratedResources(
+  category?: string,
+): Promise<CuratedResourceView[]> {
   if (!process.env.DATABASE_URL) return [];
-  return readCuratedResources(defaultDb());
+  return readCuratedResources(defaultDb(), category);
 }
 
 /**

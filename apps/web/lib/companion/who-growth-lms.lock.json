@@ -1,0 +1,51 @@
+{
+  "note": "Tamper-evidence lock for the committed WHO Child Growth Standards LMS tables. `pnpm --filter @hale/web sync-who-growth` (scripts/sync-who-growth.mjs) re-downloads these exact files, verifies each md5 against this lock, and regenerates lib/companion/who-growth-data.ts. A checksum mismatch is a hard failure — the data module can never be silently regenerated from a different or corrupted source.",
+  "source": "WHO Child Growth Standards — z-score expanded tables (day-resolution)",
+  "retrievedAt": "2026-07-18",
+  "daysPerMonth": 30.4375,
+  "maxMonth": 60,
+  "files": [
+    {
+      "measure": "weight",
+      "sex": "male",
+      "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-for-age/expanded-tables/wfa-boys-zscore-expanded-tables.xlsx",
+      "bytes": 198984,
+      "md5": "18ceeb596784d163996f5413c14491af"
+    },
+    {
+      "measure": "weight",
+      "sex": "female",
+      "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/weight-for-age/expanded-tables/wfa-girls-zscore-expanded-tables.xlsx",
+      "bytes": 197671,
+      "md5": "ec24d5a777c49ab872590629a23282da"
+    },
+    {
+      "measure": "height",
+      "sex": "male",
+      "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/length-height-for-age/expandable-tables/lhfa-boys-zscore-expanded-tables.xlsx",
+      "bytes": 200151,
+      "md5": "80c00835fae9bb784545241dbb5ab2d0"
+    },
+    {
+      "measure": "height",
+      "sex": "female",
+      "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/length-height-for-age/expandable-tables/lhfa-girls-zscore-expanded-tables.xlsx",
+      "bytes": 199890,
+      "md5": "88df6e6e2f5f5da9a2bb93c64698e97b"
+    },
+    {
+      "measure": "head",
+      "sex": "male",
+      "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/head-circumference-for-age/expanded-tables/hcfa-boys-zscore-expanded-tables.xlsx",
+      "bytes": 185962,
+      "md5": "f3072ddf375d4bfddf320e521b76e7f2"
+    },
+    {
+      "measure": "head",
+      "sex": "female",
+      "url": "https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards/indicators/head-circumference-for-age/expanded-tables/hcfa-girls-zscore-expanded-tables.xlsx",
+      "bytes": 186723,
+      "md5": "47b5d4f380a94208f31ee4484a44d28d"
+    }
+  ]
+}

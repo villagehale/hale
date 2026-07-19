@@ -238,6 +238,44 @@ describe('editChildAction', () => {
     expect(audited.after).not.toHaveProperty('interests');
   });
 
+  it('persists biologicalSex normalized to male/female when sent, and clears it on "prefer not to say"', async () => {
+    const before = {
+      name: 'Robin',
+      lastName: null,
+      dateOfBirth: '2024-01-01',
+      gender: 'unspecified',
+      biologicalSex: null,
+      interests: [],
+    };
+    const setMale = makeTx([before]);
+    fakeDbHandle = txDb(setMale.tx);
+    await editChildAction(CHILD_ID, { name: 'Robin', dateOfBirth: '2024-01-01', biologicalSex: 'Male' });
+    // Free-text 'Male' normalises to the exact token the WHO read consumes.
+    expect(valuesFor(setMale.updates, schema.children)).toMatchObject({ biologicalSex: 'male' });
+
+    // "Prefer not to say" (empty) is a real edit that CLEARS the stored value → null,
+    // returning the Growth tab to its honest needs-details state.
+    const clear = makeTx([{ ...before, biologicalSex: 'female' }]);
+    fakeDbHandle = txDb(clear.tx);
+    await editChildAction(CHILD_ID, { name: 'Robin', dateOfBirth: '2024-01-01', biologicalSex: '' });
+    expect(valuesFor(clear.updates, schema.children)).toMatchObject({ biologicalSex: null });
+  });
+
+  it('does NOT write biologicalSex when the edit omits it (partial update preserves the stored value)', async () => {
+    const before = {
+      name: 'Robin',
+      lastName: null,
+      dateOfBirth: '2024-01-01',
+      gender: 'unspecified',
+      biologicalSex: 'female',
+      interests: [],
+    };
+    const { tx, updates } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+    await editChildAction(CHILD_ID, { name: 'Robyn', dateOfBirth: '2024-01-01' });
+    expect(valuesFor(updates, schema.children)).not.toHaveProperty('biologicalSex');
+  });
+
   it('preserves stored gender/lastName/interests when the edit sends only name + DOB', async () => {
     // The web /family rename flow sends exactly {name, dateOfBirth}. A child
     // whose gender + interests were set on mobile must come through unwiped.

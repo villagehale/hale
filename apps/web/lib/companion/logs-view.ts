@@ -33,11 +33,32 @@ export interface LogView {
   unit?: string;
 }
 
+/** The band of a computed WHO z-score: 'typical' when |z| ≤ 2, else 'review' (a
+ * neutral "worth a look", never a diagnosis). */
+export type GrowthBand = 'typical' | 'review';
+
+/** The growth read for one measure's LATEST reading, deterministic WHO computation
+ * (never LLM-derived). A discriminated union so the client renders exactly one honest
+ * state per kind; a kind with no reading (or one outside WHO's 0–5y range) is simply
+ * absent from the served list rather than faked.
+ *  - 'assessed'      → a real z-score + band from the committed WHO LMS tables.
+ *  - 'needs-details' → no usable biological sex on file, so no sex-specific standard applies.
+ *  - 'preterm'       → born <37 weeks; chronological-age standards would mislead. */
+export type GrowthAssessmentView =
+  | { measureKind: string; state: 'assessed'; z: number; band: GrowthBand }
+  | { measureKind: string; state: 'needs-details' }
+  | { measureKind: string; state: 'preterm' };
+
 /** One page of logs, newest first, with the keyset cursor for the next page. */
 export interface LogsPage {
   logs: LogView[];
   /** occurredAt to page before on the next request, or null when this is the last page. */
   nextCursor: string | null;
+  /** WHO growth read of each measure's latest reading. Present ONLY on a
+   * single-child measurement page (the Growth tab's query); omitted for the
+   * family-wide / mixed Diary read where a per-child standard can't apply. Built
+   * from the already-redacted logs, so a teen's reading never contributes (rule #1). */
+  growthAssessments?: GrowthAssessmentView[];
 }
 
 /** A day section of the grouped view: a stable YYYY-MM-DD key + its rows in order. */

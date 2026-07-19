@@ -11,12 +11,17 @@ import { buildPlanCatalog } from './catalog';
 
 describe('buildPlanCatalog', () => {
   it('carries the current tier through', () => {
-    expect(buildPlanCatalog('plus').currentTier).toBe('plus');
-    expect(buildPlanCatalog('free').currentTier).toBe('free');
+    expect(buildPlanCatalog('plus', false).currentTier).toBe('plus');
+    expect(buildPlanCatalog('free', false).currentTier).toBe('free');
+  });
+
+  it('carries the billingConfigured flag through (additive, defaults dormant)', () => {
+    expect(buildPlanCatalog('free', false).billingConfigured).toBe(false);
+    expect(buildPlanCatalog('free', true).billingConfigured).toBe(true);
   });
 
   it('lists every tier free-first, with features straight from PLAN_DISPLAY', () => {
-    const catalog = buildPlanCatalog('free');
+    const catalog = buildPlanCatalog('free', false);
     expect(catalog.tiers.map((t) => t.tier)).toEqual([...PLAN_TIERS_ORDERED]);
     for (const view of catalog.tiers) {
       // The features are the SoT's, verbatim — proving no hardcoded copy.
@@ -26,7 +31,7 @@ describe('buildPlanCatalog', () => {
   });
 
   it('formats CAD prices and flags the free tier as the fully-functional default', () => {
-    const catalog = buildPlanCatalog('free');
+    const catalog = buildPlanCatalog('free', false);
     const free = catalog.tiers.find((t) => t.tier === 'free');
     const plus = catalog.tiers.find((t) => t.tier === 'plus');
     expect(free?.isFree).toBe(true);

@@ -11,12 +11,13 @@ import type { Database } from '@hale/db';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
 import type { CoachRunMetrics } from './coach';
-import { loadAgentContext } from './context';
+import { loadAgentContext, type SourceNoteContext } from './context';
 import {
   appendMessage,
   createConversation,
   loadTranscript,
   resolveConversationForFamily,
+  resolveOrCreateNoteConversation,
 } from './conversation';
 import { buildGuardDeps } from './guards';
 import { recordCoachRun } from './record-run';
@@ -56,6 +57,11 @@ export interface AskHaleInput {
   focusedChildId: string | null;
   /** The acting parent's user id — written to audit_log.actor (rule #6 / PIPEDA). */
   actor: string;
+  /** Anchor this turn to a Hale note (`digest-…` / `action-…`): resolve-or-create the
+   * note's ONE persistent thread rather than a general one. Null for the Ask tab. */
+  noteKey: string | null;
+  /** The redacted note this reply grounds on, seeded into the agent context, or null. */
+  sourceNote: SourceNoteContext | null;
 }
 
 export interface AskHaleResult {
@@ -104,13 +110,24 @@ export async function askHale(
   client: AgentClient = anthropicClient(),
   streamHooks?: AskHaleStreamHooks,
 ): Promise<AskHaleResult> {
-  // Continue the caller's thread only if it exists AND belongs to their family
-  // (rule #1); an unknown or cross-family id is not an error — it starts a fresh
-  // thread rather than leaking into another family's conversation.
-  const existing = input.conversationId
-    ? await resolveConversationForFamily(input.conversationId, input.familyId, database)
-    : null;
-  const conversationId = existing ?? (await createConversation(input.familyId, database));
+  // A note reply resolves-or-creates that note's ONE persistent thread (idempotent,
+  // family-scoped, keyed on noteKey) so a re-open continues the same conversation.
+  // Otherwise continue the caller's thread only if it exists AND belongs to their
+  // family (rule #1); an unknown or cross-family id starts a fresh thread rather
+  // than leaking into another family's conversation.
+  let conversationId: string;
+  if (input.noteKey) {
+    conversationId = await resolveOrCreateNoteConversation(
+      input.familyId,
+      input.noteKey,
+      database,
+    );
+  } else {
+    const existing = input.conversationId
+      ? await resolveConversationForFamily(input.conversationId, input.familyId, database)
+      : null;
+    conversationId = existing ?? (await createConversation(input.familyId, database));
+  }
 
   const transcript = await loadTranscript(conversationId, database);
   // Persist the parent turn with its scope so the timeline can filter on child +
@@ -127,6 +144,7 @@ export async function askHale(
       intent: input.intent,
       focusedChildId: input.focusedChildId,
       transcript,
+      sourceNote: input.sourceNote,
     },
     database,
   );

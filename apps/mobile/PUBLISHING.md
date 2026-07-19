@@ -51,7 +51,7 @@ EAS provisions certs/profiles for you (it will ask to manage Apple credentials �
 > There is **no iOS simulator in the Claude build environment**, so device testing happens here, by you. During development we iterate UI via **Expo web previews + screenshots**; TestFlight is where it's validated on a real iPhone.
 
 ```bash
-eas submit --platform ios --profile preview      # uploads the build to TestFlight
+eas submit --platform ios --profile production   # uploads the build; TestFlight is the automatic pre-review stage
 ```
 - In App Store Connect → TestFlight: add internal testers (you) / external testers (beta families).
 - Testers install the **TestFlight** app and get the build over the air.
@@ -85,6 +85,6 @@ JS/asset-only changes (copy, layout, logic) reach users without an App Store rev
 
 - [x] App scaffolded, monorepo-integrated, gates green (tsc, expo-doctor 21/21, expo export).
 - [ ] `eas.json` + `app.json` production config (Claude — upcoming cycle).
-- [ ] First `eas build --profile preview` → TestFlight (needs your `eas login`).
+- [ ] First `eas build --profile production` → submit → TestFlight (needs your `eas login`; only `submit.production` exists in eas.json).
 - [ ] App Store Connect record + privacy answers (You).
 - [ ] Production submit (You).

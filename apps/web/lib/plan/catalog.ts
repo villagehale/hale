@@ -30,12 +30,20 @@ export interface PlanCatalogView {
   currentTier: PlanTier;
   /** Every tier, free-first (PLAN_TIERS_ORDERED). */
   tiers: PlanTierView[];
+  /** True when Stripe checkout is live. Additive — old clients ignore it. On mobile
+   * this only softens the copy (Apple IAP forbids a native Stripe-checkout link), so
+   * the native plan page stays read-only regardless. */
+  billingConfigured: boolean;
 }
 
 /** Builds the catalog view from the plan-display source of truth. Pure — no I/O. */
-export function buildPlanCatalog(currentTier: PlanTier): PlanCatalogView {
+export function buildPlanCatalog(
+  currentTier: PlanTier,
+  billingConfigured: boolean,
+): PlanCatalogView {
   return {
     currentTier,
+    billingConfigured,
     tiers: PLAN_TIERS_ORDERED.map((tier) => {
       const display = PLAN_DISPLAY[tier];
       return {

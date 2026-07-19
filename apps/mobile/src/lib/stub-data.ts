@@ -5,16 +5,6 @@
  * with a real source before treating it as truth. See task-7-report.md.
  */
 
-/**
- * The Growth "overview" verdict + reference line (Growth tab). STUB: Hale does NOT
- * compute WHO percentiles — there is deliberately no server-side growth derivation
- * (a plain record of readings, not a clinical assessment). These are the prototype's
- * placeholder labels; the accompanying caveat copy keeps the screen honest until a
- * real percentile computation exists. Do not treat "On track" as a clinical verdict.
- */
-export const GROWTH_VERDICT = 'On track' as const;
-export const GROWTH_DATA_SOURCE = 'WHO Growth Standards' as const;
-
 /** One row of the suggested daily rhythm (Routines → Daily). */
 export interface SuggestedRoutineRow {
   /** Local clock label, e.g. "7:00 AM". */
@@ -128,6 +118,10 @@ export interface GuideContent {
   intro: string;
   /** Ordered tips rendered as a numbered card. */
   tips: readonly string[];
+  /** The onboarding intent (@hale/types value) this guide is about — the single
+   * source the Resources list reads to float a matching guide up for a family that
+   * stated that intent (deterministic reorder, no "recommended" claim). */
+  intent: string;
 }
 
 /**
@@ -152,6 +146,7 @@ export const GUIDES: readonly GuideContent[] = [
     id: 'sleep',
     title: 'Sleep & settling',
     readTime: '4 min read',
+    intent: 'sleep',
     intro:
       'Gentle, age-appropriate ways to help your child settle — and what to expect as sleep changes from the newborn months through toddlerhood. Every child is different, so treat these as starting points rather than rules.',
     tips: [
@@ -165,6 +160,7 @@ export const GUIDES: readonly GuideContent[] = [
     id: 'solids',
     title: 'Starting solids',
     readTime: '5 min read',
+    intent: 'feeding',
     intro:
       'Most babies are ready for first foods around 6 months, once they can sit with support and show interest in eating. Here is how to start simply and safely. If your baby was born early or has a health condition, check timing with your provider first.',
     tips: [
@@ -178,6 +174,7 @@ export const GUIDES: readonly GuideContent[] = [
     id: 'firstaid',
     title: 'First aid basics',
     readTime: '6 min read',
+    intent: 'health',
     intro:
       'A calm, quick reference for common moments — and, just as important, when to reach for help. This is general guidance, not medical advice: when in doubt, call your provider or your provincial health line (811 in most provinces), and call 911 for an emergency.',
     tips: [

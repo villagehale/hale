@@ -13,6 +13,11 @@ export type AskSuggestion = {
   icon: IconName;
   tone: ChipTone;
   prompt: string;
+  /** The onboarding intent (@hale/types value) this row speaks to, where one maps
+   * cleanly — a family that stated it floats this row up (deterministic reorder, no
+   * new claim). Omitted when no honest single mapping exists (the log row spans nap +
+   * meal; the Drive row maps to no intent). */
+  intent?: string;
 };
 
 export const ASK_SUGGESTIONS: readonly AskSuggestion[] = [
@@ -22,6 +27,7 @@ export const ASK_SUGGESTIONS: readonly AskSuggestion[] = [
     icon: 'calendar',
     tone: 'blue',
     prompt: 'Add the next well-baby visit to my calendar.',
+    intent: 'health',
   },
   {
     title: 'Log a quick update',
@@ -36,6 +42,7 @@ export const ASK_SUGGESTIONS: readonly AskSuggestion[] = [
     icon: 'mail',
     tone: 'red',
     prompt: 'Draft an email to daycare letting them know we will be arriving late tomorrow.',
+    intent: 'childcare',
   },
   {
     title: 'Find a document',
