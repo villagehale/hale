@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { loadCuratedResources } from '~/lib/village/curated-resources';
-import { loadVillage } from '~/lib/village/queries';
+import { loadActiveArea, loadVillage } from '~/lib/village/queries';
 import { SEASONS, type Season } from '~/lib/village/visibility';
 import type { MobileVillageResponse } from '../types';
 
@@ -45,7 +45,11 @@ export async function GET(req: Request): Promise<Response> {
     const childcareBody: MobileVillageResponse = { candidates: [], routine: null, resources };
     return NextResponse.json(childcareBody);
   }
-  const [village, resources] = await Promise.all([loadVillage(), loadCuratedResources()]);
-  const body: MobileVillageResponse = { ...village, resources };
+  const [village, resources, area] = await Promise.all([
+    loadVillage(),
+    loadCuratedResources(),
+    loadActiveArea(),
+  ]);
+  const body: MobileVillageResponse = { ...village, resources, area };
   return NextResponse.json(body);
 }

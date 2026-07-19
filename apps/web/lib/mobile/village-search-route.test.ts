@@ -18,6 +18,7 @@ const searchMock = vi.fn();
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/village/queries', () => ({
   loadVillage: (...a: unknown[]) => loadVillageMock(...a),
+  loadActiveArea: () => Promise.resolve(null),
 }));
 vi.mock('~/lib/village/curated-resources', () => ({
   loadCuratedResources: () => loadResourcesMock(),

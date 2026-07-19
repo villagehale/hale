@@ -5,6 +5,7 @@ export * from './push-tokens.js';
 export * from './notification-prefs.js';
 export * from './push-sends.js';
 export * from './families.js';
+export * from './family-areas.js';
 export * from './family-members.js';
 export * from './family-invites.js';
 export * from './children.js';

@@ -43,7 +43,7 @@ function clean(value: string | undefined): string | null {
  * three characters ("90210" → "902"). Falls back to the city when no postal code
  * is set, and to null when neither is.
  */
-function deriveAreaCoarse(postalCode: string | null, city: string | null): string | null {
+export function deriveAreaCoarse(postalCode: string | null, city: string | null): string | null {
   if (postalCode) {
     const spaceIndex = postalCode.indexOf(' ');
     // A space marks the coarse unit (Canadian FSA / UK outward code) — keep it

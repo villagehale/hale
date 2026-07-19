@@ -15,11 +15,14 @@ import { describe, expect, it } from 'vitest';
 // dispatcher), the companion quick-log, the companion "mark done" (reuses the same
 // writeEpisode path), the companion logs read (reuses the shared, teen-redacted
 // readLogsPage), the three docs-vault routes (reuse the shared, teen-redacted
-// documents lib for list / signed-url / soft-delete), and the connector connect-url
+// documents lib for list / signed-url / soft-delete), the connector connect-url
 // route (resolves the family/user ids via the shared ~/lib/family helpers to sign
-// the OAuth state — it reads NO child data, so there is nothing to redact). They may
-// import ~/lib/db ONLY, and must contain NO query-building tokens themselves — the
-// query building lives behind the shared lib, never inline in the route.
+// the OAuth state — it reads NO child data, so there is nothing to redact), and the
+// saved-areas route (resolves the family/user ids to call the shared areas lib,
+// which owns the query building; it reads NO child data — coarse family locations
+// only — so there is nothing to redact). They may import ~/lib/db ONLY, and must
+// contain NO query-building tokens themselves — the query building lives behind the
+// shared lib, never inline in the route.
 //
 // (Lives under lib/ because the vitest `include` glob only picks up lib/** and
 // components/**, not app/**.)
@@ -41,6 +44,7 @@ const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/docs/[id]/route.ts',
   'app/api/mobile/docs/[id]/url/route.ts',
   'app/api/mobile/integrations/connect-url/route.ts',
+  'app/api/mobile/village/areas/route.ts',
   'app/api/mobile/rights/export/route.ts',
   'app/api/mobile/rights/delete/route.ts',
   'app/api/mobile/village/shares/route.ts',

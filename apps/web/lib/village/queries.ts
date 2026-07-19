@@ -4,6 +4,7 @@ import { type SQL, and, desc, eq, isNull, or } from 'drizzle-orm';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
+import { type SavedAreaLabel, readActiveArea } from './areas';
 import { listFamilyAcceptedCandidateIds } from './accept';
 import { countEndorsementsForCandidates, listFamilyEndorsedCandidateIds } from './endorse';
 import { listFamilySavedCandidateIds } from './save';
@@ -167,6 +168,16 @@ export function loadVillage(opts?: VillageReadOptions): Promise<VillageData> {
  */
 export function loadSavedVillageCandidates(): Promise<VillageCandidateView[]> {
   return readForFamily((database, familyId) => readSavedVillageCandidates(database, familyId), []);
+}
+
+/**
+ * The family's ACTIVE saved area label for the Village header, behind the same
+ * preview/unauthed boundary as loadVillage: no DATABASE_URL (preview) or no
+ * resolved family → null (the header shows no location). Falls back to the legacy
+ * family city/province when no saved-area row exists (back-compat).
+ */
+export function loadActiveArea(): Promise<SavedAreaLabel | null> {
+  return readForFamily((database, familyId) => readActiveArea(database, familyId), null);
 }
 
 /**
