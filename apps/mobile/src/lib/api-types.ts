@@ -223,6 +223,12 @@ export interface CuratedResourceView {
   description: string;
 }
 
+/** The `?category=` value the Childcare page sends to narrow the Resources rail
+ * server-side. MIRRORS the canonical export in apps/web/app/api/mobile/types.ts
+ * (re-exported from apps/web/lib/village/board-filter.ts — the ONE definition of the
+ * category string). Keep in sync with that value. */
+export const CHILDCARE_RESOURCE_CATEGORY = 'EarlyON child & family centres';
+
 // ── plan (from apps/web lib/plan/week) ────────────────────────────────────────
 
 export interface PlanChildItem {

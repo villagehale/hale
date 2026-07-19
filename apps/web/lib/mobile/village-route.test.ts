@@ -9,7 +9,7 @@ const loadResourcesMock = vi.fn();
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/village/queries', () => ({ loadVillage: () => loadVillageMock() }));
 vi.mock('~/lib/village/curated-resources', () => ({
-  loadCuratedResources: () => loadResourcesMock(),
+  loadCuratedResources: (...a: unknown[]) => loadResourcesMock(...a),
 }));
 
 vi.mock('@hale/db', async (importActual) => {
@@ -34,9 +34,9 @@ const RESOURCES = [
   },
 ];
 
-async function callGet(): Promise<Response> {
+async function callGet(query = ''): Promise<Response> {
   const { GET } = await import('~/app/api/mobile/village/route');
-  return GET(new Request('http://localhost/api/mobile/village'));
+  return GET(new Request(`http://localhost/api/mobile/village${query}`));
 }
 
 describe('GET /api/mobile/village', () => {
@@ -73,6 +73,17 @@ describe('GET /api/mobile/village', () => {
     // The standing feed merges the village data with the Resources rail.
     expect(await res.json()).toEqual({ ...VILLAGE, resources: RESOURCES });
     expect(loadVillageMock).toHaveBeenCalledTimes(1);
-    expect(loadResourcesMock).toHaveBeenCalledTimes(1);
+    // No ?category → the full directory (category is undefined).
+    expect(loadResourcesMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it('passes a ?category= through to the curated-resources read (server-side filter)', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+
+    const res = await callGet('?category=EarlyON%20child%20%26%20family%20centres');
+
+    expect(res.status).toBe(200);
+    // The childcare page narrows the Resources server-side by category.
+    expect(loadResourcesMock).toHaveBeenCalledWith('EarlyON child & family centres');
   });
 });

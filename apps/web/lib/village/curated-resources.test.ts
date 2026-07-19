@@ -31,12 +31,15 @@ function fakeSeedDb() {
   return { db: { insert } as never, captured, spies: { insert, values, onConflictDoUpdate } };
 }
 
-/** Captures the .select().from().orderBy() read and returns the given rows. */
+/** Captures the .select().from()[.where()].orderBy() read and returns the given
+ * rows. `where` is present on the chain so an optional category filter can be
+ * applied between from and orderBy. */
 function fakeReadDb(rows: unknown[]) {
   const orderBy = vi.fn().mockResolvedValue(rows);
-  const from = vi.fn().mockReturnValue({ orderBy });
+  const where = vi.fn().mockReturnValue({ orderBy });
+  const from = vi.fn().mockReturnValue({ where, orderBy });
   const select = vi.fn().mockReturnValue({ from });
-  return { db: { select } as never, spies: { select, from, orderBy } };
+  return { db: { select } as never, spies: { select, from, where, orderBy } };
 }
 
 const SAMPLE: CuratedResourceSeed[] = [
@@ -166,5 +169,42 @@ describe('readCuratedResources', () => {
   it('returns an empty list when there are no resources', async () => {
     const { db } = fakeReadDb([]);
     expect(await readCuratedResources(db)).toEqual([]);
+  });
+
+  it('applies no category filter when none is given (all rows, unchanged)', async () => {
+    const { db, spies } = fakeReadDb([]);
+    await readCuratedResources(db);
+    expect(spies.where).not.toHaveBeenCalled();
+  });
+
+  it('filters by category server-side when a category is given', async () => {
+    const rows = [
+      {
+        id: 'r1',
+        name: 'EarlyON',
+        category: 'EarlyON child & family centres',
+        area: 'Halton Region',
+        url: 'https://a.example',
+        description: 'childcare',
+        sortOrder: 0,
+        createdAt: new Date(),
+      },
+    ];
+    const { db, spies } = fakeReadDb(rows);
+
+    const out = await readCuratedResources(db, 'EarlyON child & family centres');
+
+    // The narrowing happens in SQL (a where clause), not in the caller.
+    expect(spies.where).toHaveBeenCalledTimes(1);
+    expect(out).toEqual([
+      {
+        id: 'r1',
+        name: 'EarlyON',
+        category: 'EarlyON child & family centres',
+        area: 'Halton Region',
+        url: 'https://a.example',
+        description: 'childcare',
+      },
+    ]);
   });
 });

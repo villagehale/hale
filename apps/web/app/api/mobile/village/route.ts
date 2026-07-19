@@ -36,7 +36,10 @@ export async function GET(req: Request): Promise<Response> {
     const searchBody: MobileVillageResponse = await loadVillage({ searchSeason: season });
     return NextResponse.json(searchBody);
   }
-  const [village, resources] = await Promise.all([loadVillage(), loadCuratedResources()]);
+  // An optional ?category= narrows the Resources rail server-side (the Childcare
+  // page requests only its category); absent → the full directory (unchanged).
+  const category = new URL(req.url).searchParams.get('category')?.trim() || undefined;
+  const [village, resources] = await Promise.all([loadVillage(), loadCuratedResources(category)]);
   const body: MobileVillageResponse = { ...village, resources };
   return NextResponse.json(body);
 }

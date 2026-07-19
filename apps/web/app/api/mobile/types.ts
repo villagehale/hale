@@ -55,6 +55,12 @@ export interface MobileVillageResponse extends VillageData {
   resources?: CuratedResourceView[];
 }
 
+/** The `?category=` value the Childcare page sends to narrow the Resources rail
+ * server-side. THE single canonical definition lives in board-filter.ts; this
+ * re-export makes it part of the mobile request contract, which the native
+ * api-types mirror follows. (No separate mobile copy of the category string.) */
+export { CHILDCARE_RESOURCE_CATEGORY } from '~/lib/village/board-filter';
+
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true),
  * newest-save-first. Reuses the same teen-redacted view shape as the feed. */
 export interface MobileSavedResponse {
