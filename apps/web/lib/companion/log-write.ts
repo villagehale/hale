@@ -107,10 +107,14 @@ export function buildEpisodeInsert(
       return {
         ...base,
         episodeType: NAP_EPISODE,
-        summary: `Napped ${durationMin} min`,
+        // The structured quality (poor/okay/good/excellent) words the summary — an
+        // em-dash suffix like the qualitative feed ("Fed — most of it"). A nap with
+        // no quality (or an old note-folded row) keeps the plain "Napped N min".
+        summary: `Napped ${durationMin} min${input.quality ? ` — ${input.quality}` : ''}`,
         payload: {
           durationMin,
           ...(input.startAt && input.endAt ? { startAt: input.startAt, endAt: input.endAt } : {}),
+          ...(input.quality ? { quality: input.quality } : {}),
           ...(input.note ? { note: input.note } : {}),
         },
       };

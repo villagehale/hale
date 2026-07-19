@@ -100,6 +100,34 @@ describe('buildEpisodeInsert', () => {
     expect(episode.payload).toEqual({ durationMin: 45 });
   });
 
+  it('folds an optional structured quality into the nap summary and payload', () => {
+    const input: QuickLogInput = {
+      kind: NAP_EPISODE,
+      childId: CHILD_ID,
+      durationMin: 45,
+      quality: 'good',
+    };
+
+    const episode = buildEpisodeInsert(input, FAMILY_ID, NOW, AUTHOR_ID);
+
+    expect(episode.summary).toBe('Napped 45 min — good');
+    expect(episode.payload).toEqual({ durationMin: 45, quality: 'good' });
+  });
+
+  it('leaves a nap without a quality wording plain (old note-folded rows still render)', () => {
+    const episode = buildEpisodeInsert(
+      { kind: NAP_EPISODE, childId: CHILD_ID, durationMin: 30, note: 'Quality: Good' },
+      FAMILY_ID,
+      NOW,
+      AUTHOR_ID,
+    );
+
+    // No structured quality → the summary is unchanged and the free-text note (an
+    // old note-folded row) rides along untouched; no `quality` key is invented.
+    expect(episode.summary).toBe('Napped 30 min');
+    expect(episode.payload).toEqual({ durationMin: 30, note: 'Quality: Good' });
+  });
+
   it('shapes a nap from a resolved window duration, keeping the bounds in the payload', () => {
     const input: QuickLogInput = {
       kind: NAP_EPISODE,

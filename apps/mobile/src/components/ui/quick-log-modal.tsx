@@ -380,9 +380,9 @@ export function QuickLogModal({
             <ChipGrid
               cols={4}
               items={NAP_QUALITY.map((q) => ({
-                label: q,
-                active: q === napQuality,
-                onPress: () => setNapQuality(q),
+                label: q.label,
+                active: q.label === napQuality,
+                onPress: () => setNapQuality(q.label),
               }))}
             />
           </View>

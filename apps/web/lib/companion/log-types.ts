@@ -40,6 +40,13 @@ export type FeedAmount = (typeof FEED_AMOUNTS)[number];
 export const DIAPER_KINDS = ['wet', 'dirty', 'mixed', 'dry'] as const;
 export type DiaperKind = (typeof DIAPER_KINDS)[number];
 
+/** A nap's QUALITATIVE rating — the prototype's Quality chips (Poor / Okay / Good /
+ * Excellent). An additive structured field: stored verbatim in the payload and
+ * worded into the summary. Supersedes the old note-folded "Quality: Good" string —
+ * old note-folded rows keep rendering (the formatter only words a structured value). */
+export const NAP_QUALITIES = ['poor', 'okay', 'good', 'excellent'] as const;
+export type NapQuality = (typeof NAP_QUALITIES)[number];
+
 /** The kinds of growth measurement a parent may log. Each has ONE fixed unit and a
  * sane upper bound (a child's real range — a mistyped value is rejected, never
  * charted). Weight is kg; height and head circumference are cm. */
@@ -98,6 +105,7 @@ export const napSchema = z.object({
   durationMin: z.coerce.number().positive().max(1440).optional(),
   startAt: napBoundField,
   endAt: napBoundField,
+  quality: z.enum(NAP_QUALITIES).optional(),
   note: z.string().trim().max(280).optional(),
   occurredAt: occurredAtField,
 });

@@ -9,6 +9,7 @@ import {
   MEASUREMENT_EPISODE,
   measurementSchema,
   NAP_EPISODE,
+  NAP_QUALITIES,
   napSchema,
   quickLogSchema,
   resolveMeasurement,
@@ -92,6 +93,29 @@ describe('napSchema — additive window fields (a plain ZodObject for the union)
       childId: CHILD_ID,
       startAt: 'yesterday afternoon',
       endAt: '2026-07-07T15:30:00Z',
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('retains an optional structured quality in the fixed set (poor/okay/good/excellent)', () => {
+    for (const quality of NAP_QUALITIES) {
+      const parsed = napSchema.safeParse({
+        kind: NAP_EPISODE,
+        childId: CHILD_ID,
+        durationMin: 45,
+        quality,
+      });
+      expect(parsed.success, quality).toBe(true);
+      if (parsed.success) expect(parsed.data.quality).toBe(quality);
+    }
+  });
+
+  it('rejects a quality outside the fixed set (never a free-text label)', () => {
+    const parsed = napSchema.safeParse({
+      kind: NAP_EPISODE,
+      childId: CHILD_ID,
+      durationMin: 45,
+      quality: 'amazing',
     });
     expect(parsed.success).toBe(false);
   });
