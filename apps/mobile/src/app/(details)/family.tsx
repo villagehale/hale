@@ -39,6 +39,15 @@ const GENDERS: { value: string; label: string }[] = [
   { value: 'unspecified', label: 'Prefer not to say' },
 ];
 
+// Natal sex, captured ONLY to enable the sex-specific WHO growth comparison — kept
+// separate from gender identity (rule #1). Empty value = "prefer not to say", stored
+// as null (the Growth tab then stays in its honest needs-details state).
+const BIOLOGICAL_SEXES: { value: string; label: string }[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: '', label: 'Prefer not to say' },
+];
+
 /** Joins an interests array back into the comma-separated field the form edits (and
  * the server splits again with parseInterests). */
 function interestsToField(interests: string[]): string {
@@ -255,6 +264,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
   const [lastName, setLastName] = useState(child.lastName ?? '');
   const [dob, setDob] = useState(child.dateOfBirth);
   const [gender, setGender] = useState(child.gender);
+  const [biologicalSex, setBiologicalSex] = useState(child.biologicalSex ?? '');
   const [interests, setInterests] = useState(interestsToField(child.interests));
   const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -302,6 +312,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         dateOfBirth: dob,
         lastName,
         gender,
+        biologicalSex,
         interests,
       });
       setEditing(false);
@@ -380,6 +391,13 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         </AppText>
         <ChipSelect options={GENDERS} value={gender} onSelect={(g) => setGender(g as typeof gender)} />
       </View>
+      <View className="gap-1.5">
+        <AppText variant="meta" className="text-ink-2">
+          Biological sex (optional)
+        </AppText>
+        <ChipSelect options={BIOLOGICAL_SEXES} value={biologicalSex} onSelect={setBiologicalSex} />
+        <AppText variant="meta">Used only for WHO growth comparisons — never shared.</AppText>
+      </View>
       <Field
         label="Interests (optional)"
         value={interests}
@@ -399,6 +417,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
             setLastName(child.lastName ?? '');
             setDob(child.dateOfBirth);
             setGender(child.gender);
+            setBiologicalSex(child.biologicalSex ?? '');
             setInterests(interestsToField(child.interests));
             setShowPicker(false);
             setError(null);

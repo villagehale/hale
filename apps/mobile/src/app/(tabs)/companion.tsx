@@ -729,16 +729,27 @@ const GROWTH_DATA_SOURCE = 'WHO Growth Standards';
 
 /**
  * Map the selected measure's WHO read to what the Growth overview renders. Every
- * state stays neutral and honest: 'review' is "worth a look", never alarming;
- * missing sex points to the profile; a preterm baby gets the corrected-age caveat;
- * and a child outside WHO's 0–5y range (assessment absent) simply gets no verdict.
+ * state stays neutral and honest: no reading for this measure yet is distinct from a
+ * child outside WHO's 0–5y range; 'review' is "worth a look", never alarming; missing
+ * sex points to the profile; a preterm baby gets the corrected-age caveat.
  */
-function growthVerdict(assessment: GrowthAssessmentView | undefined): {
+function growthVerdict(
+  assessment: GrowthAssessmentView | undefined,
+  hasReading: boolean,
+): {
   pill: { label: string; tone: 'done' | 'neutral' } | null;
   note: string;
   showSource: boolean;
   addDetails: boolean;
 } {
+  if (!hasReading) {
+    return {
+      pill: null,
+      note: 'No reading logged for this measure yet — add one to see its WHO growth read.',
+      showSource: false,
+      addDetails: false,
+    };
+  }
   if (assessment?.state === 'assessed') {
     return assessment.band === 'typical'
       ? {
@@ -765,7 +776,7 @@ function growthVerdict(assessment: GrowthAssessmentView | undefined): {
   if (assessment?.state === 'needs-details') {
     return {
       pill: null,
-      note: 'Add your child’s sex in their profile to compare against WHO growth standards.',
+      note: 'Add your child’s biological sex in Family to compare against WHO growth standards.',
       showSource: false,
       addDetails: true,
     };
@@ -798,6 +809,7 @@ function GrowthSection({ childId }: { childId: string }) {
   const hasAny = series.some((s) => s.readings.length > 0);
   const verdict = growthVerdict(
     data.growthAssessments?.find((a) => a.measureKind === selectedKind),
+    selected.readings.length > 0,
   );
 
   if (!hasAny) {
@@ -884,7 +896,7 @@ function GrowthSection({ childId }: { childId: string }) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add child details"
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push('/family')}
             className="min-h-11 flex-row items-center justify-center gap-2 rounded-[12px] border border-rule bg-card active:opacity-80"
           >
             <Icon name="plus" size={14} color={addIcon} />

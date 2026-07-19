@@ -291,6 +291,9 @@ export interface FamilyChildBasics {
   dateOfBirth: string;
   /** Stored gender enum, so an edit form prefills it. */
   gender: ChildGender;
+  /** Stored natal sex ('male' | 'female') or null, so the edit form prefills it and
+   * the WHO growth read works. Distinct from gender (rule #1). Mirrors web. */
+  biologicalSex: string | null;
   /** Free-text interest tags driving discovery, so an edit form prefills them. */
   interests: string[];
   stageLabel: string;
@@ -502,6 +505,9 @@ export interface EditChildRequest {
   dateOfBirth: string;
   lastName?: string;
   gender?: string;
+  /** Natal sex for the WHO growth comparison: 'male' | 'female' | '' (prefer not to
+   * say → cleared server-side). Distinct from gender (rule #1). */
+  biologicalSex?: string;
   /** Comma-separated free-text interests, e.g. "swimming, music". */
   interests?: string;
 }
