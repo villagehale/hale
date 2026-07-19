@@ -7,15 +7,17 @@ import { Field } from '~/components/ui/field';
 import { Icon } from '~/components/ui/icon';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
+  FEED_AMOUNTS,
   FEED_EPISODE,
   FEED_KINDS,
+  type FeedAmount,
   type FeedKind,
   type LogResult,
   MILESTONE_EPISODE,
   NAP_EPISODE,
-  type QuickLogInput,
 } from '~/lib/companion/log-types';
 import {
+  buildInput,
   eligibleKidsFor,
   type Kind,
   type QuickLogChild,
@@ -35,6 +37,16 @@ const FEED_KIND_LABEL: Record<FeedKind, string> = {
   solid: 'solid',
 };
 
+/** The qualitative "how much" chips, in the design prototype's own words. Selecting
+ * one posts feedAmount instead of a millilitre figure (the two are mutually
+ * exclusive). */
+const FEED_AMOUNT_LABEL: Record<FeedAmount, string> = {
+  little: 'a little',
+  half: 'half',
+  most: 'most of it',
+  all: 'all of it',
+};
+
 const KIND_META: Record<
   Kind,
   { label: string; cardTitle: string; cardSubtitle: string; icon: typeof Utensils; emptyError: string }
@@ -44,7 +56,7 @@ const KIND_META: Record<
     cardTitle: 'log feed',
     cardSubtitle: 'record a moment',
     icon: Utensils,
-    emptyError: 'enter how much (ml) before saving',
+    emptyError: 'enter how much — ml, or pick how much they took',
   },
   [NAP_EPISODE]: {
     label: 'log a nap',
@@ -92,6 +104,7 @@ export function QuickLog({
   const [open, setOpen] = useState<Kind | null>(null);
   const [childId, setChildId] = useState<string>(kids[0]?.id ?? '');
   const [amountMl, setAmountMl] = useState('');
+  const [feedAmount, setFeedAmount] = useState<FeedAmount | ''>('');
   const [feedKind, setFeedKind] = useState<FeedKind | ''>('');
   const [durationMin, setDurationMin] = useState('');
   const [milestone, setMilestone] = useState('');
@@ -106,6 +119,7 @@ export function QuickLog({
 
   function reset() {
     setAmountMl('');
+    setFeedAmount('');
     setFeedKind('');
     setDurationMin('');
     setMilestone('');
@@ -131,6 +145,7 @@ export function QuickLog({
     if (!open) return;
     const input = buildInput(open, childId, {
       amountMl,
+      feedAmount,
       feedKind,
       durationMin,
       milestone,
@@ -257,11 +272,41 @@ export function QuickLog({
                 inputMode="numeric"
                 min={1}
                 max={2000}
-                required
                 value={amountMl}
-                onChange={(e) => setAmountMl(e.currentTarget.value)}
+                onChange={(e) => {
+                  // Typing an ml figure is the numeric path — clear any picked chip.
+                  setAmountMl(e.currentTarget.value);
+                  if (e.currentTarget.value) setFeedAmount('');
+                }}
                 placeholder="120"
               />
+              <div className="field-group">
+                <span className="field-label">or how much they took</span>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {FEED_AMOUNTS.map((amount) => {
+                    const isSelected = feedAmount === amount;
+                    return (
+                      <button
+                        key={amount}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => {
+                          // Picking a chip is the qualitative path — clear the ml field.
+                          setFeedAmount(isSelected ? '' : amount);
+                          setAmountMl('');
+                        }}
+                        className={`choice-card rounded-full px-4 py-2 text-sm leading-none transition-colors ${
+                          isSelected
+                            ? 'bg-oat border border-spruce text-spruce'
+                            : 'border border-rule-strong text-slate-green hover:border-spruce'
+                        }`}
+                      >
+                        {FEED_AMOUNT_LABEL[amount]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="field-group">
                 <label htmlFor={feedKindId} className="field-label">
                   kind (optional)
@@ -351,64 +396,4 @@ export function QuickLog({
 
 function childName(kids: QuickLogChild[], id: string): string {
   return kids.find((c) => c.id === id)?.name ?? 'your child';
-}
-
-/** Converts the datetime-local field (local wall-clock, no zone) to an ISO
- * string with offset for the schema, or undefined when blank (server defaults to
- * now). A blank/invalid string yields undefined rather than a bad date. */
-function toOccurredAt(when: string): string | undefined {
-  if (!when) return undefined;
-  const date = new Date(when);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
-
-/**
- * Builds the typed server-action input for the open form, or null when the
- * required field is empty / non-numeric. Numeric coercion + bounds are enforced
- * server-side too (zod); this is the client-side guard so we never POST a blank.
- */
-function buildInput(
-  kind: Kind,
-  childId: string,
-  values: {
-    amountMl: string;
-    feedKind: FeedKind | '';
-    durationMin: string;
-    milestone: string;
-    milestoneNote: string;
-    when: string;
-  },
-): QuickLogInput | null {
-  if (!childId) return null;
-  const occurredAt = toOccurredAt(values.when);
-  switch (kind) {
-    case FEED_EPISODE: {
-      const amountMl = Number(values.amountMl);
-      if (!values.amountMl || Number.isNaN(amountMl)) return null;
-      return {
-        kind: FEED_EPISODE,
-        childId,
-        amountMl,
-        ...(values.feedKind ? { feedKind: values.feedKind } : {}),
-        occurredAt,
-      };
-    }
-    case NAP_EPISODE: {
-      const durationMin = Number(values.durationMin);
-      if (!values.durationMin || Number.isNaN(durationMin)) return null;
-      return { kind: NAP_EPISODE, childId, durationMin, occurredAt };
-    }
-    case MILESTONE_EPISODE: {
-      const milestone = values.milestone.trim();
-      if (!milestone) return null;
-      const note = values.milestoneNote.trim();
-      return {
-        kind: MILESTONE_EPISODE,
-        childId,
-        milestone,
-        ...(note ? { note } : {}),
-        occurredAt,
-      };
-    }
-  }
 }
