@@ -55,11 +55,13 @@ export async function POST(req: Request): Promise<Response> {
   }
   const priceId = checkoutPriceIdFromEnv(tier as PaidTier, period as BillingPeriod);
   const client = stripeCheckoutClientFromEnv();
-  if (!priceId || !client) {
+  // Pin the redirect origin to APP_URL — never the request Host header, which a
+  // caller can steer (an open-redirect / spoofed success page). Absent APP_URL is
+  // treated as not-configured, the same honest 501 as missing Stripe keys.
+  const origin = process.env.APP_URL;
+  if (!priceId || !client || !origin) {
     return NextResponse.json({ error: 'stripe_billing_not_live' }, { status: 501 });
   }
-
-  const origin = process.env.APP_URL ?? new URL(req.url).origin;
 
   let result: Awaited<ReturnType<typeof createBillingCheckout>>;
   try {

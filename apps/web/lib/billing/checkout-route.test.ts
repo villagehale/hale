@@ -29,6 +29,7 @@ const FULL_STRIPE_ENV: Record<string, string> = {
   STRIPE_PRICE_PLUS_ANNUAL: 'price_pa',
   STRIPE_PRICE_FAMILY_MONTHLY: 'price_fm',
   STRIPE_PRICE_FAMILY_ANNUAL: 'price_fa',
+  APP_URL: 'https://app.example.com',
 };
 
 function stubStripeEnv(): void {
@@ -108,5 +109,14 @@ describe('POST /api/billing/checkout', () => {
     createMock.mockResolvedValue({ status: 'not_found' });
     const res = await callPost({ tier: 'plus', period: 'monthly' });
     expect(res.status).toBe(404);
+  });
+
+  it('returns 501 when APP_URL is absent (redirect origin must be pinned, not Host-steerable)', async () => {
+    authMock.mockResolvedValue(session('auth-1'));
+    stubStripeEnv();
+    vi.stubEnv('APP_URL', '');
+    const res = await callPost({ tier: 'plus', period: 'monthly' });
+    expect(res.status).toBe(501);
+    expect(createMock).not.toHaveBeenCalled();
   });
 });

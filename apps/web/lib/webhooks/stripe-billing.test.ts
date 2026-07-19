@@ -12,12 +12,14 @@ import {
 } from './stripe-billing.js';
 
 /**
- * Fixtures hand-built from Stripe's documented event shapes and the B18 mapping
- * contract (never copied from runtime output):
- *   checkout.session.completed     → tier of the purchased price
- *   customer.subscription.updated  → tier of the active price after the change
- *   customer.subscription.deleted  → 'free'
- *   (anything else)                → null
+ * Fixtures hand-built to match REAL Stripe webhook shapes (verified against the
+ * stripe-node types), never copied from runtime output:
+ *   - checkout.session.completed carries NO line_items/price on the webhook (they're
+ *     only present when explicitly expanded, which webhooks never are). We grant from
+ *     OUR OWN metadata.tier (set at session creation) + client_reference_id/metadata.
+ *   - customer.subscription.created/updated carry items.data[0].price.id + metadata.
+ *   - customer.subscription.deleted → 'free'.
+ *   - (anything else) → null.
  */
 
 const PRICE_PLUS = 'price_plus_test';
@@ -33,19 +35,37 @@ function subscriptionEvent(type: string, priceId: string, familyId: string | nul
   return { id: 'evt_sub_1', type, data: { object } };
 }
 
-function checkoutCompleted(priceId: string, familyId: string | null = FAMILY_ID) {
-  const object: Record<string, unknown> = { price: { id: priceId } };
+/** A real checkout.session.completed webhook: metadata.tier + family refs, NO price. */
+function checkoutCompleted(tier: string | null, familyId: string | null = FAMILY_ID) {
+  const metadata: Record<string, string> = {};
+  if (tier) metadata.tier = tier;
+  if (familyId) metadata.familyId = familyId;
+  const object: Record<string, unknown> = { metadata };
   if (familyId) object.client_reference_id = familyId;
   return { id: 'evt_checkout_1', type: 'checkout.session.completed', data: { object } };
 }
 
 describe('planTierFromStripeEvent', () => {
-  it('maps a Plus checkout completion to the plus tier', () => {
-    expect(planTierFromStripeEvent(checkoutCompleted(PRICE_PLUS), MAP)).toBe('plus');
+  it('maps a Plus checkout completion to plus via our metadata.tier (no price on webhook)', () => {
+    expect(planTierFromStripeEvent(checkoutCompleted('plus'), MAP)).toBe('plus');
   });
 
-  it('maps a Family checkout completion to the family tier', () => {
-    expect(planTierFromStripeEvent(checkoutCompleted(PRICE_FAMILY), MAP)).toBe('family');
+  it('maps a Family checkout completion to family via our metadata.tier', () => {
+    expect(planTierFromStripeEvent(checkoutCompleted('family'), MAP)).toBe('family');
+  });
+
+  it('returns null for a checkout session with no metadata.tier (never guesses)', () => {
+    expect(planTierFromStripeEvent(checkoutCompleted(null), MAP)).toBeNull();
+  });
+
+  it('returns null for a checkout session whose metadata.tier is not a paid tier', () => {
+    expect(planTierFromStripeEvent(checkoutCompleted('free'), MAP)).toBeNull();
+    expect(planTierFromStripeEvent(checkoutCompleted('bogus'), MAP)).toBeNull();
+  });
+
+  it('maps a subscription creation (primary activation) to the price tier', () => {
+    const created = subscriptionEvent('customer.subscription.created', PRICE_PLUS);
+    expect(planTierFromStripeEvent(created, MAP)).toBe('plus');
   });
 
   it('maps a subscription update to the new price tier', () => {
@@ -77,7 +97,7 @@ describe('planTierFromStripeEvent', () => {
 
 describe('familyIdFromStripeEvent', () => {
   it('reads client_reference_id off a checkout session', () => {
-    expect(familyIdFromStripeEvent(checkoutCompleted(PRICE_PLUS, 'fam-abc'))).toBe('fam-abc');
+    expect(familyIdFromStripeEvent(checkoutCompleted('plus', 'fam-abc'))).toBe('fam-abc');
   });
 
   it('reads metadata.familyId off a subscription', () => {
@@ -86,14 +106,14 @@ describe('familyIdFromStripeEvent', () => {
   });
 
   it('returns null when the event carries no family reference', () => {
-    expect(familyIdFromStripeEvent(checkoutCompleted(PRICE_PLUS, null))).toBeNull();
+    expect(familyIdFromStripeEvent(checkoutCompleted('plus', null))).toBeNull();
     expect(familyIdFromStripeEvent(null)).toBeNull();
   });
 });
 
 describe('eventIdFromStripeEvent', () => {
   it('returns the top-level event id', () => {
-    expect(eventIdFromStripeEvent(checkoutCompleted(PRICE_PLUS))).toBe('evt_checkout_1');
+    expect(eventIdFromStripeEvent(checkoutCompleted('plus'))).toBe('evt_checkout_1');
   });
 
   it('returns null when the id is missing', () => {

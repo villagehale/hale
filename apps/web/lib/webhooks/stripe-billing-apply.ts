@@ -21,12 +21,18 @@ import {
  * price) or carries no family reference writes nothing — an unknown price must
  * never silently grant a tier (rule #1), and an unattributable event has no family
  * to write. Every applied transition writes an immutable audit_log row (rule #6).
+ *
+ * Every outcome is TERMINAL — the caller returns 200 so Stripe stops retrying — EXCEPT
+ * a thrown DB error (a genuine transient failure), which the route lets 500 so Stripe
+ * retries. `unknown_family` (the event names a family that isn't in our DB) is terminal
+ * too: the ledger still claims the event, we log, and we acknowledge rather than loop.
  */
 export type ApplyStripeBillingResult =
   | { status: 'applied'; tier: PlanTier }
   | { status: 'duplicate' }
   | { status: 'no_tier' }
   | { status: 'unbound' }
+  | { status: 'unknown_family' }
   | { status: 'ignored' };
 
 export async function applyStripeBillingEvent(
@@ -63,10 +69,20 @@ export async function applyStripeBillingEvent(
       .where(eq(schema.families.id, familyId))
       .limit(1);
 
-    await tx
+    const updated = await tx
       .update(schema.families)
       .set({ planTier: tier })
-      .where(eq(schema.families.id, familyId));
+      .where(eq(schema.families.id, familyId))
+      .returning({ id: schema.families.id });
+    if (updated.length === 0) {
+      // The event references a family we don't have (deleted, or a forged-but-signed
+      // metadata). Terminal: the ledger already claimed the event id, so we log and
+      // acknowledge rather than let Stripe retry forever. No plan write, no audit.
+      console.warn(
+        `stripe billing: event ${eventId} references unknown family ${familyId} — acknowledged, not applied`,
+      );
+      return { status: 'unknown_family' };
+    }
 
     await tx.insert(schema.auditLog).values({
       familyId,

@@ -60,9 +60,14 @@ export function stripeCheckoutClientFromEnv(
 }
 
 /**
- * The form-encoded body for a subscription Checkout Session. The family id is
- * threaded as client_reference_id AND metadata (session + subscription) so every
- * downstream billing event carries it back for family resolution.
+ * The form-encoded body for a subscription Checkout Session.
+ *
+ * Family id is threaded as client_reference_id AND metadata on BOTH the session and
+ * the subscription, so every downstream event resolves its family. Tier + price id
+ * go in the SESSION metadata because Stripe does not send line_items/price on the
+ * checkout.session.completed webhook — the handler grants from metadata.tier, so we
+ * must put the tier we're selling there. The subscription itself carries the real
+ * price (items.data[0].price.id), so subscription.* events map from that, not metadata.
  */
 function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
   const form = new URLSearchParams({
@@ -73,6 +78,8 @@ function checkoutForm(params: CheckoutSessionParams): URLSearchParams {
     cancel_url: params.cancelUrl,
     client_reference_id: params.familyId,
     'metadata[familyId]': params.familyId,
+    'metadata[tier]': params.tier,
+    'metadata[priceId]': params.priceId,
     'subscription_data[metadata][familyId]': params.familyId,
   });
   if (params.customerEmail) {

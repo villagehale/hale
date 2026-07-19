@@ -17,10 +17,22 @@ const PRICE_FAMILY = 'price_family';
 const MAP: PriceTierMap = { [PRICE_PLUS]: 'plus', [PRICE_FAMILY]: 'family' };
 const FAMILY_ID = 'fam-1';
 
-function checkout(eventId: string, priceId: string, familyId: string | null = FAMILY_ID) {
-  const object: Record<string, unknown> = { price: { id: priceId } };
+/** Real checkout.session.completed shape: metadata.tier + family refs, no price. */
+function checkout(eventId: string, tier: string | null, familyId: string | null = FAMILY_ID) {
+  const metadata: Record<string, string> = {};
+  if (tier) metadata.tier = tier;
+  if (familyId) metadata.familyId = familyId;
+  const object: Record<string, unknown> = { metadata };
   if (familyId) object.client_reference_id = familyId;
   return { id: eventId, type: 'checkout.session.completed', data: { object } };
+}
+
+function subscription(eventId: string, type: string, priceId: string, familyId = FAMILY_ID) {
+  return {
+    id: eventId,
+    type,
+    data: { object: { items: { data: [{ price: { id: priceId } }] }, metadata: { familyId } } },
+  };
 }
 
 interface Recorder {
@@ -32,13 +44,15 @@ interface Recorder {
 /**
  * Fake of the apply transaction: insert(stripe_billing_events).onConflictDoNothing()
  * .returning() yields [] for an already-claimed event id (the unique-index conflict)
- * and [{id}] for a fresh one; families update + audit insert are recorded.
- * `preClaimed` seeds event ids as already-processed (models a redelivery).
+ * and [{id}] for a fresh one; the families UPDATE returns [{id}] only when the family
+ * exists (models the rowcount check), else [] → unknown_family. `preClaimed` seeds
+ * event ids as already-processed (a redelivery); `familyExists:false` models an event
+ * naming a family we don't have.
  */
-function fakeDb(opts: { existingTier?: PlanTier; preClaimed?: string[] } = {}): {
-  db: Database;
-  rec: Recorder;
-} {
+function fakeDb(
+  opts: { existingTier?: PlanTier; familyExists?: boolean; preClaimed?: string[] } = {},
+): { db: Database; rec: Recorder } {
+  const familyExists = opts.familyExists ?? true;
   const rec: Recorder = {
     planWrites: [],
     audits: [],
@@ -66,15 +80,20 @@ function fakeDb(opts: { existingTier?: PlanTier; preClaimed?: string[] } = {}): 
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: async () => (opts.existingTier ? [{ planTier: opts.existingTier }] : []),
+          limit: async () =>
+            familyExists && opts.existingTier ? [{ planTier: opts.existingTier }] : [],
         }),
       }),
     }),
     update: () => ({
       set: (v: { planTier: string }) => ({
-        where: async () => {
-          rec.planWrites.push({ tier: v.planTier });
-        },
+        where: () => ({
+          returning: async () => {
+            if (!familyExists) return [];
+            rec.planWrites.push({ tier: v.planTier });
+            return [{ id: FAMILY_ID }];
+          },
+        }),
       }),
     }),
   };
@@ -86,7 +105,7 @@ describe('applyStripeBillingEvent', () => {
   it('applies a Plus checkout: writes plan_tier=plus + one audit row, and the tier grants L3', async () => {
     const { db, rec } = fakeDb({ existingTier: 'free' });
 
-    const result = await applyStripeBillingEvent(checkout('evt_1', PRICE_PLUS), db, MAP);
+    const result = await applyStripeBillingEvent(checkout('evt_1', 'plus'), db, MAP);
 
     expect(result).toEqual({ status: 'applied', tier: 'plus' });
     expect(rec.planWrites).toEqual([{ tier: 'plus' }]);
@@ -105,11 +124,36 @@ describe('applyStripeBillingEvent', () => {
   it('is idempotent: a redelivered event id claims nothing, writes no tier, audits nothing', async () => {
     const { db, rec } = fakeDb({ existingTier: 'free', preClaimed: ['evt_1'] });
 
-    const result = await applyStripeBillingEvent(checkout('evt_1', PRICE_PLUS), db, MAP);
+    const result = await applyStripeBillingEvent(checkout('evt_1', 'plus'), db, MAP);
 
     expect(result).toEqual({ status: 'duplicate' });
     expect(rec.planWrites).toEqual([]);
     expect(rec.audits).toEqual([]);
+  });
+
+  it('activates on subscription.created (primary activation) via the price→tier map', async () => {
+    const { db, rec } = fakeDb({ existingTier: 'free' });
+
+    const result = await applyStripeBillingEvent(
+      subscription('evt_sub', 'customer.subscription.created', PRICE_FAMILY),
+      db,
+      MAP,
+    );
+
+    expect(result).toEqual({ status: 'applied', tier: 'family' });
+    expect(rec.planWrites).toEqual([{ tier: 'family' }]);
+  });
+
+  it('acknowledges an unknown family as terminal (claims the event, no write, no audit)', async () => {
+    const { db, rec } = fakeDb({ familyExists: false });
+
+    const result = await applyStripeBillingEvent(checkout('evt_ghost', 'plus'), db, MAP);
+
+    expect(result).toEqual({ status: 'unknown_family' });
+    expect(rec.planWrites).toEqual([]);
+    expect(rec.audits).toEqual([]);
+    // the ledger still claimed the event so a retry is a no-op duplicate
+    expect(rec.claimed.has('evt_ghost')).toBe(true);
   });
 
   it('downgrades to free on subscription deletion', async () => {
@@ -127,10 +171,14 @@ describe('applyStripeBillingEvent', () => {
     expect(hasEntitlement('free', 'autonomy_l3')).toBe(false);
   });
 
-  it('writes nothing for an unknown price id (no silent tier grant)', async () => {
+  it('writes nothing for a subscription on an unknown price id (no silent tier grant)', async () => {
     const { db, rec } = fakeDb({ existingTier: 'free' });
 
-    const result = await applyStripeBillingEvent(checkout('evt_2', 'price_unmapped'), db, MAP);
+    const result = await applyStripeBillingEvent(
+      subscription('evt_2', 'customer.subscription.updated', 'price_unmapped'),
+      db,
+      MAP,
+    );
 
     expect(result).toEqual({ status: 'no_tier' });
     expect(rec.planWrites).toEqual([]);
@@ -140,7 +188,7 @@ describe('applyStripeBillingEvent', () => {
   it('writes nothing for an event with no family reference (unattributable)', async () => {
     const { db, rec } = fakeDb({ existingTier: 'free' });
 
-    const result = await applyStripeBillingEvent(checkout('evt_3', PRICE_PLUS, null), db, MAP);
+    const result = await applyStripeBillingEvent(checkout('evt_3', 'plus', null), db, MAP);
 
     expect(result).toEqual({ status: 'unbound' });
     expect(rec.planWrites).toEqual([]);
@@ -150,7 +198,7 @@ describe('applyStripeBillingEvent', () => {
     const { db, rec } = fakeDb({ existingTier: 'free' });
 
     const result = await applyStripeBillingEvent(
-      { type: 'checkout.session.completed', data: { object: { price: { id: PRICE_PLUS } } } },
+      { type: 'checkout.session.completed', data: { object: { metadata: { tier: 'plus' } } } },
       db,
       MAP,
     );

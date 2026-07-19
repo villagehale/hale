@@ -169,10 +169,20 @@ export function isStripeCheckoutConfigured(
 
 /**
  * Pure mapping from a Stripe event payload to the plan_tier it transitions the
- * family to, or null when the event does not affect billing tier.
+ * family to, or null when the event does not affect billing tier. Follows Stripe's
+ * canonical subscription lifecycle, against the REAL webhook shapes (verified
+ * against stripe-node types):
  *
- * Returns null (rather than throwing) when a tier-affecting event references a
- * price not in the map — an unknown price must not silently grant a tier.
+ *   - subscription.created/updated → tier of the active price (items.data[0].price.id);
+ *     .created is the primary activation. An unknown price returns null — never a
+ *     silent grant (rule #1).
+ *   - subscription.deleted → 'free' (downgrade).
+ *   - checkout.session.completed → tier from OUR metadata.tier. Stripe does NOT send
+ *     line_items/price on the webhook session object (they exist only when expanded,
+ *     which webhooks never are), so we read the tier we ourselves set at session
+ *     creation. A missing / non-paid metadata.tier returns null.
+ *
+ * Returns null (never throws) for anything else.
  */
 export function planTierFromStripeEvent(
   payload: unknown,
@@ -186,11 +196,15 @@ export function planTierFromStripeEvent(
   switch (type) {
     case 'customer.subscription.deleted':
       return 'free';
-    case 'checkout.session.completed':
+    case 'customer.subscription.created':
     case 'customer.subscription.updated': {
-      const priceId = extractPriceId(object);
+      const priceId = subscriptionPriceId(object);
       if (!priceId) return null;
       return priceTierMap[priceId] ?? null;
+    }
+    case 'checkout.session.completed': {
+      const tier = isRecord(object.metadata) ? readString(object.metadata.tier) : null;
+      return tier && isPaidTier(tier) ? tier : null;
     }
     default:
       return null;
@@ -219,22 +233,18 @@ export function eventIdFromStripeEvent(payload: unknown): string | null {
   return readString(payload.id);
 }
 
-/**
- * Pulls the active price id from a subscription or checkout-session object.
- * Subscriptions carry it at items.data[0].price.id; checkout sessions reference
- * it via the line item / price.
- */
-function extractPriceId(object: Record<string, unknown>): string | null {
+/** The active price id on a subscription object (items.data[0].price.id), or null. */
+function subscriptionPriceId(object: Record<string, unknown>): string | null {
   const items = isRecord(object.items) ? object.items.data : undefined;
   if (Array.isArray(items) && isRecord(items[0]) && isRecord(items[0].price)) {
-    const id = readString(items[0].price.id);
-    if (id) return id;
+    return readString(items[0].price.id);
   }
-  if (isRecord(object.price)) {
-    const id = readString(object.price.id);
-    if (id) return id;
-  }
-  return readString(object.price);
+  return null;
+}
+
+/** Type guard: a string is one of the purchasable paid tiers. */
+function isPaidTier(value: string): value is PaidTier {
+  return (PAID_TIERS as readonly string[]).includes(value);
 }
 
 function readString(value: unknown): string | null {
