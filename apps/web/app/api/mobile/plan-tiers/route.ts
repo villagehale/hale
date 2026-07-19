@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { buildPlanCatalog, type PlanCatalogView } from '~/lib/plan/catalog';
+import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 import type { MobilePlanTiersResponse } from '../types';
 
 export const runtime = 'nodejs';
@@ -14,8 +15,8 @@ export const runtime = 'nodejs';
  * code, so the catalog travels over the API. This route never touches the DB
  * itself; the loader owns it. Auth() is the 401 gate.
  *
- * Distinct from GET /api/mobile/plan (the WEEK plan). No billing is wired — this is
- * informational only, no checkout.
+ * Distinct from GET /api/mobile/plan (the WEEK plan). Checkout is WEB-ONLY (Apple IAP
+ * policy) — this stays informational; `billingConfigured` only softens the copy.
  */
 export async function GET(): Promise<Response> {
   const session = await auth();
@@ -24,7 +25,10 @@ export async function GET(): Promise<Response> {
   }
 
   const basics = await loadFamilyBasics();
-  const catalog: PlanCatalogView = buildPlanCatalog(basics.planTier);
+  const catalog: PlanCatalogView = buildPlanCatalog(
+    basics.planTier,
+    isStripeCheckoutConfigured(),
+  );
 
   const body: MobilePlanTiersResponse = { catalog };
   return NextResponse.json(body);

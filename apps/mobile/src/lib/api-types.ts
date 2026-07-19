@@ -510,6 +510,9 @@ export interface PlanTierView {
 export interface PlanCatalogView {
   currentTier: PlanTier;
   tiers: PlanTierView[];
+  /** True when Stripe checkout is live on the web. Checkout is WEB-ONLY (Apple IAP
+   * policy) — the native plan page never links to Stripe; this only softens copy. */
+  billingConfigured: boolean;
 }
 
 export interface MobilePlanTiersResponse {

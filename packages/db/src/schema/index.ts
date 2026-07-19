@@ -19,6 +19,7 @@ export * from './actions.js';
 export * from './audit.js';
 export * from './agent-runs.js';
 export * from './outbound-sends.js';
+export * from './stripe-billing-events.js';
 export * from './email-sends.js';
 export * from './daily-digests.js';
 export * from './village.js';

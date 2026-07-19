@@ -20,8 +20,20 @@ import { useApi } from '@/lib/use-api';
  * note, matching the actual entitlement posture (Free drafts for approval; autonomous
  * execution is a paid entitlement, not unlocked on Free).
  */
-function TierCard({ view, isCurrent }: { view: PlanTierView; isCurrent: boolean }) {
+function TierCard({
+  view,
+  isCurrent,
+  billingConfigured,
+}: {
+  view: PlanTierView;
+  isCurrent: boolean;
+  billingConfigured: boolean;
+}) {
   const check = useMeadowColor('ink2');
+  // Paid tiers read "Coming soon" only while billing is dormant. Once it's live
+  // the honest tag is "On the web" (checkout is web-only — Apple IAP policy), never
+  // a native purchase affordance.
+  const paidTag = billingConfigured ? 'On the web' : 'Coming soon';
   return (
     <Card raised={isCurrent} className="gap-2">
       <View className="flex-row items-center justify-between gap-3">
@@ -29,7 +41,7 @@ function TierCard({ view, isCurrent }: { view: PlanTierView; isCurrent: boolean 
         {isCurrent ? (
           <Tag label="Your plan" tone="done" />
         ) : view.isFree ? null : (
-          <Tag label="Coming soon" tone="neutral" />
+          <Tag label={paidTag} tone="neutral" />
         )}
       </View>
       <AppText variant="mono" className="text-ink-3">
@@ -52,17 +64,32 @@ function TierCard({ view, isCurrent }: { view: PlanTierView; isCurrent: boolean 
   );
 }
 
-function CompareBody({ catalog }: { catalog: PlanCatalogView }) {
+function introCopy(catalog: PlanCatalogView): string {
   const onFree = catalog.currentTier === 'free';
+  // Checkout is WEB-ONLY (Apple IAP forbids a native app opening a Stripe web
+  // checkout for digital goods) — so even when billing is live we point to the web,
+  // never a purchase link here.
+  if (catalog.billingConfigured) {
+    return onFree
+      ? "You're on Free — Hale drafts and you approve. To move to a paid plan, manage your plan on the web."
+      : "Here's your plan and what each tier includes. Manage your plan on the web.";
+  }
+  return onFree
+    ? "You're on Free — Hale drafts and you approve. Paid plans are coming soon; there's nothing to buy yet."
+    : "Here's your plan and what each tier includes.";
+}
+
+function CompareBody({ catalog }: { catalog: PlanCatalogView }) {
   return (
     <>
-      <AppText variant="meta">
-        {onFree
-          ? "You're on Free — Hale drafts and you approve. Paid plans are coming soon; there's nothing to buy yet."
-          : "Here's your plan and what each tier includes."}
-      </AppText>
+      <AppText variant="meta">{introCopy(catalog)}</AppText>
       {catalog.tiers.map((view) => (
-        <TierCard key={view.tier} view={view} isCurrent={view.tier === catalog.currentTier} />
+        <TierCard
+          key={view.tier}
+          view={view}
+          isCurrent={view.tier === catalog.currentTier}
+          billingConfigured={catalog.billingConfigured}
+        />
       ))}
     </>
   );

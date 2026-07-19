@@ -10,6 +10,7 @@ import { ThemeToggle } from '~/components/hale/theme-toggle';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
+import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 
 /** The account sub-nav: every entry points at a section that really renders below
  * (no Security — that has no backing store, so listing it would dead-end or
@@ -174,7 +175,7 @@ export default async function SettingsPage() {
           {/* ── Billing ──────────────────────────────────────────────────── */}
           <section>
             <SectionHeading id="billing">billing</SectionHeading>
-            <FamilyPlan planTier={basics.planTier} />
+            <FamilyPlan planTier={basics.planTier} billingConfigured={isStripeCheckoutConfigured()} />
           </section>
         </div>
       </div>

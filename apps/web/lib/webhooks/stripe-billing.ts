@@ -1,51 +1,67 @@
-import type { PlanTier } from '@hale/types';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { BillingPeriod, PlanTier } from '@hale/types';
 
 /**
  * Stripe billing webhook contract (B18).
  *
- * Stripe LIVE is BLOCKED — no keys yet. This module is the provider-agnostic
- * billing layer + the webhook contract; live wiring lands when keys arrive.
+ * This module is the provider-agnostic billing layer: the security gate, the pure
+ * event→tier mapping, and the env-boundary config. It is REAL but DORMANT — every
+ * function short-circuits to `not_configured` / `null` / `false` until the Stripe
+ * keys exist, so absent keys the whole surface is byte-identical to a no-op.
  *
- * Two responsibilities, deliberately split:
- *   1. verifyStripeBillingSignature — the security gate. Until
- *      STRIPE_WEBHOOK_SECRET exists it is a named TODO that refuses to process
- *      anything (the route returns 501). We NEVER act on an unverified billing
- *      event — a forged event could grant a paid tier for free.
- *   2. planTierFromStripeEvent — the PURE mapping from a (verified) event to the
- *      plan_tier transition it implies. Unit-tested with fixture payloads; no
- *      I/O, no env reads, no Stripe SDK.
+ * Responsibilities, deliberately split so the pure parts stay I/O-free & testable:
+ *   1. verifyStripeBillingSignature — the security gate. Implements Stripe's real
+ *      `t=,v1=` HMAC-SHA256 scheme with a replay-tolerance window. Until
+ *      STRIPE_WEBHOOK_SECRET exists it returns `not_configured` (route 501) — we
+ *      NEVER act on an unverified billing event (a forged event could grant a paid
+ *      tier for free).
+ *   2. planTierFromStripeEvent / familyIdFromStripeEvent / eventIdFromStripeEvent —
+ *      PURE extraction from a (verified) event: the tier transition it implies, the
+ *      family it targets, and its idempotency key. No I/O, no env, no Stripe SDK.
+ *   3. priceTierMapFromEnv / checkoutPriceIdFromEnv / isStripeCheckoutConfigured —
+ *      env-boundary config. Price ids are injected (never baked inline) — they
+ *      arrive as STRIPE_PRICE_{PLUS,FAMILY}_{MONTHLY,ANNUAL} env at go-live.
  *
- * ── Event → plan_tier mapping (the contract the live handler will honour) ──
+ * ── Event → plan_tier mapping (the contract the live handler honours) ──
  *   checkout.session.completed        → tier of the purchased price (plus|family)
  *   customer.subscription.updated     → tier of the active price after the change
  *   customer.subscription.deleted     → 'free' (subscription ended → downgrade)
  *   (any other event type)            → null (not a tier-affecting event)
  *
- * The price-id → tier map is injected (not baked inline) because the live
- * Stripe price ids don't exist yet — they arrive as STRIPE_PRICE_PLUS /
- * STRIPE_PRICE_FAMILY env at go-live. `priceTierMapFromEnv` reads them at the
- * boundary; the pure mapper takes the resolved map so tests stay deterministic.
+ * ── Which family an event targets ──
+ *   We thread the family id through Stripe metadata at checkout creation
+ *   (client_reference_id on the session, metadata.familyId on the session AND the
+ *   subscription), so every tier-affecting event carries it back — no
+ *   stripe_customer_id ↔ family mapping table is needed.
  */
 
 /** Maps a Stripe price id to the plan tier it sells. */
 export type PriceTierMap = Readonly<Record<string, PlanTier>>;
+
+/** The paid tiers a checkout can be created for (Free is never purchased). */
+export type PaidTier = Exclude<PlanTier, 'free'>;
 
 type VerifyResult =
   | { status: 'verified' }
   | { status: 'not_configured'; reason: string }
   | { status: 'invalid'; reason: string };
 
+/** Stripe's default webhook replay-tolerance window (seconds). */
+const SIGNATURE_TOLERANCE_SECONDS = 300;
+
 /**
- * Verifies a Stripe billing webhook signature.
- *
- * TODO(B18, live): implement Stripe's t=/v1= HMAC-SHA256 scheme once
- * STRIPE_WEBHOOK_SECRET is provisioned. Until then this returns 'not_configured'
- * so the route answers 501 — billing events are NEVER processed unverified.
+ * Verifies a Stripe billing webhook signature using Stripe's documented scheme:
+ * the `Stripe-Signature` header carries `t=<unix>,v1=<hex>[,v1=<hex>…]`; the signed
+ * payload is `${t}.${rawBody}` and each `v1` is its HMAC-SHA256 (hex) under the
+ * endpoint secret. A verified request must also fall inside the tolerance window
+ * (replay defence). Absent STRIPE_WEBHOOK_SECRET it returns `not_configured` so the
+ * route answers 501 — billing events are NEVER processed unverified.
  */
 export function verifyStripeBillingSignature(
   signature: string | null,
-  _rawBody: string,
+  rawBody: string,
   secret: string | undefined = process.env.STRIPE_WEBHOOK_SECRET,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
 ): VerifyResult {
   if (!secret) {
     return {
@@ -56,21 +72,99 @@ export function verifyStripeBillingSignature(
   if (!signature) {
     return { status: 'invalid', reason: 'missing stripe-signature header' };
   }
-  // TODO(B18, live): real HMAC verification of Stripe's signed payload.
-  return {
-    status: 'not_configured',
-    reason: 'stripe signature verification not implemented (live wiring pending)',
-  };
+  const parsed = parseSignatureHeader(signature);
+  if (!parsed) {
+    return { status: 'invalid', reason: 'malformed stripe-signature header' };
+  }
+  if (Math.abs(nowSeconds - parsed.timestamp) > SIGNATURE_TOLERANCE_SECONDS) {
+    return { status: 'invalid', reason: 'timestamp outside tolerance (possible replay)' };
+  }
+  const expected = createHmac('sha256', secret)
+    .update(`${parsed.timestamp}.${rawBody}`)
+    .digest('hex');
+  if (!parsed.signatures.some((candidate) => safeEqual(expected, candidate))) {
+    return { status: 'invalid', reason: 'stripe signature mismatch' };
+  }
+  return { status: 'verified' };
 }
 
-/** Resolves the price→tier map from env at the route boundary. */
+/** Parses `t=…,v1=…[,v1=…]` into a timestamp + candidate signatures, or null. */
+function parseSignatureHeader(
+  header: string,
+): { timestamp: number; signatures: string[] } | null {
+  let timestamp: number | null = null;
+  const signatures: string[] = [];
+  for (const part of header.split(',')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (key === 't') {
+      const parsedT = Number.parseInt(value, 10);
+      if (Number.isFinite(parsedT) && String(parsedT) === value) timestamp = parsedT;
+    } else if (key === 'v1' && value.length > 0) {
+      signatures.push(value);
+    }
+  }
+  if (timestamp === null || signatures.length === 0) return null;
+  return { timestamp, signatures };
+}
+
+/** Constant-time hex-string comparison (length-guarded before timingSafeEqual). */
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+/** The env var for a tier+period's Stripe price id, e.g. STRIPE_PRICE_PLUS_ANNUAL. */
+function priceEnvVar(tier: PaidTier, period: BillingPeriod): string {
+  return `STRIPE_PRICE_${tier.toUpperCase()}_${period.toUpperCase()}`;
+}
+
+const PAID_TIERS: readonly PaidTier[] = ['plus', 'family'];
+const BILLING_PERIODS: readonly BillingPeriod[] = ['monthly', 'annual'];
+
+/**
+ * Resolves the price→tier map from env at the route boundary — EVERY configured
+ * price id (both periods of both paid tiers) maps to its tier, so a subscription
+ * event referencing any of them resolves. Absent ids are simply omitted.
+ */
 export function priceTierMapFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): PriceTierMap {
   const map: Record<string, PlanTier> = {};
-  if (env.STRIPE_PRICE_PLUS) map[env.STRIPE_PRICE_PLUS] = 'plus';
-  if (env.STRIPE_PRICE_FAMILY) map[env.STRIPE_PRICE_FAMILY] = 'family';
+  for (const tier of PAID_TIERS) {
+    for (const period of BILLING_PERIODS) {
+      const priceId = env[priceEnvVar(tier, period)];
+      if (priceId) map[priceId] = tier;
+    }
+  }
   return map;
+}
+
+/** The Stripe price id to charge for a tier+period, or null when unconfigured. */
+export function checkoutPriceIdFromEnv(
+  tier: PaidTier,
+  period: BillingPeriod,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  return env[priceEnvVar(tier, period)] ?? null;
+}
+
+/**
+ * True iff Stripe Checkout can actually be created: the secret key plus every
+ * tier+period price id are present. The plan-page Upgrade CTA is gated on this so
+ * it only appears when a real checkout would succeed for any tier the user picks.
+ */
+export function isStripeCheckoutConfigured(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (!env.STRIPE_SECRET_KEY) return false;
+  return PAID_TIERS.every((tier) =>
+    BILLING_PERIODS.every((period) => Boolean(env[priceEnvVar(tier, period)])),
+  );
 }
 
 /**
@@ -101,6 +195,28 @@ export function planTierFromStripeEvent(
     default:
       return null;
   }
+}
+
+/**
+ * The family id a (verified) event targets — threaded through Stripe at checkout
+ * creation as metadata.familyId (session + subscription) and client_reference_id
+ * (session). Returns null when neither is present (the event is unattributable and
+ * must not be applied).
+ */
+export function familyIdFromStripeEvent(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const object = isRecord(payload.data) ? payload.data.object : undefined;
+  if (!isRecord(object)) return null;
+  const metadataFamilyId = isRecord(object.metadata)
+    ? readString(object.metadata.familyId)
+    : null;
+  return metadataFamilyId ?? readString(object.client_reference_id);
+}
+
+/** The Stripe event id (`evt_…`) — the natural idempotency key. Null if malformed. */
+export function eventIdFromStripeEvent(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  return readString(payload.id);
 }
 
 /**

@@ -17,6 +17,8 @@ export type FamilyPlanState =
   | { kind: 'saving' }
   | { kind: 'saved' }
   | { kind: 'notified'; tier: PlanTier }
+  | { kind: 'redirecting' }
+  | { kind: 'checkout_error' }
   | { kind: 'preview' }
   | { kind: 'signed_out' }
   | { kind: 'error' };
@@ -33,16 +35,22 @@ export function FamilyPlanView({
   current,
   period,
   state,
+  billingConfigured,
   onPeriodChange,
   onSelectFree,
   onNotify,
+  onUpgrade,
 }: {
   current: PlanTier;
   period: BillingPeriod;
   state: FamilyPlanState;
+  /** True when Stripe checkout is live; gates the Upgrade CTA vs. the "notify me"
+   * placeholder so the button only appears when a real checkout would succeed. */
+  billingConfigured: boolean;
   onPeriodChange: (period: BillingPeriod) => void;
   onSelectFree: () => void;
   onNotify: (tier: PlanTier) => void;
+  onUpgrade: (tier: PlanTier) => void;
 }) {
   return (
     <div className="space-y-6 max-w-2xl">
@@ -104,6 +112,15 @@ export function FamilyPlanView({
                   >
                     switch to {plan.name}
                   </button>
+                ) : billingConfigured ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => onUpgrade(tier)}
+                    disabled={state.kind === 'redirecting'}
+                  >
+                    upgrade to {plan.name}
+                  </button>
                 ) : (
                   <button type="button" className="btn-secondary" onClick={() => onNotify(tier)}>
                     notify me when it&rsquo;s ready
@@ -124,6 +141,15 @@ export function FamilyPlanView({
         <output className="meta text-slate-green block">
           we&rsquo;ll let you know when {PLAN_DISPLAY[state.tier].name} opens — nothing charged today.
         </output>
+      ) : null}
+      {state.kind === 'redirecting' ? (
+        <output className="meta text-slate-green block">taking you to secure checkout&hellip;</output>
+      ) : null}
+      {state.kind === 'checkout_error' ? (
+        <p className="field-error flex items-center gap-2" role="alert">
+          <AlertCircle size={14} strokeWidth={2} aria-hidden="true" className="shrink-0" />
+          couldn&rsquo;t start checkout just now — please try again.
+        </p>
       ) : null}
       {state.kind === 'preview' ? (
         <output className="meta text-slate-green block">{PREVIEW_NOTE}</output>
