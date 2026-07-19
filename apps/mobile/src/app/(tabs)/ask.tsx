@@ -29,7 +29,10 @@ import { TintChip } from '@/components/ui/tint-chip';
 import { type AskSuggestion, ASK_SUGGESTIONS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError } from '@/lib/api-client';
+import type { MobileFamilyResponse } from '@/lib/api-types';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
+import { orderByIntents } from '@/lib/intent-ordering';
+import { useApi } from '@/lib/use-api';
 import { cardsFromActivity } from '@/lib/connector-card';
 import { timeGreeting } from '@/lib/greeting';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
@@ -231,6 +234,11 @@ function EmptyState({
   const first = viewerFirstName();
   const sparkleColor = useMeadowColor('accentFill');
   const greeting = first ? `${timeGreeting()}, ${first}.` : `${timeGreeting()}.`;
+  // Float a suggestion the family's stated intents map to (health → well-baby,
+  // childcare → daycare email) up the starter list; the honest order otherwise. The
+  // section header stays "Suggestions for you" — this is a reorder, not a new claim.
+  const { data } = useApi<MobileFamilyResponse>('/api/mobile/family');
+  const suggestions = orderByIntents(ASK_SUGGESTIONS, (s) => s.intent, data?.basics.intents ?? []);
   return (
     <ScrollView
       className="flex-1"
@@ -257,7 +265,7 @@ function EmptyState({
         Suggestions for you
       </AppText>
       <View className="gap-2.5">
-        {ASK_SUGGESTIONS.map((s) => (
+        {suggestions.map((s) => (
           <SuggestionRow key={s.title} suggestion={s} onPick={onPick} />
         ))}
       </View>

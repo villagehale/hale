@@ -8,6 +8,20 @@ describe('isOnboardingIntent', () => {
     expect(isOnboardingIntent('groceries')).toBe(false);
     expect(isOnboardingIntent('')).toBe(false);
   });
+
+  it('accepts the baby-care intents with their prototype labels', () => {
+    // Derived from the prototype handoff, not from ONBOARDING_INTENTS itself, so a
+    // dropped value or a renamed label fails here.
+    const expected: Record<string, string> = {
+      sleep: 'Sleep & naps',
+      feeding: 'Feeding & meals',
+      potty: 'Potty training',
+    };
+    for (const [value, label] of Object.entries(expected)) {
+      expect(isOnboardingIntent(value)).toBe(true);
+      expect(ONBOARDING_INTENTS.find((i) => i.value === value)?.label).toBe(label);
+    }
+  });
 });
 
 describe('parseIntents', () => {

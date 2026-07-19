@@ -12,5 +12,8 @@ export const ONBOARDING_INTENTS: { value: string; label: string }[] = [
   { value: 'sitter', label: 'Trusted sitter/nanny' },
   { value: 'health', label: 'Health & specialists' },
   { value: 'community', label: 'Meeting other families' },
+  { value: 'sleep', label: 'Sleep & naps' },
+  { value: 'feeding', label: 'Feeding & meals' },
+  { value: 'potty', label: 'Potty training' },
   { value: 'exploring', label: 'Just exploring' },
 ];

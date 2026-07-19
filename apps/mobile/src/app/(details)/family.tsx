@@ -64,6 +64,9 @@ const INTENT_LABEL: Record<string, string> = {
   sitter: 'Trusted sitter/nanny',
   health: 'Health & specialists',
   community: 'Meeting other families',
+  sleep: 'Sleep & naps',
+  feeding: 'Feeding & meals',
+  potty: 'Potty training',
   exploring: 'Just exploring',
 };
 

@@ -12,12 +12,12 @@ import { useOnboardingDraft } from '@/lib/use-onboarding-draft';
  * Prototype-forward chip copy over the REAL backend intent values. The values are
  * the canonical @hale/types set (mirrored in onboarding-intents.ts) — the server's
  * parseIntents drops anything else, so every chip MUST map to one of them. The
- * handoff's baby-care chips (Sleep & naps / Feeding & meals / Potty training) have
- * no backend twin, so the reconciliation keeps prototype copy for the five intents
- * that map cleanly and the real discovery-intent labels for the three that don't —
- * never a chip that stores nothing or misdescribes what it saves (no-fabrication).
- * Values are sourced from ONBOARDING_INTENTS so a new backend intent falls back to
- * its own label rather than silently vanishing.
+ * handoff's baby-care chips (Sleep & naps / Feeding & meals / Potty training) now
+ * have a backend twin (the 'sleep' / 'feeding' / 'potty' intents), so their copy is
+ * the real label — every chip stores a value that does something (village fit +
+ * Resources ordering), never one that stores nothing (no-fabrication). Values are
+ * sourced from ONBOARDING_INTENTS so a new backend intent falls back to its own
+ * label rather than silently vanishing.
  */
 const CHIP_LABEL: Record<string, string> = {
   activities: 'Activities & play',
@@ -27,6 +27,9 @@ const CHIP_LABEL: Record<string, string> = {
   planning: 'Weekly planning',
   sitter: 'Trusted sitter',
   community: 'Meeting other families',
+  sleep: 'Sleep & naps',
+  feeding: 'Feeding & meals',
+  potty: 'Potty training',
   exploring: 'A bit of everything',
 };
 
