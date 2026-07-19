@@ -49,6 +49,14 @@ export interface RunAgentArgs {
   guardDeps: GuardDeps;
   /** Per-call token budget for messages.create. */
   maxTokens?: number;
+  /**
+   * Native content blocks (images/PDFs) to ride on the FIRST user turn alongside the
+   * serialized context — the caller has already fetched the bytes and byte-sniffed
+   * the mime. Present only for the turn that carries a fresh attachment; past-turn
+   * attachments are replayed as plain-text markers inside the context transcript, so
+   * bytes are never re-sent. Omitted/empty → the first turn is the context string alone.
+   */
+  attachments?: Anthropic.ContentBlockParam[];
 }
 
 export interface AgentUsage {
@@ -213,6 +221,21 @@ function buildSystemPrompt(skill: Skill, context: unknown): string {
   return `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`;
 }
 
+/**
+ * The first user turn: the serialized context, plus any native attachment blocks the
+ * caller supplied for THIS turn. When attachments are present the content becomes a
+ * block array (text context first, then the image/document blocks) so the model
+ * receives the real bytes; otherwise it stays the plain context string (byte-identical
+ * to the pre-attachment behavior).
+ */
+function initialUserContent(args: RunAgentArgs): Anthropic.MessageParam['content'] {
+  const contextText = JSON.stringify(args.context);
+  if (!args.attachments || args.attachments.length === 0) {
+    return contextText;
+  }
+  return [{ type: 'text', text: contextText }, ...args.attachments];
+}
+
 function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool[] {
   const byName = new Map(tools.map((t) => [t.name, t]));
   return skill.meta.tools.map((name) => {
@@ -325,7 +348,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
   const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: JSON.stringify(args.context) },
+    { role: 'user', content: initialUserContent(args) },
   ];
 
   let promptTokens = 0;
@@ -383,7 +406,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
   const messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: JSON.stringify(args.context) },
+    { role: 'user', content: initialUserContent(args) },
   ];
 
   let promptTokens = 0;

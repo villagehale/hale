@@ -10,12 +10,17 @@ import {
 import type { Database } from '@hale/db';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
+import {
+  buildAttachmentBlocks,
+  linkAttachmentsToMessage,
+  type OwnedChatAttachment,
+} from './attachments';
 import type { CoachRunMetrics } from './coach';
 import { loadAgentContext, type SourceNoteContext } from './context';
 import {
   appendMessage,
   createConversation,
-  loadTranscript,
+  loadTranscriptWithAttachments,
   resolveConversationForFamily,
   resolveOrCreateNoteConversation,
 } from './conversation';
@@ -62,6 +67,10 @@ export interface AskHaleInput {
   noteKey: string | null;
   /** The redacted note this reply grounds on, seeded into the agent context, or null. */
   sourceNote: SourceNoteContext | null;
+  /** Fresh attachments for THIS turn — already validated + loaded (family-scoped,
+   * unlinked) by the route. Linked to the persisted user message and sent to the
+   * model as native content blocks. Omitted/empty for a text-only send. */
+  attachments?: OwnedChatAttachment[];
 }
 
 export interface AskHaleResult {
@@ -129,13 +138,29 @@ export async function askHale(
     conversationId = existing ?? (await createConversation(input.familyId, database));
   }
 
-  const transcript = await loadTranscript(conversationId, database);
+  const transcript = await loadTranscriptWithAttachments(conversationId, database);
   // Persist the parent turn with its scope so the timeline can filter on child +
   // topic; topic is keyword-tagged (no LLM), child is the focused chip.
-  await appendMessage(conversationId, 'user', input.question, database, {
+  const userMessageId = await appendMessage(conversationId, 'user', input.question, database, {
     childId: input.focusedChildId,
     topic: tagTopic(input.question),
   });
+
+  // Consume this turn's attachments: link them to the message just written (so they
+  // can never be re-attached), then fetch their bytes and build native content blocks
+  // for the model. Bytes go to the MODEL only — never a log or the trace (rule #1).
+  const turnAttachments = input.attachments ?? [];
+  let attachmentBlocks: Anthropic.ContentBlockParam[] = [];
+  if (turnAttachments.length > 0) {
+    await linkAttachmentsToMessage(
+      database,
+      input.familyId,
+      turnAttachments.map((a) => a.id),
+      userMessageId,
+      conversationId,
+    );
+    attachmentBlocks = await buildAttachmentBlocks(turnAttachments);
+  }
 
   const context = await loadAgentContext(
     {
@@ -176,6 +201,7 @@ export async function askHale(
         maxTokens: MAX_TOKENS,
         toolContext: { familyId: input.familyId, actor: input.actor },
         guardDeps,
+        attachments: attachmentBlocks,
       };
       const result = streamHooks
         ? await runAgentStreaming({ ...runArgs, ...streamHooks })
