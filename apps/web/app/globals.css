@@ -6,26 +6,35 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Hale — "Meadow" design system (product app).
+ * Hale — desktop design system (product app), per the 2026-07-19 design handoff.
  *
- * The calm of a nursery at 4pm light. The same world as the landing
- * (apps/site): soft geometric shapes that never crowd, generous breathing
- * air, a muted grown-up earth palette (spruce, linen, apricot, sage). The
- * Almanac expressed restraint as austerity; Meadow expresses the same
- * restraint as kindness. Type is Inter throughout (display + body) with
- * JetBrains Mono for dates, data, and numeric chips; imagery is a hand-built
- * flat color-block SVG kit.
+ * A warm, calm, paper-cream world: a warm canvas (#F2F0EA) behind pure-white
+ * cards, a warm sidebar (#F7F5F0), brand navy (#1B2160) for anything active or
+ * primary, and slate-navy ink (#17294A) for text. Display type is Source Serif 4
+ * (hero H1s, page titles, the "Hale" wordmark ONLY); everything else is
+ * Instrument Sans; JetBrains Mono stays for dates/data/numeric chips.
  *
- * Dark mode is BRAND-ANCHORED, not brand-flooded: the content canvas is a calm,
- * slightly-desaturated deep Prussian-charcoal (comfortable for long/night
- * reading), the app frame (sidebar + top header) wears the exact logo Prussian
- * as the chrome anchor, and surfaces climb a clear elevation ladder
- * (canvas → card → raised). Cream ink throughout; the white turtle glows on it.
- * Both modes hold WCAG-AA contrast.
+ * The token indirection is the point: components consume ROLES (--color-linen =
+ * canvas, --color-spruce = ink, --color-brand = navy, --color-oat = card, …),
+ * never raw hex, so re-pointing the roles in .dark flips the whole app. Several
+ * legacy accent NAMES are kept as role handles and re-pointed to the handoff's
+ * palette so existing page utilities (bg-apricot-tint, text-sage, …) keep
+ * resolving while pages are migrated in later phases — the name is the role slot,
+ * the comment names the real value:
+ *   apricot* = the blue accent (#3B5BDB / #EDF0FA) — links, focus, CTA accent
+ *   sky*     = the teal accent (#0F766E / #E0F2F1) — coach / calm
+ *   sage/success = the green accent (#1F8A4C, #2EA35E / #E7F6EC) — done / health
+ *   berry*   = the terracotta accent (#C2543F / #FDEBE8) — needs-you / danger
+ *   lavender/purple = the purple accent (#7A6FB3 / #F1EEFA) — insight / AI
+ *
+ * Dark mode is DERIVED (the handoff is light-only) and BRAND-ANCHORED, not
+ * brand-flooded: the content canvas is a calm desaturated deep warm charcoal-navy
+ * (easy for long/night reading), the app frame (sidebar) keeps a brand-navy
+ * anchor, and surfaces climb a clear elevation ladder (canvas → card → raised).
+ * Every dark text/surface pair is re-derived to meet the SAME WCAG bar its light
+ * counterpart holds — the ratios in the comments are computed, not guessed.
  *
  * Hard rules baked in:
- *   - Apricot #f97316 is FILL / large-graphic only — never small
- *     text or thin icon strokes. Apricot-deep #c2410c is the text-safe accent.
  *   - all four tone meanings (done / awaiting / coach / needs-you) read by
  *     label + shape, never by color alone.
  *   - 16px form inputs on mobile (iOS no-zoom).
@@ -35,62 +44,95 @@
  */
 
 @theme {
-  /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #f8f9fb;       /* canvas — cool whisper white, crisp (mockup 2026-07-10; not warm) */
-  --color-oat: #ffffff;         /* card surface — pure white, separated by a light border + faint shadow */
-  --color-raised: #ffffff;      /* RAISED — lifted card */
-  --color-spruce: #0d1b3d;      /* primary ink / Prussian brand — headlines, buttons, nav, logo */
-  --color-slate-green: #47587a; /* secondary text, captions — 6.67:1 */
-  --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 5.05:1 on Linen (AA on every surface: Oat 5.40, Raised 5.40) */
+  /* ── Surfaces (light) — warm cream canvas behind white cards ─────────── */
+  --color-linen: #F2F0EA;       /* CANVAS — warm paper cream (behind cards in the main stage) */
+  --color-oat: #FFFFFF;         /* CARD surface — pure white, separated by a #E4E7EE border + faint shadow */
+  --color-raised: #FFFFFF;      /* RAISED — lifted card / popover ground */
+  --color-tile: #FBFAF7;        /* inner stat tile / warm chip */
+  --color-chrome: #F7F5F0;      /* warm sidebar / chrome surface (light) */
+  --color-alt-surface: #F5F7FB; /* selected list-row / info-callout ground */
 
-  --color-apricot: #f28c45;       /* AI ORANGE — Hale AI actions only (draft ready, suggested, badge) */
-  --color-apricot-deep: #c2410c;  /* text-safe accent: links, CTA fill — 4.84:1 on Linen */
-  --color-apricot-tint: #fdeede;  /* warm wash panel / pill — Apricot-deep ink 4.55:1, Spruce 11.8:1 */
+  /* ── Ink + text ladder (WCAG ratio on the warm canvas) ───────────────── */
+  --color-spruce: #17294A;      /* PRIMARY INK — text default — 12.69:1 on canvas */
+  --color-slate-green: #3D4C68; /* secondary body text — 7.58:1 on canvas */
+  --color-faded-sage: #5C6B87;  /* tertiary / meta / nav-inactive — 4.72:1 on canvas (AA) */
+  --color-muted: #8B95A9;       /* micro-label / decorative only — 2.64:1, NOT for body text */
 
-  --color-sky: #7fb5c4;        /* calm secondary illustration — clouds, day fields */
-  --color-sky-deep: #2f6f86;   /* text-safe blue, coach tone — 4.99:1 */
-  --color-sky-tint: #cfe3e7;   /* color-block illustration wash — Spruce 10.13:1 */
+  /* ── Brand navy ──────────────────────────────────────────────────────── */
+  --color-brand: #1B2160;       /* NAVY — primary buttons, wordmark, links, active nav — 12.86:1 on canvas; white text on it 14.65:1 */
+  --color-brand-hover: #2A327D; /* primary-button hover (a touch lighter navy) */
 
-  --color-sea: #0a3d62;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
+  /* Blue accent (legacy name: apricot*) — links / focus ring / CTA accent */
+  --color-apricot: #3B5BDB;       /* blue base */
+  --color-apricot-deep: #3B5BDB;  /* text-safe blue — 4.97:1 on canvas, 5.67:1 on white (AA) */
+  --color-apricot-tint: #EDF0FA;  /* blue wash — avatars, selected chip, "You" pill */
 
-  --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
-  --color-sage-tint: #eaf4ee;  /* SOFT SAGE — Health / Growth / Milestones */
-  --color-success: #6faf84;    /* positive confirmations */
-  --color-lavender: #ece9ff;   /* SOFT LAVENDER — Conversation / AI / Memory / Planning */
-  --color-alt-surface: #f1f3f6; /* alternate surface — large sections, grouped lists (cool) */
+  /* Teal accent (legacy name: sky*) — coach / calm */
+  --color-sky: #56B9AE;        /* teal illustration */
+  --color-sky-deep: #0F766E;   /* text-safe teal — 5.47:1 on white (AA) */
+  --color-sky-tint: #E0F2F1;   /* teal wash */
 
-  --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
-  --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
+  --color-sea: #1B2160;        /* brand / turtle accent — navy */
 
-  /* Hairlines: cool light-gray card borders (mockup's crisp #E6E8EC card outlines on white) */
-  --color-rule: #e6e8ec;
-  --color-rule-strong: #d8dbe0;
+  /* Green accent (legacy name: sage/success) — done / health / on-track */
+  --color-sage: #1F8A4C;       /* text-safe green (badge/large) — 4.38:1 on white */
+  --color-sage-tint: #E7F6EC;  /* green wash — Health / Growth / Milestones */
+  --color-success: #2EA35E;    /* brighter green — checks / "Connected" (icon/large) */
 
-  /* On-dark (Spruce night section) text alphas, canvas-based */
-  --color-on-spruce: #FEFEFE;
-  --color-on-spruce-soft: rgb(250 247 241 / 0.74);
-  --color-on-spruce-faint: rgb(250 247 241 / 0.50);
+  /* Amber accent — awaiting / paid / waitlist / Hale tip */
+  --color-amber: #B26B1F;      /* text-safe amber (badge/large) — 4.19:1 on white */
+  --color-amber-tint: #FEF0C7; /* amber wash */
 
-  /* ── Type — Inter for display + body, JetBrains Mono for data ─────────── *
-   * --font-sans / --font-mono are injected by next/font in layout.tsx. */
-  --font-sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  /* Purple accent (legacy name: lavender) — insight / AI / memory */
+  --color-lavender: #F1EEFA;   /* purple wash */
+  --color-purple: #7A6FB3;     /* text-safe purple (badge/large) — 4.42:1 on white */
+
+  /* Terracotta accent (legacy name: berry*) — needs-you / danger / sign-out */
+  --color-berry: #C2543F;      /* text-safe terracotta — 4.53:1 on white */
+  --color-berry-tint: #FDEBE8; /* terracotta wash */
+
+  /* ── Borders / hairlines ─────────────────────────────────────────────── */
+  --color-rule: #E4E7EE;        /* primary card border */
+  --color-rule-strong: #D9DEE8; /* input / composer border */
+  --color-warm-border: #E9E6DE; /* sidebar right border / warm divider */
+  --color-hairline: #F0F2F6;    /* faint divider inside cards */
+
+  /* On-navy text (on the brand fill: buttons, outgoing bubbles) */
+  --color-on-spruce: #FFFFFF;
+  --color-on-spruce-soft: rgb(255 255 255 / 0.74);
+  --color-on-spruce-faint: rgb(255 255 255 / 0.55);
+
+  /* Hale tip gradient (design handoff) */
+  --tip-gradient: linear-gradient(180deg, #FFF9F1, #FBEDDC);
+
+  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display), Mono ── *
+   * --font-sans / --font-serif / --font-mono are injected by next/font. */
+  --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --font-display: var(--font-sans);
+  --font-display: var(--font-serif);
   --font-body: var(--font-sans);
 
-  --tracking-display: -0.02em;
-  --tracking-eyebrow: 0.12em;
+  --tracking-display: -0.01em;
+  --tracking-eyebrow: 0.08em;
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
   --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
   --shell-max: 1440px;
 
-  /* ── Radius — a calm card ladder, not blobs (panels read as cards) ───── */
-  --r-sm: 8px;
+  /* ── Radius — pill 20 / card 16-20 / tile-input 12-14 / chip 11-12 ───── */
+  --r-sm: 12px;
   --r-md: 14px;
   --r-lg: 20px;
   --r-xl: 16px;
   --r-full: 9999px;
+
+  /* ── Shadows (design handoff §2.4; ink-based rgba 23,41,74) ──────────── */
+  --shadow-card: 0 1px 2px rgb(23 41 74 / 0.04);
+  --shadow-card-hover: 0 6px 18px rgb(23 41 74 / 0.05);
+  --shadow-menu: 0 12px 32px rgb(23 41 74 / 0.14);
+  --shadow-popover: 0 16px 40px rgb(23 41 74 / 0.16);
+  --shadow-modal: 0 30px 80px rgb(20 28 60 / 0.30);
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
@@ -113,58 +155,82 @@
  * Accents are lightened to hold AA on the dark ground (all text pairs verified
  * ≥ 4.5:1 against canvas, card, raised AND the Prussian chrome). */
 .dark {
-  --color-linen: #0c1420;        /* CANVAS — deep Prussian-charcoal */
-  --color-oat: #151e2c;          /* CARD surface — one clear notch above canvas */
-  --color-raised: #1c2636;       /* RAISED — two notches up (interactive-card lift) */
-  --color-chrome: #021E4E;       /* CHROME ANCHOR — exact logo Prussian, app frame only */
-  --color-spruce: #f6f1e7;       /* primary ink — cream — 16.12:1 on canvas */
-  --color-slate-green: #c7d3e6;  /* secondary text — 12.00:1 on canvas */
-  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 8.22:1 on canvas */
+  /* Surfaces — desaturated deep warm charcoal-navy, elevation ladder canvas →
+   * card → raised, each a clear notch lighter. */
+  --color-linen: #12161F;        /* CANVAS — deep warm charcoal-navy */
+  --color-oat: #1B2130;          /* CARD surface — one clear notch above canvas */
+  --color-raised: #242C3D;       /* RAISED — two notches up (interactive-card lift) */
+  --color-tile: #222A38;         /* inner tile — subtle lift on card */
+  --color-chrome: #151A44;       /* CHROME ANCHOR — brand-navy, sidebar frame only */
+  --color-alt-surface: #1E2740;  /* selected row — subtle lift on the dark canvas */
 
-  --color-apricot: #f97316;          /* large-graphic fill */
-  --color-apricot-deep: #fb923c;     /* text-safe accent — 8.16:1 on canvas, 6.72:1 on raised */
-  --color-apricot-tint: #2f2318;     /* warm-wash panel / active-nav ground (cream rides it) */
+  /* Ink + text ladder — cream, each pair ≥ its light counterpart's WCAG bar. */
+  --color-spruce: #F6F1E7;       /* PRIMARY INK — cream — 16.08:1 on canvas */
+  --color-slate-green: #C7D3E6;  /* secondary text — 11.97:1 on canvas */
+  --color-faded-sage: #9BB0D0;   /* tertiary / meta / nav-inactive — 8.20:1 on canvas */
+  --color-muted: #8391A8;        /* micro-label — 5.67:1 on canvas (AA) */
 
-  --color-sky: #7fb5c4;
-  --color-sky-deep: #8fc1d1;     /* text-safe blue — 9.26:1 on canvas */
-  --color-sky-tint: #142b48;     /* illustration / pill wash */
+  /* Brand navy inverts to cream so primary buttons / links / wordmark read as a
+   * lifted cream on the dark ground (dark button = cream fill + navy text). */
+  --color-brand: #F6F1E7;        /* 16.08:1 on canvas */
+  --color-brand-hover: #E4DED0;
 
-  --color-sea: #6fb3c9;          /* turtle accent on dark */
+  /* Blue accent (apricot*) — lightened to hold AA on the dark ground. */
+  --color-apricot: #8AA2F2;
+  --color-apricot-deep: #8AA2F2;     /* 7.35:1 on canvas, 5.68:1 on raised */
+  --color-apricot-tint: #1B2748;
 
-  --color-sage: #a9c49a;         /* "done" tone — 9.55:1 on canvas */
-  --color-sage-tint: #18301f;
+  /* Teal accent (sky*) — coach / calm. */
+  --color-sky: #56B9AE;
+  --color-sky-deep: #56B9AE;     /* 7.71:1 on canvas */
+  --color-sky-tint: #123230;
 
-  --color-alt-surface: #17233a;  /* alternate surface — subtle lift on the dark canvas */
+  --color-sea: #8AA2F2;
 
-  --color-berry: #e09aaa;        /* "needs your eye" — 8.10:1 on canvas */
-  --color-berry-tint: #3a1f29;
+  /* Green accent (sage/success) — done / health. */
+  --color-sage: #6FCB8F;         /* 9.15:1 on canvas */
+  --color-sage-tint: #16301F;
+  --color-success: #6FCB8F;
+
+  /* Amber accent — awaiting / tip. */
+  --color-amber: #E0A44E;        /* 8.27:1 on canvas */
+  --color-amber-tint: #33260F;
+
+  /* Purple accent (lavender) — insight / AI. */
+  --color-lavender: #241F3A;
+  --color-purple: #B3A6E6;       /* 8.20:1 on canvas */
+
+  /* Terracotta accent (berry*) — needs-you / danger / sign-out. */
+  --color-berry: #E58C78;        /* 7.20:1 on canvas */
+  --color-berry-tint: #3A1F1A;
 
   --color-rule: rgb(246 241 231 / 0.12);
-  --color-rule-strong: rgb(246 241 231 / 0.24);
+  --color-rule-strong: rgb(246 241 231 / 0.20);
+  --color-warm-border: rgb(246 241 231 / 0.12);
+  --color-hairline: rgb(246 241 231 / 0.07);
 
-  --color-on-spruce: #003153;        /* "on ink" inverts to Prussian */
-  --color-on-spruce-soft: rgb(0 49 83 / 0.74);
-  --color-on-spruce-faint: rgb(0 49 83 / 0.50);
+  --color-on-spruce: #12161F;        /* "on ink" inverts to the dark canvas navy */
+  --color-on-spruce-soft: rgb(18 22 31 / 0.74);
+  --color-on-spruce-faint: rgb(18 22 31 / 0.55);
 
   color-scheme: dark;
 }
 
 /* ── Chrome anchor (dark only) ───────────────────────────────────────────── *
- * The app frame — sidebar + sticky top header + the off-canvas drawer — wears
- * the exact logo Prussian so the brand identity is unmistakable while the
- * content canvas stays calm. We paint the frame with --color-chrome and locally
- * re-point the "surface" tokens that nested controls lift onto (--color-linen /
- * --color-oat), so a nav hover or theme-toggle thumb steps UP from the Prussian
- * frame instead of dropping back to the calm canvas — keeping the frame's
- * elevation self-consistent. Light mode is untouched: --color-chrome is Oat
- * there, exactly what the sidebar already used. */
+ * The app frame — sidebar + sticky mobile header + the off-canvas drawer — wears
+ * brand navy so the identity is unmistakable while the content canvas stays calm.
+ * We paint the frame with --color-chrome and locally re-point the "surface" tokens
+ * nested controls lift onto (--color-linen / --color-oat), so a nav hover or
+ * theme-toggle thumb steps UP from the navy frame instead of dropping back to the
+ * calm canvas — keeping the frame's elevation self-consistent. Light mode needs no
+ * override: --color-chrome is the warm #F7F5F0 the light sidebar already paints. */
 .dark .sidebar,
 .dark .runninghead {
   background: var(--color-chrome);
-  /* Lift surfaces, relative to the Prussian frame, for nested hover/active states */
-  --color-linen: #0c2b62;        /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
-  --color-oat: #0a2a5e;          /* theme-toggle track / menu hover — subtle on-chrome panel */
-  --color-alt-surface: #0c2b62;  /* active-nav pill — a subtle Prussian lift on the chrome */
+  /* Lift surfaces, relative to the navy frame, for nested hover/active states */
+  --color-linen: #232A63;        /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
+  --color-oat: #202657;          /* theme-toggle track / menu hover — subtle on-chrome panel */
+  --color-alt-surface: #2A3168;  /* active-nav pill — a subtle navy lift on the chrome */
 }
 
 html {
@@ -335,8 +401,8 @@ strong { font-weight: 700; }
  * one transition animates the grid.
  */
 .editorial-layout {
-  --sidebar-full: clamp(260px, 22vw, 320px);
-  --sidebar-rail: 5.25rem;
+  --sidebar-full: 14.375rem; /* 230px expanded (design handoff §3.1) */
+  --sidebar-rail: 4.75rem;   /* 76px icon rail collapsed */
   --sidebar-w: var(--sidebar-full);
   display: grid;
   grid-template-columns: 1fr;
@@ -388,9 +454,9 @@ strong { font-weight: 700; }
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--color-oat);
-  border-right: 1px solid var(--color-rule);
-  padding: 2.25rem 1.5rem 1.5rem;
+  background: var(--color-chrome);
+  border-right: 1px solid var(--color-warm-border);
+  padding: 1.375rem 0.75rem 1rem;
   overflow-y: auto;
   overflow-x: hidden;
   color: var(--color-spruce);
@@ -413,8 +479,9 @@ strong { font-weight: 700; }
 }
 
 .sidebar-wordmark {
-  font-size: 2.1rem;
+  font-size: 1.5rem; /* 24px serif wordmark (design handoff §3.1) */
   line-height: 1;
+  color: var(--color-brand);
 }
 
 .sidebar-top-controls {
@@ -481,13 +548,11 @@ strong { font-weight: 700; }
   .sidebar-drawer-close { display: inline-flex; }
 }
 
-.sidebar-tagline { margin-top: 0.5rem; }
-
 .sidebar-nav {
-  margin-top: 2.5rem;
+  margin-top: 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: 0.25rem;
 }
 
 .sidebar-foot {
@@ -575,7 +640,7 @@ strong { font-weight: 700; }
   padding: 0.4rem;
   border-radius: var(--r-md);
   background: var(--color-raised);
-  box-shadow: 0 12px 32px rgb(0 49 83 / 0.18);
+  box-shadow: var(--shadow-popover);
 }
 
 .account-pop-item {
@@ -631,6 +696,34 @@ strong { font-weight: 700; }
   background: var(--color-rule);
 }
 
+/* ── Child switcher (sidebar foot) ─────────────────────────────────────── *
+ * Reuses the account chip + popover shell (both live in .account-menu, so the
+ * collapsed-rail folding rules apply for free); only the avatar and the selected
+ * / add-child rows are its own. The avatar is a blue-tint initial disc. */
+.child-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-brand);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Selected child row inside the switcher popover. */
+.account-pop-item[aria-current="true"] {
+  background: var(--color-alt-surface);
+  color: var(--color-spruce);
+}
+
+/* "Add child" — a blue text action set off from the child rows. */
+.account-pop-add { color: var(--color-apricot-deep); font-weight: 600; }
+.account-pop-add:hover { color: var(--color-apricot-deep); background: var(--color-apricot-tint); }
+
 /* The sign-in/out glyph is the collapsed-rail fallback only; the expanded
  * sidebar and the mobile drawer show the text label instead. */
 .auth-control-icon { display: none; }
@@ -647,7 +740,6 @@ strong { font-weight: 700; }
     overflow: visible;
   }
   [data-shell-collapsed="1"] .editorial-layout .sidebar-wordmark,
-  [data-shell-collapsed="1"] .editorial-layout .sidebar-tagline,
   [data-shell-collapsed="1"] .editorial-layout .nav-label {
     display: none;
   }
@@ -783,6 +875,74 @@ strong { font-weight: 700; }
   .runninghead { display: none; }
 }
 
+/* ── Desktop top bar — inside the main column (design handoff §3.2) ─────── *
+ * Left: the page-hero slot (h1 + subtitle, or breadcrumb + back) that pages fill
+ * in later phases. Right: the family's real location pill + the notification bell
+ * (a link into Messages; its dropdown lands in a later phase). Desktop-only; the
+ * mobile sticky running head + hamburger still own the narrow-viewport frame. */
+.app-topbar { display: none; }
+
+@media (min-width: 1024px) {
+  .app-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    flex-shrink: 0;
+    padding: 1.625rem 2.25rem 0; /* 26px 36px 0 */
+  }
+}
+
+/* The left hero slot: empty until a page fills it, but it still holds the row's
+ * height so the actions never collapse onto the top edge. */
+.app-topbar-hero { min-width: 0; flex: 1; }
+
+.app-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+/* Location pill — a static read-out of the family's current city (the interactive
+ * saved-areas popover arrives with a later backend seam). */
+.location-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-full);
+  background: var(--color-oat);
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.location-pill svg { color: var(--color-faded-sage); }
+
+.topbar-bell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-full);
+  background: var(--color-oat);
+  color: var(--color-slate-green);
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+
+.topbar-bell:hover { color: var(--color-spruce); background: var(--color-tile); }
+
+.topbar-bell:focus-visible {
+  outline: none;
+  color: var(--color-spruce);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
 .main-stage {
   flex: 1;
   min-height: 0;
@@ -814,8 +974,10 @@ strong { font-weight: 700; }
 }
 
 @media (min-width: 1024px) {
+  /* The desktop top bar already supplies the top gutter, so the stage starts
+   * tighter beneath it. */
   .main-stage {
-    padding-top: clamp(2.5rem, 4vw, 4rem);
+    padding-top: clamp(1.25rem, 2.5vw, 2rem);
     padding-bottom: clamp(4rem, 6vw, 6rem);
   }
 }
@@ -878,10 +1040,10 @@ strong { font-weight: 700; }
   justify-content: center;
   gap: 0.5rem;
   padding: 0.85rem 1.5rem;
-  background: var(--color-spruce);
-  color: var(--color-linen);
+  background: var(--color-brand);
+  color: var(--color-on-spruce);
   border: 0;
-  border-radius: var(--r-full);
+  border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.95rem;
   font-weight: 700;
@@ -891,7 +1053,7 @@ strong { font-weight: 700; }
   transition: background 320ms var(--ease-breathe), transform 200ms var(--ease-breathe);
 }
 
-.btn-primary:hover { background: var(--color-apricot-deep); }
+.btn-primary:hover { background: var(--color-brand-hover); }
 .btn-primary:active { transform: translateY(1px); }
 
 .btn-primary:focus-visible {
@@ -907,7 +1069,7 @@ strong { font-weight: 700; }
   background: transparent;
   color: var(--color-spruce);
   border: 1.5px solid var(--color-rule-strong);
-  border-radius: var(--r-full);
+  border-radius: var(--r-md);
   font-family: var(--font-body);
   font-size: 0.95rem;
   font-weight: 700;
@@ -1087,7 +1249,7 @@ strong { font-weight: 700; }
   width: 100%;
   background: var(--color-linen);
   border: 1.5px solid var(--color-rule-strong);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
   padding: 0.85rem 1.15rem;
   font-family: var(--font-body);
   font-size: 16px;
@@ -1313,16 +1475,16 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 0.5rem 0.6rem;
-  color: var(--color-slate-green);
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  color: var(--color-faded-sage);
   text-decoration: none;
   border-radius: var(--r-md);
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
   position: relative;
 }
 
-.nav-item:hover { color: var(--color-spruce); background: var(--color-linen); }
+.nav-item:hover { color: var(--color-spruce); background: var(--color-warm-border); }
 
 .nav-item:focus-visible {
   outline: none;
@@ -1340,21 +1502,23 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 }
 
 .nav-item .nav-label {
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  line-height: 1;
-  letter-spacing: var(--tracking-display);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  line-height: 1.2;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .nav-item:hover .nav-folio { color: var(--color-spruce); }
 
+/* Active nav = a white pill + brand-navy label (design handoff §3.1). */
 .nav-item[aria-current="page"] {
-  color: var(--color-spruce);
-  background: var(--color-alt-surface);
+  color: var(--color-brand);
+  background: var(--color-oat);
+  box-shadow: var(--shadow-card);
 }
-.nav-item[aria-current="page"] .nav-folio { color: var(--color-spruce); }
+.nav-item[aria-current="page"] .nav-label { font-weight: 700; }
+.nav-item[aria-current="page"] .nav-folio { color: var(--color-brand); }
 
 /* Tooltip shown only in the collapsed rail (toggled on by the rail rule). It
  * sits to the right of the icon and appears on hover/focus. */
@@ -1562,8 +1726,8 @@ html, body, .sidebar, .panel, .card, .field {
   display: block;
   background: var(--color-oat);
   border: 1px solid var(--color-rule);
-  box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04);
-  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--r-lg);
   padding: clamp(1.25rem, 2vw, 1.75rem);
   color: inherit;
 }
@@ -1577,7 +1741,7 @@ html, body, .sidebar, .panel, .card, .field {
 
 .card-interactive:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgb(0 49 83 / 0.12);
+  box-shadow: var(--shadow-card-hover);
 }
 
 /* On the dark canvas a drop-shadow barely registers, so an interactive card

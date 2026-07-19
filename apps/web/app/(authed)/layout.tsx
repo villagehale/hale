@@ -2,11 +2,13 @@ import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { auth } from '~/auth';
 import { AppShell } from '~/components/hale/app-shell';
+import { AppTopBar } from '~/components/hale/app-topbar';
 import { Sidebar } from '~/components/hale/sidebar';
 import { TopHeader } from '~/components/hale/top-header';
 import { ScrollReset } from '~/components/hale/scroll-reset';
 import { IdentifyUser } from '~/lib/analytics/posthog-provider';
 import { authConfigured } from '~/lib/auth-config';
+import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser } from '~/lib/family';
 import { markFamilyActiveToday } from '~/lib/metrics/activity';
@@ -42,6 +44,17 @@ export default async function AuthedLayout({ children }: { children: React.React
     after(() => markFamilyActiveToday(db(), familyId));
   }
 
+  // The foot child switcher + top-bar location read the same family-basics query
+  // the authed pages already use; both degrade to an empty/absent state (no fake
+  // child, no fake city) when there is no resolved family yet.
+  const basics = await loadFamilyBasics();
+  const kids = basics.children.map((child) => ({
+    id: child.id,
+    name: child.name,
+    ageLabel: child.stageLabel,
+  }));
+  const city = basics.location.city;
+
   return (
     <>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: pre-paint collapse script must run before hydration to avoid a rail flash */}
@@ -56,9 +69,15 @@ export default async function AuthedLayout({ children }: { children: React.React
             authControls={authEnabled}
             signedIn={Boolean(session?.user?.id)}
             parentName={session?.user?.name ?? null}
+            kids={kids}
           />
         }
-        header={<TopHeader />}
+        header={
+          <>
+            <TopHeader />
+            <AppTopBar city={city} />
+          </>
+        }
       >
         <main id="main-content" className="main-stage">
           <ScrollReset />

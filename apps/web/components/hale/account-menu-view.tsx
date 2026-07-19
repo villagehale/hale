@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import type { RefObject } from 'react';
-import { ChevronsUpDown, History, LogOut, Settings } from 'lucide-react';
+import { ChevronsUpDown, LogOut, Settings } from 'lucide-react';
 import { Icon } from '~/components/ui/icon';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { HISTORY_NAV, SETTINGS_NAV } from '~/components/hale/nav';
+import { SETTINGS_NAV } from '~/components/hale/nav';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 
 export interface AccountMenuViewProps {
@@ -23,8 +23,10 @@ export interface AccountMenuViewProps {
 /**
  * The chip + popover markup, factored out of the stateful wrapper so it renders
  * without the shell/router context (the wrapper owns open-state and dismissal).
- * Settings + History are destinations, Appearance is the theme control, and Sign
- * out — an account action, not a destination — sits below a divider.
+ * Per the desktop handoff the popover is Settings + Sign out only; Appearance (the
+ * theme control) rides along where it has always lived, and Sign out — an account
+ * action, not a destination — sits below a divider. History moved out of this
+ * menu (it stays reachable from the Approvals surface).
  */
 export function AccountMenuView({
   open,
@@ -51,15 +53,6 @@ export function AccountMenuView({
           >
             <Icon as={Settings} size={18} />
             <span>settings</span>
-          </Link>
-          <Link
-            href={HISTORY_NAV.href}
-            role="menuitem"
-            className="account-pop-item"
-            onClick={onSelect}
-          >
-            <Icon as={History} size={18} />
-            <span>history</span>
           </Link>
           <div className="account-pop-row">
             <span className="account-pop-row-label">appearance</span>

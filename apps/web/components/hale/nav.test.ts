@@ -18,8 +18,20 @@ describe('shared nav definition', () => {
   });
 
   it('the primary stops are the daily product surfaces, with family pointing at /family (not settings)', () => {
-    const family = PRIMARY_NAV.find((n) => n.label === 'family');
+    const family = PRIMARY_NAV.find((n) => n.label === 'Family');
     expect(family?.href).toBe('/family');
+  });
+
+  it('carries the design-handoff labels: Home, Companion, Ask, Village, Family — Ask points at the existing /coach route', () => {
+    expect(PRIMARY_NAV.map((n) => n.label)).toEqual([
+      'Home',
+      'Companion',
+      'Ask',
+      'Village',
+      'Family',
+    ]);
+    const ask = PRIMARY_NAV.find((n) => n.label === 'Ask');
+    expect(ask?.href).toBe('/coach');
   });
 
   it('ALL_NAV is the primary stops followed by settings, with history filed separately (retired from the sidebar) and no duplicate routes', () => {

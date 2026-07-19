@@ -48,14 +48,15 @@ describe('AccountMenuView', () => {
     expect(html).not.toContain('sign out');
   });
 
-  it('opens to settings, history, appearance, and sign out when open', () => {
+  it('opens to settings, appearance, and sign out when open (history moved out per the desktop handoff)', () => {
     const html = render({ open: true });
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain('role="menu"');
     expect(html).toContain('settings');
-    expect(html).toContain('history');
     expect(html).toContain('appearance');
     expect(html).toContain('sign out');
+    // History is no longer in the account menu (it stays reachable from Approvals).
+    expect(html).not.toContain('history');
     // The theme control rides in the menu (its three options).
     expect(html).toContain('aria-label="Color theme"');
   });
