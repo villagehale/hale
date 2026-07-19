@@ -26,9 +26,13 @@ export interface ChildInput {
   dateOfBirth: string;
   /** Optional, sensitive (rule #1) gender; absent / unknown → 'unspecified'. */
   gender?: string;
+  /** Optional, sensitive (rule #1) natal/biological sex, captured ONLY to enable the
+   * sex-specific WHO growth comparison. Distinct from `gender` (identity). Absent /
+   * "prefer not to say" → null; only 'male' / 'female' are stored. */
+  biologicalSex?: string;
 }
 
-/** A validated child: trimmed name(s), a real birthdate, its derived stage, and gender. */
+/** A validated child: trimmed name(s), a real birthdate, its derived stage, gender, and sex. */
 export interface ValidatedChild {
   name: string;
   /** Trimmed last name, or null when not given. */
@@ -36,6 +40,19 @@ export interface ValidatedChild {
   dateOfBirth: string;
   stage: FamilyStage;
   gender: ChildGender;
+  /** Natal sex normalised to 'male' | 'female', or null (unset / prefer not to say). */
+  biologicalSex: string | null;
+}
+
+/**
+ * Normalise a free-text biological-sex input to the exact tokens the WHO growth read
+ * consumes ('male' | 'female'), or null for anything else — empty, "prefer not to
+ * say", or an unrecognised value. Pure. Only natal-sex tokens are honoured; gender
+ * words are not, since sex ≠ gender identity for a sex-specific standard.
+ */
+export function normalizeBiologicalSex(raw: string | undefined | null): string | null {
+  const token = raw?.trim().toLowerCase();
+  return token === 'male' || token === 'female' ? token : null;
 }
 
 export type ChildError = 'name_required' | 'dob_required' | 'dob_invalid' | 'dob_future' | 'dob_too_old';
@@ -87,6 +104,7 @@ export function validateChild(input: ChildInput, now: Date = new Date()): Valida
       dateOfBirth: dob,
       stage: deriveStage(dob, now),
       gender: parseChildGender(input.gender),
+      biologicalSex: normalizeBiologicalSex(input.biologicalSex),
     },
   };
 }

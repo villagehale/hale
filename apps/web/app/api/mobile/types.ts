@@ -228,6 +228,9 @@ export interface EditChildRequest {
   lastName?: string;
   /** One of the ChildGender values; absent / unknown → 'unspecified' server-side. */
   gender?: string;
+  /** Natal sex for the WHO growth comparison: 'male' | 'female'; anything else /
+   * "prefer not to say" → null server-side. Distinct from gender (rule #1). */
+  biologicalSex?: string;
   /** Comma-separated free-text interests, e.g. "swimming, music". Optional. */
   interests?: string;
 }

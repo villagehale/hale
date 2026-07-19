@@ -27,6 +27,9 @@ export interface FamilyChildBasics {
   dateOfBirth: string;
   /** The child's stored gender enum, so an edit form prefills it. */
   gender: ChildGender;
+  /** Stored natal sex ('male' | 'female') or null, so the edit form prefills it and
+   * the WHO growth read (which needs sex) works. Distinct from gender (rule #1). */
+  biologicalSex: string | null;
   /** Free-text interest tags driving discovery, so an edit form prefills them. */
   interests: string[];
   stageLabel: string;
@@ -57,7 +60,7 @@ export interface FamilyRowBasics extends FamilyLocationView {
 export function toFamilyBasics(
   family: FamilyRowBasics | null,
   children: ReadonlyArray<
-    Pick<ChildRow, 'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'interests'>
+    Pick<ChildRow, 'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'biologicalSex' | 'interests'>
   >,
   now: Date = new Date(),
 ): FamilyBasicsView {
@@ -77,6 +80,7 @@ export function toFamilyBasics(
       lastName: child.lastName,
       dateOfBirth: child.dateOfBirth,
       gender: child.gender,
+      biologicalSex: child.biologicalSex,
       interests: child.interests,
       stageLabel: STAGE_LABEL[deriveStage(child.dateOfBirth, now)],
     })),

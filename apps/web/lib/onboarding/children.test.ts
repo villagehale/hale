@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChildInserts, unionStages, validateChild } from './children.js';
+import { buildChildInserts, normalizeBiologicalSex, unionStages, validateChild } from './children.js';
 
 /**
  * Expectations are hand-derived from STAGE_BOUNDARIES_MONTHS = [12, 48, 156]:
@@ -44,6 +44,7 @@ describe('validateChild', () => {
         dateOfBirth: '2026-06-15',
         stage: 'newborn',
         gender: 'unspecified',
+        biologicalSex: null,
       },
     });
   });
@@ -82,6 +83,7 @@ describe('validateChild', () => {
         dateOfBirth: '2008-07-15',
         stage: 'teenager',
         gender: 'unspecified',
+        biologicalSex: null,
       },
     });
   });
@@ -96,6 +98,28 @@ describe('validateChild', () => {
   it('trims the name', () => {
     const result = validateChild({ name: '  Maya  ', dateOfBirth: '2026-01-15' }, NOW);
     expect(result.ok && result.child.name).toBe('Maya');
+  });
+
+  it('normalises biologicalSex to male/female (case/space-insensitive) and null otherwise', () => {
+    const male = validateChild({ name: 'A', dateOfBirth: '2026-01-15', biologicalSex: ' Male ' }, NOW);
+    expect(male.ok && male.child.biologicalSex).toBe('male');
+    const female = validateChild({ name: 'B', dateOfBirth: '2026-01-15', biologicalSex: 'FEMALE' }, NOW);
+    expect(female.ok && female.child.biologicalSex).toBe('female');
+    // Absent / gender words / "prefer not to say" → null (no sex-specific standard applies).
+    const none = validateChild({ name: 'C', dateOfBirth: '2026-01-15', biologicalSex: 'boy' }, NOW);
+    expect(none.ok && none.child.biologicalSex).toBeNull();
+    const unset = validateChild({ name: 'D', dateOfBirth: '2026-01-15' }, NOW);
+    expect(unset.ok && unset.child.biologicalSex).toBeNull();
+  });
+});
+
+describe('normalizeBiologicalSex', () => {
+  it('accepts only unambiguous natal-sex tokens', () => {
+    expect(normalizeBiologicalSex('male')).toBe('male');
+    expect(normalizeBiologicalSex('  Female ')).toBe('female');
+    for (const v of [undefined, null, '', 'boy', 'girl', 'nonbinary', 'x']) {
+      expect(normalizeBiologicalSex(v)).toBeNull();
+    }
   });
 });
 

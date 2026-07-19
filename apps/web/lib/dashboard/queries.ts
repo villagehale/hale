@@ -113,6 +113,7 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
         lastName: schema.children.lastName,
         dateOfBirth: schema.children.dateOfBirth,
         gender: schema.children.gender,
+        biologicalSex: schema.children.biologicalSex,
         interests: schema.children.interests,
       })
       .from(schema.children)
