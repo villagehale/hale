@@ -126,6 +126,8 @@ describe('POST /api/coach — auth + spend gating', () => {
         conversationId: '44444444-4444-4444-8444-444444444444',
         focusedChildId: null,
         actor: 'user-1',
+        noteKey: null,
+        sourceNote: null,
       },
       expect.anything(),
       undefined,
@@ -148,6 +150,60 @@ describe('POST /api/coach — auth + spend gating', () => {
         ],
       },
     ]);
+  });
+
+  it('threads a note reply (noteKey + redacted sourceNote) through to askHale', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
+    askHaleMock.mockResolvedValue({
+      answer: 'here is what that brief means for your week.',
+      conversationId: 'conv-note-1',
+      actionIntents: [],
+      metrics: { modelUsed: 'm', promptTokens: 1, completionTokens: 1, costUsd: 0.001, latencyMs: 5 },
+    });
+
+    const res = await callPost({
+      question: 'what should I do about the nap regression?',
+      noteKey: 'action-44444444-4444-4444-8444-444444444444',
+      sourceNote: {
+        eyebrow: 'Daily brief',
+        body: 'Naps shortened this week — a common 4-month shift.',
+        when: 'Today, 8:02 AM',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    // The note anchor + the ALREADY-REDACTED note view reach askHale verbatim; the
+    // route never re-derives note content (rule #1) — it forwards what the app sent.
+    expect(askHaleMock).toHaveBeenCalledWith(
+      {
+        familyId: 'fam-1',
+        question: 'what should I do about the nap regression?',
+        intent: null,
+        conversationId: null,
+        focusedChildId: null,
+        actor: 'user-1',
+        noteKey: 'action-44444444-4444-4444-8444-444444444444',
+        sourceNote: {
+          eyebrow: 'Daily brief',
+          body: 'Naps shortened this week — a common 4-month shift.',
+          when: 'Today, 8:02 AM',
+        },
+      },
+      expect.anything(),
+      undefined,
+      expect.objectContaining({ onTextDelta: expect.any(Function) }),
+    );
+  });
+
+  it('rejects a malformed noteKey (not a note id) with 400 before any agent run', async () => {
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
+
+    const res = await callPost({ question: 'hi', noteKey: 'not-a-note-id' });
+
+    expect(res.status).toBe(400);
+    expect(askHaleMock).not.toHaveBeenCalled();
   });
 
   it('emits a terminal error event when the agent run fails', async () => {

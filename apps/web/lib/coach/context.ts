@@ -130,6 +130,21 @@ function redactFactsForTeens(
   );
 }
 
+/**
+ * The Hale note a reply is grounding on — the ALREADY-REDACTED mobile view of a
+ * Messages note (eyebrow/body/when), the same fields the app renders. Structured,
+ * not prose: it rides the JSON-serialized context the harness already stringifies
+ * into the prompt, so it seeds the note's content with ZERO new prompt strings
+ * (rule #2). Never carries raw teen content — a redacted note never opens a thread,
+ * and the app only ever holds the server-redacted view (rule #1). Null for the
+ * general Ask Hale thread.
+ */
+export interface SourceNoteContext {
+  eyebrow: string;
+  body: string;
+  when: string;
+}
+
 export interface AgentContext {
   /** The signed-in parent's display name, when known. */
   parentName: string | null;
@@ -149,6 +164,8 @@ export interface AgentContext {
   question: string;
   /** Optional UI intent chip the parent tapped (e.g. "find a daycare near me"). */
   intent: string | null;
+  /** The Hale note this reply is grounding on, or null for the general thread. */
+  sourceNote: SourceNoteContext | null;
 }
 
 const STAGE_ORDER: readonly FamilyStage[] = ['newborn', 'toddler', 'child', 'teenager'];
@@ -174,6 +191,8 @@ export interface LoadAgentContextInput {
   /** The child the parent has focused on (the per-child chip), or null for the family. */
   focusedChildId: string | null;
   transcript: TranscriptMessage[];
+  /** The Hale note this reply grounds on (redacted app view), or null. */
+  sourceNote: SourceNoteContext | null;
 }
 
 /**
@@ -320,6 +339,7 @@ export async function loadAgentContext(
     transcript: input.transcript,
     question: input.question,
     intent: input.intent,
+    sourceNote: input.sourceNote,
   };
 }
 

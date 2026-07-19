@@ -12,6 +12,11 @@ import { flushTelemetry } from '~/lib/telemetry/langfuse';
 // SDK — neither works on the edge runtime.
 export const runtime = 'nodejs';
 
+/** A Hale note id (`digest-<uuid>` / `action-<uuid>`) — the anchor a reply threads
+ * its coach conversation to. Format-bounded so it can only ever be a note id, never
+ * free text. */
+const NOTE_KEY_RE = /^(digest|action)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const bodySchema = z.object({
   question: z.string().trim().min(1).max(2000),
   /** Continue an existing thread; omitted/null starts a fresh one. */
@@ -20,6 +25,18 @@ const bodySchema = z.object({
   intent: z.string().trim().min(1).max(200).optional(),
   /** The child the parent focused the conversation on (per-child chip), if any. */
   focusedChildId: z.string().uuid().optional(),
+  /** Anchor this reply to a Hale note's persistent thread (mobile Messages reply). */
+  noteKey: z.string().trim().regex(NOTE_KEY_RE).optional(),
+  /** The redacted note view the reply grounds on — seeds the note's content into the
+   * agent context (rule #2: structured, no prompt strings). Bounded; never re-fetched
+   * server-side, so it can only be the app's already-redacted note (rule #1). */
+  sourceNote: z
+    .object({
+      eyebrow: z.string().trim().min(1).max(200),
+      body: z.string().trim().min(1).max(4000),
+      when: z.string().trim().min(1).max(100),
+    })
+    .optional(),
 });
 
 /**
@@ -89,6 +106,8 @@ export async function POST(req: Request) {
             conversationId: parsed.data.conversationId ?? null,
             focusedChildId: parsed.data.focusedChildId ?? null,
             actor: actorUserId,
+            noteKey: parsed.data.noteKey ?? null,
+            sourceNote: parsed.data.sourceNote ?? null,
           },
           database,
           undefined,

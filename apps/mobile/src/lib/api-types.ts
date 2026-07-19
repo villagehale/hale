@@ -470,6 +470,21 @@ export interface MobileMessagesResponse {
   messages: MessageView[];
 }
 
+/** One turn of a note's reply thread — the parent's reply (`user`) or Hale's coach
+ * answer (`assistant`). Transcript text only; never raw note content (rule #1). */
+export interface NoteThreadTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** GET /api/mobile/note-thread?noteKey=… — the prior reply exchange for one Hale
+ * note, replayed when the thread re-opens. `conversationId` is null (turns empty)
+ * until the first reply opens the note's thread. */
+export interface MobileNoteThreadResponse {
+  conversationId: string | null;
+  turns: NoteThreadTurn[];
+}
+
 // ── plan tiers (from apps/web lib/plan/catalog, derived from @hale/types) ──────
 
 export type PlanTier = 'free' | 'plus' | 'family';

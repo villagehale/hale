@@ -47,6 +47,67 @@ export async function createConversation(
 }
 
 /**
+ * Resolves the conversation anchored to `noteKey` for `familyId`, or null when the
+ * note has no thread yet. Read-only (rule #1: family-scoped) — the re-open path a
+ * mobile thread uses to replay a note's prior reply exchange. A note key names at
+ * most one conversation per family (the partial unique index), so this returns a
+ * single id.
+ */
+export async function resolveNoteConversation(
+  familyId: string,
+  noteKey: string,
+  database: Database,
+): Promise<string | null> {
+  const rows = await database
+    .select({ id: schema.conversations.id })
+    .from(schema.conversations)
+    .where(
+      and(
+        eq(schema.conversations.familyId, familyId),
+        eq(schema.conversations.noteKey, noteKey),
+      ),
+    )
+    .limit(1);
+
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Resolves the conversation anchored to `noteKey`, creating it if none exists yet.
+ * The write path a note reply takes: the first reply on a note opens its thread,
+ * every later reply continues it. Idempotent and race-safe — the insert conflicts
+ * against the partial unique (family_id, note_key) index and falls back to a
+ * re-read, so two concurrent first-replies resolve to the SAME conversation rather
+ * than forking (rule #6: one continuous, auditable thread per note).
+ */
+export async function resolveOrCreateNoteConversation(
+  familyId: string,
+  noteKey: string,
+  database: Database,
+): Promise<string> {
+  const existing = await resolveNoteConversation(familyId, noteKey, database);
+  if (existing) {
+    return existing;
+  }
+
+  const inserted = await database
+    .insert(schema.conversations)
+    .values({ familyId, noteKey })
+    .onConflictDoNothing()
+    .returning({ id: schema.conversations.id });
+  if (inserted[0]?.id) {
+    return inserted[0].id;
+  }
+
+  // A concurrent first-reply won the insert — re-read its row rather than fork.
+  const raced = await resolveNoteConversation(familyId, noteKey, database);
+  if (!raced) {
+    throw new Error('resolveOrCreateNoteConversation: conflict but no row found');
+  }
+  return raced;
+}
+
+/**
  * Resolves a conversation id to one OWNED by `familyId`. Returns the id when it
  * exists and belongs to the family; null otherwise (unknown id, or — the rule #1
  * case — a thread belonging to a different family). The caller starts a new
@@ -72,10 +133,12 @@ export async function resolveConversationForFamily(
 }
 
 /**
- * Resolves the family's MOST RECENT conversation id, or null when the family has
- * no thread yet. Family-scoped (rule #1): only the requesting family's own
- * threads are ever considered. This is the rehydration anchor — the thread Ask
- * Hale replays on page load so visible history survives a refresh.
+ * Resolves the family's MOST RECENT general conversation id, or null when the
+ * family has no thread yet. Family-scoped (rule #1): only the requesting family's
+ * own threads are ever considered. This is the rehydration anchor — the thread Ask
+ * Hale replays on page load so visible history survives a refresh. Note-anchored
+ * conversations (note_key set) are EXCLUDED: a reply on a Messages note lives in
+ * its own thread and must never surface as the family's general Ask Hale history.
  */
 export async function resolveLatestConversationForFamily(
   familyId: string,
@@ -84,7 +147,12 @@ export async function resolveLatestConversationForFamily(
   const rows = await database
     .select({ id: schema.conversations.id })
     .from(schema.conversations)
-    .where(eq(schema.conversations.familyId, familyId))
+    .where(
+      and(
+        eq(schema.conversations.familyId, familyId),
+        isNull(schema.conversations.noteKey),
+      ),
+    )
     .orderBy(desc(schema.conversations.createdAt))
     .limit(1);
 

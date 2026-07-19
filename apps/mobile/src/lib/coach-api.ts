@@ -42,6 +42,12 @@ export interface AskHaleRequest {
   conversationId?: string;
   intent?: string;
   focusedChildId?: string;
+  /** Anchor this reply to a Hale note's persistent thread (`digest-…` / `action-…`),
+   * so re-opening the note continues the SAME coach conversation. */
+  noteKey?: string;
+  /** The already-redacted note view this reply grounds on — seeds the note's content
+   * into the agent context (rule #1: the app only ever holds the redacted view). */
+  sourceNote?: { eyebrow: string; body: string; when: string };
 }
 
 function dispatch(event: CoachEvent, handlers: CoachStreamHandlers): boolean {
