@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 function readIntentValues(relPath: string): string[] {
   const text = readFileSync(fileURLToPath(new URL(relPath, import.meta.url)), 'utf8');
   const body = text.match(/ONBOARDING_INTENTS[\s\S]*?=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
-  return [...body.matchAll(/value:\s*'([^']+)'/g)].map((m) => m[1]);
+  return [...body.matchAll(/value:\s*'([^']+)'/g)].flatMap((m) => (m[1] ? [m[1]] : []));
 }
 
 // The canonical taxonomy, derived from the spec (not copied from either file's output)
