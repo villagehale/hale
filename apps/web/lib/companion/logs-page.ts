@@ -2,7 +2,8 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId, currentUserId } from '~/lib/family';
-import { FEED_KINDS, MEASURE_KINDS } from './log-types.js';
+import { buildGrowthAssessments } from './growth-standards.js';
+import { FEED_KINDS, MEASURE_KINDS, MEASUREMENT_EPISODE } from './log-types.js';
 import {
   type LogsPage,
   nextCursorFrom,
@@ -41,7 +42,12 @@ export async function readLogsPage(
   const limit = opts.limit ?? PAGE_LIMIT;
 
   const children = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .select({
+      id: schema.children.id,
+      dateOfBirth: schema.children.dateOfBirth,
+      biologicalSex: schema.children.biologicalSex,
+      gestationalWeeks: schema.children.gestationalWeeks,
+    })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
 
@@ -98,6 +104,17 @@ export async function readLogsPage(
       occurredAt: row.occurredAt.toISOString(),
       ...liftNumerics(row.payload),
     }));
+
+  // The WHO growth read is served ONLY for a single child's measurement page (the
+  // Growth tab's query): a per-child, sex-specific standard can't apply to the
+  // family-wide / mixed Diary read. Built from the redacted `logs`, so a teen's
+  // reading never reaches the computation (rule #1). Omitted otherwise.
+  if (opts.childId && opts.episodeType === MEASUREMENT_EPISODE) {
+    const child = children.find((c) => c.id === opts.childId);
+    if (child) {
+      return { logs, nextCursor, growthAssessments: buildGrowthAssessments(logs, child) };
+    }
+  }
 
   return { logs, nextCursor };
 }
