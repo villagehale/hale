@@ -1,30 +1,30 @@
 /**
  * WHO Child Growth Standards — LMS (Box-Cox) parameters. GENERATED FILE — do not
- * hand-edit; regenerate from the official WHO source tables (see scripts/build note
- * below). Values are transcribed verbatim from WHO's published day-resolution
- * "expanded tables (z-scores)", never typed from memory.
+ * hand-edit; regenerate with scripts/sync-who-growth.mjs (verifies each source md5
+ * against who-growth-lms.lock.json). Values are transcribed verbatim from WHO's
+ * published day-resolution "expanded tables (z-scores)", never typed from memory.
  *
  * Indicators (birth to 60 completed months, sex-specific):
  *   weight = weight-for-age, height = length/height-for-age, head = head-circumference-for-age.
- *   male = WHO "boys", female = WHO "girls".
- *
- * Source files (who.int CDN), retrieved 2026-07-18:
- *   weight male:  .../indicators/weight-for-age/expanded-tables/wfa-boys-zscore-expanded-tables.xlsx
- *   weight female:.../indicators/weight-for-age/expanded-tables/wfa-girls-zscore-expanded-tables.xlsx
- *   height male:  .../indicators/length-height-for-age/expandable-tables/lhfa-boys-zscore-expanded-tables.xlsx
- *   height female:.../indicators/length-height-for-age/expandable-tables/lhfa-girls-zscore-expanded-tables.xlsx
- *   head male:    .../indicators/head-circumference-for-age/expanded-tables/hcfa-boys-zscore-expanded-tables.xlsx
- *   head female:  .../indicators/head-circumference-for-age/expanded-tables/hcfa-girls-zscore-expanded-tables.xlsx
- *   (base: https://cdn.who.int/media/docs/default-source/child-growth/child-growth-standards )
+ *   male = WHO "boys", female = WHO "girls". Source URLs + checksums: who-growth-lms.lock.json.
  *
  * The WHO expanded tables are indexed by age in DAYS. This module downsamples to
  * completed months using WHO Anthro's own average month length of 30.4375 days:
  * month m takes the LMS row at day round(m * 30.4375). This reproduces WHO's
- * published monthly medians to <0.1 unit (verified in who-growth-standards.test.ts).
+ * published monthly medians to <0.1 unit (verified in who-growth-data.test.ts).
+ *
+ * Length/height convention: WHO length/height-for-age uses recumbent LENGTH for ages
+ * ≤24 months and standing HEIGHT for ≥24 months (a child measures ~0.7 cm shorter
+ * standing), and the committed table follows that split. Hale does not capture which
+ * position a reading was taken in, so a standing-measured 24-month-old is scored
+ * against the length-based row — a ~0.7 cm (≈0.23 z, since 0.7/(M·S) at 24 mo)
+ * worst-case downward bias, only at the 24-month boundary and shrinking to zero away
+ * from it. Documented, not corrected: it can't cross the |z|=2 band on its own and
+ * the provider-deferral caveat covers it.
  *
  * A z-score is z = ((value / M) ** L - 1) / (L * S) for L != 0. L = 1 for
  * length/height and head circumference (a symmetric distribution); L varies for
- * weight. See assessGrowth in who-growth-standards.ts.
+ * weight. See assessGrowth in growth-standards.ts.
  */
 
 export interface WhoLmsRow {

@@ -14,6 +14,7 @@
     "eval:coach": "node evals/run-coach-eval.mjs --cached-only",
     "backfill:source-urls": "tsx scripts/backfill-source-urls.ts",
     "seed:curated-resources": "tsx scripts/seed-curated-resources.ts",
+    "sync-who-growth": "node scripts/sync-who-growth.mjs",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },
   "dependencies": {
