@@ -125,8 +125,21 @@ describe('buildLogPayload — nap', () => {
   });
 
   it('never folds the quality into the note (the note stays free-text only)', () => {
-    const payload = buildLogPayload({ ...baseInput, kind: 'nap', napDurationMin: 30 });
+    const payload = buildLogPayload({ ...baseInput, kind: 'nap', napDurationMin: 30, napQuality: 'Good' });
     expect(payload).not.toHaveProperty('note');
+  });
+
+  it('omits quality entirely when no chip was tapped (no fabricated default)', () => {
+    // The sheet has no preselected quality; an untouched nap sends no quality at all,
+    // rather than recording an unengaged "good".
+    const payload = buildLogPayload({ ...baseInput, kind: 'nap', napDurationMin: 30, napQuality: '' });
+    expect(payload).toEqual({
+      kind: 'nap',
+      childId: CHILD,
+      occurredAt: OCCURRED,
+      durationMin: 30,
+    });
+    expect(payload).not.toHaveProperty('quality');
   });
 });
 

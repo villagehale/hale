@@ -141,7 +141,9 @@ export function QuickLogModal({
   const [childId, setChildId] = useState('');
   const [feedWhat, setFeedWhat] = useState('Milk');
   const [feedAmount, setFeedAmount] = useState('Most of it');
-  const [napQuality, setNapQuality] = useState<string>('Good');
+  // No preselection — an untouched Quality omits the field (no-fabrication doctrine);
+  // only a tapped chip posts a quality.
+  const [napQuality, setNapQuality] = useState('');
   const [diaperKind, setDiaperKind] = useState<DiaperKindValue>('wet');
   const [milestone, setMilestone] = useState('');
   const [note, setNote] = useState('');
@@ -166,7 +168,7 @@ export function QuickLogModal({
       setChildId(kids[0]?.id ?? '');
       setFeedWhat('Milk');
       setFeedAmount('Most of it');
-      setNapQuality('Good');
+      setNapQuality('');
       setDiaperKind('wet');
       setMilestone('');
       setNote('');
