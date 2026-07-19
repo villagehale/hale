@@ -100,7 +100,7 @@ describe('assessGrowth — precedence and honest states', () => {
     expect(r).toEqual({ state: 'assessed', z: expect.closeTo(0, 6), band: 'typical' });
   });
 
-  it('flags a preterm birth BEFORE anything else (even with sex + valid age)', () => {
+  it('flags a preterm birth before sex/z-score for an in-range age', () => {
     expect(assessGrowth({ ...base, biologicalSex: 'male', gestationalWeeks: 34 })).toEqual({
       state: 'preterm',
     });
@@ -109,6 +109,14 @@ describe('assessGrowth — precedence and honest states', () => {
     expect(assessGrowth({ ...base, biologicalSex: null, gestationalWeeks: 30 })).toEqual({
       state: 'preterm',
     });
+  });
+
+  it('out-of-range wins over preterm for a child past WHO 0–5y', () => {
+    // A 6-year-old born preterm: no WHO standard exists at this age, so 'preterm'
+    // must NOT be surfaced — out-of-range takes precedence.
+    expect(
+      assessGrowth({ ...base, ageMonths: 72, biologicalSex: 'male', gestationalWeeks: 30 }).state,
+    ).toBe('out-of-range');
   });
 
   it('treats 37 weeks and unknown gestation as term', () => {

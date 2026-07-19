@@ -67,9 +67,12 @@ export type GrowthState =
 
 /**
  * Assess ONE reading against the WHO standard for its measure + sex + age. Pure.
- * Precedence is deliberate: prematurity is checked first (adding a sex later must
- * not flip a preterm baby into a chronological-age computation), then a usable sex,
- * then the age/value being in the tables' domain, and only then the z-score.
+ * Precedence is deliberate:
+ *  1. out-of-range (age outside WHO's 0–5y, or a non-positive value) wins first — no
+ *     WHO standard exists there, so nothing else (not even prematurity) applies;
+ *  2. prematurity before sex — adding a sex later must not flip a preterm baby into a
+ *     chronological-age computation;
+ *  3. a usable sex before the z-score.
  */
 export function assessGrowth(input: {
   measureKind: MeasureKind;
@@ -80,6 +83,11 @@ export function assessGrowth(input: {
 }): GrowthState {
   const { measureKind, valueMetric, ageMonths, biologicalSex, gestationalWeeks } = input;
 
+  const month = Math.floor(ageMonths);
+  if (month < WHO_MIN_MONTH || month > WHO_MAX_MONTH || !(valueMetric > 0)) {
+    return { state: 'out-of-range' };
+  }
+
   // Only an EXPLICIT <37 weeks gates: an unknown gestation is not evidence of
   // prematurity, so we don't invent a caveat — we compute and lean on the caveat line.
   if (typeof gestationalWeeks === 'number' && gestationalWeeks < PRETERM_WEEKS) {
@@ -89,12 +97,8 @@ export function assessGrowth(input: {
   const sex = resolveBiologicalSex(biologicalSex);
   if (!sex) return { state: 'needs-details' };
 
-  const month = Math.floor(ageMonths);
-  const row =
-    month >= WHO_MIN_MONTH && month <= WHO_MAX_MONTH
-      ? WHO_GROWTH_LMS[measureKind][sex][month]
-      : undefined;
-  if (!row || !(valueMetric > 0)) return { state: 'out-of-range' };
+  const row = WHO_GROWTH_LMS[measureKind][sex][month];
+  if (!row) return { state: 'out-of-range' };
 
   const z = lmsZScore(valueMetric, row.l, row.m, row.s);
   return { state: 'assessed', z, band: bandForZ(z) };
