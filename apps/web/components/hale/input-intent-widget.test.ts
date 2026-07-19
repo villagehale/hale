@@ -91,6 +91,35 @@ describe('InputIntentWidgets', () => {
     expect(html).toMatch(/<button[^>]*>Not now<\/button>/);
   });
 
+  it('renders a quick_log diaper confirm with a kind select over the four server kinds', () => {
+    const html = render(
+      [
+        {
+          category: 'log',
+          kind: 'quick_log',
+          label: 'Log this',
+          parsed: { episode: 'diaper', childName: 'Noah' },
+        },
+      ],
+      'Noah had a wet diaper',
+    );
+
+    const labelledById = html.match(/aria-labelledby="([^"]+)"/)?.[1];
+    expect(labelledById).toBeTruthy();
+    expect(html).toContain(`id="${labelledById}"`);
+    // The diaper episode surfaces its kind select (parity with the mobile sheet +
+    // diaperSchema). The four kinds are the server's fixed set (wet/dirty/mixed/dry).
+    expect(html).toContain('Log a diaper');
+    expect(html).toContain('what kind');
+    for (const kind of ['wet', 'dirty', 'mixed', 'dry']) {
+      expect(html, kind).toContain(`value="${kind}"`);
+    }
+    // Real Confirm/Not-now buttons — not an approval-gated action (no digest hold).
+    expect(html).toMatch(/<button[^>]*>Confirm<\/button>/);
+    expect(html).toMatch(/<button[^>]*>Not now<\/button>/);
+    expect(html).not.toContain('held for your approval');
+  });
+
   it('renders a create_plan confirm pre-filled with the parsed title + scope selector', () => {
     const html = render(
       [
