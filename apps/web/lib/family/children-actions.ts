@@ -294,6 +294,33 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
       })
       .where(eq(schema.families.id, familyId));
 
+    // Keep the family's ACTIVE saved area in lock-step with this home-location edit.
+    // Post-0051 every family with a city has an active family_areas row, and village
+    // content derives from THAT row (resolveActiveAreaCoarse prefers it over
+    // families.area_coarse), so without this the edit would silently stop steering
+    // discovery and the header label. A cleared location deactivates the row so
+    // discovery opts out exactly as it did pre-0051, rather than the stale active row
+    // winning forever. Only the coarse whitelist is ever written — never a lat/lng
+    // (rule #1). This audited location change already records the before/after
+    // (rule #6); the propagation is a derived side-effect of the same action, like
+    // areaCoarse. NOTE: this syncs whichever row is active — once the region switcher
+    // lets a family keep a non-home region active, this must target the HOME row.
+    if (location.city) {
+      await tx
+        .update(schema.familyAreas)
+        .set({
+          city: location.city,
+          province: location.province,
+          postalCode: location.postalCode,
+        })
+        .where(and(eq(schema.familyAreas.familyId, familyId), eq(schema.familyAreas.isActive, true)));
+    } else {
+      await tx
+        .update(schema.familyAreas)
+        .set({ isActive: false })
+        .where(and(eq(schema.familyAreas.familyId, familyId), eq(schema.familyAreas.isActive, true)));
+    }
+
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: userId,

@@ -6,6 +6,7 @@ import { kickDrain } from '~/lib/cron/kick-drain';
 import { db as defaultDb } from '~/lib/db';
 import { currentFamilyId } from '~/lib/family';
 import { getQueue } from '~/lib/queue';
+import { resolveActiveAreaCoarse } from './areas';
 import { geocodeVenue } from './geocode';
 import type { LatLng } from './map-model';
 import type { VillageCandidateView } from './mappers';
@@ -135,20 +136,17 @@ export async function loadVillageFeed(): Promise<VillageFeed> {
   const familyId = await currentFamilyId(database);
   if (!familyId) return EMPTY_FEED;
 
-  const [{ candidates }, areaRows, rankRows] = await Promise.all([
+  const [{ candidates }, areaCoarse, rankRows] = await Promise.all([
     readVillage(database, familyId),
-    database
-      .select({ areaCoarse: schema.families.areaCoarse })
-      .from(schema.families)
-      .where(eq(schema.families.id, familyId))
-      .limit(1),
+    // The map/label follows the family's ACTIVE saved area (legacy families.area_coarse
+    // fallback) so a region switch re-centers the feed — never precise (rule #1).
+    resolveActiveAreaCoarse(database, familyId),
     database
       .select({ orderedIds: schema.villageFeedRank.orderedIds })
       .from(schema.villageFeedRank)
       .where(eq(schema.villageFeedRank.familyId, familyId))
       .limit(1),
   ]);
-  const areaCoarse = areaRows[0]?.areaCoarse ?? null;
   const coarseCenter = areaCoarse ? await coarseCenterCached(areaCoarse) : null;
 
   if (candidates.length < 2) {
