@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { askHale } from '~/lib/coach/agent';
+import { NOTE_KEY_RE } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { enforceRateLimit } from '~/lib/rate-limit/apply';
@@ -11,11 +12,6 @@ import { flushTelemetry } from '~/lib/telemetry/langfuse';
 // Node runtime: the agent reads the skill file off disk and calls the Anthropic
 // SDK — neither works on the edge runtime.
 export const runtime = 'nodejs';
-
-/** A Hale note id (`digest-<uuid>` / `action-<uuid>`) — the anchor a reply threads
- * its coach conversation to. Format-bounded so it can only ever be a note id, never
- * free text. */
-const NOTE_KEY_RE = /^(digest|action)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const bodySchema = z.object({
   question: z.string().trim().min(1).max(2000),

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
+import { NOTE_KEY_RE } from '~/lib/coach/note-key';
 import { loadNoteThread } from '~/lib/messages/note-thread';
 import type { MobileNoteThreadResponse } from '../types';
 
@@ -23,7 +24,10 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const noteKey = new URL(req.url).searchParams.get('noteKey');
-  if (!noteKey) {
+  // Bound the key to a real note id before the loader runs — the SAME NOTE_KEY_RE the
+  // /api/coach POST enforces when it sets the thread, so a re-open can only ever
+  // resolve a well-formed note id, never free text.
+  if (!noteKey || !NOTE_KEY_RE.test(noteKey)) {
     return NextResponse.json({ error: 'missing_note_key' }, { status: 400 });
   }
 

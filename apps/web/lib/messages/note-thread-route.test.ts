@@ -51,6 +51,17 @@ describe('GET /api/mobile/note-thread', () => {
     expect(loadNoteThreadMock).not.toHaveBeenCalled();
   });
 
+  it('returns 400 for a malformed noteKey (same NOTE_KEY_RE the POST path enforces)', async () => {
+    authMock.mockResolvedValue(session('google-1'));
+
+    // A note key can only ever be `digest-<uuid>` / `action-<uuid>`; free text must
+    // be rejected before the loader runs, mirroring the /api/coach POST bound.
+    const res = await callGet('http://localhost/api/mobile/note-thread?noteKey=not-a-note-key');
+
+    expect(res.status).toBe(400);
+    expect(loadNoteThreadMock).not.toHaveBeenCalled();
+  });
+
   it('delegates to loadNoteThread and returns its transcript for the note', async () => {
     authMock.mockResolvedValue(session('google-1'));
     loadNoteThreadMock.mockResolvedValue({
