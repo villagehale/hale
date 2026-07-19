@@ -11,9 +11,10 @@ export const FEED_EPISODE = 'feed';
 export const NAP_EPISODE = 'nap';
 export const DIAPER_EPISODE = 'diaper';
 export const MILESTONE_EPISODE = 'milestone';
-/** A logged growth measurement (weight / height / head circumference). A raw data
- * point only — NO percentile or WHO comparison is ever derived (that would be
- * fabricated medical framing); the companion shows the plain series alone. */
+/** A logged growth measurement (weight / height / head circumference). The stored row
+ * is a raw data point; a DETERMINISTIC WHO z-score/band is derived from it at read time
+ * (growth-standards.ts, over committed official WHO LMS tables). That derivation is pure
+ * math, never an LLM medical judgement — LLM-derived medical framing stays forbidden. */
 export const MEASUREMENT_EPISODE = 'measurement';
 export const BOOKING_EPISODE = 'booking_requested';
 /** A completed curated health item (a checkup / immunization set the parent
