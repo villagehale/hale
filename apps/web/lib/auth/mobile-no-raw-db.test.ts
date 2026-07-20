@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest';
 //
 // A handful of routes are audited to legitimately hold a db handle (they reuse the
 // exact web loaders/writers that own the query building): the password sign-in, the
+// magic-link request + verify (delegate to requestMagicLink / consumeMagicLinkToken,
+// which own the token query building — same posture as the password sign-in), the
 // email sign-up (delegates to registerCredential + the signup side-effect
 // dispatcher), the companion quick-log, the companion "mark done" (reuses the same
 // writeEpisode path), the companion logs read (reuses the shared, teen-redacted
@@ -36,6 +38,8 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 // (nothing else DB-related) and must build no queries of its own.
 const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/auth/password/route.ts',
+  'app/api/mobile/auth/magic-link/request/route.ts',
+  'app/api/mobile/auth/magic-link/verify/route.ts',
   'app/api/mobile/auth/signup/route.ts',
   'app/api/mobile/companion/log/route.ts',
   'app/api/mobile/companion/done/route.ts',

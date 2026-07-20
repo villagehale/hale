@@ -1,6 +1,7 @@
 export * from './users.js';
 export * from './credentials.js';
 export * from './password-reset-tokens.js';
+export * from './magic-link-tokens.js';
 export * from './push-tokens.js';
 export * from './notification-prefs.js';
 export * from './push-sends.js';

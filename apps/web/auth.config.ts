@@ -26,7 +26,13 @@ export const authConfig = {
       // Credentials authorize (auth.ts) returns `credentials:<id>` as user.id.
       if (account?.provider === 'google') {
         token.sub = account.providerAccountId;
-      } else if (account?.provider === 'credentials' && user?.id) {
+      } else if (
+        (account?.provider === 'credentials' || account?.provider === 'magic-link') &&
+        user?.id
+      ) {
+        // Both email-based providers return `credentials:<id>` as user.id (magic
+        // link find-or-creates the same credential a password login uses), so a
+        // magic-link session resolves to the same account/family as a password one.
         token.sub = user.id;
       }
       return token;

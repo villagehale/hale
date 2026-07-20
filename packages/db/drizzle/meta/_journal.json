@@ -356,7 +356,14 @@
       "idx": 51,
       "version": "7",
       "when": 1781462760000,
-      "tag": "0051_family_areas",
+      "tag": "0051_magic_link_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1781462820000,
+      "tag": "0052_family_areas",
       "breakpoints": true
     }
   ]

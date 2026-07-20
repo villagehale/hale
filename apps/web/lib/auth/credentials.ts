@@ -45,6 +45,12 @@ export function normalizeEmail(email: string): string {
 // domain. Real deliverability is proven by the verification email, not a regex.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Format-only check against the single email regex — the source of truth reused
+ * by any flow that needs to gate on a plausible address (e.g. magic-link). */
+export function isValidEmail(email: string): boolean {
+  return EMAIL_RE.test(email);
+}
+
 export type ValidationError = 'invalid_email' | 'weak_password';
 
 export function validateSignup(
