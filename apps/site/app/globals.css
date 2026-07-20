@@ -141,22 +141,29 @@ body {
   html { scroll-behavior: auto; }
 }
 
-/* Headlines: Inter, tight tracking, semibold display weight.
- * Sentence-case, never all-caps. */
-h1, h2, h3, h4 {
-  font-family: var(--font-display);
-  font-optical-sizing: auto;
-  letter-spacing: var(--tracking-display);
-  font-weight: 600;
-  line-height: 1.04;
-  color: var(--color-spruce);
-  font-style: normal;
-  text-wrap: balance;
-}
+/* Headlines: Inter, tight tracking, semibold display weight. Sentence-case,
+ * never all-caps. These live in @layer base so Tailwind v4 utilities (text-*,
+ * font-*, text-[…], leading-*) win by normal layer order — as an UNLAYERED
+ * element rule this outranked every utility, so a `text-[14px]` footer header
+ * or a `text-[#F7F4EC]` on-navy heading was silently overridden by the clamp
+ * size and spruce colour. Pages that set no heading utility still inherit these
+ * defaults unchanged (the long-form subpages rely on that). */
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: var(--tracking-display);
+    font-weight: 600;
+    line-height: 1.04;
+    color: var(--color-spruce);
+    font-style: normal;
+    text-wrap: balance;
+  }
 
-h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
-h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
-h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
+  h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
+  h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
+  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
+}
 
 em { font-style: italic; }
 strong { font-weight: 700; }
@@ -438,17 +445,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * Every animation below has a prefers-reduced-motion static fallback at the
  * end of this block. Colours come from the warm landing tokens in @theme. */
 
-@keyframes hale-marquee {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
 @keyframes hale-float {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-10px); }
-}
-@keyframes hale-drift {
-  0%, 100% { transform: translate(0, 0); }
-  50%      { transform: translate(3%, -2%); }
 }
 @keyframes hale-card-in {
   from { opacity: 0; transform: translateY(18px) scale(0.985); }
@@ -461,20 +460,6 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 @keyframes hale-fade-up {
   from { opacity: 0; transform: translateY(15px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Hero ambient glow — a slow, calm drift (no CDN media) */
-.hale-drift { animation: hale-drift 26s var(--ease-breathe) infinite; }
-
-/* Trust marquee — track holds two identical halves; -50% loops seamlessly */
-.hale-marquee-track {
-  display: flex;
-  width: max-content;
-  animation: hale-marquee 32s linear infinite;
-}
-.hale-marquee-mask {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
 }
 
 /* The deep-navy chat card: gentle float + one-time entrance */
@@ -496,10 +481,33 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hale-drift,
-  .hale-marquee-track,
   .hale-float,
   .hale-card-in { animation: none; }
   .hale-anim-word,
   .hale-quote-word { animation: none; opacity: 1; transform: none; }
+}
+
+/* ══ Hero (2026-07) — cinematic full-bleed stage ═════════════════════════ *
+ * Ken-Burns drift for the village backdrop + a word-by-word rise for the
+ * headline/subtext. Both hold still under prefers-reduced-motion (block below). */
+
+@keyframes hale-ken-burns {
+  from { transform: scale(1) translate(0, 0); }
+  to   { transform: scale(1.06) translate(-1.4%, -1%); }
+}
+.hale-ken-burns { animation: hale-ken-burns 35s var(--ease-breathe) infinite alternate; }
+
+@keyframes hale-hero-word {
+  from { opacity: 0; transform: translateY(0.5em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hale-hero-word {
+  display: inline-block;
+  opacity: 0;
+  animation: hale-hero-word 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hale-ken-burns { animation: none; transform: none; }
+  .hale-hero-word { animation: none; opacity: 1; transform: none; }
 }

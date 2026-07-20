@@ -1,18 +1,10 @@
-import {
-  ArrowUpRight,
-  Baby,
-  Lock,
-  MapPin,
-  Mic,
-  SendHorizonal,
-  Shield,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Mic, SendHorizonal, Sparkles } from 'lucide-react';
 import Image from 'next/image';
+import { Fragment } from 'react';
 import village from '~/assets/village-illustration-alpha.png';
 import { AnimatedText } from '~/components/landing/animated-text';
 import { FadeInUp } from '~/components/landing/fade-in-up';
+import { HeroBackdrop } from '~/components/landing/hero-backdrop';
 import { FaqAccordion } from '~/components/landing/faq-accordion';
 import { Testimonials } from '~/components/landing/testimonials';
 import { LandingCta } from '~/components/landing-cta';
@@ -22,20 +14,25 @@ import { APP_URL } from '~/lib/app-url';
 import { siteJsonLd } from '~/lib/site/structured-data';
 
 const SIGN_UP = `${APP_URL}/sign-up`;
+const PREVIEW = `${APP_URL}/preview`;
 
-// Real beta-parent quotes are not collected yet; the testimonials band stays
-// gated off unless NEXT_PUBLIC_SHOW_TESTIMONIALS is explicitly enabled.
+// Real parent quotes are not collected yet; the testimonials band stays gated
+// off unless NEXT_PUBLIC_SHOW_TESTIMONIALS is explicitly enabled.
 const SHOW_TESTIMONIALS = process.env.NEXT_PUBLIC_SHOW_TESTIMONIALS === 'true';
 
-// Honest trust chips — no fabricated company logos. Each maps to a real Hale
-// posture (approval-first flow, PIPEDA/Law 25, Canadian residency, 0–18 scope).
-const TRUST_CHIPS = [
-  { Icon: ShieldCheck, label: 'Approval-first' },
-  { Icon: Shield, label: 'PIPEDA-compliant' },
-  { Icon: MapPin, label: 'Data stays in Canada' },
-  { Icon: Baby, label: 'Newborn to eighteen' },
-  { Icon: Lock, label: 'Private by default' },
+// Honest trust posture — a single quiet static line under the features (no
+// fabricated logos or counts). Each maps to a real Hale rule: approval-first
+// flow, PIPEDA/Law 25, Canadian residency, 0–18 scope, private by default.
+const TRUST_POINTS = [
+  'Approval-first',
+  'PIPEDA-compliant',
+  'Data stays in Canada',
+  'Newborn to eighteen',
+  'Private by default',
 ] as const;
+
+const HERO_SUBTEXT =
+  'Hale quietly prepares the helpful things — reminders, logs, plans, local ideas — and never acts without your say-so.';
 
 export default function LandingPage() {
   return (
@@ -48,83 +45,105 @@ export default function LandingPage() {
 
       <SiteHeader />
 
-      {/* ── 1 · Hero ──────────────────────────────────────────────────────── */}
+      {/* ── 1 · Hero — cinematic, bottom-anchored over the village ────────── *
+       * Full-viewport stage: the village illustration is a full-bleed backdrop
+       * (HeroBackdrop), the transparent nav floats over its light upper area,
+       * and the copy is anchored bottom-left on the navy-tinted band. Elements
+       * arrive in sequence — badge, then the headline/subtext word-by-word,
+       * then the buttons. `-mt-[4.5rem]` tucks the stage up under the sticky
+       * 4.5rem header so the art reads behind it. */}
       <section
         id="about"
-        className="relative flex min-h-[calc(100vh-4.5rem)] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-16 text-center"
+        className="relative isolate -mt-[4.5rem] flex min-h-screen flex-col justify-end overflow-hidden px-6 pb-16 pt-[4.5rem] md:pb-20"
       >
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-          <div
-            className="hale-drift absolute -left-40 -top-32 h-[36rem] w-[36rem] rounded-full"
-            style={{
-              background: 'radial-gradient(circle, rgba(247,244,236,0.95), rgba(247,244,236,0) 70%)',
-            }}
-          />
-          <div
-            className="hale-drift absolute -bottom-40 -right-32 h-[34rem] w-[34rem] rounded-full"
-            style={{
-              background: 'radial-gradient(circle, rgba(237,240,250,0.9), rgba(237,240,250,0) 70%)',
-              animationDelay: '-13s',
-            }}
-          />
-        </div>
+        <HeroBackdrop />
 
-        <span className="rise rise-1 inline-flex items-center gap-1.5 rounded-full border border-[#E4E7EE] bg-white/60 px-3.5 py-1.5 text-xs font-medium text-[#5C6B87]">
-          <Sparkles size={13} strokeWidth={2} className="text-[#B26B1F]" />
-          Free while in beta
-        </span>
+        <div
+          className="mx-auto flex w-full max-w-[1340px] flex-col items-start"
+          style={{ textShadow: '0 1px 16px rgba(23,41,74,0.45)' }}
+        >
+          <span className="rise rise-1 inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#17294A]/40 px-3 py-1.5 text-sm font-normal text-[#F7F4EC] backdrop-blur-md">
+            <span className="rounded-full bg-[#F7F4EC] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#1B2160]">
+              Free
+            </span>
+            Built in Canada — private by default
+          </span>
 
-        <h1 className="rise rise-2 mt-6 max-w-4xl text-5xl font-medium tracking-tight text-[#17294A] md:text-7xl">
-          Parenting was never meant to be done{' '}
-          <span className="font-serif font-normal italic">alone.</span>
-        </h1>
-
-        <p className="rise rise-3 mt-6 max-w-2xl text-base leading-relaxed text-[#5C6B87]">
-          Hale quietly prepares the helpful things — reminders, logs, plans, local ideas — and never
-          acts without your say-so.
-        </p>
-
-        <div className="rise rise-4 mt-9 flex flex-col items-center gap-3 sm:flex-row">
-          <LandingCta
-            event="landing_cta_signin"
-            href={SIGN_UP}
-            className="inline-flex items-center justify-center rounded-full bg-[#1B2160] px-7 py-3.5 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+          <span
+            className="rise rise-2 mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-[#F7F4EC]"
+            style={{ textShadow: '0 1px 10px rgba(23,41,74,0.85)' }}
           >
-            Get started
-          </LandingCta>
+            Toronto and the GTA
+          </span>
+
+          <h1 className="mt-3 max-w-4xl text-[40px] font-medium leading-[1.1] tracking-tight text-[#F7F4EC] md:text-6xl lg:text-[64px]">
+            <span className="block">
+              <RevealWords text="Parenting was never meant" baseMs={180} />
+            </span>
+            <span className="block">
+              <RevealWords text="to be done" baseMs={340} />
+              <span
+                className="hale-hero-word font-serif font-normal italic"
+                style={{ animationDelay: '460ms' }}
+              >
+                alone.
+              </span>
+            </span>
+          </h1>
+
+          <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-[#F7F4EC]/85 md:text-[17px]">
+            <RevealWords text={HERO_SUBTEXT} baseMs={560} stepMs={22} />
+          </p>
+
+          <div
+            className="rise mt-9 flex flex-col items-start gap-3 sm:flex-row sm:items-center"
+            style={{ animationDelay: '780ms', textShadow: 'none' }}
+          >
+            <LandingCta
+              event="landing_cta_signin"
+              href={SIGN_UP}
+              className="group inline-flex items-center gap-1.5 rounded-full bg-[#F7F4EC] px-[26px] py-3 text-base font-semibold text-[#17294A] shadow-[0_12px_30px_-12px_rgba(0,0,0,0.5)] transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC] motion-reduce:transition-none"
+            >
+              Join free — Toronto and the GTA
+              <ArrowRight
+                size={17}
+                strokeWidth={2}
+                className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+              />
+            </LandingCta>
+            <LandingCta
+              event="landing_cta_preview"
+              href={PREVIEW}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#F7F4EC]/40 px-[26px] py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#F7F4EC] hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC] motion-reduce:transition-none"
+            >
+              See what Hale finds for you
+              <ArrowRight size={17} strokeWidth={2} />
+            </LandingCta>
+          </div>
+
           <a
             href="#features"
-            className="inline-flex items-center justify-center rounded-full border border-[#E4E7EE] bg-white px-7 py-3.5 text-base font-semibold text-[#17294A] transition-colors hover:border-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+            className="rise mt-5 text-sm font-medium text-[#F7F4EC]/80 underline decoration-[#F7F4EC]/30 underline-offset-4 transition-colors hover:text-[#F7F4EC] hover:decoration-[#F7F4EC]"
+            style={{ animationDelay: '900ms' }}
           >
             See how it works
           </a>
         </div>
-
-        <div className="rise rise-5 mt-24 w-full max-w-6xl">
-          <p className="mb-8 text-sm text-[#8B95A9]">Built for families, not feeds</p>
-          <div className="hale-marquee-mask overflow-hidden">
-            <div className="hale-marquee-track">
-              {[0, 1].map((copy) => (
-                <div key={copy} aria-hidden={copy === 1} className="flex shrink-0">
-                  {TRUST_CHIPS.map((chip) => (
-                    <span
-                      key={chip.label}
-                      className="flex shrink-0 items-center gap-2 whitespace-nowrap px-8 text-[#5C6B87]"
-                    >
-                      <chip.Icon size={17} strokeWidth={1.75} className="text-[#8B95A9]" />
-                      <span className="text-base font-medium">{chip.label}</span>
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </section>
+
+      {/* ── 1b · Village narrative — brand + SEO lead-in (from the live page) ── */}
+      <FadeInUp>
+        <section className="mx-auto max-w-3xl px-6 pt-20 text-center md:pt-28">
+          <p className="text-lg leading-relaxed text-[#5C6B87] md:text-xl">
+            Hale turns the trusted, word-of-mouth village parents used to have — the neighbour who
+            knew which class was worth it — into one you can actually reach, near you, online.
+          </p>
+        </section>
+      </FadeInUp>
 
       {/* ── 2 · Feature — Ask Hale ────────────────────────────────────────── */}
       <FadeInUp>
-        <section id="features" className="mx-auto max-w-7xl px-6 py-24">
+        <section id="features" className="mx-auto max-w-7xl px-6 pb-24 pt-16">
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#B26B1F]">
@@ -160,7 +179,7 @@ export default function LandingPage() {
         <section className="mx-auto max-w-7xl px-6 py-24">
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div className="lg:order-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E7F6EC] px-3.5 py-1.5 text-xs font-semibold text-[#1F8A4C]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#1B2160]/25 bg-white px-3.5 py-1.5 text-xs font-semibold text-[#1B2160]">
                 <Sparkles size={13} strokeWidth={2} />
                 Your Village
               </span>
@@ -186,6 +205,11 @@ export default function LandingPage() {
           </div>
         </section>
       </FadeInUp>
+
+      {/* ── 3b · Quiet static trust line (replaces the removed marquee) ────── */}
+      <p className="mx-auto max-w-4xl px-6 text-center text-sm text-[#8B95A9]">
+        {TRUST_POINTS.join(' · ')}
+      </p>
 
       {/* ── 4 · Testimonials (gated) ──────────────────────────────────────── */}
       {SHOW_TESTIMONIALS && <Testimonials />}
@@ -249,10 +273,38 @@ export default function LandingPage() {
   );
 }
 
+/**
+ * Renders text as word-by-word rising spans for the hero's on-load reveal. Words
+ * stay real text in the DOM (SEO-safe); each span carries a staggered CSS delay.
+ * `.hale-hero-word` holds still under prefers-reduced-motion.
+ */
+function RevealWords({
+  text,
+  baseMs,
+  stepMs = 40,
+}: {
+  text: string;
+  baseMs: number;
+  stepMs?: number;
+}) {
+  return (
+    <>
+      {text.split(' ').map((word, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a static word split that never reorders — the index disambiguates repeated words.
+        <Fragment key={`${word}-${i}`}>
+          <span className="hale-hero-word" style={{ animationDelay: `${baseMs + i * stepMs}ms` }}>
+            {word}
+          </span>{' '}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 /** Pure HTML/CSS product mockup of the approval-first Ask Hale flow. Illustrative. */
 function AskHaleMockup() {
   return (
-    <div className="rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#F7F5F0] to-[#EDF0FA] p-6 sm:p-8">
+    <div className="rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#FFF9F1] to-[#FBEDDC] p-6 sm:p-8">
       <div className="hale-card-in hale-float rounded-2xl bg-[#1B2160]/95 p-4 shadow-[0_24px_60px_-20px_rgba(20,26,77,0.55)] backdrop-blur">
         <div className="flex flex-wrap gap-2">
           {['Log a nap', 'Draft daycare email', 'Find weekend ideas'].map((chip) => (
@@ -302,7 +354,7 @@ function AskHaleMockup() {
 function VillageMockup() {
   return (
     <div className="lg:order-1">
-      <div className="relative overflow-hidden rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#E7F6EC] to-[#F7F5F0] p-6 sm:p-8">
+      <div className="relative overflow-hidden rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#F7F5F0] to-[#FDFCFA] p-6 sm:p-8">
         <Image
           src={village}
           alt=""
@@ -321,8 +373,8 @@ function VillageMockup() {
           <ul className="mt-3 flex flex-col gap-2.5">
             {[
               { color: '#B26B1F', label: 'Storytime · Sat 10:30' },
-              { color: '#1F8A4C', label: 'Toddler swim · Sun 9:00' },
-              { color: '#3B5BDB', label: 'Nature walk · Sat 2:00' },
+              { color: '#1B2160', label: 'Toddler swim · Sun 9:00' },
+              { color: '#8B95A9', label: 'Nature walk · Sat 2:00' },
             ].map((row) => (
               <li key={row.label} className="flex items-center gap-2.5">
                 <span

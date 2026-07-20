@@ -32,7 +32,7 @@ const ITEMS: readonly FaqItem[] = [
   },
   {
     q: 'What does Hale cost?',
-    a: 'Hale is free while it’s in beta. Paid plans will come later for families who want more, and we’ll always give you clear notice before anything changes — no surprises.',
+    a: 'Hale is free to use right now. Paid plans will come later — with clear notice before anything changes.',
   },
   {
     q: 'Can both parents use it?',

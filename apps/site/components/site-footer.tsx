@@ -34,27 +34,32 @@ const COLUMNS = [
 
 export function SiteFooter() {
   return (
-    <div className="px-4 pb-10 sm:px-6">
-      <footer className="mx-auto max-w-[1100px] rounded-[28px] border border-[#F0F2F6] bg-white px-6 py-10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.03)] md:px-12 lg:px-[72px] lg:py-[56px]">
-        <div className="mb-12 flex flex-col justify-between gap-10 md:flex-row md:gap-8">
-          <div className="md:w-[40%]">
+    <div className="p-4 md:p-8 lg:p-12">
+      <footer className="mx-auto max-w-[1100px] rounded-[28px] border border-[#F0F2F6] bg-white px-6 py-10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.03)] md:px-12 md:py-12 lg:px-[72px] lg:py-[56px]">
+        <div className="mb-12 flex flex-col justify-between gap-12 lg:flex-row lg:gap-8">
+          <div className="lg:w-[40%]">
             <a href="/#about" className="flex items-center gap-2.5" aria-label="Hale, home">
               <LogoMark size={30} />
-              <span className="text-[19px] font-bold tracking-tight text-[#17294A]">Hale</span>
+              <span className="font-serif text-[19px] font-semibold tracking-tight text-[#17294A]">
+                Hale
+              </span>
             </a>
-            <p className="mb-6 mt-5 max-w-[340px] text-[13px] leading-[1.6] text-[#5C6B87]">
+            <p className="mb-4 mt-5 max-w-[340px] text-[13px] leading-[1.6] text-[#5C6B87]">
               Hale is the quiet helper for busy families — always prepared, never acting without you.
+            </p>
+            <p className="text-[12px] leading-[1.6] text-[#8B95A9]">
+              Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
             </p>
           </div>
 
           <nav
             aria-label="Footer"
-            className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:w-[50%]"
+            className="grid grid-cols-2 gap-8 md:grid-cols-3 md:gap-4 lg:w-[50%]"
           >
             {COLUMNS.map((column) => (
               <div key={column.heading}>
                 <h2 className="mb-5 text-[14px] font-semibold text-[#17294A]">{column.heading}</h2>
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col gap-3.5">
                   {column.links.map((item) => (
                     <li key={item.label}>
                       <a

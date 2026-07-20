@@ -14,21 +14,31 @@ import LandingPage from './page.js';
 const html = renderToStaticMarkup(createElement(LandingPage));
 
 describe('LandingPage (hero)', () => {
+  // The headline and subtext reveal word-by-word — each word is its own span —
+  // so assert against the tag-stripped visible text, not a contiguous HTML slice.
+  const heroText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
   it('leads with the "done alone" headline and the honest, approval-first subtext', () => {
-    expect(html).toContain('Parenting was never meant to be done');
-    // "alone." is set in the serif italic accent span.
-    expect(html).toContain('alone.');
-    expect(html).toContain(
+    expect(heroText).toContain('Parenting was never meant to be done alone.');
+    expect(heroText).toContain(
       'Hale quietly prepares the helpful things — reminders, logs, plans, local ideas — and never acts without your say-so.',
     );
   });
 
-  it('carries the beta badge and the trust marquee chips (no fabricated logos)', () => {
-    expect(html).toContain('Free while in beta');
+  it('carries the honest hero badge and the quiet static trust line (no rolling marquee)', () => {
+    expect(html).toContain('Built in Canada — private by default');
     expect(html).toContain('Approval-first');
     expect(html).toContain('PIPEDA-compliant');
     expect(html).toContain('Data stays in Canada');
-    expect(html).toContain('Built for families, not feeds');
+    expect(html).toContain('Newborn to eighteen');
+    expect(html).toContain('Private by default');
+    // the removed rolling-marquee tagline must not return
+    expect(html).not.toContain('Built for families, not feeds');
+  });
+
+  it('sets the Hale wordmark in the serif face in both nav and footer', () => {
+    const serifWordmarks = [...html.matchAll(/font-serif[^"]*"[^>]*>\s*Hale\s*</g)];
+    expect(serifWordmarks.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -52,10 +62,10 @@ describe('LandingPage (FAQ — real, verified answers)', () => {
     expect(html).toContain('Can both parents use it?');
   });
 
-  it('answers honestly: observe-only, 0–18 scope, free in beta, co-parent', () => {
+  it('answers honestly: observe-only, 0–18 scope, free right now, co-parent', () => {
     expect(html).toContain('observe-only mode');
     expect(html).toContain('newborn through the teen years');
-    expect(html).toContain('free while it’s in beta');
+    expect(html).toContain('free to use right now');
     expect(html).toContain('invite a co-parent');
   });
 });
@@ -67,6 +77,24 @@ describe('LandingPage (funnel — Get started → app sign-up)', () => {
     for (const href of hrefs) {
       expect(href).toBe(`${APP_URL}/sign-up`);
     }
+  });
+
+  it('wires the restored hero geo CTAs: Join free → sign-up, preview → /preview', () => {
+    expect(html).toContain('Join free — Toronto and the GTA');
+    expect(html).toContain('See what Hale finds for you');
+    const joinHref = html.match(/href="([^"]*)"[^>]*>\s*Join free/)?.[1];
+    expect(joinHref).toBe(`${APP_URL}/sign-up`);
+    const previewHref = html.match(/href="([^"]*)"[^>]*>\s*See what Hale finds for you/)?.[1];
+    expect(previewHref).toBe(`${APP_URL}/preview`);
+  });
+
+  it('restores the geo eyebrow, village narrative, and pronunciation', () => {
+    expect(html).toContain('Toronto and the GTA');
+    expect(html).toContain(
+      'Hale turns the trusted, word-of-mouth village parents used to have',
+    );
+    expect(html).toContain('/HAH-leh/');
+    expect(html).toContain('Hawaiian for home.');
   });
 
   it('has a navy CTA band and a contact link', () => {
@@ -86,5 +114,19 @@ describe('LandingPage (footer + honesty)', () => {
   it('never renders placeholder testimonials in the default (gated-off) build', () => {
     expect(html.toLowerCase()).not.toContain('placeholder testimonial');
     expect(html).not.toContain('• Testimonials');
+  });
+});
+
+describe('LandingPage (palette + honesty)', () => {
+  it('mentions no "beta" anywhere on the homepage', () => {
+    expect(html.toLowerCase()).not.toContain('beta');
+  });
+
+  it('keeps page-level chrome to the three-family palette (no green/blue accents)', () => {
+    // The removed off-palette accents (green #1F8A4C/#E7F6EC, blue #3B5BDB/#EDF0FA)
+    // must not appear anywhere in the rendered homepage chrome.
+    for (const hex of ['#1F8A4C', '#E7F6EC', '#3B5BDB', '#EDF0FA']) {
+      expect(html).not.toContain(hex);
+    }
   });
 });
