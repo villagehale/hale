@@ -2,9 +2,11 @@
 
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
+import { useIsDesktop } from '~/components/hale/use-is-desktop';
 import { Button } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
 import { Field } from '~/components/ui/field';
+import { Modal } from '~/components/ui/modal';
 import {
   addChildAction,
   editChildAction,
@@ -161,8 +163,10 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
     setState({ kind: 'error', message: 'that child is no longer in your family.' });
   }
 
-  return (
-    <Card className="md:col-span-2">
+  const title = mode === 'add' ? 'add a child' : 'edit child';
+  const isDesktop = useIsDesktop();
+
+  const form = (
       <form
         className="space-y-5"
         onSubmit={(e) => {
@@ -170,17 +174,21 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
           submit();
         }}
       >
-        <div className="flex items-baseline justify-between">
-          <span className="eyebrow text-spruce">{mode === 'add' ? 'add a child' : 'edit child'}</span>
-          <button
-            type="button"
-            className="link meta inline-flex items-center gap-1.5"
-            onClick={onCancel}
-          >
-            <X size={14} strokeWidth={2} aria-hidden="true" />
-            cancel
-          </button>
-        </div>
+        {/* On desktop the Modal supplies the title + close; inline (< 1024px) keeps
+         * this in-card header + cancel — presentation only, same form + actions. */}
+        {isDesktop ? null : (
+          <div className="flex items-baseline justify-between">
+            <span className="eyebrow text-spruce">{title}</span>
+            <button
+              type="button"
+              className="link meta inline-flex items-center gap-1.5"
+              onClick={onCancel}
+            >
+              <X size={14} strokeWidth={2} aria-hidden="true" />
+              cancel
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <Field
@@ -275,6 +283,15 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
           ) : null}
         </div>
       </form>
-    </Card>
   );
+
+  if (isDesktop) {
+    return (
+      <Modal title={title} onClose={onCancel}>
+        {form}
+      </Modal>
+    );
+  }
+
+  return <Card className="md:col-span-2">{form}</Card>;
 }
