@@ -5,6 +5,8 @@ import { Moon, Sparkles, Utensils } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Field } from '~/components/ui/field';
 import { Icon } from '~/components/ui/icon';
+import { Modal } from '~/components/ui/modal';
+import { useIsDesktop } from '~/components/hale/use-is-desktop';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
   FEED_AMOUNTS,
@@ -111,6 +113,7 @@ export function QuickLog({
   const [milestoneNote, setMilestoneNote] = useState('');
   const [when, setWhen] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  const isDesktop = useIsDesktop();
 
   if (kids.length === 0) return null;
 
@@ -228,7 +231,27 @@ export function QuickLog({
       )}
 
       {open ? (
-        <div className="panel-oat px-6 py-5 space-y-5">
+        isDesktop ? (
+          <Modal title={KIND_META[open].cardTitle} onClose={() => setOpen(null)}>
+            {renderFormBody()}
+          </Modal>
+        ) : (
+          <div className="panel-oat px-6 py-5">{renderFormBody()}</div>
+        )
+      ) : null}
+
+      {status.kind === 'logged' ? (
+        <output className="meta italic text-spruce block">
+          logged — kept in <span data-hale-pii>{childName(kids, childId)}</span>&rsquo;s companion.
+        </output>
+      ) : null}
+    </div>
+  );
+
+  function renderFormBody() {
+    if (!open) return null;
+    return (
+      <div className="space-y-5">
           {eligibleKids.length > 1 ? (
             <div className="field-group">
               <label htmlFor={selectId} className="field-label">
@@ -382,16 +405,9 @@ export function QuickLog({
               development preview — sign-in isn&rsquo;t configured, so this log wasn&rsquo;t saved.
             </output>
           ) : null}
-        </div>
-      ) : null}
-
-      {status.kind === 'logged' ? (
-        <output className="meta italic text-spruce block">
-          logged — kept in <span data-hale-pii>{childName(kids, childId)}</span>&rsquo;s companion.
-        </output>
-      ) : null}
-    </div>
-  );
+      </div>
+    );
+  }
 }
 
 function childName(kids: QuickLogChild[], id: string): string {

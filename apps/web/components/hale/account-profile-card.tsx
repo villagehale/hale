@@ -71,7 +71,14 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
  * editable via FamilyParent (email read-only, the account identity); Timezone and
  * Language are read-only display rows, humanized with Intl.
  */
-export function AccountProfileCard({ profile }: { profile: ViewerProfile }) {
+export function AccountProfileCard({
+  profile,
+  planLabel,
+}: {
+  profile: ViewerProfile;
+  /** The family's plan, shown as a badge beside the name (design handoff §4.7). */
+  planLabel?: string;
+}) {
   return (
     <div className="card space-y-8">
       <div className="flex items-center gap-4" data-hale-pii>
@@ -82,9 +89,16 @@ export function AccountProfileCard({ profile }: { profile: ViewerProfile }) {
           {initialOf(profile.name, profile.email)}
         </span>
         <div className="min-w-0">
-          <p className="font-display text-[1.35rem] leading-tight truncate">
-            {profile.name?.trim() || 'your account'}
-          </p>
+          <div className="flex items-center gap-2.5">
+            <p className="font-display text-[1.35rem] leading-tight truncate">
+              {profile.name?.trim() || 'your account'}
+            </p>
+            {planLabel ? (
+              <span className="inline-flex shrink-0 items-center rounded-full bg-apricot-tint px-2.5 py-0.5 text-xs font-semibold text-apricot-deep">
+                {planLabel}
+              </span>
+            ) : null}
+          </div>
           <p className="meta mt-0.5 text-slate-green break-words">{profile.email}</p>
         </div>
       </div>
