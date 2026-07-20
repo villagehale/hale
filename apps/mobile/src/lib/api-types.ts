@@ -598,6 +598,17 @@ export interface MobileConversationTranscriptResponse {
   turns: ConversationTurn[];
 }
 
+/** One stored Ask-Hale attachment returned by POST /api/coach/attachments — the id
+ * the composer then sends as `attachmentIds` on POST /api/coach. Mirrors the web
+ * StoredAttachment (apps/web/lib/coach/attachments.ts); `name` is server-sanitized,
+ * `sizeBytes` is the authoritative decoded size. */
+export interface ChatAttachmentUpload {
+  id: string;
+  name: string;
+  sizeBytes: number;
+  mime: string;
+}
+
 // ── plan tiers (from apps/web lib/plan/catalog, derived from @hale/types) ──────
 
 export type PlanTier = 'free' | 'plus' | 'family';
