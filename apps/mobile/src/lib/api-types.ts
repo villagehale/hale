@@ -355,6 +355,75 @@ export interface MobileCompanionResponse {
  * that ignores `resources` still reads candidates/routine. */
 export interface MobileVillageResponse extends VillageData {
   resources?: CuratedResourceView[];
+  /** The active saved area's label so the header renders the real location. Present
+   * on the standing feed read, absent on the season/childcare sub-reads; null when
+   * the family has saved no area (mirrors web MobileVillageResponse.area). */
+  area?: SavedAreaLabel | null;
+}
+
+// ── village saved areas + region switch (GET/POST /api/mobile/village/areas) ──
+//
+// The region switcher behind the Village header. GET lists the family's saved
+// coarse areas + which is active; POST adds a coarse {city, province, note?} OR
+// activates one by id. "Use my current location" is NOT a distinct server path: the
+// CLIENT resolves the device location to a coarse {city, province} on-device and
+// calls the SAME add/setActive endpoints — the server never accepts or stores
+// coordinates (rule #1). MIRRORED from apps/web/app/api/mobile/types.ts +
+// apps/web/lib/village/areas.ts.
+
+/** One saved coarse area for the switcher list (mirrors web SavedArea). Coarse
+ * only — never coordinates (rule #1). */
+export interface SavedArea {
+  id: string;
+  city: string;
+  province: string | null;
+  note: string | null;
+  postalCode: string | null;
+  isActive: boolean;
+  /** ISO instant the area was saved. */
+  createdAt: string;
+}
+
+/** The active area's human label for the Village header (mirrors web SavedAreaLabel). */
+export interface SavedAreaLabel {
+  city: string;
+  province: string | null;
+}
+
+/** A coarse city candidate from the switcher typeahead — no coordinates (rule #1). */
+export interface CityCandidate {
+  city: string;
+  province: string | null;
+}
+
+/** GET /api/mobile/village/areas — the family's saved areas + the active one's id. */
+export interface MobileVillageAreasResponse {
+  areas: SavedArea[];
+  activeAreaId: string | null;
+}
+
+/** POST body: add a coarse area (`add`) or activate one by id (`setActive`). Adding
+ * carries only coarse fields — a payload with any coordinate-shaped key is refused
+ * server-side (rule #1). */
+export interface AddAreaRequest {
+  action: 'add';
+  city: string;
+  province?: string;
+  note?: string;
+  postalCode?: string;
+}
+
+export interface SetActiveAreaRequest {
+  action: 'setActive';
+  areaId: string;
+}
+
+export type MobileVillageAreaUpdateRequest = AddAreaRequest | SetActiveAreaRequest;
+
+/** GET /api/mobile/village/areas/search?q= — up to 6 coarse city candidates for the
+ * switcher typeahead, {city, province} only (no coordinates, rule #1). */
+export interface MobileVillageAreaSearchResponse {
+  cities: CityCandidate[];
 }
 
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true). */
