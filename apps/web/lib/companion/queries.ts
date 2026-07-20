@@ -69,6 +69,39 @@ export async function companionForFamily(
   }));
 }
 
+/** The per-child inputs the WHO growth read needs beyond the companion view: the
+ * SEX and gestation the standard is keyed on. Kept SERVER-side (never forwarded to
+ * the client, rule #1) — the page derives the header stats here and passes only the
+ * neutral derived percentile/band on. */
+export interface ChildGrowthInput {
+  id: string;
+  dateOfBirth: string;
+  biologicalSex: string | null;
+  gestationalWeeks: number | null;
+}
+
+/**
+ * The family's children with the sex + gestation the WHO growth standard needs.
+ * Same empty-state degradation as loadCompanion (no DB / no family → []). Separate
+ * from loadCompanion so the sensitive sex column stays out of the client-facing
+ * ChildCompanionView and is read only where the growth math runs.
+ */
+export async function loadChildrenGrowthInputs(): Promise<ChildGrowthInput[]> {
+  if (!process.env.DATABASE_URL) return [];
+  const database = defaultDb();
+  const familyId = await currentFamilyId(database);
+  if (!familyId) return [];
+  return database
+    .select({
+      id: schema.children.id,
+      dateOfBirth: schema.children.dateOfBirth,
+      biologicalSex: schema.children.biologicalSex,
+      gestationalWeeks: schema.children.gestationalWeeks,
+    })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+}
+
 /**
  * Reads the family's live milestone / health-done episodes and folds them into the
  * per-child "already done" map (buildDoneByChild). Only the two episode types that

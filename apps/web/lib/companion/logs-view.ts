@@ -69,6 +69,17 @@ export interface LogDayGroup {
 
 export const PAGE_LIMIT = 30;
 
+/** The ordinal form of a whole number: 1 → "1st", 2 → "2nd", 42 → "42nd", 13 →
+ * "13th". Handles the 11–13 exception. Pure + client-safe (lives here, not in the
+ * server-only growth math) so the Companion header can render "42nd %ile" without
+ * pulling the WHO tables into the browser bundle. */
+export function percentileOrdinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th';
+  return `${n}${suffix}`;
+}
+
 function dayKeyOf(occurredAt: string): string {
   const d = new Date(occurredAt);
   const pad = (n: number) => String(n).padStart(2, '0');

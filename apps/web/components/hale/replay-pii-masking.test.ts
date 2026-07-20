@@ -174,7 +174,7 @@ describe('companion growth section masks the measurement readings', () => {
     },
   ];
   const html = renderToStaticMarkup(
-    h(GrowthSection, { child, growthLogs, units: 'metric', timeZone: 'America/Toronto' }),
+    h(GrowthSection, { child, growthLogs, stats: [], units: 'metric', timeZone: 'America/Toronto' }),
   );
 
   it('renders the reading at all (guards against a vacuous pass)', () => {
@@ -184,8 +184,8 @@ describe('companion growth section masks the measurement readings', () => {
   it('keeps each measurement reading inside a [data-hale-pii] subtree', () => {
     const residue = stripMaskedSubtrees(html);
     expect(residue).not.toContain('7.3 kg');
-    // The non-PII frame — the section label + disclaimer — survives the strip.
-    expect(residue).toContain('no percentiles or WHO comparisons');
+    // The non-PII frame — the WHO data-source disclaimer — survives the strip.
+    expect(residue).toContain('WHO Child Growth Standards');
   });
 });
 
@@ -196,11 +196,20 @@ describe('companion overview section masks the child name + a scheduled health i
     dateOfBirth: '2026-05-01',
     ...companionForChild({ dateOfBirth: '2026-05-01', name: 'Noor' }),
   };
-  const html = renderToStaticMarkup(h(OverviewSection, { child, onNavigate: () => {} }));
+  const html = renderToStaticMarkup(
+    h(OverviewSection, {
+      child,
+      recentLogs: [],
+      members: { primary: null, coParent: null },
+      viewerEmail: null,
+      timeZone: 'America/Toronto',
+      onNavigate: () => {},
+    }),
+  );
 
   it('renders the child name + a scheduled health item at all (guards against a vacuous pass)', () => {
-    // The insight card personalizes with the first name; the health card lists the
-    // child's next scheduled visit by name — both are the child-identifying fields.
+    // The insight card personalizes with the first name; the health summary leads with
+    // the child's next scheduled visit — both are the child-identifying fields.
     expect(html).toContain('Noor');
     expect(html).toContain('well-baby visit');
   });
@@ -210,8 +219,8 @@ describe('companion overview section masks the child name + a scheduled health i
     expect(residue).not.toContain('Noor');
     expect(residue).not.toContain('well-baby visit');
     // The non-PII frame — the card eyebrows + in-card links — survives the strip.
-    expect(residue).toContain('health schedule');
-    expect(residue).toContain('view all milestones');
+    expect(residue).toContain('health summary');
+    expect(residue).toContain('View health records');
   });
 });
 
