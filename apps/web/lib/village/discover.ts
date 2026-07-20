@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
 import { loadCoachModel } from '~/lib/coach/model';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
+import { resolveActiveAreaCoarse } from './areas';
 import { loadDiscoveryPrompt } from './discovery-prompt';
 import { type GeocodeResult, type LatLng, geocodeArea, geocodeVenue } from './geocode';
 import type { Season } from './visibility';
@@ -218,19 +219,14 @@ export async function discoverForFamily(
 ): Promise<DiscoverResult> {
   const searchSeason = options?.searchSeason ?? null;
   const runType = searchSeason ? 'search' : 'standing';
-  const familyRows = await database
-    .select({ areaCoarse: schema.families.areaCoarse })
-    .from(schema.families)
-    .where(eq(schema.families.id, familyId))
-    .limit(1);
-  const family = familyRows[0];
-  if (!family) {
-    throw new Error(`discoverForFamily: no family row for ${familyId}`);
-  }
-  if (!family.areaCoarse) {
+  // Village content honors the family's ACTIVE saved area, falling back to the
+  // legacy families.area_coarse when the family has no saved-area row (back-compat).
+  // Only ever the COARSE area (rule #1) — resolveActiveAreaCoarse derives a coarse
+  // prefix and never returns coordinates.
+  const areaCoarse = await resolveActiveAreaCoarse(database, familyId);
+  if (!areaCoarse) {
     return { status: 'no_area' };
   }
-  const areaCoarse = family.areaCoarse;
 
   const childRows = await database
     .select({

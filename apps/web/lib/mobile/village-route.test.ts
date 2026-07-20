@@ -6,8 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const authMock = vi.fn();
 const loadVillageMock = vi.fn();
 const loadResourcesMock = vi.fn();
+const loadActiveAreaMock = vi.fn();
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
-vi.mock('~/lib/village/queries', () => ({ loadVillage: () => loadVillageMock() }));
+vi.mock('~/lib/village/queries', () => ({
+  loadVillage: () => loadVillageMock(),
+  loadActiveArea: () => loadActiveAreaMock(),
+}));
 vi.mock('~/lib/village/curated-resources', () => ({
   loadCuratedResources: (...a: unknown[]) => loadResourcesMock(...a),
 }));
@@ -23,6 +27,7 @@ vi.mock('@hale/db', async (importActual) => {
 });
 
 const VILLAGE = { candidates: [{ id: 'cand-1', teenAttributed: false }], routine: null };
+const AREA = { city: 'Burlington', province: 'ON' };
 const RESOURCES = [
   {
     id: 'res-1',
@@ -45,8 +50,10 @@ describe('GET /api/mobile/village', () => {
     authMock.mockReset();
     loadVillageMock.mockReset();
     loadResourcesMock.mockReset();
+    loadActiveAreaMock.mockReset();
     loadVillageMock.mockResolvedValue(VILLAGE);
     loadResourcesMock.mockResolvedValue(RESOURCES);
+    loadActiveAreaMock.mockResolvedValue(AREA);
   });
 
   afterEach(() => {
@@ -70,9 +77,11 @@ describe('GET /api/mobile/village', () => {
     const res = await callGet();
 
     expect(res.status).toBe(200);
-    // The standing feed merges the village data with the Resources rail.
-    expect(await res.json()).toEqual({ ...VILLAGE, resources: RESOURCES });
+    // The standing feed merges the village data with the Resources rail + the active
+    // area label (the header's real location).
+    expect(await res.json()).toEqual({ ...VILLAGE, resources: RESOURCES, area: AREA });
     expect(loadVillageMock).toHaveBeenCalledTimes(1);
+    expect(loadActiveAreaMock).toHaveBeenCalledTimes(1);
     // No ?category → the full directory (no category argument).
     expect(loadResourcesMock).toHaveBeenCalledTimes(1);
     expect(loadResourcesMock).toHaveBeenCalledWith();

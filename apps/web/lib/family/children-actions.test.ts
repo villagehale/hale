@@ -446,6 +446,45 @@ describe('setLocationAction', () => {
       areaCoarse: null,
     });
   });
+
+  it('propagates the edit to the ACTIVE saved area so a location change still steers village content (0051 regression)', async () => {
+    // Post-0051 every family with a city has an active family_areas row, and village
+    // content derives from THAT row (resolveActiveAreaCoarse prefers it over
+    // families.area_coarse). If the home-location edit does not propagate, discovery
+    // and the header keep pointing at the pre-edit city forever.
+    const existing = {
+      country: 'Canada',
+      province: 'Ontario',
+      city: 'Toronto',
+      postalCode: 'M4L 1A1',
+      areaCoarse: 'M4L',
+    };
+    const { tx, updates } = makeTx([existing]);
+    fakeDbHandle = txDb(tx);
+
+    await setLocationAction({ country: 'Canada', province: 'ON', city: 'Ottawa', postalCode: 'k1p 1j1' });
+
+    // The active area row is updated to the new coarse location (postal upper-cased),
+    // scoped to the caller family — never a lat/lng column (rule #1).
+    expect(valuesFor(updates, schema.familyAreas)).toEqual({
+      city: 'Ottawa',
+      province: 'ON',
+      postalCode: 'K1P 1J1',
+    });
+  });
+
+  it('deactivates the active saved area when the location is cleared, preserving the opt-out (0051 regression)', async () => {
+    // A cleared location must opt out of discovery exactly as it did pre-0051.
+    // Without deactivating the row, the stale active area would win forever.
+    const { tx, updates } = makeTx([
+      { country: 'Canada', province: null, city: 'Toronto', postalCode: 'M4L 1A1', areaCoarse: 'M4L' },
+    ]);
+    fakeDbHandle = txDb(tx);
+
+    await setLocationAction({});
+
+    expect(valuesFor(updates, schema.familyAreas)).toEqual({ isActive: false });
+  });
 });
 
 describe('setPlanAction', () => {

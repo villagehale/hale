@@ -63,13 +63,21 @@ function filterToSql(filter: unknown): string {
 
 /** A stateful fake that stores `rows` and honours the supersede scope. */
 function statefulDb(rows: Row[], children: Array<{ dateOfBirth: string; interests: string[] }>) {
-  let selectCall = 0;
+  // Routed by table (resolveActiveAreaCoarse now reads family_areas first, then falls
+  // back to families.area_coarse when there is no active saved-area row).
   const select = vi.fn().mockImplementation(() => {
-    const call = selectCall++;
-    if (call === 0) {
-      return { from: () => ({ where: () => ({ limit: async () => [{ areaCoarse: 'L7G' }] }) }) };
-    }
-    return { from: () => ({ where: async () => children }) };
+    let tbl: unknown;
+    return {
+      from: (table: unknown) => {
+        tbl = table;
+        if (tbl === schema.children) return { where: async () => children };
+        return {
+          where: () => ({
+            limit: async () => (tbl === schema.familyAreas ? [] : [{ areaCoarse: 'L7G' }]),
+          }),
+        };
+      },
+    };
   });
 
   let idSeq = rows.length;

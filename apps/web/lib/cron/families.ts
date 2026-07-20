@@ -41,11 +41,13 @@ export async function selectFamiliesForRun(
 
 /**
  * Families whose village discovery is stale (no candidate newer than
- * DISCOVERY_STALE_DAYS) or empty (never discovered), AND that have opted into
- * local discovery by setting a coarse area (rule #1: no area → nothing to
- * discover, and discoverForFamily would short-circuit anyway). Bounded by
- * `limit`. The LEFT JOIN + MAX(discovered_at) grouping picks each family's
- * freshest candidate; a family with none has a NULL max and qualifies.
+ * DISCOVERY_STALE_DAYS) or empty (never discovered), AND that have somewhere to
+ * discover for (rule #1: no area → nothing to discover). Post-0051 that means a
+ * legacy coarse area OR an ACTIVE saved area — resolveActiveAreaCoarse resolves
+ * either, so gating on area_coarse alone would starve a family whose only area is
+ * a saved active row. Bounded by `limit`. The LEFT JOIN + MAX(discovered_at)
+ * grouping picks each family's freshest candidate; a family with none has a NULL
+ * max and qualifies.
  */
 export async function selectFamiliesNeedingDiscovery(
   database: Database,
@@ -65,7 +67,14 @@ export async function selectFamiliesNeedingDiscovery(
       schema.villageCandidates,
       sql`${schema.villageCandidates.familyId} = ${schema.families.id}`,
     )
-    .where(isNotNull(schema.families.areaCoarse))
+    .where(
+      or(
+        isNotNull(schema.families.areaCoarse),
+        // A family whose only area is an active saved row (no legacy area_coarse)
+        // still has somewhere to discover for — correlated EXISTS over it.
+        sql`exists (select 1 from ${schema.familyAreas} where ${schema.familyAreas.familyId} = ${schema.families.id} and ${schema.familyAreas.isActive})`,
+      ),
+    )
     .groupBy(schema.families.id, schema.families.createdAt)
     .having(
       or(
