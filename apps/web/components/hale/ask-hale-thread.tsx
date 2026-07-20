@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRight, ArrowUp, Paperclip, Search, Sparkles, Trash2, X } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
 import { AskSessionRail } from '~/components/hale/ask-session-rail';
 import type { ConnectorChip } from '~/components/hale/coach-context-panel';
@@ -931,6 +931,7 @@ function FullSurface({
     threadEndRef,
     deleteTurn,
     eraseConversation,
+    deletableIds,
   } = chat;
   const childLabelOf = useChildLabel(seed.children);
   const isEmpty = turns.length === 0;
@@ -940,10 +941,9 @@ function FullSurface({
   const hasPendingDraft = visibleTurns.some(
     (t) => t.role === 'assistant' && (t.actionIntents?.length ?? 0) > 0,
   );
-  // Only PERSISTED turns (present in the server-rehydrated seed) carry a real
-  // message id the audited delete can resolve; an in-session turn's client id would
-  // 404. So the delete affordance is offered on the seeded set only.
-  const deletableIds = useMemo(() => new Set(seed.timeline.map((m) => m.id)), [seed.timeline]);
+  // `deletableIds` comes from the hook: persisted turns (seeded AND reopened) carry a
+  // real message id the audited delete resolves; an in-session send's client id would
+  // 404, so it stays non-deletable until a reload rehydrates it.
 
   // `.coach-surface` turns the stage into a non-scrolling flex column (globals.css
   // `:has`): this row fills the remaining height. On lg+ it is a two-column app view —

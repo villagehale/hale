@@ -11,6 +11,7 @@ import { Icon } from '~/components/ui/icon';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
+import { type HomeChildDays, loadHomeChildDays } from '~/lib/home/child-days';
 import { homeStatCells } from '~/lib/home/greeting';
 import { loadVillageFeed } from '~/lib/village/feed';
 import type { VillageCandidateView } from '~/lib/village/mappers';
@@ -99,10 +100,11 @@ const QUICK_ACTIONS: QuickActionRow[] = [
 ];
 
 export default async function HomePage() {
-  const [children, stats, feed] = await Promise.all([
+  const [children, stats, feed, days] = await Promise.all([
     loadCompanion(),
     loadHomeStats(),
     loadVillageFeed(),
+    loadHomeChildDays(),
   ]);
 
   // The greeting hero + the location/bell now live in the shell top bar (design
@@ -145,6 +147,10 @@ export default async function HomePage() {
       : null,
   }));
 
+  const daysByChild: Record<string, HomeChildDays> = Object.fromEntries(
+    days.map((d) => [d.childId, d]),
+  );
+
   return (
     <div>
       {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as
@@ -161,34 +167,44 @@ export default async function HomePage() {
         <AskBar />
       </section>
 
-      {/* ── Row 1 (design handoff §4.2): the row-of-4 — today's snapshot / up next /
-       * quick links + tip / from your village — at 1.05fr 1fr 1fr 1.15fr, equal-height
-       * cards. Collapses 4 → 2 → 1 at lg / md / sm (.home-row1). ── */}
-      <div className="home-row1">
-        <HomeChildPanels kids={snapshots} statCells={homeStatCells(stats)} />
+      {/* ── Rows 1 + 2 (design handoff §4.2). HomeChildPanels owns the single
+       * active-child selection so the snapshot, "up next" and Row 2 all follow the
+       * same child; the family-wide quick-links + village cards are passed in as
+       * Row-1 slots. Both grids collapse sensibly below 1024px. ── */}
+      <HomeChildPanels
+        kids={snapshots}
+        statCells={homeStatCells(stats)}
+        daysByChild={daysByChild}
+        quickLinks={<QuickLinksColumn />}
+        villagePick={<VillagePickCard topPick={topPick} />}
+      />
+    </div>
+  );
+}
 
-        <div className="rise rise-5 home-col-stack">
-          <div className="home-col-grow">
-            <p className="eyebrow text-faded-sage">quick links</p>
-            {/* 2×2 tile grid (design handoff §4.2) — each a warm tile into a real
-             * surface; stretches to fill the card. */}
-            <div className="card home-card-fill">
-              <div className="grid flex-1 grid-cols-2 gap-3">
-                {QUICK_ACTIONS.map((action) => (
-                  <Link key={action.label} href={action.href} className="quick-link-tile">
-                    <Icon as={action.icon} size={20} className="text-slate-green" />
-                    <span className="font-medium leading-snug">{action.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+/** Row-1 col 3 (design handoff §4.2): the 2×2 quick-links tile grid + the dismissible
+ * Hale tip. Family-wide (not per active child), so it renders server-side and is
+ * passed to HomeChildPanels as a slot. */
+function QuickLinksColumn() {
+  return (
+    <div className="rise rise-5 home-col-stack">
+      <div className="home-col-grow">
+        <p className="eyebrow text-faded-sage">quick links</p>
+        <div className="card home-card-fill">
+          <div className="grid flex-1 grid-cols-2 gap-3">
+            {QUICK_ACTIONS.map((action) => (
+              <Link key={action.label} href={action.href} className="quick-link-tile">
+                <Icon as={action.icon} size={20} className="text-slate-green" />
+                <span className="min-w-0 text-[0.8125rem] font-medium leading-snug">
+                  {action.label}
+                </span>
+              </Link>
+            ))}
           </div>
-
-          <HaleTip />
         </div>
-
-        <VillagePickCard topPick={topPick} />
       </div>
+
+      <HaleTip />
     </div>
   );
 }

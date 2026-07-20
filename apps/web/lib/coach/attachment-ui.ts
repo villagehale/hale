@@ -2,12 +2,13 @@
  * Ask composer attachment UI helpers (client-side display only — the bytes upload
  * to POST /api/coach/attachments and ride the send as attachmentIds).
  *
- * The attach affordance is gated behind ATTACHMENTS_ENABLED so this surface is
- * mergeable before the B4 attachments backend (feat/b4-chat-attachments) lands:
- * with it off the paperclip never renders and no upload is attempted; flip it to
- * true once the /api/coach/attachments route + attachmentIds param are on main.
+ * The attach affordance is gated behind ATTACHMENTS_ENABLED. The B4 attachments
+ * backend is now on main — the POST /api/coach/attachments route responds
+ * [{ id, name, sizeBytes, mime }] and POST /api/coach accepts the returned ids as
+ * `attachmentIds` (an attachments-only send is allowed) — so the flag is ON: the
+ * paperclip renders, files upload, and the ids ride the send.
  */
-export const ATTACHMENTS_ENABLED = false;
+export const ATTACHMENTS_ENABLED = true;
 
 /** Bytes → the chip's human size: ≥1,000,000 → "X.X MB" (one decimal); else KB,
  *  rounded and floored to at least 1 (design handoff §4.4 / mobile-diff §4). */

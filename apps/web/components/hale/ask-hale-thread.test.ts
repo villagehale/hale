@@ -194,6 +194,16 @@ describe('AskHaleThread — full surface', () => {
     expect(populated).not.toContain('your conversation stays inside Hale');
   });
 
+  it('offers the attachment paperclip in the composer (ATTACHMENTS_ENABLED is on)', () => {
+    // B4 backend is live, so the flag is flipped: the composer exposes the multi-file
+    // picker + its labelled trigger. (Chips + their AA-contrast tint classes render
+    // post-upload — client state — so their contrast is guarded by the token unit
+    // test, not this SSR markup.)
+    const html = render(seed([]));
+    expect(html).toMatch(/aria-label="attach files"/);
+    expect(html).toMatch(/<input[^>]*type="file"[^>]*multiple/);
+  });
+
   it('renders no own <h1> — the app shell owns the sole /coach hero (§3.2)', () => {
     // The thread must NOT emit its own heading: the shell's PageHero renders the one
     // "Hale" hero for the /coach root (top bar + narrow-viewport stage). A heading here
