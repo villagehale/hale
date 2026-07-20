@@ -960,9 +960,15 @@ strong { font-weight: 700; }
 /* Contained content column (Notion/Linear-style) — content never stretches to the
  * full stage width; it sits in a centered ~58rem column so cards and rows keep a
  * comfortable density instead of spreading thin. The coach chat opts out (it owns
- * its own full-height surface). */
-.main-stage > *:not(.coach-surface):not(.dev-preview-banner) {
+ * its own full-height surface); the Village board opts UP to a wider column
+ * (.village-wide) so its 330|1fr|300 map board keeps a real centrepiece map (§4.5),
+ * the same "wide surface opts out" pattern the coach chat uses. */
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide) {
   max-width: 58rem;
+  margin-inline: auto;
+}
+.main-stage > .village-wide {
+  max-width: 72rem;
   margin-inline: auto;
 }
 
@@ -2607,6 +2613,178 @@ html, body, .sidebar, .panel, .card, .field {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB PHASE W2b — Village 3-column board (design handoff §4.5)
+ * Additive only; every value consumes a ROLE token so both themes derive for
+ * free. The single literal (the recommendation gradient) carries an explicit
+ * .dark override, matching the shipped .hale-tip treatment. The page content is
+ * capped at 58rem and centred by .main-stage, so the columns are sized to fit
+ * that: full 330|1fr|300 only where the centred column is wide enough (≥1280px),
+ * a results+centre pair with the rail below at 1024–1279, and a list-first stack
+ * with a collapsible map below 1024 — nothing overflows.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.village-3col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+/* 1024–1279: results + centre; the rail drops to a full-width row below them. */
+@media (min-width: 1024px) {
+  .village-3col {
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    column-gap: 1.5rem;
+  }
+  .village-rail { grid-column: 1 / -1; }
+}
+/* ≥1280: the full 330 | 1fr | 300 three-column layout (§4.5). */
+@media (min-width: 1280px) {
+  .village-3col {
+    grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 300px);
+  }
+  .village-rail { grid-column: auto; }
+}
+
+/* ── Right rail ─────────────────────────────────────────────────────────── */
+.village-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+/* At the 2-column stage the rail sits full-width below, so its sections read as a
+ * row rather than a tall stack. */
+@media (min-width: 1024px) and (max-width: 1279.98px) {
+  .village-rail { flex-direction: row; flex-wrap: wrap; }
+  .village-rail > * { flex: 1 1 220px; min-width: 0; }
+}
+.village-rail-section { min-width: 0; }
+
+.village-rail-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.3rem;
+  border-radius: var(--r-sm);
+}
+.village-rail-row-button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe);
+}
+.village-rail-row-button:hover { background: var(--color-chrome); }
+.village-rail-row-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-apricot-deep);
+}
+.village-rail-row-title {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-spruce);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── One ranked recommendation — the amber "tip" family (§4.5) ───────────── */
+.village-rec {
+  padding: 1.1rem 1.15rem 1.2rem;
+  border-radius: var(--r-xl);
+  /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
+   * role token so the card stays legible instead of glaring (cream ink 16:1 on
+   * #33260F). */
+  background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
+}
+.dark .village-rec { background: var(--color-amber-tint); }
+.village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber); }
+.village-rec-title { font-size: 1.1rem; line-height: 1.25; }
+.village-rec-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* Brand ink on the warm card: navy in light (12.86:1), cream in dark (16:1) —
+   * AA in both modes, unlike the sub-4.5 amber-on-cream a body link would be. */
+  color: var(--color-brand);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.village-rec-link:hover { text-decoration: underline; }
+.village-rec-link:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* ── Results-list row: a selectable title inside the card, and the selected
+ * card's highlight (mirrored by the map marker). ──────────────────────────── */
+.village-row-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.village-row-title:hover > span:first-child { color: var(--color-apricot-deep); }
+.village-row-title:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+}
+.village-row-selected {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
+/* ── Map panel (collapsible below 1024px) ───────────────────────────────── */
+.village-map-panel { min-width: 0; }
+.village-map-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-oat);
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
+}
+.village-map-toggle:hover { background: var(--color-chrome); color: var(--color-spruce); }
+.village-map-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+.village-map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 1.5rem;
+  text-align: center;
+}
+@media (min-width: 640px) {
+  .village-map-placeholder { aspect-ratio: 16 / 9; }
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * W2b — Settings hub + centered modals (desktop design handoff §4.7 & §4.8)
