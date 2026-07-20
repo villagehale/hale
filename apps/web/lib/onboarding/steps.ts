@@ -1,62 +1,45 @@
 /**
- * The onboarding shell's left-rail step indicator — a thematic narration of the
- * journey (mockup register). The wizard's real state machine stays A (intake) / B
- * (account) / C (setup, itself three views: form → control → ready); this maps a
- * (phase, view) position onto which narrative marker reads as "current" so the rail
- * advances as the parent moves, rather than jumping 1 → 1 → 4.
+ * The nine-step web onboarding model (design handoff §4.1). The wizard is a linear
+ * step machine 1..9; this is the single source of truth for the step ids, their
+ * accessible labels, and the count that drives the segmented progress bar.
  *
- * A (intake) sits on "your kids"; the B account bridge advances to "your area"
- * (intake is complete behind it); the C setup form is "what matters"; and the
- * consent moment / ready interstitial is "in control", the last thing.
+ * Data-collection reality (rule #1): steps 1–6 run PRE-AUTH on the public
+ * /onboarding route and stash only NON-sensitive intake (first names, a coarse
+ * city, intents) in the browser; a child's date of birth is collected only at
+ * step 7, POST-AUTH, so sensitive data never lives in browser storage before the
+ * account exists. See wizard.tsx for how each step maps onto the persisted mutation.
  */
 
-export type OnboardingPhase = 'A' | 'B' | 'C';
-
-/** The C phase's in-place view, mirrored from the wizard so the rail can tell the
- * setup form apart from the consent moment. */
-export type OnboardingView = 'form' | 'control' | 'ready';
-
-// Labels name what each POSITION actually collects: Phase A = kids (+ area +
-// interests), Phase B = the account, Phase C form = the remaining details,
-// C control/ready = consent. Mislabeled markers read as a broken rail.
 export const ONBOARDING_STEPS = [
-  { id: 'kids', label: 'your kids' },
-  { id: 'area', label: 'your account' },
-  { id: 'matters', label: 'the details' },
-  { id: 'control', label: 'in control' },
+  { id: 'welcome', label: 'Welcome' },
+  { id: 'tomorrow', label: "Here's tomorrow" },
+  { id: 'children', label: 'Your children' },
+  { id: 'location', label: 'Your village area' },
+  { id: 'matters', label: 'What matters' },
+  { id: 'auth', label: 'Save your village' },
+  { id: 'ready', label: 'Getting ready' },
+  { id: 'connect', label: 'Connect apps' },
+  { id: 'done', label: 'Village ready' },
 ] as const;
 
-export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number]['id'];
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+export type OnboardingStepId = OnboardingStep['id'];
 
-const STEP_LABELS: Record<OnboardingStepId, string> = Object.fromEntries(
-  ONBOARDING_STEPS.map((s) => [s.id, s.label]),
-) as Record<OnboardingStepId, string>;
+/** The number of steps — the segmented progress bar renders exactly this many. */
+export const ONBOARDING_STEP_COUNT = ONBOARDING_STEPS.length;
 
-/**
- * The active narrative marker for a (phase, view) position. Intake (A) sits on
- * "your kids"; the account bridge (B) advances to "your area"; the C setup form is
- * "what matters"; the consent moment and ready interstitial are "in control".
- */
-export function activeStepId(phase: OnboardingPhase, view: OnboardingView = 'form'): OnboardingStepId {
-  if (phase === 'A') {
-    return 'kids';
-  }
-  if (phase === 'B') {
-    return 'area';
-  }
-  return view === 'form' ? 'matters' : 'control';
+/** The first step that requires a signed-in session (the auth hop lands here). */
+export const FIRST_POST_AUTH_STEP = 7;
+
+/** Clamp any candidate step index into the valid 1..count range. */
+export function clampStep(n: number): number {
+  if (n < 1) return 1;
+  if (n > ONBOARDING_STEP_COUNT) return ONBOARDING_STEP_COUNT;
+  return Math.trunc(n);
 }
 
-/**
- * How far along a position reads on the rail: the count of markers at or before the
- * active one. Used to render reached-vs-upcoming markers.
- */
-export function reachedStepCount(phase: OnboardingPhase, view: OnboardingView = 'form'): number {
-  const index = ONBOARDING_STEPS.findIndex((s) => s.id === activeStepId(phase, view));
-  return index + 1;
-}
-
-/** The label of the currently-active marker — for the compact <lg progress line. */
-export function activeStepLabel(phase: OnboardingPhase, view: OnboardingView = 'form'): string {
-  return STEP_LABELS[activeStepId(phase, view)];
+/** The accessible label for a 1-indexed step, for the progress bar's live region. */
+export function stepLabel(step: number): string {
+  const entry = ONBOARDING_STEPS[clampStep(step) - 1];
+  return entry ? entry.label : ONBOARDING_STEPS[0].label;
 }
