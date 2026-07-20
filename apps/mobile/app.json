@@ -17,6 +17,7 @@
         "NSMicrophoneUsageDescription": "Hale uses the microphone for voice \u2014 asking and logging by speaking.",
         "NSSpeechRecognitionUsageDescription": "Hale transcribes your voice to text.",
         "NSPhotoLibraryUsageDescription": "Hale accesses your photo library so you can add photos to your child's milestones and memories.",
+        "NSLocationWhenInUseUsageDescription": "Hale uses your approximate location once to find your village area. Your exact location never leaves your phone.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -29,7 +30,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {

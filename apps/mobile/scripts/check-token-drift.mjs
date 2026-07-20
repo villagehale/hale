@@ -28,6 +28,7 @@ const TOKEN_MAP = {
   card: '--color-card',
   accentFill: '--color-accent-fill',
   onAccent: '--color-on-ink',
+  success: '--color-success',
   chipBlueIcon: '--color-chip-blue-icon',
   chipGreenIcon: '--color-chip-green-icon',
   chipYellowIcon: '--color-chip-yellow-icon',
