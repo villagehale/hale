@@ -1,6 +1,7 @@
 'use client';
 
 import type { Route } from 'next';
+import type { PlanTier } from '@hale/types';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -53,11 +54,14 @@ export function Sidebar({
   authControls = false,
   signedIn = false,
   parentName = null,
+  planTier = 'free',
   kids = [],
 }: {
   authControls?: boolean;
   signedIn?: boolean;
   parentName?: string | null;
+  /** The family's plan, for the account chip's secondary line. */
+  planTier?: PlanTier;
   /** The family's children, for the foot child switcher. */
   kids?: SwitcherChild[];
 }) {
@@ -122,6 +126,7 @@ export function Sidebar({
             <div className="rule" />
             <AccountMenu
               parentName={parentName}
+              planTier={planTier}
               canSignOut={authControls && signedIn}
             />
           </>

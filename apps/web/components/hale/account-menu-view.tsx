@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { RefObject } from 'react';
 import { ChevronsUpDown, LogOut, Settings } from 'lucide-react';
+import { PLAN_DISPLAY, type PlanTier } from '@hale/types';
 import { Icon } from '~/components/ui/icon';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { SETTINGS_NAV } from '~/components/hale/nav';
@@ -9,6 +10,8 @@ import { ThemeToggle } from '~/components/hale/theme-toggle';
 export interface AccountMenuViewProps {
   open: boolean;
   parentName: string | null;
+  /** The family's plan, shown as the chip's secondary line per the desktop handoff. */
+  planTier: PlanTier;
   canSignOut: boolean;
   menuId: string;
   onToggle: () => void;
@@ -23,14 +26,16 @@ export interface AccountMenuViewProps {
 /**
  * The chip + popover markup, factored out of the stateful wrapper so it renders
  * without the shell/router context (the wrapper owns open-state and dismissal).
- * Per the desktop handoff the popover is Settings + Sign out only; Appearance (the
- * theme control) rides along where it has always lived, and Sign out — an account
- * action, not a destination — sits below a divider. History moved out of this
- * menu (it stays reachable from the Approvals surface).
+ * The chip's secondary line is the family's plan (design handoff); per the handoff
+ * the popover is Settings + Sign out only; Appearance (the theme control) rides
+ * along where it has always lived, and Sign out — an account action, not a
+ * destination — sits below a divider. History moved out of this menu (it stays
+ * reachable from the Approvals surface).
  */
 export function AccountMenuView({
   open,
   parentName,
+  planTier,
   canSignOut,
   menuId,
   onToggle,
@@ -40,6 +45,9 @@ export function AccountMenuView({
   triggerRef,
 }: AccountMenuViewProps) {
   const displayName = parentName?.trim() || 'your account';
+  // Free reads "Free plan" (a gentle upgrade cue); paid tiers show the tier name.
+  const planLabel =
+    planTier === 'free' ? `${PLAN_DISPLAY.free.name} plan` : PLAN_DISPLAY[planTier].name;
 
   return (
     <div className="account-menu" ref={rootRef}>
@@ -88,7 +96,7 @@ export function AccountMenuView({
         <LogoMark size={32} />
         <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{displayName}</span>
-          <span className="account-chip-family meta">View profile</span>
+          <span className="account-chip-family meta">{planLabel}</span>
         </span>
         <Icon as={ChevronsUpDown} size={16} className="account-chip-caret" />
       </button>

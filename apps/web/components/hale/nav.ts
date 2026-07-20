@@ -2,9 +2,9 @@ import type { Route } from 'next';
 import {
   History,
   House,
-  MessageCircleHeart,
   Settings,
   Sparkles,
+  User,
   Users,
   UsersRound,
 } from 'lucide-react';
@@ -26,8 +26,8 @@ export interface NavItem {
 
 export const PRIMARY_NAV = [
   { href: '/home', label: 'Home', icon: House },
-  { href: '/companion', label: 'Companion', icon: Sparkles },
-  { href: '/coach', label: 'Ask', icon: MessageCircleHeart },
+  { href: '/companion', label: 'Companion', icon: User },
+  { href: '/coach', label: 'Ask', icon: Sparkles },
   { href: '/village', label: 'Village', icon: Users },
   { href: '/family', label: 'Family', icon: UsersRound },
 ] as const satisfies ReadonlyArray<NavItem>;

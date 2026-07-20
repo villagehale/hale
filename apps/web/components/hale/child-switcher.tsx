@@ -16,7 +16,7 @@ import { ChildSwitcherView, type SwitcherChild } from '~/components/hale/child-s
  */
 export function ChildSwitcher({
   kids,
-  addHref = '/family' as Route,
+  addHref = '/family/members' as Route,
 }: {
   kids: SwitcherChild[];
   addHref?: Route;
