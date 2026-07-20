@@ -2607,3 +2607,214 @@ html, body, .sidebar, .panel, .card, .field {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * W2b — Settings hub + centered modals (desktop design handoff §4.7 & §4.8)
+ * Additive only. Every color goes through a role token, so light↔dark flips
+ * automatically; nothing here overflows the page below 1024px (the hub stacks
+ * and its sub-nav scrolls horizontally; the modal is desktop-only).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Settings hub: 216px left sub-nav + panel (§4.7) ─────────────────────── */
+.settings-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .settings-hub {
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    gap: 3rem;
+    align-items: start;
+  }
+}
+
+.settings-subnav {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  margin-inline: -0.25rem;
+  padding-inline: 0.25rem;
+}
+
+@media (min-width: 1024px) {
+  .settings-subnav {
+    position: sticky;
+    top: 1.5rem;
+    flex-direction: column;
+    overflow: visible;
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+}
+
+.settings-subnav-item {
+  flex-shrink: 0;
+  white-space: nowrap;
+  text-align: left;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--color-faded-sage);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+.settings-subnav-item:hover { color: var(--color-spruce); background: var(--color-chrome); }
+.settings-subnav-item[aria-current="page"] {
+  background: var(--color-warm-hover);
+  color: var(--color-spruce);
+  font-weight: 700;
+}
+.settings-subnav-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+.settings-panel { min-width: 0; }
+
+.settings-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  color: var(--color-spruce);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 220ms var(--ease-breathe);
+}
+.settings-link-row:hover { color: var(--color-apricot-deep); }
+.settings-link-row:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* ── On/off toggle switch (§4.7 notifications) ───────────────────────────── */
+.toggle-switch {
+  flex-shrink: 0;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--color-rule-strong);
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe);
+}
+.toggle-switch[aria-checked="true"] { background: var(--color-brand); }
+.toggle-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-on-spruce);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  transition: transform 200ms var(--ease-breathe);
+}
+.toggle-switch[aria-checked="true"] .toggle-switch-knob { transform: translateX(18px); }
+.toggle-switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggle-switch,
+  .toggle-switch-knob { transition: none; }
+}
+
+/* ── Navy "your plan" card (§4.7 plan & billing) ─────────────────────────── *
+ * Brand-anchored fill: navy-on-white in light, inverts to cream-on-ink in dark
+ * (the exact --color-brand / --color-on-spruce pair the primary button uses —
+ * high-contrast both ways, no new token pair to verify). */
+.plan-navy-card {
+  background: var(--color-brand);
+  color: var(--color-on-spruce);
+  border-radius: var(--r-lg);
+  padding: 1.5rem 1.75rem;
+}
+.plan-navy-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-on-spruce-soft);
+}
+.plan-navy-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+.plan-navy-name { font-size: 1.5rem; font-weight: 600; color: var(--color-on-spruce); }
+.plan-navy-price { font-size: 1.05rem; font-weight: 700; color: var(--color-on-spruce); }
+.plan-navy-tagline {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-on-spruce-soft);
+}
+
+/* ── Centered modal (§4.8 / §4.9) — desktop only; callers keep inline < 1024 ─ */
+.hale-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgb(20 28 60 / 0.4);
+  overflow-y: auto;
+}
+.hale-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  background: var(--color-oat);
+  border: 1px solid var(--color-rule);
+  border-radius: 24px;
+  box-shadow: var(--shadow-modal);
+  animation: settle 300ms var(--ease-breathe) forwards;
+}
+.hale-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.4rem 1.5rem 0.5rem;
+}
+.hale-modal-title { font-size: 1.15rem; font-weight: 600; color: var(--color-spruce); }
+.hale-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-faded-sage);
+  cursor: pointer;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+.hale-modal-close:hover { color: var(--color-spruce); background: var(--color-chrome); }
+.hale-modal-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+.hale-modal-body { padding: 0.5rem 1.5rem 1.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hale-modal { animation: none; opacity: 1; }
+}
