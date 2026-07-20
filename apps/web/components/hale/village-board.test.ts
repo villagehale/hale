@@ -49,9 +49,18 @@ function view(overrides: Partial<VillageCandidateView> & { id: string }): Villag
   };
 }
 
-function render(candidates: VillageCandidateView[]): string {
+function render(
+  candidates: VillageCandidateView[],
+  extra?: { ranked?: boolean; saved?: VillageCandidateView[] },
+): string {
   return renderToStaticMarkup(
-    createElement(VillageBoard, { candidates, resources: [], coarseCenter: null, area: null }),
+    createElement(VillageBoard, {
+      candidates,
+      resources: [],
+      coarseCenter: null,
+      area: null,
+      ...extra,
+    }),
   );
 }
 
@@ -96,5 +105,22 @@ describe('VillageBoard — teen-locked ActivityRow (rule #1)', () => {
     expect(html).toContain('Aug 15');
     // A year-round standing activity has no date, so it falls back to the cadence label.
     expect(html).toContain('year-round');
+  });
+});
+
+describe('VillageBoard — the one ranked recommendation (§4.5, rule #1 + honesty)', () => {
+  it('labels the top pick "Hale recommends" ONLY when the feed is genuinely ranked', () => {
+    const c = view({ id: 'swim', title: 'Toddler swim' });
+    const ranked = render([c], { ranked: true });
+    expect(ranked).toContain('Hale recommends');
+    expect(ranked).toContain('See details');
+    // A discovery-order (unranked) feed shows no recommendation — never a fabricated
+    // highlight over an order the agent did not choose.
+    expect(render([c], { ranked: false })).not.toContain('Hale recommends');
+  });
+
+  it('never recommends a teen-attributed top pick — no preview, no recommend (rule #1)', () => {
+    const teen = view({ id: 'teen', title: TEEN_REDACTED_PLACEHOLDER, teenAttributed: true });
+    expect(render([teen], { ranked: true })).not.toContain('Hale recommends');
   });
 });

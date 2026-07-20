@@ -8,7 +8,7 @@ import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { loadCuratedResources } from '~/lib/village/curated-resources';
 import { loadVillageFeed } from '~/lib/village/feed';
-import { loadVillage } from '~/lib/village/queries';
+import { loadSavedVillageCandidates, loadVillage } from '~/lib/village/queries';
 import { seasonFromParam } from '~/lib/village/season-selector-ui';
 
 /** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
@@ -25,20 +25,25 @@ export default async function VillagePage({
   const { season } = await searchParams;
   const activeSeason = seasonFromParam(season);
 
-  // The board reads the feed (a pure DB round-trip) directly so the two columns share
-  // one load. The standing weekly routine belongs to the standing feed, not a
-  // forward-looking season search — so its loadVillage read is skipped on a search
-  // view. The page title + the coarse-area location pill now live in the shell top
-  // bar (design handoff §3.2), so this page carries no header of its own.
-  const [feed, resources, { routine }] = await Promise.all([
+  // The board reads the feed (a pure DB round-trip) directly so its columns share
+  // one load, plus the family's saved candidates for the right rail. The standing
+  // weekly routine belongs to the standing feed, not a forward-looking season search
+  // — so its loadVillage read is skipped on a search view (and Saved is too: a season
+  // run is a focused result set). The page title + the coarse-area location pill now
+  // live in the shell top bar (design handoff §3.2), so this page carries no header
+  // of its own.
+  const [feed, resources, saved, { routine }] = await Promise.all([
     loadVillageFeed(),
     loadCuratedResources(),
+    activeSeason ? Promise.resolve([]) : loadSavedVillageCandidates(),
     activeSeason ? Promise.resolve({ routine: null }) : loadVillage(),
   ]);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   return (
-    <div>
+    // village-wide opts this surface up to a roomier column than the 58rem editorial
+    // cap so the §4.5 map board keeps a real centre-column map (see globals.css).
+    <div className="village-wide">
       {/* ── The board (search + filter pills + activities/resources columns), or a
            season search RUN. The run streams behind Suspense. ─────────────────── */}
       {activeSeason ? (
@@ -54,6 +59,8 @@ export default async function VillagePage({
             resources={resources}
             coarseCenter={feed.coarseCenter}
             area={feed.areaCoarse}
+            saved={saved}
+            ranked={feed.ranked}
           />
         </div>
       )}
