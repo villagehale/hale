@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -16,6 +16,7 @@ import {
   LiveActivityTrail,
   type TrailEntry,
 } from '@/components/hale/activity-trail';
+import { AskHistorySheet } from '@/components/hale/ask-history-sheet';
 import { ConnectorCard } from '@/components/hale/connector-card';
 import { QuickLogCard } from '@/components/hale/quick-log-card';
 import { StreamingCursor } from '@/components/hale/streaming-cursor';
@@ -25,12 +26,18 @@ import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { LogoMark } from '@/components/ui/logo-mark';
 import { Markdown } from '@/components/ui/markdown';
+import { LoadingState } from '@/components/ui/screen-state';
 import { TintChip } from '@/components/ui/tint-chip';
 import { type AskSuggestion, ASK_SUGGESTIONS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
-import { ApiError } from '@/lib/api-client';
-import type { MobileFamilyResponse } from '@/lib/api-types';
+import { ApiError, api } from '@/lib/api-client';
+import type {
+  MobileConversationTranscriptResponse,
+  MobileFamilyResponse,
+} from '@/lib/api-types';
+import { transcriptToMessages } from '@/lib/ask-history';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
+import { conversationStorage } from '@/lib/conversation-storage';
 import { orderByIntents } from '@/lib/intent-ordering';
 import { useApi } from '@/lib/use-api';
 import { cardsFromActivity } from '@/lib/connector-card';
@@ -287,10 +294,51 @@ export default function AskScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // Starts true so the first frame is a neutral loader, not a greeting that would
+  // flash before the stored id is read. Resolved to false once restore settles (or
+  // when there is nothing to restore).
+  const [restoring, setRestoring] = useState(true);
   const conversationId = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const sparkleColor = useMeadowColor('brand');
+  const historyIcon = useMeadowColor('brand');
   const voice = useVoiceInput(setDraft);
+
+  // Reopen the last active thread on a cold start: restore its transcript so the
+  // conversation persists across restarts. A gone/foreign id (404) clears the stored
+  // id and falls back to a fresh chat, quietly.
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const stored = await conversationStorage.get();
+      if (!live) return;
+      if (!stored) {
+        setRestoring(false);
+        return;
+      }
+      try {
+        const data = await api<MobileConversationTranscriptResponse>(
+          `/api/mobile/conversations/${stored}`,
+        );
+        if (!live) return;
+        const restored = transcriptToMessages(data.turns);
+        if (restored.length > 0) {
+          setMessages(restored);
+          conversationId.current = data.conversationId;
+        } else {
+          await conversationStorage.clear();
+        }
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return;
+        await conversationStorage.clear();
+      } finally {
+        if (live) setRestoring(false);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const send = async (text: string) => {
     const q = text.trim();
@@ -372,6 +420,7 @@ export default function AskScreen() {
           },
           onDone: (nextId) => {
             conversationId.current = nextId;
+            void conversationStorage.set(nextId);
             patch((t) => ({ ...t, streaming: false }));
           },
         },
@@ -413,6 +462,26 @@ export default function AskScreen() {
   const newConversation = () => {
     setMessages([]);
     conversationId.current = null;
+    void conversationStorage.clear();
+    setHistoryOpen(false);
+  };
+
+  // Reopen a past conversation from the history sheet: rehydrate its transcript into
+  // the message list, anchor the send pipeline to its id, persist it, and close the
+  // sheet. A transient failure leaves the sheet open so the row can be retried.
+  const openConversation = async (id: string) => {
+    try {
+      const data = await api<MobileConversationTranscriptResponse>(
+        `/api/mobile/conversations/${id}`,
+      );
+      setMessages(transcriptToMessages(data.turns));
+      conversationId.current = data.conversationId;
+      void conversationStorage.set(data.conversationId);
+      setHistoryOpen(false);
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+    }
   };
 
   return (
@@ -428,15 +497,18 @@ export default function AskScreen() {
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="New conversation"
-            onPress={newConversation}
-            className="h-11 w-11 items-center justify-center rounded-full border border-rule bg-raised active:opacity-80"
+            accessibilityLabel="Chat history"
+            onPress={() => setHistoryOpen(true)}
+            hitSlop={6}
+            className="h-9 w-9 items-center justify-center rounded-full border border-rule bg-card active:opacity-80"
           >
-            <Icon name="sparkle-filled" size={18} color={sparkleColor} />
+            <Icon name="history" size={17} color={historyIcon} />
           </Pressable>
         </View>
 
-        {empty ? (
+        {restoring ? (
+          <LoadingState />
+        ) : empty ? (
           <EmptyState
             draft={draft}
             setDraft={setDraft}
@@ -499,6 +571,13 @@ export default function AskScreen() {
             </View>
           </>
         )}
+
+        <AskHistorySheet
+          visible={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          onNewChat={newConversation}
+          onSelect={openConversation}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
