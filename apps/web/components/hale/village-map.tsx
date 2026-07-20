@@ -64,15 +64,24 @@ export function VillageMap({
   candidates,
   coarseCenter,
   area = null,
+  onSelect,
 }: {
   candidates: VillageCandidateView[];
   coarseCenter: LatLng | null;
   area?: string | null;
+  /** When provided, a marker click reports the candidate id to the parent and the
+   * map renders NO panel of its own — the parent owns the shared detail drill-in
+   * (the 3-column board). When absent the map keeps its standalone pop-up. */
+  onSelect?: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapInstance | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Keep the latest onSelect reachable from the marker handler without re-running
+  // the map-init effect (which would recreate the map on every parent render).
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   const model = useMemo(
     () => buildVillageMapModel(candidates, coarseCenter),
@@ -110,7 +119,10 @@ export function VillageMap({
           title: marker.title,
         });
         pin.addListener('click', () => {
-          if (!cancelled) setSelectedId(marker.id);
+          if (cancelled) return;
+          const report = onSelectRef.current;
+          if (report) report(marker.id);
+          else setSelectedId(marker.id);
         });
         markers.push(pin);
         bounds.extend(marker.position);
@@ -173,7 +185,7 @@ export function VillageMap({
         {model.listOnlyCount > 0 ? ` · ${model.listOnlyCount} more in the list` : ''}
       </p>
 
-      {selected && !selected.teenAttributed ? (
+      {!onSelect && selected && !selected.teenAttributed ? (
         <ActivityCard
           candidate={selected}
           variant="panel"

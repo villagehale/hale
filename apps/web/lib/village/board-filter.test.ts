@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHILDCARE_RESOURCE_CATEGORY,
+  PLAYGROUND_RESOURCE_CATEGORY,
   filterActivities,
   filterResources,
+  isPlaygroundCandidate,
 } from './board-filter.js';
 import type { CuratedResourceView } from './curated-resources.js';
 import type { VillageCandidateView } from './mappers.js';
@@ -117,5 +119,55 @@ describe('filterResources — content-type routing', () => {
     // Search composes with the childcare narrowing: a query that only the
     // public-health row matches yields nothing under "childcare".
     expect(filterResources(RESOURCES, 'childcare', 'breastfeeding')).toEqual([]);
+  });
+});
+
+describe('Playgrounds pill — outdoor candidates + real parks resources', () => {
+  const OUTDOOR_BY_KIND = candidate({ id: 'park', title: 'Park playgroup', kind: 'outdoor' });
+  const OUTDOOR_BY_ATTR = candidate({
+    id: 'splashwalk',
+    title: 'Splash walk',
+    kind: 'drop_in',
+    indoorOutdoor: 'outdoor',
+  });
+  const INDOOR = candidate({ id: 'gym', title: 'Indoor gym', kind: 'class', indoorOutdoor: 'indoor' });
+  const OUTDOOR_CANDIDATES = [OUTDOOR_BY_KIND, OUTDOOR_BY_ATTR, INDOOR];
+
+  const PARKS_RESOURCE = resource({
+    id: 'splashpad',
+    name: 'Main St splash pad',
+    category: PLAYGROUND_RESOURCE_CATEGORY,
+  });
+  const PARKS_RESOURCES = [PARKS_RESOURCE, ...RESOURCES];
+
+  it('classifies a candidate as playground by outdoor kind OR the outdoor attribute, not otherwise', () => {
+    expect(isPlaygroundCandidate(OUTDOOR_BY_KIND)).toBe(true);
+    expect(isPlaygroundCandidate(OUTDOOR_BY_ATTR)).toBe(true);
+    expect(isPlaygroundCandidate(INDOOR)).toBe(false);
+  });
+
+  it('narrows activities to the outdoor candidates only', () => {
+    expect(filterActivities(OUTDOOR_CANDIDATES, 'playgrounds', '').map((c) => c.id)).toEqual([
+      'park',
+      'splashwalk',
+    ]);
+  });
+
+  it('narrows resources to the real parks/splash-pad category only', () => {
+    // The EarlyON + public-health rows are real resources but not parks.
+    expect(filterResources(PARKS_RESOURCES, 'playgrounds', '').map((r) => r.id)).toEqual([
+      'splashpad',
+    ]);
+  });
+
+  it('composes search with the playground narrowing on both datasets', () => {
+    expect(filterActivities(OUTDOOR_CANDIDATES, 'playgrounds', 'splash').map((c) => c.id)).toEqual([
+      'splashwalk',
+    ]);
+    // A query only the (indoor) gym matches yields nothing under "playgrounds".
+    expect(filterActivities(OUTDOOR_CANDIDATES, 'playgrounds', 'gym')).toEqual([]);
+    expect(filterResources(PARKS_RESOURCES, 'playgrounds', 'splash').map((r) => r.id)).toEqual([
+      'splashpad',
+    ]);
   });
 });
