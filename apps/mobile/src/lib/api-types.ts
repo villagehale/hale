@@ -491,6 +491,44 @@ export interface MobileNoteThreadResponse {
   turns: NoteThreadTurn[];
 }
 
+// ── Ask session history (from apps/web lib/coach/history ConversationSummary +
+//    the timeline shape reused for a reopened transcript) ────────────────────────
+
+/** One row of the Ask history rail. `title` is derived server-side from the first
+ * live user turn (rule #1: never the raw transcript); the reopen route serves the
+ * turns. */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  /** The Hale note this thread is anchored to, or null for the general Ask thread. */
+  noteKey: string | null;
+  /** ISO instant of the most recent live turn — the rail's sort + group key. */
+  lastMessageAt: string;
+  messageCount: number;
+}
+
+/** GET /api/mobile/conversations — the family's Ask sessions, newest-active first. */
+export interface MobileConversationsResponse {
+  conversations: ConversationSummary[];
+}
+
+/** One turn of a reopened conversation (mirrors the web TimelineMessage). */
+export interface ConversationTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  childId: string | null;
+  topic: string | null;
+  createdAt: string;
+}
+
+/** GET /api/mobile/conversations/:id — one session's ordered transcript for reopen.
+ * An unknown or foreign id is a 404, never an empty body. */
+export interface MobileConversationTranscriptResponse {
+  conversationId: string;
+  turns: ConversationTurn[];
+}
+
 // ── plan tiers (from apps/web lib/plan/catalog, derived from @hale/types) ──────
 
 export type PlanTier = 'free' | 'plus' | 'family';
