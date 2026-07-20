@@ -11,6 +11,7 @@
     { "path": "/api/cron/queue-maintenance", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/connector-sync", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/spend-alert", "schedule": "0 * * * *" },
-    { "path": "/api/cron/delete-sweep", "schedule": "0 * * * *" }
+    { "path": "/api/cron/delete-sweep", "schedule": "0 * * * *" },
+    { "path": "/api/cron/attachment-sweep", "schedule": "0 * * * *" }
   ]
 }

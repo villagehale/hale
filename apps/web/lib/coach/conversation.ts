@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
+import { applyAttachmentMarkers } from './attachment-blocks.js';
 
 /**
  * Conversation persistence for multi-turn Ask Hale. A conversation is a
@@ -7,6 +8,11 @@ import { type Database, schema } from '@hale/db';
  * re-reads each turn. Every read is keyed on (id AND family_id) so a caller can
  * never load — or append to — another family's thread (rule #1, family-scoped).
  */
+
+/** A Database handle OR an open transaction — lets a writer run standalone or, when
+ * two writes must commit atomically (the user message + its attachment link), inside
+ * the SAME transaction. */
+export type Db = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
 
 export interface TranscriptMessage {
   role: 'user' | 'assistant';
@@ -204,17 +210,76 @@ export interface MessageScope {
   topic: string | null;
 }
 
-/** Appends one message turn to a conversation, carrying its scope (child + topic). */
+/** Appends one message turn to a conversation, carrying its scope (child + topic).
+ * Returns the new message id so the caller can link per-turn rows (e.g. chat
+ * attachments) to the exact message that was just written. */
 export async function appendMessage(
   conversationId: string,
   role: 'user' | 'assistant',
   content: string,
-  database: Database,
+  database: Db,
   scope: MessageScope = { childId: null, topic: null },
-): Promise<void> {
-  await database
+): Promise<string> {
+  const rows = await database
     .insert(schema.messages)
-    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic });
+    .values({ conversationId, role, content, childId: scope.childId, topic: scope.topic })
+    .returning({ id: schema.messages.id });
+  const id = rows[0]?.id;
+  if (!id) {
+    throw new Error('messages insert returned no row');
+  }
+  return id;
+}
+
+/**
+ * The agent-facing transcript: the same in-order, live-only turns loadTranscript
+ * returns, but with a `[attachment: <mime>]` marker appended to any PAST turn that
+ * carried a chat attachment. The bytes are NEVER replayed (rule #1, and to avoid
+ * re-sending an image every turn) — the current turn's fresh attachment rides as
+ * native content blocks, past turns ride as markers. Family scope is inherited: the
+ * conversationId was already resolved to the caller's family upstream.
+ */
+export async function loadTranscriptWithAttachments(
+  conversationId: string,
+  database: Database,
+): Promise<TranscriptMessage[]> {
+  const rows = await database
+    .select({
+      id: schema.messages.id,
+      role: schema.messages.role,
+      content: schema.messages.content,
+    })
+    .from(schema.messages)
+    .where(
+      and(
+        eq(schema.messages.conversationId, conversationId),
+        isNull(schema.messages.deletedAt),
+      ),
+    )
+    .orderBy(asc(schema.messages.createdAt));
+
+  const attachmentRows = await database
+    .select({
+      messageId: schema.chatAttachments.messageId,
+      mime: schema.chatAttachments.mime,
+    })
+    .from(schema.chatAttachments)
+    .where(
+      and(
+        eq(schema.chatAttachments.conversationId, conversationId),
+        isNotNull(schema.chatAttachments.messageId),
+      ),
+    );
+
+  const mimesByMessage = new Map<string, string[]>();
+  for (const a of attachmentRows) {
+    if (!a.messageId) continue;
+    const list = mimesByMessage.get(a.messageId) ?? [];
+    list.push(a.mime);
+    mimesByMessage.set(a.messageId, list);
+  }
+
+  return applyAttachmentMarkers(rows, mimesByMessage);
 }
 
 /**

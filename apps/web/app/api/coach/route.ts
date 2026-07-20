@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { askHale } from '~/lib/coach/agent';
+import {
+  MAX_ATTACHMENTS_PER_REQUEST,
+  loadUnlinkedAttachments,
+  type OwnedChatAttachment,
+} from '~/lib/coach/attachments';
 import { NOTE_KEY_RE } from '~/lib/coach/note-key';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
@@ -13,27 +18,38 @@ import { flushTelemetry } from '~/lib/telemetry/langfuse';
 // SDK — neither works on the edge runtime.
 export const runtime = 'nodejs';
 
-const bodySchema = z.object({
-  question: z.string().trim().min(1).max(2000),
-  /** Continue an existing thread; omitted/null starts a fresh one. */
-  conversationId: z.string().uuid().optional(),
-  /** The intent chip the parent tapped, if any. */
-  intent: z.string().trim().min(1).max(200).optional(),
-  /** The child the parent focused the conversation on (per-child chip), if any. */
-  focusedChildId: z.string().uuid().optional(),
-  /** Anchor this reply to a Hale note's persistent thread (mobile Messages reply). */
-  noteKey: z.string().trim().regex(NOTE_KEY_RE).optional(),
-  /** The redacted note view the reply grounds on — seeds the note's content into the
-   * agent context (rule #2: structured, no prompt strings). Bounded; never re-fetched
-   * server-side, so it can only be the app's already-redacted note (rule #1). */
-  sourceNote: z
-    .object({
-      eyebrow: z.string().trim().min(1).max(200),
-      body: z.string().trim().min(1).max(4000),
-      when: z.string().trim().min(1).max(100),
-    })
-    .optional(),
-});
+const bodySchema = z
+  .object({
+    /** Optional when attachmentIds is non-empty (an attachments-only send). */
+    question: z.string().trim().max(2000).optional(),
+    /** Continue an existing thread; omitted/null starts a fresh one. */
+    conversationId: z.string().uuid().optional(),
+    /** The intent chip the parent tapped, if any. */
+    intent: z.string().trim().min(1).max(200).optional(),
+    /** The child the parent focused the conversation on (per-child chip), if any. */
+    focusedChildId: z.string().uuid().optional(),
+    /** Anchor this reply to a Hale note's persistent thread (mobile Messages reply). */
+    noteKey: z.string().trim().regex(NOTE_KEY_RE).optional(),
+    /** The redacted note view the reply grounds on — seeds the note's content into the
+     * agent context (rule #2: structured, no prompt strings). Bounded; never re-fetched
+     * server-side, so it can only be the app's already-redacted note (rule #1). */
+    sourceNote: z
+      .object({
+        eyebrow: z.string().trim().min(1).max(200),
+        body: z.string().trim().min(1).max(4000),
+        when: z.string().trim().min(1).max(100),
+      })
+      .optional(),
+    /** Ids of already-uploaded attachments to send with this turn (POST /api/coach/attachments). */
+    attachmentIds: z.array(z.string().uuid()).max(MAX_ATTACHMENTS_PER_REQUEST).optional(),
+  })
+  // Either a real question or at least one attachment — an empty-both send is rejected.
+  .refine(
+    (d) =>
+      (typeof d.question === 'string' && d.question.length > 0) ||
+      (d.attachmentIds !== undefined && d.attachmentIds.length > 0),
+    { message: 'question_or_attachments_required' },
+  );
 
 /**
  * POST /api/coach — a signed-in parent asking Ask Hale, now a stateful agent.
@@ -73,6 +89,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
 
+  // Resolve any attachmentIds to the caller's OWN unlinked attachments (rule #1). A
+  // shortfall means a foreign, unknown, or already-consumed id was passed — reject the
+  // whole send with a clean 400 before the billable run rather than mid-stream.
+  const attachmentIds = parsed.data.attachmentIds ?? [];
+  let attachments: OwnedChatAttachment[] = [];
+  if (attachmentIds.length > 0) {
+    attachments = await loadUnlinkedAttachments(database, familyId, attachmentIds);
+    if (attachments.length !== attachmentIds.length) {
+      return NextResponse.json({ error: 'invalid_attachments' }, { status: 400 });
+    }
+  }
+
   // Per-user cap before the billable agent run — caps one parent's LLM spend.
   const limited = await enforceRateLimit('coach', actorUserId);
   if (limited) return limited;
@@ -97,13 +125,14 @@ export async function POST(req: Request) {
         const { conversationId, actionIntents } = await askHale(
           {
             familyId,
-            question: parsed.data.question,
+            question: parsed.data.question ?? '',
             intent: parsed.data.intent ?? null,
             conversationId: parsed.data.conversationId ?? null,
             focusedChildId: parsed.data.focusedChildId ?? null,
             actor: actorUserId,
             noteKey: parsed.data.noteKey ?? null,
             sourceNote: parsed.data.sourceNote ?? null,
+            attachments,
           },
           database,
           undefined,

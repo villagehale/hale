@@ -1,4 +1,5 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Linking,
@@ -17,6 +18,7 @@ import {
   type TrailEntry,
 } from '@/components/hale/activity-trail';
 import { AskHistorySheet } from '@/components/hale/ask-history-sheet';
+import { AttachmentChips } from '@/components/hale/attachment-chips';
 import { ConnectorCard } from '@/components/hale/connector-card';
 import { QuickLogCard } from '@/components/hale/quick-log-card';
 import { StreamingCursor } from '@/components/hale/streaming-cursor';
@@ -32,9 +34,19 @@ import { type AskSuggestion, ASK_SUGGESTIONS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
 import type {
+  ChatAttachmentUpload,
   MobileConversationTranscriptResponse,
   MobileFamilyResponse,
 } from '@/lib/api-types';
+import {
+  MAX_ATTACHMENTS,
+  type PendingAttachment,
+  attachmentTone,
+  buildCoachSendPayload,
+  canSendAsk,
+  readyAttachmentIds,
+  uploadErrorMessage,
+} from '@/lib/ask-attachments';
 import { transcriptToMessages } from '@/lib/ask-history';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
 import { conversationStorage } from '@/lib/conversation-storage';
@@ -61,18 +73,46 @@ interface HaleTurn {
 }
 
 type Message =
-  | { id: string; role: 'user'; text: string }
+  | { id: string; role: 'user'; text: string; attachments?: { name: string }[] }
   | HaleTurn
   | { id: string; role: 'quicklog'; match: QuickLogMatch };
 
-const UserBubble = memo(function UserBubble({ text }: { text: string }) {
+const UserBubble = memo(function UserBubble({
+  text,
+  attachments,
+}: {
+  text: string;
+  attachments?: { name: string }[];
+}) {
   // Brand navy, right-aligned — the handoff's user chat bubble (distinct from the
-  // ink used for body text).
+  // ink used for body text). Any sent files ride above it as compact name-only chips;
+  // an attachments-only send renders just the chips (no empty navy box).
+  const fileColor = useMeadowColor('ink3');
   return (
-    <View className="mb-3 max-w-[85%] self-end rounded-[18px] rounded-br-sm bg-brand px-4 py-3">
-      <AppText variant="body" className="text-on-ink">
-        {text}
-      </AppText>
+    <View className="mb-3 max-w-[85%] items-end gap-1.5 self-end">
+      {attachments?.length ? (
+        <View className="flex-row flex-wrap justify-end gap-1.5">
+          {attachments.map((a, i) => (
+            <View
+              // biome-ignore lint/suspicious/noArrayIndexKey: a bubble's sent files are a fixed, ordered snapshot
+              key={i}
+              className="max-w-[180px] flex-row items-center gap-1.5 rounded-[12px] border border-rule bg-card px-2.5 py-1.5"
+            >
+              <Icon name="file" size={12} color={fileColor} />
+              <AppText variant="meta" numberOfLines={1} ellipsizeMode="middle" className="text-[12px] text-ink">
+                {a.name}
+              </AppText>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {text ? (
+        <View className="rounded-[18px] rounded-br-sm bg-brand px-4 py-3">
+          <AppText variant="body" className="text-on-ink">
+            {text}
+          </AppText>
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -133,61 +173,103 @@ const HaleBubble = memo(function HaleBubble({ turn }: { turn: HaleTurn }) {
   );
 });
 
-/** The rounded input pill (handoff): a text field with a voice toggle and a navy
- * send button. Shared by the empty-state and the in-conversation composer. */
+/** The rounded input pill (handoff): a leading paperclip, a text field, a voice
+ * toggle, and a navy send button — with the attachment tray above it and the upload
+ * note below. Shared by the empty-state and the in-conversation composer. Send is
+ * gated on text-OR-a-ready-attachment and blocked while any upload is in flight
+ * (canSendAsk). */
 function Composer({
   draft,
   setDraft,
   onSend,
   listening,
   onToggleVoice,
+  attachments,
+  onPickFiles,
+  onRemoveAttachment,
+  onRetryAttachment,
+  uploadNote,
+  pending,
 }: {
   draft: string;
   setDraft: (t: string) => void;
   onSend: () => void;
   listening: boolean;
   onToggleVoice: () => void;
+  attachments: PendingAttachment[];
+  onPickFiles: () => void;
+  onRemoveAttachment: (localId: string) => void;
+  onRetryAttachment: (batchId: string) => void;
+  uploadNote: string | null;
+  pending: boolean;
 }) {
   const placeholderColor = useMeadowColor('ink3');
   const inputColor = useMeadowColor('ink');
   const micColor = useMeadowColor('ink3');
+  const clipColor = useMeadowColor('ink3');
   const sendColor = useMeadowColor('onAccent');
+  const disabled = pending || !canSendAsk(draft, attachments);
   return (
-    <View className="flex-row items-center gap-1.5 rounded-[18px] border-[1.5px] border-rule-strong bg-card py-1.5 pl-4 pr-1.5">
-      <TextInput
-        value={draft}
-        onChangeText={setDraft}
-        placeholder="Ask Hale anything…"
-        placeholderTextColor={placeholderColor}
-        accessibilityLabel="Ask Hale a question"
-        multiline
-        returnKeyType="send"
-        onSubmitEditing={onSend}
-        style={{
-          color: inputColor,
-          fontFamily: 'InstrumentSans_400Regular',
-          minHeight: 40,
-          maxHeight: 120,
-        }}
-        className="flex-1 text-[16px] leading-[22px]"
+    <View>
+      <AttachmentChips
+        attachments={attachments}
+        onRemove={onRemoveAttachment}
+        onRetry={onRetryAttachment}
       />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={listening ? 'Stop listening' : 'Ask Hale by voice'}
-        onPress={onToggleVoice}
-        hitSlop={6}
-        className="h-9 w-9 items-center justify-center active:opacity-70"
-      >
-        <Icon name={listening ? 'circle-stop' : 'mic'} size={18} color={micColor} />
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Send question"
-        onPress={onSend}
-        className="h-10 w-10 items-center justify-center rounded-[14px] bg-brand active:opacity-90"
-      >
-        <Icon name="arrow-up" size={18} color={sendColor} />
-      </Pressable>
+      <View className="flex-row items-center gap-2 rounded-[18px] border-[1.5px] border-rule-strong bg-card py-1.5 pl-2 pr-1.5">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Attach a file"
+          onPress={onPickFiles}
+          hitSlop={6}
+          className="h-9 w-9 items-center justify-center rounded-[12px] active:opacity-70"
+        >
+          <Icon name="paperclip" size={18} color={clipColor} />
+        </Pressable>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Ask Hale anything…"
+          placeholderTextColor={placeholderColor}
+          accessibilityLabel="Ask Hale a question"
+          multiline
+          returnKeyType="send"
+          onSubmitEditing={onSend}
+          style={{
+            color: inputColor,
+            fontFamily: 'InstrumentSans_400Regular',
+            minHeight: 40,
+            maxHeight: 120,
+          }}
+          className="flex-1 text-[16px] leading-[22px]"
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={listening ? 'Stop listening' : 'Ask Hale by voice'}
+          onPress={onToggleVoice}
+          hitSlop={6}
+          className="h-9 w-9 items-center justify-center active:opacity-70"
+        >
+          <Icon name={listening ? 'circle-stop' : 'mic'} size={18} color={micColor} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send question"
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={onSend}
+          className={`h-10 w-10 items-center justify-center rounded-[14px] bg-brand ${
+            disabled ? 'opacity-40' : 'active:opacity-90'
+          }`}
+        >
+          <Icon name="arrow-up" size={18} color={sendColor} />
+        </Pressable>
+      </View>
+      {uploadNote ? (
+        <AppText variant="meta" className="mt-1.5 text-berry" accessibilityLiveRegion="polite">
+          {uploadNote}
+        </AppText>
+      ) : null}
     </View>
   );
 }
@@ -224,19 +306,13 @@ function SuggestionRow({
 }
 
 function EmptyState({
-  draft,
-  setDraft,
-  onSend,
+  composer,
   onPick,
   listening,
-  onToggleVoice,
 }: {
-  draft: string;
-  setDraft: (t: string) => void;
-  onSend: () => void;
+  composer: ReactNode;
   onPick: (prompt: string) => void;
   listening: boolean;
-  onToggleVoice: () => void;
 }) {
   const first = viewerFirstName();
   const sparkleColor = useMeadowColor('accentFill');
@@ -257,13 +333,7 @@ function EmptyState({
         {greeting} What can I do for your family today?
       </AppText>
 
-      <Composer
-        draft={draft}
-        setDraft={setDraft}
-        onSend={onSend}
-        listening={listening}
-        onToggleVoice={onToggleVoice}
-      />
+      {composer}
       <AppText variant="meta" className="mt-2 text-center text-caption">
         {listening ? 'Listening…' : 'Try: “Napped 1h 20m and ate most of lunch”'}
       </AppText>
@@ -294,6 +364,8 @@ export default function AskScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   // Starts true so the first frame is a neutral loader, not a greeting that would
   // flash before the stored id is read. Resolved to false once restore settles (or
@@ -340,14 +412,113 @@ export default function AskScreen() {
     };
   }, []);
 
+  // Upload one pick's files together (one request → one 'coach' rate-limit hit, not
+  // one per file). On success each chip settles to its server id + authoritative
+  // name/size; on failure the whole batch flips to an errored chip with an honest note
+  // — never silently dropped. The file uris are kept so a retryable batch re-uploads.
+  const uploadBatch = async (batch: PendingAttachment[]) => {
+    const form = new FormData();
+    for (const a of batch) {
+      form.append('files', {
+        uri: a.file.uri,
+        name: a.file.name,
+        type: a.file.type,
+      } as unknown as Blob);
+    }
+    try {
+      const stored = await api<ChatAttachmentUpload[]>('/api/coach/attachments', {
+        method: 'POST',
+        body: form,
+      });
+      setAttachments((prev) =>
+        prev.map((a) => {
+          const idx = batch.findIndex((b) => b.localId === a.localId);
+          if (idx === -1) return a;
+          const s = stored[idx];
+          if (!s) return { ...a, status: 'error', retryable: true };
+          return { ...a, status: 'ready', serverId: s.id, name: s.name, sizeBytes: s.sizeBytes };
+        }),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      const status = e instanceof ApiError ? e.status : 0;
+      const code = e instanceof ApiError ? e.message : undefined;
+      const { note, retryable } = uploadErrorMessage(status, code);
+      setUploadNote(note);
+      setAttachments((prev) =>
+        prev.map((a) =>
+          batch.some((b) => b.localId === a.localId) && a.status === 'uploading'
+            ? { ...a, status: 'error', retryable }
+            : a,
+        ),
+      );
+    }
+  };
+
+  const pickFiles = async () => {
+    const remaining = MAX_ATTACHMENTS - attachments.length;
+    if (remaining <= 0) {
+      setUploadNote(`You can attach up to ${MAX_ATTACHMENTS} files.`);
+      return;
+    }
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/*', 'application/pdf'],
+      multiple: true,
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const picked = result.assets.slice(0, remaining);
+    setUploadNote(
+      result.assets.length > remaining ? `You can attach up to ${MAX_ATTACHMENTS} files.` : null,
+    );
+    const batchId = `b-${Date.now()}`;
+    const base = attachments.length;
+    const batch: PendingAttachment[] = picked.map((f, i) => ({
+      localId: `${batchId}-${i}`,
+      batchId,
+      name: f.name,
+      sizeBytes: f.size ?? 0,
+      tone: attachmentTone(base + i),
+      status: 'uploading',
+      file: { uri: f.uri, name: f.name, type: f.mimeType ?? 'application/octet-stream' },
+    }));
+    setAttachments((prev) => [...prev, ...batch]);
+    await uploadBatch(batch);
+  };
+
+  const removeAttachment = (localId: string) => {
+    setAttachments((prev) => prev.filter((a) => a.localId !== localId));
+  };
+
+  const retryBatch = (batchId: string) => {
+    setUploadNote(null);
+    const batch = attachments.filter((a) => a.batchId === batchId);
+    if (batch.length === 0) return;
+    setAttachments((prev) =>
+      prev.map((a) => (a.batchId === batchId ? { ...a, status: 'uploading' } : a)),
+    );
+    void uploadBatch(batch.map((a) => ({ ...a, status: 'uploading' })));
+  };
+
   const send = async (text: string) => {
+    if (pending || !canSendAsk(text, attachments)) return;
     const q = text.trim();
-    if (!q || pending) return;
-    const newMessages: Message[] = [{ id: `u-${Date.now()}`, role: 'user', text: q }];
-    const quickLog = detectQuickLog(q);
+    const ids = readyAttachmentIds(attachments);
+    const sent = attachments.filter((a) => a.status === 'ready').map((a) => ({ name: a.name }));
+    const newMessages: Message[] = [
+      {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        text: q,
+        ...(sent.length ? { attachments: sent } : {}),
+      },
+    ];
+    const quickLog = q ? detectQuickLog(q) : null;
     if (quickLog) newMessages.push({ id: `ql-${Date.now()}`, role: 'quicklog', match: quickLog });
     setMessages((prev) => [...prev, ...newMessages]);
     setDraft('');
+    setAttachments([]);
+    setUploadNote(null);
     voice.reset();
     setPending(true);
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
@@ -382,7 +553,10 @@ export default function AskScreen() {
 
     try {
       await askHale(
-        { question: q, ...(conversationId.current ? { conversationId: conversationId.current } : {}) },
+        {
+          ...buildCoachSendPayload(text, ids),
+          ...(conversationId.current ? { conversationId: conversationId.current } : {}),
+        },
         {
           onStep: () => ensureTurn(),
           onToolCall: (name) => {
@@ -463,6 +637,8 @@ export default function AskScreen() {
     setMessages([]);
     conversationId.current = null;
     void conversationStorage.clear();
+    setAttachments([]);
+    setUploadNote(null);
     setHistoryOpen(false);
   };
 
@@ -477,12 +653,32 @@ export default function AskScreen() {
       setMessages(transcriptToMessages(data.turns));
       conversationId.current = data.conversationId;
       void conversationStorage.set(data.conversationId);
+      setAttachments([]);
+      setUploadNote(null);
       setHistoryOpen(false);
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;
     }
   };
+
+  // One composer, shared by the empty-state and the in-conversation view — carries the
+  // paperclip, the attachment tray, and the send gate.
+  const composer = (
+    <Composer
+      draft={draft}
+      setDraft={setDraft}
+      onSend={() => send(draft)}
+      listening={voice.listening}
+      onToggleVoice={voice.toggle}
+      attachments={attachments}
+      onPickFiles={pickFiles}
+      onRemoveAttachment={removeAttachment}
+      onRetryAttachment={retryBatch}
+      uploadNote={uploadNote}
+      pending={pending}
+    />
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'left', 'right']}>
@@ -509,14 +705,7 @@ export default function AskScreen() {
         {restoring ? (
           <LoadingState />
         ) : empty ? (
-          <EmptyState
-            draft={draft}
-            setDraft={setDraft}
-            onSend={() => send(draft)}
-            onPick={send}
-            listening={voice.listening}
-            onToggleVoice={voice.toggle}
-          />
+          <EmptyState composer={composer} onPick={send} listening={voice.listening} />
         ) : (
           <>
             <ScrollView
@@ -527,7 +716,8 @@ export default function AskScreen() {
               onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
               {messages.map((m) => {
-                if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />;
+                if (m.role === 'user')
+                  return <UserBubble key={m.id} text={m.text} attachments={m.attachments} />;
                 if (m.role === 'quicklog') return <QuickLogCard key={m.id} match={m.match} />;
                 return <HaleBubble key={m.id} turn={m} />;
               })}
@@ -542,13 +732,7 @@ export default function AskScreen() {
             </ScrollView>
 
             <View className="border-t border-rule bg-canvas px-5 pb-3 pt-3">
-              <Composer
-                draft={draft}
-                setDraft={setDraft}
-                onSend={() => send(draft)}
-                listening={voice.listening}
-                onToggleVoice={voice.toggle}
-              />
+              {composer}
               {voice.error ? (
                 <View className="mt-1.5 flex-row items-baseline gap-2">
                   <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">

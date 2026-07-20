@@ -13,6 +13,7 @@ const runDigestCronMock = vi.fn();
 const runDiscoveryCronMock = vi.fn();
 const runInferenceCronMock = vi.fn();
 const runPushRemindersCronMock = vi.fn();
+const sweepAttachmentsMock = vi.fn();
 const dbMock = vi.fn();
 
 vi.mock('~/lib/db', () => ({ db: () => dbMock() }));
@@ -37,6 +38,9 @@ vi.mock('~/lib/cron/inference', () => ({
 vi.mock('~/lib/cron/push-reminders', () => ({
   runPushRemindersCron: (...a: unknown[]) => runPushRemindersCronMock(...a),
 }));
+vi.mock('~/lib/coach/attachments', () => ({
+  sweepUnlinkedAttachments: (...a: unknown[]) => sweepAttachmentsMock(...a),
+}));
 
 const SECRET = 'cron-secret-xyz';
 
@@ -56,6 +60,11 @@ const ROUTES = [
     path: '~/app/api/cron/push-reminders/route',
     mock: runPushRemindersCronMock,
   },
+  {
+    name: 'attachment-sweep',
+    path: '~/app/api/cron/attachment-sweep/route',
+    mock: sweepAttachmentsMock,
+  },
 ] as const;
 
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
@@ -65,6 +74,7 @@ describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock 
     runDiscoveryCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runPushRemindersCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
+    sweepAttachmentsMock.mockReset().mockResolvedValue({ swept: 0 });
     dbMock.mockReset().mockReturnValue({});
   });
 

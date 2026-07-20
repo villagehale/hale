@@ -13,7 +13,7 @@ import { Icon, type IconName } from './icon';
  */
 export type ChipTone = 'blue' | 'green' | 'yellow' | 'red' | 'teal' | 'gray';
 
-const TONE_BG: Record<ChipTone, string> = {
+export const TONE_BG: Record<ChipTone, string> = {
   blue: 'bg-chip-blue',
   green: 'bg-chip-green',
   yellow: 'bg-chip-yellow',
@@ -22,7 +22,7 @@ const TONE_BG: Record<ChipTone, string> = {
   gray: 'bg-chip-gray',
 };
 
-const TONE_ICON: Record<ChipTone, MeadowColor> = {
+export const TONE_ICON: Record<ChipTone, MeadowColor> = {
   blue: 'chipBlueIcon',
   green: 'chipGreenIcon',
   yellow: 'chipYellowIcon',
