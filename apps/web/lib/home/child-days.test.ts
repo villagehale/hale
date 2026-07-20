@@ -13,7 +13,8 @@ vi.mock('~/lib/family', () => ({ currentFamilyId: vi.fn(), currentUserId: vi.fn(
 vi.mock('~/lib/db', () => ({ db: vi.fn() }));
 vi.mock('~/lib/dashboard/queries', () => ({ loadFamilyTimezone: vi.fn() }));
 
-const { foldChildDays, formatDurationMinutes } = await import('./child-days.js');
+const { foldChildDays } = await import('./child-days.js');
+const { formatDurationMinutes } = await import('../format/datetime.js');
 type Days = Awaited<ReturnType<typeof foldChildDays>>[number];
 
 /** The single expected child-days entry (noUncheckedIndexedAccess narrows [0]). */

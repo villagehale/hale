@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Mascot } from '~/components/hale/mascot';
-import { type HomeChildDays, formatDurationMinutes } from '~/lib/home/child-days';
+import { formatDurationMinutes } from '~/lib/format/datetime';
+import type { HomeChildDays } from '~/lib/home/child-days';
 
 /**
  * Home Row 2 (design handoff §4.2): today's highlights / sleep mini-chart / meals for

@@ -5,7 +5,8 @@ import { type ReactNode, useState } from 'react';
 import { BookButton } from '~/components/hale/book-button';
 import { HomeChildRow2 } from '~/components/hale/home-child-row2';
 import type { StatCell } from '~/lib/home/greeting';
-import { type HomeChildDays, formatDurationMinutes } from '~/lib/home/child-days';
+import { formatDurationMinutes } from '~/lib/format/datetime';
+import type { HomeChildDays } from '~/lib/home/child-days';
 
 /** One child's Home snapshot slice — everything the selected-child panels render,
  * pre-derived server-side (rule #1 redaction already applied upstream). The health
