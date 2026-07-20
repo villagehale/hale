@@ -76,7 +76,7 @@ function matchesSelect(row: Row, sql: SQL): boolean {
   return true;
 }
 
-function fakeDb(rows: Row[]) {
+function fakeDb(rows: Row[], onAfterSelect?: () => void) {
   const removed: string[] = [];
   const deletedIds: string[] = [];
   const audits: Record<string, unknown>[] = [];
@@ -85,11 +85,21 @@ function fakeDb(rows: Row[]) {
   });
 
   const tx = {
+    // Evaluates the real WHERE against the live row state, so a delete that
+    // re-asserts message_id IS NULL genuinely skips a row linked after listing.
     delete: () => ({
-      where: async (sql: SQL) => {
-        const id = constraints(sql).eqId;
-        if (id) deletedIds.push(id);
-      },
+      where: (sql: SQL) => ({
+        returning: async () => {
+          const c = constraints(sql);
+          const idx = rows.findIndex(
+            (r) => r.id === c.eqId && (!c.isNullMessage || r.messageId === null),
+          );
+          if (idx === -1) return [];
+          deletedIds.push(rows[idx].id);
+          rows.splice(idx, 1);
+          return [{ id: c.eqId }];
+        },
+      }),
     }),
     insert: () => ({
       values: async (row: Record<string, unknown>) => {
@@ -101,10 +111,13 @@ function fakeDb(rows: Row[]) {
   const db = {
     select: () => ({
       from: () => ({
-        where: async (sql: SQL) =>
-          rows
+        where: async (sql: SQL) => {
+          const listed = rows
             .filter((r) => matchesSelect(r, sql))
-            .map((r) => ({ id: r.id, familyId: r.familyId, storagePath: r.storagePath })),
+            .map((r) => ({ id: r.id, familyId: r.familyId, storagePath: r.storagePath }));
+          onAfterSelect?.();
+          return listed;
+        },
       }),
     }),
     transaction: (fn: (t: typeof tx) => unknown) => fn(tx),
@@ -161,5 +174,22 @@ describe('sweepUnlinkedAttachments — purges only stale, never-sent uploads (ru
     expect(result.swept).toBe(0);
     expect(removeObject).not.toHaveBeenCalled();
     expect(spies.audits).toEqual([]);
+  });
+
+  it('never removes bytes for an attachment that gets linked between listing and deletion (TOCTOU)', async () => {
+    const rows = [row({ id: 'raced', createdAt: STALE, messageId: null })];
+    // A send claims the attachment in the window between the sweep's SELECT and
+    // its per-row delete: the conditional delete must claim nothing, and the
+    // bytes must survive — a linked attachment losing its object is data loss.
+    const { db, removeObject, spies } = fakeDb(rows, () => {
+      rows[0].messageId = 'msg-raced';
+    });
+
+    const result = await sweepUnlinkedAttachments(db, removeObject, NOW);
+
+    expect(removeObject).not.toHaveBeenCalled();
+    expect(spies.deletedIds).toEqual([]);
+    expect(spies.audits).toEqual([]);
+    expect(result.swept).toBe(0);
   });
 });

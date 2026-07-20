@@ -162,10 +162,22 @@ export async function sweepUnlinkedAttachments(
       ),
     );
 
+  let swept = 0;
   for (const att of stale) {
-    await removeObject(att.storagePath);
     await database.transaction(async (tx) => {
-      await tx.delete(schema.chatAttachments).where(eq(schema.chatAttachments.id, att.id));
+      // Re-assert unlinked INSIDE the transaction: a send may claim the attachment
+      // between the listing above and this delete, and a linked attachment must
+      // never lose its bytes. Claim the row first; only a successful claim removes
+      // the object (same bytes-inside-tx tradeoff as the erase path: a storage
+      // failure rolls the row back so the next sweep retries).
+      const claimed = await tx
+        .delete(schema.chatAttachments)
+        .where(
+          and(eq(schema.chatAttachments.id, att.id), isNull(schema.chatAttachments.messageId)),
+        )
+        .returning({ id: schema.chatAttachments.id });
+      if (claimed.length === 0) return;
+      await removeObject(att.storagePath);
       await tx.insert(schema.auditLog).values({
         familyId: att.familyId,
         actor: 'system',
@@ -173,10 +185,11 @@ export async function sweepUnlinkedAttachments(
         targetTable: 'chat_attachments',
         targetId: att.id,
       });
+      swept += 1;
     });
   }
 
-  return { swept: stale.length };
+  return { swept };
 }
 
 /** A family's own attachment, carrying just what linking + block-building need. */
