@@ -2135,6 +2135,302 @@ html, body, .sidebar, .panel, .card, .field {
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB PHASE W2 — core-surface component classes (design handoff §3–§4)
+ * Additive only; every value consumes a ROLE token so both themes derive for
+ * free. Kept in one section to minimise collision with the parallel phases.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page hero (top-bar hero slot + narrow-viewport stage), §3.2 ─────────── */
+.page-hero { min-width: 0; }
+
+.page-hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 2.4vw, 1.875rem); /* ~30px serif hero */
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: var(--tracking-display);
+  color: var(--color-spruce);
+}
+
+.page-hero-sub {
+  margin-top: 0.35rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem; /* 13.5px */
+  color: var(--color-faded-sage);
+}
+
+.page-hero-title-drill {
+  font-size: 1.5rem; /* 24px drill title */
+  font-weight: 600;
+}
+
+.page-hero-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-bottom: 0.15rem;
+  color: var(--color-faded-sage);
+  text-decoration: none;
+  transition: color 220ms var(--ease-breathe);
+}
+.page-hero-back:hover { color: var(--color-spruce); }
+.page-hero-back:focus-visible {
+  outline: none;
+  color: var(--color-spruce);
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+.page-hero-crumb {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+/* The desktop top bar (≥1024px) owns the hero; the narrow stage hero is hidden
+ * there and reappears below 1024px, so exactly one hero is ever visible. */
+.page-hero-stage { margin-bottom: clamp(1.15rem, 3vw, 1.75rem); }
+@media (min-width: 1024px) {
+  .page-hero-stage { display: none; }
+}
+
+/* ── Notification bell + dropdown, §3.2 ─────────────────────────────────── */
+.bell-root { position: relative; }
+
+.bell-dot {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: var(--r-full);
+  background: #E25C4A; /* bell dot, §2.1 notification dots */
+  box-shadow: 0 0 0 2px var(--color-oat);
+}
+
+.bell-pop {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  z-index: 50;
+  width: 21.5rem; /* 344px */
+  max-width: calc(100vw - 2rem);
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem;
+  border-radius: 18px;
+  background: var(--color-raised);
+  box-shadow: var(--shadow-popover);
+  animation: fadeUp 0.18s var(--ease-breathe);
+}
+
+.bell-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem 0.5rem;
+  color: var(--color-spruce);
+}
+
+.bell-pop-clear {
+  border: 0;
+  background: transparent;
+  color: var(--color-apricot-deep);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bell-pop-clear:hover { text-decoration: underline; }
+
+.bell-pop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bell-pop-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  transition: background 220ms var(--ease-breathe);
+}
+.bell-pop-item:hover { background: var(--color-oat); }
+.bell-pop-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-apricot-deep);
+}
+
+.bell-pop-eyebrow { color: var(--color-muted); }
+
+.bell-pop-body {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--color-slate-green);
+}
+
+.bell-pop-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1.4rem 1rem 1.6rem;
+  text-align: center;
+}
+.bell-pop-empty-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+}
+
+.bell-pop-foot {
+  margin-top: 0.2rem;
+  padding: 0.7rem;
+  border-top: 1px solid var(--color-rule);
+  text-align: center;
+  color: var(--color-apricot-deep);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.bell-pop-foot:hover { background: var(--color-oat); border-radius: 0 0 14px 14px; }
+
+/* ── Location switcher pill + popover, §3.2 / Interactions ──────────────── */
+.loc-root { position: relative; }
+
+.location-pill-button {
+  cursor: pointer;
+  transition: border-color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+.location-pill-button:hover { background: var(--color-tile); }
+.location-pill-button[data-open] { border-color: var(--color-brand); }
+.location-pill-button:focus-visible {
+  outline: none;
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+.loc-caret { color: var(--color-faint); }
+
+.loc-pop {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  z-index: 50;
+  width: 19.5rem; /* 312px */
+  max-width: calc(100vw - 2rem);
+  display: flex;
+  flex-direction: column;
+  padding: 0.7rem;
+  border-radius: 18px;
+  background: var(--color-raised);
+  box-shadow: var(--shadow-popover);
+  animation: fadeUp 0.18s var(--ease-breathe);
+}
+.loc-pop[data-pending] { opacity: 0.65; pointer-events: none; }
+
+.loc-pop-head { padding: 0.15rem 0.35rem 0.55rem; color: var(--color-muted); }
+
+.loc-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.loc-search-icon {
+  position: absolute;
+  left: 0.7rem;
+  color: var(--color-faint);
+  pointer-events: none;
+}
+.loc-search-input {
+  width: 100%;
+  padding: 0.6rem 2rem 0.6rem 2.3rem;
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--r-sm);
+  background: var(--color-hairline);
+  color: var(--color-spruce);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+.loc-search-input::placeholder { color: var(--color-faint); }
+.loc-search-input:focus { outline: none; border-color: var(--color-brand); }
+.loc-search-clear {
+  position: absolute;
+  right: 0.55rem;
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: var(--color-faint);
+  cursor: pointer;
+}
+.loc-search-clear:hover { color: var(--color-spruce); }
+
+.loc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loc-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.55rem 0.5rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
+}
+.loc-item:hover:not(:disabled) { background: var(--color-oat); color: var(--color-spruce); }
+.loc-item:disabled { cursor: default; }
+.loc-item[aria-current="true"] { color: var(--color-spruce); font-weight: 600; }
+.loc-item:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-apricot-deep); }
+.loc-item-icon { color: var(--color-faint); flex-shrink: 0; }
+.loc-item-label { flex: 1; min-width: 0; }
+.loc-item-check { color: var(--color-brand); flex-shrink: 0; }
+
+.loc-noresult { padding: 0.6rem 0.5rem 0.4rem; line-height: 1.5; }
+
+/* ── Home quick-link tiles (2×2) + Hale tip card, §4.2 ─────────────────── */
+.quick-link-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 6.5rem;
+  padding: 1rem;
+  border-radius: var(--r-sm);
+  background: var(--color-chrome);
+  color: var(--color-spruce);
+  text-decoration: none;
+  transition: background 220ms var(--ease-breathe), transform 220ms var(--ease-breathe);
+}
+.quick-link-tile:hover { background: var(--color-warm-hover); }
+.quick-link-tile:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
 .ob-column {
   width: 100%;
   max-width: 620px;
@@ -2190,4 +2486,124 @@ html, body, .sidebar, .panel, .card, .field {
   .ob-ready-item { transition: none; }
   .ob-seg,
   .ob-ready-dot { transition: none; }
+}
+
+.hale-tip {
+  position: relative;
+  padding: 1.15rem 1.25rem 1.25rem;
+  border-radius: var(--r-xl);
+  /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
+   * role token so the card stays legible instead of glaring. */
+  background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
+}
+@media (prefers-color-scheme: dark) {
+  .hale-tip { background: var(--color-amber-tint); }
+}
+:root[data-theme="light"] .hale-tip { background: linear-gradient(180deg, #FFF9F1, #FBEDDC); }
+:root[data-theme="dark"] .hale-tip { background: var(--color-amber-tint); }
+
+.hale-tip-mascot { position: absolute; top: 0.75rem; right: 0.85rem; opacity: 0.9; }
+.hale-tip-eyebrow { color: var(--color-amber); margin-bottom: 0.4rem; }
+.hale-tip-body {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-spruce);
+  max-width: 22ch;
+}
+.hale-tip-link {
+  display: inline-block;
+  margin-top: 0.7rem;
+  color: var(--color-amber);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.hale-tip-link:hover { text-decoration: underline; }
+.hale-tip-dismiss {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  display: inline-flex;
+  padding: 0.2rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-amber);
+  cursor: pointer;
+  opacity: 0.7;
+}
+.hale-tip-dismiss:hover { opacity: 1; }
+
+/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr) with equal-height
+ * cards, and a dedicated "from your village" 4th column. Collapses 4 → 2 → 1 at
+ * lg / md / sm so nothing overflows below 1024px. (W2 QA fix: Row 1 previously
+ * shipped as a 3-col responsive grid that folded the village pick into "up next".) */
+.home-row1 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 2rem 1.5rem;
+}
+@media (min-width: 768px) {
+  .home-row1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .home-row1 { grid-template-columns: 1.05fr 1fr 1fr 1.15fr; }
+}
+/* A column is a full-height flex stack: the eyebrow sits on top and the card grows to
+ * fill, so every card in the row bottom-aligns (equal height). A two-card column (the
+ * quick links + Hale tip) grows its first group and pins the tip below. */
+.home-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; height: 100%; }
+.home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; height: 100%; }
+.home-col-grow { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.home-card-fill { flex: 1 1 auto; display: flex; flex-direction: column; }
+
+/* ── Messages master–detail (§4.6/§4.8): a 320px note list beside a 1fr detail pane.
+ * Below lg the two panes stack (list, then the selected note) so nothing overflows.
+ * (W2 QA fix: Messages previously stayed a 2-col card grid.) ─────────────────── */
+.messages-md {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .messages-md { grid-template-columns: 320px minmax(0, 1fr); }
+}
+.messages-list { min-width: 0; }
+.messages-detail { min-width: 0; }
+.thread-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+}
+.thread-item:hover { background: var(--color-chrome); }
+.thread-item[aria-current="true"] {
+  background: var(--color-alt-surface);
+  border-color: var(--color-rule);
+}
+.thread-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+.thread-item-snippet {
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

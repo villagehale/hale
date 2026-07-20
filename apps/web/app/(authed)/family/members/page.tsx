@@ -23,17 +23,12 @@ export default async function FamilyMembersPage() {
 
   return (
     <div>
-      <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          your <span className="text-apricot-deep">Family.</span>
-        </h1>
-        <p className="meta mt-1 text-slate-green">your kids · your co-parent · your area</p>
-        {basics.foundingNumber !== null ? (
-          <p className="mt-4 inline-flex items-center rounded-full bg-apricot-tint px-4 py-1.5 font-display text-sm font-semibold text-spruce">
-            Founding family · #{basics.foundingNumber}
-          </p>
-        ) : null}
-      </header>
+      {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
+      {basics.foundingNumber !== null ? (
+        <p className="rise rise-1 mb-8 inline-flex items-center rounded-full bg-apricot-tint px-4 py-1.5 font-display text-sm font-semibold text-spruce">
+          Founding family · #{basics.foundingNumber}
+        </p>
+      ) : null}
 
       {/* ── Members ────────────────────────────────────────────────────── */}
       <section className="rise rise-2 mb-8">

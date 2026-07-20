@@ -175,7 +175,9 @@ describe('AskHaleThread — full surface', () => {
     // <output> has an implicit role=status) — and it is NOT the transcript wrapper
     // (which would re-announce the whole thread on every streamed token).
     expect((html.match(/aria-live="polite"/g) ?? []).length).toBe(1);
-    expect(html).toMatch(/<output[^>]*aria-live="polite"[^>]*class="sr-only"|<output[^>]*class="sr-only"[^>]*aria-live="polite"/);
+    expect(html).toMatch(
+      /<output[^>]*aria-live="polite"[^>]*class="sr-only"|<output[^>]*class="sr-only"[^>]*aria-live="polite"/,
+    );
     // The Hale answer bubble is inside the transcript, not inside a live region.
     const liveIdx = html.indexOf('aria-live="polite"');
     expect(html.indexOf('Around six months.')).toBeLessThan(liveIdx);
@@ -192,12 +194,14 @@ describe('AskHaleThread — full surface', () => {
     expect(populated).not.toContain('your conversation stays inside Hale');
   });
 
-  it('carries a page heading in BOTH the empty and the populated state', () => {
-    // The h1 must survive the empty → populated transition (the editorial invite is
-    // replaced by the transcript, but the document must never lose its heading).
+  it('renders no own <h1> — the app shell owns the sole /coach hero (§3.2)', () => {
+    // The thread must NOT emit its own heading: the shell's PageHero renders the one
+    // "Hale" hero for the /coach root (top bar + narrow-viewport stage). A heading here
+    // stacked two serif titles once a conversation existed and put two <h1>s in the
+    // a11y tree — the duplicate-hero regression. Zero own h1 in BOTH states.
     const h1 = /<h1[^>]*>/g;
-    expect((render(seed([])).match(h1) ?? []).length).toBe(1);
+    expect((render(seed([])).match(h1) ?? []).length).toBe(0);
     const populated = render(seed([msg({ id: 'a', content: 'when do solids start?' })]));
-    expect((populated.match(h1) ?? []).length).toBe(1);
+    expect((populated.match(h1) ?? []).length).toBe(0);
   });
 });

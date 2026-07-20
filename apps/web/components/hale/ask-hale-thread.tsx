@@ -943,10 +943,7 @@ function FullSurface({
   // Only PERSISTED turns (present in the server-rehydrated seed) carry a real
   // message id the audited delete can resolve; an in-session turn's client id would
   // 404. So the delete affordance is offered on the seeded set only.
-  const deletableIds = useMemo(
-    () => new Set(seed.timeline.map((m) => m.id)),
-    [seed.timeline],
-  );
+  const deletableIds = useMemo(() => new Set(seed.timeline.map((m) => m.id)), [seed.timeline]);
 
   // `.coach-surface` turns the stage into a non-scrolling flex column (globals.css
   // `:has`): this row fills the remaining height. On lg+ it is a two-column app view —
@@ -963,19 +960,10 @@ function FullSurface({
         onOpen={openConversation}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* The page's sole heading (mockup 9: "Hale" top-left). On the empty state
-            the large greeting is the visible hero, so the h1 stays visually hidden
-            there; once the conversation starts it becomes the visible page title —
-            but there is always exactly ONE h1, so the document is never headingless. */}
-        <h1
-          className={
-            isEmpty
-              ? 'sr-only'
-              : 'mb-3 font-display text-[1.75rem] lg:text-[2rem] font-semibold leading-tight'
-          }
-        >
-          Hale
-        </h1>
+        {/* No own heading here: the app shell's PageHero (§3.2) renders the sole "Hale"
+            hero for the /coach root, in the desktop top bar and the narrow-viewport
+            stage alike. A second heading would stack two serif titles once a
+            conversation exists and duplicate the page title in the a11y tree. */}
         {/* Quiet header — the conversation's scope + a secondary search, never a box
             stacked above the chat. Hidden until there's history to scope or search. */}
         {!isEmpty ? (

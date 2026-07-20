@@ -6,14 +6,7 @@ export default async function SavedPage() {
 
   return (
     <div>
-      {/* ── Headline — the modest, app-like header the live pages share. ── */}
-      <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">saved</h1>
-        <p className="meta mt-1 text-slate-green">
-          Activities you saved for later — private to you, never enrolled or sent for approval.
-        </p>
-      </header>
-
+      {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
       <div className="rise rise-2">
         {candidates.length > 0 ? (
           <VillageFeed candidates={candidates} />

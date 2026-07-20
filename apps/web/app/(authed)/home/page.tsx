@@ -1,20 +1,20 @@
-import { Bell, ChevronRight, Files, MapPin, Route, Ruler, Sparkles } from 'lucide-react';
+import { Files, Route, Ruler, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Route as NextRoute } from 'next';
 import Link from 'next/link';
 import { AskBar } from '~/components/hale/ask-bar';
+import { HaleTip } from '~/components/hale/hale-tip';
 import { HomeChildPanels, type HomeChildSnapshot } from '~/components/hale/home-child-panels';
-import { LongDate } from '~/components/hale/long-date';
+import { Mascot } from '~/components/hale/mascot';
 import { QuickLog } from '~/components/hale/quick-log';
 import { Icon } from '~/components/ui/icon';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
-import { loadViewerName } from '~/lib/family';
-import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
-import { homeGreeting, homeStatCells } from '~/lib/home/greeting';
+import { homeStatCells } from '~/lib/home/greeting';
 import { loadVillageFeed } from '~/lib/village/feed';
 import type { VillageCandidateView } from '~/lib/village/mappers';
+import { endorsementLabel } from '~/lib/village/social-proof';
 
 const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
   newborn: 'newborn',
@@ -48,14 +48,16 @@ function villageWhen(candidate: VillageCandidateView): string | null {
   return null;
 }
 
-/** The top ranked village pick, or an honest "quiet for now" when the feed is
- * empty. Title + when (cadence / calendar day) only — never a distance (village
- * candidates carry none) and never a fabricated date (rule #1). */
+/** The top ranked village pick (Row-1 col 4, design handoff §4.2), or an honest
+ * "quiet for now" when the feed is empty. Title + when (cadence / calendar day) +
+ * the REAL aggregate endorsement count ("loved by N families near you", 2+ only —
+ * never a fabricated "12 families going", rule #1) + a link to the full village. */
 function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) {
+  const proof = topPick ? endorsementLabel(topPick.endorsementCount) : null;
   return (
-    <div>
-      <p className="eyebrow mb-3 text-faded-sage">from your village</p>
-      <div className="card">
+    <div className="rise rise-6 home-col">
+      <p className="eyebrow text-faded-sage">from your village</p>
+      <div className="card home-card-fill">
         {topPick ? (
           <>
             <p className="font-display text-[1.05rem] leading-snug text-spruce" data-hale-pii>
@@ -64,8 +66,9 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
             {villageWhen(topPick) ? (
               <p className="meta mt-1 text-slate-green">{villageWhen(topPick)}</p>
             ) : null}
+            {proof ? <p className="meta mt-2 text-faded-sage">{proof}</p> : null}
             <Link href="/village" className="link mt-3 inline-block">
-              see your village &rarr;
+              view all activities &rarr;
             </Link>
           </>
         ) : (
@@ -82,13 +85,6 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
   );
 }
 
-/** The warm front door: "good evening, Alex." — the time-of-day phrase warmed with
- * the signed-in viewer's first name. In preview (auth off) there is no session, so
- * the greeting degrades to the bare phrase. Mirrors the mobile Home hero. */
-async function viewerName(): Promise<string | null> {
-  return loadViewerName();
-}
-
 interface QuickActionRow {
   icon: LucideIcon;
   label: string;
@@ -103,37 +99,21 @@ const QUICK_ACTIONS: QuickActionRow[] = [
 ];
 
 export default async function HomePage() {
-  const [children, stats, name, basics, feed, pending] = await Promise.all([
+  const [children, stats, feed] = await Promise.all([
     loadCompanion(),
     loadHomeStats(),
-    viewerName(),
-    loadFamilyBasics(),
     loadVillageFeed(),
-    loadPendingApprovals(),
   ]);
 
-  const greeting = homeGreeting(name);
-  const area = basics.location.city;
-  const pendingCount = pending.length;
+  // The greeting hero + the location/bell now live in the shell top bar (design
+  // handoff §3.2), so this page carries no header of its own.
   const topPick = feed.candidates[0] ?? null;
 
   if (children.length === 0) {
     return (
       <div>
-        <div className="page-corner">
-          <span className="ml-auto">
-            <LongDate />
-          </span>
-        </div>
-
-        <header className="rise rise-1 mb-10 lg:mb-14">
-          <h1 className="font-display">
-            {greeting} <span aria-hidden>👋</span>
-          </h1>
-          <p className="meta mt-3 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
-        </header>
-
         <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
+          <Mascot pose="wave" size={112} className="mx-auto" />
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
             tell Hale about your kid.
           </p>
@@ -167,44 +147,8 @@ export default async function HomePage() {
 
   return (
     <div>
-      {/* ── Header — greeting + the family's coarse area as a static location chip,
-       * and a bell into Approvals with an orange dot only when a decision waits. ── */}
-      <header className="rise rise-1 mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-            {greeting} <span aria-hidden>👋</span>
-          </h1>
-          <p className="meta mt-1 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {area ? (
-            <span className="pill inline-flex items-center gap-1.5 text-faded-sage" data-hale-pii>
-              <Icon as={MapPin} size={14} />
-              {area}
-            </span>
-          ) : null}
-          <Link
-            href="/approvals"
-            aria-label={
-              pendingCount > 0
-                ? `approvals — ${pendingCount} waiting`
-                : 'approvals'
-            }
-            className="relative inline-flex size-10 items-center justify-center rounded-full text-spruce transition-colors hover:bg-oat"
-          >
-            <Icon as={Bell} size={20} />
-            {pendingCount > 0 ? (
-              <span
-                aria-hidden
-                className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-apricot ring-2 ring-linen"
-              />
-            ) : null}
-          </Link>
-        </div>
-      </header>
-
-      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as three
-       * bordered action cards. ─────────────────────────────────────────────── */}
+      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as
+       * bordered action cards. The greeting hero lives in the shell top bar. ─── */}
       <section className="rise rise-2 mb-4">
         <QuickLog
           kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))}
@@ -217,31 +161,33 @@ export default async function HomePage() {
         <AskBar />
       </section>
 
-      {/* ── The three columns: today's snapshot / up next + village / quick actions.
-       * Each grid item is one column stack; collapses 3 → 2 → 1 at lg / md / sm. ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-start gap-x-6 gap-y-8">
-        <HomeChildPanels
-          kids={snapshots}
-          statCells={homeStatCells(stats)}
-          villageSlot={<VillagePickCard topPick={topPick} />}
-        />
+      {/* ── Row 1 (design handoff §4.2): the row-of-4 — today's snapshot / up next /
+       * quick links + tip / from your village — at 1.05fr 1fr 1fr 1.15fr, equal-height
+       * cards. Collapses 4 → 2 → 1 at lg / md / sm (.home-row1). ── */}
+      <div className="home-row1">
+        <HomeChildPanels kids={snapshots} statCells={homeStatCells(stats)} />
 
-        <div className="rise rise-5">
-          <p className="eyebrow mb-3 text-faded-sage">quick actions</p>
-          <nav className="card overflow-hidden px-0 py-0">
-            {QUICK_ACTIONS.map((action) => (
-              <Link
-                key={action.label}
-                href={action.href}
-                className="flex items-center gap-3 border-b border-rule px-[clamp(1.25rem,2vw,1.75rem)] py-3.5 text-spruce transition-colors last:border-b-0 hover:bg-linen"
-              >
-                <Icon as={action.icon} size={18} className="text-slate-green" />
-                <span className="flex-1 font-medium">{action.label}</span>
-                <Icon as={ChevronRight} size={18} className="text-faded-sage" />
-              </Link>
-            ))}
-          </nav>
+        <div className="rise rise-5 home-col-stack">
+          <div className="home-col-grow">
+            <p className="eyebrow text-faded-sage">quick links</p>
+            {/* 2×2 tile grid (design handoff §4.2) — each a warm tile into a real
+             * surface; stretches to fill the card. */}
+            <div className="card home-card-fill">
+              <div className="grid flex-1 grid-cols-2 gap-3">
+                {QUICK_ACTIONS.map((action) => (
+                  <Link key={action.label} href={action.href} className="quick-link-tile">
+                    <Icon as={action.icon} size={20} className="text-slate-green" />
+                    <span className="font-medium leading-snug">{action.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <HaleTip />
         </div>
+
+        <VillagePickCard topPick={topPick} />
       </div>
     </div>
   );

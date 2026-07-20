@@ -54,13 +54,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          your <span className="text-apricot-deep">Account.</span>
-        </h1>
-        <p className="meta mt-1 text-slate-green">Manage your personal account and preferences.</p>
-      </header>
-
+      {/* The page title + subtitle live in the shell top bar (design handoff §3.2). */}
       <div className="rise rise-2 grid grid-cols-1 gap-8 lg:grid-cols-[13rem_1fr] lg:gap-12">
         <nav
           aria-label="Account sections"

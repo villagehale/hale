@@ -1,13 +1,9 @@
-import { Bell, MapPin } from 'lucide-react';
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { VillageBoard } from '~/components/hale/village-board';
 import { VillageFeedSkeleton, VillageSearchRun } from '~/components/hale/village-feed-section';
 import { VillageSeasonSelector } from '~/components/hale/village-season-selector';
-import { Icon } from '~/components/ui/icon';
-import { loadPendingApprovals } from '~/lib/dashboard/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { loadCuratedResources } from '~/lib/village/curated-resources';
@@ -29,56 +25,20 @@ export default async function VillagePage({
   const { season } = await searchParams;
   const activeSeason = seasonFromParam(season);
 
-  // The board reads the feed (a pure DB round-trip) directly so the header can show
-  // the family's coarse area chip and the two columns share one load. The standing
-  // weekly routine belongs to the standing feed, not a forward-looking season
-  // search — so its loadVillage read is skipped on a search view.
-  const [feed, resources, pending, { routine }] = await Promise.all([
+  // The board reads the feed (a pure DB round-trip) directly so the two columns share
+  // one load. The standing weekly routine belongs to the standing feed, not a
+  // forward-looking season search — so its loadVillage read is skipped on a search
+  // view. The page title + the coarse-area location pill now live in the shell top
+  // bar (design handoff §3.2), so this page carries no header of its own.
+  const [feed, resources, { routine }] = await Promise.all([
     loadVillageFeed(),
     loadCuratedResources(),
-    loadPendingApprovals(),
     activeSeason ? Promise.resolve({ routine: null }) : loadVillage(),
   ]);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
-  const pendingCount = pending.length;
 
   return (
     <div>
-      {/* ── Header — title + tagline, the family's coarse area as a static chip,
-       * and a bell into Approvals with an orange dot only when a decision waits. ── */}
-      <header className="rise rise-1 mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">Village</h1>
-          <p className="meta mt-1 text-slate-green">
-            Activities, events &amp; resources in your area.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {feed.areaCoarse ? (
-            <span
-              className="pill inline-flex items-center gap-1.5 text-faded-sage"
-              data-hale-pii
-            >
-              <Icon as={MapPin} size={14} />
-              {feed.areaCoarse}
-            </span>
-          ) : null}
-          <Link
-            href="/approvals"
-            aria-label={pendingCount > 0 ? `approvals — ${pendingCount} waiting` : 'approvals'}
-            className="relative inline-flex size-10 items-center justify-center rounded-full text-spruce transition-colors hover:bg-oat"
-          >
-            <Icon as={Bell} size={20} />
-            {pendingCount > 0 ? (
-              <span
-                aria-hidden
-                className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-apricot ring-2 ring-linen"
-              />
-            ) : null}
-          </Link>
-        </div>
-      </header>
-
       {/* ── The board (search + filter pills + activities/resources columns), or a
            season search RUN. The run streams behind Suspense. ─────────────────── */}
       {activeSeason ? (
