@@ -2,14 +2,14 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
-import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 
+import { MagicLinkForm } from '@/components/hale/magic-link-form';
+import { MagicLinkSent } from '@/components/hale/magic-link-sent';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
 import { Icon } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
@@ -18,8 +18,7 @@ import { useAuth } from '@/lib/auth';
 import {
   exchangeAppleIdentityToken,
   exchangeGoogleIdToken,
-  signInWithPassword,
-  signUpWithPassword,
+  requestMagicLink,
 } from '@/lib/auth-api';
 import { openPolicy } from '@/lib/policy-links';
 import { setPostAuthHold } from '@/lib/post-auth-hold';
@@ -147,12 +146,10 @@ function AppleButton({
  * the draft before any provider fires, so the resume effect's submitOnboarding always
  * carries a real consent (the server's tos_required gate + the 4 provisioning consent
  * records are untouched). The auth logic itself — Google id-token, Apple identity
- * token, email sign-up + verify — is unchanged.
+ * token, email magic-link — is unchanged.
  */
 export default function CreateAccountScreen() {
   const { draft, update } = useOnboardingDraft();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -186,23 +183,22 @@ export default function CreateAccountScreen() {
     }
   };
 
-  const onEmailSignUp = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const trimmed = email.trim();
-      await signUpWithPassword(trimmed, password);
-      // The draft stays saved — it's submitted after the user verifies + signs in
-      // (the resume effect in the root layout).
-      setSentTo(trimmed);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (sentTo) return <VerifyEmail email={sentTo} password={password} />;
+  // The draft stays saved on disk — it's submitted after the parent taps the emailed
+  // magic link, which deep-links back into /magic-link and the root layout's resume
+  // effect provisions the family. So this step only has to confirm the send.
+  if (sentTo) {
+    return (
+      <Screen className="justify-center">
+        <MagicLinkSent
+          email={sentTo}
+          onResend={async () => {
+            await requestMagicLink(sentTo);
+          }}
+          onUseDifferentEmail={() => setSentTo(null)}
+        />
+      </Screen>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -275,46 +271,20 @@ export default function CreateAccountScreen() {
           ) : (
             <Button label="Google sign-up unavailable" variant="secondary" disabled />
           )}
-        </View>
-
-        <View className="flex-row items-center gap-3">
-          <View className="h-px flex-1 bg-rule" />
-          <AppText variant="meta">or with email</AppText>
-          <View className="h-px flex-1 bg-rule" />
-        </View>
-
-        <View className="gap-3">
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            textContentType="emailAddress"
-          />
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Choose a password"
-            secureTextEntry
-            autoCapitalize="none"
-            autoComplete="password-new"
-            textContentType="newPassword"
-          />
           {error ? (
             <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
               {error}
             </AppText>
           ) : null}
-          <Button
-            label={busy ? 'Creating…' : 'Continue with Email'}
-            onPress={onEmailSignUp}
-            disabled={!acknowledged || busy || !email.trim() || !password}
-          />
         </View>
+
+        <View className="flex-row items-center gap-3">
+          <View className="h-px flex-1 bg-rule" />
+          <AppText variant="meta">or</AppText>
+          <View className="h-px flex-1 bg-rule" />
+        </View>
+
+        <MagicLinkForm disabled={!acknowledged || busy} onSent={setSentTo} />
 
         <View className="gap-2.5 pt-1">
           <TrustLine color={trust} label="Every action requires approval" />
@@ -338,135 +308,5 @@ function TrustLine({ color, label }: { color: string; label: string }) {
         {label}
       </AppText>
     </View>
-  );
-}
-
-// Under the auth route's 20-per-minute IP cap: a 6s poll is 10/min, leaving
-// headroom for the manual button and the resend.
-const VERIFY_POLL_MS = 6000;
-const RESEND_COOLDOWN_MS = 30_000;
-
-/**
- * The "check your email" state after an email sign-up — with the dead end
- * removed. The just-typed credentials are still in memory (never persisted), so
- * while the parent taps the emailed link this screen quietly retries sign-in
- * every few seconds; the moment verification lands, the session mints and the
- * root layout's gate + resume effect carry them into the app with their saved
- * setup. An unverified attempt is a generic 401 by design (anti-enumeration),
- * so poll failures are silent — the credentials were accepted at sign-up
- * seconds ago. "Resend email" re-POSTs sign-up, which re-fires the
- * verification email for an unverified account (same anti-enumeration
- * response). If the app is killed first, the old path still works: sign in
- * manually, the draft resumes.
- */
-function VerifyEmail({ email, password }: { email: string; password: string }) {
-  const accent = useMeadowColor('accentFill');
-  const { signIn } = useAuth();
-  const [checking, setChecking] = useState(false);
-  const [notYet, setNotYet] = useState(false);
-  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
-  const attempting = useRef(false);
-
-  const tryVerifiedSignIn = useCallback(async (): Promise<boolean> => {
-    if (attempting.current) return false;
-    attempting.current = true;
-    try {
-      const { token } = await signInWithPassword(email, password);
-      setPostAuthHold(true);
-      await signIn(token);
-      return true;
-    } catch {
-      // Generic 401 — verification hasn't landed yet. Keep waiting.
-      return false;
-    } finally {
-      attempting.current = false;
-    }
-  }, [email, password, signIn]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      void tryVerifiedSignIn();
-    }, VERIFY_POLL_MS);
-    return () => clearInterval(timer);
-  }, [tryVerifiedSignIn]);
-
-  const onManualCheck = async () => {
-    setChecking(true);
-    setNotYet(false);
-    const ok = await tryVerifiedSignIn();
-    if (!ok) setNotYet(true);
-    setChecking(false);
-  };
-
-  const onResend = async () => {
-    setResendState('sending');
-    try {
-      await signUpWithPassword(email, password);
-      setResendState('sent');
-    } catch {
-      setResendState('idle');
-      return;
-    }
-    setTimeout(() => setResendState('idle'), RESEND_COOLDOWN_MS);
-  };
-
-  return (
-    <Screen className="justify-center gap-6">
-      <View className="items-center gap-5">
-        <View className="h-20 w-20 items-center justify-center rounded-full bg-accent-tint">
-          <Icon name="mail" size={32} color={accent} />
-        </View>
-        <View className="items-center gap-3">
-          <AppText variant="display" className="text-center">
-            Verify your email
-          </AppText>
-          <AppText variant="body" className="max-w-[320px] text-center">
-            We sent a link to {email}. Tap it to confirm — the moment it&rsquo;s verified,
-            you&rsquo;ll be signed in here automatically. Your setup is saved.
-          </AppText>
-        </View>
-      </View>
-      <View className="gap-3">
-        <Button
-          label={checking ? 'Checking…' : "I've tapped the link"}
-          onPress={onManualCheck}
-          disabled={checking}
-        />
-        {notYet ? (
-          <AppText
-            variant="meta"
-            className="text-center text-ink-3"
-            accessibilityLiveRegion="polite"
-          >
-            Not verified yet — tap the link in your email first. We&rsquo;ll keep checking.
-          </AppText>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Resend the verification email"
-          onPress={onResend}
-          disabled={resendState !== 'idle'}
-          className="items-center py-1 active:opacity-70"
-        >
-          <AppText variant="meta" className="text-ink-3">
-            {resendState === 'sent'
-              ? 'Sent — check your inbox'
-              : resendState === 'sending'
-                ? 'Sending…'
-                : 'Resend the email'}
-          </AppText>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Use a different email"
-          onPress={() => router.back()}
-          className="items-center py-1 active:opacity-70"
-        >
-          <AppText variant="meta" className="text-ink-3">
-            Use a different email
-          </AppText>
-        </Pressable>
-      </View>
-    </Screen>
   );
 }
