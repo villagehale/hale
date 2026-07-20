@@ -8,6 +8,8 @@ import type { HistoryView } from '~/lib/dashboard/history';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
 import type { MessageView } from '~/lib/messages/mappers';
+import type { ConversationSummary } from '~/lib/coach/history';
+import type { TimelineMessage } from '~/lib/coach/conversation';
 import type { ScopeChild } from '~/components/hale/child-scope-core';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import type { PlanChildItem } from '~/lib/plan/week';
@@ -169,6 +171,21 @@ export interface NoteThreadTurn {
 export interface MobileNoteThreadResponse {
   conversationId: string | null;
   turns: NoteThreadTurn[];
+}
+
+/** GET /api/mobile/conversations — the family's Ask sessions for the native history
+ * rail, newest-active first. Each summary's title is derived server-side (rule #1:
+ * never the raw transcript); the reopen route serves the turns. */
+export interface MobileConversationsResponse {
+  conversations: ConversationSummary[];
+}
+
+/** GET /api/mobile/conversations/:id — one Ask session's ordered transcript, reused
+ * from the timeline shape (id/role/content/childId/topic/createdAt). Family-scoped:
+ * an unknown or foreign id is a 404, never an empty body. */
+export interface MobileConversationTranscriptResponse {
+  conversationId: string;
+  turns: TimelineMessage[];
 }
 
 /** The native Plan surface (More → Plan & billing): the family's current tier + the
