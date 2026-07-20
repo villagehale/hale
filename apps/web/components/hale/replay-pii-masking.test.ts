@@ -103,6 +103,7 @@ describe('account chip (every authed page) masks the parent identity', () => {
     h(AccountMenuView, {
       open: false,
       parentName: PARENT,
+      planTier: 'free',
       canSignOut: true,
       menuId: 'm',
       onToggle: () => {},

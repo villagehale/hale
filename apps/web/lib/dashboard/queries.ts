@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
@@ -89,8 +90,12 @@ const EMPTY_FAMILY_BASICS: FamilyBasicsView = {
  * plan tier and its children (with date_of_birth so an edit form prefills, and the
  * live-derived stage). Same empty-state degradation as the other reads: no DB or no
  * resolved family → empty basics.
+ *
+ * Wrapped in React `cache()` so the authed layout (account chip + child switcher +
+ * top-bar location) and the page rendered inside it share one families+children read
+ * per request instead of each firing the pair.
  */
-export function loadFamilyBasics(): Promise<FamilyBasicsView> {
+export const loadFamilyBasics = cache((): Promise<FamilyBasicsView> => {
   return readForFamily(async (database, familyId) => {
     const [family] = await database
       .select({
@@ -122,7 +127,7 @@ export function loadFamilyBasics(): Promise<FamilyBasicsView> {
 
     return toFamilyBasics(family ?? null, children);
   }, EMPTY_FAMILY_BASICS);
-}
+});
 
 export function loadFamilyTimezone(): Promise<string> {
   return readForFamily(readFamilyTimezone, DEFAULT_TIMEZONE);

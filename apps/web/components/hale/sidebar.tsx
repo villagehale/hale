@@ -1,6 +1,7 @@
 'use client';
 
 import type { Route } from 'next';
+import type { PlanTier } from '@hale/types';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -13,6 +14,8 @@ import {
 import { Icon } from '~/components/ui/icon';
 import { AccountMenu } from '~/components/hale/account-menu';
 import { useShell } from '~/components/hale/app-shell';
+import { ChildSwitcher } from '~/components/hale/child-switcher';
+import type { SwitcherChild } from '~/components/hale/child-switcher-view';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { PRIMARY_NAV } from '~/components/hale/nav';
 
@@ -51,10 +54,16 @@ export function Sidebar({
   authControls = false,
   signedIn = false,
   parentName = null,
+  planTier = 'free',
+  kids = [],
 }: {
   authControls?: boolean;
   signedIn?: boolean;
   parentName?: string | null;
+  /** The family's plan, for the account chip's secondary line. */
+  planTier?: PlanTier;
+  /** The family's children, for the foot child switcher. */
+  kids?: SwitcherChild[];
 }) {
   const pathname = usePathname();
   const { collapsed, toggleCollapsed, closeDrawer } = useShell();
@@ -93,8 +102,6 @@ export function Sidebar({
         </div>
       </div>
 
-      <span className="sidebar-tagline meta">the village your family lost</span>
-
       <nav className="sidebar-nav" aria-label="primary">
         {PRIMARY_NAV.map((item) => (
           <NavLink
@@ -108,29 +115,36 @@ export function Sidebar({
         ))}
       </nav>
 
-      {/* The account area: an identity chip (parent + family) whose menu holds the
-       * destinations that aren't daily stops — Settings, History, Appearance — and
-       * Sign out, an account action, below a divider. The signed-out-with-auth case
-       * shows a plain sign-in instead. */}
+      {/* The foot cluster (design handoff §3.1): a child switcher, a divider, then
+       * the account chip. The chip's menu holds Settings + Appearance and — below a
+       * divider — Sign out, an account action. The signed-out-with-auth case shows a
+       * plain sign-in instead. */}
       <div className="sidebar-foot">
-        <div className="rule" />
         {showAccount ? (
-          <AccountMenu
-            parentName={parentName}
-            canSignOut={authControls && signedIn}
-          />
+          <>
+            <ChildSwitcher kids={kids} />
+            <div className="rule" />
+            <AccountMenu
+              parentName={parentName}
+              planTier={planTier}
+              canSignOut={authControls && signedIn}
+            />
+          </>
         ) : (
-          <div className="sidebar-foot-controls">
-            <Link
-              href="/sign-in"
-              className="btn-primary auth-control"
-              onClick={closeDrawer}
-              title="sign in"
-            >
-              <Icon as={LogIn} size={18} className="auth-control-icon" />
-              <span className="nav-label">sign in</span>
-            </Link>
-          </div>
+          <>
+            <div className="rule" />
+            <div className="sidebar-foot-controls">
+              <Link
+                href="/sign-in"
+                className="btn-primary auth-control"
+                onClick={closeDrawer}
+                title="sign in"
+              >
+                <Icon as={LogIn} size={18} className="auth-control-icon" />
+                <span className="nav-label">sign in</span>
+              </Link>
+            </div>
+          </>
         )}
       </div>
     </aside>

@@ -1,24 +1,28 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+import type { PlanTier } from '@hale/types';
 import { AccountMenuView } from '~/components/hale/account-menu-view';
 import { useShell } from '~/components/hale/app-shell';
 import { signOutAction } from '~/lib/auth-actions';
 
 /**
- * The account chip at the foot of the sidebar — the signed-in parent's name over a
- * "View profile" line into the account page. Clicking it opens the account menu;
- * Escape and a click outside dismiss it. The markup lives in AccountMenuView; this
- * wrapper owns the open-state and dismissal.
+ * The account chip at the foot of the sidebar — the signed-in parent's name over the
+ * family's plan label. Clicking it opens the account menu; Escape and a click outside
+ * dismiss it. The markup lives in AccountMenuView; this wrapper owns the open-state
+ * and dismissal.
  *
  * Falls back to a neutral name when the Google profile carries none yet (onboarding
  * incomplete): the chip never shows an empty identity.
  */
 export function AccountMenu({
   parentName,
+  planTier = 'free',
   canSignOut = false,
 }: {
   parentName: string | null;
+  /** The family's plan; defaults to free (the EMPTY_FAMILY_BASICS default). */
+  planTier?: PlanTier;
   /** Sign out only appears for a real session — never in the dev preview. */
   canSignOut?: boolean;
 }) {
@@ -55,6 +59,7 @@ export function AccountMenu({
     <AccountMenuView
       open={open}
       parentName={parentName}
+      planTier={planTier}
       canSignOut={canSignOut}
       menuId={menuId}
       onToggle={() => setOpen((prev) => !prev)}

@@ -2,9 +2,9 @@ import type { Route } from 'next';
 import {
   History,
   House,
-  MessageCircleHeart,
   Settings,
   Sparkles,
+  User,
   Users,
   UsersRound,
 } from 'lucide-react';
@@ -25,11 +25,11 @@ export interface NavItem {
 }
 
 export const PRIMARY_NAV = [
-  { href: '/home', label: 'home', icon: House },
-  { href: '/companion', label: 'companion', icon: Sparkles },
-  { href: '/coach', label: 'Hale', icon: MessageCircleHeart },
-  { href: '/village', label: 'village', icon: Users },
-  { href: '/family', label: 'family', icon: UsersRound },
+  { href: '/home', label: 'Home', icon: House },
+  { href: '/companion', label: 'Companion', icon: User },
+  { href: '/coach', label: 'Ask', icon: Sparkles },
+  { href: '/village', label: 'Village', icon: Users },
+  { href: '/family', label: 'Family', icon: UsersRound },
 ] as const satisfies ReadonlyArray<NavItem>;
 
 export const HISTORY_NAV = {

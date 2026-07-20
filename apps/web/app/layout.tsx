@@ -1,14 +1,25 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Instrument_Sans, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
 
-const inter = Inter({
+// Body / UI face — Instrument Sans (design handoff §2.2). Exposed as --font-sans,
+// which globals.css maps to --font-body.
+const instrumentSans = Instrument_Sans({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
   weight: ['400', '500', '600', '700'],
+});
+
+// Display / headings face — Source Serif 4, used for hero H1s, page titles, and the
+// "Hale" wordmark only (globals.css maps it to --font-display).
+const sourceSerif = Source_Serif_4({
+  subsets: ['latin'],
+  variable: '--font-serif',
+  display: 'swap',
+  weight: ['500', '600'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -25,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#003153',
+  themeColor: '#1B2160',
 };
 
 // Runs before first paint: sets the .dark class from the stored preference (so the
@@ -40,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${instrumentSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <head>

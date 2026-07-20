@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { AccountMenuView } from './account-menu-view';
 
 /**
- * The account chip shows the signed-in parent's name over a "View profile" line
- * into the account page. Its menu holds the destinations + appearance, with Sign
- * out — an account action — only for a real session. Rendered to static markup (the
- * stateful wrapper owns open-state and dismissal; this view takes `open` as a
- * prop, so "toggles open/closed" is testable as "renders the menu only when
- * open"). Same render-to-HTML approach as the village feed test.
+ * The account chip shows the signed-in parent's name over the family's plan label
+ * (per the desktop handoff — "Free plan" / "Plus" / "Family"). Its menu holds the
+ * destinations + appearance, with Sign out — an account action — only for a real
+ * session. Rendered to static markup (the stateful wrapper owns open-state and
+ * dismissal; this view takes `open` as a prop, so "toggles open/closed" is testable
+ * as "renders the menu only when open"). Same render-to-HTML approach as the village
+ * feed test.
  */
 function render(
   overrides: Partial<Parameters<typeof AccountMenuView>[0]> = {},
@@ -18,6 +19,7 @@ function render(
     createElement(AccountMenuView, {
       open: false,
       parentName: 'Maya',
+      planTier: 'free',
       canSignOut: true,
       menuId: 'acct',
       onToggle: () => {},
@@ -29,11 +31,17 @@ function render(
 }
 
 describe('AccountMenuView', () => {
-  it('shows the parent name over a View profile line on the chip', () => {
+  it('shows the parent name over the plan label on the chip', () => {
     const html = render();
     expect(html).toContain('Maya');
-    expect(html).toContain('View profile');
+    expect(html).toContain('Free plan');
+    expect(html).not.toContain('View profile');
     expect(html).toContain('aria-haspopup="menu"');
+  });
+
+  it('shows the tier name as the plan label for a paid tier', () => {
+    expect(render({ planTier: 'plus' })).toContain('Plus');
+    expect(render({ planTier: 'family' })).toContain('Family');
   });
 
   it('falls back to a neutral name when identity is absent (onboarding incomplete)', () => {
@@ -48,14 +56,15 @@ describe('AccountMenuView', () => {
     expect(html).not.toContain('sign out');
   });
 
-  it('opens to settings, history, appearance, and sign out when open', () => {
+  it('opens to settings, appearance, and sign out when open (history moved out per the desktop handoff)', () => {
     const html = render({ open: true });
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain('role="menu"');
     expect(html).toContain('settings');
-    expect(html).toContain('history');
     expect(html).toContain('appearance');
     expect(html).toContain('sign out');
+    // History is no longer in the account menu (it stays reachable from Approvals).
+    expect(html).not.toContain('history');
     // The theme control rides in the menu (its three options).
     expect(html).toContain('aria-label="Color theme"');
   });
