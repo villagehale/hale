@@ -50,7 +50,7 @@ export type RootRoute = (typeof ROOT_ROUTES)[number];
  * are real sibling routes in this App Router build (the prototype's stack is real
  * navigation here), so each maps to the tab it belongs under.
  */
-const DRILL_HEROES: Record<string, DrillHero> = {
+export const DRILL_HEROES: Record<string, DrillHero> = {
   '/approvals': { crumb: 'Family', title: 'Approvals', backHref: '/family' },
   '/messages': { crumb: 'Family', title: 'Messages', backHref: '/family' },
   // This repo's /plan is the week-ahead activity plan (not subscription/billing —

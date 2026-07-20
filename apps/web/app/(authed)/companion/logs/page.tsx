@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { scopeChildren } from '~/components/hale/child-scope-core';
 import { LogsBrowser } from '~/components/hale/logs-browser';
 import { PageCorner } from '~/components/hale/page-corner';
@@ -27,30 +26,9 @@ export default async function CompanionLogsPage() {
     <div>
       <PageCorner section="companion · logs" />
 
-      <header className="rise rise-1 mb-12 lg:mb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12">
-          <div className="lg:col-span-3">
-            <span className="eyebrow">your logs</span>
-            <p className="meta mt-2 text-slate-green">feeds · naps · milestones</p>
-          </div>
-          <div className="lg:col-span-9 space-y-4">
-            <h1 className="font-display">
-              every note, <span className="text-apricot-deep">gathered</span>.
-            </h1>
-            <Link href="/companion" className="link">
-              ← back to your companion
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <section className="rise rise-3">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-6 lg:gap-x-12 border-t border-rule pt-10">
-          <div className="lg:col-span-3" />
-          <div className="lg:col-span-9">
-            <LogsBrowser initial={initial} kids={kids} units={units} />
-          </div>
-        </div>
+      {/* Title + back-to-Companion breadcrumb live in the shell top bar (§3.2). */}
+      <section className="rise rise-2">
+        <LogsBrowser initial={initial} kids={kids} units={units} />
       </section>
     </div>
   );
