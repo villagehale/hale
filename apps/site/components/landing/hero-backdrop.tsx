@@ -2,39 +2,43 @@ import Image from 'next/image';
 import village from '~/assets/village-illustration-alpha.png';
 
 /**
- * Full-bleed hero backdrop. The village illustration (transparent surround) is
- * staged over a warm cream gradient so it reads as one scene, with a slow
- * Ken-Burns drift for life and a navy-tinted gradient at the bottom so the
- * bottom-anchored hero copy stays legible (WCAG-AA over the lower band).
+ * Full-viewport hero backdrop. The village illustration is a SQUARE artwork with
+ * a transparent surround, so it must be STAGED (contained, crisp, anchored to
+ * the scene's upper right) over the warm gradient — never object-cover'd
+ * full-bleed, which upscales it into blur and shows mostly its transparent
+ * margins. A slow Ken-Burns drift on the wrapper gives it life; the navy
+ * bottom band keeps the bottom-anchored copy legible (WCAG-AA over the band).
  *
  * MEDIA SWAP — promoting the hero to a real film/panorama is a one-file change:
- * drop `hero.mp4` (+ `hero-poster.png`) or `hero-panorama.png` into ~/assets and
- * swap ONLY the <Image> below for the <video> in the commented slot. Keep
- * muted + loop + playsInline + a poster (the poster doubles as the
- * reduced-motion still frame). The cream base, Ken-Burns class, and navy overlay
- * all stay exactly as they are.
+ * drop `hero.mp4` (+ `hero-poster.png`) or a wide `hero-panorama.png` into
+ * ~/assets and replace the staged <div> below with the commented full-bleed
+ * slot (a true panorama IS meant to be object-cover'd). Keep muted + loop +
+ * playsInline + poster (the poster doubles as the reduced-motion still frame).
  */
 export function HeroBackdrop() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-      {/* warm cream stage — fills where the illustration is transparent */}
+      {/* warm stage — golden sky falling into warm white */}
       <div
         className="absolute inset-0"
-        style={{ background: 'linear-gradient(180deg, #F7F1E6 0%, #FDFCFA 62%)' }}
+        style={{ background: 'linear-gradient(180deg, #F2E9D8 0%, #FBF6EC 48%, #FDFCFA 100%)' }}
       />
 
-      <Image
-        src={village}
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="hale-ken-burns object-cover object-center"
-      />
+      {/* staged village art — contained (crisp), anchored upper-right of the
+          scene on desktop, centered above the copy band on small screens */}
+      <div className="hale-ken-burns absolute inset-x-[-6%] top-[4%] bottom-[34%] md:inset-x-auto md:right-[2%] md:top-[6%] md:bottom-[22%] md:w-[56%]">
+        <Image
+          src={village}
+          alt=""
+          fill
+          priority
+          quality={90}
+          sizes="(min-width: 768px) 56vw, 112vw"
+          className="object-contain object-bottom md:object-right-bottom"
+        />
+      </div>
 
-      {/* ── MEDIA SWAP SLOT ──────────────────────────────────────────────────
-          When a real hero film lands, delete the <Image> above and use:
-
+      {/* ── MEDIA SWAP SLOT (full-bleed panorama/film only) ──────────────────
           <video
             className="hale-ken-burns absolute inset-0 h-full w-full object-cover object-center"
             autoPlay
@@ -47,23 +51,22 @@ export function HeroBackdrop() {
           </video>
           ──────────────────────────────────────────────────────────────────── */}
 
-      {/* navy-tinted legibility overlay — transparent up top, deepest at the
-          bottom band where the copy sits */}
+      {/* navy-tinted legibility band — transparent above the art, deepest where
+          the bottom-anchored copy sits */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            'linear-gradient(to top, rgba(23,41,74,0.9) 0%, rgba(23,41,74,0.78) 16%, rgba(23,41,74,0.55) 34%, rgba(23,41,74,0.24) 48%, rgba(23,41,74,0) 62%)',
+            'linear-gradient(to top, rgba(23,41,74,0.92) 0%, rgba(23,41,74,0.8) 14%, rgba(23,41,74,0.55) 30%, rgba(23,41,74,0.2) 44%, rgba(23,41,74,0) 56%)',
         }}
       />
 
-      {/* left-column scrim — keeps the bottom-left copy legible while the art on
-          the right stays bright */}
+      {/* soft left scrim — settles the copy column without darkening the art */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            'linear-gradient(to right, rgba(23,41,74,0.6) 0%, rgba(23,41,74,0.28) 26%, rgba(23,41,74,0) 52%)',
+            'linear-gradient(to right, rgba(23,41,74,0.42) 0%, rgba(23,41,74,0.16) 24%, rgba(23,41,74,0) 46%)',
         }}
       />
     </div>
