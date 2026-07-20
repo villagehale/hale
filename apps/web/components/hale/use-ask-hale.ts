@@ -1,9 +1,10 @@
 'use client';
 
 import type { ToolCard } from '@hale/agent';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { detectInputIntents, type InputIntent } from '~/lib/coach/action-intent';
+import type { TimelineMessage } from '~/lib/coach/conversation';
 import type { ThreadSeed } from '~/lib/coach/thread';
 
 export type { ToolCard } from '@hale/agent';
@@ -68,23 +69,28 @@ interface CoachRequest {
   question: string;
   conversationId?: string;
   focusedChildId?: string;
+  attachmentIds?: string[];
 }
 
 /**
  * The single POST payload for /api/coach. The running conversationId continues the
- * SAME family conversation; the focused child scopes the turn. Null values are
- * omitted so the first turn opens the conversation and the family default scope is
- * the absence of a child. Pure + exported so the round-trip is unit-tested.
+ * SAME family conversation; the focused child scopes the turn; attachmentIds carry
+ * files already uploaded to /api/coach/attachments (B4 — gated off until that route
+ * lands, see ATTACHMENTS_ENABLED). Null/empty values are omitted so the first turn
+ * opens the conversation and the family default scope is the absence of a child.
+ * Pure + exported so the round-trip is unit-tested.
  */
 export function buildCoachRequest(
   question: string,
   conversationId: string | null,
   focusedChildId: string | null,
+  attachmentIds: string[] = [],
 ): CoachRequest {
   return {
     question,
     ...(conversationId ? { conversationId } : {}),
     ...(focusedChildId ? { focusedChildId } : {}),
+    ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
   };
 }
 
@@ -118,8 +124,15 @@ export async function readNdjson(
   flushLine(buffer);
 }
 
-function seedTurns(seed: ThreadSeed): Turn[] {
-  return seed.timeline.map((m) => ({
+/**
+ * Maps a conversation's persisted timeline into the client Turn shape — the same
+ * mapping the server-rehydrated seed and a reopened session (GET
+ * /api/coach/conversations/:id) both use, so history looks identical however it was
+ * loaded. Historical turns carry no live stream metadata (activity/intents), so a
+ * reopened answer renders as a settled plain answer. Pure + exported for unit test.
+ */
+export function timelineToTurns(timeline: TimelineMessage[]): Turn[] {
+  return timeline.map((m) => ({
     id: m.id,
     role: m.role,
     body: m.content,
@@ -159,7 +172,22 @@ export interface UseAskHale {
   streamingId: string | null;
   draft: string;
   setDraft: (value: string) => void;
-  ask: (question: string) => Promise<void>;
+  /** Sends a turn on the active conversation. `attachmentIds` ride the send when the
+   * attachments feature is on (B4); an attachments-only send is allowed. */
+  ask: (question: string, attachmentIds?: string[]) => Promise<void>;
+  /** The conversation the rail highlights as active (null = an unsaved new chat, no
+   * row until the first send opens it). */
+  activeConversationId: string | null;
+  /** Clears the transcript to an unsaved new chat — the next send opens a fresh
+   * conversation (rule: /api/coach with no conversationId creates one). */
+  newChat: () => void;
+  /** Reopens a past session: loads its transcript (family-scoped, rule #1) and
+   * continues it. Returns false when the fetch failed or the thread isn't the
+   * family's. */
+  openConversation: (id: string) => Promise<boolean>;
+  /** Bumps whenever the conversation SET could have changed (a send opened/continued
+   * a thread) so the session rail refetches its list. */
+  historyRevision: number;
   /** The child the conversation is scoped to (null = whole family). */
   focusedChildId: string | null;
   setFocusedChildId: (id: string | null) => void;
@@ -196,7 +224,7 @@ export function useAskHale(
   seed: ThreadSeed,
   initialFocusedChildId: string | null = null,
 ): UseAskHale {
-  const [turns, setTurns] = useState<Turn[]>(() => seedTurns(seed));
+  const [turns, setTurns] = useState<Turn[]>(() => timelineToTurns(seed.timeline));
   const [conversationId, setConversationId] = useState<string | null>(seed.conversationId);
   const [draft, setDraft] = useState('');
   const [status, setStatus] = useState<AskStatus>('idle');
@@ -206,6 +234,7 @@ export function useAskHale(
   const [focusedChildId, setFocusedChildId] = useState<string | null>(initialFocusedChildId);
   const [topicFilter, setTopicFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [historyRevision, setHistoryRevision] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
   const capture = useAnalytics();
@@ -242,9 +271,11 @@ export function useAskHale(
     });
   }, [visibleTurns]);
 
-  async function ask(question: string): Promise<void> {
+  async function ask(question: string, attachmentIds: string[] = []): Promise<void> {
     const trimmed = question.trim();
-    if (!trimmed || status === 'pending') return;
+    // A send needs either text or (when the feature is on) at least one attachment;
+    // never two in flight at once.
+    if ((!trimmed && attachmentIds.length === 0) || status === 'pending') return;
     setStatus('pending');
     setStreamingId(null);
     const scopedChild = focusedChildId;
@@ -322,7 +353,7 @@ export function useAskHale(
       const res = await fetch('/api/coach', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(buildCoachRequest(trimmed, conversationId, scopedChild)),
+        body: JSON.stringify(buildCoachRequest(trimmed, conversationId, scopedChild, attachmentIds)),
       });
       // Over the silent guard: render a calm, in-thread aside (NOT the error
       // state) so a burst reads as Hale pausing, never as a failure or a wall.
@@ -362,6 +393,9 @@ export function useAskHale(
           resetAssistantTurn();
         } else if (event.type === 'done') {
           setConversationId(event.conversationId);
+          // The send opened a new thread or continued one → its last-active stamp
+          // moved, so the session rail should refetch to re-sort/insert the row.
+          setHistoryRevision((r) => r + 1);
           const id = ensureAssistantTurn();
           setStreamingId(null);
           setTurns((prev) =>
@@ -385,6 +419,46 @@ export function useAskHale(
       inputRef.current?.focus();
     }
   }
+
+  // Clear to an unsaved new chat. The next send opens a fresh conversation server-side
+  // (/api/coach with no conversationId → createConversation), so this is a pure
+  // client reset — nothing is written until the parent actually sends.
+  const newChat = useCallback(() => {
+    setTurns([]);
+    setConversationId(null);
+    setStreamingId(null);
+    setStatus('idle');
+    setFocusedChildId(null);
+    setTopicFilter(null);
+    setSearch('');
+    setDraft('');
+    inputRef.current?.focus();
+  }, []);
+
+  // Reopen a past session: load its transcript (family-scoped inside the route, rule
+  // #1) and continue it. A no-op when it's already the active thread or a send is in
+  // flight. Filters reset so the reopened conversation reads from the top.
+  const openConversation = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (id === conversationId || status === 'pending') return true;
+      try {
+        const res = await fetch(`/api/coach/conversations/${id}`);
+        if (!res.ok) return false;
+        const data = (await res.json()) as { conversationId: string; turns: TimelineMessage[] };
+        setTurns(timelineToTurns(data.turns));
+        setConversationId(data.conversationId);
+        setStreamingId(null);
+        setStatus('idle');
+        setFocusedChildId(null);
+        setTopicFilter(null);
+        setSearch('');
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [conversationId, status],
+  );
 
   async function deleteTurn(id: string): Promise<boolean> {
     try {
@@ -425,6 +499,10 @@ export function useAskHale(
     draft,
     setDraft,
     ask,
+    activeConversationId: conversationId,
+    newChat,
+    openConversation,
+    historyRevision,
     focusedChildId,
     setFocusedChildId,
     topicFilter,
