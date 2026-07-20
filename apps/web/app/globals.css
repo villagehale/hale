@@ -93,6 +93,18 @@
   --color-berry: #C2543F;      /* text-safe terracotta — 4.53:1 on white */
   --color-berry-tint: #FDEBE8; /* terracotta wash */
 
+  /* Text-safe accent INKS for text set ON its own warm tint (attach chips, Hale
+   * tip). The base accent hues clear AA on WHITE but NOT on their warmer tint
+   * wash, so these darker variants restore ≥4.5:1 there. Dark mode reuses the
+   * already-light accent (high contrast on the dark tint) — see .dark below. */
+  --color-amber-ink: #8A5214;  /* on tip gradient #FBEDDC 5.5:1 · on amber-tint 5.6:1 */
+  --color-berry-ink: #A83A28;  /* on berry-tint #FDEBE8 5.5:1 */
+  --color-sage-ink: #17753F;   /* on sage-tint #E7F6EC 5.1:1 */
+
+  /* Sleep mini-chart bar (design handoff §4.2 — periwinkle "asleep"). Decorative
+   * data mark, not text. */
+  --color-sleep-bar: #C0C4E8;
+
   /* ── Borders / hairlines ─────────────────────────────────────────────── */
   --color-rule: #E4E7EE;        /* primary card border */
   --color-rule-strong: #D9DEE8; /* input / composer border */
@@ -208,6 +220,15 @@
   /* Terracotta accent (berry*) — needs-you / danger / sign-out. */
   --color-berry: #E58C78;        /* 7.20:1 on canvas */
   --color-berry-tint: #3A1F1A;
+
+  /* Accent inks on their dark tint — the already-light accent reads high-contrast
+   * on the deep tint, so no separate darkening is needed (unlike light mode). */
+  --color-amber-ink: #E0A44E;    /* on dark amber-tint #33260F */
+  --color-berry-ink: #E58C78;    /* on dark berry-tint #3A1F1A */
+  --color-sage-ink: #6FCB8F;     /* on dark sage-tint #16301F */
+
+  /* Sleep mini-chart bar — periwinkle, lightened to read on the dark card. */
+  --color-sleep-bar: #7981C9;
 
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.20);
@@ -2051,10 +2072,13 @@ html, body, .sidebar, .panel, .card, .field {
   font-size: 0.72rem;
   font-weight: 600;
 }
-.attach-chip-berry { background: var(--color-berry-tint); color: var(--color-berry); }
+/* Text uses the accent INK (darker on light, restoring ≥4.5:1 on the tint wash;
+ * the base accent hues only clear AA on white, not on their warmer tint). Apricot's
+ * blue already clears 4.98:1 on its tint, so it keeps the base accent. */
+.attach-chip-berry { background: var(--color-berry-tint); color: var(--color-berry-ink); }
 .attach-chip-apricot { background: var(--color-apricot-tint); color: var(--color-apricot-deep); }
-.attach-chip-sage { background: var(--color-sage-tint); color: var(--color-sage); }
-.attach-chip-amber { background: var(--color-amber-tint); color: var(--color-amber); }
+.attach-chip-sage { background: var(--color-sage-tint); color: var(--color-sage-ink); }
+.attach-chip-amber { background: var(--color-amber-tint); color: var(--color-amber-ink); }
 
 /* ══════════════════════════════════════════════════════════════════════════
    ONBOARDING — the 9-step conversational flow (Web Phase W4, handoff §4.1).
@@ -2422,13 +2446,19 @@ html, body, .sidebar, .panel, .card, .field {
 .quick-link-tile {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  min-height: 6.5rem;
-  padding: 1rem;
+  gap: 0.5rem;
+  min-height: 6rem;
+  padding: 0.7rem;
   border-radius: var(--r-sm);
   background: var(--color-chrome);
   color: var(--color-spruce);
   text-decoration: none;
+  /* At the 58rem-capped stage the §4.2 four-column row leaves col-3 ≈ 204px, so a
+   * 2×2 tile is only ~68px wide — a long single-word label (documents / routines)
+   * exceeds it. `anywhere` keeps the label inside the tile instead of spilling past
+   * the card edge. Root density fix (widen the Home dashboard to the design canvas)
+   * is tracked separately — see the W2b PR open items. */
+  overflow-wrap: anywhere;
   transition: background 220ms var(--ease-breathe), transform 220ms var(--ease-breathe);
 }
 .quick-link-tile:hover { background: var(--color-warm-hover); }
@@ -2509,7 +2539,9 @@ html, body, .sidebar, .panel, .card, .field {
 :root[data-theme="dark"] .hale-tip { background: var(--color-amber-tint); }
 
 .hale-tip-mascot { position: absolute; top: 0.75rem; right: 0.85rem; opacity: 0.9; }
-.hale-tip-eyebrow { color: var(--color-amber); margin-bottom: 0.4rem; }
+/* Amber INK (not the base amber) so the eyebrow/link clear AA on the cream tip
+ * gradient: base amber is only 3.6:1 on #FBEDDC; the ink is 5.5:1. */
+.hale-tip-eyebrow { color: var(--color-amber-ink); margin-bottom: 0.4rem; }
 .hale-tip-body {
   font-family: var(--font-body);
   font-size: 0.9rem;
@@ -2520,7 +2552,7 @@ html, body, .sidebar, .panel, .card, .field {
 .hale-tip-link {
   display: inline-block;
   margin-top: 0.7rem;
-  color: var(--color-amber);
+  color: var(--color-amber-ink);
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 600;
@@ -2565,6 +2597,41 @@ html, body, .sidebar, .panel, .card, .field {
 .home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; height: 100%; }
 .home-col-grow { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 .home-card-fill { flex: 1 1 auto; display: flex; flex-direction: column; }
+
+/* ── Home §4.2 Row 2 — today's highlights / sleep / meals for the active child, at
+ * 1.1fr 1fr 1fr with equal-height cards. Sits under Row 1; collapses 3 → 1 below
+ * 1024px so nothing overflows. ─────────────────────────────────────────────── */
+.home-row2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 2rem 1.5rem;
+  margin-top: 2rem;
+}
+@media (min-width: 1024px) {
+  .home-row2 { grid-template-columns: 1.1fr 1fr 1fr; }
+}
+
+/* The Sleep mini bar chart: 7 daily-total bars (real logged nap minutes), oldest→
+ * newest. Each column is a faint full-height track (the chart frame) with a
+ * periwinkle fill whose height is the day's share of the week's max (inline style).
+ * A day with no logged sleep shows an empty track — the honest "nothing logged"
+ * state, never a fabricated bar. */
+.sleep-chart { display: flex; align-items: flex-end; gap: 0.4rem; height: 5rem; }
+.sleep-bar-col {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: var(--color-hairline);
+  overflow: hidden;
+}
+.sleep-bar-fill {
+  position: absolute;
+  inset: auto 0 0 0;
+  background: var(--color-sleep-bar);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
 
 /* ── Messages master–detail (§4.6/§4.8): a 320px note list beside a 1fr detail pane.
  * Below lg the two panes stack (list, then the selected note) so nothing overflows.

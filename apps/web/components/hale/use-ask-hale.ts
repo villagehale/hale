@@ -162,6 +162,21 @@ export function filterTurns(
   });
 }
 
+/**
+ * The turn ids a parent may delete: every turn EXCEPT those minted in THIS browser
+ * session. A just-sent turn holds a client-generated id, not the persisted server
+ * message id, so an audited delete would 404 — it stays non-deletable until a reload
+ * rehydrates it with its real id. Seeded AND reopened-conversation turns both carry
+ * real server ids, so both are deletable (the reopen case a seed-only set missed).
+ * Pure + exported so the rule is unit-tested.
+ */
+export function deletableTurnIds(
+  turns: Turn[],
+  sessionCreatedIds: ReadonlySet<string>,
+): Set<string> {
+  return new Set(turns.filter((t) => !sessionCreatedIds.has(t.id)).map((t) => t.id));
+}
+
 export interface UseAskHale {
   /** Every turn (unfiltered) — the full relationship history. */
   turns: Turn[];
@@ -210,6 +225,9 @@ export interface UseAskHale {
   /** Erases the whole conversation: soft-deletes every persisted turn and clears
    * the timeline. Returns false when there is no conversation or the request failed. */
   eraseConversation: () => Promise<boolean>;
+  /** The turn ids the per-turn delete affordance is offered on — persisted turns
+   * (seeded OR reopened), never this-session sends (their client id would 404). */
+  deletableIds: ReadonlySet<string>;
 }
 
 /**
@@ -237,6 +255,10 @@ export function useAskHale(
   const [historyRevision, setHistoryRevision] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
+  // Ids minted by THIS session's sends (client uuids, not persisted server ids yet).
+  // Everything else in `turns` — seeded or reopened — is a real server row, so
+  // deletableTurnIds offers per-turn delete on it (never on a just-sent turn).
+  const sessionCreatedIds = useRef<Set<string>>(new Set());
   const capture = useAnalytics();
 
   const visibleTurns = useMemo(
@@ -283,10 +305,12 @@ export function useAskHale(
     // instruction (no LLM on the hot path — rule #2). A match surfaces a confirm
     // widget under the user turn; a miss is the common case and adds nothing.
     const inputIntents = detectInputIntents(trimmed);
+    const userTurnId = crypto.randomUUID();
+    sessionCreatedIds.current.add(userTurnId);
     setTurns((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: userTurnId,
         role: 'user',
         body: trimmed,
         childId: scopedChild,
@@ -304,6 +328,7 @@ export function useAskHale(
     const ensureAssistantTurn = (): string => {
       if (assistantId) return assistantId;
       const id = crypto.randomUUID();
+      sessionCreatedIds.current.add(id);
       assistantId = id;
       setStreamingId(id);
       setTurns((prev) => [
@@ -432,6 +457,7 @@ export function useAskHale(
     setTopicFilter(null);
     setSearch('');
     setDraft('');
+    sessionCreatedIds.current = new Set();
     inputRef.current?.focus();
   }, []);
 
@@ -445,6 +471,9 @@ export function useAskHale(
         const res = await fetch(`/api/coach/conversations/${id}`);
         if (!res.ok) return false;
         const data = (await res.json()) as { conversationId: string; turns: TimelineMessage[] };
+        // The reopened turns are all persisted server rows, so none are "session-
+        // created" — clearing the set makes every reopened turn deletable.
+        sessionCreatedIds.current = new Set();
         setTurns(timelineToTurns(data.turns));
         setConversationId(data.conversationId);
         setStreamingId(null);
@@ -469,6 +498,9 @@ export function useAskHale(
       });
       if (res.status !== 200) return false;
       setTurns((prev) => prev.filter((t) => t.id !== id));
+      // The conversation's content changed (its preview / count / possibly its
+      // emptiness) — nudge the session rail to refetch so the row reflects it.
+      setHistoryRevision((r) => r + 1);
       return true;
     } catch {
       return false;
@@ -485,6 +517,9 @@ export function useAskHale(
       });
       if (res.status !== 200) return false;
       setTurns([]);
+      // The conversation was erased — the session rail must refetch to drop/retitle
+      // its row rather than keep showing a stale entry.
+      setHistoryRevision((r) => r + 1);
       return true;
     } catch {
       return false;
@@ -514,5 +549,8 @@ export function useAskHale(
     threadEndRef,
     deleteTurn,
     eraseConversation,
+    // Recomputed each render (cheap; sets are tiny). The ref holds this session's
+    // sends, so seeded + reopened turns are deletable and just-sent ones are not.
+    deletableIds: deletableTurnIds(turns, sessionCreatedIds.current),
   };
 }

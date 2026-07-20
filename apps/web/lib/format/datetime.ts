@@ -182,3 +182,12 @@ export function formatLongDate(date: Date, timeZone: string): LongDateParts {
     year: pick('year'),
   };
 }
+
+/** `2h 15m` / `1h` / `45m` / `0m` — a whole-minute duration as hours + minutes. */
+export function formatDurationMinutes(min: number): string {
+  const hours = Math.floor(min / 60);
+  const minutes = min % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}

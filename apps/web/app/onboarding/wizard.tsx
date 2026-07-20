@@ -369,9 +369,14 @@ export function OnboardingWizard({
   );
 }
 
-/** Coarse location for provisioning (rule #1): Canada (the compliance-cleared
- * region — the onboarding region gate enforces it) plus the area the parent gave.
- * normalizeLocation derives the coarse discovery key; no precise address is stored. */
+/** Coarse location for provisioning (rule #1): the country + the area the parent gave.
+ * The onboarding form collects only a free-text area (no country field), so there is
+ * no user-supplied country to read — country is the CONSTRAINT constant `Canada`, the
+ * only compliance-cleared onboarding region (hard rule #1), enforced upstream by
+ * `isOnboardingRegionSupported` (which rejects an explicit non-Canadian country from
+ * the Google-Places path). Broadening is a deliberate per-market program, never
+ * inferred from the area string. normalizeLocation derives the coarse discovery key;
+ * no precise address is stored. */
 function buildLocation(area: string): LocationInput {
   const city = area.trim();
   return { country: 'Canada', city: city.length > 0 ? city : undefined };

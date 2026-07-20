@@ -3,6 +3,7 @@ import type { TimelineMessage } from '~/lib/coach/conversation';
 import {
   type Turn,
   buildCoachRequest,
+  deletableTurnIds,
   filterTurns,
   readNdjson,
   timelineToTurns,
@@ -125,6 +126,21 @@ describe('readNdjson', () => {
     const events: unknown[] = [];
     await readNdjson(byteStream(['{"type":"error"}']), (e) => events.push(e));
     expect(events).toEqual([{ type: 'error' }]);
+  });
+});
+
+describe('deletableTurnIds', () => {
+  it('marks persisted (seeded + reopened) turns deletable, never this-session sends', () => {
+    // A reopened conversation's turns carry real server ids too — the seed-only set
+    // missed them, so per-turn delete was inconsistent after reopening a session.
+    const turns = [turn({ id: 'seeded' }), turn({ id: 'reopened' }), turn({ id: 'just-sent' })];
+    const sessionCreated = new Set(['just-sent']);
+    expect([...deletableTurnIds(turns, sessionCreated)]).toEqual(['seeded', 'reopened']);
+  });
+
+  it('is empty when every visible turn was created this session (client ids, no server row)', () => {
+    const turns = [turn({ id: 'a' }), turn({ id: 'b' })];
+    expect(deletableTurnIds(turns, new Set(['a', 'b'])).size).toBe(0);
   });
 });
 

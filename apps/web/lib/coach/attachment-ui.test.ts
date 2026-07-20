@@ -8,8 +8,8 @@ import {
 
 /**
  * The composer's pure attachment-display seams. Sizes and the tint cycle come from
- * the design handoff rules, not from output. The gate defaults OFF so this PR is
- * mergeable before the B4 backend lands.
+ * the design handoff rules, not from output. The gate is ON now that the B4 backend
+ * (POST /api/coach/attachments + the attachmentIds param) is on main.
  */
 describe('formatAttachmentSize', () => {
   it('renders one-decimal MB at or above 1,000,000 bytes', () => {
@@ -44,7 +44,7 @@ describe('attachmentChipTone', () => {
 });
 
 describe('ATTACHMENTS_ENABLED', () => {
-  it('defaults off so the composer ships attach-dormant before B4', () => {
-    expect(ATTACHMENTS_ENABLED).toBe(false);
+  it('is on now that the B4 backend (POST /api/coach/attachments + attachmentIds) is on main', () => {
+    expect(ATTACHMENTS_ENABLED).toBe(true);
   });
 });
