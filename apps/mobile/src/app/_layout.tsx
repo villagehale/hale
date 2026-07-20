@@ -34,10 +34,12 @@ SplashScreen.preventAutoHideAsync();
  * They are also allowed to sit on /sign-in. An AUTHENTICATED user goes to (tabs);
  * if they're still parked in onboarding/sign-in, bounce them in.
  *
- * Loop-safety: the only pre-auth targets are (onboarding) and sign-in, and we
- * redirect ONLY when the current group is neither — so an unauthenticated user
- * already in (onboarding) or on /sign-in is left alone (no oscillation). Likewise
- * an authenticated user is redirected only while parked in those two groups.
+ * Loop-safety: the pre-auth targets are (onboarding), sign-in, and the magic-link
+ * deep-link redemption route (which a cold-started, not-yet-signed-in user must be
+ * able to sit on while it exchanges the token). We redirect ONLY when the current
+ * group is none of those — so an unauthenticated user already there is left alone
+ * (no oscillation). Likewise an authenticated user is redirected only while parked
+ * in those groups.
  *
  * The post-auth HOLD (a synchronous module ref, see post-auth-hold.ts) suppresses
  * the tabs-bounce for a JUST-onboarded user: create-account sets it BEFORE the
@@ -55,7 +57,8 @@ function useProtectedRoute(ready: boolean) {
   useEffect(() => {
     if (!ready) return;
     const group = segments[0];
-    const inPreAuth = group === '(onboarding)' || group === 'sign-in';
+    const inPreAuth =
+      group === '(onboarding)' || group === 'sign-in' || group === 'magic-link';
     if (!token && !inPreAuth) {
       router.replace('/(onboarding)/welcome');
     } else if (token && inPreAuth && !postAuthHold()) {
@@ -176,6 +179,7 @@ function RootNavigator() {
       <Stack.Screen name="connect" />
       <Stack.Screen name="consent" />
       <Stack.Screen name="sign-in" />
+      <Stack.Screen name="magic-link" />
     </Stack>
   );
 }

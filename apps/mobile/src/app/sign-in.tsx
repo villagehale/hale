@@ -6,9 +6,10 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 
+import { MagicLinkForm } from '@/components/hale/magic-link-form';
+import { MagicLinkSent } from '@/components/hale/magic-link-sent';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
 import { Screen } from '@/components/ui/screen';
 import { API_BASE } from '@/lib/api-client';
 import { appleIdentityToken } from '@/lib/apple-credential';
@@ -16,7 +17,7 @@ import { useAuth } from '@/lib/auth';
 import {
   exchangeAppleIdentityToken,
   exchangeGoogleIdToken,
-  signInWithPassword,
+  requestMagicLink,
 } from '@/lib/auth-api';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -101,12 +102,9 @@ function AppleButton({ onError }: { onError: (message: string) => void }) {
 }
 
 export default function SignInScreen() {
-  const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -118,18 +116,19 @@ export default function SignInScreen() {
     };
   }, []);
 
-  const onPassword = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const { token } = await signInWithPassword(email.trim(), password);
-      await signIn(token);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  if (sentTo) {
+    return (
+      <Screen className="justify-center">
+        <MagicLinkSent
+          email={sentTo}
+          onResend={async () => {
+            await requestMagicLink(sentTo);
+          }}
+          onUseDifferentEmail={() => setSentTo(null)}
+        />
+      </Screen>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -137,84 +136,46 @@ export default function SignInScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Screen scroll className="gap-6">
-      <View className="gap-2 pt-8">
-        <AppText variant="display">Welcome to Hale</AppText>
-        <AppText variant="body">Sign in to pick up where your family left off.</AppText>
-      </View>
+        <View className="gap-2 pt-8">
+          <AppText variant="display">Welcome to Hale</AppText>
+          <AppText variant="body">Sign in to pick up where your family left off.</AppText>
+        </View>
 
-      <View className="gap-3">
-        <Field
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          textContentType="emailAddress"
-        />
-        <Field
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Your password"
-          secureTextEntry
-          autoCapitalize="none"
-          autoComplete="current-password"
-          textContentType="password"
-        />
+        {appleAvailable ? <AppleButton onError={setError} /> : null}
+
+        {googleReady ? (
+          <GoogleButton onError={setError} />
+        ) : (
+          <Button label="Google sign-in unavailable" variant="secondary" disabled />
+        )}
+
+        <View className="flex-row items-center gap-3">
+          <View className="h-px flex-1 bg-rule" />
+          <AppText variant="meta">or</AppText>
+          <View className="h-px flex-1 bg-rule" />
+        </View>
+
+        <MagicLinkForm onSent={setSentTo} />
+
         {error ? (
           <AppText variant="meta" className="text-berry" accessibilityLiveRegion="polite">
             {error}
           </AppText>
         ) : null}
-        <Button
-          label={busy ? 'Signing in…' : 'Sign in'}
-          onPress={onPassword}
-          disabled={busy}
-          className="mt-1"
-        />
-      </View>
 
-      <View className="flex-row items-center gap-3">
-        <View className="h-px flex-1 bg-rule" />
-        <AppText variant="meta">or</AppText>
-        <View className="h-px flex-1 bg-rule" />
-      </View>
-
-      {googleReady ? (
-        <GoogleButton onError={setError} />
-      ) : (
-        <Button label="Google sign-in unavailable" variant="secondary" disabled />
-      )}
-
-      {appleAvailable ? <AppleButton onError={setError} /> : null}
-
-      {API_BASE ? (
-        <View className="mt-2 items-center gap-3">
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel="Forgot password"
-            onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/forgot-password`)}
-            className="active:opacity-70"
-          >
-            <AppText variant="meta" className="text-accent">
-              Forgot password?
-            </AppText>
-          </Pressable>
+        {API_BASE ? (
           <Pressable
             accessibilityRole="link"
             accessibilityLabel="New to Hale, create an account"
             onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/sign-up`)}
-            className="flex-row active:opacity-70"
+            className="mt-2 flex-row justify-center active:opacity-70"
           >
             <AppText variant="meta">New to Hale? </AppText>
             <AppText variant="meta" className="text-accent">
               Create an account
             </AppText>
           </Pressable>
-        </View>
-      ) : null}
+        ) : null}
       </Screen>
     </KeyboardAvoidingView>
   );

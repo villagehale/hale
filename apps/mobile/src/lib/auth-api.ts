@@ -18,6 +18,7 @@ export type AuthResult = { token: string };
 const GENERIC_PASSWORD_ERROR = "That email and password didn't match. Please try again.";
 const GENERIC_GOOGLE_ERROR = "Couldn't sign in with Google. Please try again.";
 const GENERIC_APPLE_ERROR = "Couldn't sign in with Apple. Please try again.";
+const GENERIC_MAGIC_LINK_ERROR = "That sign-in link didn't work — it may have expired. Request a new one.";
 const GENERIC_SIGNUP_ERROR = "Couldn't create your account just now. Please try again.";
 const GENERIC_ONBOARDING_ERROR = "Couldn't finish setting up your family — please try again.";
 const REGION_UNAVAILABLE_ERROR = "Hale isn't available in your region yet — we're Canada-first.";
@@ -62,6 +63,32 @@ export async function exchangeAppleIdentityToken(
 
 export async function signInWithPassword(email: string, password: string): Promise<AuthResult> {
   return exchange('/api/mobile/auth/password', { email, password }, GENERIC_PASSWORD_ERROR);
+}
+
+/**
+ * Request a passwordless magic-link email. Enumeration-safe: the server ALWAYS
+ * responds { status: 'sent' } — it mints for any valid address and never reveals
+ * whether an account exists — so a resolved call means "the link is on its way if
+ * the address is real". Goes through the api() client (per the mobile-auth design):
+ * a genuine transport / rate-limit failure throws for the screen to surface; an
+ * unknown address does not.
+ */
+export async function requestMagicLink(email: string): Promise<{ status: 'sent' }> {
+  await api<{ status: string }>('/api/mobile/auth/magic-link/request', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+  return { status: 'sent' };
+}
+
+/**
+ * Redeem a magic-link token for a Hale session (the native counterpart to the web
+ * redeem page). A pre-auth call like the other exchanges: a bad / expired / consumed
+ * token is a generic 401 the deep-link screen shows inline — never an api() 401
+ * bounce — so it uses the same fetch-direct path the password flow does.
+ */
+export async function verifyMagicLink(token: string): Promise<AuthResult> {
+  return exchange('/api/mobile/auth/magic-link/verify', { token }, GENERIC_MAGIC_LINK_ERROR);
 }
 
 /**
