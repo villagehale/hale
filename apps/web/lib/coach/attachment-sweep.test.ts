@@ -94,10 +94,11 @@ function fakeDb(rows: Row[], onAfterSelect?: () => void) {
           const idx = rows.findIndex(
             (r) => r.id === c.eqId && (!c.isNullMessage || r.messageId === null),
           );
-          if (idx === -1) return [];
-          deletedIds.push(rows[idx].id);
+          const hit = idx === -1 ? undefined : rows[idx];
+          if (!hit) return [];
+          deletedIds.push(hit.id);
           rows.splice(idx, 1);
-          return [{ id: c.eqId }];
+          return [{ id: hit.id }];
         },
       }),
     }),
@@ -177,12 +178,12 @@ describe('sweepUnlinkedAttachments — purges only stale, never-sent uploads (ru
   });
 
   it('never removes bytes for an attachment that gets linked between listing and deletion (TOCTOU)', async () => {
-    const rows = [row({ id: 'raced', createdAt: STALE, messageId: null })];
+    const raced = row({ id: 'raced', createdAt: STALE, messageId: null });
     // A send claims the attachment in the window between the sweep's SELECT and
     // its per-row delete: the conditional delete must claim nothing, and the
     // bytes must survive — a linked attachment losing its object is data loss.
-    const { db, removeObject, spies } = fakeDb(rows, () => {
-      rows[0].messageId = 'msg-raced';
+    const { db, removeObject, spies } = fakeDb([raced], () => {
+      raced.messageId = 'msg-raced';
     });
 
     const result = await sweepUnlinkedAttachments(db, removeObject, NOW);
