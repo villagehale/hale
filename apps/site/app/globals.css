@@ -1,21 +1,21 @@
 @import "tailwindcss";
 
 /*
- * Hale — marketing site design system. Shares the language of the product app
- * (apps/web): Inter throughout (display + body) with JetBrains Mono for data,
- * a Prussian-forward palette with a warm-coral accent, gently rounded clean
- * cards, Lucide icons, and a hand-built flat color-block SVG illustration kit.
+ * Hale — marketing site design system. One warm-white world, shared by the
+ * homepage and every long-form subpage: Instrument Sans (display + body) with
+ * Source Serif 4 for title accents and JetBrains Mono for data, a warm page
+ * (#fdfcfa) carrying navy ink (#17294a) and a single amber accent family
+ * (#b26b1f / #fef0c7), gently rounded clean cards, Lucide icons, and a
+ * hand-built flat color-block SVG illustration kit. Light-only (the 2026-07
+ * redesign removed dark mode).
  *
- * Dark mode is BRAND-ANCHORED, not brand-flooded: the page canvas is a calm,
- * slightly-desaturated deep Prussian-charcoal (comfortable for long/night
- * reading), surfaces step up a clear ladder (canvas → card → the logo-Prussian
- * "night" band), and the saturated logo Prussian is that band's accent rather
- * than flooding the whole page. Cream ink throughout; the white turtle glows on
- * it. Both modes hold WCAG-AA contrast. Mirrors apps/web's dark tokens.
+ * The subpage token roles below keep their original names (linen/spruce/apricot)
+ * so existing subpage markup + token utilities flip to the warm palette for
+ * free; the homepage itself is inline-hex and untouched by these tokens.
  *
  * Hard rules baked in:
- *   - Apricot #f97316 is FILL / large-graphic only — never small
- *     text or thin icon strokes. Apricot-deep #c2410c is the text-safe accent.
+ *   - Three families only: warm white + navy + amber. Amber is FILL / large /
+ *     UI only (4.08:1); body links use navy for AA.
  *   - 16px form inputs on mobile (iOS no-zoom).
  *   - motion is "breathing not bouncing"; every animation is disabled under
  *     prefers-reduced-motion.
@@ -23,22 +23,26 @@
  */
 
 @theme {
-  /* ── Palette (hex + computed WCAG ratio on Linen) ────────────────────── */
-  --color-linen: #f8f9fb;       /* canvas — cool whisper white, crisp (mockup 2026-07-10; not warm) */
+  /* ── Palette (hex + computed WCAG ratio on the warm page) ────────────── *
+   * Retuned (2026-07) so the long-form subpages read as one world with the
+   * warm-white homepage: warm page + navy ink + amber accent. Names are kept
+   * (linen/spruce/apricot) so the existing subpage markup + token utilities
+   * (text-spruce, border-rule, var(--color-slate-green)…) flip for free. */
+  --color-linen: #fdfcfa;       /* canvas — warm page (matches the homepage) */
   --color-oat: #ffffff;         /* card surface — pure white, separated by a light border + faint shadow */
-  --color-spruce: #0d1b3d;      /* primary ink / Prussian brand */
-  --color-slate-green: #47587a; /* secondary text, captions — 6.67:1 */
-  --color-faded-sage: #5b6b86;  /* tertiary / meta / disclaimers — 4.81:1 */
+  --color-spruce: #17294a;      /* primary ink / navy headline — 14.1:1 on page */
+  --color-slate-green: #5c6b87; /* secondary / body text — 5.24:1 */
+  --color-faded-sage: #647290;  /* tertiary / meta / disclaimers — 4.71:1 */
 
-  --color-apricot: #f28c45;       /* AI ORANGE — Hale AI actions */
-  --color-apricot-deep: #c2410c;  /* text-safe accent: links, CTA fill — 4.84:1 */
-  --color-apricot-tint: #fdeede;  /* warm wash panel / pill — Apricot-deep 4.55:1, Spruce 11.8:1 */
+  --color-apricot: #b26b1f;       /* amber — illustration fill, small marks */
+  --color-apricot-deep: #b26b1f;  /* amber accent — 4.08:1 (large/UI only; links use navy) */
+  --color-apricot-tint: #fef0c7;  /* amber wash panel / pill — ink 11.5:1 on it */
 
-  --color-sky: #7fb5c4;        /* calm secondary illustration — clouds, day fields */
-  --color-sky-deep: #2f6f86;   /* text-safe blue, coach tone — 4.99:1 */
-  --color-sky-tint: #cfe3e7;   /* color-block illustration wash — Spruce 10.13:1 */
+  --color-sky: #c9d2e6;        /* pale navy — illustration clouds/roofs (no teal at chrome level) */
+  --color-sky-deep: #5c6b87;   /* slate — illustration limbs, kept distinct from the navy shell */
+  --color-sky-tint: #eef1f7;   /* pale navy wash — chip pills, illustration scutes */
 
-  --color-sea: #0a3d62;        /* brand / turtle accent — text-safe sea-green, 5.31:1 */
+  --color-sea: #1b2160;        /* navy — illustration figures/roofs */
 
   --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
   --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
@@ -47,11 +51,11 @@
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
   /* Hairlines: cool light-gray card borders (mockup's crisp #E6E8EC card outlines on white) */
-  --color-rule: #e6e8ec;
+  --color-rule: #e4e7ee;
   --color-rule-strong: #d8dbe0;
 
-  /* On-dark (Spruce night section) text alphas, Linen-based */
-  --color-on-spruce: #FEFEFE;
+  /* On-dark (navy night section) text — cream, matching the homepage navy bands */
+  --color-on-spruce: #f7f4ec;
   --color-on-spruce-soft: rgb(250 247 241 / 0.74);
   --color-on-spruce-faint: rgb(250 247 241 / 0.50);
 
@@ -107,7 +111,7 @@
  * by the answer/milestone subpages. Light-only site (2026-07 warm-white
  * redesign), so there is no dark-mode override. */
 .night {
-  background: var(--color-spruce);
+  background: var(--color-navy);
   color: var(--color-on-spruce);
 }
 
@@ -175,12 +179,14 @@ strong { font-weight: 700; }
 .font-mono { font-family: var(--font-mono); }
 .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* Gentle Title-case eyebrow label — Inter 600, tracked, NOT uppercase mono */
+/* Eyebrow label — Instrument Sans 600, tracked + uppercase, matching the
+ * homepage's section eyebrows. */
 .eyebrow {
   font-family: var(--font-body);
   font-size: 0.8rem;
   letter-spacing: var(--tracking-eyebrow);
   font-weight: 600;
+  text-transform: uppercase;
   color: var(--color-slate-green);
 }
 
@@ -192,8 +198,13 @@ strong { font-weight: 700; }
   overflow-wrap: anywhere;
 }
 
-/* The single hero accent word — text-safe warm coral. */
-.accent { color: var(--color-apricot-deep); }
+/* The single title accent word — the homepage's serif-italic device (Source
+ * Serif 4), inheriting the heading's ink colour rather than tinting it. */
+.accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+}
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
@@ -255,8 +266,8 @@ strong { font-weight: 700; }
   justify-content: center;
   gap: 0.5rem;
   padding: 0.9rem 1.6rem;
-  background: var(--color-spruce);
-  color: var(--color-linen);
+  background: var(--color-navy);
+  color: var(--color-cream);
   border: 0;
   border-radius: var(--r-full);
   font-family: var(--font-body);
@@ -268,7 +279,7 @@ strong { font-weight: 700; }
   transition: background 320ms var(--ease-breathe), transform 200ms var(--ease-breathe);
 }
 
-.btn-primary:hover { background: var(--color-apricot-deep); }
+.btn-primary:hover { background: var(--color-navy-deep); }
 .btn-primary:active { transform: translateY(1px); }
 
 .btn-primary:focus-visible {
@@ -312,10 +323,10 @@ strong { font-weight: 700; }
   .btn-compact { padding: 0.55rem 1rem; font-size: 0.9rem; }
 }
 
-/* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
+/* ── Link underline — draws left-to-right in navy ──────────────────────── */
 
 .link {
-  color: var(--color-apricot-deep);
+  color: var(--color-navy);
   text-decoration: none;
   position: relative;
   font-weight: 700;
@@ -327,7 +338,7 @@ strong { font-weight: 700; }
   left: 0; right: 0; bottom: -2px;
   height: 2px;
   border-radius: 2px;
-  background: var(--color-apricot-deep);
+  background: var(--color-navy);
   transform-origin: left;
   transform: scaleX(0);
   transition: transform 360ms var(--ease-breathe);
