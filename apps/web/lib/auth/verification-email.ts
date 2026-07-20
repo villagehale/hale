@@ -15,6 +15,7 @@ import { BUSINESS_ADDRESS, SENDER_NAME } from '~/lib/cron/email-compliance';
 const DEFAULT_FROM = 'Hale <aloha@villagehale.com>';
 const VERIFY_SUBJECT = 'confirm your email for Hale';
 const RESET_SUBJECT = 'reset your Hale password';
+const MAGIC_SUBJECT = 'your sign-in link for Hale';
 
 const PRUSSIAN = '#003153';
 const LINEN = '#faf7f1';
@@ -33,6 +34,9 @@ export interface VerificationEmailSender {
   sendVerification(to: string, verifyUrl: string): Promise<SendResult>;
   /** The reset-password link. Same envelope/PII posture — token in the URL only. */
   sendReset(to: string, resetUrl: string): Promise<SendResult>;
+  /** The passwordless magic sign-in link. Same envelope/PII posture — token in the
+   * URL only. Used for both sign-in and first-time sign-up. */
+  sendMagicLink(to: string, magicUrl: string): Promise<SendResult>;
 }
 
 function escapeHtml(value: string): string {
@@ -61,6 +65,14 @@ const RESET_COPY: EmailCopy = {
   lead: 'We got a request to reset your Hale password. Choose a new one with the link below.',
   expiry:
     "This link expires in 1 hour. If you didn't ask to reset your password, you can ignore this email — your password won't change.",
+};
+
+const MAGIC_COPY: EmailCopy = {
+  heading: 'Sign in to Hale.',
+  cta: 'Sign in',
+  lead: 'Use the link below to sign in to Hale. It works whether or not you already have an account.',
+  expiry:
+    "This link expires in 15 minutes and can be used once. If you didn't ask to sign in, you can ignore this email.",
 };
 
 function bodyText(url: string, copy: EmailCopy): string {
@@ -120,5 +132,6 @@ export function createVerificationEmailSender(client?: Resend): VerificationEmai
   return {
     sendVerification: (to, verifyUrl) => send(to, verifyUrl, VERIFY_SUBJECT, VERIFY_COPY),
     sendReset: (to, resetUrl) => send(to, resetUrl, RESET_SUBJECT, RESET_COPY),
+    sendMagicLink: (to, magicUrl) => send(to, magicUrl, MAGIC_SUBJECT, MAGIC_COPY),
   };
 }

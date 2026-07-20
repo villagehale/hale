@@ -43,6 +43,7 @@ function fakeDeps(overrides: {
         overrides.sendVerification ??
         vi.fn(async () => ({ accepted: true, providerMessageId: 'resend-verify-1' })),
       sendReset: vi.fn(),
+      sendMagicLink: vi.fn(),
     },
     captureServerEvent: overrides.capture ?? vi.fn(async () => {}),
   };
