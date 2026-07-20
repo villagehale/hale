@@ -4,16 +4,35 @@ import { Mascot } from '~/components/hale/mascot';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { QuickLog } from '~/components/hale/quick-log';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
+import { tabFromParam } from '~/lib/companion/companion-tabs-nav';
+import { buildGrowthHeader, type GrowthHeaderStat } from '~/lib/companion/growth-header';
 import { MEASUREMENT_EPISODE } from '~/lib/companion/log-types';
 import { loadLogsPage } from '~/lib/companion/logs-page';
-import { loadCompanion } from '~/lib/companion/queries';
+import { loadChildrenGrowthInputs, loadCompanion } from '~/lib/companion/queries';
 import { loadRecentLogs } from '~/lib/companion/recent-logs';
-import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadFamilyBasics, loadFamilyMembers, loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadFamilyDocuments } from '~/lib/docs/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadVillage } from '~/lib/village/queries';
 
-export default async function CompanionPage() {
-  const [children, recentLogs, basics, timeZone, village, growthPage, profile] = await Promise.all([
+export default async function CompanionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string | string[] }>;
+}) {
+  const [
+    children,
+    recentLogs,
+    basics,
+    timeZone,
+    village,
+    growthPage,
+    profile,
+    members,
+    documents,
+    growthInputs,
+    { tab },
+  ] = await Promise.all([
     loadCompanion(),
     loadRecentLogs(),
     loadFamilyBasics(),
@@ -21,8 +40,24 @@ export default async function CompanionPage() {
     loadVillage(),
     loadLogsPage({ episodeType: MEASUREMENT_EPISODE }),
     loadViewerProfile(),
+    loadFamilyMembers(),
+    loadFamilyDocuments(),
+    loadChildrenGrowthInputs(),
+    searchParams,
   ]);
   const units = profile?.units ?? 'metric';
+
+  // The child-hub header percentiles + the Growth tab's on-track pills come from the
+  // REAL WHO read (buildGrowthHeader), computed HERE so the sex-keyed LMS math and the
+  // biologicalSex column stay server-side; only the neutral derived stats cross to the
+  // client. Keyed by child id so the client picks the active child's stats.
+  const growthByChild: Record<string, GrowthHeaderStat[]> = {};
+  for (const input of growthInputs) {
+    growthByChild[input.id] = buildGrowthHeader(
+      growthPage.logs.filter((l) => l.childId === input.id),
+      input,
+    );
+  }
 
   return (
     <div>
@@ -52,9 +87,14 @@ export default async function CompanionPage() {
           kids={children}
           routine={village.routine}
           growthLogs={growthPage.logs}
+          growthByChild={growthByChild}
           recentLogs={recentLogs}
+          documents={documents}
+          members={members}
+          viewerEmail={profile?.email ?? null}
           units={units}
           timeZone={timeZone}
+          initialTab={tabFromParam(tab)}
         />
       )}
 

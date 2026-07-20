@@ -2996,3 +2996,189 @@ html, body, .sidebar, .panel, .card, .field {
 @media (prefers-reduced-motion: reduce) {
   .hale-modal { animation: none; opacity: 1; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * COMPANION §4.3 — child-hub header + six sub-tabs (W2b, additive)
+ * The one additive block for the per-child Companion surface: the identity/percentile
+ * header, the Overview 3-col grid + Care-team card, and the Development-snapshot
+ * donut. All colour comes from role tokens except the five DEVELOPMENT-DOMAIN donut
+ * fills, which have no role slot — they are DECORATIVE fills (an aria-hidden ring +
+ * legend swatches next to token-ink text), so no new text-on-colour pair is
+ * introduced. Values are the handoff §2 data-viz hexes (light) with calmer dark
+ * variants so the ring doesn't glare on the dark card. The donut's "not yet"
+ * remainder arc is the existing --color-hairline token.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --domain-cognitive: #7BC894;
+  --domain-language: #F2C14E;
+  --domain-motor: #B9A7E8;
+  --domain-social: #F4A98A;
+  --domain-independence: #9DC3EE;
+}
+.dark {
+  --domain-cognitive: #5FA97A;
+  --domain-language: #C9A24A;
+  --domain-motor: #9C8AC9;
+  --domain-social: #C98A76;
+  --domain-independence: #7FA3CE;
+}
+
+/* Amber "worth a look" pill — the honest neutral caution for a WHO 'review' band.
+ * Mirrors the existing .pill-* pattern (tint ground + spruce ink): contrast-safe in
+ * both themes because BOTH tokens re-point in .dark (light #FEF0C7/#1F3A34 ≈ 9.9:1;
+ * dark #33260F/ink ≈ 11:1). */
+.pill-amber { background: var(--color-amber-tint); color: var(--color-spruce); }
+
+/* ── Child-hub header (.comp-hub): identity + up-to-three WHO percentile stats ── */
+.comp-hub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+}
+.comp-hub-id { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+.comp-hub-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+}
+.comp-hub-name {
+  font-size: clamp(1.5rem, 2.5vw, 1.75rem);
+  line-height: 1.15;
+  color: var(--color-spruce);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comp-hub-right { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+.comp-hub-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
+.comp-stat { display: flex; flex-direction: column; min-width: 4.25rem; }
+
+/* ── Overview: equal-height 3-col grid (1.05fr 1.05fr 1fr) → 2 → 1 ────────── */
+.comp-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+@media (min-width: 768px) {
+  .comp-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .comp-overview { grid-template-columns: 1.05fr 1.05fr 1fr; }
+}
+/* The two single-card columns fill their grid cell's height so the row bottom-aligns;
+ * the stack column lays its two cards out top-down. */
+.comp-ov-card { display: flex; flex-direction: column; height: 100%; }
+.comp-ov-stack { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+
+/* ── Development-snapshot donut (real per-domain milestone progress) ───────── */
+.comp-donut {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.comp-donut-hole {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background: var(--color-oat);
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.comp-donut-count {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--color-spruce);
+  font-variant-numeric: tabular-nums;
+}
+.comp-donut-total { font-size: 1rem; color: var(--color-faded-sage); }
+.comp-donut-label {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-faded-sage);
+}
+
+/* ── Care team & contacts: repeat(3,1fr) chips → 1 col below md ────────────── */
+.care-team {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+@media (min-width: 768px) {
+  .care-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.care-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-tile);
+}
+.care-chip-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+}
+.care-chip-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The "You" self-marker badge. apricot-deep on apricot-tint is the established
+ * accent-on-tint pair (already used at body sizes by .care-chip-avatar icons and
+ * link text); at this 0.7rem/700 weight it holds AA in both themes because both
+ * tokens re-point in .dark. */
+.care-chip-you {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.care-chip-add {
+  border-style: dashed;
+  border-color: var(--color-rule-strong);
+  background: transparent;
+  color: var(--color-apricot-deep);
+  text-decoration: none;
+  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+}
+.care-chip-add:hover { background: var(--color-tile); border-color: var(--color-apricot-deep); }
+.care-chip-add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
