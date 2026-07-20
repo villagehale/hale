@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   linkAttachmentsToMessage,
   loadUnlinkedAttachments,
+  sanitizeOriginalName,
   sniffAttachmentMime,
 } from './attachments';
 
@@ -102,7 +103,7 @@ function fakeDb(rows: Row[], capture: { updates: { patch: Record<string, unknown
         where: (sql: SQL) => {
           const hit = rows.filter((r) => matches(r, sql));
           capture.updates.push({ patch, ids: hit.map((r) => r.id) });
-          return Promise.resolve(hit.map((r) => ({ id: r.id })));
+          return { returning: async () => hit.map((r) => ({ id: r.id })) };
         },
       }),
     }),
@@ -132,15 +133,46 @@ describe('sniffAttachmentMime', () => {
     expect(sniffAttachmentMime(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg">', 'ascii'))).toBeNull();
   });
 
-  it('accepts the chat allowlist by MAGIC bytes: jpeg, png, webp, heic, pdf', () => {
+  it('accepts the chat allowlist by MAGIC bytes: jpeg, png, webp, pdf', () => {
     expect(sniffAttachmentMime(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg');
     expect(sniffAttachmentMime(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe('image/png');
     // RIFF....WEBP — the type the Docs vault does NOT accept but chat does.
     const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP')]);
     expect(sniffAttachmentMime(webp)).toBe('image/webp');
-    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0]), Buffer.from('ftypheic')]);
-    expect(sniffAttachmentMime(heic)).toBe('image/heic');
     expect(sniffAttachmentMime(Buffer.from('%PDF-1.7', 'ascii'))).toBe('application/pdf');
+  });
+
+  it('rejects HEIC — the Docs sniffer recognizes it, but chat fails closed on it → null', () => {
+    // The Anthropic image block cannot carry HEIC, so it must never enter the chat
+    // allowlist (else it would silently degrade to a useless text marker). The
+    // membership check against CHAT_ATTACHMENT_MIMES drops it even though sniffMime
+    // identifies it.
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 0]), Buffer.from('ftypheic')]);
+    expect(sniffAttachmentMime(heic)).toBeNull();
+  });
+});
+
+describe('sanitizeOriginalName — a safe display label (rule #1)', () => {
+  const RLO = String.fromCharCode(0x202e);
+  const LRI = String.fromCharCode(0x2066);
+  const PDI = String.fromCharCode(0x2069);
+
+  it('collapses ALL C0/C1 control chars to spaces, not just \\r\\n\\t', () => {
+    // NUL, bell, vertical tab, escape (C0) and NEL (U+0085, C1) between letters —
+    // each collapses so no control byte survives into a log or display line.
+    const raw = `a${String.fromCharCode(0)}b${String.fromCharCode(7)}c${String.fromCharCode(11)}d${String.fromCharCode(27)}e${String.fromCharCode(0x85)}f`;
+    expect(sanitizeOriginalName(raw)).toBe('a b c d e f');
+  });
+
+  it('removes Unicode bidi-format chars that could spoof the displayed name', () => {
+    // RLO + the isolate controls reverse a filename so "gpj.exe" renders as
+    // "exe.jpg"; they must not survive.
+    const raw = `invoice${RLO}gpj.exe${PDI}.pdf`;
+    expect(sanitizeOriginalName(raw)).toBe('invoicegpj.exe.pdf');
+  });
+
+  it('falls back to "attachment" when nothing printable remains', () => {
+    expect(sanitizeOriginalName(` ${LRI}${PDI}`)).toBe('attachment');
   });
 });
 
@@ -173,11 +205,13 @@ describe('linkAttachmentsToMessage — stamps messageId + conversationId, family
     const capture = { updates: [] as { patch: Record<string, unknown>; ids: string[] }[] };
     const db = fakeDb(rows, capture);
 
-    await linkAttachmentsToMessage(db, FAMILY, [A, FOREIGN, LINKED], MSG, CONV);
+    const linked = await linkAttachmentsToMessage(db, FAMILY, [A, FOREIGN, LINKED], MSG, CONV);
 
     expect(capture.updates).toHaveLength(1);
     expect(capture.updates[0]?.patch).toEqual({ messageId: MSG, conversationId: CONV });
     // Foreign-family and already-linked rows are excluded by the WHERE.
     expect(capture.updates[0]?.ids).toEqual([A]);
+    // RETURNING gives back exactly the ids it claimed — the count the caller verifies.
+    expect(linked).toEqual([A]);
   });
 });

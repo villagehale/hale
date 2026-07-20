@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { SQL } from 'drizzle-orm';
+import { NextResponse } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -16,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const authMock = vi.fn();
 const familyMock = vi.fn();
 const userMock = vi.fn();
+const rateLimitMock = vi.fn();
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const OTHER_FAMILY = '99999999-9999-4999-8999-999999999999';
@@ -106,6 +108,9 @@ vi.mock('~/lib/family', () => ({
   resolveFamilyForUser: (...a: unknown[]) => familyMock(...a),
   resolveUserIdForUser: (...a: unknown[]) => userMock(...a),
 }));
+vi.mock('~/lib/rate-limit/apply', () => ({
+  enforceRateLimit: (...a: unknown[]) => rateLimitMock(...a),
+}));
 vi.mock('@hale/db', async (importActual) => {
   const actual = await importActual<typeof import('@hale/db')>();
   return {
@@ -154,6 +159,9 @@ beforeEach(() => {
   authMock.mockReset();
   familyMock.mockReset();
   userMock.mockReset();
+  rateLimitMock.mockReset();
+  // Default: under the cap (proceed). The rate-limit tests override this.
+  rateLimitMock.mockResolvedValue(null);
   vi.stubEnv('SUPABASE_URL', SUPABASE_URL);
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'service-key');
   vi.stubGlobal('fetch', fakeFetch());
@@ -176,6 +184,21 @@ describe('POST /api/coach/attachments — auth', () => {
     expect(res.status).toBe(401);
     expect(capture.fetches).toEqual([]);
     expect(capture.inserts).toEqual([]);
+  });
+});
+
+describe('POST /api/coach/attachments — rate limit (cost/abuse guard)', () => {
+  it('over the per-user cap → 429, no storage write, no db insert (enforced before storing)', async () => {
+    rateLimitMock.mockResolvedValue(
+      NextResponse.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '30' } }),
+    );
+    const res = await callUpload([file(JPEG, 'image/jpeg')]);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('30');
+    expect(capture.fetches).toEqual([]);
+    expect(capture.inserts).toEqual([]);
+    // The cap is keyed on the resolved uploader (per-user), like /api/coach.
+    expect(rateLimitMock).toHaveBeenCalledWith('coach', UPLOADER);
   });
 });
 

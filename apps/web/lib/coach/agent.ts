@@ -11,6 +11,7 @@ import type { Database } from '@hale/db';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
 import {
+  AttachmentConsumptionError,
   buildAttachmentBlocks,
   linkAttachmentsToMessage,
   type OwnedChatAttachment,
@@ -139,27 +140,38 @@ export async function askHale(
   }
 
   const transcript = await loadTranscriptWithAttachments(conversationId, database);
+
   // Persist the parent turn with its scope so the timeline can filter on child +
   // topic; topic is keyword-tagged (no LLM), child is the focused chip.
-  const userMessageId = await appendMessage(conversationId, 'user', input.question, database, {
-    childId: input.focusedChildId,
-    topic: tagTopic(input.question),
-  });
+  const scope = { childId: input.focusedChildId, topic: tagTopic(input.question) };
 
-  // Consume this turn's attachments: link them to the message just written (so they
-  // can never be re-attached), then fetch their bytes and build native content blocks
-  // for the model. Bytes go to the MODEL only — never a log or the trace (rule #1).
+  // Consume this turn's attachments ATOMICALLY: the user-message insert and the
+  // conditional link-UPDATE run in ONE transaction. If the UPDATE cannot claim every
+  // requested attachment (a concurrent double-send lost the race, or an id was already
+  // consumed), the transaction rolls back — the user message is NOT persisted and we
+  // abort BEFORE fetching bytes or calling the model with them (rule #1). A text-only
+  // turn keeps the plain insert (no transaction).
   const turnAttachments = input.attachments ?? [];
   let attachmentBlocks: Anthropic.ContentBlockParam[] = [];
   if (turnAttachments.length > 0) {
-    await linkAttachmentsToMessage(
-      database,
-      input.familyId,
-      turnAttachments.map((a) => a.id),
-      userMessageId,
-      conversationId,
-    );
+    const ids = turnAttachments.map((a) => a.id);
+    await database.transaction(async (tx) => {
+      const userMessageId = await appendMessage(conversationId, 'user', input.question, tx, scope);
+      const linked = await linkAttachmentsToMessage(
+        tx,
+        input.familyId,
+        ids,
+        userMessageId,
+        conversationId,
+      );
+      if (linked.length !== ids.length) {
+        throw new AttachmentConsumptionError(ids.length, linked.length);
+      }
+    });
+    // Bytes are fetched (and reach the MODEL only) after the consume commits (rule #1).
     attachmentBlocks = await buildAttachmentBlocks(turnAttachments);
+  } else {
+    await appendMessage(conversationId, 'user', input.question, database, scope);
   }
 
   const context = await loadAgentContext(

@@ -12,6 +12,7 @@ import {
 } from '~/lib/coach/attachments';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { enforceRateLimit } from '~/lib/rate-limit/apply';
 
 // Node runtime: byte-sniffing (Buffer) + the Drizzle client + the storage adapter.
 export const runtime = 'nodejs';
@@ -70,6 +71,11 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
   }
 
+  // Per-user cap before any storage write — uploads share the coach bucket so a script
+  // can't run up storage/bandwidth abuse on the same window a parent's sends use.
+  const limited = await enforceRateLimit('coach', uploadedBy);
+  if (limited) return limited;
+
   // Validate EVERY file before storing any — a bad file must not leave a partial batch.
   const validated: { bytes: Buffer; mime: ChatAttachmentMime; name: string }[] = [];
   for (const file of files) {
@@ -79,7 +85,10 @@ export async function POST(req: Request): Promise<Response> {
     }
     const mime = sniffAttachmentMime(bytes);
     if (!mime) {
-      return NextResponse.json({ error: 'unsupported_type' }, { status: 415 });
+      return NextResponse.json(
+        { error: 'unsupported_type', detail: 'supported file types are JPEG, PNG, WebP, and PDF' },
+        { status: 415 },
+      );
     }
     validated.push({ bytes, mime, name: sanitizeOriginalName(file.name) });
   }

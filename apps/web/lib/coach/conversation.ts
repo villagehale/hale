@@ -9,6 +9,11 @@ import { applyAttachmentMarkers } from './attachment-blocks.js';
  * never load — or append to — another family's thread (rule #1, family-scoped).
  */
 
+/** A Database handle OR an open transaction — lets a writer run standalone or, when
+ * two writes must commit atomically (the user message + its attachment link), inside
+ * the SAME transaction. */
+export type Db = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+
 export interface TranscriptMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -212,7 +217,7 @@ export async function appendMessage(
   conversationId: string,
   role: 'user' | 'assistant',
   content: string,
-  database: Database,
+  database: Db,
   scope: MessageScope = { childId: null, topic: null },
 ): Promise<string> {
   const rows = await database
