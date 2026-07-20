@@ -79,6 +79,12 @@ function enclosingComponent(src: string, upToIndex: number): string | null {
   return last ? (last[1] ?? last[2] ?? null) : null;
 }
 
+// The invariant guards PAGE heroes: exactly one h1/page-header, owned by the shell.
+// Collapsible rail PANELS (§4.4: the Ask session/context rails) carry their own
+// small <header> ("Chat history" / "Context") — sectioning-content headers inside
+// an aside, not a competing page hero.
+const PANEL_HEADER_COMPONENTS = new Set(['AskSessionRail', 'HaleContextRail']);
+
 describe('the app shell owns the single hero — no authed surface emits its own (§3.2)', () => {
   for (const route of [...ROOT_ROUTES, ...Object.keys(DRILL_HEROES)]) {
     it(`${route} render graph emits no own <h1> or <header>`, () => {
@@ -88,6 +94,9 @@ describe('the app shell owns the single hero — no authed surface emits its own
       for (const { file, src, entry } of graph) {
         for (const m of src.matchAll(/<(h1|header)[\s>]/g)) {
           const owner = entry ? null : enclosingComponent(src, m.index ?? 0);
+          if (m[1] === 'header' && owner !== null && PANEL_HEADER_COMPONENTS.has(owner)) {
+            continue;
+          }
           // Entry page markup is always live; a nested component's heading only counts
           // when that component is actually rendered somewhere in this route's graph.
           if (entry || owner === null || graphText.includes(`<${owner}`)) {
