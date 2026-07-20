@@ -2049,3 +2049,145 @@ html, body, .sidebar, .panel, .card, .field {
 .attach-chip-apricot { background: var(--color-apricot-tint); color: var(--color-apricot-deep); }
 .attach-chip-sage { background: var(--color-sage-tint); color: var(--color-sage); }
 .attach-chip-amber { background: var(--color-amber-tint); color: var(--color-amber); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ONBOARDING — the 9-step conversational flow (Web Phase W4, handoff §4.1).
+   A CENTERED flow on the warm canvas (NOT the auth split-panel): a chrome row
+   (Back · 9-segment progress · Skip) over a centered content column, where Hale
+   "speaks" in a chat bubble with the logo avatar. Role tokens carry dark mode
+   for free; the two onboarding-specific warm values (chat bubble, progress
+   track / ready dot) get explicit .dark counterparts that hold their light
+   contrast. Layout beyond this identity is Tailwind utilities in the step JSX.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ob-shell {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--color-linen);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 30px 24px 40px;
+}
+
+.ob-theme { position: absolute; top: 20px; right: 24px; z-index: 10; }
+
+.ob-chrome {
+  width: 100%;
+  max-width: 660px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 8px;
+}
+
+.ob-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-faded-sage);
+  cursor: pointer;
+  transition: color 0.2s var(--ease-breathe), background 0.2s var(--ease-breathe);
+}
+.ob-back:hover { color: var(--color-spruce); background: var(--color-warm-hover); }
+.ob-back:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+.ob-back-spacer,
+.ob-skip-spacer { flex: none; width: 36px; }
+
+.ob-progress { flex: 1; display: flex; gap: 6px; }
+.ob-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: #E2DFD6; /* handoff: inactive segment */
+  transition: background 0.3s var(--ease-breathe);
+}
+.dark .ob-seg { background: var(--color-rule-strong); }
+.ob-seg-on { background: var(--color-brand); } /* handoff: filled #1B2160 (cream in dark) */
+/* Win over `.dark .ob-seg` (higher specificity) so filled segments stay bright in dark. */
+.dark .ob-seg-on { background: var(--color-brand); }
+
+.ob-skip {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-faint);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  transition: color 0.2s var(--ease-breathe);
+}
+.ob-skip:hover { color: var(--color-spruce); }
+.ob-skip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+.ob-column {
+  width: 100%;
+  max-width: 620px;
+  margin-top: 40px;
+  flex: 1;
+}
+
+/* A step column fades up on enter (handoff fadeUp ≈ settle). */
+.ob-step { animation: settle 0.45s var(--ease-breathe) both; }
+
+/* Hale's chat bubble — incoming shape 4/16/16/16, warm ground, with the logo
+   avatar to its left. */
+.ob-bubble { display: flex; align-items: flex-start; gap: 12px; max-width: 500px; }
+.ob-bubble > p {
+  background: #F3F1EB; /* handoff: onboarding assistant bubble */
+  color: var(--color-spruce);
+  border-radius: 4px 16px 16px 16px;
+  padding: 14px 18px;
+  line-height: 1.5;
+}
+.dark .ob-bubble > p { background: var(--color-oat); }
+.ob-bubble-avatar { flex: none; margin-top: 2px; }
+
+/* Step 7's animated "getting ready" checklist: rows reveal one-by-one, each
+   fading from 0.22 → 1 with its dot turning green. */
+.ob-ready-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.ob-ready-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.22;
+  color: var(--color-spruce);
+  transition: opacity 0.45s var(--ease-breathe);
+}
+.ob-ready-on { opacity: 1; }
+.ob-ready-dot {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #C9CFDA; /* handoff: inactive ready dot */
+  color: var(--color-on-spruce);
+  transition: background 0.45s var(--ease-breathe);
+}
+.dark .ob-ready-dot { background: var(--color-rule-strong); }
+.ob-ready-on .ob-ready-dot { background: var(--color-success); } /* handoff: #2EA35E */
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-step { animation: none; }
+  .ob-ready-item { transition: none; }
+  .ob-seg,
+  .ob-ready-dot { transition: none; }
+}
