@@ -104,10 +104,10 @@ describe('AskHaleThread — full surface', () => {
   it('shows the welcoming empty state when there is no conversation yet', () => {
     const html = render(seed([]));
 
-    // The first-screen invite (mockup panel 3) + a suggestion row (which prefills
-    // the composer). No viewer name is supplied here, so the bare invite shows.
-    expect(html).toContain('How can I help?');
-    expect(html).toContain('Hale is your AI parenting assistant. Here for you, 24/7.');
+    // The first-screen invite (desktop handoff §4.4) + a suggestion tile (which
+    // prefills + sends). The greeting word is time-of-day, so only the stable
+    // sub-line is asserted here.
+    expect(html).toContain('What can I do for your family today?');
     expect(html).toContain('how are naps going?');
   });
 
@@ -120,7 +120,48 @@ describe('AskHaleThread — full surface', () => {
         viewerName: 'Alex Dong',
       }),
     );
-    expect(html).toContain('Hi Alex, how can I help?');
+    // The greeting interpolates the parent's first name ("Good {morning|…}, Alex.");
+    // the time-of-day word varies, so assert the stable name clause.
+    expect(html).toContain(', Alex.');
+  });
+
+  it('renders the three-column shell — session rail, conversation, context rail', () => {
+    const html = render(seed([]));
+    // Both collapsible side rails frame the conversation (desktop handoff §4.4).
+    expect(html).toMatch(/aria-label="Chat history"/);
+    expect(html).toMatch(/aria-label="Context"/);
+    // Each rail carries a collapse toggle (the Cowork-style 44px-strip affordance).
+    expect(html).toMatch(/aria-label="Collapse chat history"/);
+    expect(html).toMatch(/aria-label="Collapse context"/);
+    // "New chat" starts a fresh conversation.
+    expect(html).toContain('New chat');
+  });
+
+  it('defers the client-local session list so SSR carries no time text that could mismatch', () => {
+    const html = renderToStaticMarkup(
+      createElement(AskHaleThread, {
+        canAsk: true,
+        seed: seed([]),
+        variant: 'full',
+        initialConversations: [
+          {
+            id: 'c1',
+            title: 'Book the 15-month visit',
+            noteKey: null,
+            lastMessageAt: new Date().toISOString(),
+            messageCount: 3,
+          },
+        ],
+      }),
+    );
+    // The rail chrome is server-rendered…
+    expect(html).toContain('Chat history');
+    expect(html).toContain('New chat');
+    // …but the grouped list (Today/Earlier + locale-dependent times) is computed off the
+    // device's LOCAL day post-mount, so the SSR intentionally omits it (a server-locale
+    // time would hydration-mismatch the client's). The live list is covered by the
+    // session-groups unit tests + live QA.
+    expect(html).not.toContain('Book the 15-month visit');
   });
 
   it('announces via a discrete status node, not by making the transcript a live region', () => {

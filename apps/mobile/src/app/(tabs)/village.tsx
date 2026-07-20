@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
 
+import { FamilyAreaSheet } from '@/components/hale/family-area-sheet';
 import { ResourcesRail } from '@/components/hale/resources-rail';
 import { TypingDots } from '@/components/hale/typing-dots';
 import { AppText } from '@/components/ui/app-text';
@@ -15,7 +16,7 @@ import { Tag } from '@/components/ui/tag';
 import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
-import type { MobileVillageResponse, VillageCandidateView } from '@/lib/api-types';
+import type { MobileVillageResponse, SavedAreaLabel, VillageCandidateView } from '@/lib/api-types';
 import { foundStamp } from '@/lib/format';
 import { STUB_CHILDCARE, type StubChildcareProvider } from '@/lib/stub-data';
 import { useApi } from '@/lib/use-api';
@@ -27,6 +28,7 @@ import {
   applyFilters,
   cadenceChip,
 } from '@/lib/village-filter';
+import { headerLabel, subtitleCopy } from '@/lib/village-region';
 import {
   type DiscoverResult,
   SEASON_KEYS,
@@ -165,18 +167,27 @@ function FiltersSheet({
   );
 }
 
-/** A location chip beside the Village title (handoff). Static — Hale keeps only a
- * coarse area (never an exact address), and there is no area picker, so this reads
- * "Near you" without a chevron rather than implying a selector that doesn't exist. */
-function LocationChip() {
-  const pin = useMeadowColor('ink2');
+/** The live location button beside the Village title (handoff Feature 2): a pin, the
+ * active area label (the city, or "Near you" when the family has saved none), and a
+ * chevron — tapping opens the "Family area" switcher sheet. Coarse only; Hale never
+ * keeps an exact address (rule #1). */
+function LocationButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const pin = useMeadowColor('ink');
+  const chevron = useMeadowColor('ink3');
   return (
-    <View className="flex-row items-center gap-1.5">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Family area: ${label}. Change area`}
+      hitSlop={8}
+      onPress={onPress}
+      className="flex-row items-center gap-1.5 active:opacity-70"
+    >
       <Icon name="map-pin" size={14} color={pin} />
       <AppText variant="meta" className="text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
-        Near you
+        {label}
       </AppText>
-    </View>
+      <Icon name="chevron-down" size={12} color={chevron} />
+    </Pressable>
   );
 }
 
@@ -716,15 +727,33 @@ export default function VillageScreen() {
   const [pendingSeason, setPendingSeason] = useState<SeasonKey | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [area, setArea] = useState<SavedAreaLabel | null>(null);
+
   const readPath = activeSeason ? searchReadPath(activeSeason) : STANDING_PATH;
   const { status, data, error, refreshing, reload, refresh } =
     useApi<MobileVillageResponse>(readPath, { refetchOnFocus: true });
+
+  // Hold the active-area label from the standing feed. The season/childcare sub-reads
+  // omit `area`, so only update when the key is present — the header then stays put
+  // during a season search rather than flipping to "Near you".
+  useEffect(() => {
+    if (data && data.area !== undefined) setArea(data.area);
+  }, [data]);
 
   const clearToFeed = useCallback(() => {
     setActiveSeason(null);
     setPendingSeason(null);
     setSearchError(null);
   }, []);
+
+  // The active area changed in the switcher — re-query the feed so it reflects the new
+  // area. A season search is cleared back to the standing feed (its stored run was for
+  // the old area); on the standing feed we force a re-read in place.
+  const onAreaChanged = useCallback(() => {
+    if (activeSeason) clearToFeed();
+    else refresh();
+  }, [activeSeason, clearToFeed, refresh]);
 
   const runSearch = useCallback(async (season: SeasonKey) => {
     setSearchError(null);
@@ -755,10 +784,10 @@ export default function VillageScreen() {
       <View className="pt-2">
         <View className="flex-row items-center justify-between">
           <AppText variant="display">Village</AppText>
-          <LocationChip />
+          <LocationButton label={headerLabel(area)} onPress={() => setSheetOpen(true)} />
         </View>
         <AppText variant="meta" className="mt-0.5 text-ink-3">
-          Find support, activities &amp; resources near you.
+          {subtitleCopy(area)}
         </AppText>
       </View>
 
@@ -802,6 +831,12 @@ export default function VillageScreen() {
           onRefresh={refresh}
         />
       ) : null}
+
+      <FamilyAreaSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onAreaChanged={onAreaChanged}
+      />
     </Screen>
   );
 }

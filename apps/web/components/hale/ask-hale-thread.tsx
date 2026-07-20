@@ -1,8 +1,9 @@
 'use client';
 
-import { ArrowRight, ArrowUp, ChevronRight, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowRight, ArrowUp, Paperclip, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ActionChip } from '~/components/hale/action-chip';
+import { AskSessionRail } from '~/components/hale/ask-session-rail';
 import type { ConnectorChip } from '~/components/hale/coach-context-panel';
 import { ConnectorCard } from '~/components/hale/connector-card';
 import { HaleContextRail } from '~/components/hale/hale-context-rail';
@@ -17,6 +18,14 @@ import {
 } from '~/components/hale/use-ask-hale';
 import { VoiceMicButton } from '~/components/hale/voice-mic-button';
 import { Button } from '~/components/ui/button';
+import {
+  ATTACHMENTS_ENABLED,
+  type AttachmentChipTone,
+  attachmentChipTone,
+  formatAttachmentSize,
+} from '~/lib/coach/attachment-ui';
+import { greetingLine } from '~/lib/coach/greeting';
+import type { ConversationSummary } from '~/lib/coach/history';
 import type { SuggestionGroup, ThreadSeed, TimelineChild } from '~/lib/coach/thread';
 
 export type AskHaleVariant = 'compact' | 'full';
@@ -30,6 +39,9 @@ interface AskHaleThreadProps {
   variant: AskHaleVariant;
   /** The family's connectors, for the /coach Context section. Empty on the Home hero. */
   connectors?: ConnectorChip[];
+  /** RSC-rehydrated first page of the family's Ask sessions, for the full surface's
+   * session rail. Empty on the Home hero. */
+  initialConversations?: ConversationSummary[];
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
   /** Signed-in parent's first name, for the full surface's empty-state greeting. */
@@ -57,6 +69,7 @@ export function AskHaleThread({
   seed,
   variant,
   connectors = [],
+  initialConversations = [],
   initialFocusedChildId = null,
   viewerName = null,
 }: AskHaleThreadProps) {
@@ -69,6 +82,7 @@ export function AskHaleThread({
       chat={chat}
       seed={seed}
       connectors={connectors}
+      initialConversations={initialConversations}
       viewerName={viewerName}
     />
   );
@@ -342,13 +356,13 @@ function ConversationHeader({
 }
 
 /**
- * The stage-aware suggestion ROWS for the empty state — full-width bordered pills
- * (a navy spark, the question, a trailing chevron), one per row, that prefill + send.
- * Distinct from the composer's inline `Suggestions` chips: on the first screen the
- * prompts are the primary call to action, so they read as a tappable list, not a
- * cluster of small chips (mockup panel 3).
+ * The stage-aware suggestion TILES for the empty state — a 2-column grid of bordered
+ * cards (a navy spark + the question) that prefill + send (desktop handoff §4.4). The
+ * prompts are REAL stage-aware suggestions; there is no fabricated category sub-line
+ * (the suggestions carry none). On the first screen the prompts are the primary call
+ * to action, so they read as tappable tiles rather than a cluster of small chips.
  */
-function SuggestionRows({
+function SuggestionTiles({
   suggestions,
   focusedChildId,
   onPick,
@@ -364,30 +378,29 @@ function SuggestionRows({
     suggestions.find((g) => g.childId === null);
   if (!group) return null;
   return (
-    <ul className="flex flex-col gap-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       {group.prompts.map((prompt) => (
-        <li key={prompt}>
-          <button
-            type="button"
-            onClick={() => onPick(prompt)}
-            disabled={disabled}
-            className={`suggestion-row cursor-pointer ${DISABLED_AFFORDANCE}`}
-          >
-            <Sparkles aria-hidden size={18} className="shrink-0 text-spruce" />
-            <span className="min-w-0 flex-1 text-left">{prompt}</span>
-            <ChevronRight aria-hidden size={18} className="shrink-0 text-faded-sage" />
-          </button>
-        </li>
+        <button
+          key={prompt}
+          type="button"
+          onClick={() => onPick(prompt)}
+          disabled={disabled}
+          className={`ask-suggestion-tile cursor-pointer ${DISABLED_AFFORDANCE}`}
+        >
+          <Sparkles aria-hidden size={18} className="shrink-0 text-spruce" />
+          <span className="min-w-0 flex-1 text-left">{prompt}</span>
+        </button>
       ))}
-    </ul>
+    </div>
   );
 }
 
 /**
- * The first-screen welcome — the landing before any turn exists (mockup panel 3): a
- * large "Hi {name}, how can I help?", the warm one-liner, the per-child scope chips,
- * and the stage-aware suggestion rows (which prefill + send). Mirrors a chat app's
- * empty state rather than an editorial header.
+ * The first-screen welcome — the landing before any turn exists (desktop handoff
+ * §4.4): a serif "Good evening, {name}." with the "What can I do for your family
+ * today?" sub-line, the per-child scope chips, and the stage-aware suggestion tiles
+ * (which prefill + send). The greeting word is time-of-day, so it is computed on the
+ * client (suppressHydrationWarning) — the server render may differ by a word.
  */
 function EmptyState({
   canAsk,
@@ -408,16 +421,17 @@ function EmptyState({
   disabled: boolean;
   viewerName: string | null;
 }) {
-  const firstName = viewerName?.trim().split(/\s+/)[0];
+  const firstName = viewerName?.trim().split(/\s+/)[0] ?? null;
   return (
-    <div className="mx-auto flex max-w-[36rem] flex-col gap-6 py-6 sm:py-10">
+    <div className="mx-auto flex max-w-[40rem] flex-col gap-6 py-6 sm:py-10">
       <div className="space-y-2">
-        <p className="font-display text-[1.9rem] lg:text-[2.35rem] font-semibold leading-tight">
-          {firstName ? `Hi ${firstName}, how can I help?` : 'How can I help?'}
+        <p
+          suppressHydrationWarning
+          className="font-display text-[1.6rem] lg:text-[1.9rem] font-semibold leading-tight"
+        >
+          <span data-hale-pii>{greetingLine(firstName, new Date())}</span>
         </p>
-        <p className="text-slate-green leading-relaxed">
-          Hale is your AI parenting assistant. Here for you, 24/7.
-        </p>
+        <p className="text-slate-green leading-relaxed">What can I do for your family today?</p>
       </div>
       {kids.length > 0 ? (
         <ScopeChips
@@ -427,7 +441,7 @@ function EmptyState({
         />
       ) : null}
       {canAsk ? (
-        <SuggestionRows
+        <SuggestionTiles
           suggestions={suggestions}
           focusedChildId={focusedChildId}
           onPick={onPick}
@@ -884,12 +898,14 @@ function FullSurface({
   chat,
   seed,
   connectors,
+  initialConversations,
   viewerName,
 }: {
   canAsk: boolean;
   chat: UseAskHale;
   seed: ThreadSeed;
   connectors: ConnectorChip[];
+  initialConversations: ConversationSummary[];
   viewerName: string | null;
 }) {
   const {
@@ -900,6 +916,10 @@ function FullSurface({
     draft,
     setDraft,
     ask,
+    activeConversationId,
+    newChat,
+    openConversation,
+    historyRevision,
     focusedChildId,
     setFocusedChildId,
     topicFilter,
@@ -914,6 +934,12 @@ function FullSurface({
   } = chat;
   const childLabelOf = useChildLabel(seed.children);
   const isEmpty = turns.length === 0;
+  // The only REAL "pending draft" signal: an assistant turn proposed an action Hale is
+  // holding for approval (rule #4). No live Gmail-draft loader exists, so absent this
+  // the collapsed context rail shows no dot rather than a fabricated one.
+  const hasPendingDraft = visibleTurns.some(
+    (t) => t.role === 'assistant' && (t.actionIntents?.length ?? 0) > 0,
+  );
   // Only PERSISTED turns (present in the server-rehydrated seed) carry a real
   // message id the audited delete can resolve; an in-session turn's client id would
   // 404. So the delete affordance is offered on the seeded set only.
@@ -926,6 +952,13 @@ function FullSurface({
   // chat is single-column, full-width.
   return (
     <div className="coach-surface flex min-h-0 flex-1 gap-6">
+      <AskSessionRail
+        initialConversations={initialConversations}
+        activeId={activeConversationId}
+        refreshSignal={historyRevision}
+        onNewChat={newChat}
+        onOpen={openConversation}
+      />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* No own heading here: the app shell's PageHero (§3.2) renders the sole "Hale"
             hero for the /coach root, in the desktop top bar and the narrow-viewport
@@ -1031,14 +1064,39 @@ function FullSurface({
         </div>
       </div>
 
-      <HaleContextRail connectors={connectors} />
+      <HaleContextRail connectors={connectors} hasPendingDraft={hasPendingDraft} />
     </div>
   );
 }
 
-/** The composer field + send affordance — a rounded input row with the send button
- *  tucked at its trailing edge. ⌘/Ctrl+Enter sends; the label stays sr-only so the
- *  placeholder carries the prompt. */
+/** One staged composer attachment — the metadata the upload route returned, plus the
+ *  rotating chip tone. The bytes already live server-side; only the id rides the send. */
+interface ComposerAttachment {
+  id: string;
+  name: string;
+  sizeBytes: number;
+  tone: AttachmentChipTone;
+}
+
+/** The upload route's response row (feat/b4-chat-attachments). */
+interface UploadedAttachment {
+  id: string;
+  name: string;
+  sizeBytes: number;
+}
+
+/**
+ * The composer field + send affordance — a rounded input row with the paperclip at
+ * the leading edge and the mic + navy send tucked at the trailing edge (desktop
+ * handoff §4.4). Enter sends; Shift+Enter (and ⌘/Ctrl+Enter) inserts a newline. The
+ * label stays sr-only so the placeholder carries the prompt.
+ *
+ * Attachments are gated behind ATTACHMENTS_ENABLED so this ships before the B4 backend
+ * (feat/b4-chat-attachments) lands: with it off, the paperclip never renders and no
+ * upload is attempted. On: the paperclip opens a multi-file picker, uploads to
+ * /api/coach/attachments, and shows removable name+size chips (4-tone cycle) above the
+ * input; the returned ids ride the send. A send may carry attachments only.
+ */
 function Composer({
   inputRef,
   draft,
@@ -1049,42 +1107,138 @@ function Composer({
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   draft: string;
   setDraft: (v: string) => void;
-  ask: (q: string) => void;
+  ask: (q: string, attachmentIds?: string[]) => void;
   status: AskStatus;
 }) {
   const pending = status === 'pending';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const canSend = !pending && !uploading && (draft.trim().length > 0 || attachments.length > 0);
+
+  function submit() {
+    if (!canSend) return;
+    ask(
+      draft,
+      attachments.map((a) => a.id),
+    );
+    setAttachments([]);
+  }
+
+  async function uploadChosen(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      for (const file of Array.from(files)) form.append('files', file);
+      const res = await fetch('/api/coach/attachments', { method: 'POST', body: form });
+      if (!res.ok) {
+        setUploadError('Couldn’t attach that — try again.');
+        return;
+      }
+      const uploaded = (await res.json()) as UploadedAttachment[];
+      setAttachments((prev) => [
+        ...prev,
+        ...uploaded.map((u, i) => ({
+          id: u.id,
+          name: u.name,
+          sizeBytes: u.sizeBytes,
+          tone: attachmentChipTone(prev.length + i),
+        })),
+      ]);
+    } catch {
+      setUploadError('Couldn’t attach that — try again.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   return (
-    <div className="composer-shell">
-      <label htmlFor="coach-input" className="sr-only">
-        ask Hale
-      </label>
-      <textarea
-        ref={inputRef}
-        id="coach-input"
-        name="question"
-        rows={1}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            ask(draft);
-          }
-        }}
-        placeholder="ask about this child, or your whole family…"
-        className="composer-input"
-        autoComplete="off"
-      />
-      <VoiceMicButton onTranscript={setDraft} />
-      <button
-        type="button"
-        onClick={() => ask(draft)}
-        disabled={pending || draft.trim().length === 0}
-        aria-label={pending ? 'thinking' : 'ask Hale'}
-        className={`composer-send cursor-pointer ${DISABLED_AFFORDANCE}`}
-      >
-        <ArrowUp aria-hidden size={20} />
-      </button>
+    <div className="space-y-2">
+      {ATTACHMENTS_ENABLED && attachments.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {attachments.map((a) => (
+            <li key={a.id} className={`attach-chip attach-chip-${a.tone}`}>
+              <Paperclip aria-hidden size={12} className="shrink-0" />
+              <span data-hale-pii className="max-w-[12rem] truncate">
+                {a.name}
+              </span>
+              <span className="opacity-70">{formatAttachmentSize(a.sizeBytes)}</span>
+              <button
+                type="button"
+                onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                aria-label={`Remove ${a.name}`}
+                className="ml-0.5 inline-flex cursor-pointer items-center"
+              >
+                <X aria-hidden size={13} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {ATTACHMENTS_ENABLED && uploadError ? (
+        <p className="meta italic text-berry" role="alert">
+          {uploadError}
+        </p>
+      ) : null}
+
+      <div className="composer-shell">
+        {ATTACHMENTS_ENABLED ? (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="sr-only"
+              onChange={(e) => uploadChosen(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              aria-label="attach files"
+              className={`composer-mic cursor-pointer ${DISABLED_AFFORDANCE}`}
+            >
+              <Paperclip aria-hidden size={18} />
+            </button>
+          </>
+        ) : null}
+        <label htmlFor="coach-input" className="sr-only">
+          ask Hale
+        </label>
+        <textarea
+          ref={inputRef}
+          id="coach-input"
+          name="question"
+          rows={1}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Ask Hale anything…"
+          className="composer-input"
+          autoComplete="off"
+        />
+        <VoiceMicButton onTranscript={setDraft} />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSend}
+          aria-label={pending ? 'thinking' : 'ask Hale'}
+          className={`composer-send cursor-pointer ${DISABLED_AFFORDANCE}`}
+        >
+          <ArrowUp aria-hidden size={20} />
+        </button>
+      </div>
     </div>
   );
 }

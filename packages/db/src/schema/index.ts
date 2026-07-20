@@ -28,6 +28,7 @@ export * from './village.js';
 export * from './curated-resources.js';
 export * from './waitlist.js';
 export * from './conversations.js';
+export * from './chat-attachments.js';
 export * from './rate-limits.js';
 export * from './enums.js';
 export * from './family-active-days.js';

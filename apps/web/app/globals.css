@@ -1878,6 +1878,178 @@ html, body, .sidebar, .panel, .card, .field {
   .turtle-loader-text { animation: none; opacity: 1; transform: none; }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * W3 — Ask three-column rails (session | conversation | context)
+ * Desktop handoff §4.4. Both side rails are independently collapsible (Cowork-
+ * style) to a 44px strip. The width + the full↔strip content swap are driven by
+ * a root data-attribute the pre-paint script sets from localStorage (no flash);
+ * React only mirrors it for the toggle button's aria. All colours are role tokens
+ * so dark mode is free. Rails hide below lg (chat goes single-column, full-width).
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+.ask-rail {
+  overflow: hidden;
+  transition: width 0.2s var(--ease-breathe);
+}
+.ask-rail-left { width: 222px; }
+.ask-rail-right { width: 320px; }
+:root[data-ask-rail-left="1"] .ask-rail-left { width: 44px; }
+:root[data-ask-rail-right="1"] .ask-rail-right { width: 44px; }
+
+.ask-rail__full {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ask-rail__strip {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+:root[data-ask-rail-left="1"] .ask-rail-left .ask-rail__full,
+:root[data-ask-rail-right="1"] .ask-rail-right .ask-rail__full { display: none; }
+:root[data-ask-rail-left="1"] .ask-rail-left .ask-rail__strip,
+:root[data-ask-rail-right="1"] .ask-rail-right .ask-rail__strip { display: flex; }
+
+.ask-rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-rail { transition: none; }
+}
+
+/* Small icon control (collapse / expand / strip actions) — a 32px hit target. */
+.ask-rail-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--color-faded-sage);
+  transition: background 160ms var(--ease-breathe), color 160ms var(--ease-breathe);
+}
+.ask-rail-icon-btn:hover { background: var(--color-warm-hover); color: var(--color-spruce); }
+.ask-rail-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* Pending-draft dot on the collapsed context strip (terracotta, theme-safe). */
+.ask-rail-dot {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--r-full);
+  background: var(--color-berry);
+}
+
+/* "New chat" — a full-width outlined action at the top of the session rail. */
+.ask-new-chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-oat);
+  color: var(--color-brand);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 200ms var(--ease-breathe), transform 120ms var(--ease-breathe);
+}
+.ask-new-chat:hover { box-shadow: var(--shadow-card-hover); }
+.ask-new-chat:active { transform: translateY(1px); }
+.ask-new-chat:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* One session row — title over its last-active time. Active = white card + border
+ * (design handoff: selected session), hover = warm wash. */
+.ask-session-row {
+  border-radius: var(--r-sm);
+  transition: background 160ms var(--ease-breathe), box-shadow 160ms var(--ease-breathe);
+}
+.ask-session-row:hover { background: var(--color-warm-hover); }
+.ask-session-row[aria-current="true"] {
+  background: var(--color-oat);
+  box-shadow: inset 0 0 0 1px var(--color-rule);
+}
+.ask-session-row:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* Empty-state suggestion tile (2-col) — a bordered card: a navy spark + the prompt.
+ * A hover lift + press depress match the card idiom; the whole tile is one tap target. */
+.ask-suggestion-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.9rem 1rem;
+  background: var(--color-oat);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  color: var(--color-spruce);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: border-color 200ms var(--ease-breathe), box-shadow 200ms var(--ease-breathe),
+    transform 120ms var(--ease-breathe);
+}
+.ask-suggestion-tile:not(:disabled):hover {
+  border-color: var(--color-rule-strong);
+  box-shadow: var(--shadow-card-hover);
+}
+.ask-suggestion-tile:not(:disabled):active { transform: translateY(1px); }
+.ask-suggestion-tile:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-new-chat:active,
+  .ask-suggestion-tile { transition: none; }
+  .ask-suggestion-tile:not(:disabled):active,
+  .ask-new-chat:active { transform: none; }
+}
+
+/* Composer attachment chip — name + size, a 4-tone cycle (design handoff §2.1
+ * file-chip palette), removable. Each tone is a role token so the chip is theme-safe. */
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.attach-chip-berry { background: var(--color-berry-tint); color: var(--color-berry); }
+.attach-chip-apricot { background: var(--color-apricot-tint); color: var(--color-apricot-deep); }
+.attach-chip-sage { background: var(--color-sage-tint); color: var(--color-sage); }
+.attach-chip-amber { background: var(--color-amber-tint); color: var(--color-amber); }
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * WEB PHASE W2 — core-surface component classes (design handoff §3–§4)
  * Additive only; every value consumes a ROLE token so both themes derive for

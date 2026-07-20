@@ -105,7 +105,9 @@ function fakeDb(capture: InsertCapture, existingConversationId?: string): Databa
             role: rows.role as string,
             content: rows.content as string,
           });
-          return Promise.resolve(undefined);
+          // appendMessage returns the new id (for linking per-turn rows); the value
+          // is unused when a turn carries no attachments, which these tests don't.
+          return { returning: async () => [{ id: `msg-${capture.messages.length}` }] };
         }
         if (table === schema.auditLog) {
           return Promise.resolve(undefined);

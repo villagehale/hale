@@ -10,12 +10,18 @@ import {
 import type { Database } from '@hale/db';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type ActionIntent, detectActionIntents } from './action-intent';
+import {
+  AttachmentConsumptionError,
+  buildAttachmentBlocks,
+  linkAttachmentsToMessage,
+  type OwnedChatAttachment,
+} from './attachments';
 import type { CoachRunMetrics } from './coach';
 import { loadAgentContext, type SourceNoteContext } from './context';
 import {
   appendMessage,
   createConversation,
-  loadTranscript,
+  loadTranscriptWithAttachments,
   resolveConversationForFamily,
   resolveOrCreateNoteConversation,
 } from './conversation';
@@ -62,6 +68,10 @@ export interface AskHaleInput {
   noteKey: string | null;
   /** The redacted note this reply grounds on, seeded into the agent context, or null. */
   sourceNote: SourceNoteContext | null;
+  /** Fresh attachments for THIS turn — already validated + loaded (family-scoped,
+   * unlinked) by the route. Linked to the persisted user message and sent to the
+   * model as native content blocks. Omitted/empty for a text-only send. */
+  attachments?: OwnedChatAttachment[];
 }
 
 export interface AskHaleResult {
@@ -129,13 +139,40 @@ export async function askHale(
     conversationId = existing ?? (await createConversation(input.familyId, database));
   }
 
-  const transcript = await loadTranscript(conversationId, database);
+  const transcript = await loadTranscriptWithAttachments(conversationId, database);
+
   // Persist the parent turn with its scope so the timeline can filter on child +
   // topic; topic is keyword-tagged (no LLM), child is the focused chip.
-  await appendMessage(conversationId, 'user', input.question, database, {
-    childId: input.focusedChildId,
-    topic: tagTopic(input.question),
-  });
+  const scope = { childId: input.focusedChildId, topic: tagTopic(input.question) };
+
+  // Consume this turn's attachments ATOMICALLY: the user-message insert and the
+  // conditional link-UPDATE run in ONE transaction. If the UPDATE cannot claim every
+  // requested attachment (a concurrent double-send lost the race, or an id was already
+  // consumed), the transaction rolls back — the user message is NOT persisted and we
+  // abort BEFORE fetching bytes or calling the model with them (rule #1). A text-only
+  // turn keeps the plain insert (no transaction).
+  const turnAttachments = input.attachments ?? [];
+  let attachmentBlocks: Anthropic.ContentBlockParam[] = [];
+  if (turnAttachments.length > 0) {
+    const ids = turnAttachments.map((a) => a.id);
+    await database.transaction(async (tx) => {
+      const userMessageId = await appendMessage(conversationId, 'user', input.question, tx, scope);
+      const linked = await linkAttachmentsToMessage(
+        tx,
+        input.familyId,
+        ids,
+        userMessageId,
+        conversationId,
+      );
+      if (linked.length !== ids.length) {
+        throw new AttachmentConsumptionError(ids.length, linked.length);
+      }
+    });
+    // Bytes are fetched (and reach the MODEL only) after the consume commits (rule #1).
+    attachmentBlocks = await buildAttachmentBlocks(turnAttachments);
+  } else {
+    await appendMessage(conversationId, 'user', input.question, database, scope);
+  }
 
   const context = await loadAgentContext(
     {
@@ -176,6 +213,7 @@ export async function askHale(
         maxTokens: MAX_TOKENS,
         toolContext: { familyId: input.familyId, actor: input.actor },
         guardDeps,
+        attachments: attachmentBlocks,
       };
       const result = streamHooks
         ? await runAgentStreaming({ ...runArgs, ...streamHooks })

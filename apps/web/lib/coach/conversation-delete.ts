@@ -1,14 +1,23 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
+import { removeDocument } from '../docs/storage.js';
 
 /**
  * Deletion of Ask Hale history, family-scoped + audited (rules #1, #6). A parent
- * may remove a SINGLE turn or ERASE the whole conversation from /coach. Both are
- * SOFT deletes — stamp `deleted_at`, never a hard DELETE — so the audit row that
- * references the turn stays intact (rule #6, PIPEDA right-to-access), matching the
- * quick-log episode posture (softDeleteEpisode). The read path already filters
+ * may remove a SINGLE turn or ERASE the whole conversation from /coach. The MESSAGE
+ * turns are SOFT deleted — stamp `deleted_at`, never a hard DELETE — so the audit row
+ * that references the turn stays intact (rule #6, PIPEDA right-to-access), matching
+ * the quick-log episode posture (softDeleteEpisode). The read path already filters
  * `deleted_at IS NULL`, so a stamped turn leaves every timeline and the agent's
  * context immediately.
+ *
+ * Any chat_attachments the removed turns carried (child photos, lab PDFs) are
+ * HARD-purged the other way (rule #1, PIPEDA right-to-erasure): their bytes are
+ * deleted from the private bucket AND their rows deleted — chat_attachments has no
+ * soft-delete column because its audit trail lives in audit_log. The byte deletion
+ * runs BEFORE the row deletion inside the transaction, so a storage failure rolls the
+ * whole erase back (row survives → retryable) and a stored object can never outlive
+ * the conversation that referenced it.
  *
  * Family scope (rule #1): a turn/conversation is only ever mutable through its
  * OWNING family. The guard joins message → conversation → family, so a turn under
@@ -17,6 +26,34 @@ import { and, eq, isNull } from 'drizzle-orm';
  */
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/** The storage-object remover, injected so tests record deletes without a live bucket. */
+type RemoveObject = (path: string) => Promise<void>;
+
+/**
+ * Purges every chat_attachment matching `where` from the bucket AND the table: bytes
+ * first (rule #1 — if that fails the enclosing transaction rolls back and the row is
+ * kept for a retry), then the rows. Returns how many were purged (for the audit row).
+ */
+async function purgeAttachments(
+  tx: Tx,
+  where: ReturnType<typeof eq>,
+  removeObject: RemoveObject,
+): Promise<number> {
+  const rows = await tx
+    .select({
+      id: schema.chatAttachments.id,
+      storagePath: schema.chatAttachments.storagePath,
+    })
+    .from(schema.chatAttachments)
+    .where(where);
+  if (rows.length === 0) return 0;
+  for (const row of rows) {
+    await removeObject(row.storagePath);
+  }
+  await tx.delete(schema.chatAttachments).where(where);
+  return rows.length;
+}
 
 /**
  * Soft-deletes ONE turn the family owns. Returns true when a live turn was stamped,
@@ -27,6 +64,7 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 export async function softDeleteMessage(
   database: Database,
   args: { messageId: string; familyId: string; actorUserId: string; now?: Date },
+  removeObject: RemoveObject = removeDocument,
 ): Promise<boolean> {
   const { messageId, familyId, actorUserId } = args;
   const now = args.now ?? new Date();
@@ -45,13 +83,19 @@ export async function softDeleteMessage(
       return false;
     }
 
+    const purgedAttachments = await purgeAttachments(
+      tx,
+      eq(schema.chatAttachments.messageId, messageId),
+      removeObject,
+    );
+
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: actorUserId,
       actionTaken: 'coach_turn_deleted',
       targetTable: 'messages',
       targetId: messageId,
-      after: { deleted: true },
+      after: { deleted: true, purgedAttachments },
     });
     return true;
   });
@@ -68,6 +112,7 @@ export async function softDeleteMessage(
 export async function eraseConversation(
   database: Database,
   args: { conversationId: string; familyId: string; actorUserId: string; now?: Date },
+  removeObject: RemoveObject = removeDocument,
 ): Promise<number | null> {
   const { conversationId, familyId, actorUserId } = args;
   const now = args.now ?? new Date();
@@ -88,7 +133,16 @@ export async function eraseConversation(
       )
       .returning({ id: schema.messages.id });
 
-    if (stamped.length === 0) {
+    // Purge every attachment the conversation ever consumed — keyed on conversation_id,
+    // which link/upload sets, so both linked (message_id set) and any conversation-
+    // scoped-but-unlinked rows are covered (rule #1).
+    const purgedAttachments = await purgeAttachments(
+      tx,
+      eq(schema.chatAttachments.conversationId, conversationId),
+      removeObject,
+    );
+
+    if (stamped.length === 0 && purgedAttachments === 0) {
       return 0;
     }
 
@@ -98,7 +152,7 @@ export async function eraseConversation(
       actionTaken: 'coach_conversation_erased',
       targetTable: 'conversations',
       targetId: conversationId,
-      after: { erasedTurns: stamped.length },
+      after: { erasedTurns: stamped.length, purgedAttachments },
     });
     return stamped.length;
   });

@@ -103,6 +103,26 @@ export async function signDocumentUrl(
 }
 
 /**
+ * Reads an object's raw bytes back from the private bucket with the service-role key
+ * (server-only, rule #1). Used by the Ask Hale attachments flow to fetch a stored
+ * image/PDF and hand it to the model as a native content block — the bytes reach the
+ * MODEL, never the client (the client reads via a signed URL). Throws on any non-200
+ * rather than masking (CLAUDE.md #8).
+ */
+export async function downloadDocument(path: string, fetchImpl: FetchLike = fetch): Promise<Buffer> {
+  const { supabaseUrl, serviceRoleKey } = readConfig();
+  const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/${DOCS_BUCKET}/${path}`, {
+    method: 'GET',
+    headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` },
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Docs download failed (${res.status})${detail ? `: ${detail}` : ''}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/**
  * Removes a document's bytes from the private bucket. Called on soft-delete so a
  * removed doc's object doesn't linger (the DB row stays for the audit trail, rule
  * #6). A 404 (already gone) is not an error — the desired end state holds.

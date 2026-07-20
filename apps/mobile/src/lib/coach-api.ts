@@ -38,7 +38,12 @@ export interface CoachStreamHandlers {
 }
 
 export interface AskHaleRequest {
-  question: string;
+  /** Optional when `attachmentIds` is non-empty — an attachments-only send carries no
+   * fabricated placeholder text (the server accepts either a question or attachments). */
+  question?: string;
+  /** Ids of already-uploaded attachments (POST /api/coach/attachments) to send with
+   * this turn. */
+  attachmentIds?: string[];
   conversationId?: string;
   intent?: string;
   focusedChildId?: string;

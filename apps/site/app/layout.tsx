@@ -1,16 +1,23 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Instrument_Sans, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
-import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
 
-const inter = Inter({
+const instrumentSans = Instrument_Sans({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
   weight: ['400', '500', '600', '700'],
+});
+
+const sourceSerif = Source_Serif_4({
+  subsets: ['latin'],
+  variable: '--font-serif',
+  display: 'swap',
+  style: ['normal', 'italic'],
+  weight: ['500', '600'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -44,25 +51,15 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#003153',
+  themeColor: '#1B2160',
 };
-
-// Runs before first paint to set the .dark class from the stored preference (or
-// the OS setting when on "system"), so the page never flashes the wrong theme.
-// Mirrors lib/theme.ts; kept inline because it must execute before hydration.
-const NO_FLASH_SCRIPT = `(function(){try{var k=${JSON.stringify(THEME_STORAGE_KEY)};var p=localStorage.getItem(k);if(p!=='light'&&p!=='dark'&&p!=='system')p='system';var dark=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',dark);}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable}`}
-      suppressHydrationWarning
+      className={`${instrumentSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
     >
-      <head>
-        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: pre-paint theme script must run before hydration to avoid a flash of the wrong theme */}
-        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
-      </head>
       <body>
         <PostHogProvider>{children}</PostHogProvider>
         <SpeedInsights />
