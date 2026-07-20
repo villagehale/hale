@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { auth } from '~/auth';
-import { authConfigured } from '~/lib/auth-config';
+import { authConfigured, credentialsConfigured, googleConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser } from '~/lib/family';
 import { OnboardingWizard } from './wizard';
@@ -9,21 +9,15 @@ import { OnboardingWizard } from './wizard';
 // them at build time.
 export const dynamic = 'force-dynamic';
 
-interface PageProps {
-  searchParams: Promise<{ step?: string }>;
-}
-
-export default async function OnboardingPage({ searchParams }: PageProps) {
-  const { step } = await searchParams;
+export default async function OnboardingPage() {
   const authReady = authConfigured();
-  // Phase C (?step=setup) only renders against a real session — the OAuth
-  // round-trip returns here signed in. The wizard never collects the full DOB
-  // (sensitive, rule #1) until this is true.
+  // Steps 1–6 are public (pre-auth). A session is present only once the parent has
+  // returned from the auth hop (step 6) — the wizard then resumes at step 7.
   const session = authReady ? await auth() : null;
 
-  // The inverse of the (authed) layout's no-family redirect: a family-having user
-  // has nothing to onboard, and a repeat submit is a server-side no-op — their
-  // edits would silently vanish behind a success screen. Send them to the app.
+  // A family-having user has nothing to onboard, and a repeat submit is a
+  // server-side no-op — their edits would silently vanish behind a success screen.
+  // Send them to the app. (The inverse of the authed layout's no-family redirect.)
   if (session?.user?.id && process.env.DATABASE_URL) {
     const familyId = await resolveFamilyForUser(session.user.id, db());
     if (familyId) {
@@ -34,8 +28,9 @@ export default async function OnboardingPage({ searchParams }: PageProps) {
   return (
     <OnboardingWizard
       authReady={authReady}
+      google={googleConfigured()}
+      magicLink={credentialsConfigured()}
       signedIn={Boolean(session?.user?.id)}
-      startAtSetup={step === 'setup'}
       sessionName={session?.user?.name ?? null}
     />
   );
