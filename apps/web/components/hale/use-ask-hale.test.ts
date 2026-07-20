@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Turn, buildCoachRequest, filterTurns, readNdjson } from './use-ask-hale';
+import type { TimelineMessage } from '~/lib/coach/conversation';
+import {
+  type Turn,
+  buildCoachRequest,
+  filterTurns,
+  readNdjson,
+  timelineToTurns,
+} from './use-ask-hale';
 
 /**
  * The continuous-companion shell's two pure seams:
@@ -28,6 +35,42 @@ describe('buildCoachRequest', () => {
       conversationId: 'conv-7',
       focusedChildId: 'child-1',
     });
+  });
+
+  it('omits attachmentIds when there are none, and carries them when present', () => {
+    expect(buildCoachRequest('here you go', 'conv-7', null, [])).not.toHaveProperty('attachmentIds');
+    expect(buildCoachRequest('here you go', 'conv-7', null, ['att-1', 'att-2'])).toEqual({
+      question: 'here you go',
+      conversationId: 'conv-7',
+      attachmentIds: ['att-1', 'att-2'],
+    });
+  });
+});
+
+describe('timelineToTurns', () => {
+  it('maps persisted timeline turns to client turns, dropping live stream metadata', () => {
+    const timeline: TimelineMessage[] = [
+      {
+        id: 'm1',
+        role: 'user',
+        content: 'when do solids start?',
+        childId: 'tot',
+        topic: 'feeding',
+        createdAt: '2026-07-19T12:00:00.000Z',
+      },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: 'Around six months.',
+        childId: 'tot',
+        topic: 'feeding',
+        createdAt: '2026-07-19T12:00:05.000Z',
+      },
+    ];
+    expect(timelineToTurns(timeline)).toEqual([
+      { id: 'm1', role: 'user', body: 'when do solids start?', childId: 'tot', topic: 'feeding' },
+      { id: 'm2', role: 'assistant', body: 'Around six months.', childId: 'tot', topic: 'feeding' },
+    ]);
   });
 });
 
