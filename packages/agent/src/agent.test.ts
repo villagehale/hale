@@ -131,6 +131,36 @@ describe('runAgent loop mechanics', () => {
     ]);
   });
 
+  it('rides attachment blocks on the FIRST user turn alongside the serialized context', async () => {
+    const client = fakeClient([textMessage('I see a mild rash.', usage(10, 5))]);
+    const { deps } = guardDeps();
+    const imageBlock: Anthropic.ImageBlockParam = {
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: 'AAAA' },
+    };
+
+    await runAgent({
+      skill,
+      context: { question: 'what is this?' },
+      tools: [profileTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'agent-run-1' },
+      guardDeps: deps,
+      attachments: [imageBlock],
+    });
+
+    const createMock = client.messages.create as unknown as {
+      mock: { calls: Array<[{ messages: Anthropic.MessageParam[] }]> };
+    };
+    const firstContent = createMock.mock.calls[0]?.[0].messages[0]?.content;
+    // The first user turn becomes a block array: the context text, then the image block.
+    expect(firstContent).toEqual([
+      { type: 'text', text: JSON.stringify({ question: 'what is this?' }) },
+      imageBlock,
+    ]);
+  });
+
   it('hard-stops at maxSteps when the model keeps calling tools', async () => {
     const client = fakeClient([
       toolUseMessage('a', 'get_child_profile', { childId: 'k' }, usage(10, 5)),

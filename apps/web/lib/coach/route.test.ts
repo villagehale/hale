@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // is allowed to spend, and that a successful call is persisted + recorded.
 const authMock = vi.fn();
 const askHaleMock = vi.fn();
+const loadUnlinkedMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -16,6 +17,13 @@ vi.mock('~/lib/family', () => ({
   resolveUserIdForUser: vi.fn(async () => 'user-1'),
 }));
 vi.mock('~/lib/coach/agent', () => ({ askHale: (...a: unknown[]) => askHaleMock(...a) }));
+// The attachments lib is the DB seam for attachmentIds — stub the ownership load so
+// the route's validation branch is exercised without a real db. MAX_ATTACHMENTS_PER_REQUEST
+// is read at module eval (the zod schema), so the mock must supply it.
+vi.mock('~/lib/coach/attachments', () => ({
+  loadUnlinkedAttachments: (...a: unknown[]) => loadUnlinkedMock(...a),
+  MAX_ATTACHMENTS_PER_REQUEST: 5,
+}));
 
 function configureAuth(on: boolean) {
   vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', on ? 'gid_test' : '');
@@ -128,6 +136,7 @@ describe('POST /api/coach — auth + spend gating', () => {
         actor: 'user-1',
         noteKey: null,
         sourceNote: null,
+        attachments: [],
       },
       expect.anything(),
       undefined,
@@ -189,6 +198,7 @@ describe('POST /api/coach — auth + spend gating', () => {
           body: 'Naps shortened this week — a common 4-month shift.',
           when: 'Today, 8:02 AM',
         },
+        attachments: [],
       },
       expect.anything(),
       undefined,
@@ -216,6 +226,64 @@ describe('POST /api/coach — auth + spend gating', () => {
     expect(res.status).toBe(200);
     const events = await readEvents(res);
     expect(events).toEqual([{ type: 'error' }]);
+  });
+});
+
+const ATT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+describe('POST /api/coach — attachments payload', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    authMock.mockReset();
+    askHaleMock.mockReset();
+    loadUnlinkedMock.mockReset();
+    configureAuth(true);
+    authMock.mockResolvedValue(session('google-1'));
+    askHaleMock.mockResolvedValue({
+      answer: 'here is what I see in that photo.',
+      conversationId: 'conv-att',
+      actionIntents: [],
+      metrics: { modelUsed: 'm', promptTokens: 1, completionTokens: 1, costUsd: 0.001, latencyMs: 5 },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('rejects a send with neither a question nor attachments → 400, no agent run', async () => {
+    const res = await callPost({ question: '   ' });
+    expect(res.status).toBe(400);
+    expect(askHaleMock).not.toHaveBeenCalled();
+    expect(loadUnlinkedMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts an attachments-only send (no question) and threads the loaded attachments to askHale', async () => {
+    const owned = { id: ATT_ID, storagePath: `chat/fam-1/${ATT_ID}`, mime: 'image/jpeg' };
+    loadUnlinkedMock.mockResolvedValue([owned]);
+
+    const res = await callPost({ attachmentIds: [ATT_ID] });
+
+    expect(res.status).toBe(200);
+    // Family-scoped ownership load (rule #1) — the caller's family, the requested ids.
+    expect(loadUnlinkedMock).toHaveBeenCalledWith(expect.anything(), 'fam-1', [ATT_ID]);
+    expect(askHaleMock).toHaveBeenCalledWith(
+      expect.objectContaining({ question: '', attachments: [owned] }),
+      expect.anything(),
+      undefined,
+      expect.anything(),
+    );
+  });
+
+  it("rejects when an id is not the family's own / already-consumed → 400, no agent run (rule #1)", async () => {
+    // loadUnlinkedAttachments drops a foreign or already-linked id, so the returned
+    // count falls short of the requested count — the whole send is refused.
+    loadUnlinkedMock.mockResolvedValue([]);
+
+    const res = await callPost({ question: 'what is this?', attachmentIds: [ATT_ID] });
+
+    expect(res.status).toBe(400);
+    expect(askHaleMock).not.toHaveBeenCalled();
   });
 });
 
