@@ -1,88 +1,93 @@
 import { LogoMark } from '~/components/logo-mark';
 import { APP_URL } from '~/lib/app-url';
 
+/**
+ * The marketing footer: a raised white card on the warm page. Real navigation,
+ * not decoration. Legal links point at the product app's live Privacy and
+ * Terms pages. No social icon row — the site has no social accounts to link, so
+ * none are invented. No third-party credit line.
+ */
+
 const PRODUCT = [
-  { label: 'How it works', href: '/#how' },
-  { label: 'Pricing', href: '/#pricing' },
+  { label: 'Features', href: '/#features' },
+  { label: 'FAQ', href: '/#faq' },
+  { label: 'Activities', href: '/activities' },
+  { label: 'Milestones', href: '/milestones' },
 ] as const;
 
-const COMPANY = [
+const RESOURCES = [
+  { label: 'Answers', href: '/answers' },
   { label: 'About', href: '/about' },
   { label: 'Contact', href: '/contact' },
 ] as const;
 
 const LEGAL = [
-  { label: 'Privacy', href: `${APP_URL}/privacy` },
-  { label: 'Terms', href: `${APP_URL}/terms` },
-] as const;
-
-const RESOURCES = [
-  { label: 'Activities by city', href: '/activities' },
-  { label: 'Milestones', href: '/milestones' },
-  { label: 'Answers', href: '/answers' },
-  { label: 'FAQ', href: '/faq' },
+  { label: 'Privacy policy', href: `${APP_URL}/privacy` },
+  { label: 'Terms of service', href: `${APP_URL}/terms` },
 ] as const;
 
 const COLUMNS = [
   { heading: 'Product', links: PRODUCT },
   { heading: 'Resources', links: RESOURCES },
-  { heading: 'Company', links: COMPANY },
   { heading: 'Legal', links: LEGAL },
 ] as const;
 
-/**
- * The marketing footer: the village in miniature. The brand block carries the
- * thesis; three columns (Product / Company / Legal) are the site map — real
- * navigation, not decoration. Quiet by design — the hero scene is the page's
- * one signature; here a single hairline separates it from the page and the
- * existing tone-set type roles (eyebrow, link, meta) carry it.
- */
 export function SiteFooter() {
   return (
-    <footer
-      className="shell pt-16 pb-12"
-      style={{ borderTop: '1px solid var(--color-rule)' }}
-    >
-      <div className="grid grid-cols-1 gap-y-12 lg:grid-cols-12 lg:gap-x-16">
-        <div className="lg:col-span-5">
-          <a href="/#top" className="flex items-center gap-3" aria-label="Hale, home">
-            <LogoMark size={32} />
-            <span className="font-display text-xl leading-none font-semibold">Hale</span>
-          </a>
-          <p className="meta mt-4 max-w-xs" style={{ lineHeight: 1.55 }}>
-            The trusted parent network for every stage of childhood — the village,
-            online, growing with every family that joins.
-          </p>
+    <div className="px-4 pb-10 sm:px-6">
+      <footer className="mx-auto max-w-[1100px] rounded-[28px] border border-[#F0F2F6] bg-white px-6 py-10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.03)] md:px-12 lg:px-[72px] lg:py-[56px]">
+        <div className="mb-12 flex flex-col justify-between gap-10 md:flex-row md:gap-8">
+          <div className="md:w-[40%]">
+            <a href="/#about" className="flex items-center gap-2.5" aria-label="Hale, home">
+              <LogoMark size={30} />
+              <span className="text-[19px] font-bold tracking-tight text-[#17294A]">Hale</span>
+            </a>
+            <p className="mb-6 mt-5 max-w-[340px] text-[13px] leading-[1.6] text-[#5C6B87]">
+              Hale is the quiet helper for busy families — always prepared, never acting without you.
+            </p>
+          </div>
+
+          <nav
+            aria-label="Footer"
+            className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:w-[50%]"
+          >
+            {COLUMNS.map((column) => (
+              <div key={column.heading}>
+                <h2 className="mb-5 text-[14px] font-semibold text-[#17294A]">{column.heading}</h2>
+                <ul className="flex flex-col gap-3">
+                  {column.links.map((item) => (
+                    <li key={item.label}>
+                      <a
+                        href={item.href}
+                        className="text-[13px] text-[#5C6B87] transition-colors hover:text-[#17294A]"
+                      >
+                        {item.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
         </div>
 
-        <nav
-          aria-label="Footer"
-          className="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-3 lg:col-span-7"
-        >
-          {COLUMNS.map((column) => (
-            <div key={column.heading} className="flex flex-col gap-4">
-              <span className="eyebrow">{column.heading}</span>
-              <ul className="flex flex-col gap-3">
-                {column.links.map((item) => (
-                  <li key={item.label}>
-                    <a href={item.href} className="link">
-                      {item.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </nav>
-      </div>
+        <hr className="mb-6 border-[#F0F2F6]" />
 
-      <div
-        className="mt-16 flex flex-wrap items-center justify-between gap-4 pt-8"
-        style={{ borderTop: '1px solid var(--color-rule)' }}
-      >
-        <p className="meta">Hale · Toronto · Canada</p>
-        <p className="meta">© {new Date().getFullYear()} Village Hale Technologies Inc.</p>
-      </div>
-    </footer>
+        <div className="flex flex-col-reverse items-start justify-between gap-4 md:flex-row md:items-center">
+          <p className="text-[13px] text-[#8B95A9]">© 2026 Hale. All rights reserved.</p>
+          <div className="flex flex-wrap gap-6">
+            {LEGAL.map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                className="text-[13px] text-[#5C6B87] underline decoration-[#E4E7EE] underline-offset-[4px] transition-colors hover:text-[#17294A] hover:decoration-[#17294A]"
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }

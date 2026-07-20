@@ -1,10 +1,5 @@
 @import "tailwindcss";
 
-/* Tailwind v4 class-strategy dark mode: `.dark` on <html> (or any ancestor)
- * flips the dark: variant. The class is set pre-paint by the inline script in
- * layout.tsx, so there is no flash. Mirrors apps/web. */
-@custom-variant dark (&:where(.dark, .dark *));
-
 /*
  * Hale — marketing site design system. Shares the language of the product app
  * (apps/web): Inter throughout (display + body) with JetBrains Mono for data,
@@ -60,10 +55,33 @@
   --color-on-spruce-soft: rgb(250 247 241 / 0.74);
   --color-on-spruce-faint: rgb(250 247 241 / 0.50);
 
-  /* ── Type — Inter for display + body, JetBrains Mono for data ─────────── *
-   * --font-sans / --font-mono are injected by next/font in layout.tsx. */
-  --font-sans: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  /* ── Landing (2026-07) — warm white with navy drama ──────────────────── *
+   * The marketing homepage + shared nav/footer palette. Light-only: a warm
+   * page (#FDFCFA) carrying deep-navy statement surfaces. Distinct token
+   * names so the subpage design system above is untouched. */
+  --color-page: #fdfcfa;        /* warm page canvas */
+  --color-band: #f7f5f0;        /* warm cream band (testimonials, feature washes) */
+  --color-ink: #17294a;         /* headline ink — 12.6:1 on page */
+  --color-navy: #1b2160;        /* brand navy — statement surfaces, CTA fill */
+  --color-navy-deep: #141a4d;   /* navy card depth */
+  --color-cream: #f7f4ec;       /* text on navy */
+  --color-line: #e4e7ee;        /* card border */
+  --color-hair: #f0f2f6;        /* hairline */
+  --color-dim: #5c6b87;         /* body-safe muted — 5.6:1 on page */
+  --color-faint: #8b95a9;       /* small non-essential muted — 3.4:1, large/decorative only */
+  --color-amber: #b26b1f;       /* amber accent text — 4.6:1 on page */
+  --color-amber-bg: #fef0c7;
+  --color-lime: #1f8a4c;        /* green accent text — 4.0:1 on page (used on tint) */
+  --color-lime-bg: #e7f6ec;
+  --color-cobalt: #3b5bdb;      /* blue accent text */
+  --color-cobalt-bg: #edf0fa;
+
+  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display accents),
+   * JetBrains Mono for data. Vars injected by next/font in layout.tsx;
+   * pairing mirrors the product app. */
+  --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-display: var(--font-sans);
   --font-body: var(--font-sans);
 
@@ -85,72 +103,12 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Dark mode = brand-ANCHORED, not brand-flooded ───────────────────────── *
- * A logo colour is an accent, not a canvas. The page canvas is a CALM,
- * slightly-desaturated deep Prussian-charcoal (comfortable for long/night
- * reading) and surfaces step up a clear ladder — canvas #0b1626 → card #13233a
- * → the logo-Prussian "night" band — so the hierarchy is obvious and photos /
- * illustration blocks aren't blue-washed. The saturated logo Prussian lives in
- * the dark "night" band (see .dark .night below), not flooding the whole page.
- *
- * We re-point the same token *roles* so every existing component flips for free:
- * --color-spruce is "ink" (now cream) and --color-linen is "canvas" (now the
- * calm charcoal-Prussian), so e.g. .btn-primary (spruce fill / linen text)
- * becomes cream fill / canvas text and focus rings (inner ring = linen) stay
- * matched to the surface. Accents are lightened to hold AA on the dark ground
- * (all text pairs verified ≥ 4.5:1 against canvas, card and the night band). */
-.dark {
-  --color-linen: #0b1626;        /* CANVAS — calm desaturated deep Prussian-charcoal */
-  --color-oat: #13233a;          /* CARD surface — one clear notch above canvas */
-  --color-spruce: #f6f1e7;       /* primary ink — cream — 16.12:1 on canvas */
-  --color-slate-green: #c7d3e6;  /* secondary text — 12.00:1 on canvas */
-  --color-faded-sage: #9bb0d0;   /* tertiary / meta — 8.22:1 on canvas */
-
-  --color-apricot: #e8915c;          /* large-graphic fill */
-  --color-apricot-deep: #e8915c;     /* text-safe accent — 7.46:1 on canvas, 5.37:1 on raised */
-  --color-apricot-tint: #2e2331;     /* warm-wash panel ground (cream ink rides it) */
-
-  --color-sky: #7fb5c4;
-  --color-sky-deep: #8fc1d1;     /* text-safe blue — 9.26:1 on canvas */
-  --color-sky-tint: #142b48;     /* illustration / pill wash */
-
-  --color-sea: #6fb3c9;          /* turtle accent on dark */
-
-  --color-sage: #a9c49a;         /* "done" tone — 9.55:1 on canvas */
-  --color-sage-tint: #18301f;
-
-  --color-berry: #e09aaa;        /* "needs your eye" — 8.10:1 on canvas */
-  --color-berry-tint: #3a1f29;
-
-  --color-rule: rgb(246 241 231 / 0.12);
-  --color-rule-strong: rgb(246 241 231 / 0.24);
-
-  --color-on-spruce: #003153;        /* "on ink" inverts to Prussian */
-  --color-on-spruce-soft: rgb(0 49 83 / 0.74);
-  --color-on-spruce-faint: rgb(0 49 83 / 0.50);
-
-  color-scheme: dark;
-}
-
-/* The night section is a dark band in BOTH modes — Spruce ground in light, the
- * exact logo Prussian in dark. With the calm charcoal-Prussian canvas, the
- * saturated logo Prussian here reads as the BRAND ANCHOR (the dark-mode analogue
- * of the product app's chrome) — distinct from the calm canvas and the card
- * ladder, and unmistakably the logo colour. Its text always wants cream-on-dark:
- * in light --color-on-spruce already is cream; in dark --color-on-spruce has
- * inverted to Prussian, so we re-point the band's on-ground tokens back to cream
- * here. The Check-bullet stroke (var(--color-spruce)) likewise needs to stay
- * Prussian-dark against its apricot chip, so it is pinned too. */
+/* The night section is a dark Spruce band that inverts its text to cream — used
+ * by the answer/milestone subpages. Light-only site (2026-07 warm-white
+ * redesign), so there is no dark-mode override. */
 .night {
   background: var(--color-spruce);
   color: var(--color-on-spruce);
-}
-.dark .night {
-  background: #021E4E;
-  --color-on-spruce: #f6f1e7;
-  --color-on-spruce-soft: rgb(250 247 241 / 0.74);
-  --color-on-spruce-faint: rgb(250 247 241 / 0.50);
-  --color-spruce: #003153;
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────── */
@@ -450,8 +408,8 @@ strong { font-weight: 700; }
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
 
 ::selection {
-  background: var(--color-apricot-deep);
-  color: var(--color-linen);
+  background: var(--color-navy);
+  color: var(--color-cream);
 }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -476,43 +434,72 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   }
 }
 
-/* ── Theme toggle — a small segmented Light / Dark / System control ─────── */
+/* ══ Landing (2026-07) — warm-white homepage motion + primitives ═════════ *
+ * Every animation below has a prefers-reduced-motion static fallback at the
+ * end of this block. Colours come from the warm landing tokens in @theme. */
 
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  margin: 0;
-  padding: 0.2rem;
-  border: 0;
-  min-inline-size: 0;
-  background: var(--color-oat);
-  border-radius: var(--r-full);
+@keyframes hale-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes hale-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+@keyframes hale-drift {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(3%, -2%); }
+}
+@keyframes hale-card-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes hale-word-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes hale-fade-up {
+  from { opacity: 0; transform: translateY(15px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.theme-toggle-option {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 0;
-  border-radius: var(--r-full);
-  background: transparent;
-  color: var(--color-faded-sage);
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+/* Hero ambient glow — a slow, calm drift (no CDN media) */
+.hale-drift { animation: hale-drift 26s var(--ease-breathe) infinite; }
+
+/* Trust marquee — track holds two identical halves; -50% loops seamlessly */
+.hale-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: hale-marquee 32s linear infinite;
+}
+.hale-marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
 }
 
-.theme-toggle-option:hover { color: var(--color-spruce); }
+/* The deep-navy chat card: gentle float + one-time entrance */
+.hale-float { animation: hale-float 6.5s var(--ease-breathe) infinite; }
+.hale-card-in { animation: hale-card-in 900ms var(--ease-breathe) both; }
 
-.theme-toggle-option[aria-pressed="true"] {
-  background: var(--color-linen);
-  color: var(--color-spruce);
+/* AnimatedText — a word-reveal for eyebrows + headings (staggered inline delay) */
+.hale-anim-word {
+  display: inline-block;
+  opacity: 0;
+  animation: hale-fade-up 640ms var(--ease-breathe) forwards;
 }
 
-.theme-toggle-option:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+/* Testimonial word-by-word slider (staggered inline delay, remounts per quote) */
+.hale-quote-word {
+  display: inline-block;
+  opacity: 0;
+  animation: hale-word-up 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hale-drift,
+  .hale-marquee-track,
+  .hale-float,
+  .hale-card-in { animation: none; }
+  .hale-anim-word,
+  .hale-quote-word { animation: none; opacity: 1; transform: none; }
 }

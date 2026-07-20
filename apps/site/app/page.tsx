@@ -1,527 +1,341 @@
-import { CalendarCheck, Check, Compass, Heart, Send, Users } from 'lucide-react';
-import { HeroScene } from '~/components/hero-scene';
-import { PricingSection } from '~/components/pricing-section';
 import {
-  ParentAndHouse,
-  Sapling,
-  SeaTurtle,
-  Seed,
-  Sprout,
-  Sun,
-  Tree,
-  Village,
-} from '~/components/illos';
+  ArrowUpRight,
+  Baby,
+  Lock,
+  MapPin,
+  Mic,
+  SendHorizonal,
+  Shield,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
+import Image from 'next/image';
+import village from '~/assets/village-illustration-alpha.png';
+import { AnimatedText } from '~/components/landing/animated-text';
+import { FadeInUp } from '~/components/landing/fade-in-up';
+import { FaqAccordion } from '~/components/landing/faq-accordion';
+import { Testimonials } from '~/components/landing/testimonials';
 import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { WaitlistSection } from '~/components/waitlist-section';
 import { APP_URL } from '~/lib/app-url';
 import { siteJsonLd } from '~/lib/site/structured-data';
 
-// Aggregate, illustrative social proof — a COUNT only, never a family identity
-// (hard rule #1). Mirrors the app's endorsementLabel ("loved by N families near
-// you") and the count-only SocialProofBadge on the real share surfaces. These
-// are illustrative example cards, not real recommendations.
-const RECOMMENDED = [
-  {
-    kind: 'Story-time',
-    title: 'Saturday story-time at the local branch library',
-    summary:
-      'A warm, free half-hour for the under-fives — songs, a picture book, a craft to take home.',
-    loved: 14,
-  },
-  {
-    kind: 'Swim',
-    title: 'Parent-and-baby water class, two streets over',
-    summary:
-      'The gentle one new parents keep coming back to. Small groups, patient instructors, no pressure.',
-    loved: 9,
-  },
-  {
-    kind: 'Outdoors',
-    title: 'The Saturday-morning park festival',
-    summary:
-      'The one families clear their calendar for — music, a maker tent, room for kids to just run.',
-    loved: 22,
-  },
-] as const;
+const SIGN_UP = `${APP_URL}/sign-up`;
 
-// Set to the real GTA family count when there is one worth naming; null renders
-// the founding-families line instead. Never fabricate — the database is the source.
-const GTA_FAMILY_COUNT: number | null = null;
+// Real beta-parent quotes are not collected yet; the testimonials band stays
+// gated off unless NEXT_PUBLIC_SHOW_TESTIMONIALS is explicitly enabled.
+const SHOW_TESTIMONIALS = process.env.NEXT_PUBLIC_SHOW_TESTIMONIALS === 'true';
 
-// How it works, activity-first: tell Hale about your kid → see what families
-// recommend → Hale drafts the week and handles the booking → share what worked.
-// Step 3 is the differentiator — Hale does the actual booking — so it says so.
-const HOW_IT_WORKS = [
-  {
-    Icon: Compass,
-    title: 'Tell Hale your child’s age and what they love',
-    body: 'Sixty seconds, once — from toddlers to ten-and-up, everything is matched to your kid right now.',
-  },
-  {
-    Icon: Users,
-    title: 'See what families near you actually recommend this week',
-    body: 'Real activities, really loved — you see how many families near you love each one, never reviews from strangers.',
-  },
-  {
-    Icon: CalendarCheck,
-    title: 'Hale drafts your week’s plan — and handles the booking',
-    body: 'The registration, the reminder, the calendar entry: drafted for you, booked when you approve. You just show up.',
-  },
-  {
-    Icon: Send,
-    title: 'Share what worked. Your village gets smarter.',
-    body: 'One tap sends the good week to a friend or the group chat — and every family who joins makes the picks better.',
-  },
-] as const;
-
-const WEEK = [
-  {
-    arc: 'Newborn',
-    stage: 'the first months',
-    task: 'A water-babies class two streets over, a quiet drop-in for new parents on Thursday — the things nearby families swear by, surfaced for the week ahead with a gentle this is normal, you are doing fine.',
-  },
-  {
-    arc: 'Toddler',
-    stage: 'finding the world',
-    task: 'Library story-time, the good Montessori with a spot opening, the park festival on Saturday — the ones other parents recommend, surfaced for their age, the registration ready when you are.',
-  },
-  {
-    arc: 'Child',
-    stage: 'growing into it',
-    task: 'The soccer season that fits your week, the art class they would actually love, the field-trip form due Friday — vouched for by families near you, drafted and ready to add before they slip.',
-  },
-  {
-    arc: 'Teenager',
-    stage: 'almost grown',
-    task: 'The maker-space, the volunteer hours, the permission slips you don’t want to miss — and their own privacy held: you see what kind of thing, never their messages.',
-  },
-] as const;
-
-const LADDER = [
-  {
-    shape: <Seed style={{ height: 64, width: 'auto' }} />,
-    title: 'Connect',
-    body: 'Your inbox first. Your calendar second. Photos only when you trust Hale with them.',
-    example: 'Link Google Calendar and Gmail in a tap — read-only, revocable any time.',
-  },
-  {
-    shape: <Sprout style={{ height: 80, width: 'auto' }} />,
-    title: 'Observe for 7 days',
-    body: 'At first Hale only watches and learns your family — the ages, the rhythm, the village you already have. No drafts, no actions, no exceptions.',
-    example: 'Hale notices you go to library story-time most Saturdays.',
-  },
-  {
-    shape: <Sapling style={{ height: 92, width: 'auto' }} />,
-    title: 'Draft, with approval',
-    body: 'After a week it begins drafting replies, appointments, orders. You approve every single one.',
-    example: 'Hale drafts the registration for Tuesday music class — you approve in one tap.',
-  },
-  {
-    shape: <Tree style={{ height: 96, width: 'auto' }} />,
-    title: 'Autonomy, earned',
-    body: 'After five clean approvals of one kind of task, Hale may handle that kind on its own. You stay in control — withdraw any automation at any time.',
-    example: 'Hale books the swim class when a spot opens, sends you a reminder, updates the calendar.',
-  },
-] as const;
-
-const NEVER = [
-  'give medical advice — only your pediatrician will',
-  'send anything to anyone you have not greenlit',
-  'spend more than your per-action cap without asking',
-  'share a precise location — only ever a coarse area, and only a count, never a family’s identity',
-  'store your family’s core data outside Canada',
-  'sell your family’s data to anyone, for any price',
+// Honest trust chips — no fabricated company logos. Each maps to a real Hale
+// posture (approval-first flow, PIPEDA/Law 25, Canadian residency, 0–18 scope).
+const TRUST_CHIPS = [
+  { Icon: ShieldCheck, label: 'Approval-first' },
+  { Icon: Shield, label: 'PIPEDA-compliant' },
+  { Icon: MapPin, label: 'Data stays in Canada' },
+  { Icon: Baby, label: 'Newborn to eighteen' },
+  { Icon: Lock, label: 'Private by default' },
 ] as const;
 
 export default function LandingPage() {
   return (
-    <main id="top" className="relative">
+    <main id="top" className="relative bg-[#FDFCFA] text-[#17294A]">
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
       />
-      {/* ── 1 · Hero — the village ──────────────────────────────────────── */}
+
       <SiteHeader />
 
-      <section className="shell pt-10 sm:pt-16 lg:pt-20 pb-20 lg:pb-28">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
-          <div className="lg:col-span-6 rise rise-1">
-            <HeroScene />
-            <p className="meta mt-4 max-w-md">
-              Hale turns the trusted, word-of-mouth village parents used to have —
-              the neighbour who knew which class was worth it — into one you can
-              actually reach, near you, online.
-            </p>
-          </div>
+      {/* ── 1 · Hero ──────────────────────────────────────────────────────── */}
+      <section
+        id="about"
+        className="relative flex min-h-[calc(100vh-4.5rem)] flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-16 text-center"
+      >
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <div
+            className="hale-drift absolute -left-40 -top-32 h-[36rem] w-[36rem] rounded-full"
+            style={{
+              background: 'radial-gradient(circle, rgba(247,244,236,0.95), rgba(247,244,236,0) 70%)',
+            }}
+          />
+          <div
+            className="hale-drift absolute -bottom-40 -right-32 h-[34rem] w-[34rem] rounded-full"
+            style={{
+              background: 'radial-gradient(circle, rgba(237,240,250,0.9), rgba(237,240,250,0) 70%)',
+              animationDelay: '-13s',
+            }}
+          />
+        </div>
 
-          <div className="lg:col-span-6 rise rise-2">
-            <span className="eyebrow">Toronto and the GTA</span>
-            {/* Hero-scoped scale: the global h1 clamp (up to 4.75rem) wraps this
-             * headline to six lines in a half column and towers over the scene. */}
-            <h1 className="mt-3" style={{ fontSize: 'clamp(2.3rem, 3.5vw, 3.4rem)', textWrap: 'balance' }}>
-              Find the <span className="accent">best activities</span> for your child near you.
-            </h1>
-            <p
-              className="mt-3 font-display font-semibold"
-              style={{
-                fontSize: 'clamp(1.3rem, 2vw, 1.7rem)',
-                lineHeight: 1.25,
-                letterSpacing: 'var(--tracking-display)',
-                color: 'var(--color-spruce)',
-              }}
-            >
-              Let Hale plan the week around them.
-            </p>
-            <p
-              className="mt-5 text-lg"
-              style={{ color: 'var(--color-slate-green)', lineHeight: 1.6, maxWidth: '36rem' }}
-            >
-              From toddler playgroups to hockey tryouts, Hale finds what fits your
-              kid right now — real recommendations from parents near you, and an AI
-              that handles the booking and reminders, so you just show up.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <LandingCta
-                event="landing_cta_signin"
-                href={`${APP_URL}/sign-up`}
-                className="btn-primary"
-              >
-                Join free — Toronto and GTA
-              </LandingCta>
-              <LandingCta
-                event="landing_cta_preview"
-                href={`${APP_URL}/preview`}
-                className="btn-secondary"
-              >
-                See what Hale finds for you
-              </LandingCta>
+        <span className="rise rise-1 inline-flex items-center gap-1.5 rounded-full border border-[#E4E7EE] bg-white/60 px-3.5 py-1.5 text-xs font-medium text-[#5C6B87]">
+          <Sparkles size={13} strokeWidth={2} className="text-[#B26B1F]" />
+          Free while in beta
+        </span>
+
+        <h1 className="rise rise-2 mt-6 max-w-4xl text-5xl font-medium tracking-tight text-[#17294A] md:text-7xl">
+          Parenting was never meant to be done{' '}
+          <span className="font-serif font-normal italic">alone.</span>
+        </h1>
+
+        <p className="rise rise-3 mt-6 max-w-2xl text-base leading-relaxed text-[#5C6B87]">
+          Hale quietly prepares the helpful things — reminders, logs, plans, local ideas — and never
+          acts without your say-so.
+        </p>
+
+        <div className="rise rise-4 mt-9 flex flex-col items-center gap-3 sm:flex-row">
+          <LandingCta
+            event="landing_cta_signin"
+            href={SIGN_UP}
+            className="inline-flex items-center justify-center rounded-full bg-[#1B2160] px-7 py-3.5 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+          >
+            Get started
+          </LandingCta>
+          <a
+            href="#features"
+            className="inline-flex items-center justify-center rounded-full border border-[#E4E7EE] bg-white px-7 py-3.5 text-base font-semibold text-[#17294A] transition-colors hover:border-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+          >
+            See how it works
+          </a>
+        </div>
+
+        <div className="rise rise-5 mt-24 w-full max-w-6xl">
+          <p className="mb-8 text-sm text-[#8B95A9]">Built for families, not feeds</p>
+          <div className="hale-marquee-mask overflow-hidden">
+            <div className="hale-marquee-track">
+              {[0, 1].map((copy) => (
+                <div key={copy} aria-hidden={copy === 1} className="flex shrink-0">
+                  {TRUST_CHIPS.map((chip) => (
+                    <span
+                      key={chip.label}
+                      className="flex shrink-0 items-center gap-2 whitespace-nowrap px-8 text-[#5C6B87]"
+                    >
+                      <chip.Icon size={17} strokeWidth={1.75} className="text-[#8B95A9]" />
+                      <span className="text-base font-medium">{chip.label}</span>
+                    </span>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── 2 · Social proof — what families near you recommend ─────────── */}
-      <section id="village" className="shell pb-20 lg:pb-28">
-        <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">What families near you recommend</span>
-          <h2 className="mt-3">Trusted by the parents down the street.</h2>
-          <p
-            className="mt-5 text-lg"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-          >
-            Not reviews from strangers — the genuinely good local things families
-            like yours keep coming back to. You see how many love each one, never
-            who they are.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
-          {RECOMMENDED.map((item, i) => (
-            <article key={item.title} className={`card flex flex-col gap-4 rise rise-${i + 1}`}>
-              <span className="eyebrow">{item.kind}</span>
-              <h3 className="font-display text-xl" style={{ lineHeight: 1.2 }}>
-                {item.title}
-              </h3>
-              <p style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
-                {item.summary}
-              </p>
-              <span className="pill pill-apricot mt-auto self-start">
-                <Heart size={14} strokeWidth={2.5} aria-hidden="true" />
-                loved by {item.loved} families near you
+      {/* ── 2 · Feature — Ask Hale ────────────────────────────────────────── */}
+      <FadeInUp>
+        <section id="features" className="mx-auto max-w-7xl px-6 py-24">
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            <div>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#B26B1F]">
+                <Sparkles size={13} strokeWidth={2} />
+                Ask Hale
               </span>
-            </article>
-          ))}
-        </div>
-        <p className="meta mt-6">
-          {GTA_FAMILY_COUNT
-            ? `${GTA_FAMILY_COUNT} families in the GTA and growing. `
-            : 'Founding families are joining across the GTA now. '}
-          Counts are aggregate; no family is ever named.
-        </p>
-      </section>
-
-      {/* ── 3 · How the village grows — the share hook → the loop ───────── */}
-      <section id="loop" className="shell pb-20 lg:pb-28">
-        <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">How it works</span>
-          <h2 className="mt-3">Tell us about your kid. Hale handles the rest.</h2>
-          <p
-            className="mt-5 text-lg"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-          >
-            Four steps from “what should we do this week?” to a week that’s
-            already booked — and every share makes the village smarter.
-          </p>
-        </div>
-
-        <ol className="mb-14 lg:mb-20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-12">
-          {HOW_IT_WORKS.map((step, i) => (
-            <li key={step.title} className={`rise rise-${i + 1}`}>
-              <span
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full"
-                style={{ background: 'var(--color-apricot-tint)' }}
-                aria-hidden
-              >
-                <step.Icon size={22} strokeWidth={2} style={{ color: 'var(--color-apricot-deep)' }} />
-              </span>
-              <h3 className="mt-5">{step.title}</h3>
-              <p className="mt-3" style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
-                {step.body}
-              </p>
-            </li>
-          ))}
-        </ol>
-
-        {/* the share hook, made concrete — a mocked share card families actually send */}
-        <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16 items-center">
-            <div className="lg:col-span-6 rise rise-1">
-              <span className="eyebrow">See a family’s week</span>
-              <h3 className="mt-3 font-display text-2xl" style={{ lineHeight: 1.2 }}>
-                A clean, private card — no app, no account to open it.
-              </h3>
-              <p
-                className="mt-5 text-lg"
-                style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}
-              >
-                Just the handful of things worth it near them. It opens in any
-                browser, and at the bottom: join the village. That’s how it
-                spreads, parent to parent.
+              <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
+                One quiet helper for the whole household.
+              </h2>
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5C6B87]">
+                Ask Hale to log a nap in a sentence, draft the daycare email, or find something to do
+                this weekend. It prepares each one and waits — every action needs your approval
+                before anything happens.
               </p>
               <div className="mt-8">
                 <LandingCta
                   event="landing_cta_signin"
-                  href={`${APP_URL}/sign-up`}
-                  className="btn-primary"
+                  href={SIGN_UP}
+                  className="inline-flex items-center justify-center rounded-full bg-[#1B2160] px-6 py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
                 >
-                  Join the village
+                  Get started
                 </LandingCta>
               </div>
             </div>
 
-            {/* a mocked share card — mirrors the app's PublicActivityCard look */}
-            <div className="lg:col-span-6 rise rise-2">
-              <div className="card flex flex-col gap-5">
-                <div className="flex items-center gap-3">
-                  <SeaTurtle age="young" style={{ height: 44, width: 'auto' }} />
-                  <div>
-                    <p className="eyebrow">A family’s week · shared by Hale</p>
-                    <p className="meta">around the east end</p>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {RECOMMENDED.map((item) => (
-                    <div
-                      key={item.title}
-                      className="panel-oat px-4 py-4 flex items-baseline justify-between gap-4"
-                    >
-                      <div>
-                        <span className="eyebrow">{item.kind}</span>
-                        <p
-                          className="mt-1 font-display"
-                          style={{ fontSize: '1.05rem', lineHeight: 1.25 }}
-                        >
-                          {item.title}
-                        </p>
-                      </div>
-                      <span className="pill pill-apricot shrink-0">
-                        <Heart size={13} strokeWidth={2.5} aria-hidden="true" />
-                        {item.loved}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <a href={`${APP_URL}/sign-up`} className="btn-primary self-start">
-                  Join the village
-                </a>
+            <AskHaleMockup />
+          </div>
+        </section>
+      </FadeInUp>
+
+      {/* ── 3 · Feature — Your Village (mirrored) ─────────────────────────── */}
+      <FadeInUp>
+        <section className="mx-auto max-w-7xl px-6 py-24">
+          <div className="grid items-center gap-16 lg:grid-cols-2">
+            <div className="lg:order-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E7F6EC] px-3.5 py-1.5 text-xs font-semibold text-[#1F8A4C]">
+                <Sparkles size={13} strokeWidth={2} />
+                Your Village
+              </span>
+              <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
+                Your neighbourhood, working for you.
+              </h2>
+              <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5C6B87]">
+                Storytimes, classes, childcare options and local resources near you — surfaced and
+                tuned to your kids&rsquo; ages, so the good stuff is easy to find.
+              </p>
+              <div className="mt-8">
+                <LandingCta
+                  event="landing_cta_signin"
+                  href={SIGN_UP}
+                  className="inline-flex items-center justify-center rounded-full bg-[#1B2160] px-6 py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+                >
+                  Get started
+                </LandingCta>
               </div>
+            </div>
+
+            <VillageMockup />
+          </div>
+        </section>
+      </FadeInUp>
+
+      {/* ── 4 · Testimonials (gated) ──────────────────────────────────────── */}
+      {SHOW_TESTIMONIALS && <Testimonials />}
+
+      {/* ── 5 · FAQ ───────────────────────────────────────────────────────── */}
+      <section id="faq" className="mx-auto max-w-[1440px] px-6 pb-24 pt-24 md:px-12 md:pt-32 lg:px-24">
+        <div className="grid gap-8 lg:grid-cols-12 lg:gap-16">
+          <div className="lg:col-span-4">
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden className="h-1.5 w-1.5 bg-[#1B2160]" />
+              <AnimatedText
+                text="About Hale"
+                className="text-sm font-semibold uppercase tracking-[0.08em] text-[#5C6B87]"
+              />
+            </div>
+          </div>
+          <div className="lg:col-span-8 lg:max-w-[54rem]">
+            <AnimatedText
+              as="h2"
+              text="Frequently asked questions"
+              stepMs={50}
+              className="mb-16 block text-4xl font-medium leading-[1.05] tracking-tight text-[#17294A] md:text-5xl lg:text-7xl"
+            />
+            <FaqAccordion />
+          </div>
+        </div>
+      </section>
+
+      {/* ── 6 · Navy CTA band + footer ────────────────────────────────────── */}
+      <FadeInUp>
+        <section id="contact" className="px-4 py-16 sm:px-6">
+          <div className="mx-auto max-w-[1100px] rounded-[28px] bg-[#1B2160] px-6 py-16 text-center md:py-24">
+            <h2 className="mx-auto max-w-3xl text-4xl font-medium tracking-tight text-[#F7F4EC] md:text-5xl">
+              Ready to feel <span className="font-serif font-normal italic">on top of it all?</span>
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-[#F7F4EC]/70">
+              One quiet helper, always prepared — and never a step you didn&rsquo;t approve.
+            </p>
+            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <LandingCta
+                event="landing_cta_signin"
+                href={SIGN_UP}
+                className="inline-flex items-center justify-center rounded-full bg-[#F7F4EC] px-7 py-3.5 text-base font-semibold text-[#1B2160] transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC]"
+              >
+                Get started
+              </LandingCta>
+              <a
+                href="/contact"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#F7F4EC]/30 px-7 py-3.5 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC]"
+              >
+                Questions? Contact us
+                <ArrowUpRight size={18} strokeWidth={2} />
+              </a>
+            </div>
+          </div>
+        </section>
+      </FadeInUp>
+
+      <SiteFooter />
+    </main>
+  );
+}
+
+/** Pure HTML/CSS product mockup of the approval-first Ask Hale flow. Illustrative. */
+function AskHaleMockup() {
+  return (
+    <div className="rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#F7F5F0] to-[#EDF0FA] p-6 sm:p-8">
+      <div className="hale-card-in hale-float rounded-2xl bg-[#1B2160]/95 p-4 shadow-[0_24px_60px_-20px_rgba(20,26,77,0.55)] backdrop-blur">
+        <div className="flex flex-wrap gap-2">
+          {['Log a nap', 'Draft daycare email', 'Find weekend ideas'].map((chip) => (
+            <span
+              key={chip}
+              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-[#F7F4EC]/85"
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <p className="ml-auto max-w-[80%] rounded-2xl rounded-br-sm bg-white/12 px-4 py-2.5 text-sm text-[#F7F4EC]">
+            Can you log Mia&rsquo;s afternoon nap? 1:30 to 3.
+          </p>
+
+          <div className="mr-auto max-w-[88%] rounded-2xl rounded-bl-sm border border-white/12 bg-white/8 p-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[#F7F4EC]/55">
+              Draft ready · needs your approval
+            </p>
+            <p className="mt-1 text-sm text-[#F7F4EC]">Log nap — Mia, 1:30–3:00 PM</p>
+            <div className="mt-3 flex gap-2">
+              <span className="rounded-full bg-[#F7F4EC] px-3 py-1.5 text-xs font-semibold text-[#1B2160]">
+                Approve
+              </span>
+              <span className="rounded-full border border-white/25 px-3 py-1.5 text-xs font-medium text-[#F7F4EC]/80">
+                Not now
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="mt-14 panel-apricot-tint px-8 py-10 sm:px-12 flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-10">
-          <Village style={{ width: 'clamp(180px, 30vw, 260px)', height: 'auto' }} />
-          <p
-            className="font-display"
-            style={{
-              fontSize: 'clamp(1.25rem, 2.4vw, 1.75rem)',
-              lineHeight: 1.3,
-              letterSpacing: 'var(--tracking-display)',
-              fontWeight: 600,
-              color: 'var(--color-spruce)',
-            }}
-          >
-            Your village starts the day you join — one family, then a street, then
-            a neighborhood. Invite the parents you trust, and it’s yours.
-          </p>
+        <div className="mt-4 flex items-center gap-2 rounded-full bg-white/10 px-3 py-2">
+          <span className="flex-1 text-sm text-[#F7F4EC]/50">Ask anything…</span>
+          <Mic size={18} strokeWidth={1.75} className="text-[#F7F4EC]/60" aria-hidden />
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F7F4EC]">
+            <SendHorizonal size={16} strokeWidth={2} className="text-[#1B2160]" aria-hidden />
+          </span>
         </div>
-      </section>
+      </div>
+    </div>
+  );
+}
 
-      {/* ── 4 · The good local week — every stage ───────────────────────── */}
-      <section className="shell pb-20 lg:pb-28">
-        <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">The good local week</span>
-          <h2 className="mt-3">One childhood, every stage — the same village.</h2>
-          <p
-            className="mt-5 text-lg"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-          >
-            From the first months to almost grown, the village surfaces the
-            genuinely good things near you — vouched for by families ahead of you.
-            It grows up alongside your kid, and the week grows with them.
-          </p>
-        </div>
-
-        <ol className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-14">
-          {WEEK.map((moment, i) => (
-            <li key={moment.arc} className={`rise rise-${i + 1}`}>
-              <div className="flex items-end gap-3 h-[120px]" aria-hidden>
-                {i === 0 && <Sun style={{ height: 72, width: 'auto' }} />}
-                {i === 1 && <SeaTurtle age="young" style={{ height: 110, width: 'auto' }} />}
-                {i === 2 && <SeaTurtle age="adult" style={{ height: 118, width: 'auto' }} />}
-                {i === 3 && <SeaTurtle age="elder" style={{ height: 122, width: 'auto' }} />}
-              </div>
-              <div className="mt-5 flex items-baseline gap-3">
-                <span className="font-display text-xl font-semibold accent">{moment.arc}</span>
-                <span className="eyebrow">{moment.stage}</span>
-              </div>
-              <p className="mt-3" style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
-                {moment.task}
-              </p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* ── 5 · Trust, earned slowly — Hale, the AI ─────────────────────── */}
-      <section id="how" className="shell pb-20 lg:pb-28">
-        <div className="max-w-2xl mb-12 lg:mb-16">
-          <span className="eyebrow">Hale, trust earned slowly</span>
-          <h2 className="mt-3">The AI that powers it never acts until you say so.</h2>
-          <p
-            className="mt-5 text-lg"
-            style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
-          >
-            The village is the moat; Hale is how it gets done. It finds,
-            organizes, and — only once you’ve let it — handles the small tasks.
-            Autonomy is grown, never assumed.
-          </p>
-        </div>
-
-        <ol className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-12 items-end">
-          {LADDER.map((step, i) => (
-            <li key={step.title} className={`rise rise-${i + 1}`}>
-              <div className="flex items-end h-[100px]" aria-hidden>
-                {step.shape}
-              </div>
-              <h3 className="mt-5">{step.title}</h3>
-              <p className="mt-3" style={{ color: 'var(--color-slate-green)', lineHeight: 1.55 }}>
-                {step.body}
-              </p>
-              <p className="mt-3 meta" style={{ fontStyle: 'italic' }}>
-                {step.example}
-              </p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* ── 6 · Three sizes of help (pricing) + the Plus/Family waitlist ── */}
-      <PricingSection />
-      <WaitlistSection />
-
-      {/* ── 7 · Hale will never — the inverted night section ─────────────── */}
-      <section className="night py-24 lg:py-32">
-        <div className="shell grid grid-cols-1 lg:grid-cols-12 gap-y-12 lg:gap-x-16">
-          <div className="lg:col-span-4">
-            <span className="eyebrow" style={{ color: 'var(--color-on-spruce-soft)' }}>
-              The promises
-            </span>
-            <h2 className="mt-3" style={{ color: 'var(--color-on-spruce)' }}>
-              Hale will never.
-            </h2>
-            <p
-              className="mt-6"
-              style={{ color: 'var(--color-on-spruce-soft)', lineHeight: 1.6, maxWidth: '24rem' }}
-            >
-              A village runs on trust. This is the compliance core — PIPEDA,
-              Quebec Law 25, and Canadian data residency live here, not in fine
-              print.
-            </p>
+/** Pure HTML/CSS mockup: the village illustration with an illustrative activity card. */
+function VillageMockup() {
+  return (
+    <div className="lg:order-1">
+      <div className="relative overflow-hidden rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#E7F6EC] to-[#F7F5F0] p-6 sm:p-8">
+        <Image
+          src={village}
+          alt=""
+          aria-hidden
+          width={1254}
+          height={1254}
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          className="mx-auto h-auto w-full max-w-md"
+          priority={false}
+        />
+        <div className="hale-float mt-[-2rem] rounded-2xl border border-[#E4E7EE] bg-white p-4 shadow-[0_20px_50px_-20px_rgba(20,26,77,0.25)] sm:absolute sm:bottom-8 sm:right-8 sm:mt-0 sm:w-64">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#8B95A9]">Near you</p>
+            <p className="text-[10px] text-[#8B95A9]">Illustrative</p>
           </div>
-
-          <ul className="lg:col-span-8 flex flex-col gap-7">
-            {NEVER.map((promise) => (
-              <li key={promise} className="flex gap-4 items-start text-lg lg:text-xl">
+          <ul className="mt-3 flex flex-col gap-2.5">
+            {[
+              { color: '#B26B1F', label: 'Storytime · Sat 10:30' },
+              { color: '#1F8A4C', label: 'Toddler swim · Sun 9:00' },
+              { color: '#3B5BDB', label: 'Nature walk · Sat 2:00' },
+            ].map((row) => (
+              <li key={row.label} className="flex items-center gap-2.5">
                 <span
-                  className="shrink-0 mt-1 inline-flex h-7 w-7 items-center justify-center rounded-full"
-                  style={{ background: 'var(--color-apricot)' }}
                   aria-hidden
-                >
-                  <Check size={18} strokeWidth={2.5} style={{ color: 'var(--color-spruce)' }} />
-                </span>
-                <span style={{ lineHeight: 1.4, color: 'var(--color-on-spruce)' }}>{promise}</span>
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: row.color }}
+                />
+                <span className="text-sm text-[#17294A]">{row.label}</span>
               </li>
             ))}
           </ul>
         </div>
-      </section>
-
-      {/* ── 8 · A note from the maker ───────────────────────────────────── */}
-      <section className="shell py-24 lg:py-32">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
-          <div className="lg:col-span-3 flex justify-center lg:justify-start">
-            <ParentAndHouse style={{ width: 'clamp(140px, 22vw, 180px)', height: 'auto' }} />
-          </div>
-          <div className="lg:col-span-9">
-            <span className="eyebrow">A note from the maker</span>
-            <p
-              className="mt-5 font-display max-w-3xl"
-              style={{
-                fontSize: 'clamp(1.4rem, 2.6vw, 2rem)',
-                lineHeight: 1.32,
-                letterSpacing: 'var(--tracking-display)',
-                fontWeight: 600,
-              }}
-            >
-              My partner and I were raising a kid far from the village our own
-              parents had — no elders down the street, no one who just knew which
-              class was worth it or that this hard week was normal. The trust was
-              still out there, in what other parents quietly told each other; we
-              just couldn’t reach it. So I built a way to put that village online —
-              the things families near you swear by, easy to share, growing with
-              every family that joins.
-            </p>
-            <p className="mt-6 meta">— Anzhe Dong, founder · Toronto</p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 9 · The name — how to say Hale ──────────────────────────────── */}
-      <section className="shell pb-24 lg:pb-32">
-        <div className="panel-oat px-8 py-12 sm:px-14 sm:py-16 text-center rise rise-1">
-          <span className="eyebrow">the name</span>
-          <p className="mt-4 flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1">
-            <span className="font-display text-5xl font-semibold sm:text-6xl">Hale</span>
-            <span className="font-mono text-lg" style={{ color: 'var(--color-apricot-deep)' }}>
-              /ˈhɑːleɪ/
-            </span>
-            <span className="meta text-base">&ldquo;HAH-lay&rdquo;</span>
-          </p>
-          <p
-            className="mt-6 font-display text-xl sm:text-2xl"
-            style={{ color: 'var(--color-spruce)', letterSpacing: 'var(--tracking-display)' }}
-          >
-            Hawaiian for <span className="accent">home</span>.
-          </p>
-          <p className="mt-3 meta">A house big enough for your whole village.</p>
-        </div>
-      </section>
-
-      <SiteFooter />
-    </main>
+      </div>
+    </div>
   );
 }
