@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react';
 import Link from 'next/link';
 import { ApprovalsHeader } from '~/components/hale/approvals-header';
 import { ApproveButton } from '~/components/hale/approve-button';
@@ -8,6 +9,7 @@ import { HISTORY_NAV } from '~/components/hale/nav';
 import { RequestTeenAccessButton } from '~/components/hale/request-teen-access-button';
 import { ToneLabel } from '~/components/hale/tone';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
+import { Icon } from '~/components/ui/icon';
 import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
 import { actionTypeLabel } from '~/lib/format/labels';
 
@@ -38,16 +40,18 @@ export default async function ApprovalsPage() {
       <ApprovalsHeader pendingCount={approvals.length} />
 
       {approvals.length > 0 ? (
-        <ul className="rise rise-2 border-t border-rule">
+        <ul className="rise rise-2 grid gap-4">
           {approvals.map((approval) => (
-            <li
-              key={approval.id}
-              className="py-7 border-b border-rule flex flex-wrap items-start justify-between gap-y-4 gap-x-8"
-            >
+            <li key={approval.id} className="card">
+              {/* Card body: eyebrow (clock + action type + child tag), subject,
+               * detail, and the drafted-at requester line (design handoff §4.6). */}
               <div className="min-w-0" data-hale-pii>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2">
+                  <span className="eyebrow inline-flex items-center gap-1.5">
+                    <Icon as={Clock} size={13} />
+                    {actionTypeLabel(approval.actionType)}
+                  </span>
                   <ChildTag childId={approval.childId} label={approval.childLabel} />
-                  <span className="eyebrow">{actionTypeLabel(approval.actionType)}</span>
                 </div>
                 <p className="font-display text-[1.25rem] mt-1 text-spruce break-words">
                   {approval.preview}
@@ -62,7 +66,10 @@ export default async function ApprovalsPage() {
                 <p className="meta mt-2 text-slate-green">drafted {approval.draftedAt}</p>
                 <DraftDetail actionType={approval.actionType} payload={approval.payload} />
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              {/* A divider above right-aligned Reject / Approve (design handoff §4.6:
+               * not full-width, not left-hugging). */}
+              <div className="rule mt-5" />
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
                 <DismissButton actionId={approval.id} label={approval.preview} />
                 {approval.teenRedacted ? (
                   // Policy 4: never a decision on invisible content — the parent

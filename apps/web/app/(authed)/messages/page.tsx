@@ -52,13 +52,7 @@ export default async function MessagesPage() {
 
   return (
     <div>
-      <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">messages</h1>
-        <p className="meta mt-1 text-slate-green">
-          Hale&rsquo;s notes to you &mdash; your daily brief and what it&rsquo;s been doing.
-        </p>
-      </header>
-
+      {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
       {messages.length > 0 ? (
         <div className="rise rise-2 grid grid-cols-1 md:grid-cols-2 gap-4">
           {messages.map((message) => (

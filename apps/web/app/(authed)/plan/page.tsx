@@ -53,21 +53,7 @@ export default async function PlanPage() {
 
   return (
     <div>
-      {/* ── Greeting — a modest, app-like header (Notion/Linear register) ── */}
-      <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          {hasPlan ? (
-            <>
-              here&rsquo;s your <span className="text-apricot-deep">week ahead</span>.
-            </>
-          ) : (
-            <>
-              a quiet <span className="text-apricot-deep">week ahead</span>.
-            </>
-          )}
-        </h1>
-        <p className="meta mt-1 text-slate-green">what&rsquo;s coming for your kids.</p>
-      </header>
+      {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
 
       {/* ── Add a plan ──────────────────────────────────────────────────── */}
       <section className="rise rise-2 mb-8">

@@ -1,18 +1,17 @@
-import { Bell, ChevronRight, Files, MapPin, Route, Ruler, Sparkles } from 'lucide-react';
+import { Files, Route, Ruler, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Route as NextRoute } from 'next';
 import Link from 'next/link';
 import { AskBar } from '~/components/hale/ask-bar';
+import { HaleTip } from '~/components/hale/hale-tip';
 import { HomeChildPanels, type HomeChildSnapshot } from '~/components/hale/home-child-panels';
-import { LongDate } from '~/components/hale/long-date';
+import { Mascot } from '~/components/hale/mascot';
 import { QuickLog } from '~/components/hale/quick-log';
 import { Icon } from '~/components/ui/icon';
 import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
-import { loadViewerName } from '~/lib/family';
-import { loadFamilyBasics, loadPendingApprovals } from '~/lib/dashboard/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
-import { homeGreeting, homeStatCells } from '~/lib/home/greeting';
+import { homeStatCells } from '~/lib/home/greeting';
 import { loadVillageFeed } from '~/lib/village/feed';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 
@@ -82,13 +81,6 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
   );
 }
 
-/** The warm front door: "good evening, Alex." — the time-of-day phrase warmed with
- * the signed-in viewer's first name. In preview (auth off) there is no session, so
- * the greeting degrades to the bare phrase. Mirrors the mobile Home hero. */
-async function viewerName(): Promise<string | null> {
-  return loadViewerName();
-}
-
 interface QuickActionRow {
   icon: LucideIcon;
   label: string;
@@ -103,37 +95,21 @@ const QUICK_ACTIONS: QuickActionRow[] = [
 ];
 
 export default async function HomePage() {
-  const [children, stats, name, basics, feed, pending] = await Promise.all([
+  const [children, stats, feed] = await Promise.all([
     loadCompanion(),
     loadHomeStats(),
-    viewerName(),
-    loadFamilyBasics(),
     loadVillageFeed(),
-    loadPendingApprovals(),
   ]);
 
-  const greeting = homeGreeting(name);
-  const area = basics.location.city;
-  const pendingCount = pending.length;
+  // The greeting hero + the location/bell now live in the shell top bar (design
+  // handoff §3.2), so this page carries no header of its own.
   const topPick = feed.candidates[0] ?? null;
 
   if (children.length === 0) {
     return (
       <div>
-        <div className="page-corner">
-          <span className="ml-auto">
-            <LongDate />
-          </span>
-        </div>
-
-        <header className="rise rise-1 mb-10 lg:mb-14">
-          <h1 className="font-display">
-            {greeting} <span aria-hidden>👋</span>
-          </h1>
-          <p className="meta mt-3 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
-        </header>
-
         <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
+          <Mascot pose="wave" size={112} className="mx-auto" />
           <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
             tell Hale about your kid.
           </p>
@@ -167,44 +143,8 @@ export default async function HomePage() {
 
   return (
     <div>
-      {/* ── Header — greeting + the family's coarse area as a static location chip,
-       * and a bell into Approvals with an orange dot only when a decision waits. ── */}
-      <header className="rise rise-1 mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-            {greeting} <span aria-hidden>👋</span>
-          </h1>
-          <p className="meta mt-1 text-slate-green">here&rsquo;s what&rsquo;s happening today.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {area ? (
-            <span className="pill inline-flex items-center gap-1.5 text-faded-sage" data-hale-pii>
-              <Icon as={MapPin} size={14} />
-              {area}
-            </span>
-          ) : null}
-          <Link
-            href="/approvals"
-            aria-label={
-              pendingCount > 0
-                ? `approvals — ${pendingCount} waiting`
-                : 'approvals'
-            }
-            className="relative inline-flex size-10 items-center justify-center rounded-full text-spruce transition-colors hover:bg-oat"
-          >
-            <Icon as={Bell} size={20} />
-            {pendingCount > 0 ? (
-              <span
-                aria-hidden
-                className="absolute right-1.5 top-1.5 size-2.5 rounded-full bg-apricot ring-2 ring-linen"
-              />
-            ) : null}
-          </Link>
-        </div>
-      </header>
-
-      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as three
-       * bordered action cards. ─────────────────────────────────────────────── */}
+      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as
+       * bordered action cards. The greeting hero lives in the shell top bar. ─── */}
       <section className="rise rise-2 mb-4">
         <QuickLog
           kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))}
@@ -217,7 +157,7 @@ export default async function HomePage() {
         <AskBar />
       </section>
 
-      {/* ── The three columns: today's snapshot / up next + village / quick actions.
+      {/* ── The three columns: today's snapshot / up next + village / quick links.
        * Each grid item is one column stack; collapses 3 → 2 → 1 at lg / md / sm. ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-start gap-x-6 gap-y-8">
         <HomeChildPanels
@@ -226,21 +166,22 @@ export default async function HomePage() {
           villageSlot={<VillagePickCard topPick={topPick} />}
         />
 
-        <div className="rise rise-5">
-          <p className="eyebrow mb-3 text-faded-sage">quick actions</p>
-          <nav className="card overflow-hidden px-0 py-0">
-            {QUICK_ACTIONS.map((action) => (
-              <Link
-                key={action.label}
-                href={action.href}
-                className="flex items-center gap-3 border-b border-rule px-[clamp(1.25rem,2vw,1.75rem)] py-3.5 text-spruce transition-colors last:border-b-0 hover:bg-linen"
-              >
-                <Icon as={action.icon} size={18} className="text-slate-green" />
-                <span className="flex-1 font-medium">{action.label}</span>
-                <Icon as={ChevronRight} size={18} className="text-faded-sage" />
-              </Link>
-            ))}
-          </nav>
+        <div className="rise rise-5 flex flex-col gap-8">
+          <div>
+            <p className="eyebrow mb-3 text-faded-sage">quick links</p>
+            {/* 2×2 tile grid (design handoff §4.2) — each a warm tile into a real
+             * surface. */}
+            <div className="grid grid-cols-2 gap-3">
+              {QUICK_ACTIONS.map((action) => (
+                <Link key={action.label} href={action.href} className="quick-link-tile">
+                  <Icon as={action.icon} size={20} className="text-slate-green" />
+                  <span className="font-medium leading-snug">{action.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <HaleTip />
         </div>
       </div>
     </div>

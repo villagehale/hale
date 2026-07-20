@@ -4,40 +4,32 @@ import { describe, expect, it } from 'vitest';
 import { ApprovalsHeader } from './approvals-header';
 
 /**
- * The Approvals header is state-adaptive: the pending count IS the information.
- * Zero pending reads calm ("all clear") and carries the empty-state line itself;
- * a positive count leads with the number as the hero and never says "all clear".
- * The trust promise (rule #4) rides in both states. Rendered to static markup so
- * the full headline + meta expand, the same way the village feed is tested.
+ * The page title now lives in the shell drill hero ("Approvals", §3.2), so the
+ * intro beneath it is state-adaptive WITHOUT a competing headline: nothing pending
+ * reads calm ("All caught up", §4.8) and IS the empty state; a positive count is a
+ * single trust line. The trust promise (rule #4) rides in both states. Rendered to
+ * static markup so the full copy expands.
  */
 function render(pendingCount: number): string {
   return renderToStaticMarkup(createElement(ApprovalsHeader, { pendingCount }));
 }
 
 describe('ApprovalsHeader', () => {
-  it('reads "all clear" with nothing pending, and is itself the empty state', () => {
+  it('is the "All caught up" empty state with nothing pending', () => {
     const html = render(0);
-    expect(html).toContain('all clear');
-    // The old, wrong copy dominated even the empty state — it must be gone here.
-    expect(html).not.toContain('waiting for your yes');
-    // The header carries the empty-state line, so no separate panel is needed.
-    expect(html).toContain('it parks it here for your yes');
+    expect(html).toContain('All caught up');
+    expect(html).toContain('Nothing waiting for your approval');
     // The empty state is not a dead end — it points to the record of what's done.
     expect(html).toContain('href="/trail"');
     expect(html).toContain('see what Hale has taken care of');
   });
 
-  it('leads with the count as the hero when drafts are waiting', () => {
+  it('is a single trust line when drafts are waiting (no competing headline)', () => {
     const html = render(3);
-    // The number is the accent (apricot-deep), leading the sentence.
-    expect(html).toContain('text-apricot-deep">3</span> drafts waiting for your yes');
-    expect(html).not.toContain('all clear');
-  });
-
-  it('uses the singular "draft" for exactly one pending', () => {
-    const html = render(1);
-    expect(html).toContain('text-apricot-deep">1</span> draft waiting for your yes');
-    expect(html).not.toContain('1 drafts');
+    expect(html).not.toContain('All caught up');
+    // No hero-scale headline here — the shell drill hero carries the page title.
+    expect(html).not.toContain('font-display text-[1.5rem]');
+    expect(html).toContain('you decide');
   });
 
   it('surfaces the trust promise (rule #4) in both states', () => {

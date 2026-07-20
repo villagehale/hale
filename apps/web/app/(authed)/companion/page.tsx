@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { CompanionTabs } from '~/components/hale/companion-tabs';
+import { Mascot } from '~/components/hale/mascot';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { QuickLog } from '~/components/hale/quick-log';
 import { UpgradePrompt } from '~/components/hale/upgrade-prompt';
@@ -10,12 +11,6 @@ import { loadRecentLogs } from '~/lib/companion/recent-logs';
 import { loadFamilyBasics, loadFamilyTimezone } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadVillage } from '~/lib/village/queries';
-
-/** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
- * above its content. Replaces the editorial label-rail gutters. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
-}
 
 export default async function CompanionPage() {
   const [children, recentLogs, basics, timeZone, village, growthPage, profile] = await Promise.all([
@@ -33,15 +28,10 @@ export default async function CompanionPage() {
     <div>
       {children.length === 0 ? (
         <>
-          {/* Empty state keeps a modest headline; a populated page goes straight to
-           * the child header inside CompanionTabs (mockup panel 2). */}
-          <header className="rise rise-1 mb-8">
-            <SectionLabel>your companion</SectionLabel>
-            <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-              growing up, <span className="text-apricot-deep">held</span> at every age.
-            </h1>
-          </header>
+          {/* The page title lives in the shell top bar (§3.2); the empty state itself
+           * is the mascot-led "add a child" panel. */}
           <section className="rise rise-3 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
+            <Mascot pose="worried" size={104} className="mx-auto" />
             <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
               no children added yet.
             </p>

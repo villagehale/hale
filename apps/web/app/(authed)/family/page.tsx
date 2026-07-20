@@ -23,15 +23,7 @@ export default async function FamilyPage() {
 
   return (
     <div>
-      <header className="rise rise-1 mb-8">
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          your <span className="text-apricot-deep">Family.</span>
-        </h1>
-        <p className="meta mt-1 text-slate-green">
-          Manage your family, plan and collaboration.
-        </p>
-      </header>
-
+      {/* The page title + subtitle live in the shell top bar (design handoff §3.2). */}
       <div className="rise rise-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <FamilyHubCard
           icon={UsersRound}

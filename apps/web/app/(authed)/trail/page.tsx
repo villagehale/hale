@@ -3,12 +3,6 @@ import { ExportDataButton } from '~/components/hale/export-data-button';
 import { TrailTimeline } from '~/components/hale/trail-timeline';
 import { loadTrail } from '~/lib/dashboard/queries';
 
-/** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
- * above its content. Mirrors home's SectionLabel; replaces the label-rail gutters. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
-}
-
 export default async function TrailPage() {
   const entries = await loadTrail();
   const byHale = entries.filter((entry) => entry.actor === 'hale').length;
@@ -22,15 +16,7 @@ export default async function TrailPage() {
 
   return (
     <div>
-      {/* ── Header — a modest, app-like hero (Notion/Linear register) ─────── */}
-      <header className="rise rise-1 mb-8">
-        <SectionLabel>history</SectionLabel>
-        <h1 className="font-display text-[1.75rem] lg:text-[2rem] leading-tight">
-          the full <span className="text-apricot-deep">record</span> for your family.
-        </h1>
-        <p className="meta mt-1 text-slate-green">everything done, by whom, when.</p>
-      </header>
-
+      {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
       {/* ── Tally — a compact, dense stat strip ────────────────────────────── */}
       <section className="rise rise-2 mb-8">
         <div className="grid grid-cols-3 divide-x divide-rule overflow-hidden rounded-2xl border border-rule bg-oat">
