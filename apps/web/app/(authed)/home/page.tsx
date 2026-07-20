@@ -14,6 +14,7 @@ import { loadHomeStats } from '~/lib/home/aggregates';
 import { homeStatCells } from '~/lib/home/greeting';
 import { loadVillageFeed } from '~/lib/village/feed';
 import type { VillageCandidateView } from '~/lib/village/mappers';
+import { endorsementLabel } from '~/lib/village/social-proof';
 
 const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
   newborn: 'newborn',
@@ -47,14 +48,16 @@ function villageWhen(candidate: VillageCandidateView): string | null {
   return null;
 }
 
-/** The top ranked village pick, or an honest "quiet for now" when the feed is
- * empty. Title + when (cadence / calendar day) only — never a distance (village
- * candidates carry none) and never a fabricated date (rule #1). */
+/** The top ranked village pick (Row-1 col 4, design handoff §4.2), or an honest
+ * "quiet for now" when the feed is empty. Title + when (cadence / calendar day) +
+ * the REAL aggregate endorsement count ("loved by N families near you", 2+ only —
+ * never a fabricated "12 families going", rule #1) + a link to the full village. */
 function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) {
+  const proof = topPick ? endorsementLabel(topPick.endorsementCount) : null;
   return (
-    <div>
-      <p className="eyebrow mb-3 text-faded-sage">from your village</p>
-      <div className="card">
+    <div className="rise rise-6 home-col">
+      <p className="eyebrow text-faded-sage">from your village</p>
+      <div className="card home-card-fill">
         {topPick ? (
           <>
             <p className="font-display text-[1.05rem] leading-snug text-spruce" data-hale-pii>
@@ -63,8 +66,9 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
             {villageWhen(topPick) ? (
               <p className="meta mt-1 text-slate-green">{villageWhen(topPick)}</p>
             ) : null}
+            {proof ? <p className="meta mt-2 text-faded-sage">{proof}</p> : null}
             <Link href="/village" className="link mt-3 inline-block">
-              see your village &rarr;
+              view all activities &rarr;
             </Link>
           </>
         ) : (
@@ -157,32 +161,33 @@ export default async function HomePage() {
         <AskBar />
       </section>
 
-      {/* ── The three columns: today's snapshot / up next + village / quick links.
-       * Each grid item is one column stack; collapses 3 → 2 → 1 at lg / md / sm. ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 items-start gap-x-6 gap-y-8">
-        <HomeChildPanels
-          kids={snapshots}
-          statCells={homeStatCells(stats)}
-          villageSlot={<VillagePickCard topPick={topPick} />}
-        />
+      {/* ── Row 1 (design handoff §4.2): the row-of-4 — today's snapshot / up next /
+       * quick links + tip / from your village — at 1.05fr 1fr 1fr 1.15fr, equal-height
+       * cards. Collapses 4 → 2 → 1 at lg / md / sm (.home-row1). ── */}
+      <div className="home-row1">
+        <HomeChildPanels kids={snapshots} statCells={homeStatCells(stats)} />
 
-        <div className="rise rise-5 flex flex-col gap-8">
-          <div>
-            <p className="eyebrow mb-3 text-faded-sage">quick links</p>
+        <div className="rise rise-5 home-col-stack">
+          <div className="home-col-grow">
+            <p className="eyebrow text-faded-sage">quick links</p>
             {/* 2×2 tile grid (design handoff §4.2) — each a warm tile into a real
-             * surface. */}
-            <div className="grid grid-cols-2 gap-3">
-              {QUICK_ACTIONS.map((action) => (
-                <Link key={action.label} href={action.href} className="quick-link-tile">
-                  <Icon as={action.icon} size={20} className="text-slate-green" />
-                  <span className="font-medium leading-snug">{action.label}</span>
-                </Link>
-              ))}
+             * surface; stretches to fill the card. */}
+            <div className="card home-card-fill">
+              <div className="grid flex-1 grid-cols-2 gap-3">
+                {QUICK_ACTIONS.map((action) => (
+                  <Link key={action.label} href={action.href} className="quick-link-tile">
+                    <Icon as={action.icon} size={20} className="text-slate-green" />
+                    <span className="font-medium leading-snug">{action.label}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
 
           <HaleTip />
         </div>
+
+        <VillagePickCard topPick={topPick} />
       </div>
     </div>
   );
