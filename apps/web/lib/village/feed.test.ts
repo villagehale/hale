@@ -19,17 +19,23 @@ const kickDrainMock = vi.fn();
 
 // Rows the fake db returns, routed by the SELECTed table. Set per test.
 let areaRow: { areaCoarse: string | null } | undefined;
+let activeAreaRow: { city: string; province: string | null; postalCode: string | null } | undefined;
 let rankRow: { orderedIds: string[] } | undefined;
 
-// Fakes the two SELECT chains loadVillageFeed runs: .from(families).where().limit()
-// for the coarse area, .from(villageFeedRank).where().limit() for the stored
-// order. Routed by table identity so it is order-independent.
+// Fakes the SELECT chains loadVillageFeed runs: resolveActiveAreaCoarse reads
+// .from(familyAreas).where().limit() (the active saved area) then falls back to
+// .from(families).where().limit() for the legacy coarse area, and
+// .from(villageFeedRank).where().limit() yields the stored order. Routed by table
+// identity so it is order-independent.
 const fakeDb = {
   select: () => ({
     from: (table: unknown) => ({
       where: () => ({
-        limit: async () =>
-          table === schema.families ? (areaRow ? [areaRow] : []) : rankRow ? [rankRow] : [],
+        limit: async () => {
+          if (table === schema.familyAreas) return activeAreaRow ? [activeAreaRow] : [];
+          if (table === schema.families) return areaRow ? [areaRow] : [];
+          return rankRow ? [rankRow] : [];
+        },
       }),
     }),
   }),
@@ -132,6 +138,7 @@ describe('loadVillageFeed', () => {
     vi.clearAllMocks();
     process.env.DATABASE_URL = 'postgres://test';
     areaRow = { areaCoarse: null };
+    activeAreaRow = undefined;
     rankRow = undefined;
     currentFamilyIdMock.mockResolvedValue(FAMILY);
     getQueueMock.mockResolvedValue({ send: sendMock });
@@ -172,6 +179,19 @@ describe('loadVillageFeed', () => {
     expect(feed.candidates.map((c) => c.id)).toEqual(['a']);
     expect(sendMock).not.toHaveBeenCalled();
     expect(rankRecommendationsMock).not.toHaveBeenCalled();
+  });
+
+  it('centers the feed on the ACTIVE saved area, overriding the legacy family area (0051)', async () => {
+    // The web village map/label must follow the region the family switched to, not
+    // the stale legacy families.area_coarse.
+    readVillageMock.mockResolvedValue({ candidates: [view('a'), view('b')] });
+    areaRow = { areaCoarse: 'M5V' };
+    activeAreaRow = { city: 'Ottawa', province: 'ON', postalCode: 'K1P 1J1' };
+    rankRow = { orderedIds: ['a', 'b'] };
+
+    const feed = await loadVillageFeed();
+
+    expect(feed.areaCoarse).toBe('K1P');
   });
 
   it('returns the empty feed with no DB read when no family is resolved', async () => {

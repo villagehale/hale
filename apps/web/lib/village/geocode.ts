@@ -222,3 +222,120 @@ async function fetchOnceRetryingTransient(
   }
   return doFetch();
 }
+
+// ── Forward city search (the region switcher's typeahead) ─────────────────────
+//
+// Reuses the SAME Places Text Search (New) provider + auth as venue geocoding — no
+// new provider (the region-switcher search must not add an integration). The one
+// difference is the request: it asks for up to CITY_SEARCH_MAX locality results
+// (not one venue) and a mask carrying the address components, so each candidate
+// resolves to a coarse {city, province} — never coordinates (rule #1). Restricted
+// to Canada (regionCode 'CA'), the only region Hale is compliance-cleared for.
+
+/** A coarse city candidate for the region switcher — no coordinates (rule #1). */
+export interface CityCandidate {
+  city: string;
+  province: string | null;
+}
+
+const CITY_SEARCH_MAX = 6;
+
+/** Only the fields the switcher needs: the locality name + its address components
+ * (to read the province from administrative_area_level_1). No location field is
+ * requested — the search never returns or stores coordinates (rule #1). */
+const CITY_FIELD_MASK = 'places.displayName,places.addressComponents';
+
+/** The single HTTP edge for city search, injected so tests exercise the
+ * parse/guard logic with a fake instead of a real Google call. */
+export interface CitySearchClient {
+  searchCities(query: string): Promise<unknown>;
+}
+
+interface PlacesCityResponse {
+  places?: Array<{
+    displayName?: { text?: string };
+    addressComponents?: Array<{ shortText?: string; longText?: string; types?: string[] }>;
+  }>;
+}
+
+/**
+ * Map a Places locality response to up to CITY_SEARCH_MAX coarse {city, province}
+ * candidates, province read from the administrative_area_level_1 component (null
+ * when absent). Duplicates collapse; a place with no name is skipped. Coordinates
+ * are never read — the switcher deals only in coarse names (rule #1).
+ */
+export function parseCityCandidates(raw: unknown): CityCandidate[] {
+  const places = (raw as PlacesCityResponse)?.places ?? [];
+  const out: CityCandidate[] = [];
+  const seen = new Set<string>();
+  for (const place of places) {
+    const city = place?.displayName?.text?.trim();
+    if (!city) continue;
+    const provinceComponent = place?.addressComponents?.find((component) =>
+      component.types?.includes('administrative_area_level_1'),
+    );
+    const province = provinceComponent?.shortText?.trim() || null;
+    const key = `${city.toLowerCase()}|${(province ?? '').toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ city, province });
+    if (out.length >= CITY_SEARCH_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * Forward-search Canadian cities for the region switcher, or [] on any
+ * miss/failure. Never throws — like venue geocoding this is best-effort, and a
+ * transport/quota error must degrade to an empty list, not a 500 (rule #8
+ * boundary). `client` defaults to the live Places client; tests inject a fake.
+ */
+export async function searchCanadianCities(
+  query: string,
+  client: CitySearchClient = defaultCitySearchClient(),
+): Promise<CityCandidate[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  try {
+    return parseCityCandidates(await client.searchCities(trimmed));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Live Places city-search client. Same endpoint + key resolution as
+ * defaultGeocodeClient (reuse, not a new provider); the request asks for locality
+ * results in Canada with the city field mask. With no key, returns null-shaped (no
+ * places) so searchCanadianCities yields [].
+ */
+export function defaultCitySearchClient(): CitySearchClient {
+  const apiKey =
+    process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+  return {
+    async searchCities(query: string): Promise<unknown> {
+      if (!apiKey) return { places: [] };
+      const res = await fetch(PLACES_TEXT_SEARCH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': CITY_FIELD_MASK,
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          maxResultCount: CITY_SEARCH_MAX,
+          // Restrict to Canada (rule #1 compliance baseline); includedType keeps the
+          // results to cities/towns rather than venues.
+          regionCode: 'CA',
+          includedType: 'locality',
+        }),
+        signal: AbortSignal.timeout(PLACES_ATTEMPT_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        throw new Error(`places city search failed: ${res.status}`);
+      }
+      return res.json();
+    },
+  };
+}

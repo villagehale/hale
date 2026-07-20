@@ -11,15 +11,20 @@ import { describe, expect, it } from 'vitest';
 //
 // A handful of routes are audited to legitimately hold a db handle (they reuse the
 // exact web loaders/writers that own the query building): the password sign-in, the
+// magic-link request + verify (delegate to requestMagicLink / consumeMagicLinkToken,
+// which own the token query building — same posture as the password sign-in), the
 // email sign-up (delegates to registerCredential + the signup side-effect
 // dispatcher), the companion quick-log, the companion "mark done" (reuses the same
 // writeEpisode path), the companion logs read (reuses the shared, teen-redacted
 // readLogsPage), the three docs-vault routes (reuse the shared, teen-redacted
-// documents lib for list / signed-url / soft-delete), and the connector connect-url
+// documents lib for list / signed-url / soft-delete), the connector connect-url
 // route (resolves the family/user ids via the shared ~/lib/family helpers to sign
-// the OAuth state — it reads NO child data, so there is nothing to redact). They may
-// import ~/lib/db ONLY, and must contain NO query-building tokens themselves — the
-// query building lives behind the shared lib, never inline in the route.
+// the OAuth state — it reads NO child data, so there is nothing to redact), and the
+// saved-areas route (resolves the family/user ids to call the shared areas lib,
+// which owns the query building; it reads NO child data — coarse family locations
+// only — so there is nothing to redact). They may import ~/lib/db ONLY, and must
+// contain NO query-building tokens themselves — the query building lives behind the
+// shared lib, never inline in the route.
 //
 // (Lives under lib/ because the vitest `include` glob only picks up lib/** and
 // components/**, not app/**.)
@@ -33,6 +38,8 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 // (nothing else DB-related) and must build no queries of its own.
 const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/auth/password/route.ts',
+  'app/api/mobile/auth/magic-link/request/route.ts',
+  'app/api/mobile/auth/magic-link/verify/route.ts',
   'app/api/mobile/auth/signup/route.ts',
   'app/api/mobile/companion/log/route.ts',
   'app/api/mobile/companion/done/route.ts',
@@ -41,6 +48,7 @@ const DB_HANDLE_ALLOWLIST = new Set([
   'app/api/mobile/docs/[id]/route.ts',
   'app/api/mobile/docs/[id]/url/route.ts',
   'app/api/mobile/integrations/connect-url/route.ts',
+  'app/api/mobile/village/areas/route.ts',
   'app/api/mobile/rights/export/route.ts',
   'app/api/mobile/rights/delete/route.ts',
   'app/api/mobile/village/shares/route.ts',

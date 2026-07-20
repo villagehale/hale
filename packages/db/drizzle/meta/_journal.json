@@ -356,7 +356,21 @@
       "idx": 51,
       "version": "7",
       "when": 1781462760000,
-      "tag": "0051_chat_attachments",
+      "tag": "0051_magic_link_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1781462820000,
+      "tag": "0052_family_areas",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1781462880000,
+      "tag": "0053_chat_attachments",
       "breakpoints": true
     }
   ]

@@ -8,6 +8,8 @@ import type { HistoryView } from '~/lib/dashboard/history';
 import type { FamilyBasicsView } from '~/lib/dashboard/family-basics';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
 import type { MessageView } from '~/lib/messages/mappers';
+import type { ConversationSummary } from '~/lib/coach/history';
+import type { TimelineMessage } from '~/lib/coach/conversation';
 import type { ScopeChild } from '~/components/hale/child-scope-core';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import type { PlanChildItem } from '~/lib/plan/week';
@@ -17,6 +19,8 @@ import type { NotificationPref, NotificationPrefsView } from '~/lib/settings/not
 import type { PushPref } from '~/lib/settings/push-notification-prefs';
 import type { PushPrefsView } from '~/lib/push/prefs';
 import type { ShareLinkKind, SharedLink } from '~/lib/village/share-revoke';
+import type { SavedArea, SavedAreaLabel } from '~/lib/village/areas';
+import type { CityCandidate } from '~/lib/village/geocode';
 import type { CuratedResourceView } from '~/lib/village/curated-resources';
 import type { RoutineProposalView, VillageCandidateView } from '~/lib/village/mappers';
 import type { VillageData } from '~/lib/village/queries';
@@ -53,6 +57,49 @@ export interface MobileCompanionResponse {
  * omits it), and an older client that ignores it still reads candidates/routine. */
 export interface MobileVillageResponse extends VillageData {
   resources?: CuratedResourceView[];
+  /** The active saved area's label so the header renders the real location. Additive
+   * + optional: present on the standing-feed read, absent on the season/childcare
+   * sub-reads; null when the family has saved no area (an older client ignores it). */
+  area?: SavedAreaLabel | null;
+}
+
+// ── village saved areas + region switch (GET/POST /api/mobile/village/areas) ──
+//
+// The region switcher behind the Village header. GET lists the family's saved
+// coarse areas + which is active; POST adds a coarse {city, province, note?} OR
+// activates one by id, each family-scoped and audited server-side (rules #1/#6).
+// "Use my current location" is NOT a distinct server path: the CLIENT resolves the
+// device location to a coarse {city, province} on-device and calls the SAME add /
+// setActive endpoints — the server never accepts or stores coordinates.
+
+/** GET /api/mobile/village/areas — the family's saved areas + the active one's id. */
+export interface MobileVillageAreasResponse {
+  areas: SavedArea[];
+  activeAreaId: string | null;
+}
+
+/** POST body: add a coarse area (`add`) or activate one by id (`setActive`). Adding
+ * carries only coarse fields — a payload with any lat/lng-shaped key is refused
+ * (rule #1). */
+export interface AddAreaRequest {
+  action: 'add';
+  city: string;
+  province?: string;
+  note?: string;
+  postalCode?: string;
+}
+
+export interface SetActiveAreaRequest {
+  action: 'setActive';
+  areaId: string;
+}
+
+export type MobileVillageAreaUpdateRequest = AddAreaRequest | SetActiveAreaRequest;
+
+/** GET /api/mobile/village/areas/search?q= — up to 6 Canadian city candidates for
+ * the switcher typeahead, coarse {city, province} only (no coordinates, rule #1). */
+export interface MobileVillageAreaSearchResponse {
+  cities: CityCandidate[];
 }
 
 /** The `?category=` value the Childcare page sends to narrow the Resources rail
@@ -169,6 +216,21 @@ export interface NoteThreadTurn {
 export interface MobileNoteThreadResponse {
   conversationId: string | null;
   turns: NoteThreadTurn[];
+}
+
+/** GET /api/mobile/conversations — the family's Ask sessions for the native history
+ * rail, newest-active first. Each summary's title is derived server-side (rule #1:
+ * never the raw transcript); the reopen route serves the turns. */
+export interface MobileConversationsResponse {
+  conversations: ConversationSummary[];
+}
+
+/** GET /api/mobile/conversations/:id — one Ask session's ordered transcript, reused
+ * from the timeline shape (id/role/content/childId/topic/createdAt). Family-scoped:
+ * an unknown or foreign id is a 404, never an empty body. */
+export interface MobileConversationTranscriptResponse {
+  conversationId: string;
+  turns: TimelineMessage[];
 }
 
 /** The native Plan surface (More → Plan & billing): the family's current tier + the

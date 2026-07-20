@@ -33,38 +33,41 @@ interface InsertCapture {
 }
 
 /**
- * Fakes the exact Drizzle chains discoverForFamily runs, with NO real db:
- *   1. select(area).from(families).where().limit(1)  → [{ areaCoarse }]
- *   2. select(...).from(children).where()            → child rows
+ * Fakes the exact Drizzle chains discoverForFamily runs, with NO real db, routed by
+ * TABLE identity (order-independent):
+ *   1. resolveActiveAreaCoarse:
+ *        select(...).from(familyAreas).where().limit(1) → [`activeArea`] | []
+ *        (fallback) select(area).from(families).where().limit(1) → [{ areaCoarse }]
+ *   2. select(...).from(children).where()             → child rows
  *   3. transaction(cb) where tx.insert(table).values(rows) captures by table.
- * The table object identity is used to route captured inserts.
+ * `activeArea` present → the ACTIVE saved area drives content; absent → the legacy
+ * families.area_coarse is used (back-compat).
  */
 function fakeDb(args: {
   areaCoarse: string | null;
   children: ChildRow[];
   capture: InsertCapture;
+  activeArea?: { city: string; province: string | null; postalCode: string | null };
 }) {
-  let selectCall = 0;
-
   const select = vi.fn().mockImplementation(() => {
-    const call = selectCall++;
-    if (call === 0) {
-      // families lookup: .from().where().limit() → [{ areaCoarse }]. The family
-      // row always exists in these tests (a missing family is a thrown error,
-      // not a tested path); areaCoarse may be null to exercise the no_area branch.
-      return {
-        from: () => ({
-          where: () => ({
-            limit: async () => [{ areaCoarse: args.areaCoarse }],
-          }),
-        }),
-      };
-    }
-    // children lookup: .from().where() → rows (no .limit)
+    let tbl: unknown;
     return {
-      from: () => ({
-        where: async () => args.children,
-      }),
+      from: (table: unknown) => {
+        tbl = table;
+        if (tbl === schema.children) {
+          // children lookup: .from().where() → rows (no .limit)
+          return { where: async () => args.children };
+        }
+        // familyAreas (active row) + families (legacy) both: .where().limit(1).
+        return {
+          where: () => ({
+            limit: async () => {
+              if (tbl === schema.familyAreas) return args.activeArea ? [args.activeArea] : [];
+              return [{ areaCoarse: args.areaCoarse }];
+            },
+          }),
+        };
+      },
     };
   });
 
@@ -255,6 +258,36 @@ describe('discoverForFamily', () => {
     expect(run.completionTokens).toBe(20);
     expect(typeof run.latencyMs).toBe('number');
     expect(run.status).toBe('completed');
+  });
+
+  it('honors the ACTIVE saved area over the legacy family field (region switch drives content)', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    // The family's ACTIVE saved area is Ottawa (K1P …); the legacy families field is
+    // a DIFFERENT area (L7G). Discovery must use the active area's coarse prefix.
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      activeArea: { city: 'Ottawa', province: 'ON', postalCode: 'K1P 1J1' },
+      children: [{ dateOfBirth: TODDLER_DOB, interests: ['water'] }],
+      capture,
+    });
+    const c = fakeClient(SAMPLE_CANDIDATES);
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    // The model receives the ACTIVE area's coarse prefix, not the legacy 'L7G'.
+    const sentUser = c.create.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
+    expect(JSON.parse(sentUser).area_coarse).toBe('K1P');
+    // And the audit records the active coarse area.
+    expect(capture.auditLog[0]).toEqual(
+      expect.objectContaining({
+        after: { areaCoarse: 'K1P', provider: 'llm_only', count: 2 },
+      }),
+    );
   });
 
   it('REPLACES the active set: soft-supersedes the prior run BEFORE inserting the new one', async () => {

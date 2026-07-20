@@ -4,6 +4,7 @@ import { deriveStage } from '@hale/types';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { resolveActiveAreaCoarse } from '~/lib/village/areas';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { countEndorsementsForCandidates } from '~/lib/village/endorse';
 import { visibleCandidates } from '~/lib/village/visibility';
@@ -94,11 +95,15 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     inputSchema: z.object({}),
     handler: async (_input, ctx) => {
       const familyRows = await database
-        .select({ areaCoarse: schema.families.areaCoarse, intents: schema.families.intents })
+        .select({ intents: schema.families.intents })
         .from(schema.families)
         .where(eq(schema.families.id, ctx.familyId))
         .limit(1);
       const family = familyRows[0];
+
+      // The FIT signal follows the ACTIVE saved area (legacy families.area_coarse
+      // fallback) so a region switch actually moves the ranking (rule #1: coarse only).
+      const areaCoarse = await resolveActiveAreaCoarse(database, ctx.familyId);
 
       const childRows = await database
         .select({ dateOfBirth: schema.children.dateOfBirth })
@@ -116,7 +121,7 @@ export function buildRankTools(database: Database): RegisteredTool[] {
       return {
         childStages: stages,
         intents: family?.intents ?? [],
-        areaCoarse: family?.areaCoarse ?? null,
+        areaCoarse,
       };
     },
   });
