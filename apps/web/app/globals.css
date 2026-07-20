@@ -981,9 +981,15 @@ strong { font-weight: 700; }
 /* Contained content column (Notion/Linear-style) — content never stretches to the
  * full stage width; it sits in a centered ~58rem column so cards and rows keep a
  * comfortable density instead of spreading thin. The coach chat opts out (it owns
- * its own full-height surface). */
-.main-stage > *:not(.coach-surface):not(.dev-preview-banner) {
+ * its own full-height surface); the Village board opts UP to a wider column
+ * (.village-wide) so its 330|1fr|300 map board keeps a real centrepiece map (§4.5),
+ * the same "wide surface opts out" pattern the coach chat uses. */
+.main-stage > *:not(.coach-surface):not(.dev-preview-banner):not(.village-wide) {
   max-width: 58rem;
+  margin-inline: auto;
+}
+.main-stage > .village-wide {
+  max-width: 72rem;
   margin-inline: auto;
 }
 
@@ -2673,4 +2679,573 @@ html, body, .sidebar, .panel, .card, .field {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB PHASE W2b — Village 3-column board (design handoff §4.5)
+ * Additive only; every value consumes a ROLE token so both themes derive for
+ * free. The single literal (the recommendation gradient) carries an explicit
+ * .dark override, matching the shipped .hale-tip treatment. The page content is
+ * capped at 58rem and centred by .main-stage, so the columns are sized to fit
+ * that: full 330|1fr|300 only where the centred column is wide enough (≥1280px),
+ * a results+centre pair with the rail below at 1024–1279, and a list-first stack
+ * with a collapsible map below 1024 — nothing overflows.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.village-3col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+/* 1024–1279: results + centre; the rail drops to a full-width row below them. */
+@media (min-width: 1024px) {
+  .village-3col {
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    column-gap: 1.5rem;
+  }
+  .village-rail { grid-column: 1 / -1; }
+}
+/* ≥1280: the full 330 | 1fr | 300 three-column layout (§4.5). */
+@media (min-width: 1280px) {
+  .village-3col {
+    grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 300px);
+  }
+  .village-rail { grid-column: auto; }
+}
+
+/* ── Right rail ─────────────────────────────────────────────────────────── */
+.village-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+/* At the 2-column stage the rail sits full-width below, so its sections read as a
+ * row rather than a tall stack. */
+@media (min-width: 1024px) and (max-width: 1279.98px) {
+  .village-rail { flex-direction: row; flex-wrap: wrap; }
+  .village-rail > * { flex: 1 1 220px; min-width: 0; }
+}
+.village-rail-section { min-width: 0; }
+
+.village-rail-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.3rem;
+  border-radius: var(--r-sm);
+}
+.village-rail-row-button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe);
+}
+.village-rail-row-button:hover { background: var(--color-chrome); }
+.village-rail-row-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-apricot-deep);
+}
+.village-rail-row-title {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-spruce);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── One ranked recommendation — the amber "tip" family (§4.5) ───────────── */
+.village-rec {
+  padding: 1.1rem 1.15rem 1.2rem;
+  border-radius: var(--r-xl);
+  /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
+   * role token so the card stays legible instead of glaring (cream ink 16:1 on
+   * #33260F). */
+  background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
+}
+.dark .village-rec { background: var(--color-amber-tint); }
+.village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber); }
+.village-rec-title { font-size: 1.1rem; line-height: 1.25; }
+.village-rec-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* Brand ink on the warm card: navy in light (12.86:1), cream in dark (16:1) —
+   * AA in both modes, unlike the sub-4.5 amber-on-cream a body link would be. */
+  color: var(--color-brand);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.village-rec-link:hover { text-decoration: underline; }
+.village-rec-link:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* ── Results-list row: a selectable title inside the card, and the selected
+ * card's highlight (mirrored by the map marker). ──────────────────────────── */
+.village-row-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.village-row-title:hover > span:first-child { color: var(--color-apricot-deep); }
+.village-row-title:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+}
+.village-row-selected {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 1px var(--color-brand);
+}
+
+/* ── Map panel (collapsible below 1024px) ───────────────────────────────── */
+.village-map-panel { min-width: 0; }
+.village-map-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-oat);
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
+}
+.village-map-toggle:hover { background: var(--color-chrome); color: var(--color-spruce); }
+.village-map-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+.village-map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 1.5rem;
+  text-align: center;
+}
+@media (min-width: 640px) {
+  .village-map-placeholder { aspect-ratio: 16 / 9; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * W2b — Settings hub + centered modals (desktop design handoff §4.7 & §4.8)
+ * Additive only. Every color goes through a role token, so light↔dark flips
+ * automatically; nothing here overflows the page below 1024px (the hub stacks
+ * and its sub-nav scrolls horizontally; the modal is desktop-only).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Settings hub: 216px left sub-nav + panel (§4.7) ─────────────────────── */
+.settings-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .settings-hub {
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    gap: 3rem;
+    align-items: start;
+  }
+}
+
+.settings-subnav {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  margin-inline: -0.25rem;
+  padding-inline: 0.25rem;
+}
+
+@media (min-width: 1024px) {
+  .settings-subnav {
+    position: sticky;
+    top: 1.5rem;
+    flex-direction: column;
+    overflow: visible;
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+}
+
+.settings-subnav-item {
+  flex-shrink: 0;
+  white-space: nowrap;
+  text-align: left;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--color-faded-sage);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+.settings-subnav-item:hover { color: var(--color-spruce); background: var(--color-chrome); }
+.settings-subnav-item[aria-current="page"] {
+  background: var(--color-warm-hover);
+  color: var(--color-spruce);
+  font-weight: 700;
+}
+.settings-subnav-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+.settings-panel { min-width: 0; }
+
+.settings-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  color: var(--color-spruce);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 220ms var(--ease-breathe);
+}
+.settings-link-row:hover { color: var(--color-apricot-deep); }
+.settings-link-row:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* ── On/off toggle switch (§4.7 notifications) ───────────────────────────── */
+.toggle-switch {
+  flex-shrink: 0;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--color-rule-strong);
+  cursor: pointer;
+  transition: background 220ms var(--ease-breathe);
+}
+.toggle-switch[aria-checked="true"] { background: var(--color-brand); }
+.toggle-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-on-spruce);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  transition: transform 200ms var(--ease-breathe);
+}
+.toggle-switch[aria-checked="true"] .toggle-switch-knob { transform: translateX(18px); }
+.toggle-switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toggle-switch,
+  .toggle-switch-knob { transition: none; }
+}
+
+/* ── Navy "your plan" card (§4.7 plan & billing) ─────────────────────────── *
+ * Brand-anchored fill: navy-on-white in light, inverts to cream-on-ink in dark
+ * (the exact --color-brand / --color-on-spruce pair the primary button uses —
+ * high-contrast both ways, no new token pair to verify). */
+.plan-navy-card {
+  background: var(--color-brand);
+  color: var(--color-on-spruce);
+  border-radius: var(--r-lg);
+  padding: 1.5rem 1.75rem;
+}
+.plan-navy-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-on-spruce-soft);
+}
+.plan-navy-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+.plan-navy-name { font-size: 1.5rem; font-weight: 600; color: var(--color-on-spruce); }
+.plan-navy-price { font-size: 1.05rem; font-weight: 700; color: var(--color-on-spruce); }
+.plan-navy-tagline {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-on-spruce-soft);
+}
+
+/* ── Centered modal (§4.8 / §4.9) — desktop only; callers keep inline < 1024 ─ */
+.hale-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgb(20 28 60 / 0.4);
+  overflow-y: auto;
+}
+.hale-modal {
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  background: var(--color-oat);
+  border: 1px solid var(--color-rule);
+  border-radius: 24px;
+  box-shadow: var(--shadow-modal);
+  animation: settle 300ms var(--ease-breathe) forwards;
+}
+.hale-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.4rem 1.5rem 0.5rem;
+}
+.hale-modal-title { font-size: 1.15rem; font-weight: 600; color: var(--color-spruce); }
+.hale-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-faded-sage);
+  cursor: pointer;
+  transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
+}
+.hale-modal-close:hover { color: var(--color-spruce); background: var(--color-chrome); }
+.hale-modal-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+.hale-modal-body { padding: 0.5rem 1.5rem 1.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hale-modal { animation: none; opacity: 1; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * COMPANION §4.3 — child-hub header + six sub-tabs (W2b, additive)
+ * The one additive block for the per-child Companion surface: the identity/percentile
+ * header, the Overview 3-col grid + Care-team card, and the Development-snapshot
+ * donut. All colour comes from role tokens except the five DEVELOPMENT-DOMAIN donut
+ * fills, which have no role slot — they are DECORATIVE fills (an aria-hidden ring +
+ * legend swatches next to token-ink text), so no new text-on-colour pair is
+ * introduced. Values are the handoff §2 data-viz hexes (light) with calmer dark
+ * variants so the ring doesn't glare on the dark card. The donut's "not yet"
+ * remainder arc is the existing --color-hairline token.
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --domain-cognitive: #7BC894;
+  --domain-language: #F2C14E;
+  --domain-motor: #B9A7E8;
+  --domain-social: #F4A98A;
+  --domain-independence: #9DC3EE;
+}
+.dark {
+  --domain-cognitive: #5FA97A;
+  --domain-language: #C9A24A;
+  --domain-motor: #9C8AC9;
+  --domain-social: #C98A76;
+  --domain-independence: #7FA3CE;
+}
+
+/* Amber "worth a look" pill — the honest neutral caution for a WHO 'review' band.
+ * Mirrors the existing .pill-* pattern (tint ground + spruce ink): contrast-safe in
+ * both themes because BOTH tokens re-point in .dark (light #FEF0C7/#1F3A34 ≈ 9.9:1;
+ * dark #33260F/ink ≈ 11:1). */
+.pill-amber { background: var(--color-amber-tint); color: var(--color-spruce); }
+
+/* ── Child-hub header (.comp-hub): identity + up-to-three WHO percentile stats ── */
+.comp-hub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+}
+.comp-hub-id { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+.comp-hub-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+}
+.comp-hub-name {
+  font-size: clamp(1.5rem, 2.5vw, 1.75rem);
+  line-height: 1.15;
+  color: var(--color-spruce);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comp-hub-right { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+.comp-hub-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem; }
+.comp-stat { display: flex; flex-direction: column; min-width: 4.25rem; }
+
+/* ── Overview: equal-height 3-col grid (1.05fr 1.05fr 1fr) → 2 → 1 ────────── */
+.comp-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+@media (min-width: 768px) {
+  .comp-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .comp-overview { grid-template-columns: 1.05fr 1.05fr 1fr; }
+}
+/* The two single-card columns fill their grid cell's height so the row bottom-aligns;
+ * the stack column lays its two cards out top-down. */
+.comp-ov-card { display: flex; flex-direction: column; height: 100%; }
+.comp-ov-stack { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+
+/* ── Development-snapshot donut (real per-domain milestone progress) ───────── */
+.comp-donut {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.comp-donut-hole {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  background: var(--color-oat);
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.comp-donut-count {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--color-spruce);
+  font-variant-numeric: tabular-nums;
+}
+.comp-donut-total { font-size: 1rem; color: var(--color-faded-sage); }
+.comp-donut-label {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-faded-sage);
+}
+
+/* ── Care team & contacts: repeat(3,1fr) chips → 1 col below md ────────────── */
+.care-team {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+@media (min-width: 768px) {
+  .care-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.care-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-tile);
+}
+.care-chip-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+}
+.care-chip-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The "You" self-marker badge. apricot-deep on apricot-tint is the established
+ * accent-on-tint pair (already used at body sizes by .care-chip-avatar icons and
+ * link text); at this 0.7rem/700 weight it holds AA in both themes because both
+ * tokens re-point in .dark. */
+.care-chip-you {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.care-chip-add {
+  border-style: dashed;
+  border-color: var(--color-rule-strong);
+  background: transparent;
+  color: var(--color-apricot-deep);
+  text-decoration: none;
+  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+}
+.care-chip-add:hover { background: var(--color-tile); border-color: var(--color-apricot-deep); }
+.care-chip-add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
