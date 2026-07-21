@@ -1,8 +1,11 @@
 import { ArrowUpRight, MapPin } from 'lucide-react';
 import type { Metadata } from 'next';
+import { CtaBand } from '~/components/cta-band';
+import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { allCities, publishedCities } from '~/lib/activities/index';
+import { APP_URL } from '~/lib/app-url';
 import { hubJsonLd } from '~/lib/activities/structured-data';
 
 const TITLE = 'Things to do with kids, by city · Hale';
@@ -75,6 +78,21 @@ export default function ActivitiesHub() {
           </ul>
         </section>
       </div>
+
+      <CtaBand>
+        <h2 className="mx-auto max-w-2xl font-display text-2xl">
+          Let Hale find these for you, near you
+        </h2>
+        <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
+          Tell Hale your neighbourhood and what your kids love, and it gathers the classes,
+          groups, and drop-ins near you worth a look. Free to start — your data stays in Canada.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <LandingCta event="activities_cta_signin" href={`${APP_URL}/onboarding`} className="btn-on-navy">
+            Find activities near you
+          </LandingCta>
+        </div>
+      </CtaBand>
 
       <SiteFooter />
     </main>

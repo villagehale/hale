@@ -82,7 +82,7 @@ export default async function ActivityCityRoute({ params }: PageProps) {
             {ideas.map((idea) => (
               <section key={idea.title} className="panel-oat px-6 py-7 sm:px-8 rise rise-2">
                 <h2 className="font-display text-xl text-spruce">{idea.title}</h2>
-                <p className="meta mt-3" style={{ lineHeight: 1.6 }}>
+                <p className="mt-3 text-base text-slate-green md:text-lg" style={{ lineHeight: 1.6 }}>
                   {idea.body}
                 </p>
               </section>
@@ -98,7 +98,7 @@ export default async function ActivityCityRoute({ params }: PageProps) {
                 {city.faqs.map((f) => (
                   <div key={f.question} className="border-t border-rule pt-6">
                     <dt className="font-display text-lg text-spruce">{f.question}</dt>
-                    <dd className="meta mt-3" style={{ lineHeight: 1.6 }}>
+                    <dd className="mt-3 text-base text-slate-green md:text-lg" style={{ lineHeight: 1.6 }}>
                       {f.answer}
                     </dd>
                   </div>
@@ -126,7 +126,7 @@ export default async function ActivityCityRoute({ params }: PageProps) {
         <div className="mt-8 flex justify-center">
           <LandingCta
             event="activities_cta_signin"
-            href={`${APP_URL}/sign-in`}
+            href={`${APP_URL}/onboarding`}
             className="btn-on-navy"
           >
             Find activities near you

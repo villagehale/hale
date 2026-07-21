@@ -48,7 +48,7 @@ export function PricingSection() {
         >
           Founding families join free.
         </p>
-        <p className="meta">
+        <p className="meta text-slate-green">
           The first 100 families get a permanent founding badge — and first access when Plus and
           Family open.
         </p>
@@ -74,7 +74,9 @@ export function PricingSection() {
                   </span>
                 )}
               </p>
-              {isFree ? null : <p className="meta mt-1">billed yearly — about two months free</p>}
+              {isFree ? null : (
+                <p className="meta mt-1 text-slate-green">billed yearly — about two months free</p>
+              )}
               <p className="mt-5" style={{ color: 'var(--color-spruce)', lineHeight: 1.6 }}>
                 {presentation.line}
               </p>

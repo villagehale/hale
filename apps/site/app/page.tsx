@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowUpRight, Mic, SendHorizonal, Sparkles } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, MapPin, Mic, SendHorizonal, Sparkles } from 'lucide-react';
 import Image from 'next/image';
 import { Fragment } from 'react';
 import village from '~/assets/village-illustration-alpha.png';
@@ -34,7 +34,7 @@ const TRUST_POINTS = [
 ] as const;
 
 const HERO_SUBTEXT =
-  'Hale quietly prepares the helpful things — reminders, logs, plans, local ideas — and never acts without your say-so.';
+  'Hale brings back the village — the trusted local classes and groups near you — and quietly prepares the rest: reminders, logs, and plans you approve before anything happens.';
 
 export default function LandingPage() {
   return (
@@ -55,7 +55,6 @@ export default function LandingPage() {
        * then the buttons. `-mt-[4.5rem]` tucks the stage up under the sticky
        * 4.5rem header so the art reads behind it. */}
       <section
-        id="about"
         className="relative isolate -mt-[4.5rem] flex min-h-screen flex-col justify-end overflow-hidden px-6 pb-16 pt-[4.5rem] md:pb-20"
       >
         <HeroBackdrop />
@@ -149,7 +148,7 @@ export default function LandingPage() {
         <section id="features" className="mx-auto max-w-7xl px-6 pb-24 pt-16">
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#B26B1F]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#17294A]">
                 <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
                 Ask Hale
               </span>
@@ -183,7 +182,7 @@ export default function LandingPage() {
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div className="lg:order-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[#17294A]/25 bg-white px-3.5 py-1.5 text-xs font-semibold text-[#17294A]">
-                <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
+                <MapPin size={13} strokeWidth={2} aria-hidden="true" />
                 Your Village
               </span>
               <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
@@ -224,7 +223,7 @@ export default function LandingPage() {
             <div className="flex items-center gap-2.5">
               <span aria-hidden className="h-1.5 w-1.5 bg-[#17294A]" />
               <AnimatedText
-                text="About Hale"
+                text="Questions, answered"
                 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#5C6B87]"
               />
             </div>
@@ -371,7 +370,7 @@ function VillageMockup() {
         <div className="hale-float mt-[-2rem] rounded-2xl border border-[#E4E7EE] bg-white p-4 shadow-[0_20px_50px_-20px_rgba(20,26,77,0.25)] sm:absolute sm:bottom-8 sm:right-8 sm:mt-0 sm:w-64">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#5C6B87]">Near you</p>
-            <p className="text-[10px] text-[#5C6B87]">Illustrative</p>
+            <p className="text-xs text-[#5C6B87]">Illustrative</p>
           </div>
           <ul className="mt-3 flex flex-col gap-2.5">
             {[
