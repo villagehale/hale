@@ -57,7 +57,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
 
       {magicLink ? <MagicLinkRequestForm variant="inline" /> : null}
 
-      <Link href="/sign-up" className="btn-ghost self-start">
+      <Link href="/onboarding" className="btn-ghost self-start">
         New here? Join the village &rarr;
       </Link>
     </AuthShell>

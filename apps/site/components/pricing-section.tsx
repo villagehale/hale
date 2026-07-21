@@ -95,11 +95,11 @@ export function PricingSection() {
                 ))}
               </ul>
               {isFree ? (
-                <a href={`${APP_URL}/sign-up`} className="btn-primary self-start mt-8">
+                <a href={`${APP_URL}/onboarding`} className="btn-primary self-start mt-8">
                   Join free
                 </a>
               ) : (
-                <a href={`${APP_URL}/sign-up`} className="btn-secondary self-start mt-8">
+                <a href={`${APP_URL}/onboarding`} className="btn-secondary self-start mt-8">
                   Start free — upgrade when it ships
                 </a>
               )}

@@ -8,7 +8,7 @@ import MilestoneAgeRoute, { generateMetadata, generateStaticParams } from './pag
  * The age route is the public YMYL surface. These lock what must hold for every
  * draft: it renders the age's milestone copy + structured data, carries the
  * not-a-test / not-medical-advice framing, is noindexed while unreviewed, and
- * wires the sign-up funnel. Rendered to static markup — no browser needed.
+ * wires the join funnel (onboarding). Rendered to static markup — no browser needed.
  */
 
 const AGE = '18-months';
@@ -56,9 +56,9 @@ describe('milestones/[age] route', () => {
     expect(html).not.toContain('role="progressbar"');
   });
 
-  it('wires the "Start free with your family" CTA to the app sign-up', async () => {
+  it('wires the "Start free with your family" CTA to the onboarding wizard', async () => {
     const html = await render(AGE);
-    expect(html).toContain(`${APP_URL}/sign-up`);
+    expect(html).toContain(`${APP_URL}/onboarding`);
     expect(html).toContain('Start free with your family');
   });
 

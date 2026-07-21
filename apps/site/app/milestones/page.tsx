@@ -129,7 +129,7 @@ export default function MilestonesHubPage() {
           Free to start, private by design, built in Canada.
         </p>
         <div className="mt-8 flex justify-center">
-          <a href={`${APP_URL}/sign-up`} className="btn-on-navy">
+          <a href={`${APP_URL}/onboarding`} className="btn-on-navy">
             Start free with your family
           </a>
         </div>
