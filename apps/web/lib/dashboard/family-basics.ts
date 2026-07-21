@@ -33,6 +33,10 @@ export interface FamilyChildBasics {
   /** Free-text interest tags driving discovery, so an edit form prefills them. */
   interests: string[];
   stageLabel: string;
+  /** Short-TTL signed URL for the child's uploaded photo, or null for the initials
+   * fallback. Already resolved server-side from the private-bucket key (rule #1: the
+   * raw key never reaches the client, only a signed URL that is safe to fetch). */
+  avatarUrl: string | null;
 }
 
 export interface FamilyLocationView {
@@ -60,7 +64,13 @@ export interface FamilyRowBasics extends FamilyLocationView {
 export function toFamilyBasics(
   family: FamilyRowBasics | null,
   children: ReadonlyArray<
-    Pick<ChildRow, 'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'biologicalSex' | 'interests'>
+    Pick<ChildRow, 'id' | 'name' | 'lastName' | 'dateOfBirth' | 'gender' | 'biologicalSex' | 'interests'> & {
+      /** The signed avatar URL, resolved by the loader before this pure mapping (the
+       * private-bucket key is signed server-side; only the URL flows to the client).
+       * Optional: a data-export snapshot omits it (no transient URL inlined), yielding
+       * null — the same way it does not inline doc/attachment bytes. */
+      avatarUrl?: string | null;
+    }
   >,
   now: Date = new Date(),
 ): FamilyBasicsView {
@@ -83,6 +93,7 @@ export function toFamilyBasics(
       biologicalSex: child.biologicalSex,
       interests: child.interests,
       stageLabel: STAGE_LABEL[deriveStage(child.dateOfBirth, now)],
+      avatarUrl: child.avatarUrl ?? null,
     })),
   };
 }

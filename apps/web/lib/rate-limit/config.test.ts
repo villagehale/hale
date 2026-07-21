@@ -28,6 +28,14 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     expect(RATE_LIMITS['village-search'].limit).toBeLessThanOrEqual(10);
   });
 
+  it('caps avatar-upload on an hour window — a photo is set once and rarely replaced, so a script, not a parent, trips it', () => {
+    // Not a per-minute burst guard: uploading child photos is infrequent, so the
+    // storage-abuse cap sits on an HOUR window, generous for a parent tidying a few
+    // kids' photos yet well under a scripted flood.
+    expect(RATE_LIMITS['avatar-upload'].windowSec).toBe(3600);
+    expect(RATE_LIMITS['avatar-upload'].limit).toBeGreaterThanOrEqual(10);
+  });
+
   it('caps the SMS OTP routes as genuine cost/abuse limits: small per-hour, not per-minute', () => {
     // Like village-search, these are real caps a person could reach — each OTP send
     // costs an SMS and texts a real number (toll-fraud / SMS-pumping surface), and
@@ -49,13 +57,14 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     expect(RATE_LIMITS['village-ai-search'].limit).toBeGreaterThanOrEqual(15);
   });
 
-  it('uses a one-minute window for the silent bot-guard routes (not the per-hour cost caps)', () => {
-    // The per-hour COST-cap routes (a billable LLM run, or a per-message SMS spend)
-    // are genuine cooldowns; every OTHER route is an invisible bot guard on a minute
-    // (the cheap AI-search intent parse included).
-    const hourWindowCostCaps = new Set(['village-search', 'sms-otp-send', 'sms-otp-verify']);
+  it('uses a one-minute window for the silent bot-guard routes (not the per-hour cooldowns)', () => {
+    // The per-hour routes are genuine cooldowns: a billable LLM run (village-search),
+    // a per-message SMS spend (sms-otp-*), or a storage-abuse guard (avatar-upload).
+    // Every OTHER route is an invisible bot guard on a minute (the cheap AI-search
+    // intent parse included).
+    const hourWindow = new Set(['village-search', 'avatar-upload', 'sms-otp-send', 'sms-otp-verify']);
     for (const [route, opts] of Object.entries(RATE_LIMITS)) {
-      if (hourWindowCostCaps.has(route)) continue;
+      if (hourWindow.has(route)) continue;
       expect(opts.windowSec).toBe(60);
     }
   });

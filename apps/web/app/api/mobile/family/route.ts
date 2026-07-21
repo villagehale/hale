@@ -35,7 +35,13 @@ export async function GET(): Promise<Response> {
   const body: MobileFamilyResponse = {
     members,
     basics,
-    viewer: { name: session.user.name ?? null, email: session.user.email ?? null },
+    viewer: {
+      name: session.user.name ?? null,
+      email: session.user.email ?? null,
+      // The parent's Google profile photo (via the mobile token's `picture` claim), or
+      // null → the initials fallback. Never a public child URL — this is the parent's.
+      image: session.user.image ?? null,
+    },
   };
   return NextResponse.json(body);
 }

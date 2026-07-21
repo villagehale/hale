@@ -10,6 +10,7 @@
 -- construction (rule #1): every read is keyed on family_id, FK cascades on family
 -- deletion. child_id is nullable — set when the event concerns one child (so the composer
 -- can apply the teen age gate), null for a family-wide occasion.
+CREATE TYPE "public"."family_event_source" AS ENUM('parent', 'channel', 'email');--> statement-breakpoint
 CREATE TABLE "family_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"family_id" uuid NOT NULL,

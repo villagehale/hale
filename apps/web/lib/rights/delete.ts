@@ -95,14 +95,18 @@ type RemoveObject = (path: string) => Promise<void>;
 
 /**
  * Removes every storage object a family owns from the private 'family-docs' bucket,
- * across BOTH prefixes the family ever wrote: chat attachments (chat/{familyId}/…)
- * and child documents ({familyId}/{docId}). Both rows carry a direct family_id, so
- * the scope is a single WHERE — no join. Child documents are swept regardless of
- * deleted_at: a per-doc soft-delete removes its bytes only AFTER its own commit, so
- * a crash there can strand an object a soft-deleted row still points at — the family
- * erase must reclaim it (removeObject tolerates a 404 for the already-gone ones).
- * Returns the object count so the sweep can report it. The FK cascade erases these
- * ROWS when the family is deleted, but never the BYTES — that is this function's job.
+ * across ALL THREE prefixes the family ever wrote: chat attachments (chat/{familyId}/…),
+ * child documents ({familyId}/{docId}), and child avatars (avatars/{familyId}/{childId}).
+ * Each row carries a direct family_id, so the scope is a single WHERE — no join. Child
+ * documents are swept regardless of deleted_at: a per-doc soft-delete removes its bytes
+ * only AFTER its own commit, so a crash there can strand an object a soft-deleted row
+ * still points at — the family erase must reclaim it (removeObject tolerates a 404 for
+ * the already-gone ones). Child avatars are the most sensitive asset class Hale holds
+ * (rule #1), so a stranded child photo surviving account erasure is the gravest gap: a
+ * child's avatar_path is enumerated the same way, and because the key is deterministic
+ * and removeObject tolerates a 404, a re-run is safe. Returns the object count so the
+ * sweep can report it. The FK cascade erases these ROWS when the family is deleted, but
+ * never the BYTES — that is this function's job.
  */
 async function purgeFamilyStorage(
   database: Database,
@@ -117,8 +121,17 @@ async function purgeFamilyStorage(
     .select({ storagePath: schema.childDocuments.storagePath })
     .from(schema.childDocuments)
     .where(eq(schema.childDocuments.familyId, familyId));
+  const avatars = await database
+    .select({ storagePath: schema.children.avatarPath })
+    .from(schema.children)
+    .where(and(eq(schema.children.familyId, familyId), isNotNull(schema.children.avatarPath)));
 
-  const paths = [...attachments, ...documents].map((row) => row.storagePath);
+  // avatar_path is a nullable column; the isNotNull filter above excludes children
+  // with no photo, and this narrows the remaining paths to string (never masks a real
+  // path — a null here is a child that never had an avatar object).
+  const paths = [...attachments, ...documents, ...avatars]
+    .map((row) => row.storagePath)
+    .filter((path): path is string => path !== null);
   for (const path of paths) {
     await removeObject(path);
   }

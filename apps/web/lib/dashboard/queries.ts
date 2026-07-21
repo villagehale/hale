@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
+import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
 import { currentFamilyId } from '~/lib/family';
 import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
@@ -120,12 +121,24 @@ export const loadFamilyBasics = cache((): Promise<FamilyBasicsView> => {
         gender: schema.children.gender,
         biologicalSex: schema.children.biologicalSex,
         interests: schema.children.interests,
+        avatarPath: schema.children.avatarPath,
+        avatarUpdatedAt: schema.children.avatarUpdatedAt,
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId))
       .orderBy(schema.children.dateOfBirth);
 
-    return toFamilyBasics(family ?? null, children);
+    // Resolve each child's private-bucket avatar key to a short-TTL signed URL here so
+    // the raw key never leaves the server (rule #1) and web + mobile share one read.
+    // Only children WITH a photo incur a sign; the rest cost nothing.
+    const withAvatars = await Promise.all(
+      children.map(async ({ avatarPath, avatarUpdatedAt, ...child }) => ({
+        ...child,
+        avatarUrl: await resolveChildAvatarUrl(avatarPath, avatarUpdatedAt),
+      })),
+    );
+
+    return toFamilyBasics(family ?? null, withAvatars);
   }, EMPTY_FAMILY_BASICS);
 });
 

@@ -38,6 +38,10 @@ export const MOBILE_SESSION_MAX_AGE_S = 7 * 24 * 60 * 60;
 export async function mintMobileSessionToken(input: {
   sub: string;
   email?: string;
+  /** The parent's profile photo URL (Google), carried as the standard `picture`
+   * claim so `session.user.image` resolves on the mobile Bearer path — display only,
+   * never an identity input. Omitted when the provider supplies none. */
+  picture?: string;
   secureRequest: boolean;
 }): Promise<string> {
   const secret = process.env.AUTH_SECRET;
@@ -45,11 +49,17 @@ export async function mintMobileSessionToken(input: {
     throw new Error('AUTH_SECRET is not set — cannot mint a mobile session token');
   }
 
+  // Only the claims the provider actually supplied — `picture` maps to
+  // session.user.image (getToken → default session builder), the others to id/email.
+  const token: { sub: string; email?: string; picture?: string } = { sub: input.sub };
+  if (input.email) token.email = input.email;
+  if (input.picture) token.picture = input.picture;
+
   return encode({
     secret,
     salt: input.secureRequest ? SECURE_SALT : INSECURE_SALT,
     maxAge: MOBILE_SESSION_MAX_AGE_S,
-    token: input.email ? { sub: input.sub, email: input.email } : { sub: input.sub },
+    token,
   });
 }
 
