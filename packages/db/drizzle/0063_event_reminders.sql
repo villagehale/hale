@@ -46,3 +46,7 @@ ALTER TABLE "event_reminders" ADD CONSTRAINT "event_reminders_parent_user_id_use
 ALTER TABLE "event_reminders" ADD CONSTRAINT "event_reminders_channel_message_id_channel_messages_id_fk" FOREIGN KEY ("channel_message_id") REFERENCES "public"."channel_messages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "event_reminders_event_offset_parent_uniq" ON "event_reminders" USING btree ("event_ref","fire_offset","parent_user_id");--> statement-breakpoint
 CREATE INDEX "event_reminders_due_idx" ON "event_reminders" USING btree ("status","fire_at");
+--> statement-breakpoint
+-- Deny-by-default for the PostgREST Data API roles, same posture as every table.
+-- The app connects as postgres (BYPASSRLS); Hale never uses the Data API. Rule #1.
+ALTER TABLE "event_reminders" ENABLE ROW LEVEL SECURITY;
