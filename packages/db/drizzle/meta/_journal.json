@@ -421,6 +421,13 @@
       "when": 1781463360000,
       "tag": "0062_calendar_placements",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1781463420000,
+      "tag": "0063_event_reminders",
+      "breakpoints": true
     }
   ]
 }
