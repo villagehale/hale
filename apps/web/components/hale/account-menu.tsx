@@ -17,10 +17,13 @@ import { signOutAction } from '~/lib/auth-actions';
  */
 export function AccountMenu({
   parentName,
+  parentImage = null,
   planTier = 'free',
   canSignOut = false,
 }: {
   parentName: string | null;
+  /** The signed-in parent's photo (Google `user.image`), or null → initials disc. */
+  parentImage?: string | null;
   /** The family's plan; defaults to free (the EMPTY_FAMILY_BASICS default). */
   planTier?: PlanTier;
   /** Sign out only appears for a real session — never in the dev preview. */
@@ -59,6 +62,7 @@ export function AccountMenu({
     <AccountMenuView
       open={open}
       parentName={parentName}
+      parentImage={parentImage}
       planTier={planTier}
       canSignOut={canSignOut}
       menuId={menuId}

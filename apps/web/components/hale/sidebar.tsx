@@ -54,12 +54,15 @@ export function Sidebar({
   authControls = false,
   signedIn = false,
   parentName = null,
+  parentImage = null,
   planTier = 'free',
   kids = [],
 }: {
   authControls?: boolean;
   signedIn?: boolean;
   parentName?: string | null;
+  /** The signed-in parent's photo (Google `user.image`), for the account chip avatar. */
+  parentImage?: string | null;
   /** The family's plan, for the account chip's secondary line. */
   planTier?: PlanTier;
   /** The family's children, for the foot child switcher. */
@@ -126,6 +129,7 @@ export function Sidebar({
             <div className="rule" />
             <AccountMenu
               parentName={parentName}
+              parentImage={parentImage}
               planTier={planTier}
               canSignOut={authControls && signedIn}
             />

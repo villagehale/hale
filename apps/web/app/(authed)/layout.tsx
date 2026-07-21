@@ -85,6 +85,7 @@ export default async function AuthedLayout({ children }: { children: React.React
             authControls={authEnabled}
             signedIn={Boolean(session?.user?.id)}
             parentName={session?.user?.name ?? null}
+            parentImage={session?.user?.image ?? null}
             planTier={basics.planTier}
             kids={kids}
           />

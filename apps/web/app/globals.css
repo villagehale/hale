@@ -770,6 +770,32 @@ body {
   font-weight: 700;
 }
 
+/* Shared people-avatar (components/ui/avatar.tsx): a photo when we have one, else a
+ * tinted initials disc. `account` = navy disc + on-navy initials (the signed-in
+ * parent); `child` = warm disc + navy initials (a child) — the two tones keep the
+ * account chip and the child chip from reading as the same name row (§3.1). Sizing
+ * is inline (per call site); the box only owns shape + type. */
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.avatar-image { object-fit: cover; }
+.avatar-account { background: var(--color-brand); color: var(--color-on-spruce); }
+.avatar-child { background: var(--color-apricot-tint); color: var(--color-brand); }
+/* Dark: --color-brand inverts to CREAM, so a navy account disc would become a
+ * cream-on-cream blank AND vanish against the navy sidebar chrome. Lift it to a cream
+ * disc with navy ink so it stays a distinct, visible "you" marker on the dark rail
+ * (the child disc is the dark-neutral tint, so the two still read apart). */
+.dark .avatar-account { background: var(--color-brand); color: #1B2160; }
+
 /* Selected child row inside the switcher popover. */
 .account-pop-item[aria-current="true"] {
   background: var(--color-alt-surface);
@@ -3240,18 +3266,6 @@ html, body, .sidebar, .panel, .card, .field {
   gap: 1.25rem 2rem;
 }
 .comp-hub-id { display: flex; align-items: center; gap: 1rem; min-width: 0; }
-.comp-hub-avatar {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 4rem;
-  height: 4rem;
-  border-radius: var(--r-full);
-  background: var(--color-apricot-tint);
-  color: var(--color-apricot-deep);
-  font-family: var(--font-display);
-  font-size: 1.75rem;
-}
 .comp-hub-name {
   font-size: clamp(1.5rem, 2.5vw, 1.75rem);
   line-height: 1.15;

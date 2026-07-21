@@ -19,6 +19,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
+import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
 import {
   COMPANION_TABS,
@@ -245,7 +246,7 @@ function ChildHubHeader({
   return (
     <div className="comp-hub">
       <div className="comp-hub-id" data-hale-pii>
-        <span className="comp-hub-avatar">{initialOf(child.name)}</span>
+        <Avatar tone="child" src={null} initials={initialOf(child.name)} size={64} />
         <div className="min-w-0">
           <h2 className="comp-hub-name font-display">{child.name ?? 'your child'}</h2>
           <p className="meta mt-1 text-slate-green">

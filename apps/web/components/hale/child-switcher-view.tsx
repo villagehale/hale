@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import type { RefObject } from 'react';
 import { ChevronsUpDown, Plus } from 'lucide-react';
+import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
 
 /** One child as the sidebar switcher shows it: identity + a short age/stage line. */
@@ -10,6 +11,9 @@ export interface SwitcherChild {
   name: string;
   /** A short "how old" line — the live-derived stage label (e.g. "toddler"). */
   ageLabel: string;
+  /** The child's photo (uploaded avatar's signed URL), or null → initials. Wired by
+   * the child-avatar upload lane; the switcher renders initials until it is set. */
+  avatarUrl?: string | null;
 }
 
 export interface ChildSwitcherViewProps {
@@ -80,9 +84,12 @@ export function ChildSwitcherView({
               className="account-pop-item"
               onClick={() => onSelect(child.id)}
             >
-              <span className="child-avatar" aria-hidden="true">
-                {initialOf(child.name)}
-              </span>
+              <Avatar
+                tone="child"
+                src={child.avatarUrl ?? null}
+                initials={initialOf(child.name)}
+                size={32}
+              />
               <span data-hale-pii>{child.name}</span>
             </button>
           ))}
@@ -103,12 +110,16 @@ export function ChildSwitcherView({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        aria-label="Switch child"
         onClick={onToggle}
         title={active.name}
       >
-        <span className="child-avatar" aria-hidden="true">
-          {initialOf(active.name)}
-        </span>
+        <Avatar
+          tone="child"
+          src={active.avatarUrl ?? null}
+          initials={initialOf(active.name)}
+          size={32}
+        />
         <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{active.name}</span>
           <span className="account-chip-family meta">{active.ageLabel}</span>
