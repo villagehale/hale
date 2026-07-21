@@ -31,7 +31,7 @@ export default function WelcomeScreen() {
       </View>
 
       <View className="flex-1 items-center justify-center">
-        <TurtleMascot width={200} />
+        <TurtleMascot pose="wave" width={200} />
       </View>
 
       <Button

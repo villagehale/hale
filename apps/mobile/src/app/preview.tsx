@@ -64,7 +64,7 @@ export default function PreviewScreen() {
       </View>
 
       <View className="flex-1 items-center justify-end">
-        <VillageHouses width={260} />
+        <VillageHouses width={240} />
       </View>
     </Screen>
   );

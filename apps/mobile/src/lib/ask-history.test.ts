@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ConversationSummary } from './api-types';
-import { formatSessionTime, groupConversations, transcriptToMessages } from './ask-history';
+import {
+  formatSessionTime,
+  groupConversations,
+  shouldForgetConversationOnRestore,
+  transcriptToMessages,
+} from './ask-history';
 
 /**
  * Expected values are derived from the spec (Feature 3): Today = the same LOCAL day
@@ -104,4 +109,17 @@ describe('transcriptToMessages', () => {
   it('returns an empty list for an empty transcript', () => {
     expect(transcriptToMessages([])).toEqual([]);
   });
+});
+
+describe('shouldForgetConversationOnRestore', () => {
+  it('forgets the stored id only when the conversation is gone (404)', () => {
+    expect(shouldForgetConversationOnRestore(404)).toBe(true);
+  });
+
+  it.each([0, 403, 408, 429, 500, 502, 503])(
+    'keeps the id for a transient failure (%i) so a later cold start can retry',
+    (status) => {
+      expect(shouldForgetConversationOnRestore(status)).toBe(false);
+    },
+  );
 });

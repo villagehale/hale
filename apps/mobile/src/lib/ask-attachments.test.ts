@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MAX_ATTACHMENT_BYTES,
   type PendingAttachment,
   attachmentTone,
   buildCoachSendPayload,
   canSendAsk,
+  exceedsAttachmentSize,
   formatAttachmentSize,
   readyAttachmentIds,
   uploadErrorMessage,
@@ -65,6 +67,25 @@ describe('attachmentTone', () => {
   it('wraps modulo the four tones', () => {
     expect(attachmentTone(4)).toBe('red');
     expect(attachmentTone(7)).toBe('yellow');
+  });
+});
+
+describe('exceedsAttachmentSize', () => {
+  it('accepts a file exactly at the 10 MiB cap', () => {
+    expect(exceedsAttachmentSize(MAX_ATTACHMENT_BYTES)).toBe(false);
+  });
+
+  it('rejects a file one byte over the cap', () => {
+    expect(exceedsAttachmentSize(MAX_ATTACHMENT_BYTES + 1)).toBe(true);
+  });
+
+  it('accepts an empty or ordinarily-sized file', () => {
+    expect(exceedsAttachmentSize(0)).toBe(false);
+    expect(exceedsAttachmentSize(2_000_000)).toBe(false);
+  });
+
+  it('mirrors the server per-file cap (apps/web/lib/coach/attachments.ts)', () => {
+    expect(MAX_ATTACHMENT_BYTES).toBe(10 * 1024 * 1024);
   });
 });
 
