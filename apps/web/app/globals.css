@@ -873,7 +873,7 @@ body {
   z-index: 30;
   border: 0;
   padding: 0;
-  background: rgb(0 49 83 / 0.45);
+  background: rgb(20 28 60 / 0.45);
   opacity: 0;
   cursor: pointer;
   transition: opacity 240ms var(--ease-breathe);
@@ -889,7 +889,7 @@ body {
     transform: translateX(-100%);
     transition: transform 260ms var(--ease-breathe);
   }
-  .sidebar-dock[data-open] { transform: translateX(0); box-shadow: 0 0 48px rgb(0 49 83 / 0.28); }
+  .sidebar-dock[data-open] { transform: translateX(0); box-shadow: 0 0 48px rgb(20 28 60 / 0.28); }
   .drawer-scrim[data-open] { display: block; opacity: 1; }
 }
 
@@ -1216,6 +1216,16 @@ body {
   border-radius: var(--r-sm);
 }
 
+/* Disabled affordance for the three button roles (mirrors .auth-submit:disabled).
+ * Without this a disabled button rendered pixel-identical to an enabled one and kept
+ * the pointer cursor (WEB-05). */
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btn-ghost::after { transition: none; }
 }
@@ -1301,6 +1311,16 @@ body {
   .pill-action:not(:disabled):active { transform: none; }
 }
 
+/* Tappable chips meet the 44px minimum (the app's own .pill-action standard) — the
+ * amount / diaper / intent choice chips were ~32px (px-4 py-2 text-sm), too small for
+ * one-handed phone use (WEB-16). Centered so the extra height reads evenly. */
+.choice-card {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Choice card — focus ring for a styled <label> wrapping an sr-only radio/checkbox. */
 .choice-card:focus-within {
   outline: none;
@@ -1330,6 +1350,14 @@ body {
 .tone-awaiting { color: var(--color-apricot-deep); }
 .tone-coach { color: var(--color-sky-deep); }
 .tone-needs-you { color: var(--color-berry); }
+
+/* Native radio/checkbox tint — otherwise the UA default is browser-blue, the one raw
+ * control amid the navy/warm system and against the founder no-blue palette law
+ * (WEB-09). Brand navy in both themes (--color-brand inverts to cream in dark). */
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--color-brand);
+}
 
 /* ── Field — 16px to prevent iOS zoom ──────────────────────────────────── */
 
@@ -1504,8 +1532,8 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
 }
 
 @keyframes mic-listening {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(0 49 83 / 0.35); }
-  50% { box-shadow: 0 0 0 6px rgb(0 49 83 / 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgb(20 28 60 / 0.35); }
+  50% { box-shadow: 0 0 0 6px rgb(20 28 60 / 0); }
 }
 
 /* One-time voice consent — a small popover above the mic (rule #1). */
@@ -1519,7 +1547,7 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   background: var(--color-linen);
   border: 1.5px solid var(--color-rule-strong);
   border-radius: var(--r-lg);
-  box-shadow: 0 10px 30px rgb(0 49 83 / 0.14);
+  box-shadow: 0 10px 30px rgb(20 28 60 / 0.14);
 }
 
 .voice-note {
@@ -2206,7 +2234,9 @@ html, body, .sidebar, .panel, .card, .field {
   flex: none;
   border: 0;
   background: transparent;
-  color: var(--color-faint);
+  /* --color-faint is documented decorative-only (2.26:1, fails AA); a functional Skip
+   * control uses the nav-inactive tier (--color-faded-sage, 4.72:1) — WEB-06. */
+  color: var(--color-faded-sage);
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 600;
@@ -2310,7 +2340,15 @@ html, body, .sidebar, .panel, .card, .field {
   border-radius: 18px;
   background: var(--color-raised);
   box-shadow: var(--shadow-popover);
-  animation: fadeUp 0.18s var(--ease-breathe);
+  animation: settle 0.18s var(--ease-breathe);
+}
+
+/* The top-bar popovers reuse the shared `settle` entrance (the referenced `fadeUp`
+ * keyframes never existed — WEB-15); honour reduced-motion like the other animated
+ * surfaces. */
+@media (prefers-reduced-motion: reduce) {
+  .bell-pop,
+  .loc-pop { animation: none; }
 }
 
 .bell-pop-head {
@@ -2422,7 +2460,7 @@ html, body, .sidebar, .panel, .card, .field {
   border-radius: 18px;
   background: var(--color-raised);
   box-shadow: var(--shadow-popover);
-  animation: fadeUp 0.18s var(--ease-breathe);
+  animation: settle 0.18s var(--ease-breathe);
 }
 .loc-pop[data-pending] { opacity: 0.65; pointer-events: none; }
 
@@ -2673,14 +2711,12 @@ html, body, .sidebar, .panel, .card, .field {
   padding: 1.15rem 1.25rem 1.25rem;
   border-radius: var(--r-xl);
   /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
-   * role token so the card stays legible instead of glaring. */
+   * role token so the card stays legible instead of glaring. Keyed to the `.dark`
+   * class (the app's only theme strategy — layout.tsx toggles it; `data-theme` and
+   * prefers-color-scheme are set NOWHERE), matching the sibling .village-rec. */
   background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
 }
-@media (prefers-color-scheme: dark) {
-  .hale-tip { background: var(--color-amber-tint); }
-}
-:root[data-theme="light"] .hale-tip { background: linear-gradient(180deg, #FFF9F1, #FBEDDC); }
-:root[data-theme="dark"] .hale-tip { background: var(--color-amber-tint); }
+.dark .hale-tip { background: var(--color-amber-tint); }
 
 .hale-tip-mascot { position: absolute; top: 0.75rem; right: 0.85rem; opacity: 0.9; }
 /* Amber INK (not the base amber) so the eyebrow/link clear AA on the cream tip
@@ -2967,6 +3003,12 @@ html, body, .sidebar, .panel, .card, .field {
 
 /* ── Map panel (collapsible below 1024px) ───────────────────────────────── */
 .village-map-panel { min-width: 0; }
+
+/* The brand cast over the raster map. Light: a warm-linen multiply so it reads as part
+ * of the product. Dark: a dark ink cast (the map itself also switches to the dark style
+ * array) so it's not a bright block against the dark canvas (WEB-14). */
+.village-map-tint { background: #f1eadb; mix-blend-mode: multiply; opacity: 0.5; }
+.dark .village-map-tint { background: #12161f; mix-blend-mode: normal; opacity: 0.3; }
 .village-map-toggle {
   display: inline-flex;
   align-items: center;

@@ -1,11 +1,13 @@
-import { Mic, Sparkles } from 'lucide-react';
+import { ArrowUp, Sparkles } from 'lucide-react';
 import { Icon } from '~/components/ui/icon';
 
 /**
  * The Home ask bar — a compact single-line entry into Ask Hale, not the hero.
- * A native GET form to /coach: typing and pressing enter (or the mic) opens the
- * full Ask Hale conversation, where the real thread, suggestions, and voice input
- * live. The `q` text rides along harmlessly; /coach ignores unknown params.
+ * A native GET form to /coach: typing and pressing enter (or the send arrow) opens
+ * the full Ask Hale conversation, where the real thread, suggestions, and voice input
+ * live. The typed question rides as `?q=` and /coach seeds it into the composer
+ * (WEB-02), so it is never dropped. The submit glyph is a send arrow — voice lives in
+ * the /coach composer, so a Mic here would misrepresent what the button does.
  */
 export function AskBar() {
   return (
@@ -27,7 +29,7 @@ export function AskBar() {
         aria-label="Ask Hale"
         className="flex size-9 shrink-0 items-center justify-center rounded-full text-slate-green transition-colors hover:bg-linen hover:text-spruce"
       >
-        <Icon as={Mic} size={18} />
+        <Icon as={ArrowUp} size={18} />
       </button>
     </form>
   );

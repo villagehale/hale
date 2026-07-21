@@ -44,6 +44,9 @@ interface AskHaleThreadProps {
   initialConversations?: ConversationSummary[];
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
+  /** A question typed in the Home ask bar (`?q=`), seeded into the composer draft so it
+   * isn't dropped on navigation (WEB-02). */
+  initialDraft?: string;
   /** Signed-in parent's first name, for the full surface's empty-state greeting. */
   viewerName?: string | null;
 }
@@ -71,9 +74,10 @@ export function AskHaleThread({
   connectors = [],
   initialConversations = [],
   initialFocusedChildId = null,
+  initialDraft = '',
   viewerName = null,
 }: AskHaleThreadProps) {
-  const chat = useAskHale(seed, initialFocusedChildId);
+  const chat = useAskHale(seed, initialFocusedChildId, initialDraft);
   return variant === 'compact' ? (
     <CompactSurface canAsk={canAsk} chat={chat} seed={seed} />
   ) : (
@@ -878,7 +882,7 @@ function CompactSurface({
       </div>
 
       {status === 'error' ? (
-        <p className="meta italic text-apricot-deep" role="alert">
+        <p className="meta italic text-berry" role="alert">
           Couldn&rsquo;t reach Hale — try again in a moment.
         </p>
       ) : null}
@@ -1046,7 +1050,7 @@ function FullSurface({
                   status={status}
                 />
                 {status === 'error' ? (
-                  <p className="meta italic text-apricot-deep" role="alert">
+                  <p className="meta italic text-berry" role="alert">
                     Couldn&rsquo;t reach Hale — try again in a moment.
                   </p>
                 ) : isEmpty ? (

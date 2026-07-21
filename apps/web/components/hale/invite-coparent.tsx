@@ -79,7 +79,7 @@ export function InviteCoParent() {
         </output>
       ) : null}
       {state.kind === 'error' ? (
-        <p className="meta text-apricot-deep" role="alert">
+        <p className="meta text-berry" role="alert">
           couldn&rsquo;t generate a link just now — please try again.
         </p>
       ) : null}

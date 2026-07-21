@@ -1021,7 +1021,7 @@ function SectionNav({
             className={`shrink-0 min-h-[44px] px-3 pb-3 text-sm cursor-pointer touch-manipulation transition-colors border-b-2 -mb-px focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-linen),0_0_0_5px_var(--color-apricot-deep)] ${
               isActive
                 ? 'border-brand text-spruce font-bold'
-                : 'border-transparent text-muted font-medium hover:text-spruce'
+                : 'border-transparent text-faded-sage font-medium hover:text-spruce'
             }`}
           >
             {tab.label}
@@ -1118,6 +1118,7 @@ export function CompanionTabs({
   units,
   timeZone,
   initialTab,
+  initialChildId = null,
 }: {
   kids: ChildCompanionView[];
   routine: RoutineProposalView | null;
@@ -1130,8 +1131,16 @@ export function CompanionTabs({
   units: UnitSystem;
   timeZone: string;
   initialTab: CompanionTabKey;
+  /** The child to open on (from the sidebar switcher's `?child=`), or null → first
+   * child. Mirrors initialTab so the switcher actually scopes the hub (WEB-10). */
+  initialChildId?: string | null;
 }) {
-  const [active, setActive] = useState(0);
+  // Open on the switcher-selected child when named (else the first), then local state
+  // takes over — the same seed-from-prop pattern as initialTab.
+  const initialActive = initialChildId
+    ? Math.max(0, kids.findIndex((k) => k.id === initialChildId))
+    : 0;
+  const [active, setActive] = useState(initialActive);
   const [section, setSection] = useState<CompanionTabKey>(initialTab);
   const baseId = useId();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);

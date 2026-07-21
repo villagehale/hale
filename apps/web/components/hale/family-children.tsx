@@ -148,7 +148,7 @@ function ChildAvatarEditor({
           ) : null}
         </div>
         {error ? (
-          <p className="meta text-apricot-deep" role="alert">
+          <p className="meta text-berry" role="alert">
             {error}
           </p>
         ) : (
@@ -394,7 +394,7 @@ function ChildForm({ mode, child, onDone, onCancel }: ChildFormProps) {
         ) : null}
 
         {state.kind === 'error' ? (
-          <p className="meta text-apricot-deep" role="alert">
+          <p className="meta text-berry" role="alert">
             {state.message}
           </p>
         ) : null}

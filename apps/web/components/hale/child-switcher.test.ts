@@ -1,7 +1,11 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ChildSwitcher } from './child-switcher';
+
+// The wrapper now navigates on select via useRouter (WEB-10); stub it so the static
+// render has a router (renderToStaticMarkup provides no AppRouter context).
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {} }) }));
 
 /**
  * The sidebar child switcher's "Add child" must land on the surface that actually

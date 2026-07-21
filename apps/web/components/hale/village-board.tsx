@@ -194,7 +194,7 @@ export function VillageBoard({
         <section className="min-w-0">
           <div className="flex items-baseline justify-between gap-3 mb-4">
             <span className="eyebrow text-faded-sage">
-              Near you{area ? ' · ' : ''}
+              near you{area ? ' · ' : ''}
               {area ? (
                 <span className="text-slate-green" data-hale-pii>
                   {area}
@@ -254,7 +254,7 @@ export function VillageBoard({
 
         {/* Right — Upcoming / Saved / one ranked recommendation */}
         <aside className="village-rail min-w-0">
-          <RailSection label="Upcoming">
+          <RailSection label="upcoming">
             {upcoming.length === 0 ? (
               <p className="meta italic text-slate-green">no dated events coming up.</p>
             ) : (
@@ -274,7 +274,7 @@ export function VillageBoard({
           </RailSection>
 
           <RailSection
-            label="Saved"
+            label="saved"
             action={
               saved.length > 0 ? (
                 <Link href="/saved" className="link text-[0.8rem]">
@@ -442,7 +442,7 @@ function RecommendationCard({
   const kindLabel = villageKindLabel(candidate.kind);
   return (
     <section className="village-rec">
-      <span className="village-rec-eyebrow eyebrow">Hale recommends</span>
+      <span className="village-rec-eyebrow eyebrow">hale recommends</span>
       <p className="village-rec-title font-display text-spruce" data-hale-pii>
         {candidate.title}
       </p>

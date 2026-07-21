@@ -16,6 +16,7 @@ export function CoachConversation({
   connectors,
   initialConversations = [],
   initialFocusedChildId = null,
+  initialDraft = '',
   viewerName = null,
 }: {
   canAsk: boolean;
@@ -27,6 +28,8 @@ export function CoachConversation({
   initialConversations?: ConversationSummary[];
   /** Pre-scope the conversation to a child (contextual entry), or null for the family. */
   initialFocusedChildId?: string | null;
+  /** A question typed in the Home ask bar (`?q=`), seeded into the composer (WEB-02). */
+  initialDraft?: string;
   /** Signed-in parent's name, for the empty-state greeting ("Good evening, Alex."). */
   viewerName?: string | null;
 }) {
@@ -38,6 +41,7 @@ export function CoachConversation({
       connectors={connectors}
       initialConversations={initialConversations}
       initialFocusedChildId={initialFocusedChildId}
+      initialDraft={initialDraft}
       viewerName={viewerName}
     />
   );
