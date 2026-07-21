@@ -120,6 +120,11 @@ export async function runVillageSearch(
   ctx: SearchContext,
   deps: SearchDeps,
 ): Promise<VillageSearchOk> {
+  // The stored rank depends only on familyId, not the parse, so start it BEFORE the
+  // multi-second LLM parse and let the DB round-trip overlap it — the standing branch
+  // then awaits an already-in-flight read instead of appending a fresh one.
+  const rankPromise = deps.readStoredRank(ctx.database, ctx.familyId);
+
   const { intent, degraded } = await deps.parseIntent(ctx);
 
   const pool = await deps.readPool(ctx.database, ctx.familyId, intent.season);
@@ -130,8 +135,12 @@ export async function runVillageSearch(
   // confidence order.
   let ordered = pool;
   if (intent.season === null) {
-    const rankIds = await deps.readStoredRank(ctx.database, ctx.familyId);
+    const rankIds = await rankPromise;
     if (rankIds) ordered = orderCandidates(pool, rankIds);
+  } else {
+    // A season search never uses the standing rank; discard the started read without
+    // letting it reject unhandled (it's a best-effort ordering input, not a user action).
+    void rankPromise.catch(() => undefined);
   }
 
   const results = filterCandidatesByIntent(ordered, intent);
