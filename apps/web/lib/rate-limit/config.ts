@@ -48,6 +48,14 @@ import type { RateLimitOptions } from './limiter';
  *   toll fraud. The 60s resend cooldown handles rapid taps; this bounds the hour.
  * - sms-otp-verify (10/hour/user): bounds code-guessing on top of the 3-attempt
  *   per-code lockout — a brute-force loop can't outrun both. Fail-closed.
+ * - city-search (60/min): the address/area typeahead reaches the PAID Places
+ *   Autocomplete provider per (debounced) keystroke — the one provider-calling path
+ *   that was previously uncapped. Capped per SIGNED-IN USER on the authed switcher /
+ *   mobile route and per CLIENT IP on the pre-auth onboarding search. A real search
+ *   session is a handful of debounced lookups + one details call (~5-10 provider
+ *   hits); 60/min sits far above an honest burst of several searches yet stops a
+ *   scripted per-keystroke loop from running up Places spend. Client debounce keeps
+ *   legitimate traffic well under this.
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
@@ -60,6 +68,7 @@ export const RATE_LIMITS = {
   'village-ai-search': { limit: 20, windowSec: 60 },
   'sms-otp-send': { limit: 5, windowSec: 3600 },
   'sms-otp-verify': { limit: 10, windowSec: 3600 },
+  'city-search': { limit: 60, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;
