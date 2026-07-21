@@ -18,7 +18,7 @@ export default function PromiseScreen() {
       </AppText>
 
       <View className="flex-1 items-center justify-center">
-        <VillageHouses width={250} />
+        <VillageHouses width={230} />
       </View>
 
       <View className="gap-1">

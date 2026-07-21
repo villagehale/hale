@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -106,32 +107,32 @@ export default async function ActivityCityRoute({ params }: PageProps) {
             </div>
           ) : null}
 
-          <div className="mt-16 rise rise-2">
-            <div className="panel-apricot-tint px-8 py-12 sm:px-12">
-              <h2 className="font-display text-2xl text-spruce">
-                Let Hale find these for you in {city.city}
-              </h2>
-              <p className="meta mt-3" style={{ lineHeight: 1.6 }}>
-                Tell Hale your neighbourhood and what your kids love, and it gathers the classes,
-                groups, and drop-ins near you worth a look. Free to start — your data stays in
-                Canada.
-              </p>
-              <LandingCta
-                event="activities_cta_signin"
-                href={`${APP_URL}/sign-in`}
-                className="btn-primary mt-6 inline-flex"
-              >
-                Find activities near you
-              </LandingCta>
-            </div>
-          </div>
-
-          <p className="meta mt-10 text-sm text-faded-sage rise rise-2">
+          <p className="meta mt-16 text-sm text-faded-sage rise rise-2">
             Programs and locations change — treat this as a starting point and confirm details with
             your city or the program directly. Last reviewed {city.updated}.
           </p>
         </div>
       </article>
+
+      <CtaBand>
+        <h2 className="mx-auto max-w-2xl font-display text-2xl">
+          Let Hale find these for you in {city.city}
+        </h2>
+        <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
+          Tell Hale your neighbourhood and what your kids love, and it gathers the classes,
+          groups, and drop-ins near you worth a look. Free to start — your data stays in
+          Canada.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <LandingCta
+            event="activities_cta_signin"
+            href={`${APP_URL}/sign-in`}
+            className="btn-on-navy"
+          >
+            Find activities near you
+          </LandingCta>
+        </div>
+      </CtaBand>
 
       <SiteFooter />
     </main>

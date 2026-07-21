@@ -47,28 +47,30 @@ export default function AnswersIndexPage() {
       </section>
 
       {answers.length > 0 ? (
-        <section className="shell pb-20 lg:pb-28">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-            {answers.map((page) => (
-              <a
-                key={page.slug}
-                href={`/answers/${page.slug}`}
-                className="card flex flex-col gap-3"
-              >
-                <span className="eyebrow">{STAGE_LABEL[page.stage]}</span>
-                <span
-                  className="font-display"
-                  style={{ fontWeight: 600, fontSize: '1.2rem', lineHeight: 1.25 }}
+        <div className="band-cream">
+          <section className="shell py-16 lg:py-24">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+              {answers.map((page) => (
+                <a
+                  key={page.slug}
+                  href={`/answers/${page.slug}`}
+                  className="card lift flex flex-col gap-3"
                 >
-                  {page.question}
-                </span>
-                <span className="meta" style={{ lineHeight: 1.5 }}>
-                  {page.description}
-                </span>
-              </a>
-            ))}
-          </div>
-        </section>
+                  <span className="eyebrow">{STAGE_LABEL[page.stage]}</span>
+                  <span
+                    className="font-display"
+                    style={{ fontWeight: 600, fontSize: '1.2rem', lineHeight: 1.25 }}
+                  >
+                    {page.question}
+                  </span>
+                  <span className="meta" style={{ lineHeight: 1.5 }}>
+                    {page.description}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </section>
+        </div>
       ) : (
         <section className="shell pb-20 lg:pb-28">
           <div className="panel-oat px-8 py-14 sm:px-12 max-w-2xl rise rise-2">

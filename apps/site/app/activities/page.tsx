@@ -1,4 +1,4 @@
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, MapPin } from 'lucide-react';
 import type { Metadata } from 'next';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -39,10 +39,13 @@ export default function ActivitiesHub() {
       ) : null}
       <SiteHeader />
 
-      <section className="shell pt-10 sm:pt-16 pb-16 lg:pb-24">
+      <section className="shell pt-10 sm:pt-16 pb-12 lg:pb-16">
         <div className="max-w-2xl rise rise-1">
-          <span className="eyebrow">Near you</span>
-          <h1 className="mt-3">
+          <span className="pill-eyebrow">
+            <MapPin size={14} strokeWidth={2} aria-hidden="true" />
+            Near you
+          </span>
+          <h1 className="mt-4">
             Things to do with your kids, <span className="accent">by city</span>.
           </h1>
           <p className="meta mt-6 text-lg" style={{ lineHeight: 1.6 }}>
@@ -50,24 +53,28 @@ export default function ActivitiesHub() {
             parent-and-tot swim, parks, and local programs. Pick your city to start.
           </p>
         </div>
-
-        <ul className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-          {allCities.map((city) => (
-            <li key={city.slug} className="rise rise-2">
-              <a
-                href={`/activities/${city.slug}`}
-                className="panel-oat px-6 py-5 flex items-center justify-between gap-4 hover:opacity-90 transition-opacity"
-              >
-                <span>
-                  <span className="font-display text-lg text-spruce">{city.city}</span>
-                  <span className="meta block text-sm">{city.province}</span>
-                </span>
-                <ArrowUpRight className="text-apricot-deep shrink-0" size={20} aria-hidden="true" />
-              </a>
-            </li>
-          ))}
-        </ul>
       </section>
+
+      <div className="band-cream">
+        <section className="shell py-16 lg:py-24">
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {allCities.map((city) => (
+              <li key={city.slug} className="rise rise-2">
+                <a
+                  href={`/activities/${city.slug}`}
+                  className="panel-oat lift px-6 py-5 flex items-center justify-between gap-4"
+                >
+                  <span>
+                    <span className="font-display text-lg text-spruce">{city.city}</span>
+                    <span className="meta block text-sm">{city.province}</span>
+                  </span>
+                  <ArrowUpRight className="text-apricot-deep shrink-0" size={20} aria-hidden="true" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
 
       <SiteFooter />
     </main>

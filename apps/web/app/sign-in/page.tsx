@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
+import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 import { credentialsConfigured, googleConfigured } from '~/lib/auth-config';
@@ -37,7 +38,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
   }
 
   return (
-    <AuthShell heading="Welcome back">
+    <AuthShell heading="Welcome back" subtitle="Sign in to your village.">
       {google ? (
         <form
           action={async () => {
@@ -45,24 +46,19 @@ export default async function SignInPage({ searchParams }: PageProps) {
             await signIn('google', { redirectTo });
           }}
         >
-          <button type="submit" className="btn-primary w-full justify-center">
+          <button type="submit" className="auth-google">
+            <GoogleGlyph />
             Continue with Google
           </button>
         </form>
       ) : null}
 
-      {google && magicLink ? (
-        <div className="flex items-center gap-3">
-          <span className="h-px flex-1 bg-spruce/15" />
-          <span className="meta">or with email</span>
-          <span className="h-px flex-1 bg-spruce/15" />
-        </div>
-      ) : null}
+      {google && magicLink ? <div className="auth-or">or</div> : null}
 
-      {magicLink ? <MagicLinkRequestForm /> : null}
+      {magicLink ? <MagicLinkRequestForm variant="inline" /> : null}
 
       <Link href="/sign-up" className="btn-ghost self-start">
-        New to Hale? Create an account &rarr;
+        New here? Join the village &rarr;
       </Link>
     </AuthShell>
   );

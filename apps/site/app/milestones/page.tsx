@@ -1,6 +1,7 @@
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, Sparkles } from 'lucide-react';
 import type { Metadata } from 'next';
 import { BirthdayHelper } from '~/components/birthday-helper';
+import { CtaBand } from '~/components/cta-band';
 import { SeaTurtle } from '~/components/illos';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -45,8 +46,11 @@ export default function MilestonesHubPage() {
       <section className="shell pt-10 sm:pt-16 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 lg:gap-16 items-start">
           <div className="max-w-2xl rise rise-1">
-            <span className="eyebrow">Free milestone explorer</span>
-            <h1 className="mt-3">
+            <span className="pill-eyebrow">
+              <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
+              Free milestone explorer
+            </span>
+            <h1 className="mt-4">
               What’s <span className="accent">typical</span> at your child’s age
             </h1>
             <p className="mt-5 text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
@@ -110,32 +114,29 @@ export default function MilestonesHubPage() {
         </div>
       </section>
 
-      <section className="shell pb-16 lg:pb-24">
-        <div className="panel-apricot-tint px-8 py-14 sm:px-12 max-w-2xl rise rise-2">
-          <p
-            className="font-display"
-            style={{
-              fontSize: 'clamp(1.25rem, 2.4vw, 1.75rem)',
-              lineHeight: 1.35,
-              letterSpacing: 'var(--tracking-display)',
-              fontWeight: 600,
-              color: 'var(--color-spruce)',
-            }}
-          >
-            Wondering about these for your own child? Hale keeps your child’s age in mind for you —
-            every answer, suggestion, and plan is tuned to their exact stage, from newborn to teen.
-            Free to start, private by design, built in Canada.
-          </p>
-          <div className="mt-8">
-            <a href={`${APP_URL}/sign-up`} className="btn-primary">
-              Start free with your family
-            </a>
-          </div>
-          <p className="meta mt-4">
-            No credit card. Your family’s data stays in Canada and is never sold.
-          </p>
+      <CtaBand>
+        <p
+          className="mx-auto max-w-2xl font-display"
+          style={{
+            fontSize: 'clamp(1.25rem, 2.4vw, 1.75rem)',
+            lineHeight: 1.35,
+            letterSpacing: 'var(--tracking-display)',
+            fontWeight: 600,
+          }}
+        >
+          Wondering about these for your own child? Hale keeps your child’s age in mind for you —
+          every answer, suggestion, and plan is tuned to their exact stage, from newborn to teen.
+          Free to start, private by design, built in Canada.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <a href={`${APP_URL}/sign-up`} className="btn-on-navy">
+            Start free with your family
+          </a>
         </div>
-      </section>
+        <p className="cta-sub mx-auto mt-4 max-w-md">
+          No credit card. Your family’s data stays in Canada and is never sold.
+        </p>
+      </CtaBand>
 
       <SiteFooter />
     </main>

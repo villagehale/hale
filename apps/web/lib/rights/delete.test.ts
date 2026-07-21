@@ -1,3 +1,4 @@
+import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import {
   DELETION_GRACE_MS,
@@ -97,19 +98,50 @@ const DUE_IDS = [
 ];
 
 /**
- * Fakes the select(due families).from().where() the sweep reads, then the
- * delete(families).where() it issues per due family. Records the delete calls so
- * a test proves each due family is erased exactly once.
+ * Fakes the sweep's whole DB surface: the due-families select, the per-family
+ * storage enumerations (chat_attachments + child_documents, each a queue drained in
+ * due-family order), and the delete(families).where() issued per due family.
+ * `removeObject` records the bytes purged and — via the shared `events` log — their
+ * order relative to the row deletes, so a test can prove bytes leave BEFORE the row.
+ * `attachmentPaths`/`documentPaths` are per-family path lists (dueIds order); omit
+ * for families that own no storage.
  */
-function fakeSweepDb(dueIds: string[]) {
-  const deletedWhere = vi.fn().mockResolvedValue(undefined);
+function fakeSweepDb(
+  dueIds: string[],
+  opts: { attachmentPaths?: string[][]; documentPaths?: string[][] } = {},
+) {
+  const attachmentQueue = [...(opts.attachmentPaths ?? dueIds.map(() => []))];
+  const documentQueue = [...(opts.documentPaths ?? dueIds.map(() => []))];
+
+  const events: string[] = [];
+  const removeObject = vi.fn(async (path: string) => {
+    events.push(`remove:${path}`);
+  });
+
+  const deletedWhere = vi.fn(async () => {
+    events.push('delete-family');
+  });
   const deleteFn = vi.fn().mockReturnValue({ where: deletedWhere });
 
-  const selectWhere = vi.fn().mockResolvedValue(dueIds.map((id) => ({ id })));
-  const from = vi.fn().mockReturnValue({ where: selectWhere });
-  const select = vi.fn().mockReturnValue({ from });
+  const select = vi.fn(() => ({
+    from: (table: unknown) => {
+      if (table === schema.chatAttachments) {
+        const rows = (attachmentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
+        return { where: async () => rows };
+      }
+      if (table === schema.childDocuments) {
+        const rows = (documentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
+        return { where: async () => rows };
+      }
+      return { where: async () => dueIds.map((id) => ({ id })) };
+    },
+  }));
 
-  return { db: { select, delete: deleteFn } as never, spies: { deleteFn, deletedWhere } };
+  return {
+    db: { select, delete: deleteFn } as never,
+    removeObject,
+    spies: { deleteFn, deletedWhere, events },
+  };
 }
 
 describe('selectFamiliesDueForDeletion', () => {
@@ -122,19 +154,58 @@ describe('selectFamiliesDueForDeletion', () => {
 
 describe('runDeletionSweep', () => {
   it('hard-deletes each due family exactly once (the cascade erases its data) and reports the count', async () => {
-    const { db, spies } = fakeSweepDb(DUE_IDS);
+    const { db, removeObject, spies } = fakeSweepDb(DUE_IDS);
 
-    const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'));
+    const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
 
-    expect(summary.erased).toBe(DUE_IDS.length);
+    expect(summary).toEqual({ erased: DUE_IDS.length, purgedObjects: 0 });
     expect(spies.deleteFn).toHaveBeenCalledTimes(DUE_IDS.length);
     expect(spies.deletedWhere).toHaveBeenCalledTimes(DUE_IDS.length);
   });
 
   it('erases nothing when no family is past its grace window', async () => {
-    const { db, spies } = fakeSweepDb([]);
-    const summary = await runDeletionSweep(db, new Date());
-    expect(summary.erased).toBe(0);
+    const { db, removeObject, spies } = fakeSweepDb([]);
+    const summary = await runDeletionSweep(db, new Date(), removeObject);
+    expect(summary).toEqual({ erased: 0, purgedObjects: 0 });
+    expect(spies.deleteFn).not.toHaveBeenCalled();
+    expect(removeObject).not.toHaveBeenCalled();
+  });
+
+  it('purges every chat-attachment AND child-document object from the bucket BEFORE dropping the family row (rule #1 / PIPEDA erasure)', async () => {
+    const attachmentPaths = [`chat/${FAMILY_ID}/att-1`, `chat/${FAMILY_ID}/att-2`];
+    const documentPaths = [`${FAMILY_ID}/doc-1`];
+    const { db, removeObject, spies } = fakeSweepDb([FAMILY_ID], {
+      attachmentPaths: [attachmentPaths],
+      documentPaths: [documentPaths],
+    });
+
+    const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
+
+    // The BYTES for both prefixes actually leave the private bucket.
+    expect(removeObject.mock.calls.map((c) => c[0]).sort()).toEqual(
+      [...attachmentPaths, ...documentPaths].sort(),
+    );
+    // …and every removal happens BEFORE the family row is deleted, so a stored object
+    // can never outlive the row that points at it (crash-safe ordering).
+    const deleteAt = spies.events.indexOf('delete-family');
+    expect(deleteAt).toBe(3);
+    expect(spies.events.slice(0, deleteAt).every((e) => e.startsWith('remove:'))).toBe(true);
+    expect(summary).toEqual({ erased: 1, purgedObjects: 3 });
+  });
+
+  it('surfaces a storage failure and leaves the family row intact for the next sweep (rule #8)', async () => {
+    const { db, spies } = fakeSweepDb([FAMILY_ID], {
+      attachmentPaths: [[`chat/${FAMILY_ID}/att-1`]],
+    });
+    const boom = vi.fn(async () => {
+      throw new Error('supabase remove 500');
+    });
+
+    await expect(
+      runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), boom),
+    ).rejects.toThrow('supabase remove 500');
+    // A failed purge must NEVER strand bytes by erasing their pointer: the family row
+    // stays, and the next sweep retries the whole erase (removeObject tolerates 404).
     expect(spies.deleteFn).not.toHaveBeenCalled();
   });
 });

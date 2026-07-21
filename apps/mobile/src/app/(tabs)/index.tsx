@@ -2,11 +2,11 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { TurtleMascot } from '@/components/illustrations/turtle-mascot';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { LogoMark } from '@/components/ui/logo-mark';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
 import { type LogKind, QuickLogModal } from '@/components/ui/quick-log-modal';
 import { Screen } from '@/components/ui/screen';
@@ -240,7 +240,7 @@ function HomeBody({
               <Icon name="chevron-right" size={13} color={creamChevron} />
             </Pressable>
           </View>
-          <LogoMark size={72} />
+          <TurtleMascot pose="wave" width={92} />
         </Card>
       ) : (
         <Card className="gap-3">
