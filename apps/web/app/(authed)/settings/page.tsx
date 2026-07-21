@@ -127,7 +127,7 @@ export default async function SettingsPage() {
 
     // ── Plan & billing ───────────────────────────────────────────────────
     plan: (
-      <div className="flex flex-col gap-y-8 max-w-2xl">
+      <div className="flex flex-col gap-y-8">
         <PlanSummaryCard planTier={basics.planTier} />
         <FamilyPlan planTier={basics.planTier} billingConfigured={isStripeCheckoutConfigured()} />
       </div>

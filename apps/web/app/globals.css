@@ -2577,14 +2577,16 @@ html, body, .sidebar, .panel, .card, .field {
 }
 .hale-tip-dismiss:hover { opacity: 1; }
 
-/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr) with equal-height
- * cards, and a dedicated "from your village" 4th column. Collapses 4 → 2 → 1 at
- * lg / md / sm so nothing overflows below 1024px. (W2 QA fix: Row 1 previously
- * shipped as a 3-col responsive grid that folded the village pick into "up next".) */
+/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr), and a dedicated
+ * "from your village" 4th column. Collapses 4 → 2 → 1 at lg / md / sm so nothing
+ * overflows below 1024px. Columns are TOP-aligned at their natural content height
+ * (align-items: start): a sparse card — an empty village pick, a caught-up "up
+ * next" — sizes to its content instead of being force-stretched to the tallest
+ * column, which left tall empty voids and pushed the Hale tip to the column foot. */
 .home-row1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
   gap: 2rem 1.5rem;
 }
 @media (min-width: 768px) {
@@ -2593,21 +2595,22 @@ html, body, .sidebar, .panel, .card, .field {
 @media (min-width: 1024px) {
   .home-row1 { grid-template-columns: 1.05fr 1fr 1fr 1.15fr; }
 }
-/* A column is a full-height flex stack: the eyebrow sits on top and the card grows to
- * fill, so every card in the row bottom-aligns (equal height). A two-card column (the
- * quick links + Hale tip) grows its first group and pins the tip below. */
-.home-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; height: 100%; }
-.home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; height: 100%; }
-.home-col-grow { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-.home-card-fill { flex: 1 1 auto; display: flex; flex-direction: column; }
+/* A column is a flex stack sized to its content (no forced full-column height): the
+ * eyebrow sits on top and the card sits below at its natural height. The two-card
+ * column (quick links + Hale tip) keeps the tip directly under the links card with
+ * the stack gap — no growth spacer that would strand the tip at the column foot. */
+.home-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; }
+.home-col-grow { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.home-card-fill { display: flex; flex-direction: column; }
 
 /* ── Home §4.2 Row 2 — today's highlights / sleep / meals for the active child, at
- * 1.1fr 1fr 1fr with equal-height cards. Sits under Row 1; collapses 3 → 1 below
- * 1024px so nothing overflows. ─────────────────────────────────────────────── */
+ * 1.1fr 1fr 1fr. Sits under Row 1; collapses 3 → 1 below 1024px so nothing
+ * overflows. Top-aligned at natural height, matching Row 1. ──────────────────── */
 .home-row2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
   gap: 2rem 1.5rem;
   margin-top: 2rem;
 }
@@ -2857,6 +2860,11 @@ html, body, .sidebar, .panel, .card, .field {
 }
 @media (min-width: 640px) {
   .village-map-placeholder { aspect-ratio: 16 / 9; }
+}
+/* Desktop board: the map is a fixed 560px (§4.5), so the pre-mount placeholder
+ * matches that height — no layout jump when the real map replaces it. */
+@media (min-width: 1024px) {
+  .village-map-placeholder { aspect-ratio: auto; height: 35rem; }
 }
 
 
