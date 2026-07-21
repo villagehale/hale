@@ -147,6 +147,20 @@ export function pendingCount(items: readonly WeekPlanItem[]): number {
   return items.filter((i) => i.needs !== 'none').length;
 }
 
+/** Split a plan into the two things a parent reads it for: what still needs their
+ * OK (a booking, a decision) and what is already handled (on the calendar). This is
+ * the structural spine of the email + /plan card — the plan is two sections, not one
+ * undifferentiated list. Input order is preserved within each side. */
+export function partitionByNeed(items: readonly WeekPlanItem[]): {
+  pending: WeekPlanItem[];
+  handled: WeekPlanItem[];
+} {
+  const pending: WeekPlanItem[] = [];
+  const handled: WeekPlanItem[] = [];
+  for (const item of items) (item.needs === 'none' ? handled : pending).push(item);
+  return { pending, handled };
+}
+
 const PROVENANCE_LABEL: Record<WeekPlanItem['kind'], string> = {
   appointment: 'Health',
   routine: 'Routine',
@@ -158,6 +172,28 @@ const PROVENANCE_LABEL: Record<WeekPlanItem['kind'], string> = {
 /** The provenance chip shown next to an email item. */
 export function provenanceLabel(kind: WeekPlanItem['kind']): string {
   return PROVENANCE_LABEL[kind];
+}
+
+const MONTH_ABBREV = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+const EN_DASH = '–';
+
+/** The Mon–Sun span of a week keyed on its Monday `weekStart` (a bare `YYYY-MM-DD`),
+ * as a header kicker: "Jul 20 – 26" within a month, "Jul 28 – Aug 3" across one. Read
+ * at UTC midnight so the label is timezone-independent (same technique as dayAbbrev). */
+export function weekRangeLabel(weekStart: string): string {
+  const start = new Date(`${weekStart.slice(0, 10)}T00:00:00Z`);
+  const end = new Date(start.getTime());
+  end.setUTCDate(end.getUTCDate() + 6);
+  const startMonth = MONTH_ABBREV[start.getUTCMonth()];
+  const endMonth = MONTH_ABBREV[end.getUTCMonth()];
+  const head = `${startMonth} ${start.getUTCDate()}`;
+  const tail =
+    start.getUTCMonth() === end.getUTCMonth()
+      ? `${end.getUTCDate()}`
+      : `${endMonth} ${end.getUTCDate()}`;
+  return `${head} ${EN_DASH} ${tail}`;
 }
 
 const WEEKDAY_ABBREV = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;

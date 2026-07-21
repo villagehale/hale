@@ -7,16 +7,21 @@ import {
   genericSensitiveWhat,
   headerNames,
   itemsChronological,
+  partitionByNeed,
   strippedWhat,
   weekSubject,
 } from './core';
 import type { PlanChild, WeeklyPlanPayload } from './payload';
 
 /**
- * VIL-218 · B2 — the push renderer. A glanceable title + the first two items, the
- * rest rolled into "+N more". Health is genericized and the child's own name is
- * stripped (the title already names the week's owner), so a lock-screen preview never
- * leaks above the family's privacy level. The deep link rides in `data` for the tap.
+ * VIL-218 · B2 — the push renderer.
+ *
+ * Design pass (two-rubric): a lock-screen preview has no typography to speak of, so
+ * the rubric lever here is structure — the body LEADS with the decision (what needs
+ * the parent's OK) and previews those items, rather than a flat "here's your week".
+ * When nothing's pending it opens "All set" (the handled state). Health is genericized
+ * and the child's own name stripped (the title already names the week's owner), so a
+ * preview never leaks above the family's privacy level. The deep link rides in `data`.
  */
 
 const PUSH_PREVIEW = 2;
@@ -30,6 +35,17 @@ function pushItem(item: WeekPlanItem, children: readonly PlanChild[]): string {
   return day ? `${day} ${what}` : what;
 }
 
+/** Up to two items chronological, with a "+N more" tail for the rest. */
+function preview(items: readonly WeekPlanItem[], children: readonly PlanChild[]): string {
+  const ordered = itemsChronological(items);
+  const shown = ordered
+    .slice(0, PUSH_PREVIEW)
+    .map((i) => pushItem(i, children))
+    .join(ITEM_SEP);
+  const extra = ordered.length - PUSH_PREVIEW;
+  return extra > 0 ? `${shown} +${extra} more` : shown;
+}
+
 export function renderWeeklyPlanPush(
   payload: WeeklyPlanPayload,
   level: ChildNameLevel,
@@ -39,17 +55,14 @@ export function renderWeeklyPlanPush(
   const subject = weekSubject(headerNames(inPlan, level, now));
   const title = `${subject} week is ready`;
 
-  const ordered = itemsChronological(payload.items);
+  const { pending, handled } = partitionByNeed(payload.items);
   let body: string;
-  if (ordered.length === 0) {
+  if (payload.items.length === 0) {
     body = QUIET_BODY;
+  } else if (pending.length > 0) {
+    body = `${pending.length} need your OK${ITEM_SEP}${preview(pending, payload.children)}`;
   } else {
-    const preview = ordered
-      .slice(0, PUSH_PREVIEW)
-      .map((i) => pushItem(i, payload.children))
-      .join(ITEM_SEP);
-    const extra = ordered.length - PUSH_PREVIEW;
-    body = extra > 0 ? `${preview} +${extra} more` : preview;
+    body = `All set${ITEM_SEP}${preview(handled, payload.children)}`;
   }
 
   return { kind: 'push', title, body, data: { deepLink: payload.deepLink } };

@@ -10,11 +10,13 @@ import {
   isGsm7,
   itemsChronological,
   leveledWhat,
+  partitionByNeed,
   pendingCount,
   provenanceLabel,
   smsSegments,
   strippedWhat,
   timeLabel,
+  weekRangeLabel,
   weekSubject,
 } from './core';
 import type { PlanChild } from './payload';
@@ -157,6 +159,34 @@ describe('pendingCount — items that ask something of the parent', () => {
     ];
     expect(pendingCount(items)).toBe(2);
     expect(pendingCount([])).toBe(0);
+  });
+});
+
+describe('partitionByNeed — decision-needed vs handled', () => {
+  it('splits pending (needs !== none) from handled, preserving order', () => {
+    const a = item({ title: 'a', needs: 'calendar_add' });
+    const b = item({ title: 'b', needs: 'none' });
+    const c = item({ title: 'c', needs: 'decision' });
+    const d = item({ title: 'd', needs: 'none' });
+    const { pending, handled } = partitionByNeed([a, b, c, d]);
+    expect(pending.map((i) => i.title)).toEqual(['a', 'c']);
+    expect(handled.map((i) => i.title)).toEqual(['b', 'd']);
+  });
+});
+
+describe('weekRangeLabel — the Mon–Sun header kicker', () => {
+  it('shows a bare end day within one month', () => {
+    // 2026-07-20 (Mon) → 2026-07-26 (Sun).
+    expect(weekRangeLabel('2026-07-20')).toBe('Jul 20 – 26');
+  });
+
+  it('names the second month when the week crosses one', () => {
+    // 2026-07-27 (Mon) → 2026-08-02 (Sun).
+    expect(weekRangeLabel('2026-07-27')).toBe('Jul 27 – Aug 2');
+  });
+
+  it('reads the date at UTC (a time suffix does not shift the day)', () => {
+    expect(weekRangeLabel('2026-12-28T00:00')).toBe('Dec 28 – Jan 3');
   });
 });
 

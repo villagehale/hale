@@ -1,14 +1,19 @@
 import type { WeekPlan, WeekPlanItem } from '@hale/db';
-import { Card } from '~/components/ui/card';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { WEEKDAYS, weekdayIndexIn } from '~/lib/plan/spine';
 
 /**
  * The in-app receipt for B1's composed week (VIL-218 · B2 parity). Renders the
  * SAME persisted `week_plans` artifact the Sunday text sends — never a re-derived
- * live view — so the two can't disagree. Each item shows its provenance (derived
- * from `kind`, the artifact carries no provenance string) and a "needs your OK"
- * chip when it still asks something of the parent.
+ * live view — so the two can't disagree.
+ *
+ * Design pass (two-rubric, 2026-07-21): the receipt mirrors the Sunday email's
+ * language on the app surface — the summary is the serif *signature* (Source Serif 4,
+ * the app display face), and the plan is split into a "needs your OK" region (the
+ * decisions, in the warm wash) above a quiet "on your calendar" list (what's handled),
+ * rather than one undifferentiated grid of identical cards. Provenance rides as a
+ * quiet caption, not a loud pill. The app palette has no amber (its accent is navy +
+ * warm-neutral washes), so the decision region uses the warm wash, not amber.
  *
  * This is the account holder's own private surface: item titles are shown as-is.
  * They were already teen-gated at compose time (a 13+ child's item is generic, no
@@ -76,46 +81,72 @@ function dayHeading(dayKey: string): string {
   return `${WEEKDAYS[weekdayIndexIn(dayKey, 'UTC')]} · ${formatCalendarDate(dayKey)}`;
 }
 
-function WeekPlanItemCard({ item }: { item: WeekPlanItem }) {
+/** A calendar-day label for a single item, or null when it's day-coarse. */
+function itemDay(item: WeekPlanItem): string | null {
+  return item.startsAt ? formatCalendarDate(item.startsAt.slice(0, 10)) : null;
+}
+
+/** One plan item: its title over a quiet provenance (+ optional day / location)
+ * caption. The title carries `data-hale-pii` for the redaction pass. */
+function ItemRow({ item, withDay }: { item: WeekPlanItem; withDay?: boolean }) {
+  const day = withDay ? itemDay(item) : null;
+  const caption = [provenanceLabel(item.kind), day].filter(Boolean).join(' · ');
   return (
-    <Card>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="pill">{provenanceLabel(item.kind)}</span>
-        {itemNeedsOk(item) ? <span className="pill pill-apricot">needs your OK</span> : null}
-      </div>
-      <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
+    <div>
+      <p className="text-base text-spruce leading-relaxed" data-hale-pii>
         {item.title}
       </p>
+      <p className="meta mt-0.5 text-slate-green">{caption}</p>
       {item.location ? (
-        <p className="meta mt-1 text-slate-green" data-hale-pii>
+        <p className="meta mt-0.5 text-slate-green" data-hale-pii>
           {item.location}
         </p>
       ) : null}
-    </Card>
+    </div>
   );
 }
 
 export function WeekPlanCard({ plan }: { plan: WeekPlan }) {
-  const groups = groupItemsByDay(plan.items);
+  const pending = plan.items.filter(itemNeedsOk);
+  const handled = plan.items.filter((i) => !itemNeedsOk(i));
   return (
     <div className="space-y-6">
       {plan.summary ? (
-        <p className="text-lg text-spruce leading-relaxed" data-hale-pii>
+        <p className="font-display text-[1.375rem] leading-snug text-spruce" data-hale-pii>
           {plan.summary}
         </p>
       ) : null}
-      {groups.map((group) => (
-        <div key={group.dayKey ?? 'sometime'}>
-          <span className="eyebrow text-slate-green">
-            {group.dayKey ? dayHeading(group.dayKey) : 'sometime this week'}
-          </span>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-            {group.items.map((item, idx) => (
-              <WeekPlanItemCard key={`${group.dayKey ?? 'x'}-${item.kind}-${idx}`} item={item} />
+
+      {pending.length > 0 ? (
+        <div>
+          <span className="eyebrow text-spruce">needs your OK</span>
+          <div className="panel-apricot-tint px-5 py-4 mt-3 space-y-4">
+            {pending.map((item, idx) => (
+              <ItemRow key={`p-${item.kind}-${idx}`} item={item} withDay />
             ))}
           </div>
         </div>
-      ))}
+      ) : null}
+
+      {handled.length > 0 ? (
+        <div>
+          <span className="eyebrow text-slate-green">on your calendar</span>
+          <div className="mt-3 space-y-5">
+            {groupItemsByDay(handled).map((group) => (
+              <div key={group.dayKey ?? 'sometime'}>
+                <p className="meta text-faded-sage">
+                  {group.dayKey ? dayHeading(group.dayKey) : 'sometime this week'}
+                </p>
+                <div className="mt-2 space-y-3">
+                  {group.items.map((item, idx) => (
+                    <ItemRow key={`${group.dayKey ?? 'x'}-${item.kind}-${idx}`} item={item} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
