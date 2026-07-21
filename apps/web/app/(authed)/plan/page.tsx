@@ -6,15 +6,18 @@ import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
+import { WeekPlanCard, itemNeedsOk } from '~/components/hale/week-plan-card';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadFamilyTimezone } from '~/lib/dashboard/queries';
-import { loadViewerProfile } from '~/lib/family';
+import { db } from '~/lib/db';
+import { currentFamilyId, loadViewerProfile } from '~/lib/family';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
+import { readWeekPlan } from '~/lib/loop/queries';
 import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
-import { type DayColumn, buildPlanSpine, groupRoutineByDay } from '~/lib/plan/spine';
+import { type DayColumn, buildPlanSpine, groupRoutineByDay, weekWindow } from '~/lib/plan/spine';
 import { type PlanChildItem, planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -34,6 +37,15 @@ export default async function PlanPage() {
   ]);
   const { routine } = village;
   const weekStartDay = profile?.weekStartDay ?? 1;
+
+  // The composed "week ahead" from B1's persisted artifact — the SAME week the Sunday
+  // text sends, so the two never disagree. The composer keys every row on Monday, so
+  // read this week on the Monday key (weekStartDay=1 here, NOT the family's own
+  // week-start preference — a Sunday-start family would otherwise miss its row).
+  const familyId = await currentFamilyId();
+  const weekStart = weekWindow(new Date(), timeZone, 1, 0).startKey;
+  const weekPlan = familyId ? await readWeekPlan(db(), familyId, weekStart) : null;
+  const weekPlanNeedsOk = weekPlan ? weekPlan.items.filter(itemNeedsOk).length : 0;
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
   const childItems = planChildItems(children);
   const hasRoutine = (routine?.items.length ?? 0) > 0;
@@ -54,6 +66,19 @@ export default async function PlanPage() {
   return (
     <div>
       {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
+
+      {/* ── The week ahead — B1's composed artifact, the Sunday text's twin ─ */}
+      {weekPlan ? (
+        <section className="rise rise-1 mb-8">
+          <SectionLabel>
+            the week ahead · gathered by Hale
+            {weekPlanNeedsOk > 0
+              ? ` · ${weekPlanNeedsOk} ${weekPlanNeedsOk === 1 ? 'needs' : 'need'} your OK`
+              : ''}
+          </SectionLabel>
+          <WeekPlanCard plan={weekPlan} />
+        </section>
+      ) : null}
 
       {/* ── Add a plan ──────────────────────────────────────────────────── */}
       <section className="rise rise-2 mb-8">
