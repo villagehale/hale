@@ -11,16 +11,15 @@ import type { LoopMessage } from './types';
 
 /**
  * VIL-213 · A2 dispatch policy. Deterministic (no LLM) → plain Vitest with Fakes +
- * an injected clock. Proves the AC: a suppressed-by-consent send is refused with a
- * ledger row; quiet-hours deferral + time_sensitive bypass; cap + dedupe; a ledger
- * row for EVERY outcome; audit per send; the email CASL dual-write.
+ * an injected clock. Proves the AC + the founder's mirror model: policy is per
+ * delivery leg (exchange channel + additive push), a ledger row per outcome
+ * (suppression OR send), per-channel dedupe + caps, time_sensitive bypass, and the
+ * email CASL dual-write.
  */
 
 const TORONTO = 'America/Toronto';
-// Noon local Toronto (EDT) — outside the default 21:30-07:30 quiet window.
-const NOON = new Date('2026-06-01T16:00:00Z');
-// 22:00 local Toronto (EDT) — inside quiet hours.
-const NIGHT = new Date('2026-06-02T02:00:00Z');
+const NOON = new Date('2026-06-01T16:00:00Z'); // 12:00 EDT — outside quiet hours
+const NIGHT = new Date('2026-06-02T02:00:00Z'); // 22:00 EDT — inside quiet hours
 
 function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPrefsView> } = {}) {
   const ledger: LedgerWrite[] = [];
@@ -66,25 +65,24 @@ function message(over: Partial<LoopMessage> = {}): LoopMessage {
   };
 }
 
-describe('suppression matrix — every refusal writes a ledger row and sends nothing', () => {
+describe('suppression matrix — every refusal writes a per-leg ledger row and sends nothing', () => {
   it('suppressed_pref when the category is disabled', async () => {
     const { ports, ledger } = makePorts({ prefs: { catReminder: false } });
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(result).toMatchObject({ outcome: 'suppressed', suppression: 'suppressed_pref' });
-    expect(ledger).toHaveLength(1);
-    expect(ledger[0]).toMatchObject({ status: 'suppressed_pref', dedupeKey: null });
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_pref' }]);
+    expect(ledger).toEqual([expect.objectContaining({ status: 'suppressed_pref', dedupeKey: null })]);
   });
 
-  it('suppressed_consent (email opt-out) — refused at the seam', async () => {
+  it('suppressed_consent (email opt-out) — refused at the seam, provider never touched', async () => {
     const emailChannel = fakeChannel('email');
     const { ports, ledger } = makePorts({
       emailOptedOut: async () => true,
       channels: { email: emailChannel },
     });
     const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
-    expect(result.sent).toEqual([]);
-    expect(ledger.some((r) => r.status === 'suppressed_consent' && r.channel === 'email')).toBe(true);
-    expect(emailChannel.calls).toHaveLength(0); // never reached the provider
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_consent' }]);
+    expect(ledger[0]).toMatchObject({ status: 'suppressed_consent', channel: 'email' });
+    expect(emailChannel.calls).toHaveLength(0);
   });
 
   it('suppressed_consent (no live SMS consent) when the exchange channel is sms', async () => {
@@ -102,56 +100,80 @@ describe('suppression matrix — every refusal writes a ledger row and sends not
   it('suppressed_quiet_hours for a normal message inside the window', async () => {
     const { ports, ledger } = makePorts({ now: () => NIGHT });
     const result = await dispatchLoopMessage(message({ urgency: 'normal' }), ports);
-    expect(result).toMatchObject({ suppression: 'suppressed_quiet_hours' });
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_quiet_hours' }]);
     expect(ledger[0]?.status).toBe('suppressed_quiet_hours');
   });
 
   it('time_sensitive bypasses quiet hours and sends', async () => {
     const emailChannel = fakeChannel('email');
-    const { ports, ledger } = makePorts({
-      now: () => NIGHT,
-      channels: { email: emailChannel },
-    });
+    const { ports, ledger } = makePorts({ now: () => NIGHT, channels: { email: emailChannel } });
     const result = await dispatchLoopMessage(message({ urgency: 'time_sensitive' }), ports);
-    expect(result.sent).toEqual(['email']);
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
     expect(emailChannel.calls).toHaveLength(1);
     expect(ledger[0]?.status).toBe('sent');
   });
 
-  it('suppressed_cap once the category window is full', async () => {
-    // reminder cap is 2/day → countRecent returning 2 means full.
-    const { ports, ledger } = makePorts({ countRecent: async () => 2 });
+  it('suppressed_cap once the category window on that channel is full', async () => {
+    const { ports, ledger } = makePorts({ countRecent: async () => 2 }); // reminder cap is 2/day
     const result = await dispatchLoopMessage(message({ category: 'reminder' }), ports);
-    expect(result).toMatchObject({ suppression: 'suppressed_cap' });
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'suppressed_cap' }]);
     expect(ledger[0]?.status).toBe('suppressed_cap');
   });
 });
 
-describe('dedupe idempotency — a re-drain can never double-send', () => {
-  it('skips entirely when the dedupe key already carries an active send', async () => {
-    const emailChannel = fakeChannel('email');
+describe('push mirrors, never substitutes — per-leg policy → per-leg rows', () => {
+  it('a suppressed email leg alongside a delivered push leg = two rows', async () => {
+    // Email opted out → suppressed_consent; push still delivers (mirror).
     const { ports, ledger } = makePorts({
-      activeDedupe: async () => true,
-      channels: { email: emailChannel },
+      emailOptedOut: async () => true,
+      hasLivePushToken: async () => true,
     });
-    const result = await dispatchLoopMessage(message({ dedupeKey: 'fam-1:2026-W23:weekly' }), ports);
-    expect(result.outcome).toBe('dedupe_skipped');
-    expect(emailChannel.calls).toHaveLength(0);
-    expect(ledger).toHaveLength(0);
+    const result = await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    expect(result.legs).toEqual([
+      { channel: 'email', outcome: 'suppressed_consent' },
+      { channel: 'push', outcome: 'sent' },
+    ]);
+    expect(ledger.map((r) => `${r.channel}:${r.status}`)).toEqual([
+      'email:suppressed_consent',
+      'push:sent',
+    ]);
   });
 
-  it('the dedupe key rides the first successful send (so the next drain is blocked)', async () => {
-    const { ports, ledger } = makePorts({
-      hasLivePushToken: async () => true, // email + push legs
-    });
+  it('both legs deliver, each carrying its own per-channel dedupe key', async () => {
+    const { ports, ledger } = makePorts({ hasLivePushToken: async () => true });
     await dispatchLoopMessage(
       message({ category: 'weekly_plan', dedupeKey: 'fam-1:2026-W23:weekly' }),
       ports,
     );
-    const withKey = ledger.filter((r) => r.dedupeKey === 'fam-1:2026-W23:weekly');
-    expect(withKey).toHaveLength(1); // exactly one leg carries the key (unique-where-not-null)
-    expect(withKey[0]?.channel).toBe('email'); // the exchange (first) leg
-    expect(ledger.filter((r) => r.status === 'sent')).toHaveLength(2); // email + push both sent
+    const sent = ledger.filter((r) => r.status === 'sent');
+    expect(sent.map((r) => `${r.channel}=${r.dedupeKey}`)).toEqual([
+      'email=fam-1:2026-W23:weekly:email',
+      'push=fam-1:2026-W23:weekly:push',
+    ]);
+  });
+});
+
+describe('per-channel dedupe idempotency — a re-drain double-sends neither leg', () => {
+  it('skips only the leg whose per-channel key is already sent; the mirror still delivers', async () => {
+    const sentKeys = new Set(['fam-1:2026-W23:weekly:email']); // email already went last drain
+    const emailChannel = fakeChannel('email');
+    const pushChannel = fakeChannel('push');
+    const { ports, ledger } = makePorts({
+      hasLivePushToken: async () => true,
+      activeDedupe: async (key) => sentKeys.has(key),
+      channels: { email: emailChannel, push: pushChannel },
+    });
+    const result = await dispatchLoopMessage(
+      message({ category: 'weekly_plan', dedupeKey: 'fam-1:2026-W23:weekly' }),
+      ports,
+    );
+    expect(result.legs).toEqual([
+      { channel: 'email', outcome: 'deduped' },
+      { channel: 'push', outcome: 'sent' },
+    ]);
+    expect(emailChannel.calls).toHaveLength(0); // not re-sent
+    expect(pushChannel.calls).toHaveLength(1); // mirror delivered
+    expect(ledger.filter((r) => r.channel === 'email')).toHaveLength(0); // dedupe writes no row
   });
 });
 
@@ -166,11 +188,11 @@ describe('email CASL dual-write + audit', () => {
     ]);
   });
 
-  it('does NOT write email_sends for a push-only leg (no dual-write off email)', async () => {
+  it('does NOT write email_sends for a push leg', async () => {
     const { ports, emailSends } = makePorts({
       prefs: { loopChannel: 'sms' },
       smsConsentLive: async () => false, // sms leg suppressed
-      hasLivePushToken: async () => true, // push still delivers
+      hasLivePushToken: async () => true, // push delivers
     });
     await dispatchLoopMessage(message(), ports);
     expect(emailSends).toEqual([]);
@@ -190,7 +212,7 @@ describe('provider outcomes', () => {
       },
     });
     const result = await dispatchLoopMessage(message(), ports);
-    expect(result.failed).toEqual(['email']);
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'failed' }]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'invalid_recipient' });
   });
 
@@ -212,7 +234,7 @@ describe('provider outcomes', () => {
   it('records a failed row (channel_unavailable) when no adapter is wired for a leg', async () => {
     const { ports, ledger } = makePorts({ channels: {} });
     const result = await dispatchLoopMessage(message(), ports);
-    expect(result.failed).toEqual(['email']);
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'failed' }]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'channel_unavailable' });
   });
 });

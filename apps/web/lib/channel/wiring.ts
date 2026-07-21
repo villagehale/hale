@@ -48,7 +48,8 @@ export function buildDispatchPorts(
         .limit(1);
       return rows.length > 0;
     },
-    countRecent: (userId, category, since) => countRecentSends(userId, category, since, database),
+    countRecent: (userId, category, channel, since) =>
+      countRecentSends(userId, category, channel, since, database),
     activeDedupe: (dedupeKey) => dedupeActive(dedupeKey, database),
     record: (write) => recordChannelMessage(write, database),
     recordEmailSend: (input) =>
