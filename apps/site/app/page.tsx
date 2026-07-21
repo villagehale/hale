@@ -13,7 +13,9 @@ import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
 import { siteJsonLd } from '~/lib/site/structured-data';
 
-const SIGN_UP = `${APP_URL}/sign-up`;
+// The landing funnel starts the public onboarding wizard (steps 1–6 build the
+// village before the account ask at step 6), not the account form directly.
+const SIGN_UP = `${APP_URL}/onboarding`;
 const PREVIEW = `${APP_URL}/preview`;
 
 // Real parent quotes are not collected yet; the testimonials band stays gated

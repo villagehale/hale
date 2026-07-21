@@ -71,7 +71,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-2">
           <LandingCta
             event="landing_cta_signin"
-            href={`${APP_URL}/sign-up`}
+            href={`${APP_URL}/onboarding`}
             className="hidden rounded-full bg-[#17294A] px-5 py-2.5 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] sm:inline-flex"
           >
             Get started
@@ -110,7 +110,7 @@ export function SiteHeader() {
             ))}
             <LandingCta
               event="landing_cta_signin"
-              href={`${APP_URL}/sign-up`}
+              href={`${APP_URL}/onboarding`}
               className="mt-2 inline-flex justify-center rounded-full bg-[#17294A] px-5 py-3 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36]"
             >
               Get started
