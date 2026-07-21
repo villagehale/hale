@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { Linking, Pressable, Switch, View } from 'react-native';
 
 import { ConnectorsList, ConnectorsPrivacyNote } from '@/components/hale/connectors-list';
 import { LoopSection } from '@/components/hale/loop-section';
@@ -25,6 +25,11 @@ import type {
   UnitSystem,
 } from '@/lib/api-types';
 import { updatePreferences, updatePushPref, updateSettings } from '@/lib/family-api';
+import {
+  currentOsPermission,
+  registerPushToken,
+  requestOsPermission,
+} from '@/lib/push-registration';
 import { useApi } from '@/lib/use-api';
 
 function SectionTitle({ children }: { children: string }) {
@@ -251,6 +256,34 @@ function NotificationsSection({
   push: MobilePushPrefsResponse | null;
 }) {
   const granted = useDevicePushGranted();
+  const [busy, setBusy] = useState(false);
+  const [justEnabled, setJustEnabled] = useState(false);
+
+  // The "enable later" path: prompt when the OS is still undetermined, else hand off to
+  // the phone's Settings (a denied permission can't be re-prompted in-app).
+  const enablePush = async () => {
+    setBusy(true);
+    try {
+      const os = await currentOsPermission();
+      if (os === 'granted') {
+        await registerPushToken();
+        setJustEnabled(true);
+        return;
+      }
+      if (os === 'undetermined') {
+        const next = await requestOsPermission();
+        if (next === 'granted') {
+          await registerPushToken();
+          setJustEnabled(true);
+        }
+        return;
+      }
+      await Linking.openSettings();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View className="gap-2">
       <SectionTitle>Notifications</SectionTitle>
@@ -271,11 +304,18 @@ function NotificationsSection({
           />
         </>
       ) : null}
-      {granted === false ? (
-        <AppText variant="meta" className="text-ink-3">
-          Push notifications are turned off for Hale on this device. Turn them on in your phone's
-          Settings to receive these.
-        </AppText>
+      {granted === false && !justEnabled ? (
+        <View className="gap-2 pt-1">
+          <AppText variant="meta" className="text-ink-3">
+            Push notifications are off for Hale on this device.
+          </AppText>
+          <Button
+            label="Turn on notifications"
+            variant="secondary"
+            onPress={enablePush}
+            disabled={busy}
+          />
+        </View>
       ) : null}
     </View>
   );

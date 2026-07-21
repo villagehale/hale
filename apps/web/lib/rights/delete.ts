@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNotNull, lte } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte } from 'drizzle-orm';
 import { removeDocument } from '../docs/storage.js';
 
 /**
@@ -158,6 +158,20 @@ export async function runDeletionSweep(
   let purgedObjects = 0;
   for (const familyId of familyIds) {
     purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
+    // Device push tokens are user-scoped (push_tokens.user_id → users.id), so the
+    // family DELETE's FK cascade never reaches them — a device address would outlive
+    // the erased account (rule #1 / PIPEDA). Drop the family's members' tokens here.
+    const memberIds = (
+      await database
+        .select({ userId: schema.familyMembers.userId })
+        .from(schema.familyMembers)
+        .where(eq(schema.familyMembers.familyId, familyId))
+    ).map((row) => row.userId);
+    if (memberIds.length > 0) {
+      await database
+        .delete(schema.pushTokens)
+        .where(inArray(schema.pushTokens.userId, memberIds));
+    }
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
   return { erased: familyIds.length, purgedObjects };
