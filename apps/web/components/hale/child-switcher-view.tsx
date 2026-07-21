@@ -4,11 +4,15 @@ import type { RefObject } from 'react';
 import { ChevronsUpDown, Plus } from 'lucide-react';
 import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
+import { childInitials } from '~/lib/family/child-initials';
 
 /** One child as the sidebar switcher shows it: identity + a short age/stage line. */
 export interface SwitcherChild {
   id: string;
   name: string;
+  /** Optional last name — the second monogram letter when present (rule #1: only the
+   * child's own stored surname, never a parent's). */
+  lastName?: string | null;
   /** A short "how old" line — the live-derived stage label (e.g. "toddler"). */
   ageLabel: string;
   /** The child's photo (uploaded avatar's signed URL), or null → initials. Wired by
@@ -28,10 +32,6 @@ export interface ChildSwitcherViewProps {
   addHref: Route;
   rootRef?: RefObject<HTMLDivElement | null>;
   triggerRef?: RefObject<HTMLButtonElement | null>;
-}
-
-function initialOf(name: string): string {
-  return name.trim().charAt(0).toUpperCase() || '?';
 }
 
 /**
@@ -87,7 +87,7 @@ export function ChildSwitcherView({
               <Avatar
                 tone="child"
                 src={child.avatarUrl ?? null}
-                initials={initialOf(child.name)}
+                initials={childInitials(child.name, child.lastName)}
                 size={32}
               />
               <span data-hale-pii>{child.name}</span>
@@ -117,7 +117,7 @@ export function ChildSwitcherView({
         <Avatar
           tone="child"
           src={active.avatarUrl ?? null}
-          initials={initialOf(active.name)}
+          initials={childInitials(active.name, active.lastName)}
           size={32}
         />
         <span className="account-chip-identity" data-hale-pii>

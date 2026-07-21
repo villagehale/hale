@@ -61,7 +61,9 @@ export default async function AuthedLayout({ children }: { children: React.React
   const kids = basics.children.map((child) => ({
     id: child.id,
     name: child.name,
+    lastName: child.lastName,
     ageLabel: child.stageLabel,
+    avatarUrl: child.avatarUrl,
   }));
 
   // The top-bar hero copy is built server-side from live values: the time-of-day
