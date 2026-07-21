@@ -26,15 +26,18 @@ export function MagicLinkSent({
   onUseDifferentEmail: () => void;
 }) {
   const accent = useMeadowColor('accentFill');
-  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  // 'error' is re-tappable (unlike the in-flight/cooldown states) so a failed resend
+  // surfaces an inline reason and lets the parent try again — never a silent no-op.
+  const locked = resendState === 'sending' || resendState === 'sent';
 
   const resend = async () => {
-    if (resendState !== 'idle') return;
+    if (locked) return;
     setResendState('sending');
     try {
       await onResend();
     } catch {
-      setResendState('idle');
+      setResendState('error');
       return;
     }
     setResendState('sent');
@@ -60,9 +63,9 @@ export function MagicLinkSent({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Resend the sign-in link"
-          accessibilityState={{ disabled: resendState !== 'idle' }}
+          accessibilityState={{ disabled: locked }}
           onPress={resend}
-          disabled={resendState !== 'idle'}
+          disabled={locked}
           className="items-center py-1 active:opacity-70"
         >
           <AppText variant="meta" className="text-ink-3">
@@ -73,6 +76,15 @@ export function MagicLinkSent({
                 : 'Resend the link'}
           </AppText>
         </Pressable>
+        {resendState === 'error' ? (
+          <AppText
+            variant="meta"
+            className="text-center text-berry"
+            accessibilityLiveRegion="polite"
+          >
+            Couldn&rsquo;t resend the link. Please try again.
+          </AppText>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Use a different email"

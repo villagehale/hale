@@ -9,7 +9,12 @@ import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
 import { useAuth } from '@/lib/auth';
 import { verifyMagicLink } from '@/lib/auth-api';
-import { type MagicPhase, initialMagicPhase, magicTokenFromParams } from '@/lib/magic-link';
+import {
+  type MagicPhase,
+  initialMagicPhase,
+  magicTokenFromParams,
+  shouldAttemptToken,
+} from '@/lib/magic-link';
 import { setPostAuthHold } from '@/lib/post-auth-hold';
 
 /**
@@ -26,13 +31,17 @@ export default function MagicLinkScreen() {
   const { signIn } = useAuth();
   const token = magicTokenFromParams(tokenParam);
   const [phase, setPhase] = useState<MagicPhase>(() => initialMagicPhase(token));
-  const attempted = useRef(false);
+  // The token this screen last acted on — not a boolean. A second link tapped while the
+  // failure screen is focused changes the token param; keying the guard on its value
+  // (not a fire-once flag) lets that fresh token re-verify instead of staying stuck.
+  const attemptedToken = useRef<string | null>(null);
   const accent = useMeadowColor('accentFill');
   const danger = useMeadowColor('chipRedIcon');
 
   useEffect(() => {
-    if (!token || attempted.current) return;
-    attempted.current = true;
+    if (!shouldAttemptToken(token, attemptedToken.current)) return;
+    attemptedToken.current = token;
+    setPhase('verifying');
     verifyMagicLink(token)
       .then(({ token: bearer }) => {
         // Hand routing to the resume effect: it submits a saved onboarding draft →
