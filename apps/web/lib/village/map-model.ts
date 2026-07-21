@@ -53,6 +53,26 @@ function isPlottable(
   return !c.teenAttributed && typeof c.lat === 'number' && typeof c.lng === 'number';
 }
 
+/** Where the map should settle its viewport. */
+export type MapFocus =
+  | { mode: 'center'; center: LatLng }
+  | { mode: 'fit' }
+  | { mode: 'none' };
+
+/**
+ * Decides the map's focus from the model. The ACTIVE area's coarse centroid takes
+ * PRIORITY over fitting markers: candidates are family-scoped (not area-scoped), so
+ * after a region switch the markers may still belong to the previously-active area —
+ * the viewport must follow the active coarse area (rule #1: coarse centroid, never a
+ * precise home), which is what makes the map recenter on load AND on switch. Marker-
+ * fit is only the fallback when the coarse area itself couldn't be geocoded.
+ */
+export function resolveMapFocus(model: VillageMapModel): MapFocus {
+  if (model.center) return { mode: 'center', center: model.center };
+  if (model.markers.length > 0) return { mode: 'fit' };
+  return { mode: 'none' };
+}
+
 export function buildVillageMapModel(
   candidates: VillageCandidateView[],
   coarseCenter: LatLng | null,

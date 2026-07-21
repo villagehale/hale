@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEEN_REDACTED_PLACEHOLDER } from '~/lib/dashboard/mappers';
-import { buildVillageMapModel } from './map-model.js';
+import { buildVillageMapModel, resolveMapFocus } from './map-model.js';
 import type { VillageCandidateView } from './mappers.js';
 
 /**
@@ -106,5 +106,33 @@ describe('buildVillageMapModel', () => {
     expect(model.center).toBeNull();
     // A marker still exists; the component fits bounds to the public venue.
     expect(model.markers).toHaveLength(1);
+  });
+});
+
+/**
+ * resolveMapFocus decides where the map settles. Candidates are FAMILY-scoped (not
+ * area-scoped), so after an area switch the markers may still belong to the PREVIOUS
+ * area — the viewport must follow the ACTIVE coarse area, never stale venue pins
+ * (this is what makes the map recenter on load AND on switch, scope item 6). So the
+ * active-area centroid takes priority over fitting markers; marker-fit is only the
+ * fallback when no coarse centre resolved.
+ */
+describe('resolveMapFocus — active-area centroid wins so the map recenters on switch', () => {
+  it('CENTERS on the coarse-area centroid even when markers exist (recenter-on-switch)', () => {
+    const model = buildVillageMapModel(
+      [view({ id: 'stale', lat: 50, lng: -100 })], // a pin from a previous area
+      COARSE_CENTER,
+    );
+    expect(resolveMapFocus(model)).toEqual({ mode: 'center', center: COARSE_CENTER });
+  });
+
+  it('falls back to FITTING markers only when there is no coarse centre', () => {
+    const model = buildVillageMapModel([view({ id: 'a', lat: 1, lng: 1 })], null);
+    expect(resolveMapFocus(model)).toEqual({ mode: 'fit' });
+  });
+
+  it('is NONE when there is neither a coarse centre nor a pin', () => {
+    const model = buildVillageMapModel([view({ id: 'online' })], null);
+    expect(resolveMapFocus(model)).toEqual({ mode: 'none' });
   });
 });

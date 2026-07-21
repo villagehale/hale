@@ -5,6 +5,7 @@ import {
   hasCoordinateFields,
   listAreas,
   readActiveArea,
+  removeArea,
   resolveActiveAreaCoarse,
   setActiveArea,
 } from './areas.js';
@@ -28,6 +29,7 @@ interface AreaRow {
 interface Capture {
   inserts: Array<{ table: unknown; rows: Record<string, unknown>[] }>;
   updates: Array<{ table: unknown; payload: Record<string, unknown> }>;
+  deletes: Array<{ table: unknown }>;
 }
 
 /**
@@ -46,7 +48,7 @@ function fakeDb(store: {
   family?: { areaCoarse?: string | null; city?: string | null; province?: string | null };
   inserted?: Array<Record<string, unknown>>;
 }) {
-  const capture: Capture = { inserts: [], updates: [] };
+  const capture: Capture = { inserts: [], updates: [], deletes: [] };
 
   const select = () => {
     let tbl: unknown;
@@ -89,10 +91,18 @@ function fakeDb(store: {
     },
   });
 
+  const del = (table: unknown) => ({
+    where: () => {
+      capture.deletes.push({ table });
+      return Promise.resolve(undefined);
+    },
+  });
+
   const handler = {
     select,
     insert,
     update,
+    delete: del,
     transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(handler),
   };
 
@@ -268,6 +278,56 @@ describe('setActiveArea — exactly one active per family (transactional, rule #
     });
     expect(result).toEqual({ status: 'not_found' });
     expect(capture.updates).toEqual([]);
+    expect(capture.inserts).toEqual([]);
+  });
+});
+
+describe('removeArea — delete a saved area (family-scoped, never the active one, rules #1/#6)', () => {
+  it('REFUSES to delete the ACTIVE area — nothing is deleted, no audit (switch away first)', async () => {
+    const { db, capture } = fakeDb({
+      limitRows: [{ id: AREA_ID, isActive: true } as unknown as AreaRow],
+    });
+    const result = await removeArea(db, {
+      familyId: FAMILY_ID,
+      userId: USER_ID,
+      areaId: AREA_ID,
+    });
+    expect(result).toEqual({ status: 'active' });
+    expect(capture.deletes).toEqual([]);
+    expect(capture.inserts).toEqual([]);
+  });
+
+  it('deletes a NON-active area and audits village_area_removed', async () => {
+    const { db, capture } = fakeDb({
+      limitRows: [{ id: AREA_ID, isActive: false } as unknown as AreaRow],
+    });
+    const result = await removeArea(db, {
+      familyId: FAMILY_ID,
+      userId: USER_ID,
+      areaId: AREA_ID,
+    });
+    expect(result).toEqual({ status: 'removed' });
+    expect(capture.deletes).toEqual([{ table: schema.familyAreas }]);
+    expect(capture.inserts).toHaveLength(1);
+    expect(capture.inserts[0]?.table).toBe(schema.auditLog);
+    expect(capture.inserts[0]?.rows[0]).toMatchObject({
+      familyId: FAMILY_ID,
+      actor: USER_ID,
+      actionTaken: 'village_area_removed',
+      targetTable: 'family_areas',
+      targetId: AREA_ID,
+    });
+  });
+
+  it("cross-family isolation: another family's areaId is NOT found — no delete, no audit", async () => {
+    const { db, capture } = fakeDb({ limitRows: [] });
+    const result = await removeArea(db, {
+      familyId: OTHER_FAMILY_ID,
+      userId: USER_ID,
+      areaId: AREA_ID,
+    });
+    expect(result).toEqual({ status: 'not_found' });
+    expect(capture.deletes).toEqual([]);
     expect(capture.inserts).toEqual([]);
   });
 });

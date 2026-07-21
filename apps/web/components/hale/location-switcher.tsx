@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { Icon } from '~/components/ui/icon';
 import {
   activateAreaAction,
+  deleteAreaAction,
   relocateToCityAction,
   searchCitiesAction,
 } from '~/lib/village/areas-action';
@@ -199,7 +200,7 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
           ) : (
             <ul className="loc-list">
               {data.areas.map((area) => (
-                <li key={area.id}>
+                <li key={area.id} className="loc-item-row">
                   <button
                     type="button"
                     className="loc-item"
@@ -211,10 +212,16 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
                     <span className="loc-item-label" data-hale-pii>
                       {cityLabel(area.city, area.province)}
                     </span>
-                    {area.isActive ? (
-                      <Icon as={Check} size={16} className="loc-item-check" />
-                    ) : null}
                   </button>
+                  {area.isActive ? (
+                    <Icon as={Check} size={16} className="loc-item-check loc-item-trail" />
+                  ) : (
+                    <AreaRemoveControl
+                      areaId={area.id}
+                      label={cityLabel(area.city, area.province)}
+                      onRemoved={() => router.refresh()}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
@@ -222,5 +229,76 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The per-row remove affordance for a saved area (never the active one). Deleting an
+ * area is destructive with no undo, so it is confirm-gated with a lightweight inline
+ * two-step — matching the dismiss-draft / delete-account affordances — rather than
+ * firing on a single click. On success the parent refreshes so the list + pill follow;
+ * an error surfaces as the tooltip, never a silent no-op (honesty lane).
+ */
+function AreaRemoveControl({
+  areaId,
+  label,
+  onRemoved,
+}: {
+  areaId: string;
+  label: string;
+  onRemoved: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const remove = () => {
+    startTransition(async () => {
+      const res = await deleteAreaAction(areaId);
+      if (res.status === 'ok') {
+        onRemoved();
+      } else {
+        setError(true);
+        setConfirming(false);
+      }
+    });
+  };
+
+  if (confirming) {
+    return (
+      <span className="loc-remove-confirm">
+        <button
+          type="button"
+          className="loc-remove-yes"
+          onClick={remove}
+          disabled={pending}
+        >
+          {pending ? 'removing…' : 'remove'}
+        </button>
+        <button
+          type="button"
+          className="loc-remove-no"
+          onClick={() => setConfirming(false)}
+          disabled={pending}
+        >
+          keep
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="loc-remove"
+      onClick={() => {
+        setError(false);
+        setConfirming(true);
+      }}
+      aria-label={`Remove ${label}`}
+      title={error ? 'could not remove — try again' : `Remove ${label}`}
+    >
+      <Icon as={X} size={14} />
+    </button>
   );
 }

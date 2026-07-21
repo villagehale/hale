@@ -55,12 +55,15 @@ export default async function VillagePage({
         </div>
       ) : (
         <div className="rise rise-2">
-          {/* The natural-language search owns the search bar and, when a search is
-              active, replaces the board with its real results; the board (its own
-              literal-filter box hidden) is what it shows when idle. Keyed on the
-              active area so a search resets on a region switch. */}
+          {/* The natural-language search (AI-search lane) owns the search bar and, when
+              a search is active, replaces the board with its real results; the board
+              (its literal-filter box hidden) is the idle view. It resets on a region
+              switch via areaKey. The board is ALSO keyed on the active coarse area so a
+              switch remounts it — clearing any stale filter / selected activity carried
+              from the previous area. Both key on feed.areaCoarse, in lockstep. */}
           <VillageAiSearch areaKey={feed.areaCoarse ?? ''} area={feed.areaCoarse}>
             <VillageBoard
+              key={feed.areaCoarse ?? 'no-area'}
               candidates={feed.candidates}
               resources={resources}
               coarseCenter={feed.coarseCenter}
