@@ -25,6 +25,7 @@ import { resolveSearchView } from '~/lib/village/ai-search-view';
 type SearchState =
   | { status: 'idle' }
   | { status: 'loading' }
+  | { status: 'error'; query: string }
   | { status: 'done'; result: VillageSearchResult; query: string };
 
 export function VillageAiSearch({
@@ -51,13 +52,23 @@ export function VillageAiSearch({
     setQuery('');
   }, [areaKey]);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function runSearch(prompt: string) {
+    setState({ status: 'loading' });
+    try {
+      const result = await searchVillageAction(prompt);
+      setState({ status: 'done', result, query: prompt });
+    } catch {
+      // A network-failed action would otherwise leave the surface stuck on the
+      // "Hale is reading your ask…" loader forever (WEB-04) — offer a retry instead.
+      setState({ status: 'error', query: prompt });
+    }
+  }
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const prompt = query.trim();
     if (!prompt) return;
-    setState({ status: 'loading' });
-    const result = await searchVillageAction(prompt);
-    setState({ status: 'done', result, query: prompt });
+    void runSearch(prompt);
   }
 
   function clear() {
@@ -88,6 +99,21 @@ export function VillageAiSearch({
 
       {state.status === 'idle' ? children : null}
       {state.status === 'loading' ? <SearchLoading /> : null}
+      {state.status === 'error' ? (
+        <div className="panel-oat px-6 py-5 space-y-3" role="alert">
+          <p className="meta text-berry">
+            Something went wrong reaching Hale. Check your connection and try again.
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <button type="button" className="btn-secondary" onClick={() => void runSearch(state.query)}>
+              Try again
+            </button>
+            <button type="button" className="btn-ghost" onClick={clear}>
+              Back to your village
+            </button>
+          </div>
+        </div>
+      ) : null}
       {state.status === 'done' ? (
         <SearchResults result={state.result} area={area} onClear={clear} />
       ) : null}

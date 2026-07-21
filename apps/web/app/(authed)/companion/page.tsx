@@ -18,7 +18,7 @@ import { loadVillage } from '~/lib/village/queries';
 export default async function CompanionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string | string[] }>;
+  searchParams: Promise<{ tab?: string | string[]; child?: string | string[] }>;
 }) {
   const [
     children,
@@ -31,7 +31,7 @@ export default async function CompanionPage({
     members,
     documents,
     growthInputs,
-    { tab },
+    { tab, child },
   ] = await Promise.all([
     loadCompanion(),
     loadRecentLogs(),
@@ -95,6 +95,7 @@ export default async function CompanionPage({
           units={units}
           timeZone={timeZone}
           initialTab={tabFromParam(tab)}
+          initialChildId={typeof child === 'string' ? child : null}
         />
       )}
 

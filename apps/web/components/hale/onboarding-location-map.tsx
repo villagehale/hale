@@ -66,6 +66,27 @@ const HALE_MAP_STYLE = [
   },
 ];
 
+// Dark counterpart so the onboarding map isn't a bright cream block against the dark
+// canvas (WEB-14) — same dark-navy ground / sage parks / water / muted labels as the
+// village map's dark style.
+const HALE_MAP_STYLE_DARK = [
+  { elementType: 'geometry', stylers: [{ color: '#1a2230' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8b97a8' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#12161f' }] },
+  { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#232c3b' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a2230' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2c3446' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1a2230' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1e2a24' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b7d64' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#16222a' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#5b7d7d' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#3a4453' }] },
+];
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -108,6 +129,7 @@ export function OnboardingLocationMap({
         return;
       }
       libRef.current = lib;
+      const isDark = document.documentElement.classList.contains('dark');
       mapRef.current = new lib.Map(container, {
         center: DEFAULT_CENTER,
         zoom: CITY_ZOOM,
@@ -120,7 +142,7 @@ export function OnboardingLocationMap({
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: false,
-        styles: HALE_MAP_STYLE,
+        styles: isDark ? HALE_MAP_STYLE_DARK : HALE_MAP_STYLE,
       }) as unknown as MapInstance;
       setStatus('ready');
     })();
@@ -163,11 +185,7 @@ export function OnboardingLocationMap({
       {status === 'ready' ? (
         // Warm brand cast over the raster map (Google deprecated inline map styles for
         // Map-ID maps; a multiply overlay tints toward the Hale linen palette).
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{ background: '#f1eadb', mixBlendMode: 'multiply', opacity: 0.45 }}
-        />
+        <div aria-hidden="true" className="village-map-tint pointer-events-none absolute inset-0" />
       ) : (
         <div className="absolute inset-0">
           <VillageIllustration />

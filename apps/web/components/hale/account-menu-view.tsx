@@ -66,13 +66,14 @@ export function AccountMenuView({
   return (
     <div className="account-menu" ref={rootRef}>
       {open ? (
-        <div className="account-pop" role="menu" id={menuId} aria-label="account">
-          <Link
-            href={SETTINGS_NAV.href}
-            role="menuitem"
-            className="account-pop-item"
-            onClick={onSelect}
-          >
+        <div
+          className="account-pop"
+          id={menuId}
+          // biome-ignore lint/a11y/useSemanticElements: a non-modal account popover mixing a link, the appearance toggle, and sign-out (not pure menuitems) — matches the bell/location dialog pattern, Escape + outside-click close, not the native <dialog> (WEB-11)
+          role="dialog"
+          aria-label="account"
+        >
+          <Link href={SETTINGS_NAV.href} className="account-pop-item" onClick={onSelect}>
             <Icon as={Settings} size={18} />
             <span>settings</span>
           </Link>
@@ -84,11 +85,7 @@ export function AccountMenuView({
             <>
               <div className="account-pop-divider" />
               <form action={onSignOut}>
-                <button
-                  type="submit"
-                  role="menuitem"
-                  className="account-pop-item account-pop-signout"
-                >
+                <button type="submit" className="account-pop-item account-pop-signout">
                   <Icon as={LogOut} size={18} />
                   <span>sign out</span>
                 </button>
@@ -102,7 +99,7 @@ export function AccountMenuView({
         type="button"
         ref={triggerRef}
         className="account-chip"
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label="Your account"

@@ -177,7 +177,7 @@ export function LogsBrowser({
 
       <output className="meta italic block" aria-live="polite">
         {error ? (
-          <span className="text-apricot-deep" role="alert">
+          <span className="text-berry" role="alert">
             {error}
           </span>
         ) : (
@@ -376,7 +376,7 @@ function LogRow({
       )}
 
       {state.kind === 'error' ? (
-        <span className="basis-full flex items-center gap-2 pl-9 text-apricot-deep meta" role="alert">
+        <span className="basis-full flex items-center gap-2 pl-9 text-berry meta" role="alert">
           <Icon as={X} size={14} />
           {state.message}
         </span>

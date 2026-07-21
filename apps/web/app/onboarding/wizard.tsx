@@ -444,6 +444,11 @@ const FEATURES: readonly { title: string; note: string }[] = [
 function StepTomorrow({ headingRef, onNext }: { headingRef: HeadingRef; onNext: () => void }) {
   return (
     <section className="ob-step space-y-7">
+      {/* Focus target at the TOP of the step so SR/keyboard users land at the start,
+          not after all the content (WEB-12). */}
+      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
+        Here&rsquo;s tomorrow
+      </h1>
       <Bubble>
         Parenting was never meant to be done alone. Here&rsquo;s the kind of thing I&rsquo;ll
         quietly have ready for you tomorrow.
@@ -470,9 +475,6 @@ function StepTomorrow({ headingRef, onNext }: { headingRef: HeadingRef; onNext: 
         ))}
       </div>
 
-      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
-        Here&rsquo;s tomorrow
-      </h1>
       <div className="flex justify-end pt-1">
         <button type="button" className="btn-primary" onClick={onNext}>
           Continue
@@ -505,6 +507,10 @@ export function StepChildren({
   const hasNamedChild = kids.some((c) => c.name.trim().length > 0);
   return (
     <section className="ob-step space-y-7">
+      {/* Focus target at the TOP of the step (WEB-12). */}
+      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
+        Your children
+      </h1>
       <Bubble>Who&rsquo;s your first little person?</Bubble>
       <p className="meta">You can add more later. I&rsquo;ll ask their birthday privately after you sign in.</p>
 
@@ -547,9 +553,6 @@ export function StepChildren({
         </fieldset>
       </div>
 
-      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
-        Your children
-      </h1>
       <div className="flex justify-end pt-1">
         <button type="button" className="btn-primary" onClick={onNext}>
           {hasNamedChild ? "That's everyone — continue" : 'Continue'}
@@ -577,6 +580,10 @@ function StepLocation({
 }) {
   return (
     <section className="ob-step space-y-7">
+      {/* Focus target at the TOP of the step (WEB-12). */}
+      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
+        Your village area
+      </h1>
       <Bubble>Where should I look for your village?</Bubble>
 
       <div className="card space-y-4">
@@ -602,9 +609,6 @@ function StepLocation({
         </div>
       </div>
 
-      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
-        Your village area
-      </h1>
       <div className="flex justify-end pt-1">
         <button type="button" className="btn-primary" onClick={onNext}>
           Continue
@@ -630,14 +634,15 @@ function StepMatters({
 }) {
   return (
     <section className="ob-step space-y-7">
+      {/* Focus target at the TOP of the step (WEB-12). */}
+      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
+        What matters
+      </h1>
       <Bubble>What&rsquo;s on your plate with {childName} lately?</Bubble>
       <p className="meta">Pick any that fit — Hale will tune its help.</p>
 
       <IntentChips legend="What matters right now" selected={intents} onToggle={onToggle} />
 
-      <h1 ref={headingRef} tabIndex={-1} className="sr-only outline-none">
-        What matters
-      </h1>
       <div className="flex justify-end pt-1">
         <button type="button" className="btn-primary" onClick={onNext}>
           Continue

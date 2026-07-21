@@ -234,7 +234,7 @@ function LoopForm({ initial }: { initial: LoopPrefsView }) {
       </div>
 
       {note ? (
-        <p className="meta text-apricot-deep" role="alert">
+        <p className="meta text-berry" role="alert">
           {note}
         </p>
       ) : null}
