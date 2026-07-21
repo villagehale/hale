@@ -55,14 +55,26 @@ export const STAGE_LABEL: Record<FamilyStage, string> = {
   teenager: 'Teen',
 };
 
+// Hoisted so the formatter is built once, not per call: whenPhrase runs per episode
+// row and foundStamp's dayKey runs per Village RecCard, and each toLocaleString /
+// DateTimeFormat construction re-parses locale data. The undefined-locale one reads the
+// device locale at module load, which is stable for the app process (a locale change
+// restarts the app → reloads this module).
+const WHEN_FORMAT = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+const DAY_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 /** A logged episode's ISO time → a short "Jul 2, 2:15pm" style phrase. */
 export function whenPhrase(occurredAt: string): string {
-  return new Date(occurredAt).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return WHEN_FORMAT.format(new Date(occurredAt));
 }
 
 /** Day-grained "found …" freshness phrase for a discovery run (mirrors the web
@@ -74,8 +86,7 @@ export function whenPhrase(occurredAt: string): string {
 export function foundStamp(discoveredAt: string, now: Date = new Date()): string {
   const discovered = new Date(discoveredAt);
   if (Number.isNaN(discovered.getTime())) return '';
-  const dayKey = (d: Date) =>
-    new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const dayKey = (d: Date) => DAY_KEY_FORMAT.format(d);
   const days = Math.floor(
     (Date.parse(`${dayKey(now)}T00:00:00Z`) - Date.parse(`${dayKey(discovered)}T00:00:00Z`)) /
       86_400_000,

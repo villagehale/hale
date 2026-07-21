@@ -15,9 +15,15 @@ const INSET_X = 12;
  * (clamped in-bounds) instead of floating at a fixed top corner. */
 const TAG_H = 36;
 
+// Hoisted so the formatters are built once, not per reading: monthLabels runs the
+// month formatter per point across the chart's readings, and each toLocaleDateString
+// construction re-parses locale data. Device locale is stable for the app process.
+const MONTH_DAY_FORMAT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+const MONTH_FORMAT = new Intl.DateTimeFormat(undefined, { month: 'short' });
+
 /** "May 12" — the compact month+day the value tag and axis use. */
 function monthDay(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return MONTH_DAY_FORMAT.format(new Date(iso));
 }
 
 /** The distinct calendar months the readings span (oldest→newest), for the x-axis.
@@ -26,7 +32,7 @@ function monthDay(iso: string): string {
 function monthLabels(readingsOldestFirst: Measurement[]): { key: string; label: string }[] {
   const out: { key: string; label: string }[] = [];
   for (const r of readingsOldestFirst) {
-    const label = new Date(r.occurredAt).toLocaleDateString(undefined, { month: 'short' });
+    const label = MONTH_FORMAT.format(new Date(r.occurredAt));
     if (out[out.length - 1]?.label !== label) out.push({ key: `${label}-${out.length}`, label });
   }
   return out;

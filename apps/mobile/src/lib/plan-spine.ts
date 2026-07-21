@@ -56,22 +56,45 @@ export interface PlanSpine {
   settled: AuthoredPlanView[];
 }
 
+// Formatters memoized per time zone: buildPlanSpine calls dayKeyIn/weekdayIndexIn in
+// loops over the week, all with the same family time zone, and each construction
+// re-parses locale data. The family's zone is the only varying axis, so a tiny per-zone
+// cache reuses one formatter across the whole spine build.
+const DAY_KEY_FORMATS = new Map<string, Intl.DateTimeFormat>();
+const WEEKDAY_FORMATS = new Map<string, Intl.DateTimeFormat>();
+
+function dayKeyFormat(timeZone: string): Intl.DateTimeFormat {
+  let fmt = DAY_KEY_FORMATS.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone,
+    });
+    DAY_KEY_FORMATS.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
+function weekdayFormat(timeZone: string): Intl.DateTimeFormat {
+  let fmt = WEEKDAY_FORMATS.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone });
+    WEEKDAY_FORMATS.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
 /** The calendar-day key (YYYY-MM-DD) `iso` falls on IN `timeZone`. en-CA renders
  * ISO order, so the string sorts and compares as the date it names. */
 function dayKeyIn(iso: string | Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone,
-  }).format(new Date(iso));
+  return dayKeyFormat(timeZone).format(new Date(iso));
 }
 
 /** 0=Mon … 6=Sun for the weekday `iso` falls on IN `timeZone`. */
 function weekdayIndexIn(iso: string | Date, timeZone: string): number {
-  const name = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone })
-    .format(new Date(iso))
-    .toLowerCase();
+  const name = weekdayFormat(timeZone).format(new Date(iso)).toLowerCase();
   return WEEKDAYS.indexOf(name as Weekday);
 }
 
