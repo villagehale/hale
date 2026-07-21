@@ -414,6 +414,13 @@
       "when": 1781463300000,
       "tag": "0061_channel_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781463360000,
+      "tag": "0062_calendar_placements",
+      "breakpoints": true
     }
   ]
 }

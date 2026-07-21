@@ -166,7 +166,16 @@ export const emailTypeEnum = pgEnum('email_type', [
 // on the exchange channel (C2 "add Leo's party Sat 2pm"). 'email' — pulled from an
 // invite email (E-phase). The composer treats all three identically; the source is
 // kept for provenance + audit (rule #6).
-export const familyEventSourceEnum = pgEnum('family_event_source', ['parent', 'channel', 'email']);
+export const familyEventSourceEnum = pgEnum('family_event_source', [
+  'parent',
+  'channel',
+  'email',
+  // A Hale-authored calendar PLACEMENT (VIL-219 calendar_add) — distinct from the
+  // three EXTERNAL-occasion sources above. The weekly-plan composer surfaces external
+  // occasions but NOT placements (a placed item is a durable calendar entry, not a
+  // fresh proposal), while the ICS feed renders both.
+  'placement',
+]);
 
 // F11 · The Sunday Loop — a parent's chosen EXCHANGE channel (the two-way
 // "reply to adjust" leg). Push is an always-on DELIVERY leg, not an exchange

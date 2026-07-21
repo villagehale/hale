@@ -66,6 +66,9 @@ function makeClaimStore() {
     sendEmail: vi.fn(async () => ({ messageId: 'unset' })),
     addToRoutine: vi.fn(async () => 'written' as const),
     addToDigest: vi.fn(async () => 'written' as const),
+    addToCalendar: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
+    moveCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
+    cancelCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
     calendar: {
       createEvent: vi.fn(async () => ({ providerEventId: 'unset' })),
       updateEvent: vi.fn(async () => ({ providerEventId: 'unset' })),
@@ -292,6 +295,143 @@ describe('runExecutor — calendar via the CalendarClient interface', () => {
     await expect(
       runExecutor({ familyId, approved: approvedCalendar('create_calendar_event') }),
     ).rejects.toThrow('HALE_NOT_CONFIGURED: Google Calendar not connected');
+  });
+});
+
+function approvedPlacement(
+  actionType: 'calendar_add' | 'calendar_move' | 'calendar_cancel',
+  payload: Record<string, unknown>,
+): ApprovedAction {
+  return mintApprovedAction(
+    {
+      id: actionId,
+      eventId: '33333333-3333-4333-8333-333333333333',
+      familyId,
+      actionType,
+      payload,
+      draftConfidence: 0.95,
+      rationale: 'placement',
+      recipientVisibility: 'internal_only',
+      draftedAt: '2026-06-12T10:00:00.000Z',
+    },
+    {
+      kind: 'approve',
+      rationale: 'checks green',
+      toolResults: [
+        { tool: 'check_action_time_window', ok: true, result: {} },
+        { tool: 'check_action_idempotency', ok: true, result: {} },
+        { tool: 'check_calendar_conflict', ok: true, result: {} },
+      ],
+    },
+    () => true,
+  );
+}
+
+describe('runExecutor — calendar placements (VIL-219, internal-write)', () => {
+  const ADD_PAYLOAD = {
+    title: 'Swim class',
+    startsAt: '2026-07-10T14:00:00Z',
+    endsAt: '2026-07-10T14:45:00Z',
+    location: 'Rec Centre',
+    childId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  };
+
+  it('calendar_add places on family_events and returns the reversal handle INSIDE detail', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-123',
+    }));
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD_PAYLOAD) },
+      deps,
+    );
+
+    expect(deps.addToCalendar).toHaveBeenCalledWith({
+      familyId,
+      actionId,
+      title: 'Swim class',
+      startsAt: new Date('2026-07-10T14:00:00Z'),
+      endsAt: new Date('2026-07-10T14:45:00Z'),
+      location: 'Rec Centre',
+      childId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    // The orchestrator persists only `detail` into executor_result, so the handle
+    // MUST be nested in detail — a top-level reversalHandle would be dropped and
+    // the UNDO primitive could never find the row.
+    expect(result.detail).toEqual({
+      kind: 'calendar_placed',
+      outcome: 'written',
+      reversalHandle: 'fe-123',
+    });
+    expect(result.reversalHandle).toBeUndefined();
+    expect(result.reversible).toBe(true);
+  });
+
+  it('calendar_add throws (no false ok) when the title is missing', async () => {
+    const { deps } = makeClaimStore();
+    await expect(
+      runExecutor(
+        { familyId, approved: approvedPlacement('calendar_add', { startsAt: '2026-07-10T14:00:00Z' }) },
+        deps,
+      ),
+    ).rejects.toThrow(/missing required field \(title\)/);
+    expect(deps.addToCalendar).not.toHaveBeenCalled();
+  });
+
+  it('calendar_move mutates the handle row and is NOT reversible (no prior time kept)', async () => {
+    const { deps } = makeClaimStore();
+    deps.moveCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-9',
+    }));
+
+    const result = await runExecutor(
+      {
+        familyId,
+        approved: approvedPlacement('calendar_move', { ...ADD_PAYLOAD, reversalHandle: 'fe-9' }),
+      },
+      deps,
+    );
+
+    expect(deps.moveCalendarEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ familyId, actionId, reversalHandle: 'fe-9', title: 'Swim class' }),
+    );
+    expect(result.detail).toMatchObject({ kind: 'calendar_moved', reversalHandle: 'fe-9' });
+    expect(result.reversible).toBe(false);
+  });
+
+  it('calendar_cancel soft-deletes the handle row', async () => {
+    const { deps } = makeClaimStore();
+    deps.cancelCalendarEvent = vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-5',
+    }));
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_cancel', { reversalHandle: 'fe-5' }) },
+      deps,
+    );
+
+    expect(deps.cancelCalendarEvent).toHaveBeenCalledWith({
+      familyId,
+      actionId,
+      reversalHandle: 'fe-5',
+    });
+    expect(result.detail).toMatchObject({ kind: 'calendar_cancelled', reversalHandle: 'fe-5' });
+    expect(result.reversible).toBe(false);
+  });
+
+  it('calendar_move/cancel throw when the reversal handle is missing', async () => {
+    const { deps } = makeClaimStore();
+    await expect(
+      runExecutor(
+        { familyId, approved: approvedPlacement('calendar_cancel', {}) },
+        deps,
+      ),
+    ).rejects.toThrow(/missing required field \(reversalHandle\)/);
+    expect(deps.cancelCalendarEvent).not.toHaveBeenCalled();
   });
 });
 

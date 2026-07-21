@@ -60,6 +60,11 @@ const ACTION_ENTITLEMENT = {
   share_photos_with_family: null,
   add_to_digest_only: null,
   add_to_routine: null,
+  // Calendar placements write Hale's own family_events (no external cost/scope) —
+  // base L3, no extra entitlement, mirroring create/update_calendar_event.
+  calendar_add: null,
+  calendar_move: null,
+  calendar_cancel: null,
 } as const satisfies Record<ActionType, Entitlement | null>;
 
 /** The entitlement `actionType` needs beyond base L3, or null. Pure — no I/O. */

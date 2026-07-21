@@ -43,6 +43,12 @@ export const familyEvents = pgTable(
      * with no acting user. Nulled if the user is deleted — the event survives. */
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Soft-delete stamp (VIL-219): a `calendar_cancel` marks the placement deleted
+     * here rather than erasing the row, so the audit trail + provenance survive (rules
+     * #6/#9) and an UNDO stays reversible. Every read that surfaces a live event — the
+     * composer's listFamilyEventsInWindow, the ICS feed, the reviewer conflict check —
+     * filters `deleted_at IS NULL`. Null = a live placement/occasion. */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => ({
     // The composer's read is WHERE family_id = ? AND starts_at IN [window] — index

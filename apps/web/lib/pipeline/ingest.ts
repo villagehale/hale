@@ -66,6 +66,9 @@ const KNOWN_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
   'share_photos_with_family',
   'add_to_digest_only',
   'add_to_routine',
+  'calendar_add',
+  'calendar_move',
+  'calendar_cancel',
 ]);
 
 export interface IngestInput {

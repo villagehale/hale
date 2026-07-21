@@ -235,3 +235,56 @@ describe('runReviewer — hard rule #3 coverage guard', () => {
     }
   });
 });
+
+describe('runReviewer — calendar_conflict args are injected server-side (rule #3)', () => {
+  function calendarDraft(): DraftedAction {
+    return {
+      id: '44444444-4444-4444-8444-444444444444',
+      eventId: '55555555-5555-4555-8555-555555555555',
+      familyId,
+      actionType: 'calendar_add',
+      payload: {
+        title: 'Swim class',
+        startsAt: '2026-07-10T14:00:00.000Z',
+        endsAt: '2026-07-10T14:45:00.000Z',
+        action_hash: 'deadbeef',
+      },
+      draftConfidence: 0.9,
+      rationale: 'placement',
+      recipientVisibility: 'internal_only',
+      draftedAt: '2026-07-06T10:00:00.000Z',
+    };
+  }
+
+  it('overrides the model args with the real family + window (duration derived from the payload)', async () => {
+    // The model calls the conflict check with garbage/empty args; the reviewer must
+    // replace them with the family id and the REAL window from the draft payload.
+    const client = scriptedClient([
+      [
+        { name: 'check_action_time_window', input: { familyId } },
+        { name: 'check_action_idempotency', input: { familyId } },
+        { name: 'check_calendar_conflict', input: { familyId: 'SPOOFED', startsAt: 'whenever', durationMinutes: 1 } },
+      ],
+      [{ name: VERDICT_TOOL, input: { verdict: 'approve', rationale: 'slot clear' } }],
+    ]);
+
+    const seen: Array<{ name: string; input: unknown }> = [];
+    const capturing = vi.fn(async (name: ReviewerToolName, input: unknown) => {
+      seen.push({ name, input });
+      return { tool: name, ok: true, result: { hasConflict: false } };
+    });
+
+    const { verdict } = await runReviewer(
+      { familyId, draft: calendarDraft() },
+      { client, invokeTool: capturing, loadChildNames: noChildNames },
+    );
+
+    expect(verdict.kind).toBe('approve');
+    const conflictCall = seen.find((c) => c.name === 'check_calendar_conflict');
+    expect(conflictCall?.input).toEqual({
+      familyId,
+      startsAt: '2026-07-10T14:00:00.000Z',
+      durationMinutes: 45,
+    });
+  });
+})

@@ -77,7 +77,30 @@ const CHECK_INPUT_SCHEMAS: Partial<Record<ReviewerToolName, Anthropic.Tool['inpu
     required: ['familyId', 'actionHash'],
     additionalProperties: false,
   },
+  // check_calendar_conflict's args are all injected server-side (family + the
+  // placement window derived from the payload's startsAt/endsAt) — the model can
+  // neither know the family id nor be trusted to compute the duration. The schema
+  // is shown so the model calls the tool with no args and lets the injection fill it.
+  check_calendar_conflict: {
+    type: 'object',
+    properties: {},
+    additionalProperties: false,
+  },
 };
+
+/** Default placement length when a calendar payload gives a start but no end. */
+const DEFAULT_PLACEMENT_MINUTES = 60;
+
+/** The placement window's length in whole minutes (≥1), for the conflict check.
+ * Derived server-side from the payload — never the model — so the reviewer checks
+ * the REAL proposed window (rule #3 verify-by-fact). */
+function placementDurationMinutes(startsAt: unknown, endsAt: unknown): number {
+  if (typeof startsAt !== 'string' || typeof endsAt !== 'string') return DEFAULT_PLACEMENT_MINUTES;
+  const start = new Date(startsAt).getTime();
+  const end = new Date(endsAt).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return DEFAULT_PLACEMENT_MINUTES;
+  return Math.max(1, Math.round((end - start) / 60000));
+}
 
 // Expose ONLY the checks REQUIRED for this action type. add_to_routine (an
 // internal pin) requires just check_action_idempotency; showing it the full
@@ -223,6 +246,17 @@ export async function runReviewer(
           familyId: input.familyId,
           actionId: input.draft.id,
           actionHash: typeof payloadHash === 'string' ? payloadHash : '',
+        };
+      }
+      if (block.name === 'check_calendar_conflict') {
+        // Inject the family + the REAL proposed window from the draft payload; the
+        // model supplies neither. durationMinutes is derived from startsAt/endsAt
+        // server-side (ISSUE-5 class: a model-supplied window verifies nothing).
+        const p = input.draft.payload as { startsAt?: unknown; endsAt?: unknown };
+        toolInput = {
+          familyId: input.familyId,
+          startsAt: typeof p.startsAt === 'string' ? p.startsAt : '',
+          durationMinutes: placementDurationMinutes(p.startsAt, p.endsAt),
         };
       }
       const result = await invokeTool(block.name as ReviewerToolName, toolInput);

@@ -60,6 +60,9 @@ const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   share_photos_with_family: 'Share photos with family',
   add_to_digest_only: 'Note in your digest',
   add_to_routine: 'Pin to your routine',
+  calendar_add: 'Add to your calendar',
+  calendar_move: 'Reschedule on your calendar',
+  calendar_cancel: 'Remove from your calendar',
 };
 
 const ACTION_TYPE_FALLBACK = 'an action';
