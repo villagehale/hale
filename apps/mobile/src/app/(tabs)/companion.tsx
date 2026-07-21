@@ -9,6 +9,7 @@ import { GrowthAddSheet } from '@/components/hale/growth-add-sheet';
 import { GrowthChart } from '@/components/hale/growth-chart';
 import { LogEditSheet } from '@/components/hale/log-edit-sheet';
 import { AppText } from '@/components/ui/app-text';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { useTintedRefresh } from '@/components/ui/pull-refresh';
@@ -450,10 +451,25 @@ function OverviewSection({
 // ── HEALTH ────────────────────────────────────────────────────────────────────
 
 function MeasurementsCard({ childId, units }: { childId: string; units: UnitSystem }) {
-  const { status, data } = useApi<MobileLogsResponse>(
+  const { status, data, error, reload } = useApi<MobileLogsResponse>(
     `/api/mobile/companion/logs?child=${childId}&episodeType=measurement`,
   );
-  if (status === 'loading' || status === 'error' || !data) {
+  // A fetch failure must NOT silently drop the card (a vanished card reads as "no
+  // measurements"): keep the heading and surface an honest error with a retry.
+  if (status === 'error') {
+    return (
+      <Card className="gap-2.5">
+        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
+          Measurements
+        </AppText>
+        <AppText variant="meta" className="text-ink-3">
+          {error ?? "Couldn't load measurements just now."}
+        </AppText>
+        <Button label="Try again" variant="secondary" onPress={reload} />
+      </Card>
+    );
+  }
+  if (status === 'loading' || !data) {
     return null;
   }
   const series = buildMeasureSeries(data.logs);

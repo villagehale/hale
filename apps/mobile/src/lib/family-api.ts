@@ -75,6 +75,30 @@ export async function updateLoopPref(body: MobileLoopPrefUpdateRequest): Promise
   });
 }
 
+/** Upload a child's avatar photo (multipart field `file`). Hits the SHARED
+ * /api/family/children/:id/avatar route (Bearer-bridged, family-scoped): the server
+ * byte-sniffs the type (jpeg/png/webp only), caps at 5 MB, and returns the freshly-
+ * signed, cache-busted URL. A 413/415 surfaces as an ApiError the caller maps to honest
+ * copy (rules #1/#6). */
+export async function uploadChildAvatar(
+  childId: string,
+  file: { uri: string; name: string; type: string },
+): Promise<{ avatarUrl: string }> {
+  const form = new FormData();
+  form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  return api<{ avatarUrl: string }>(`/api/family/children/${childId}/avatar`, {
+    method: 'POST',
+    body: form,
+    // A photo upload over a mobile network needs more than the 15s default.
+    timeoutMs: 60_000,
+  });
+}
+
+/** Remove a child's avatar photo (back to initials). DELETEs the same route. */
+export async function removeChildAvatar(childId: string): Promise<void> {
+  await api(`/api/family/children/${childId}/avatar`, { method: 'DELETE' });
+}
+
 /** Turn off the parent's SMS channel (VIL-212). DELETEs the text-notifications
  * route, which soft-revokes the channel + records a CASL consent withdrawal + audit
  * in one transaction (rules #1/#6). Re-enrolling requires re-verifying a number. */
