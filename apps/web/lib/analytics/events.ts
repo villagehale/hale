@@ -28,7 +28,10 @@ export type AnalyticsEvent =
   | 'plan_upgrade_started'
   // F11 · The Sunday Loop (VIL-218 · B2): one weekly_plan message enqueued to a
   // parent. Coarse props only (item/pending counts + category) — feeds X1.
-  | 'loop_plan_sent';
+  | 'loop_plan_sent'
+  // F11 · reminders (VIL-223 · D1): one reminder message (a T-1h ping or a batched
+  // T-24h evening) enqueued to a parent. Coarse props only (offset enum + event count).
+  | 'reminder_sent';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
