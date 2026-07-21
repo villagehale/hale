@@ -152,9 +152,12 @@ export default async function HomePage() {
   );
 
   return (
-    <div>
-      {/* ── Quick actions — the quick-log handlers (feed / nap / milestone) as
-       * bordered action cards. The greeting hero lives in the shell top bar. ─── */}
+    // Opt the dashboard up to the 72rem canvas (§4.2) — the same stage-wide lift
+    // Village uses (.village-wide in globals.css), so the row-of-4 quick-links +
+    // village cards get real width instead of the 58rem editorial column.
+    <div className="village-wide">
+      {/* ── Quick actions — the quick-log handlers (feed / nap / diaper / milestone)
+       * as bordered action cards. The greeting hero lives in the shell top bar. ─── */}
       <section className="rise rise-2 mb-4">
         <QuickLog
           kids={children.map((c) => ({ id: c.id, name: c.name, stage: c.stage }))}
