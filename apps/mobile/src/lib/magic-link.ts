@@ -33,3 +33,17 @@ export type MagicPhase = 'verifying' | 'failed';
 export function initialMagicPhase(token: string | null): MagicPhase {
   return token ? 'verifying' : 'failed';
 }
+
+/**
+ * Whether the verify screen should (re)attempt a token, given the token it last acted
+ * on. A fresh token is attempted — including one that deep-links in while a prior
+ * attempt already failed, which is what re-verifies a second link tapped on the
+ * "Link didn't work" screen instead of leaving it stuck failed. The token already
+ * acted on is not re-fired, and a missing token is nothing to redeem.
+ */
+export function shouldAttemptToken(
+  token: string | null,
+  lastAttempted: string | null,
+): token is string {
+  return token !== null && token !== lastAttempted;
+}

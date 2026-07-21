@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { type MagicPhase, initialMagicPhase, isPlausibleEmail, magicTokenFromParams } from './magic-link';
+import {
+  type MagicPhase,
+  initialMagicPhase,
+  isPlausibleEmail,
+  magicTokenFromParams,
+  shouldAttemptToken,
+} from './magic-link';
 
 describe('isPlausibleEmail', () => {
   it('accepts a normal address', () => {
@@ -43,5 +49,26 @@ describe('initialMagicPhase', () => {
 
   it('fails immediately when the token is missing (nothing to redeem)', () => {
     expect(initialMagicPhase(null)).toBe('failed' satisfies MagicPhase);
+  });
+});
+
+describe('shouldAttemptToken', () => {
+  it('attempts a fresh token when none has been tried yet', () => {
+    expect(shouldAttemptToken('tok', null)).toBe(true);
+  });
+
+  it('does not re-fire the token already acted on', () => {
+    expect(shouldAttemptToken('tok', 'tok')).toBe(false);
+  });
+
+  it('re-attempts when a new token replaces a previously tried one (failure-screen relink)', () => {
+    expect(shouldAttemptToken('fresh', 'stale')).toBe(true);
+  });
+
+  it.each([
+    [null, null],
+    [null, 'tok'],
+  ])('never attempts a missing token (%j after %j)', (token, last) => {
+    expect(shouldAttemptToken(token, last)).toBe(false);
   });
 });

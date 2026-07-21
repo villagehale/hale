@@ -120,13 +120,27 @@ export function AskHistorySheet({
   visible: boolean;
   onClose: () => void;
   onNewChat: () => void;
-  onSelect: (id: string) => void;
+  onSelect: (id: string) => Promise<void>;
 }) {
   const [state, setState] = useState<ListState>({ status: 'loading' });
+  const [selectError, setSelectError] = useState<string | null>(null);
   const plus = useMeadowColor('brand');
   // Only the latest fetch's response is applied — a stale in-flight read from a prior
   // open (or before a retry) is ignored.
   const requestSeq = useRef(0);
+
+  // Open a row's transcript through the parent. A failed load surfaces an inline error
+  // and leaves the sheet open so the row can be retried, instead of a silent no-op; a
+  // 401 is the client's own sign-in bounce, so say nothing.
+  const openRow = async (id: string) => {
+    setSelectError(null);
+    try {
+      await onSelect(id);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      setSelectError("Couldn't open that chat. Please try again.");
+    }
+  };
 
   const load = useCallback(() => {
     const seq = ++requestSeq.current;
@@ -143,9 +157,13 @@ export function AskHistorySheet({
       });
   }, []);
 
-  // (Re)fetch each time the sheet opens so a just-finished chat appears.
+  // (Re)fetch each time the sheet opens so a just-finished chat appears; clear any
+  // stale row-open error from a prior open.
   useEffect(() => {
-    if (visible) load();
+    if (visible) {
+      setSelectError(null);
+      load();
+    }
   }, [visible, load]);
 
   const now = new Date();
@@ -169,6 +187,16 @@ export function AskHistorySheet({
           New chat
         </AppText>
       </Pressable>
+
+      {selectError ? (
+        <AppText
+          variant="meta"
+          className="mb-3 text-center text-berry"
+          accessibilityLiveRegion="polite"
+        >
+          {selectError}
+        </AppText>
+      ) : null}
 
       {state.status === 'loading' ? <SkeletonRows /> : null}
 
@@ -201,12 +229,12 @@ export function AskHistorySheet({
 
       {state.status === 'ready' ? (
         <>
-          <SessionGroup heading="Today" conversations={grouped.today} now={now} onSelect={onSelect} />
+          <SessionGroup heading="Today" conversations={grouped.today} now={now} onSelect={openRow} />
           <SessionGroup
             heading="Earlier"
             conversations={grouped.earlier}
             now={now}
-            onSelect={onSelect}
+            onSelect={openRow}
           />
         </>
       ) : null}

@@ -40,7 +40,7 @@ export default function ChildScreen() {
       <ChatBubble prompt="Who's your first little person?" sub="You can add more later." />
 
       <View className="my-6 flex-1 items-center justify-center">
-        <TurtleMascot width={150} />
+        <TurtleMascot pose="excited" width={150} />
       </View>
 
       <ChildFields
