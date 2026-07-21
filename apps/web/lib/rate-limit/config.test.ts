@@ -28,6 +28,15 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     expect(RATE_LIMITS['village-search'].limit).toBeLessThanOrEqual(10);
   });
 
+  it('guards the AI-search intent parse as a generous per-minute bot guard, not the paid cooldown', () => {
+    // The natural-language search's per-submit intent parse is a CHEAP model call;
+    // the expensive discovery it may trigger is separately bounded by village-search
+    // (5/hour). So this stays a per-minute guard on a burst, generous enough that a
+    // parent exploring phrasings never hits it — only a scripted loop does.
+    expect(RATE_LIMITS['village-ai-search'].windowSec).toBe(60);
+    expect(RATE_LIMITS['village-ai-search'].limit).toBeGreaterThanOrEqual(15);
+  });
+
   it('uses a one-minute window for every route except the paid village-search cooldown', () => {
     for (const [route, opts] of Object.entries(RATE_LIMITS)) {
       if (route === 'village-search') continue;
