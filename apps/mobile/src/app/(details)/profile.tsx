@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 
@@ -49,10 +50,18 @@ function ProfileBody({ data }: { data: MobileFamilyResponse }) {
   return (
     <>
       <View className="items-center gap-2.5 py-2">
-        <View className="h-[76px] w-[76px] items-center justify-center rounded-full bg-accent">
+        <View className="h-[76px] w-[76px] items-center justify-center overflow-hidden rounded-full bg-accent">
           <AppText className="text-[28px]" style={{ color: accentText, fontFamily: 'SourceSerif4_600SemiBold' }}>
             {avatarInitial(viewer.name, viewer.email)}
           </AppText>
+          {viewer.image ? (
+            <Image
+              source={{ uri: viewer.image }}
+              accessibilityIgnoresInvertColors
+              contentFit="cover"
+              style={{ position: 'absolute', width: 76, height: 76 }}
+            />
+          ) : null}
         </View>
         <View className="items-center">
           <AppText variant="title">{name}</AppText>

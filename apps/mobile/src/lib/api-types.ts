@@ -294,6 +294,9 @@ export interface FamilyChildBasics {
   name: string;
   /** Optional family / last name, or null when not given (rule #1). */
   lastName: string | null;
+  /** A freshly-signed avatar photo URL, or null when the child has no photo (then the
+   * UI shows initials). Server-resolved + cache-busted (mirrors web). */
+  avatarUrl: string | null;
   dateOfBirth: string;
   /** Stored gender enum, so an edit form prefills it. */
   gender: ChildGender;
@@ -512,8 +515,9 @@ export interface MobileFamilyResponse {
   members: FamilyMembersView;
   basics: FamilyBasicsView;
   /** The signed-in parent (from THIS session) for the More profile header —
-   * members.primary reads wrong for a co-parent. */
-  viewer: { name: string | null; email: string | null };
+   * members.primary reads wrong for a co-parent. `image` is the parent's Google photo
+   * URL, or null (then the UI shows initials). */
+  viewer: { name: string | null; email: string | null; image: string | null };
 }
 
 export interface MobileApprovalsResponse {
