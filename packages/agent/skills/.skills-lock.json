@@ -34,5 +34,9 @@
   "rank-recommendations.md": {
     "file": "rank-recommendations.md",
     "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"
+  },
+  "week-summary.md": {
+    "file": "week-summary.md",
+    "sha256": "93952633e61d6a75b31db98570883a2234da5b2b0ec443c071aff5797608d840"
   }
 }
