@@ -129,7 +129,7 @@ export function Testimonials() {
             type="button"
             aria-label="Previous testimonial"
             onClick={() => go(-1)}
-            className="group flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1B2160] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+            className="group flex h-14 w-14 items-center justify-center rounded-2xl bg-[#17294A] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A]"
           >
             <ArrowLeft
               size={22}
@@ -142,7 +142,7 @@ export function Testimonials() {
             type="button"
             aria-label="Next testimonial"
             onClick={() => go(1)}
-            className="group flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1B2160] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+            className="group flex h-14 w-14 items-center justify-center rounded-2xl bg-[#17294A] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A]"
           >
             <ArrowRight
               size={22}

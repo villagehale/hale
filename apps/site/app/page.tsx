@@ -63,7 +63,7 @@ export default function LandingPage() {
           style={{ textShadow: '0 1px 16px rgba(23,41,74,0.45)' }}
         >
           <span className="rise rise-1 inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#17294A]/40 px-3 py-1.5 text-sm font-normal text-[#F7F4EC] backdrop-blur-md">
-            <span className="rounded-full bg-[#F7F4EC] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#1B2160]">
+            <span className="rounded-full bg-[#F7F4EC] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#17294A]">
               Free
             </span>
             Built in Canada — private by default
@@ -162,7 +162,7 @@ export default function LandingPage() {
                 <LandingCta
                   event="landing_cta_signin"
                   href={SIGN_UP}
-                  className="inline-flex items-center justify-center rounded-full bg-[#1B2160] px-6 py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+                  className="inline-flex items-center justify-center rounded-full bg-[#17294A] px-6 py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A]"
                 >
                   Get started
                 </LandingCta>
@@ -179,7 +179,7 @@ export default function LandingPage() {
         <section className="mx-auto max-w-7xl px-6 py-24">
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div className="lg:order-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#1B2160]/25 bg-white px-3.5 py-1.5 text-xs font-semibold text-[#1B2160]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#17294A]/25 bg-white px-3.5 py-1.5 text-xs font-semibold text-[#17294A]">
                 <Sparkles size={13} strokeWidth={2} />
                 Your Village
               </span>
@@ -194,7 +194,7 @@ export default function LandingPage() {
                 <LandingCta
                   event="landing_cta_signin"
                   href={SIGN_UP}
-                  className="inline-flex items-center justify-center rounded-full bg-[#1B2160] px-6 py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160]"
+                  className="inline-flex items-center justify-center rounded-full bg-[#17294A] px-6 py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A]"
                 >
                   Get started
                 </LandingCta>
@@ -219,7 +219,7 @@ export default function LandingPage() {
         <div className="grid gap-8 lg:grid-cols-12 lg:gap-16">
           <div className="lg:col-span-4">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden className="h-1.5 w-1.5 bg-[#1B2160]" />
+              <span aria-hidden className="h-1.5 w-1.5 bg-[#17294A]" />
               <AnimatedText
                 text="About Hale"
                 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#5C6B87]"
@@ -241,7 +241,7 @@ export default function LandingPage() {
       {/* ── 6 · Navy CTA band + footer ────────────────────────────────────── */}
       <FadeInUp>
         <section id="contact" className="px-4 py-16 sm:px-6">
-          <div className="mx-auto max-w-[1100px] rounded-[28px] bg-[#1B2160] px-6 py-16 text-center md:py-24">
+          <div className="mx-auto max-w-[1100px] rounded-[28px] bg-[#17294A] px-6 py-16 text-center md:py-24">
             <h2 className="mx-auto max-w-3xl text-4xl font-medium tracking-tight text-[#F7F4EC] md:text-5xl">
               Ready to feel <span className="font-serif font-normal italic">on top of it all?</span>
             </h2>
@@ -252,7 +252,7 @@ export default function LandingPage() {
               <LandingCta
                 event="landing_cta_signin"
                 href={SIGN_UP}
-                className="inline-flex items-center justify-center rounded-full bg-[#F7F4EC] px-7 py-3.5 text-base font-semibold text-[#1B2160] transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC]"
+                className="inline-flex items-center justify-center rounded-full bg-[#F7F4EC] px-7 py-3.5 text-base font-semibold text-[#17294A] transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC]"
               >
                 Get started
               </LandingCta>
@@ -305,7 +305,7 @@ function RevealWords({
 function AskHaleMockup() {
   return (
     <div className="rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#FFF9F1] to-[#FBEDDC] p-6 sm:p-8">
-      <div className="hale-card-in hale-float rounded-2xl bg-[#1B2160]/95 p-4 shadow-[0_24px_60px_-20px_rgba(20,26,77,0.55)] backdrop-blur">
+      <div className="hale-card-in hale-float rounded-2xl bg-[#17294A]/95 p-4 shadow-[0_24px_60px_-20px_rgba(20,26,77,0.55)] backdrop-blur">
         <div className="flex flex-wrap gap-2">
           {['Log a nap', 'Draft daycare email', 'Find weekend ideas'].map((chip) => (
             <span
@@ -328,7 +328,7 @@ function AskHaleMockup() {
             </p>
             <p className="mt-1 text-sm text-[#F7F4EC]">Log nap — Mia, 1:30–3:00 PM</p>
             <div className="mt-3 flex gap-2">
-              <span className="rounded-full bg-[#F7F4EC] px-3 py-1.5 text-xs font-semibold text-[#1B2160]">
+              <span className="rounded-full bg-[#F7F4EC] px-3 py-1.5 text-xs font-semibold text-[#17294A]">
                 Approve
               </span>
               <span className="rounded-full border border-white/25 px-3 py-1.5 text-xs font-medium text-[#F7F4EC]/80">
@@ -342,7 +342,7 @@ function AskHaleMockup() {
           <span className="flex-1 text-sm text-[#F7F4EC]/50">Ask anything…</span>
           <Mic size={18} strokeWidth={1.75} className="text-[#F7F4EC]/60" aria-hidden />
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F7F4EC]">
-            <SendHorizonal size={16} strokeWidth={2} className="text-[#1B2160]" aria-hidden />
+            <SendHorizonal size={16} strokeWidth={2} className="text-[#17294A]" aria-hidden />
           </span>
         </div>
       </div>
@@ -373,7 +373,7 @@ function VillageMockup() {
           <ul className="mt-3 flex flex-col gap-2.5">
             {[
               { color: '#B26B1F', label: 'Storytime · Sat 10:30' },
-              { color: '#1B2160', label: 'Toddler swim · Sun 9:00' },
+              { color: '#17294A', label: 'Toddler swim · Sun 9:00' },
               { color: '#8B95A9', label: 'Nature walk · Sat 2:00' },
             ].map((row) => (
               <li key={row.label} className="flex items-center gap-2.5">

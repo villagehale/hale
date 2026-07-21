@@ -60,7 +60,7 @@ export function SiteHeader() {
             <a
               key={link.label}
               href={link.href}
-              className="rounded-sm text-sm font-medium text-[#5C6B87] transition-colors hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#1B2160]"
+              className="rounded-sm text-sm font-medium text-[#5C6B87] transition-colors hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#17294A]"
             >
               {link.label}
             </a>
@@ -71,7 +71,7 @@ export function SiteHeader() {
           <LandingCta
             event="landing_cta_signin"
             href={`${APP_URL}/sign-up`}
-            className="hidden rounded-full bg-[#1B2160] px-5 py-2.5 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160] sm:inline-flex"
+            className="hidden rounded-full bg-[#17294A] px-5 py-2.5 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] sm:inline-flex"
           >
             Get started
           </LandingCta>
@@ -81,7 +81,7 @@ export function SiteHeader() {
             aria-expanded={open}
             aria-controls="mobile-nav"
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#17294A] transition-colors hover:bg-[#F0F2F6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160] md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[#17294A] transition-colors hover:bg-[#F0F2F6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] md:hidden"
           >
             {open ? <X size={22} strokeWidth={1.75} /> : <Menu size={22} strokeWidth={1.75} />}
           </button>
@@ -109,7 +109,7 @@ export function SiteHeader() {
             <LandingCta
               event="landing_cta_signin"
               href={`${APP_URL}/sign-up`}
-              className="mt-2 inline-flex justify-center rounded-full bg-[#1B2160] px-5 py-3 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#141a4d]"
+              className="mt-2 inline-flex justify-center rounded-full bg-[#17294A] px-5 py-3 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36]"
             >
               Get started
             </LandingCta>
