@@ -1,15 +1,20 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, runAgent } from '@hale/agent';
 import { type Database, schema, type WeekPlanItem } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { buildCronGuardDeps } from '~/lib/cron/guards';
 import { loadWeekSummarySkill } from '~/lib/cron/skill';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import {
+  type LoopPrefsView,
+  loadLoopPrefsView,
+  localParts,
+  weeklyPlanWeekday,
+} from '~/lib/loop/prefs';
 import { weekWindow } from '~/lib/plan/spine';
+import { composeWeekPlan } from './compose';
 import { gatherWeekPlanInputs } from './gather';
 import { hasWeekPlan, readWeekPlan, upsertWeekPlan } from './queries';
-import { composeWeekPlan } from './compose';
-import { DEFAULT_SEND_WINDOW, isInSendWindow, type SendWindow } from './schedule';
 
 /**
  * The weekly-plan cron (VIL-217 — "the Sunday brain"). Runs HOURLY and composes ONE
@@ -33,6 +38,10 @@ const MAX_STEPS = 1;
 const SUMMARY_MAX_TOKENS = 256;
 /** Per-run family cap — the blast-radius bound, mirroring the digest cron. */
 export const MAX_WEEK_PLAN_FAMILIES_PER_RUN = 100;
+/** The compose window width: one hour, so an hourly cron catches each family's slot
+ * exactly once per week, DST-correctly, across any UTC offset (incl. :30/:45 zones). */
+const COMPOSE_SLOT_MINUTES = 60;
+const MINUTES_PER_WEEK = 10080;
 
 export interface WeekPlanDeps {
   /** The agent client for the summary stage, or null to run WITHOUT the LLM (the
@@ -143,18 +152,17 @@ export interface WeekPlanCronResult {
 }
 
 /**
- * The hourly sweep: select families whose local send window is NOW (FILTER first,
+ * The hourly sweep: select families whose local COMPOSE window is now (FILTER first,
  * then cap — a cap-then-filter would starve every family past the oldest N of their
- * weekly window forever), then compose each. A per-family failure is recorded and the
+ * weekly slot forever), then compose each. A per-family failure is recorded and the
  * loop continues — one bad family can't starve the batch.
  */
 export async function runWeekPlanCron(
   db: Database,
   deps: WeekPlanDeps = defaultWeekPlanDeps(),
   now: Date = new Date(),
-  window: SendWindow = DEFAULT_SEND_WINDOW,
 ): Promise<WeekPlanCronResult> {
-  const familyIds = await selectFamiliesInSendWindow(db, now, window);
+  const familyIds = await selectFamiliesToCompose(db, now);
 
   const results: WeekPlanCronResult['results'] = [];
   for (const familyId of familyIds) {
@@ -169,27 +177,63 @@ export async function runWeekPlanCron(
 }
 
 /**
- * Families whose PRIMARY PARENT's local time is inside the send window right now,
- * capped. One join reads (family_id, timezone) for every family with a primary parent;
- * the in-window filter runs in memory per family zone (isInSendWindow), THEN the cap.
- * Families with no primary parent yet (onboarding incomplete) are absent — they start
- * getting a plan once linked.
+ * Families to compose this hour: their PRIMARY PARENT's local time is inside the
+ * weekly-plan COMPOSE window and they haven't turned the weekly plan off. One join
+ * reads (family, primary user, tz, weekStartDay); a cheap weekday pre-check skips the
+ * per-parent prefs read for families not on their compose day; then the in-window +
+ * `catWeeklyPlan` filter, THEN the cap. Families with no primary parent yet
+ * (onboarding incomplete) are absent — they start getting a plan once linked.
  */
-export async function selectFamiliesInSendWindow(
-  db: Database,
-  now: Date,
-  window: SendWindow = DEFAULT_SEND_WINDOW,
-): Promise<string[]> {
+export async function selectFamiliesToCompose(db: Database, now: Date): Promise<string[]> {
   const rows = await db
-    .select({ familyId: schema.familyMembers.familyId, timezone: schema.users.timezone })
+    .select({
+      familyId: schema.familyMembers.familyId,
+      userId: schema.users.id,
+      timezone: schema.users.timezone,
+      weekStartDay: schema.users.weekStartDay,
+    })
     .from(schema.familyMembers)
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
     .where(eq(schema.familyMembers.role, 'primary_parent'));
 
-  const inWindow: string[] = [];
+  const toCompose: string[] = [];
   for (const row of rows) {
-    if (inWindow.length >= MAX_WEEK_PLAN_FAMILIES_PER_RUN) break;
-    if (isInSendWindow(now, row.timezone, window)) inWindow.push(row.familyId);
+    if (toCompose.length >= MAX_WEEK_PLAN_FAMILIES_PER_RUN) break;
+    // Cheap pre-check on the compose weekday alone, so only families on their day
+    // pay for a prefs read.
+    const composeWeekday = (weeklyPlanWeekday(row.weekStartDay) + 6) % 7;
+    if (localParts(now, row.timezone).weekday !== composeWeekday) continue;
+    const view = await loadLoopPrefsView(row.userId, db);
+    if (!view.catWeeklyPlan) continue;
+    if (isComposeMoment(view, now, row.timezone, row.weekStartDay)) toCompose.push(row.familyId);
   }
-  return inWindow;
+  return toCompose;
+}
+
+/**
+ * Whether `now` is inside a family's weekly-plan COMPOSE slot: the parent's local send
+ * weekday MINUS ONE DAY (so the artifact is ready a day before B2 delivers — the
+ * ticket's "day of slack"), at their VIL-216 `weekly_plan_send_time`, within a one-hour
+ * slot. Consumes VIL-216's per-parent send time + `weeklyPlanWeekday` + DST-safe
+ * `localParts` (weekday 0=Sun…6=Sat), so two families in different zones each match at
+ * their own local instant, DST-correctly. Pure.
+ */
+export function isComposeMoment(
+  view: LoopPrefsView,
+  now: Date,
+  timeZone: string,
+  weekStartDay: number,
+): boolean {
+  const { weekday, minutes } = localParts(now, timeZone);
+  const composeWeekday = (weeklyPlanWeekday(weekStartDay) + 6) % 7;
+  const nowMinOfWeek = weekday * 1440 + minutes;
+  const targetMinOfWeek = composeWeekday * 1440 + sendTimeMinutes(view.weeklyPlanSendTime);
+  const delta = (nowMinOfWeek - targetMinOfWeek + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
+  return delta < COMPOSE_SLOT_MINUTES;
+}
+
+/** Local wall-clock 'HH:MM:SS' (or 'HH:MM') → minutes since midnight. */
+function sendTimeMinutes(time: string): number {
+  const [h = '0', m = '0'] = time.split(':');
+  return Number(h) * 60 + Number(m);
 }

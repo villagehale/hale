@@ -19,7 +19,8 @@ vi.mock('@hale/agent', async (orig) => ({
 
 import { runAgent } from '@hale/agent';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
-import { runWeekPlanForFamily, type WeekPlanDeps } from './cron';
+import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
+import { isComposeMoment, runWeekPlanForFamily, type WeekPlanDeps } from './cron';
 import { hasWeekPlan, readWeekPlan, upsertWeekPlan } from './queries';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
@@ -114,5 +115,58 @@ describe('runWeekPlanForFamily', () => {
 
     expect(result).toMatchObject({ status: 'composed', summarized: false });
     expect(upsertWeekPlan).toHaveBeenCalledWith(db, expect.objectContaining({ summary: null }));
+  });
+});
+
+/** The UTC instant a given family-local wall-clock maps to in `tz` (DST-correct via
+ * the offset at that instant). */
+function zoned(y: number, mo: number, d: number, h: number, mi: number, tz: string): Date {
+  const guess = new Date(Date.UTC(y, mo - 1, d, h, mi, 0));
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(guess);
+  const get = (t: string) => Number(p.find((x) => x.type === t)?.value);
+  const asLocal = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
+  return new Date(guess.getTime() - (asLocal - guess.getTime()));
+}
+
+const prefs = (over: Partial<LoopPrefsView> = {}): LoopPrefsView => ({ ...DEFAULT_LOOP_PREFS, ...over });
+const TZ = 'America/Toronto';
+
+/**
+ * The composer runs the evening BEFORE the parent's VIL-216 send moment. For a
+ * Monday-start week the send weekday is Sunday (weeklyPlanWeekday(1)=0), so compose
+ * runs SATURDAY at the parent's weekly_plan_send_time (default 19:30), within a
+ * one-hour slot — asserted from first principles across DST + offset zones + the
+ * per-parent send time, never read back from the function.
+ */
+describe('isComposeMoment — the family-local compose slot (day before the send moment)', () => {
+  it('matches Saturday from the send time through <60 min later (Monday-start week)', () => {
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 30, TZ), TZ, 1)).toBe(true); // Sat 19:30
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 20, 29, TZ), TZ, 1)).toBe(true); // +59
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 29, TZ), TZ, 1)).toBe(false); // 1 early
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 20, 30, TZ), TZ, 1)).toBe(false); // +60
+  });
+
+  it('does NOT fire on the SEND day (Sunday) — that is B2 delivery, not compose', () => {
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 19, 30, TZ), TZ, 1)).toBe(false); // Sunday
+  });
+
+  it('honors the parent per-parent weekly_plan_send_time', () => {
+    const p = prefs({ weeklyPlanSendTime: '08:00:00' });
+    expect(isComposeMoment(p, zoned(2026, 7, 25, 8, 15, TZ), TZ, 1)).toBe(true); // Sat 08:15
+    expect(isComposeMoment(p, zoned(2026, 7, 25, 19, 30, TZ), TZ, 1)).toBe(false); // default time no longer matches
+  });
+
+  it('reads the offset live across DST (winter EST) and catches a :45 zone', () => {
+    expect(isComposeMoment(prefs(), zoned(2026, 1, 31, 19, 30, TZ), TZ, 1)).toBe(true); // Sat 19:30 EST
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 45, 'Asia/Kathmandu'), 'Asia/Kathmandu', 1)).toBe(true);
+  });
+
+  it('shifts the compose day with the parent week-start (Sunday-start → compose Friday)', () => {
+    // weekStartDay 0 → send Saturday (weeklyPlanWeekday(0)=6) → compose Friday.
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 24, 19, 30, TZ), TZ, 0)).toBe(true); // Friday
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 30, TZ), TZ, 0)).toBe(false); // Saturday
   });
 });
