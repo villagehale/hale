@@ -2453,11 +2453,10 @@ html, body, .sidebar, .panel, .card, .field {
   background: var(--color-chrome);
   color: var(--color-spruce);
   text-decoration: none;
-  /* At the 58rem-capped stage the §4.2 four-column row leaves col-3 ≈ 204px, so a
-   * 2×2 tile is only ~68px wide — a long single-word label (documents / routines)
-   * exceeds it. `anywhere` keeps the label inside the tile instead of spilling past
-   * the card edge. Root density fix (widen the Home dashboard to the design canvas)
-   * is tracked separately — see the W2b PR open items. */
+  /* The Home dashboard now opts up to the 72rem canvas (.village-wide on the home
+   * page), so the §4.2 four-column row gives each 2×2 tile real width and labels
+   * fit. `anywhere` is kept as a harmless safety net for the narrowest widths, so a
+   * long single-word label (documents / routines) can never spill past the card. */
   overflow-wrap: anywhere;
   transition: background 220ms var(--ease-breathe), transform 220ms var(--ease-breathe);
 }
