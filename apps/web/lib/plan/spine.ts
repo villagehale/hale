@@ -60,7 +60,7 @@ export interface PlanSpine {
 
 /** The calendar-day key (YYYY-MM-DD) `iso` falls on IN `timeZone`. en-CA renders
  * ISO order, so the string sorts and compares as the date it names. */
-function dayKeyIn(iso: string | Date, timeZone: string): string {
+export function dayKeyIn(iso: string | Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', {
     year: 'numeric',
     month: '2-digit',
@@ -70,7 +70,7 @@ function dayKeyIn(iso: string | Date, timeZone: string): string {
 }
 
 /** 0=Mon … 6=Sun for the weekday `iso` falls on IN `timeZone`. */
-function weekdayIndexIn(iso: string | Date, timeZone: string): number {
+export function weekdayIndexIn(iso: string | Date, timeZone: string): number {
   const name = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone })
     .format(new Date(iso))
     .toLowerCase();
@@ -79,10 +79,40 @@ function weekdayIndexIn(iso: string | Date, timeZone: string): number {
 
 /** Adds `days` to a YYYY-MM-DD key using UTC-noon math (offset-proof — noon can't
  * cross a day boundary via any real IANA offset), returning a new YYYY-MM-DD key. */
-function addDaysToKey(key: string, days: number): string {
+export function addDaysToKey(key: string, days: number): string {
   const at = new Date(`${key}T12:00:00Z`);
   at.setUTCDate(at.getUTCDate() + days);
   return at.toISOString().slice(0, 10);
+}
+
+export interface WeekWindow {
+  /** The chosen-first-day (Monday by default) calendar-day key of the week. */
+  startKey: string;
+  /** The seventh day's calendar-day key (Sunday by default). */
+  endKey: string;
+  /** All seven day keys in order, first day → last. */
+  dayKeys: string[];
+}
+
+/**
+ * The family-local week `now` falls in, as `YYYY-MM-DD` keys, optionally shifted by
+ * `weekOffset` whole weeks — `weekOffset: 1` is the FOLLOWING week (the weekly-plan
+ * composer runs Saturday night and composes the UPCOMING week). Pure; built from the
+ * same DST-proof key helpers `buildPlanSpine` uses, so a caller filtering other
+ * sources into this window can never drift from the spine's own bounds.
+ */
+export function weekWindow(
+  now: Date,
+  timeZone: string,
+  weekStartDay = 1,
+  weekOffset = 0,
+): WeekWindow {
+  const todayKey = dayKeyIn(now, timeZone);
+  const startOffset = weekStartDay === 1 ? 0 : 6;
+  const todayPos = (weekdayIndexIn(now, timeZone) - startOffset + 7) % 7;
+  const weekStartKey = addDaysToKey(todayKey, -todayPos + weekOffset * 7);
+  const dayKeys = Array.from({ length: 7 }, (_, i) => addDaysToKey(weekStartKey, i));
+  return { startKey: weekStartKey, endKey: dayKeys[6] as string, dayKeys };
 }
 
 /**
@@ -96,14 +126,11 @@ export function buildPlanSpine(
   weekStartDay = 1,
 ): PlanSpine {
   const ordered = orderedWeekdays(weekStartDay);
-  const todayKey = dayKeyIn(now, timeZone);
-  // Today's position within the ordered week (0 = the chosen first day). WEEKDAYS
-  // is Monday-indexed, so measure the first day's Monday-index too and rotate.
-  const startOffset = weekStartDay === 1 ? 0 : 6;
-  const todayPos = (weekdayIndexIn(now, timeZone) - startOffset + 7) % 7;
-  const weekStartKey = addDaysToKey(todayKey, -todayPos);
-  const dayKeys = ordered.map((_, i) => addDaysToKey(weekStartKey, i));
-  const weekEndKey = dayKeys[6] as string;
+  const { startKey: weekStartKey, endKey: weekEndKey, dayKeys } = weekWindow(
+    now,
+    timeZone,
+    weekStartDay,
+  );
 
   const days: DayColumn[] = ordered.map((weekday, i) => ({
     weekday,
