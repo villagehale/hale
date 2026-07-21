@@ -94,7 +94,17 @@ export interface SetActiveAreaRequest {
   areaId: string;
 }
 
-export type MobileVillageAreaUpdateRequest = AddAreaRequest | SetActiveAreaRequest;
+/** Remove a saved area by id. The active area cannot be removed (409) — the client
+ * switches to another area first. A foreign/unknown id is 404 (cross-family isolation). */
+export interface RemoveAreaRequest {
+  action: 'remove';
+  areaId: string;
+}
+
+export type MobileVillageAreaUpdateRequest =
+  | AddAreaRequest
+  | SetActiveAreaRequest
+  | RemoveAreaRequest;
 
 /** GET /api/mobile/village/areas/search?q= — up to 6 Canadian city candidates for
  * the switcher typeahead, coarse {city, province} only (no coordinates, rule #1). */
