@@ -9,10 +9,10 @@ import {
 } from './quick-log-kinds';
 
 /**
- * C2 spec: feed and nap are only sensible for the youngest stages, milestone
- * applies at every age. These assert the stage→kind gating that keeps a teen's
- * parent from ever being offered a feed/nap log, derived from the rule above —
- * not from the component's current output.
+ * C2 spec: feed, nap and diaper are only sensible for the youngest stages,
+ * milestone applies at every age. These assert the stage→kind gating that keeps a
+ * teen's parent from ever being offered a feed/nap/diaper log, derived from the
+ * rule above — not from the component's current output.
  */
 
 function child(stage: FamilyStage, id: string = stage): QuickLogChild {
@@ -20,28 +20,29 @@ function child(stage: FamilyStage, id: string = stage): QuickLogChild {
 }
 
 describe('quick-log stage gating', () => {
-  it('offers feed, nap and milestone for a newborn', () => {
-    expect(visibleKindsFor([child('newborn')])).toEqual(['feed', 'nap', 'milestone']);
+  it('offers feed, nap, diaper and milestone for a newborn', () => {
+    expect(visibleKindsFor([child('newborn')])).toEqual(['feed', 'nap', 'diaper', 'milestone']);
   });
 
-  it('offers feed, nap and milestone for a toddler', () => {
-    expect(visibleKindsFor([child('toddler')])).toEqual(['feed', 'nap', 'milestone']);
+  it('offers feed, nap, diaper and milestone for a toddler', () => {
+    expect(visibleKindsFor([child('toddler')])).toEqual(['feed', 'nap', 'diaper', 'milestone']);
   });
 
   it('offers only milestone for a school-age child', () => {
     expect(visibleKindsFor([child('child')])).toEqual(['milestone']);
   });
 
-  it('offers only milestone for a teenager — never a feed or nap', () => {
+  it('offers only milestone for a teenager — never a feed, nap or diaper', () => {
     const kinds = visibleKindsFor([child('teenager')]);
     expect(kinds).toEqual(['milestone']);
     expect(kinds).not.toContain('feed');
     expect(kinds).not.toContain('nap');
+    expect(kinds).not.toContain('diaper');
   });
 
-  it('shows a kind when ANY child supports it, in feed→nap→milestone order', () => {
+  it('shows a kind when ANY child supports it, in feed→nap→diaper→milestone order', () => {
     const kids = [child('teenager', 'teen'), child('newborn', 'baby')];
-    expect(visibleKindsFor(kids)).toEqual(['feed', 'nap', 'milestone']);
+    expect(visibleKindsFor(kids)).toEqual(['feed', 'nap', 'diaper', 'milestone']);
   });
 });
 
@@ -54,6 +55,10 @@ describe('quick-log eligible children per kind', () => {
 
   it('limits nap to the newborn', () => {
     expect(eligibleKidsFor(kids, 'nap').map((c) => c.id)).toEqual(['baby']);
+  });
+
+  it('limits diaper to the newborn', () => {
+    expect(eligibleKidsFor(kids, 'diaper').map((c) => c.id)).toEqual(['baby']);
   });
 
   it('allows milestone for every child', () => {
@@ -76,6 +81,8 @@ function values(over: Partial<QuickLogFormValues> = {}): QuickLogFormValues {
     feedAmount: '',
     feedKind: '',
     durationMin: '',
+    diaperKind: 'wet',
+    diaperNote: '',
     milestone: '',
     milestoneNote: '',
     when: '',
@@ -119,6 +126,31 @@ describe('quick-log buildInput — feed amount (numeric vs qualitative)', () => 
 
   it('returns null for a feed with neither an ml value nor a chip', () => {
     expect(buildInput('feed', CHILD, values())).toBeNull();
+  });
+});
+
+describe('quick-log buildInput — diaper', () => {
+  it('posts the picked diaper kind with no note when none is typed', () => {
+    expect(buildInput('diaper', CHILD, values({ diaperKind: 'dirty' }))).toEqual({
+      kind: 'diaper',
+      childId: CHILD,
+      diaperKind: 'dirty',
+    });
+  });
+
+  it('carries an optional trimmed note alongside the kind', () => {
+    expect(
+      buildInput('diaper', CHILD, values({ diaperKind: 'mixed', diaperNote: '  leaked  ' })),
+    ).toEqual({
+      kind: 'diaper',
+      childId: CHILD,
+      diaperKind: 'mixed',
+      note: 'leaked',
+    });
+  });
+
+  it('returns null when no child is selected', () => {
+    expect(buildInput('diaper', '', values({ diaperKind: 'wet' }))).toBeNull();
   });
 });
 
