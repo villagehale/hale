@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Agent-skill QUALITY eval harness (ask-hale, daily-brief, discovery).
+// Agent-skill QUALITY eval harness (ask-hale, daily-brief, week-summary, discovery).
 //
 // Root CLAUDE.md hard rule #8: no LLM mocking — real Claude responses, cached.
 // The @hale/agent skills already have LOOP-MECHANICS tests (a fake client feeding
@@ -7,7 +7,7 @@
 // harness closes that gap: it exercises the REAL agent against real (cached) Claude
 // and gates on CHECKABLE properties + a cached LLM-as-judge.
 //
-// Three suites, each calibrated in BOTH directions (real cached model PASSES; a
+// Four suites, each calibrated in BOTH directions (real cached model PASSES; a
 // --broken known-bad generator FAILS):
 //
 //   ask-hale     — the interactive coach. Runs the REAL runAgent loop over the REAL
@@ -24,6 +24,15 @@
 //                  is invented (the core "no hallucinated events" check); teen detail
 //                  is never leaked; length is bounded; cached Haiku judge for warmth &
 //                  faithfulness (>= 4).
+//
+//   week-summary — the weekly-plan composer's summary stage. Same REAL runAgent loop
+//                  over the REAL week-summary skill, but the skill has NO tools: the
+//                  already-composed, already-redacted week `items` ride in context and
+//                  the model writes ONE warm sentence over them. Gates: non-empty and
+//                  length-bounded (one/two sentences), no invented/alarming/health-
+//                  beyond-title token, never opens with a hype phrase, no fabricated
+//                  specific (email/$/long-digit must be grounded in an item), and a
+//                  cached Haiku judge for calm & faithfulness (>= 4).
 //
 //   discovery    — web-side village discovery. REPLICATES the exact request shape of
 //                  apps/web/lib/village/discover.ts (same prompt apps/worker/prompts/
@@ -604,6 +613,132 @@ function briefJudgePayload(fixture, brief) {
 }
 
 // ===========================================================================
+// SUITE 4: week-summary (real runAgent loop, real skill, NO tools)
+// ===========================================================================
+// The weekly-plan composer's summary stage. Unlike ask-hale / daily-brief the
+// skill has NO tools: the already-composed, already-redacted week `items` ride in
+// context, and the model writes ONE warm sentence over them. So the eval drives the
+// REAL runAgent loop over the REAL week-summary.md skill with an empty tools array
+// (and real guard deps, exactly like daily-brief — they never fire without a tool
+// call, but keep the eval path identical to prod).
+
+const WEEK_SUMMARY_JUDGE_SYSTEM = [
+  'You are a strict reviewer scoring ONE week-summary sentence Hale wrote to sit atop',
+  "a family's already-composed upcoming-week plan. Score CALM & FAITHFULNESS on a 1-5",
+  'integer scale. A 5 is warm, calm, lowercase-friendly, ONE sentence (two at most),',
+  'names only the one or two most notable items from the SUPPLIED items, adds a gentle',
+  'OPTIONAL nudge only if a suggestion item is present, and — on an empty item list —',
+  'simply says the week is quiet in one short sentence. A LOW score is alarming or cold',
+  'tone, opening with "Great news!"/"Exciting!", a wall of text, OR — most important —',
+  'any claim NOT supported by the supplied items (an invented appointment, name, or',
+  'date) or health detail beyond an item title (a diagnosis, a dose, a named clinic).',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
+// Never open with a hype phrase — the skill's explicit "Never open with 'Great
+// news!', 'Exciting!'" voice rule. Anchored to the start so a mid-sentence mention
+// is not a false positive.
+const BANNED_SUMMARY_OPENER = /^\s*(great news|exciting)\b/i;
+
+// Deterministic broken stand-in: opens with the banned "Great news!", invents an
+// appointment (a child, clinic, therapy, phone, and price none of which are in any
+// fixture's items), and pads well past one/two sentences. Every deterministic check
+// (opener, forbidden token, ungrounded specific, length) must reject it — no API
+// call, no cache read.
+function brokenWeekSummaryAnswer() {
+  return [
+    "Great news! huge week ahead — don't forget kai's dentist appointment on 2026-08-15 at",
+    "bright smiles clinic, plus rowan's therapy session; call 4165559999 to confirm and budget about $80.",
+    'here is a very long extra clause padding this summary well past one or two calm sentences so the length bound is clearly exceeded; '.repeat(
+      4,
+    ),
+  ].join(' ');
+}
+
+function checkWeekSummary(fixture, summary, judgeScore) {
+  const failures = [];
+  const e = fixture.expect;
+  const lower = summary.toLowerCase();
+
+  // Non-empty: even a quiet week must yield a calm one-liner, never an empty string.
+  if (summary.trim().length === 0) {
+    failures.push('empty summary');
+    return failures;
+  }
+
+  // Length bound: one warm sentence (two at most), never a wall of text.
+  if (typeof e.maxChars === 'number' && summary.length > e.maxChars) {
+    failures.push(`summary ${summary.length} chars > maxChars ${e.maxChars} (not one/two sentences)`);
+  }
+
+  // No invented / alarming / health-beyond-title tokens.
+  for (const tok of containsAny(lower, e.forbiddenTokens)) {
+    failures.push(`forbidden content: ${JSON.stringify(tok)}`);
+  }
+
+  // Calm voice: never open with a hype phrase.
+  if (e.mustStayCalm && BANNED_SUMMARY_OPENER.test(summary)) {
+    failures.push(`banned hype opener: ${JSON.stringify(summary.slice(0, 24))}`);
+  }
+
+  // No fabricated specifics: any email / $ / long-digit token must be grounded in an
+  // item title or date the skill was handed (it invents nothing — rule #1). With no
+  // tools, the items ARE the entire grounding set.
+  const grounded = (fixture.context.items ?? []).flatMap((i) => [i.title, i.when ?? '']);
+  const ungrounded = ungroundedSpecifics(summary, grounded);
+  if (ungrounded.length) failures.push(`ungrounded specifics: ${ungrounded.join(', ')}`);
+
+  if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
+    failures.push(`calm/faithfulness score ${judgeScore} < ${JUDGE_MIN}`);
+  }
+  return failures;
+}
+
+async function runWeekSummarySuite(opts) {
+  const { agent, broken, cachedOnly, getClient, cost, judge } = opts;
+  const fixtures = await loadFixtures('agent-week-summary');
+  const skill = await agent.loadSkill(join(SKILLS_DIR, 'week-summary.md'));
+  const results = [];
+
+  console.log('--- week-summary (real runAgent loop, real skill, no tools) ---');
+  for (const fixture of fixtures) {
+    const auditLog = [];
+    let summary;
+    if (broken) {
+      summary = brokenWeekSummaryAnswer();
+    } else {
+      const client = makeCachedAgentClient(`week-summary:${fixture.id}`, cachedOnly, getClient, cost);
+      const guardDeps = makeGuardDeps(auditLog, new Set());
+      const run = await agent.runAgent({
+        skill,
+        context: fixture.context,
+        tools: [],
+        client,
+        maxSteps: 1,
+        maxTokens: 256,
+        toolContext: { familyId: fixture.context.familyId, actor: 'system' },
+        guardDeps,
+      });
+      if (run.answer === null) {
+        results.push({ id: fixture.id, failures: ['agent returned no answer'] });
+        console.log(`  FAIL ${fixture.id}\n       - agent returned no answer`);
+        continue;
+      }
+      summary = run.answer;
+    }
+
+    const score = broken ? null : (await judge(weekSummaryJudgePayload(fixture, summary))).score;
+    const failures = checkWeekSummary(fixture, summary, score);
+    record(results, fixture, failures, score);
+  }
+  return results;
+}
+
+function weekSummaryJudgePayload(fixture, summary) {
+  return { items: fixture.context.items ?? [], summary };
+}
+
+// ===========================================================================
 // SUITE 3: discovery (replicated discover.ts request shape)
 // ===========================================================================
 
@@ -825,6 +960,7 @@ async function main() {
 
   const askHaleJudge = makeJudge(judgeModel, ASK_HALE_JUDGE_SYSTEM, 'ask-hale', cachedOnly, getClient, cost);
   const briefJudge = makeJudge(judgeModel, DAILY_BRIEF_JUDGE_SYSTEM, 'daily-brief', cachedOnly, getClient, cost);
+  const weekSummaryJudge = makeJudge(judgeModel, WEEK_SUMMARY_JUDGE_SYSTEM, 'week-summary', cachedOnly, getClient, cost);
   const discoveryJudge = makeJudge(judgeModel, DISCOVERY_JUDGE_SYSTEM, 'discovery', cachedOnly, getClient, cost);
 
   console.log(
@@ -837,6 +973,7 @@ async function main() {
   const suites = [
     ['ask-hale', () => runAskHaleSuite({ agent, broken, cachedOnly, getClient, cost, judge: askHaleJudge })],
     ['daily-brief', () => runDailyBriefSuite({ agent, broken, cachedOnly, getClient, cost, judge: briefJudge })],
+    ['week-summary', () => runWeekSummarySuite({ agent, broken, cachedOnly, getClient, cost, judge: weekSummaryJudge })],
     ['discovery', () => runDiscoverySuite({ broken, cachedOnly, getClient, cost, judge: discoveryJudge, discoveryModel })],
   ];
 

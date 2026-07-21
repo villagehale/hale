@@ -32,6 +32,18 @@ import type { RateLimitOptions } from './limiter';
  *   a couple of re-runs is 5-6; five per hour covers honest exploration while
  *   blunting a parent (or a script) hammering paid runs. Per-family (not per-user)
  *   because the run and its cost belong to the family, not one parent.
+ * - village-ai-search (20/min/family): the natural-language search's cheap intent
+ *   parse (one small model call per submit). It is a per-MINUTE bot guard, NOT the
+ *   paid-run cooldown: the expensive discovery it may trigger on thin results is
+ *   itself bounded by village-search (5/hour). A parent exploring types a couple of
+ *   phrasings a minute; 20 is well above that yet stops a scripted loop from running
+ *   up spend on the parse. Per-family (the search reads the family's village).
+ * - sms-otp-send (5/hour/user): each send costs an SMS and texts a real number, so
+ *   this is a genuine cap (fail-closed), not a bot guard. A parent enrolling retries
+ *   a code once or twice; five per hour covers that while blunting SMS-pumping /
+ *   toll fraud. The 60s resend cooldown handles rapid taps; this bounds the hour.
+ * - sms-otp-verify (10/hour/user): bounds code-guessing on top of the 3-attempt
+ *   per-code lockout — a brute-force loop can't outrun both. Fail-closed.
  * - city-search (60/min): the address/area typeahead reaches the PAID Places
  *   Autocomplete provider per (debounced) keystroke — the one provider-calling path
  *   that was previously uncapped. Capped per SIGNED-IN USER on the authed switcher /
@@ -48,6 +60,9 @@ export const RATE_LIMITS = {
   auth: { limit: 20, windowSec: 60 },
   preview: { limit: 10, windowSec: 60 },
   'village-search': { limit: 5, windowSec: 3600 },
+  'village-ai-search': { limit: 20, windowSec: 60 },
+  'sms-otp-send': { limit: 5, windowSec: 3600 },
+  'sms-otp-verify': { limit: 10, windowSec: 3600 },
   'city-search': { limit: 60, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 

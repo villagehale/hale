@@ -94,6 +94,7 @@ export function VillageBoard({
   area = null,
   saved = [],
   ranked = false,
+  showInlineSearch = true,
 }: {
   candidates: VillageCandidateView[];
   resources: CuratedResourceView[];
@@ -105,6 +106,10 @@ export function VillageBoard({
    * the "Hale recommends" card so a recommendation is only ever shown when it is a
    * genuine ranked pick, never a fabricated one. */
   ranked?: boolean;
+  /** The board's own instant literal-filter box. Hidden when the page mounts the
+   * natural-language search above the board (which supersedes it); the type chips
+   * still browse the loaded feed. Defaults on so every other caller is unchanged. */
+  showInlineSearch?: boolean;
 }) {
   const searchId = useId();
   const [query, setQuery] = useState('');
@@ -137,24 +142,28 @@ export function VillageBoard({
 
   return (
     <div className="space-y-6">
-      {/* ── Search + filter chips (§4.5) ──────────────────────────────────── */}
-      <div className="relative">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
-          <Icon as={Search} size={18} />
-        </span>
-        <label htmlFor={searchId} className="sr-only">
-          Search activities, childcare, resources
-        </label>
-        <input
-          id={searchId}
-          type="search"
-          className="field field-search"
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search activities, childcare, resources…"
-          autoComplete="off"
-        />
-      </div>
+      {/* ── Search + filter chips (§4.5). The literal-filter box is hidden when the
+           natural-language search is mounted above the board (it supersedes it); the
+           type chips still browse the loaded feed. ─────────────────────────────── */}
+      {showInlineSearch ? (
+        <div className="relative">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
+            <Icon as={Search} size={18} />
+          </span>
+          <label htmlFor={searchId} className="sr-only">
+            Search activities, childcare, resources
+          </label>
+          <input
+            id={searchId}
+            type="search"
+            className="field field-search"
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            placeholder="Search activities, childcare, resources…"
+            autoComplete="off"
+          />
+        </div>
+      ) : null}
 
       <fieldset
         className="flex flex-wrap gap-2 overflow-x-auto"

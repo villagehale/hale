@@ -150,7 +150,7 @@ export function VillageMap({
 
   return (
     <div className="space-y-5">
-      <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] overflow-hidden rounded-[var(--r-xl)] border border-rule">
+      <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] lg:aspect-auto lg:h-[35rem] overflow-hidden rounded-[var(--r-lg)] border border-rule">
         <div
           ref={containerRef}
           className="absolute inset-0"

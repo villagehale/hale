@@ -117,6 +117,11 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // the teen is notified. The consume side (approving the request → granted=true,
   // and honouring an active grant on read) is a follow-up.
   'teen_content_access',
+  // CASL express consent to receive SMS service messages (weekly plan, reminders,
+  // approvals) on a verified phone. Per-PARENT, not per-family — co-parents enroll
+  // independently, so this never triggers the two-parent-consent rule (#5). Granted
+  // on OTP verify; a granted=false row records a withdrawal (in-app toggle / STOP).
+  'sms_service_messages',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
@@ -141,3 +146,27 @@ export const childGenderEnum = pgEnum('child_gender', [
 // 'verification' is the transactional email-confirmation link sent at sign-up; its
 // ledger row makes the send auditable (PIPEDA right-to-access) like every stream.
 export const emailTypeEnum = pgEnum('email_type', ['daily_digest', 'welcome', 'verification']);
+
+// How a family_events row entered the loop's shared "external events" home (VIL-217).
+// 'parent' — a parent added it directly in-app. 'channel' — extracted from a reply
+// on the exchange channel (C2 "add Leo's party Sat 2pm"). 'email' — pulled from an
+// invite email (E-phase). The composer treats all three identically; the source is
+// kept for provenance + audit (rule #6).
+export const familyEventSourceEnum = pgEnum('family_event_source', ['parent', 'channel', 'email']);
+
+// F11 · The Sunday Loop — a parent's chosen EXCHANGE channel (the two-way
+// "reply to adjust" leg). Push is an always-on DELIVERY leg, not an exchange
+// channel, so it is not a value here. Default 'email' — no provisioning gate;
+// 'sms' lights up once the number is registered (founder decision 2026-07-21).
+export const loopChannelEnum = pgEnum('loop_channel', ['email', 'sms']);
+
+// How much of a child's identity a loop message body may carry — a PARENT'S
+// choice, defaulting to the most private (rule #1). 'first_name' → "Maya",
+// 'relation' → "your daughter/son" (from child gender; falls back to "your
+// child"), 'generic' → "your kid". COMPOSES WITH the deterministic teen age gate:
+// a 13+ child (deriveStage) is always forced to generic regardless of this pref.
+export const childNameLevelEnum = pgEnum('child_name_level', [
+  'first_name',
+  'relation',
+  'generic',
+]);

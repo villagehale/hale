@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { Linking, Pressable, Switch, View } from 'react-native';
 
 import { ConnectorsList, ConnectorsPrivacyNote } from '@/components/hale/connectors-list';
+import { LoopSection } from '@/components/hale/loop-section';
 import { PrivacyDataSection } from '@/components/hale/privacy-data-section';
+import { TextNotificationsSection } from '@/components/hale/text-notifications-section';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -471,6 +473,10 @@ function SettingsBody({
   return (
     <>
       <NotificationsSection email={email} push={push} />
+
+      <LoopSection />
+
+      <TextNotificationsSection />
 
       {preferences ? <PreferencesSection initial={preferences} /> : null}
 

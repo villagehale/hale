@@ -7,18 +7,22 @@ import { ExportDataButton } from '~/components/hale/export-data-button';
 import { FamilyChildren } from '~/components/hale/family-children';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { InviteCoParent } from '~/components/hale/invite-coparent';
+import { LoopPrefs } from '~/components/hale/loop-prefs';
 import { NotificationPrefs } from '~/components/hale/notification-prefs';
 import { PlanSummaryCard } from '~/components/hale/plan-summary-card';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { SettingsHub } from '~/components/hale/settings-hub';
 import type { SettingsSectionId } from '~/components/hale/settings-sections';
 import { SharedLinks } from '~/components/hale/shared-links';
+import { TextNotifications } from '~/components/hale/text-notifications';
 import { APP_VERSION } from '~/lib/app-version';
 import { signOutAction } from '~/lib/auth-actions';
 import { authConfigured } from '~/lib/auth-config';
+import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
+import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
 import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
 import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 
@@ -39,13 +43,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  * The page title + subtitle live in the shell top bar (design handoff §3.2).
  */
 export default async function SettingsPage() {
-  const [profile, basics, members, connections, pushPrefs] = await Promise.all([
-    loadViewerProfile(),
-    loadFamilyBasics(),
-    loadFamilyMembers(),
-    loadFamilyConnectors(),
-    loadPushNotificationPrefs(),
-  ]);
+  const [profile, basics, members, connections, pushPrefs, loopPrefs, smsChannel] =
+    await Promise.all([
+      loadViewerProfile(),
+      loadFamilyBasics(),
+      loadFamilyMembers(),
+      loadFamilyConnectors(),
+      loadPushNotificationPrefs(),
+      loadLoopNotificationPrefs(),
+      loadSmsChannel(),
+    ]);
 
   const planName = PLAN_DISPLAY[basics.planTier].name;
   const canSignOut = authConfigured();
@@ -74,6 +81,11 @@ export default async function SettingsPage() {
               to reset.
             </p>
           </div>
+        </div>
+
+        <div>
+          <SectionLabel>text notifications</SectionLabel>
+          <TextNotifications result={smsChannel} />
         </div>
 
         {profile ? (
@@ -127,7 +139,7 @@ export default async function SettingsPage() {
 
     // ── Plan & billing ───────────────────────────────────────────────────
     plan: (
-      <div className="flex flex-col gap-y-8 max-w-2xl">
+      <div className="flex flex-col gap-y-8">
         <PlanSummaryCard planTier={basics.planTier} />
         <FamilyPlan planTier={basics.planTier} billingConfigured={isStripeCheckoutConfigured()} />
       </div>
@@ -135,9 +147,15 @@ export default async function SettingsPage() {
 
     // ── Notifications ────────────────────────────────────────────────────
     notif: (
-      <div>
-        <SectionLabel>push notifications</SectionLabel>
-        <NotificationPrefs result={pushPrefs} />
+      <div className="flex flex-col gap-y-10 max-w-2xl">
+        <div>
+          <SectionLabel>push notifications</SectionLabel>
+          <NotificationPrefs result={pushPrefs} />
+        </div>
+        <div>
+          <SectionLabel>the sunday loop</SectionLabel>
+          <LoopPrefs result={loopPrefs} />
+        </div>
       </div>
     ),
 

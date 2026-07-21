@@ -3,12 +3,15 @@ import type {
   MobileFamilyUpdateRequest,
   MobileFamilyUpdateResponse,
   MobileInviteResponse,
+  MobileLoopPrefUpdateRequest,
+  MobileLoopPrefUpdateResponse,
   MobilePreferencesUpdateRequest,
   MobilePreferencesUpdateResponse,
   MobilePushPrefsUpdateRequest,
   MobilePushPrefsUpdateResponse,
   MobileSettingsUpdateRequest,
   MobileSettingsUpdateResponse,
+  MobileTextRevokeResponse,
 } from './api-types';
 
 /**
@@ -59,5 +62,24 @@ export async function updatePushPref(body: MobilePushPrefsUpdateRequest): Promis
   await api<MobilePushPrefsUpdateResponse>('/api/mobile/settings/notifications', {
     method: 'PATCH',
     body: JSON.stringify(body),
+  });
+}
+
+/** Set one F11 loop time preference (quiet-hours start/end, weekly-plan send time).
+ * PATCHes the loop route, which validates the field/value, resolves the family, and
+ * audits the change (rules #1/#6). Times go as a 24h 'HH:MM'. */
+export async function updateLoopPref(body: MobileLoopPrefUpdateRequest): Promise<void> {
+  await api<MobileLoopPrefUpdateResponse>('/api/mobile/settings/loop', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Turn off the parent's SMS channel (VIL-212). DELETEs the text-notifications
+ * route, which soft-revokes the channel + records a CASL consent withdrawal + audit
+ * in one transaction (rules #1/#6). Re-enrolling requires re-verifying a number. */
+export async function revokeTextChannel(): Promise<void> {
+  await api<MobileTextRevokeResponse>('/api/mobile/settings/text-notifications', {
+    method: 'DELETE',
   });
 }
