@@ -27,3 +27,7 @@ export function loadDailyBriefSkill(): Promise<Skill> {
 export function loadInferMemorySkill(): Promise<Skill> {
   return loadCronSkill('infer-memory');
 }
+
+export function loadWeekSummarySkill(): Promise<Skill> {
+  return loadCronSkill('week-summary');
+}

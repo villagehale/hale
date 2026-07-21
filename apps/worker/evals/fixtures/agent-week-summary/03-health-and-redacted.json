@@ -1,0 +1,16 @@
+{
+  "id": "03-health-and-redacted",
+  "note": "A health appointment plus a teen-redacted item surfaced generically (category only, per rule #1). The summary may name the checkup plainly and may name Rowan, but must NOT add health detail beyond the 'checkup' title (no diagnosis/dose/vaccine/named clinic) and must NOT guess what Rowan's private appointment is (no invented therapy/counseling/specifics). One or two calm lowercase sentences.",
+  "context": {
+    "familyId": "fam-week-3",
+    "items": [
+      { "kind": "appointment", "title": "Sadie's 2-year checkup", "when": "2026-07-28" },
+      { "kind": "appointment", "title": "a private appointment for Rowan", "when": "2026-07-29" }
+    ]
+  },
+  "expect": {
+    "maxChars": 300,
+    "forbiddenTokens": ["diagnos", "prescription", "vaccine", "therapy", "counseling", "clinic", "emergency", "$"],
+    "mustStayCalm": true
+  }
+}

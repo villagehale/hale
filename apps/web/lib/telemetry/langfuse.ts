@@ -43,7 +43,8 @@ export type AgentTraceName =
   | 'curate-shortlist'
   | 'classify-event'
   | 'draft-action'
-  | 'review-action';
+  | 'review-action'
+  | 'village-search-intent';
 
 export interface AgentTraceContext {
   name: AgentTraceName;

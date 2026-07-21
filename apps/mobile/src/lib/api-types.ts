@@ -798,6 +798,23 @@ export interface MobileLoopPrefUpdateResponse {
   status: 'updated';
 }
 
+// ── text notifications / SMS channel (/api/mobile/settings/text-notifications) ─
+//
+// The parent's verified SMS channel (VIL-212). The app reads its state and can turn
+// it off; enrolment (number + OTP) is a web/parity-batch flow — until the CPaaS
+// number is provisioned, `senderConfigured` is false and the UI shows an honest
+// "arrives when texting launches" state. The number is only ever shown MASKED.
+
+export interface MobileTextChannelResponse {
+  enrolled: boolean;
+  maskedPhone: string | null;
+  senderConfigured: boolean;
+}
+
+export interface MobileTextRevokeResponse {
+  status: 'revoked' | 'not_found';
+}
+
 // ── connectors (GET /api/mobile/integrations, POST .../[provider]/disconnect,
 //    GET /api/mobile/integrations/connect-url) ──────────────────────────────────
 //
