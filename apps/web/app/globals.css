@@ -3249,3 +3249,142 @@ html, body, .sidebar, .panel, .card, .field {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB — <768px "better in the app" hand-off (design handoff §5)
+ * Flag-gated + session-scoped (see app-promo.tsx). Everything here is
+ * position:fixed and only mounts on a phone viewport, so it adds ZERO layout
+ * shift at ≥768px. The sheet card + its text adapt via role tokens; the slim
+ * banner is fixed brand-navy in BOTH themes — a branded chrome bar (like the
+ * LogoMark's own self-contained Prussian ground), with white text at 14.65:1.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.apppromo-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(20, 28, 60, 0.4);
+}
+
+.apppromo-sheet {
+  padding: 1.6rem 1.5rem 1.9rem;
+  border-radius: 28px 28px 0 0;
+  background: var(--color-oat);
+  text-align: center;
+  animation: apppromo-rise 0.35s var(--ease-breathe);
+}
+@keyframes apppromo-rise {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .apppromo-sheet { animation: none; }
+}
+
+.apppromo-logo {
+  margin: 0 auto 0.9rem;
+  box-shadow: 0 10px 26px rgba(27, 33, 96, 0.22);
+}
+.apppromo-title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+}
+.apppromo-sub {
+  margin: 0.4rem auto 1.25rem;
+  max-width: 19rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-slate-green);
+}
+.apppromo-primary {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  border-radius: var(--r-md);
+  background: var(--color-brand);
+  color: var(--color-on-spruce);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.apppromo-secondary {
+  display: block;
+  width: 100%;
+  margin-top: 0.65rem;
+  padding: 0.6rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-faded-sage);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.apppromo-primary:focus-visible,
+.apppromo-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-oat), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* ── Slim navy banner (after "Continue in browser") ─────────────────────── */
+.apppromo-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  background: #1B2160;
+  color: #FFFFFF;
+}
+.apppromo-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.apppromo-banner-open {
+  flex-shrink: 0;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--r-full);
+  background: #FFFFFF;
+  color: #1B2160;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.apppromo-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: #FFFFFF;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.apppromo-banner-dismiss:hover { opacity: 1; }
+.apppromo-banner-open:focus-visible,
+.apppromo-banner-dismiss:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #1B2160, 0 0 0 4px #FFFFFF;
+}
