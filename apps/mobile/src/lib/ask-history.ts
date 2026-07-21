@@ -107,6 +107,17 @@ export function formatSessionTime(lastMessageAt: string, now: Date): string {
 }
 
 /**
+ * Whether a failed cold-start restore should forget the stored conversation id. Only a
+ * 404 is permanent — the conversation is gone, or belongs to another family and reads
+ * as not-found (rule #1). Every other failure (offline, timeout, 5xx) is transient, so
+ * the id is kept and the next cold start retries it instead of silently dropping the
+ * thread. A 401 never reaches here — the api client bounces to sign-in first.
+ */
+export function shouldForgetConversationOnRestore(status: number): boolean {
+  return status === 404;
+}
+
+/**
  * Maps a reopened conversation's transcript into the Ask screen's message list:
  * user turns become user bubbles, assistant turns become completed Hale turns, and
  * any other role is skipped. Order is preserved.

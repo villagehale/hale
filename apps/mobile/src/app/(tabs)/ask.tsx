@@ -47,7 +47,7 @@ import {
   readyAttachmentIds,
   uploadErrorMessage,
 } from '@/lib/ask-attachments';
-import { transcriptToMessages } from '@/lib/ask-history';
+import { shouldForgetConversationOnRestore, transcriptToMessages } from '@/lib/ask-history';
 import { type ActionIntent, type ActivityEvent, askHale } from '@/lib/coach-api';
 import { conversationStorage } from '@/lib/conversation-storage';
 import { orderByIntents } from '@/lib/intent-ordering';
@@ -372,13 +372,19 @@ export default function AskScreen() {
   // when there is nothing to restore).
   const [restoring, setRestoring] = useState(true);
   const conversationId = useRef<string | null>(null);
+  // Bumped on every send and on every thread switch (new chat / reopen). A streaming
+  // reply captures the value at send time and only commits its results while it still
+  // matches — so a switch mid-stream can't let a stale reply land in, or repoint the
+  // conversation id of, the thread the user moved to.
+  const sendGeneration = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const historyIcon = useMeadowColor('brand');
   const voice = useVoiceInput(setDraft);
 
   // Reopen the last active thread on a cold start: restore its transcript so the
-  // conversation persists across restarts. A gone/foreign id (404) clears the stored
-  // id and falls back to a fresh chat, quietly.
+  // conversation persists across restarts. Only a gone/foreign id (404) clears the
+  // stored id; a transient failure (offline, timeout, 5xx) keeps it so the next cold
+  // start can retry instead of silently dropping the thread.
   useEffect(() => {
     let live = true;
     (async () => {
@@ -402,7 +408,9 @@ export default function AskScreen() {
         }
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) return;
-        await conversationStorage.clear();
+        if (e instanceof ApiError && shouldForgetConversationOnRestore(e.status)) {
+          await conversationStorage.clear();
+        }
       } finally {
         if (live) setRestoring(false);
       }
@@ -502,6 +510,9 @@ export default function AskScreen() {
 
   const send = async (text: string) => {
     if (pending || !canSendAsk(text, attachments)) return;
+    // This send's generation — every state write below is gated on it still being
+    // current, so a thread switch mid-stream leaves this reply inert (see sendGeneration).
+    const generation = ++sendGeneration.current;
     const q = text.trim();
     const ids = readyAttachmentIds(attachments);
     const sent = attachments.filter((a) => a.status === 'ready').map((a) => ({ name: a.name }));
@@ -527,8 +538,9 @@ export default function AskScreen() {
     // typing dots hold until Hale actually starts working, then the live turn grows.
     const replyId = `h-${Date.now()}`;
     let created = false;
+    const isCurrent = () => generation === sendGeneration.current;
     const ensureTurn = () => {
-      if (created) return;
+      if (!isCurrent() || created) return;
       created = true;
       setPending(false);
       setMessages((prev) => [
@@ -546,6 +558,7 @@ export default function AskScreen() {
       ]);
     };
     const patch = (fn: (t: HaleTurn) => HaleTurn) => {
+      if (!isCurrent()) return;
       setMessages((prev) =>
         prev.map((m) => (m.id === replyId && m.role === 'hale' ? fn(m) : m)),
       );
@@ -593,12 +606,18 @@ export default function AskScreen() {
             patch((t) => ({ ...t, actionIntents: intents }));
           },
           onDone: (nextId) => {
+            // Gate the id write: without this a reply the user switched away from
+            // would repoint the thread they moved to at this (now-stale) conversation.
+            if (!isCurrent()) return;
             conversationId.current = nextId;
             void conversationStorage.set(nextId);
             patch((t) => ({ ...t, streaming: false }));
           },
         },
       );
+      // The user switched threads mid-stream: this reply is stale — the new thread owns
+      // the screen state now, so leave it untouched.
+      if (!isCurrent()) return;
       // A stream that ended without ever creating a turn (no events) still needs to
       // clear the typing dots. And if the stream closed without a `done` event (a
       // truncated response), force-settle the turn so a cursor is never left blinking
@@ -606,6 +625,7 @@ export default function AskScreen() {
       if (!created) setPending(false);
       else patch((t) => (t.streaming ? { ...t, streaming: false } : t));
     } catch (e) {
+      if (!isCurrent()) return;
       setPending(false);
       if (e instanceof ApiError && e.status === 401) return;
       const message = (e as Error).message;
@@ -634,6 +654,8 @@ export default function AskScreen() {
   const empty = messages.length === 0;
 
   const newConversation = () => {
+    sendGeneration.current++; // invalidate any in-flight reply so it can't land here
+    setPending(false);
     setMessages([]);
     conversationId.current = null;
     void conversationStorage.clear();
@@ -644,22 +666,21 @@ export default function AskScreen() {
 
   // Reopen a past conversation from the history sheet: rehydrate its transcript into
   // the message list, anchor the send pipeline to its id, persist it, and close the
-  // sheet. A transient failure leaves the sheet open so the row can be retried.
+  // sheet. On failure it throws so the sheet surfaces an inline error and stays open;
+  // the switch (and generation bump) only commit once the transcript actually loads.
   const openConversation = async (id: string) => {
-    try {
-      const data = await api<MobileConversationTranscriptResponse>(
-        `/api/mobile/conversations/${id}`,
-      );
-      setMessages(transcriptToMessages(data.turns));
-      conversationId.current = data.conversationId;
-      void conversationStorage.set(data.conversationId);
-      setAttachments([]);
-      setUploadNote(null);
-      setHistoryOpen(false);
-      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-    }
+    const data = await api<MobileConversationTranscriptResponse>(
+      `/api/mobile/conversations/${id}`,
+    );
+    sendGeneration.current++; // committed switch: invalidate any in-flight reply
+    setPending(false);
+    setMessages(transcriptToMessages(data.turns));
+    conversationId.current = data.conversationId;
+    void conversationStorage.set(data.conversationId);
+    setAttachments([]);
+    setUploadNote(null);
+    setHistoryOpen(false);
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: false }));
   };
 
   // One composer, shared by the empty-state and the in-conversation view — carries the
