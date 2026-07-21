@@ -243,6 +243,54 @@ export async function setActiveArea(
   });
 }
 
+export type RemoveAreaResult =
+  | { status: 'removed' }
+  | { status: 'not_found' }
+  | { status: 'active' };
+
+/**
+ * Deletes a saved area for a family. Scoped to the caller's family (a foreign areaId
+ * is not_found — cross-family isolation, rule #1) and REFUSES to delete the currently
+ * active area (a family must always have an active region — the caller switches away
+ * first). Transactional: verify ownership + active-state, delete, then audit
+ * village_area_removed (rule #6).
+ */
+export async function removeArea(
+  database: Database,
+  args: { familyId: string; userId: string; areaId: string },
+): Promise<RemoveAreaResult> {
+  return database.transaction(async (tx) => {
+    const rows = await tx
+      .select({ id: schema.familyAreas.id, isActive: schema.familyAreas.isActive })
+      .from(schema.familyAreas)
+      .where(
+        and(
+          eq(schema.familyAreas.id, args.areaId),
+          eq(schema.familyAreas.familyId, args.familyId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return { status: 'not_found' };
+    }
+    if (row.isActive) {
+      return { status: 'active' };
+    }
+
+    await tx.delete(schema.familyAreas).where(eq(schema.familyAreas.id, args.areaId));
+
+    await tx.insert(schema.auditLog).values({
+      familyId: args.familyId,
+      actor: args.userId,
+      actionTaken: 'village_area_removed',
+      targetTable: 'family_areas',
+      targetId: args.areaId,
+    });
+    return { status: 'removed' };
+  });
+}
+
 /** The family's ACTIVE saved area row, or null when none is active. */
 async function selectActiveAreaRow(database: Database, familyId: string) {
   const rows = await database

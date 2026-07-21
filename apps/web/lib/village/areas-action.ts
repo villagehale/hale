@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
-import { addArea, setActiveArea } from './areas';
+import { addArea, removeArea, setActiveArea } from './areas';
 import { type CityCandidate, searchCanadianCities } from './geocode';
 
 /**
@@ -85,6 +85,27 @@ export async function activateAreaAction(areaId: string): Promise<SwitchAreaResu
     areaId,
   });
   if (activated.status === 'not_found') return { status: 'error', error: 'not_found' };
+
+  revalidateAreaSurfaces();
+  return { status: 'ok' };
+}
+
+/**
+ * Removes a saved area (the switcher's per-row delete). Family-scoped; the ACTIVE
+ * area cannot be removed (switch away first) — surfaced as an honest error the UI
+ * turns into copy, never a silent no-op.
+ */
+export async function deleteAreaAction(areaId: string): Promise<SwitchAreaResult> {
+  const scope = await resolveScope();
+  if (!scope) return { status: 'error', error: 'unauthorized' };
+
+  const removed = await removeArea(scope.database, {
+    familyId: scope.familyId,
+    userId: scope.userId,
+    areaId,
+  });
+  if (removed.status === 'not_found') return { status: 'error', error: 'not_found' };
+  if (removed.status === 'active') return { status: 'error', error: 'active_area' };
 
   revalidateAreaSurfaces();
   return { status: 'ok' };

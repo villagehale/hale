@@ -54,7 +54,14 @@ export default async function VillagePage({
         </div>
       ) : (
         <div className="rise rise-2">
+          {/* Reset the board's client state (search filter + selected activity) when
+              the active area changes: keying the subtree on the active coarse area
+              remounts it, so switching regions never carries a stale "Near you"
+              selection or filter into the new area. Keyed on feed.areaCoarse — the
+              value that drives the server feed + coarseCenter, matching the AI-search
+              lane's own reset key so the two stay in lockstep. */}
           <VillageBoard
+            key={feed.areaCoarse ?? 'no-area'}
             candidates={feed.candidates}
             resources={resources}
             coarseCenter={feed.coarseCenter}
