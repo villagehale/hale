@@ -1,4 +1,4 @@
-import { and, eq, gte, ne, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { REVIEWER_TOOLS, type ReviewerToolName } from '@hale/tools-contracts';
 import type { ToolResult } from '@hale/types';
@@ -168,21 +168,56 @@ const implementations: { [K in ReviewerToolName]: ToolImpl<K> } = {
   },
 
   // ───────────────────────────────────────────────────────────────────
-  // Calendar conflict — checks the family's calendar events table for
-  // overlapping events. For v1 we don't yet sync calendar events into
-  // Postgres, so this returns `ok: false` with `not_configured` — the
-  // Reviewer flags-for-human. Wired in M1.5 when calendar sync lands.
+  // Calendar conflict (VIL-219) — does the proposed placement's window
+  // [startsAt, startsAt+durationMinutes) overlap any LIVE family_events row?
+  // Queries Hale's own placements/occasions (soft-deleted rows excluded);
+  // ok:true means the slot is clear. Half-open interval semantics: a timed
+  // event conflicts iff it truly overlaps (back-to-back does not); a point
+  // event (no end) conflicts iff its instant falls inside the window.
   // ───────────────────────────────────────────────────────────────────
-  check_calendar_conflict: async (raw) => {
+  check_calendar_conflict: async (raw, database) => {
     const input = REVIEWER_TOOLS.check_calendar_conflict.input.parse(raw);
-    void input;
+    const newStart = new Date(input.startsAt);
+    const newEnd = new Date(newStart.getTime() + input.durationMinutes * 60 * 1000);
+
+    const overlapping = await database
+      .select({
+        id: schema.familyEvents.id,
+        title: schema.familyEvents.title,
+        startsAt: schema.familyEvents.startsAt,
+        endsAt: schema.familyEvents.endsAt,
+      })
+      .from(schema.familyEvents)
+      .where(
+        and(
+          eq(schema.familyEvents.familyId, input.familyId),
+          isNull(schema.familyEvents.deletedAt),
+          lt(schema.familyEvents.startsAt, newEnd),
+          or(
+            and(
+              sql`${schema.familyEvents.endsAt} IS NOT NULL`,
+              gt(schema.familyEvents.endsAt, newStart),
+            ),
+            and(
+              isNull(schema.familyEvents.endsAt),
+              gte(schema.familyEvents.startsAt, newStart),
+            ),
+          ),
+        ),
+      )
+      .limit(20);
+
     return {
       tool: 'check_calendar_conflict',
-      ok: false,
+      ok: overlapping.length === 0,
       result: {
-        hasConflict: false,
-        conflictingEvents: [],
-        reason: 'not_configured: calendar sync not wired for this family yet',
+        hasConflict: overlapping.length > 0,
+        conflictingEvents: overlapping.map((e) => ({
+          id: e.id,
+          title: e.title,
+          startsAt: e.startsAt.toISOString(),
+          endsAt: (e.endsAt ?? e.startsAt).toISOString(),
+        })),
       },
     };
   },

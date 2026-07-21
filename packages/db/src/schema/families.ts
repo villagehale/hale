@@ -36,6 +36,11 @@ export const families = pgTable('families', {
    * number. NULL = not a founding family (or the freak concurrent-signup race,
    * which forfeits the badge rather than failing onboarding). */
   foundingNumber: integer('founding_number'),
+  /** The tokenized, revocable URL secret for this family's READ-ONLY ICS calendar
+   * subscription feed (VIL-219). Every public ICS read resolves WHERE
+   * ics_share_token = :token, so nulling it revokes the feed (same share-token
+   * pattern as villageCandidates/routineProposals). Null = no feed minted yet. */
+  icsShareToken: text('ics_share_token').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

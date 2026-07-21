@@ -1,4 +1,4 @@
-import type { ApprovedAction, ExecutionResult } from '@hale/types';
+import type { ApprovedAction, CalendarPlacementPayload, ExecutionResult } from '@hale/types';
 import { Resend } from 'resend';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
@@ -8,9 +8,16 @@ import {
   realCalendarClient,
 } from './calendar-client.js';
 import {
+  type CalendarCancelInput,
+  type CalendarMoveInput,
+  type CalendarPlacementInput,
+  type CalendarWriteResult,
   type InternalWriteOutcome,
+  addToCalendar as addToCalendarDb,
   addToDigest as addToDigestDb,
   addToRoutine as addToRoutineDb,
+  cancelCalendarEvent as cancelCalendarEventDb,
+  moveCalendarEvent as moveCalendarEventDb,
 } from './internal-writes.js';
 import {
   claimOutboundSend as claimOutboundSendDb,
@@ -55,6 +62,12 @@ export interface ExecutorDeps {
   addToRoutine: (input: InternalWriteInput) => Promise<InternalWriteOutcome>;
   /** Records an accepted village item as an undated digest note (add_to_digest_only). */
   addToDigest: (input: InternalWriteInput) => Promise<InternalWriteOutcome>;
+  /** Places a Hale-authored event on family_events (calendar_add); returns its id. */
+  addToCalendar: (input: CalendarPlacementInput) => Promise<CalendarWriteResult>;
+  /** Re-times an existing placement (calendar_move). */
+  moveCalendarEvent: (input: CalendarMoveInput) => Promise<CalendarWriteResult>;
+  /** Soft-deletes an existing placement (calendar_cancel). */
+  cancelCalendarEvent: (input: CalendarCancelInput) => Promise<CalendarWriteResult>;
   /** Google Calendar transport (create/update). Real impl throws until OAuth exists. */
   calendar: CalendarClient;
 }
@@ -68,6 +81,9 @@ function defaultDeps(): ExecutorDeps {
     sendEmail: resendSend,
     addToRoutine: (input) => addToRoutineDb(input),
     addToDigest: (input) => addToDigestDb(input),
+    addToCalendar: (input) => addToCalendarDb(input),
+    moveCalendarEvent: (input) => moveCalendarEventDb(input),
+    cancelCalendarEvent: (input) => cancelCalendarEventDb(input),
     calendar: realCalendarClient,
   };
 }
@@ -141,6 +157,11 @@ export async function runExecutor(
         reversible: true,
       };
     }
+
+    case 'calendar_add':
+    case 'calendar_move':
+    case 'calendar_cancel':
+      return calendarPlacement(input, deps);
 
     default: {
       const exhaustive: never = input.approved.actionType;
@@ -289,6 +310,102 @@ async function calendarEvent(
     reversible: true,
     reversalHandle: result.providerEventId,
   };
+}
+
+// ─── calendar_add / calendar_move / calendar_cancel (VIL-219) ────────────
+
+/**
+ * Internal-write calendar placements onto Hale's OWN family_events (source
+ * 'placement'), NOT the dormant Google Calendar seam. calendar_add returns the
+ * new row id as the reversal handle NESTED IN `detail` — the orchestrator persists
+ * only `detail` into actions.executor_result, so a top-level reversalHandle would
+ * be dropped and the UNDO primitive could never find the row. calendar_move mutates
+ * that row; calendar_cancel soft-deletes it (its own soft-delete, distinct from the
+ * UNDO primitive in apps/web/lib/actions/reverse-calendar.ts).
+ */
+async function calendarPlacement(
+  input: ExecutorRunInput,
+  deps: ExecutorDeps,
+): Promise<ExecutionResult> {
+  const actionType = input.approved.actionType;
+  const payload = input.approved.payload as unknown as CalendarPlacementPayload;
+  const executedAt = new Date().toISOString();
+
+  if (actionType === 'calendar_cancel') {
+    const result = await deps.cancelCalendarEvent({
+      familyId: input.familyId,
+      actionId: input.approved.id,
+      reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
+    });
+    return {
+      ok: true,
+      executedAt,
+      detail: { kind: 'calendar_cancelled', outcome: result.outcome, reversalHandle: result.familyEventId },
+      reversible: false,
+    };
+  }
+
+  const title = requirePayloadString(payload.title, 'title', actionType);
+  const startsAt = parsePayloadInstant(payload.startsAt, 'startsAt', actionType);
+  const endsAt = optionalPayloadInstant(payload.endsAt, 'endsAt', actionType);
+  const location = typeof payload.location === 'string' ? payload.location : null;
+
+  if (actionType === 'calendar_move') {
+    const result = await deps.moveCalendarEvent({
+      familyId: input.familyId,
+      actionId: input.approved.id,
+      reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
+      title,
+      startsAt,
+      endsAt,
+      location,
+    });
+    return {
+      ok: true,
+      executedAt,
+      // A move is not cleanly reversible: undoing it means restoring the prior
+      // time, which we don't persist. Only calendar_add is undoable (soft-delete).
+      detail: { kind: 'calendar_moved', outcome: result.outcome, reversalHandle: result.familyEventId },
+      reversible: false,
+    };
+  }
+
+  const result = await deps.addToCalendar({
+    familyId: input.familyId,
+    actionId: input.approved.id,
+    title,
+    startsAt,
+    endsAt,
+    location,
+    childId: typeof payload.childId === 'string' ? payload.childId : null,
+  });
+  return {
+    ok: true,
+    executedAt,
+    detail: { kind: 'calendar_placed', outcome: result.outcome, reversalHandle: result.familyEventId },
+    reversible: true,
+  };
+}
+
+function requirePayloadString(v: unknown, field: string, actionType: string): string {
+  if (typeof v !== 'string' || !v.trim()) {
+    throw new Error(`${actionType} payload missing required field (${field})`);
+  }
+  return v.trim();
+}
+
+function parsePayloadInstant(v: unknown, field: string, actionType: string): Date {
+  const s = requirePayloadString(v, field, actionType);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) {
+    throw new Error(`${actionType} payload has invalid ${field} instant: ${s}`);
+  }
+  return d;
+}
+
+function optionalPayloadInstant(v: unknown, field: string, actionType: string): Date | null {
+  if (v === undefined || v === null || v === '') return null;
+  return parsePayloadInstant(v, field, actionType);
 }
 
 // ─── Resend transport ─────────────────────────────────────────────────────
