@@ -1,7 +1,9 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useState } from 'react';
 import { Platform, Pressable, Share, View } from 'react-native';
 
+import { Avatar } from '@/components/hale/avatar';
 import { AppText } from '@/components/ui/app-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,7 +23,8 @@ import type {
   MemberView,
   MobileFamilyResponse,
 } from '@/lib/api-types';
-import { createInvite, updateFamily } from '@/lib/family-api';
+import { avatarInitials } from '@/lib/avatar-initials';
+import { createInvite, removeChildAvatar, updateFamily, uploadChildAvatar } from '@/lib/family-api';
 import { useApi } from '@/lib/use-api';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -272,7 +275,55 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
   const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const iconColor = useMeadowColor('ink3');
+
+  // Pick a photo (images only; the picker is already installed) and upload it. The
+  // server byte-sniffs + 5MB-caps; a 413/415 becomes honest copy. onSaved() re-reads the
+  // family so the freshly-signed avatarUrl lands.
+  const pickAndUpload = async () => {
+    if (avatarBusy) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/jpeg', 'image/png', 'image/webp'],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      await uploadChildAvatar(child.id, {
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType ?? 'image/jpeg',
+      });
+      onSaved();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 413) setAvatarError('That photo is over 5 MB.');
+      else if (e instanceof ApiError && e.status === 415)
+        setAvatarError('Use a JPEG, PNG, or WebP photo.');
+      else setAvatarError("Couldn't update the photo — try again.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    if (avatarBusy) return;
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      await removeChildAvatar(child.id);
+      onSaved();
+    } catch {
+      setAvatarError("Couldn't remove the photo — try again.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   if (!editing) {
     return (
@@ -282,7 +333,10 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
         accessibilityLabel={`Edit ${child.name}'s profile`}
         className="flex-row items-center gap-3"
       >
-        <AvatarDisc initial={initialOf(child.name)} />
+        <Avatar
+          photoUrl={child.avatarUrl}
+          initials={avatarInitials(child.name, child.lastName)}
+        />
         <View className="flex-1">
           <AppText variant="body" className="text-ink">
             {child.name}
@@ -329,6 +383,37 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
 
   return (
     <Card className="gap-4">
+      <View className="flex-row items-center gap-3">
+        <Avatar
+          photoUrl={child.avatarUrl}
+          initials={avatarInitials(child.name, child.lastName)}
+          size={48}
+        />
+        <View className="flex-1 flex-row items-center gap-2">
+          <Button
+            label={avatarBusy ? 'Working…' : child.avatarUrl ? 'Change photo' : 'Add photo'}
+            variant="secondary"
+            onPress={pickAndUpload}
+            disabled={avatarBusy}
+            className="flex-1"
+          />
+          {child.avatarUrl ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${child.name}'s photo`}
+              disabled={avatarBusy}
+              onPress={removePhoto}
+              hitSlop={6}
+              className="px-2 py-2 active:opacity-70"
+            >
+              <AppText variant="meta" className="text-berry">
+                Remove
+              </AppText>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+      <FormError message={avatarError} />
       <Field
         label="Name or nickname"
         value={name}

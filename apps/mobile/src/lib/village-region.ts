@@ -57,6 +57,15 @@ function areaKey(city: string, province: string | null | undefined): string {
   return `${city.trim().toLowerCase()}|${(province ?? '').trim().toLowerCase()}`;
 }
 
+/** A stable feed identity for the active area — changes iff the coarse area changes.
+ * The Village feed's client-side filter state (cadence + seasons) is keyed on this so a
+ * city switch RESETS the filters (an "indoor" filter set in Toronto must not silently
+ * carry to Vancouver), while a same-area re-fetch keeps them. Mirrors the web feed being
+ * keyed on its coarse area. The no-area "Near you" feed gets its own stable key. */
+export function villageFeedKey(area: SavedAreaLabel | null | undefined): string {
+  return area ? areaKey(area.city, area.province) : 'near-you';
+}
+
 /** True when a saved area and a (city, province) name the same coarse place. */
 export function sameArea(
   area: { city: string; province: string | null },

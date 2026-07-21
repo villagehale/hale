@@ -14,7 +14,35 @@ export type ActionType =
   | 'cancel_clinic_appointment'
   | 'share_photos_with_family'
   | 'add_to_digest_only'
-  | 'add_to_routine';
+  | 'add_to_routine'
+  // VIL-219 (B3) — internal-write placements on Hale's OWN family calendar
+  // (family_events rows), NOT the dormant Google Calendar seam. calendar_add is
+  // reversible (its executor returns the new family_events id as the reversal
+  // handle); calendar_cancel is the reversal — it soft-deletes the placement.
+  | 'calendar_add'
+  | 'calendar_move'
+  | 'calendar_cancel';
+
+/**
+ * The typed payload of a calendar placement action (VIL-219). Times are ISO-8601
+ * instants; the family-local rendering happens at read (ICS / plan). `reversalHandle`
+ * on calendar_move/cancel is the target family_events id (from the original
+ * calendar_add's executor_result). Child-scoped placements carry `childId` so the
+ * teen age gate can genericize a 13+ child's title in the ICS + parent-facing copy.
+ */
+export interface CalendarPlacementPayload {
+  title: string;
+  startsAt: string;
+  endsAt?: string | null;
+  location?: string | null;
+  childId?: string | null;
+  /** Provenance of the placed item (the week_plan item's sourceRef, table+id). */
+  sourceRef?: { table: string; id: string } | null;
+  /** For calendar_move / calendar_cancel: the family_events row to mutate/remove. */
+  reversalHandle?: string;
+  /** Action-level dedup hash the reviewer's idempotency check reads. */
+  action_hash?: string;
+}
 
 /** Visibility of the action's outward effect — drives Reviewer policy strictness. */
 export type RecipientVisibility = 'public' | 'internal_only';

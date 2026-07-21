@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, Share, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
 
 import { FamilyAreaSheet } from '@/components/hale/family-area-sheet';
 import { ResourcesRail } from '@/components/hale/resources-rail';
@@ -16,7 +16,12 @@ import { Tag } from '@/components/ui/tag';
 import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
 import { ApiError, api } from '@/lib/api-client';
-import type { MobileVillageResponse, SavedAreaLabel, VillageCandidateView } from '@/lib/api-types';
+import type {
+  MobileVillageAiSearchResponse,
+  MobileVillageResponse,
+  SavedAreaLabel,
+  VillageCandidateView,
+} from '@/lib/api-types';
 import { foundStamp } from '@/lib/format';
 import { STUB_CHILDCARE, type StubChildcareProvider } from '@/lib/stub-data';
 import { useApi } from '@/lib/use-api';
@@ -28,7 +33,12 @@ import {
   applyFilters,
   cadenceChip,
 } from '@/lib/village-filter';
-import { headerLabel, subtitleCopy } from '@/lib/village-region';
+import {
+  type AiSearchView,
+  aiSearchErrorMessage,
+  aiSearchViewFrom,
+} from '@/lib/village-ai-search';
+import { headerLabel, subtitleCopy, villageFeedKey } from '@/lib/village-region';
 import {
   type DiscoverResult,
   SEASON_KEYS,
@@ -722,10 +732,99 @@ function VillageBody({
   );
 }
 
+/** The natural-language search bar (handoff): a sparkle, a prompt field, and a navy
+ * send — or a clear ✕ once a search is showing. Submitting asks Hale in the parent's
+ * own words; the interpretation echo + results replace the feed until cleared. */
+function VillageAiSearch({
+  value,
+  onChange,
+  onSubmit,
+  pending,
+  active,
+  onClear,
+}: {
+  value: string;
+  onChange: (t: string) => void;
+  onSubmit: () => void;
+  pending: boolean;
+  active: boolean;
+  onClear: () => void;
+}) {
+  const placeholderColor = useMeadowColor('ink3');
+  const inputColor = useMeadowColor('ink');
+  const sparkle = useMeadowColor('brand');
+  const sendColor = useMeadowColor('onAccent');
+  const clearColor = useMeadowColor('ink3');
+  const canSend = value.trim().length > 0 && !pending;
+  return (
+    <View className="flex-row items-center gap-2 rounded-[16px] border-[1.5px] border-rule-strong bg-card py-1.5 pl-3 pr-1.5">
+      <Icon name="sparkles" size={16} color={sparkle} />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="Ask for anything — “toddler swim this fall”"
+        placeholderTextColor={placeholderColor}
+        accessibilityLabel="Search your village in your own words"
+        returnKeyType="search"
+        onSubmitEditing={onSubmit}
+        editable={!pending}
+        style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular' }}
+        className="flex-1 text-[14.5px]"
+      />
+      {active ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+          onPress={onClear}
+          hitSlop={6}
+          className="h-9 w-9 items-center justify-center active:opacity-70"
+        >
+          <Icon name="x" size={16} color={clearColor} />
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search"
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
+          onPress={onSubmit}
+          className={`h-9 w-9 items-center justify-center rounded-[12px] bg-brand ${
+            canSend ? 'active:opacity-90' : 'opacity-40'
+          }`}
+        >
+          <Icon name="arrow-up" size={16} color={sendColor} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+/** The "Hale understood: …" echo. Palette law: ink navy only (never blue), with the
+ * interpreted terms weight-differentiated from the label. */
+function AiInterpretation({ text }: { text: string }) {
+  return (
+    <AppText variant="meta" className="text-ink-2">
+      Hale understood:{' '}
+      <AppText
+        variant="meta"
+        className="text-ink"
+        style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
+      >
+        {text}
+      </AppText>
+    </AppText>
+  );
+}
+
 export default function VillageScreen() {
   const [activeSeason, setActiveSeason] = useState<SeasonKey | null>(null);
   const [pendingSeason, setPendingSeason] = useState<SeasonKey | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiView, setAiView] = useState<AiSearchView | null>(null);
+  const [aiPending, setAiPending] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [area, setArea] = useState<SavedAreaLabel | null>(null);
@@ -747,13 +846,48 @@ export default function VillageScreen() {
     setSearchError(null);
   }, []);
 
+  const clearAiSearch = useCallback(() => {
+    setAiView(null);
+    setAiError(null);
+    setAiPrompt('');
+  }, []);
+
+  // Stable so RecCard's memo holds — opens the shared Activity route by candidate id.
+  const openActivity = useCallback((rec: VillageCandidateView) => router.push(`/activity/${rec.id}`), []);
+
+  const runAiSearch = useCallback(async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt || aiPending) return;
+    setAiPending(true);
+    setAiError(null);
+    // AI search takes over the body — clear any season search underneath it.
+    setActiveSeason(null);
+    setSearchError(null);
+    try {
+      const res = await api<MobileVillageAiSearchResponse>('/api/mobile/village/ai-search', {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
+        // The intent parse (and a possible discovery kick) is an LLM call — far slower
+        // than the 15s default, so a working search must not be aborted early.
+        timeoutMs: 120_000,
+      });
+      setAiView(aiSearchViewFrom(res));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      setAiError(aiSearchErrorMessage(e instanceof ApiError ? e.status : 0));
+    } finally {
+      setAiPending(false);
+    }
+  }, [aiPrompt, aiPending]);
+
   // The active area changed in the switcher — re-query the feed so it reflects the new
-  // area. A season search is cleared back to the standing feed (its stored run was for
-  // the old area); on the standing feed we force a re-read in place.
+  // area. A season search or an AI search is cleared back to the standing feed (their
+  // stored runs were for the old area); on the standing feed we force a re-read in place.
   const onAreaChanged = useCallback(() => {
+    clearAiSearch();
     if (activeSeason) clearToFeed();
     else refresh();
-  }, [activeSeason, clearToFeed, refresh]);
+  }, [activeSeason, clearToFeed, clearAiSearch, refresh]);
 
   const runSearch = useCallback(async (season: SeasonKey) => {
     setSearchError(null);
@@ -791,46 +925,112 @@ export default function VillageScreen() {
         </AppText>
       </View>
 
-      <SeasonSearch
-        activeSeason={activeSeason}
-        onSearch={runSearch}
-        onClear={clearToFeed}
-        disabled={pendingSeason !== null}
+      <VillageAiSearch
+        value={aiPrompt}
+        onChange={setAiPrompt}
+        onSubmit={runAiSearch}
+        pending={aiPending}
+        active={aiView !== null || aiError !== null}
+        onClear={clearAiSearch}
       />
 
-      {searchError ? (
-        <Card className="items-center gap-3 py-6">
-          <AppText variant="meta" className="text-center">
-            {searchError}
-          </AppText>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss and go back to your feed"
-            hitSlop={8}
-            onPress={clearToFeed}
-            className="rounded-full border border-rule bg-raised px-4 py-2 active:opacity-70"
-          >
-            <AppText variant="meta" className="text-ink-2">
-              Back to your feed
+      {aiPending || aiView !== null || aiError !== null ? (
+        // AI-search mode: the interpretation echo + real results replace the feed until
+        // cleared (the ✕ in the bar, or an area switch, resets it).
+        aiPending ? (
+          <Card className="items-center gap-3 py-8">
+            <TypingDots />
+            <AppText variant="meta" className="text-ink-3">
+              Searching your village…
             </AppText>
-          </Pressable>
-        </Card>
-      ) : null}
+          </Card>
+        ) : aiError ? (
+          <Card className="items-center gap-3 py-6">
+            <AppText variant="meta" className="text-center">
+              {aiError}
+            </AppText>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to your feed"
+              hitSlop={8}
+              onPress={clearAiSearch}
+              className="rounded-full border border-rule bg-raised px-4 py-2 active:opacity-70"
+            >
+              <AppText variant="meta" className="text-ink-2">
+                Back to your feed
+              </AppText>
+            </Pressable>
+          </Card>
+        ) : aiView ? (
+          <>
+            <AiInterpretation text={aiView.interpretation} />
+            {aiView.kind === 'results' ? (
+              <View className="gap-3">
+                {aiView.results.map((rec) => (
+                  <RecCard key={rec.id} rec={rec} onOpen={openActivity} onChanged={refresh} />
+                ))}
+              </View>
+            ) : (
+              <Card className="items-center gap-2 py-8">
+                <AppText variant="title">
+                  {aiView.kind === 'out-looking' ? 'Hale is out looking' : 'No specific matches'}
+                </AppText>
+                <AppText variant="meta" className="text-center">
+                  {aiView.kind === 'out-looking'
+                    ? 'Nothing in your village matched yet — Hale kicked off a fresh search. Check back in a moment.'
+                    : 'Nothing matched that yet. Try different words, or clear the search to browse your feed.'}
+                </AppText>
+              </Card>
+            )}
+          </>
+        ) : null
+      ) : (
+        <>
+          <SeasonSearch
+            activeSeason={activeSeason}
+            onSearch={runSearch}
+            onClear={clearToFeed}
+            disabled={pendingSeason !== null}
+          />
 
-      {pendingSeason ? <SearchPending season={pendingSeason} /> : null}
+          {searchError ? (
+            <Card className="items-center gap-3 py-6">
+              <AppText variant="meta" className="text-center">
+                {searchError}
+              </AppText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss and go back to your feed"
+                hitSlop={8}
+                onPress={clearToFeed}
+                className="rounded-full border border-rule bg-raised px-4 py-2 active:opacity-70"
+              >
+                <AppText variant="meta" className="text-ink-2">
+                  Back to your feed
+                </AppText>
+              </Pressable>
+            </Card>
+          ) : null}
 
-      {!pendingSeason && status === 'loading' ? <LoadingState /> : null}
-      {!pendingSeason && status === 'error' ? (
-        <ErrorState message={error ?? ''} onRetry={reload} />
-      ) : null}
-      {!pendingSeason && status === 'ready' && data ? (
-        <VillageBody
-          data={data}
-          searchSeason={activeSeason}
-          showFilter={activeSeason === null}
-          onRefresh={refresh}
-        />
-      ) : null}
+          {pendingSeason ? <SearchPending season={pendingSeason} /> : null}
+
+          {!pendingSeason && status === 'loading' ? <LoadingState /> : null}
+          {!pendingSeason && status === 'error' ? (
+            <ErrorState message={error ?? ''} onRetry={reload} />
+          ) : null}
+          {!pendingSeason && status === 'ready' && data ? (
+            // Key on the active area so switching cities REMOUNTS the body — resetting
+            // its filters (a filter set for one city must not persist to another).
+            <VillageBody
+              key={villageFeedKey(area)}
+              data={data}
+              searchSeason={activeSeason}
+              showFilter={activeSeason === null}
+              onRefresh={refresh}
+            />
+          ) : null}
+        </>
+      )}
 
       <FamilyAreaSheet
         visible={sheetOpen}

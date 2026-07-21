@@ -19,9 +19,11 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   return {
     ...actual,
     eq: (col: unknown, val: unknown) => ({ marker: 'eq', col, val }),
+    ne: (col: unknown, val: unknown) => ({ marker: 'ne', col, val }),
     and: (...conds: unknown[]) => ({ marker: 'and', conds }),
     gte: (col: unknown, val: unknown) => ({ marker: 'gte', col, val }),
     lte: (col: unknown, val: unknown) => ({ marker: 'lte', col, val }),
+    isNull: (col: unknown) => ({ marker: 'isNull', col }),
     asc: (col: unknown) => ({ marker: 'asc', col }),
   };
 });
@@ -36,7 +38,8 @@ const WEEK_START = '2026-07-20';
 
 type Marker =
   | { marker: 'and'; conds: Marker[] }
-  | { marker: 'eq' | 'gte' | 'lte'; col: unknown; val: unknown }
+  | { marker: 'eq' | 'ne' | 'gte' | 'lte'; col: unknown; val: unknown }
+  | { marker: 'isNull'; col: unknown }
   | { marker: 'asc'; col: unknown };
 
 interface FamilyEventRow {
@@ -47,9 +50,10 @@ interface FamilyEventRow {
   startsAt: Date;
   endsAt: Date | null;
   location: string | null;
-  source: 'parent' | 'channel' | 'email';
+  source: 'parent' | 'channel' | 'email' | 'placement';
   createdBy: string | null;
   createdAt: Date;
+  deletedAt: Date | null;
 }
 
 interface Capture {
@@ -59,9 +63,11 @@ interface Capture {
 
 /** Resolves a family_events column marker to its row key, throwing on any column
  * the composer's query shouldn't touch — so a wrong-column filter fails loudly. */
-function eventKey(col: unknown): 'familyId' | 'startsAt' {
+function eventKey(col: unknown): 'familyId' | 'startsAt' | 'source' | 'deletedAt' {
   if (col === schema.familyEvents.familyId) return 'familyId';
   if (col === schema.familyEvents.startsAt) return 'startsAt';
+  if (col === schema.familyEvents.source) return 'source';
+  if (col === schema.familyEvents.deletedAt) return 'deletedAt';
   throw new Error('fakeDb: family_events query referenced an unexpected column');
 }
 
@@ -72,6 +78,10 @@ function matches(cond: Marker | undefined, row: FamilyEventRow): boolean {
       return cond.conds.every((c) => matches(c, row));
     case 'eq':
       return row[eventKey(cond.col)] === cond.val;
+    case 'ne':
+      return row[eventKey(cond.col)] !== cond.val;
+    case 'isNull':
+      return row[eventKey(cond.col)] === null;
     case 'gte':
       return (row[eventKey(cond.col)] as Date).getTime() >= (cond.val as Date).getTime();
     case 'lte':
@@ -163,6 +173,7 @@ function makeEvent(
     source: 'parent',
     createdBy: null,
     createdAt: new Date('2026-07-01T00:00:00Z'),
+    deletedAt: null,
     ...over,
   };
 }
@@ -318,5 +329,34 @@ describe('listFamilyEventsInWindow — family-scoped, in-window, ordered (rule #
     });
     const rows = await listFamilyEventsInWindow(db, FAMILY_ID, windowStart, windowEnd);
     expect(rows.map((r) => r.id)).toEqual(['ev-earlier', 'ev-later']);
+  });
+
+  it('excludes placements (durable, already placed) and soft-deleted rows (VIL-219)', async () => {
+    const windowStart = new Date('2026-07-20T00:00:00Z');
+    const windowEnd = new Date('2026-07-27T00:00:00Z');
+
+    const occasion = makeEvent({
+      id: 'ev-occasion',
+      familyId: FAMILY_ID,
+      startsAt: new Date('2026-07-22T09:00:00Z'),
+    });
+    // A placement Hale already added — surfacing it would loop it back into the plan.
+    const placement = makeEvent({
+      id: 'ev-placement',
+      familyId: FAMILY_ID,
+      startsAt: new Date('2026-07-23T09:00:00Z'),
+      source: 'placement',
+    });
+    // A cancelled/soft-deleted occasion — never surfaced.
+    const softDeleted = makeEvent({
+      id: 'ev-deleted',
+      familyId: FAMILY_ID,
+      startsAt: new Date('2026-07-24T09:00:00Z'),
+      deletedAt: new Date('2026-07-21T00:00:00Z'),
+    });
+
+    const { db } = fakeDb({ eventRows: [occasion, placement, softDeleted] });
+    const rows = await listFamilyEventsInWindow(db, FAMILY_ID, windowStart, windowEnd);
+    expect(rows.map((r) => r.id)).toEqual(['ev-occasion']);
   });
 });

@@ -7,7 +7,7 @@ export default function TabsLayout() {
     <Tabs screenOptions={{ headerShown: false }} tabBar={(props) => <AppTabBar {...props} />}>
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="companion" options={{ title: 'Companion' }} />
-      <Tabs.Screen name="ask" options={{ title: 'Concierge' }} />
+      <Tabs.Screen name="ask" options={{ title: 'Ask' }} />
       <Tabs.Screen name="village" options={{ title: 'Village' }} />
       <Tabs.Screen name="more" options={{ title: 'More' }} />
     </Tabs>

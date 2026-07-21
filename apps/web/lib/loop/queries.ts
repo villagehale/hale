@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
 
 /**
  * Persistence for the weekly-plan composer (VIL-217 — "the Sunday brain"). Every
@@ -115,9 +115,14 @@ export async function createFamilyEvent(
 }
 
 /**
- * The family's external events whose start instant falls within [startInstant,
+ * The family's external OCCASIONS whose start instant falls within [startInstant,
  * endInstant], oldest-first — the composer's in-window read. Family-scoped (rule
  * #1): a foreign family's events never appear.
+ *
+ * Excludes `source='placement'` and soft-deleted rows (VIL-219): a placement is a
+ * durable calendar entry Hale ALREADY placed, not a fresh occasion to re-propose —
+ * surfacing it would loop it back into next week's plan. The ICS feed renders both
+ * placements and occasions; this composer read is deliberately narrower.
  */
 export async function listFamilyEventsInWindow(
   db: Database,
@@ -133,6 +138,8 @@ export async function listFamilyEventsInWindow(
         eq(schema.familyEvents.familyId, familyId),
         gte(schema.familyEvents.startsAt, startInstant),
         lte(schema.familyEvents.startsAt, endInstant),
+        ne(schema.familyEvents.source, 'placement'),
+        isNull(schema.familyEvents.deletedAt),
       ),
     )
     .orderBy(asc(schema.familyEvents.startsAt));

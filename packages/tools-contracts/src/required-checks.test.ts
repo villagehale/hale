@@ -36,6 +36,9 @@ const ALL_ACTION_TYPES = [
   'share_photos_with_family',
   'add_to_digest_only',
   'add_to_routine',
+  'calendar_add',
+  'calendar_move',
+  'calendar_cancel',
 ] as const satisfies readonly ActionType[];
 
 describe('REQUIRED_CHECKS policy matrix', () => {
@@ -59,10 +62,12 @@ describe('REQUIRED_CHECKS policy matrix', () => {
     }
   });
 
+  // check_calendar_conflict left this list in VIL-219: its registry implementation
+  // became a real live query over family_events placements, so requiring it no
+  // longer deadlocks approvals (the calendar_* types now do require it).
   it('never requires the permanently not_configured stub checks', () => {
     for (const actionType of ALL_ACTION_TYPES) {
       const checks = REQUIRED_CHECKS[actionType] as readonly string[];
-      expect(checks).not.toContain('check_calendar_conflict');
       expect(checks).not.toContain('check_vaccine_schedule');
     }
   });

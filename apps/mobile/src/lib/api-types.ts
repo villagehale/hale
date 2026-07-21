@@ -294,6 +294,9 @@ export interface FamilyChildBasics {
   name: string;
   /** Optional family / last name, or null when not given (rule #1). */
   lastName: string | null;
+  /** A freshly-signed avatar photo URL, or null when the child has no photo (then the
+   * UI shows initials). Server-resolved + cache-busted (mirrors web). */
+  avatarUrl: string | null;
   dateOfBirth: string;
   /** Stored gender enum, so an edit form prefills it. */
   gender: ChildGender;
@@ -418,12 +421,33 @@ export interface SetActiveAreaRequest {
   areaId: string;
 }
 
-export type MobileVillageAreaUpdateRequest = AddAreaRequest | SetActiveAreaRequest;
+/** Remove a saved area by id. The active area can't be removed (409 active_area) — the
+ * client switches away first; a foreign/unknown id is 404. Mirrors web. */
+export interface RemoveAreaRequest {
+  action: 'remove';
+  areaId: string;
+}
+
+export type MobileVillageAreaUpdateRequest =
+  | AddAreaRequest
+  | SetActiveAreaRequest
+  | RemoveAreaRequest;
 
 /** GET /api/mobile/village/areas/search?q= — up to 6 coarse city candidates for the
  * switcher typeahead, {city, province} only (no coordinates, rule #1). */
 export interface MobileVillageAreaSearchResponse {
   cities: CityCandidate[];
+}
+
+/** POST /api/mobile/village/ai-search — the natural-language search outcome (mirrors
+ * web). `interpretation` is Hale's paraphrase (the "Hale understood: …" echo);
+ * `results` are teen-redacted candidate views; `discoveryKicked` means a thin result
+ * set kicked a background discovery run. */
+export interface MobileVillageAiSearchResponse {
+  interpretation: string;
+  results: VillageCandidateView[];
+  degraded: boolean;
+  discoveryKicked: boolean;
 }
 
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true). */
@@ -491,8 +515,9 @@ export interface MobileFamilyResponse {
   members: FamilyMembersView;
   basics: FamilyBasicsView;
   /** The signed-in parent (from THIS session) for the More profile header —
-   * members.primary reads wrong for a co-parent. */
-  viewer: { name: string | null; email: string | null };
+   * members.primary reads wrong for a co-parent. `image` is the parent's Google photo
+   * URL, or null (then the UI shows initials). */
+  viewer: { name: string | null; email: string | null; image: string | null };
 }
 
 export interface MobileApprovalsResponse {

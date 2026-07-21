@@ -302,10 +302,11 @@ export type ReviewerToolName = keyof typeof REVIEWER_TOOLS;
 // product fans action types out across the four family stages, no new outward
 // action can ship un-gated by accident.
 //
-// check_calendar_conflict and check_vaccine_schedule are deliberately ABSENT:
-// they are permanently not_configured stubs (ratified brief decision). Requiring
-// an unsatisfiable check would deadlock the pipeline — every action gated by it
-// would be impossible to approve.
+// check_vaccine_schedule is deliberately ABSENT: it is a permanent not_configured
+// stub, and requiring an unsatisfiable check would deadlock the pipeline. As of
+// VIL-219, check_calendar_conflict is NO LONGER a stub — it queries the family's
+// family_events placements — so the calendar_add / calendar_move types below require
+// it (it returns ok:true on no conflict; the deadlock risk is gone).
 // ─────────────────────────────────────────────────────────────────────────────
 export const REQUIRED_CHECKS = {
   // Outbound email to a recipient: PII leak guard + recipient allowlist +
@@ -376,6 +377,16 @@ export const REQUIRED_CHECKS = {
   // activity twice must be a no-op. Deliberately NOT check_calendar_conflict /
   // check_vaccine_schedule (permanent not_configured stubs → un-approvable).
   add_to_routine: ['check_action_idempotency'],
+
+  // Placing an item on Hale's own family calendar (VIL-219): respect the time
+  // window (past / quiet hours), don't double-place (idempotency), and don't
+  // clash with an existing placement for the same child (check_calendar_conflict,
+  // now a REAL query over family_events — no longer the not_configured stub).
+  calendar_add: ['check_action_time_window', 'check_action_idempotency', 'check_calendar_conflict'],
+  calendar_move: ['check_action_time_window', 'check_action_idempotency', 'check_calendar_conflict'],
+  // Removing a placement can't conflict or run early — the only gate is dedup so a
+  // redelivered cancel is a no-op.
+  calendar_cancel: ['check_action_idempotency'],
 } as const satisfies Record<ActionType, readonly ReviewerToolName[]>;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -391,6 +402,11 @@ export const REQUIRED_CHECKS = {
 //     acting parent's.
 //   family_event_invite is an EVENT type, not an ActionType — its calendar-write
 //     effect is already covered by the two calendar action types above.
+//   calendar_add / calendar_move / calendar_cancel (VIL-219) are deliberately NOT
+//     here: they write Hale's INTERNAL family_events (a read-model rendered in /plan
+//     + the ICS feed), not an external shared calendar that commits the co-parent.
+//     A placement is family-scoped, reversible (UNDO), visible to the co-parent, and
+//     approved by a single parent's YES — so it is not gated by two-parent consent.
 //
 // All other action types touch only the acting parent's surface (their email
 // thread, their order, their form) or internal-only state (digest), so they are

@@ -20,6 +20,18 @@ export interface AvatarProps {
   className?: string;
 }
 
+/** Whether the disc renders the photo vs the initials fallback: only when there IS a
+ * src AND it isn't the one that last failed to load. Keying on the failed URL (not a
+ * boolean) is what lets a NEW src after an error be retried — a re-uploaded child photo
+ * or a rotated signed-URL cache-buster recovers without the caller remounting. Pure so
+ * the retry-on-src-change invariant is testable without a DOM. */
+export function avatarShowsImage(
+  src: string | null | undefined,
+  erroredSrc: string | null,
+): src is string {
+  return src != null && src !== erroredSrc;
+}
+
 /**
  * The one people-avatar treatment across the app: a photo when we have one, else a
  * tinted initials disc. Decorative by default (aria-hidden) — every call site shows
@@ -29,10 +41,10 @@ export interface AvatarProps {
  * render initials. The parent's Google photo comes from the session (`user.image`).
  */
 export function Avatar({ src, initials, tone, size = 32, className }: AvatarProps) {
-  const [failed, setFailed] = useState(false);
+  const [erroredSrc, setErroredSrc] = useState<string | null>(null);
   const cls = `avatar avatar-${tone}${className ? ` ${className}` : ''}`;
 
-  if (src && !failed) {
+  if (avatarShowsImage(src, erroredSrc)) {
     return (
       // biome-ignore lint/a11y/useAltText: decorative — the name is in adjacent text; alt="" + aria-hidden keeps the disc out of the a11y tree
       <img
@@ -43,7 +55,7 @@ export function Avatar({ src, initials, tone, size = 32, className }: AvatarProp
         height={size}
         // googleusercontent photos 403 when a referrer is sent — request none.
         referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
+        onError={() => setErroredSrc(src)}
         className={`${cls} avatar-image`}
         style={{ width: size, height: size }}
       />

@@ -52,8 +52,10 @@ function fakeDb(opts: {
     if (keys.length === 2 && keys.includes('id') && keys.includes('dateOfBirth')) {
       return { from: () => ({ where: async () => opts.children }) };
     }
-    // children read for companionForFamily: { id, name, dateOfBirth }
-    if (keys.length === 3 && keys.includes('id') && keys.includes('name')) {
+    // children read for companionForFamily: { id, name, lastName, dateOfBirth,
+    // avatarPath, avatarUpdatedAt } — matched by its identifying columns so added
+    // avatar columns don't wedge the dispatch.
+    if (keys.includes('id') && keys.includes('name') && keys.includes('dateOfBirth')) {
       return {
         from: () => ({
           where: () => ({

@@ -30,14 +30,23 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 const EMPTY_AREAS: SavedArea[] = [];
 
-/** An honest note for a failed area write. A 409 is the saved-areas cap (retrying
- * won't help — there is no in-app remove yet), so it gets its own line rather than a
+/** An honest note for a failed area write. A 409 on an add is the saved-areas cap
+ * (retrying won't help — remove one first), so it gets its own line rather than a
  * misleading "try again". */
 function selectionErrorNote(e: unknown): string {
   if (e instanceof ApiError && e.status === 409) {
-    return "You've saved the most areas Hale keeps.";
+    return "You've saved the most areas Hale keeps — remove one to add another.";
   }
   return "Couldn't update your area — try again.";
+}
+
+/** An honest note for a failed area remove. A 409 is the active-area refusal (the UI
+ * hides the control on the active row, so this is a defensive fallback). */
+function removeErrorNote(e: unknown): string {
+  if (e instanceof ApiError && e.status === 409) {
+    return "That's your active area — switch to another first, then remove it.";
+  }
+  return "Couldn't remove that area — try again.";
 }
 
 type ListState =
@@ -45,9 +54,10 @@ type ListState =
   | { status: 'ready'; areas: SavedArea[]; activeAreaId: string | null }
   | { status: 'error' };
 
-/** A single list row — a pin, a name over an optional sub-line, and an optional
- * trailing check (the active saved area). Shared by "Your areas" and "Search
- * results" so both rows read identically. */
+/** A single list row — a pin, a name over an optional sub-line, and a trailing slot:
+ * the active saved area shows a check; a non-active saved area with `onRemove` shows a
+ * two-step inline remove (✕ → Remove / Keep); search results show neither. Shared by
+ * "Your areas" and "Search results" so both rows read identically. */
 function AreaRow({
   name,
   sub,
@@ -56,6 +66,7 @@ function AreaRow({
   disabled,
   accessibilityLabel,
   onPress,
+  onRemove,
 }: {
   name: string;
   sub: string | null;
@@ -64,33 +75,88 @@ function AreaRow({
   disabled: boolean;
   accessibilityLabel: string;
   onPress: () => void;
+  /** When set (a non-active saved area), renders the two-step remove control. */
+  onRemove?: () => void;
 }) {
   const pin = useMeadowColor('ink3');
   const check = useMeadowColor('success');
+  const removeColor = useMeadowColor('ink3');
+  const [confirming, setConfirming] = useState(false);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ selected: active, disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      className={`flex-row items-center gap-2.5 px-4 py-3.5 ${last ? '' : 'border-b border-hairline'} ${
+    <View
+      className={`flex-row items-center gap-2.5 px-4 py-2.5 ${last ? '' : 'border-b border-hairline'} ${
         active ? 'bg-canvas' : ''
-      } active:opacity-70`}
+      }`}
     >
-      <Icon name="map-pin" size={15} color={pin} />
-      <View className="flex-1">
-        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_600SemiBold' }}>
-          {name}
-        </AppText>
-        {sub ? (
-          <AppText variant="meta" className="text-caption">
-            {sub}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ selected: active, disabled }}
+        disabled={disabled}
+        onPress={onPress}
+        className="flex-1 flex-row items-center gap-2.5 py-1 active:opacity-70"
+      >
+        <Icon name="map-pin" size={15} color={pin} />
+        <View className="flex-1">
+          <AppText
+            className="text-[14px] text-ink"
+            style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
+          >
+            {name}
           </AppText>
-        ) : null}
-      </View>
-      {active ? <Icon name="check" size={15} color={check} /> : null}
-    </Pressable>
+          {sub ? (
+            <AppText variant="meta" className="text-caption">
+              {sub}
+            </AppText>
+          ) : null}
+        </View>
+      </Pressable>
+      {active ? (
+        <Icon name="check" size={15} color={check} />
+      ) : onRemove ? (
+        confirming ? (
+          <View className="flex-row items-center gap-1">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${name}`}
+              disabled={disabled}
+              onPress={() => {
+                setConfirming(false);
+                onRemove();
+              }}
+              hitSlop={6}
+              className="rounded-full bg-chip-red px-2.5 py-1 active:opacity-70"
+            >
+              <AppText variant="meta" className="text-berry">
+                Remove
+              </AppText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Keep this area"
+              onPress={() => setConfirming(false)}
+              hitSlop={6}
+              className="px-2 py-1 active:opacity-70"
+            >
+              <AppText variant="meta" className="text-ink-3">
+                Keep
+              </AppText>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${name}`}
+            disabled={disabled}
+            onPress={() => setConfirming(true)}
+            hitSlop={8}
+            className="p-1 active:opacity-60"
+          >
+            <Icon name="x" size={15} color={removeColor} />
+          </Pressable>
+        )
+      ) : null}
+    </View>
   );
 }
 
@@ -119,6 +185,9 @@ export function FamilyAreaSheet({
   /** null = no search run yet (query below the min length); [] = searched, no match. */
   const [results, setResults] = useState<CityCandidate[] | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
+  /** Set when the city-search endpoint rate-limits (429) — surfaced as honest copy so
+   * a throttled search never reads as "no match". */
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -157,11 +226,13 @@ export function FamilyAreaSheet({
     if (!shouldSearch(query)) {
       setResults(null);
       setSearchBusy(false);
+      setSearchError(null);
       return;
     }
     const q = query.trim();
     let live = true;
     setSearchBusy(true);
+    setSearchError(null);
     const handle = setTimeout(async () => {
       try {
         const res = await api<MobileVillageAreaSearchResponse>(
@@ -170,7 +241,15 @@ export function FamilyAreaSheet({
         if (live) setResults(filterSearchResults(res.cities, savedAreas));
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) return;
-        // A search miss/transport error reads as "no match", never a swallowed crash.
+        // A rate-limit is NOT "no match" — surface honest copy so the parent knows to
+        // pause, not to think their city doesn't exist. Any other miss reads as no match.
+        if (e instanceof ApiError && e.status === 429) {
+          if (live) {
+            setSearchError("You've searched a lot — try again in a moment.");
+            setResults([]);
+          }
+          return;
+        }
         if (live) setResults([]);
       } finally {
         if (live) setSearchBusy(false);
@@ -244,6 +323,29 @@ export function FamilyAreaSheet({
     [applySelection, addAndActivate],
   );
 
+  // Remove a saved area (never the active one — the row hides the control). The active
+  // feed is unchanged, so this only re-reads the list; it does NOT re-query the feed.
+  const removeSaved = useCallback(
+    async (area: SavedArea) => {
+      if (busy) return;
+      setBusy(true);
+      setNote(null);
+      try {
+        await api(AREAS_PATH, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'remove', areaId: area.id }),
+        });
+        await loadList();
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return;
+        setNote(removeErrorNote(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, loadList],
+  );
+
   const useCurrent = useCallback(async () => {
     if (busy) return;
     setBusy(true);
@@ -296,6 +398,7 @@ export function FamilyAreaSheet({
           query={query.trim()}
           results={results}
           searchBusy={searchBusy}
+          searchError={searchError}
           busy={busy}
           spinner={spinner}
           onSelect={selectResult}
@@ -306,6 +409,7 @@ export function FamilyAreaSheet({
           busy={busy}
           brandIcon={brandIcon}
           onSelect={selectSaved}
+          onRemove={removeSaved}
           onRetry={loadList}
           onUseCurrent={useCurrent}
         />
@@ -324,6 +428,7 @@ function SearchResults({
   query,
   results,
   searchBusy,
+  searchError,
   busy,
   spinner,
   onSelect,
@@ -331,6 +436,7 @@ function SearchResults({
   query: string;
   results: CityCandidate[] | null;
   searchBusy: boolean;
+  searchError: string | null;
   busy: boolean;
   spinner: string;
   onSelect: (candidate: CityCandidate) => void;
@@ -343,6 +449,10 @@ function SearchResults({
       {!shouldSearch(query) ? (
         <AppText variant="meta" className="text-ink-3">
           Type at least 2 letters to search.
+        </AppText>
+      ) : searchError ? (
+        <AppText variant="meta" className="text-ink-3" accessibilityLiveRegion="polite">
+          {searchError}
         </AppText>
       ) : results === null || searchBusy ? (
         <View className="flex-row items-center gap-2 py-1">
@@ -381,6 +491,7 @@ function YourAreas({
   busy,
   brandIcon,
   onSelect,
+  onRemove,
   onRetry,
   onUseCurrent,
 }: {
@@ -388,6 +499,7 @@ function YourAreas({
   busy: boolean;
   brandIcon: string;
   onSelect: (area: SavedArea) => void;
+  onRemove: (area: SavedArea) => void;
   onRetry: () => void;
   onUseCurrent: () => void;
 }) {
@@ -420,20 +532,24 @@ function YourAreas({
             Your areas
           </AppText>
           <View className="overflow-hidden rounded-[16px] border border-rule">
-            {listState.areas.map((area, i) => (
-              <AreaRow
-                key={area.id}
-                name={area.city}
-                sub={areaSubtitle(area)}
-                active={area.id === listState.activeAreaId}
-                last={i === listState.areas.length - 1}
-                disabled={busy}
-                accessibilityLabel={`${
-                  area.id === listState.activeAreaId ? 'Active area' : 'Switch to'
-                } ${area.city}`}
-                onPress={() => onSelect(area)}
-              />
-            ))}
+            {listState.areas.map((area, i) => {
+              const isActive = area.id === listState.activeAreaId;
+              return (
+                <AreaRow
+                  key={area.id}
+                  name={area.city}
+                  sub={areaSubtitle(area)}
+                  active={isActive}
+                  last={i === listState.areas.length - 1}
+                  disabled={busy}
+                  accessibilityLabel={`${isActive ? 'Active area' : 'Switch to'} ${area.city}`}
+                  onPress={() => onSelect(area)}
+                  // The active area can't be removed — the feed must always have a place
+                  // to scope to (matches the server's active-area refusal).
+                  onRemove={isActive ? undefined : () => onRemove(area)}
+                />
+              );
+            })}
           </View>
         </>
       ) : null}

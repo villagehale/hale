@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
-import { addArea, hasCoordinateFields, listAreas, setActiveArea } from '~/lib/village/areas';
+import { addArea, hasCoordinateFields, listAreas, removeArea, setActiveArea } from '~/lib/village/areas';
 import type {
   MobileVillageAreaUpdateRequest,
   MobileVillageAreasResponse,
@@ -102,6 +102,19 @@ export async function POST(req: Request): Promise<Response> {
     const result = await setActiveArea(database, { familyId, userId, areaId: body.areaId });
     if (result.status === 'not_found') {
       return NextResponse.json({ error: 'area_not_found' }, { status: 404 });
+    }
+    return NextResponse.json(await areasResponse(database, familyId));
+  }
+
+  if (body.action === 'remove') {
+    const result = await removeArea(database, { familyId, userId, areaId: body.areaId });
+    if (result.status === 'not_found') {
+      return NextResponse.json({ error: 'area_not_found' }, { status: 404 });
+    }
+    // The active area can't be removed — the client switches away first (rule: an empty
+    // active area would leave the feed with nowhere to scope to).
+    if (result.status === 'active') {
+      return NextResponse.json({ error: 'active_area' }, { status: 409 });
     }
     return NextResponse.json(await areasResponse(database, familyId));
   }

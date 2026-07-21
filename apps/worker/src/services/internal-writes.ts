@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db.js';
 import { type Tx, recordTransition } from './memory-writer.js';
 
@@ -169,4 +169,253 @@ export function addToDigest(
   database: Database = db(),
 ): Promise<InternalWriteOutcome> {
   return pinToPlan(input, DIGEST_NOTE_ACTION, null, database);
+}
+
+// ─── calendar placements (VIL-219) ───────────────────────────────────────
+//
+// calendar_add / calendar_move / calendar_cancel write Hale's OWN family_events
+// (source='placement'), NOT the dormant Google Calendar seam. Each write shares
+// ONE transaction with its audit row (rule #6) and is idempotent on a re-drain.
+// calendar_add returns the new family_events id as the REVERSAL HANDLE — the
+// executor nests it in `detail`, so it lands in actions.executor_result and the
+// UNDO primitive (apps/web/lib/actions/reverse-calendar.ts) can find the row to
+// soft-delete. calendar_move mutates that row; calendar_cancel soft-deletes it.
+
+/** The fields a calendar_add places. Only surname-free titles reach here (rule #1);
+ * the teen age gate genericizes a 13+ child's title at read (ICS / plan). */
+export interface CalendarPlacementInput {
+  familyId: string;
+  actionId: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  location: string | null;
+  childId: string | null;
+}
+
+/** calendar_move: the target row (reversalHandle) plus its new time/title/place. */
+export interface CalendarMoveInput {
+  familyId: string;
+  actionId: string;
+  reversalHandle: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  location: string | null;
+}
+
+/** calendar_cancel: just the target row to soft-delete. */
+export interface CalendarCancelInput {
+  familyId: string;
+  actionId: string;
+  reversalHandle: string;
+}
+
+/** The family_events row a placement write landed on (the reversal handle). */
+export interface CalendarWriteResult {
+  outcome: InternalWriteOutcome;
+  familyEventId: string;
+}
+
+const CALENDAR_PLACED_ACTION = 'action.calendar_placed';
+const CALENDAR_MOVED_ACTION = 'action.calendar_moved';
+const CALENDAR_CANCELLED_ACTION = 'action.calendar_cancelled';
+
+/**
+ * The family_events id a prior pass of THIS action wrote for THIS operation, or
+ * null. Doubles as the idempotency signal (non-null ⇒ already applied) AND the
+ * re-drain recovery of the same handle — the success audit stamps the row id as
+ * its targetId and the action id in `after.actionId`, so a redelivery returns the
+ * original row instead of writing a second one.
+ */
+async function priorPlacementEventId(
+  tx: Tx,
+  actionId: string,
+  auditAction: string,
+): Promise<string | null> {
+  const rows = await tx
+    .select({ targetId: schema.auditLog.targetId })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.actionTaken, auditAction),
+        sql`${schema.auditLog.after} ->> 'actionId' = ${actionId}`,
+      ),
+    )
+    .limit(1);
+  return rows[0]?.targetId ?? null;
+}
+
+/** A no-op re-drain still records WHY nothing new was written (rule #6). */
+function placementSkippedAudit(familyId: string, actionId: string, auditAction: string) {
+  return {
+    familyId,
+    actor: 'system' as const,
+    actionTaken: `${auditAction}.skipped_duplicate`,
+    targetTable: 'actions',
+    targetId: actionId,
+    after: { reason: 'calendar placement already applied on a prior pass — redelivery suppressed' },
+  };
+}
+
+/**
+ * calendar_add — insert a Hale-authored placement into family_events. Returns the
+ * new row id (the reversal handle). Idempotent + audited; a re-drain recovers the
+ * original id rather than inserting a duplicate.
+ */
+export function addToCalendar(
+  input: CalendarPlacementInput,
+  database: Database = db(),
+): Promise<CalendarWriteResult> {
+  return recordTransition<CalendarWriteResult>(async (tx) => {
+    const prior = await priorPlacementEventId(tx, input.actionId, CALENDAR_PLACED_ACTION);
+    if (prior) {
+      return {
+        value: { outcome: 'already_written' as const, familyEventId: prior },
+        audit: placementSkippedAudit(input.familyId, input.actionId, CALENDAR_PLACED_ACTION),
+      };
+    }
+
+    const inserted = await tx
+      .insert(schema.familyEvents)
+      .values({
+        familyId: input.familyId,
+        childId: input.childId,
+        title: input.title,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        location: input.location,
+        source: 'placement',
+      })
+      .returning({ id: schema.familyEvents.id });
+    const familyEventId = inserted[0]?.id;
+    if (!familyEventId) {
+      throw new Error('addToCalendar: family_events insert returned no row');
+    }
+
+    return {
+      value: { outcome: 'written' as const, familyEventId },
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: CALENDAR_PLACED_ACTION,
+        targetTable: 'family_events',
+        targetId: familyEventId,
+        after: {
+          actionId: input.actionId,
+          title: input.title,
+          childId: input.childId,
+          startsAt: input.startsAt.toISOString(),
+        },
+      },
+    };
+  }, database);
+}
+
+/**
+ * calendar_move — re-time / re-title an existing placement (the reversalHandle
+ * row). The UPDATE is family-scoped and skips soft-deleted rows; a missing/deleted
+ * target throws (rule #8 — a move of a nonexistent placement is a real failure,
+ * not a silent success). Idempotent + audited.
+ */
+export function moveCalendarEvent(
+  input: CalendarMoveInput,
+  database: Database = db(),
+): Promise<CalendarWriteResult> {
+  return recordTransition<CalendarWriteResult>(async (tx) => {
+    const prior = await priorPlacementEventId(tx, input.actionId, CALENDAR_MOVED_ACTION);
+    if (prior) {
+      return {
+        value: { outcome: 'already_written' as const, familyEventId: prior },
+        audit: placementSkippedAudit(input.familyId, input.actionId, CALENDAR_MOVED_ACTION),
+      };
+    }
+
+    const updated = await tx
+      .update(schema.familyEvents)
+      .set({
+        title: input.title,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        location: input.location,
+      })
+      .where(
+        and(
+          eq(schema.familyEvents.id, input.reversalHandle),
+          eq(schema.familyEvents.familyId, input.familyId),
+          isNull(schema.familyEvents.deletedAt),
+        ),
+      )
+      .returning({ id: schema.familyEvents.id });
+    const familyEventId = updated[0]?.id;
+    if (!familyEventId) {
+      throw new Error(
+        `moveCalendarEvent: no live family_events row ${input.reversalHandle} for family ${input.familyId}`,
+      );
+    }
+
+    return {
+      value: { outcome: 'written' as const, familyEventId },
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: CALENDAR_MOVED_ACTION,
+        targetTable: 'family_events',
+        targetId: familyEventId,
+        after: { actionId: input.actionId, startsAt: input.startsAt.toISOString() },
+      },
+    };
+  }, database);
+}
+
+/**
+ * calendar_cancel — soft-delete an existing placement (the reversalHandle row).
+ * The row survives with deleted_at set so the audit trail + an UNDO stay intact
+ * (rules #6/#9). Family-scoped; a missing/already-deleted target throws (rule #8).
+ * Idempotent + audited.
+ */
+export function cancelCalendarEvent(
+  input: CalendarCancelInput,
+  now: Date = new Date(),
+  database: Database = db(),
+): Promise<CalendarWriteResult> {
+  return recordTransition<CalendarWriteResult>(async (tx) => {
+    const prior = await priorPlacementEventId(tx, input.actionId, CALENDAR_CANCELLED_ACTION);
+    if (prior) {
+      return {
+        value: { outcome: 'already_written' as const, familyEventId: prior },
+        audit: placementSkippedAudit(input.familyId, input.actionId, CALENDAR_CANCELLED_ACTION),
+      };
+    }
+
+    const updated = await tx
+      .update(schema.familyEvents)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(schema.familyEvents.id, input.reversalHandle),
+          eq(schema.familyEvents.familyId, input.familyId),
+          isNull(schema.familyEvents.deletedAt),
+        ),
+      )
+      .returning({ id: schema.familyEvents.id });
+    const familyEventId = updated[0]?.id;
+    if (!familyEventId) {
+      throw new Error(
+        `cancelCalendarEvent: no live family_events row ${input.reversalHandle} for family ${input.familyId}`,
+      );
+    }
+
+    return {
+      value: { outcome: 'written' as const, familyEventId },
+      audit: {
+        familyId: input.familyId,
+        actor: 'system',
+        actionTaken: CALENDAR_CANCELLED_ACTION,
+        targetTable: 'family_events',
+        targetId: familyEventId,
+        after: { actionId: input.actionId },
+      },
+    };
+  }, database);
 }

@@ -7,6 +7,7 @@ import { Button } from '~/components/ui/button';
 import { Card } from '~/components/ui/card';
 import { Field } from '~/components/ui/field';
 import { Modal } from '~/components/ui/modal';
+import { Avatar } from '~/components/ui/avatar';
 import { childInitials } from '~/lib/family/child-initials';
 import {
   addChildAction,
@@ -38,45 +39,6 @@ const ERROR_COPY: Record<ChildError, string> = {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * A child's avatar: the uploaded photo when present, else the monogram fallback
- * (first + last initial — rule #1: never a parent's surname). A photo that fails to
- * load (expired/removed object) degrades to the monogram rather than a broken image.
- * Decorative — the child's name is always shown as text alongside it.
- */
-function ChildAvatar({
-  url,
-  name,
-  lastName,
-  size,
-}: {
-  url: string | null;
-  name: string;
-  lastName: string | null;
-  size: 'sm' | 'lg';
-}) {
-  const [broken, setBroken] = useState(false);
-  const dims = size === 'lg' ? 'h-20 w-20 text-2xl' : 'h-8 w-8 text-[0.8rem]';
-  const showImage = url !== null && !broken;
-  return (
-    <span
-      className={`inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-apricot-tint font-bold text-[color:var(--color-brand)] ${dims}`}
-      aria-hidden="true"
-    >
-      {showImage ? (
-        <img
-          src={url}
-          alt=""
-          className="h-full w-full object-cover"
-          onError={() => setBroken(true)}
-        />
-      ) : (
-        childInitials(name, lastName)
-      )}
-    </span>
-  );
 }
 
 /**
@@ -141,7 +103,15 @@ function ChildAvatarEditor({
 
   return (
     <div className="flex items-center gap-4">
-      <ChildAvatar url={url} name={name} lastName={lastName} size="lg" />
+      {/* key on the URL so a replace/remove re-attempts the image — the shared Avatar
+       * keeps its own load-failed state, which must reset when the src changes. */}
+      <Avatar
+        key={url ?? 'none'}
+        tone="child"
+        src={url}
+        initials={childInitials(name, lastName)}
+        size={80}
+      />
       <div className="flex flex-col gap-1.5">
         <input
           ref={inputRef}
@@ -212,11 +182,11 @@ export function FamilyChildren({ kids }: { kids: FamilyChild[] }) {
               <Card key={child.id}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <ChildAvatar
-                      url={child.avatarUrl}
-                      name={child.name}
-                      lastName={child.lastName}
-                      size="sm"
+                    <Avatar
+                      tone="child"
+                      src={child.avatarUrl}
+                      initials={childInitials(child.name, child.lastName)}
+                      size={32}
                     />
                     <div className="min-w-0" data-hale-pii>
                       <p className="font-display text-[1.5rem] leading-tight break-words">

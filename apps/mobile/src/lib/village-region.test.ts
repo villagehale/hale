@@ -13,6 +13,7 @@ import {
   sameArea,
   shouldSearch,
   subtitleCopy,
+  villageFeedKey,
 } from './village-region';
 
 function savedArea(partial: Partial<SavedArea> & { city: string }): SavedArea {
@@ -161,3 +162,26 @@ describe('row subtitles', () => {
     expect(candidateSubtitle({ city: 'Markham', province: null })).toBeNull();
   });
 });
+
+describe('villageFeedKey (reset feed filters on area switch)', () => {
+  it('gives the no-area "Near you" feed a stable key', () => {
+    expect(villageFeedKey(null)).toBe('near-you');
+    expect(villageFeedKey(undefined)).toBe('near-you');
+  });
+
+  it('is stable for the same coarse area (a re-fetch must NOT reset the filters)', () => {
+    expect(villageFeedKey({ city: 'Toronto', province: 'ON' })).toBe(
+      villageFeedKey({ city: 'toronto', province: 'on' }),
+    );
+  });
+
+  it('changes when the city changes (a switch MUST reset the filters)', () => {
+    expect(villageFeedKey({ city: 'Toronto', province: 'ON' })).not.toBe(
+      villageFeedKey({ city: 'Vancouver', province: 'BC' }),
+    );
+  });
+
+  it('changes between an area and no area', () => {
+    expect(villageFeedKey({ city: 'Toronto', province: 'ON' })).not.toBe(villageFeedKey(null));
+  });
+})
