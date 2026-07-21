@@ -70,7 +70,7 @@ export default async function FamilyPage() {
           <div className="space-y-6">
             {members.primary ? (
               <div>
-                <p className="font-display text-[1.25rem]" data-hale-pii>
+                <p className="font-display text-[1.25rem] break-words" data-hale-pii>
                   {members.primary.name ?? members.primary.email}
                 </p>
                 <p className="meta mt-1">Primary parent</p>
@@ -78,7 +78,7 @@ export default async function FamilyPage() {
             ) : null}
             {members.coParent ? (
               <div>
-                <p className="font-display text-[1.25rem]" data-hale-pii>
+                <p className="font-display text-[1.25rem] break-words" data-hale-pii>
                   {members.coParent.name ?? members.coParent.email}
                 </p>
                 <p className="meta mt-1">Co-parent</p>
@@ -109,7 +109,7 @@ export default async function FamilyPage() {
             <ul className="space-y-4">
               {basics.children.map((child) => (
                 <li key={child.id}>
-                  <p className="font-display text-[1.25rem]" data-hale-pii>
+                  <p className="font-display text-[1.25rem] break-words" data-hale-pii>
                     {child.name}
                   </p>
                   <p className="meta mt-1">{child.stageLabel}</p>

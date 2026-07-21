@@ -98,6 +98,8 @@ export function MagicLinkRequestForm({
               name="email"
               type="email"
               autoComplete="email"
+              spellCheck={false}
+              autoCapitalize="none"
               required
               className="auth-field-input"
               placeholder="you@email.com"
@@ -137,6 +139,8 @@ export function MagicLinkRequestForm({
           name="email"
           type="email"
           autoComplete="email"
+          spellCheck={false}
+          autoCapitalize="none"
           required
           className="field"
           placeholder="you@email.com"

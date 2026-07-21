@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MessageView } from '~/lib/messages/mappers';
+
+const MSG_PARAM = 'msg';
 
 /**
  * Messages as a master–detail (design handoff §4.6/§4.8): a 320px note list beside
@@ -17,9 +19,27 @@ import type { MessageView } from '~/lib/messages/mappers';
  */
 export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) {
   const [selectedId, setSelectedId] = useState(messages[0]?.id ?? '');
+
+  // Deep-link support: on mount, honour ?msg=<id> when it names a real note, so a
+  // shared or bookmarked link opens that note. Client-only — the server render (and
+  // the no-param default) shows the newest note.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get(MSG_PARAM);
+    if (id && messages.some((m) => m.id === id)) setSelectedId(id);
+  }, [messages]);
+
   const active = messages.find((m) => m.id === selectedId) ?? messages[0];
   // The empty feed is handled by the page (calm copy); this renders only with notes.
   if (!active) return null;
+
+  // Reflect the selection in the URL (replaceState — no navigation, keeps history)
+  // so a specific note can be deep-linked / Cmd+click-shared like companion/village.
+  function select(id: string) {
+    setSelectedId(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set(MSG_PARAM, id);
+    window.history.replaceState(window.history.state, '', url);
+  }
 
   return (
     <div className="messages-md rise rise-2">
@@ -29,7 +49,7 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
             <li key={message.id}>
               <button
                 type="button"
-                onClick={() => setSelectedId(message.id)}
+                onClick={() => select(message.id)}
                 aria-current={message.id === active.id}
                 aria-controls="message-detail"
                 className="thread-item"
@@ -47,7 +67,7 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
         </ul>
       </nav>
 
-      <article id="message-detail" className="messages-detail card">
+      <article id="message-detail" className="messages-detail card" aria-live="polite">
         <div className="flex items-baseline justify-between gap-3">
           <span className="eyebrow text-spruce">{active.eyebrow}</span>
           <span className="meta tabular shrink-0">{active.when}</span>
