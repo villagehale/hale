@@ -1,54 +1,67 @@
 import type { PropsWithChildren } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { LogoMark } from '~/components/hale/logo-mark';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
 
 /**
- * The shared sign-in / sign-up frame: a two-panel split on lg+ — a Spruce brand
- * panel on the left (the white turtle on its Prussian field, extended to a full
- * panel) and the form column on the right, vertically centered. Below lg the
- * brand panel folds away and the form sits centered, so there is no horizontal
- * overflow on a narrow phone. The brand panel uses bg-spruce / text-on-spruce
- * like the other public Spruce-field pages, so it inverts correctly in dark mode.
+ * The shared sign-in / sign-up frame: a centered split card floating on a
+ * full-viewport Prussian-navy stage. The left panel is a deep-navy gradient stage
+ * carrying the brand — the alpha-matted village illustration (decorative), the
+ * serif wordmark, and the value copy in cream — and stays navy in BOTH themes (the
+ * brand field is a navy stage regardless of light/dark). The right panel is the
+ * form column on the app's token surfaces, so it flips warm-white → deep-navy-tinted
+ * with the theme toggle (which stays). Below 900px the card stacks to a column: the
+ * stage folds to a compact brand band (illustration + lede hidden) above the form,
+ * so a phone shows the brand then the form with no horizontal overflow.
  */
-export function AuthShell({ heading, children }: PropsWithChildren<{ heading: string }>) {
+export function AuthShell({
+  heading,
+  subtitle,
+  children,
+}: PropsWithChildren<{ heading: string; subtitle?: string }>) {
   return (
-    <main className="min-h-[100dvh] bg-linen lg:grid lg:grid-cols-2">
-      <header className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-6 pt-8 lg:px-10">
-        <Link href="/" className="flex items-center gap-3 lg:invisible">
-          <LogoMark size={32} />
-          <span className="font-display text-2xl font-semibold">Hale</span>
-        </Link>
-        <ThemeToggle />
-      </header>
+    <div className="auth-backdrop">
+      <main className="auth-card">
+        <section className="auth-stage">
+          <Link href="/" className="auth-stage-mark">
+            <LogoMark size={34} />
+            Hale
+          </Link>
+          <div className="auth-stage-art">
+            <Image
+              src="/village-illustration.png"
+              alt=""
+              aria-hidden="true"
+              fill
+              sizes="(max-width: 900px) 0px, 460px"
+              className="object-contain"
+            />
+          </div>
+          <div className="auth-stage-copy">
+            <p className="auth-stage-eyebrow">For your neighborhood</p>
+            <p className="auth-stage-title">
+              The <span className="auth-stage-accent">village</span> every parent needs.
+            </p>
+            <p className="auth-stage-lede">
+              Real recommendations from real families near you, with Hale, a calm AI co-pilot that
+              finds and organizes it all — for every stage of childhood.
+            </p>
+          </div>
+        </section>
 
-      <section className="bg-spruce text-on-spruce hidden lg:flex flex-col justify-between px-12 py-14 xl:px-16">
-        <Link href="/" className="flex items-center gap-3">
-          <LogoMark size={36} />
-          <span className="font-display text-2xl font-semibold text-on-spruce">Hale</span>
-        </Link>
-        <div className="max-w-md">
-          <p className="eyebrow text-on-spruce-soft">For your neighborhood</p>
-          <p className="mt-4 font-display text-[clamp(2.4rem,3.4vw,3.4rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-on-spruce text-balance">
-            The <span className="text-apricot-deep">village</span> every parent needs.
-          </p>
-          <p className="mt-6 text-lg leading-relaxed text-on-spruce-soft">
-            Real recommendations from real families near you, with Hale, a calm AI co-pilot that
-            finds and organizes it all — for every stage of childhood.
-          </p>
-        </div>
-        <p className="text-on-spruce-faint text-sm">Hale · the village every parent needs</p>
-      </section>
-
-      <section className="flex min-h-[100dvh] flex-col items-center justify-center px-6 py-24 lg:min-h-0 lg:py-16">
-        <div className="flex w-full max-w-sm flex-col gap-6">
-          <h1 className="font-display text-3xl font-semibold leading-tight">{heading}</h1>
+        <section className="auth-panel">
+          <div className="auth-panel-head">
+            <ThemeToggle />
+          </div>
+          <h1 className="auth-heading">{heading}</h1>
+          {subtitle ? <p className="auth-subtitle">{subtitle}</p> : null}
           {children}
           <p className="meta">
             Your family&rsquo;s data stays in Canada. Nothing is shared until you say so.
           </p>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
   );
 }
