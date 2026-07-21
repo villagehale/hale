@@ -23,6 +23,19 @@ export function useShell(): ShellContextValue {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+/**
+ * ARIA that turns the off-canvas nav into a labelled modal dialog WHILE it's open —
+ * and nothing when closed, because the same `.sidebar-dock` element is the desktop
+ * persistent sidebar (never a dialog). The drawer only ever opens on mobile, so
+ * `open` implies the modal context. Exported pure so the contract is unit-tested
+ * without a DOM (the repo's static/pure test idiom).
+ */
+export function drawerDialogProps(
+  open: boolean,
+): { role: 'dialog'; 'aria-modal': true; 'aria-label': string } | Record<string, never> {
+  return open ? { role: 'dialog', 'aria-modal': true, 'aria-label': 'Main menu' } : {};
+}
+
 export function AppShell({
   sidebar,
   header,
@@ -65,6 +78,11 @@ export function AppShell({
   useEffect(() => {
     if (!drawerOpen) return;
 
+    // Return focus to whatever opened the drawer (the TopHeader hamburger) when it
+    // closes — via Escape or a route change — so keyboard/SR users don't get
+    // dropped onto <body>. Mirrors Modal.tsx's focus discipline.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setDrawerOpen(false);
@@ -93,6 +111,7 @@ export function AppShell({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = '';
+      previouslyFocused?.focus?.();
     };
   }, [drawerOpen]);
 
@@ -115,7 +134,12 @@ export function AppShell({
             aria-hidden="true"
           />
         ) : null}
-        <div ref={drawerRef} className="sidebar-dock" data-open={drawerOpen ? '' : undefined}>
+        <div
+          ref={drawerRef}
+          className="sidebar-dock"
+          data-open={drawerOpen ? '' : undefined}
+          {...drawerDialogProps(drawerOpen)}
+        >
           {sidebar}
         </div>
         <div className="shell-column">

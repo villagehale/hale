@@ -100,7 +100,7 @@ export function NotificationBell({ items }: { items: NotificationItem[] }) {
         onClick={toggle}
         className="topbar-bell"
         aria-label={hasUnread ? 'Notifications — new items' : 'Notifications'}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={menuId}
       >
@@ -109,7 +109,13 @@ export function NotificationBell({ items }: { items: NotificationItem[] }) {
       </button>
 
       {open ? (
-        <div className="bell-pop" id={menuId} role="menu">
+        <div
+          className="bell-pop"
+          id={menuId}
+          // biome-ignore lint/a11y/useSemanticElements: a non-modal notifications popover with a "mark all read" action + a footer link (not pure menuitems), Escape + outside-click close, not the native <dialog>
+          role="dialog"
+          aria-label="Notifications"
+        >
           <div className="bell-pop-head">
             <span className="font-display font-semibold text-[0.95rem]">Notifications</span>
             {items.length > 0 ? (
@@ -127,7 +133,6 @@ export function NotificationBell({ items }: { items: NotificationItem[] }) {
                     href={item.href}
                     className="bell-pop-item"
                     onClick={() => setOpen(false)}
-                    role="menuitem"
                   >
                     <span className="eyebrow bell-pop-eyebrow">{item.eyebrow}</span>
                     <span className="bell-pop-body" data-hale-pii>

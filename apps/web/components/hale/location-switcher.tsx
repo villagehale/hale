@@ -131,7 +131,7 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
         onClick={() => setOpen((prev) => !prev)}
         className="location-pill location-pill-button"
         data-open={open ? '' : undefined}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={menuId}
       >
@@ -141,7 +141,14 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
       </button>
 
       {open ? (
-        <div className="loc-pop" id={menuId} role="menu" data-pending={pending ? '' : undefined}>
+        <div
+          className="loc-pop"
+          id={menuId}
+          // biome-ignore lint/a11y/useSemanticElements: a non-modal search+action popover (Escape + outside-click close), not the native <dialog>; role=menu wrongly put SRs in menu-navigation mode over the search field
+          role="dialog"
+          aria-label="Family area"
+          data-pending={pending ? '' : undefined}
+        >
           <p className="eyebrow loc-pop-head">Family area</p>
           <div className="loc-search">
             <Icon as={Search} size={16} className="loc-search-icon" />
@@ -175,7 +182,6 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
                       className="loc-item"
                       onClick={() => relocate(candidate)}
                       disabled={pending}
-                      role="menuitem"
                     >
                       <Icon as={MapPin} size={15} className="loc-item-icon" />
                       <span className="loc-item-label" data-hale-pii>
@@ -200,7 +206,6 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
                     onClick={() => activate(area.id)}
                     disabled={pending || area.isActive}
                     aria-current={area.isActive ? 'true' : undefined}
-                    role="menuitem"
                   >
                     <Icon as={MapPin} size={15} className="loc-item-icon" />
                     <span className="loc-item-label" data-hale-pii>

@@ -486,6 +486,9 @@ strong { font-weight: 700; }
   padding: 1.375rem 0.75rem 1rem;
   overflow-y: auto;
   overflow-x: hidden;
+  /* As the off-canvas drawer (mobile), stop an over-scroll from chaining to the
+   * page locked behind it. */
+  overscroll-behavior: contain;
   color: var(--color-spruce);
 }
 
@@ -1945,6 +1948,7 @@ html, body, .sidebar, .panel, .card, .field {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 0.15rem;
 }
 
@@ -3023,12 +3027,16 @@ html, body, .sidebar, .panel, .card, .field {
   padding: 1.5rem;
   background: rgb(20 28 60 / 0.4);
   overflow-y: auto;
+  /* Keep a scroll gesture that reaches the scrim's edge from chaining to the page
+   * behind the modal (Touch & interaction). */
+  overscroll-behavior: contain;
 }
 .hale-modal {
   width: 100%;
   max-width: 440px;
   max-height: calc(100vh - 3rem);
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--color-oat);
   border: 1px solid var(--color-rule);
   border-radius: 24px;

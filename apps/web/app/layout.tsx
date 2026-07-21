@@ -37,7 +37,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#1B2160',
+  // Match the mobile browser chrome to the real page canvas in each scheme — cream
+  // in light (--color-linen), deep charcoal-navy in dark — instead of a single navy
+  // that clashes over the light cream page (globals.css :root / .dark canvases).
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F2F0EA' },
+    { media: '(prefers-color-scheme: dark)', color: '#12161F' },
+  ],
 };
 
 // Runs before first paint: sets the .dark class from the stored preference (so the
