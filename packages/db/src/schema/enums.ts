@@ -229,3 +229,16 @@ export const channelMessageStatusEnum = pgEnum('channel_message_status', [
   'suppressed_consent',
   'suppressed_pref',
 ]);
+
+// The lifecycle of a materialized event_reminders row (VIL-223 · D1). 'scheduled' is
+// the materialized default; 'sent' once dispatched; 'suppressed' when a don't-send
+// rule fired (reason in suppress_reason); 'cancelled' when the event was soft-deleted
+// (never fires — the trust invariant); 'stale' when the event moved and this row is
+// for the old fire time.
+export const reminderStatusEnum = pgEnum('reminder_status', [
+  'scheduled',
+  'sent',
+  'suppressed',
+  'cancelled',
+  'stale',
+]);

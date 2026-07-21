@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { children } from './children.js';
 import { familyEventSourceEnum } from './enums.js';
 import { families } from './families.js';
@@ -39,6 +39,12 @@ export const familyEvents = pgTable(
     endsAt: timestamp('ends_at', { withTimezone: true }),
     location: text('location'),
     source: familyEventSourceEnum('source').notNull(),
+    /** Privacy-sensitive (health) — set by the calendar_add executor from the week_plan
+     * item's privacySensitive (VIL-223). The reminder templates read it to genericize
+     * the copy ("a checkup", never the detail) for EVERYONE, independent of the teen
+     * age gate (which remains the floor on top). Defaults false; pre-signal placement
+     * rows read false (backfill note). */
+    sensitive: boolean('sensitive').notNull().default(false),
     /** The parent who added it (users.id), or null for a channel/email-sourced row
      * with no acting user. Nulled if the user is deleted — the event survives. */
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),

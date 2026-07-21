@@ -99,6 +99,9 @@ export async function mintCalendarDraftsForWeekPlan(
       location: item.location,
       childId,
       sourceRef: item.sourceRef,
+      // Carried onto family_events.sensitive by the calendar_add executor, so reminders
+      // genericize a health placement's copy for everyone (VIL-223).
+      privacySensitive: item.privacySensitive,
       action_hash: dedupHash,
     };
 

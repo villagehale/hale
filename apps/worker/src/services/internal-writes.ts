@@ -191,6 +191,9 @@ export interface CalendarPlacementInput {
   endsAt: Date | null;
   location: string | null;
   childId: string | null;
+  /** Health-sensitive placement — stamped onto family_events.sensitive so reminders
+   * genericize the copy for everyone (VIL-223). */
+  sensitive: boolean;
 }
 
 /** calendar_move: the target row (reversalHandle) plus its new time/title/place. */
@@ -286,6 +289,7 @@ export function addToCalendar(
         endsAt: input.endsAt,
         location: input.location,
         source: 'placement',
+        sensitive: input.sensitive,
       })
       .returning({ id: schema.familyEvents.id });
     const familyEventId = inserted[0]?.id;

@@ -70,6 +70,7 @@ const ADD_INPUT = {
   endsAt: null,
   location: 'Rec Centre',
   childId: null,
+  sensitive: false,
 };
 
 describe('addToCalendar', () => {
@@ -84,6 +85,7 @@ describe('addToCalendar', () => {
       familyId: FAMILY_ID,
       title: 'Swim class',
       source: 'placement',
+      sensitive: false,
     });
     // The audit ties the new row id (targetId) to the action, so a re-drain recovers it.
     const audit = inserts.find((i) => i.table === schema.auditLog);
