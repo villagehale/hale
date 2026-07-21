@@ -20,6 +20,7 @@ const RESOURCES = [
   { label: 'Parenting answers', href: '/answers' },
   { label: 'About', href: '/about' },
   { label: 'Contact', href: '/contact' },
+  { label: 'Sign in', href: `${APP_URL}/sign-in` },
 ] as const;
 
 /* Legal lives ONLY in the bottom bar — a Legal column would duplicate it. */

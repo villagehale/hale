@@ -69,6 +69,12 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <a
+            href={`${APP_URL}/sign-in`}
+            className="hidden rounded-sm px-2 text-sm font-medium text-[#5C6B87] transition-colors hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#17294A] sm:inline-flex"
+          >
+            Sign in
+          </a>
           <LandingCta
             event="landing_cta_signin"
             href={`${APP_URL}/onboarding`}
@@ -115,6 +121,13 @@ export function SiteHeader() {
             >
               Get started
             </LandingCta>
+            <a
+              href={`${APP_URL}/sign-in`}
+              onClick={() => setOpen(false)}
+              className="mt-1 inline-flex justify-center rounded-lg px-2 py-3 text-sm font-medium text-[#5C6B87] transition-colors hover:bg-[#F0F2F6] hover:text-[#17294A]"
+            >
+              Sign in
+            </a>
           </nav>
         </div>
       </div>
