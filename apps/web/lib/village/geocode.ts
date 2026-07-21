@@ -339,3 +339,114 @@ export function defaultCitySearchClient(): CitySearchClient {
     },
   };
 }
+
+// ── City centroid (the onboarding location map) ───────────────────────────────
+//
+// Distinct from the switcher typeahead above, which deliberately omits location so
+// coordinates can never leak into a persisted area (rule #1). The onboarding map is
+// a decorative, city-level backdrop that recentres on the SEARCHED city, so it needs
+// that city's centre. Requesting `places.location` on an includedType:'locality'
+// search returns the CITY CENTROID — coarse by construction, never an address point.
+// The centroid is used only client-side to centre the map and is never persisted;
+// completeOnboarding still stores only the coarse {city, province} (rule #1).
+
+/** A coarse Canadian city plus its centroid (the locality's centre, never an
+ * address — rule #1). */
+export interface CityCentroid {
+  city: string;
+  province: string | null;
+  lat: number;
+  lng: number;
+}
+
+/** The city field mask PLUS the locality centroid. Safe because the search is
+ * restricted to localities (regionCode CA, includedType 'locality'), so the
+ * returned location is the city centre — not a precise place (rule #1). */
+const CITY_CENTROID_FIELD_MASK =
+  'places.displayName,places.addressComponents,places.location';
+
+interface PlacesCityCentroidResponse {
+  places?: Array<{
+    displayName?: { text?: string };
+    addressComponents?: Array<{ shortText?: string; longText?: string; types?: string[] }>;
+    location?: { latitude?: number; longitude?: number };
+  }>;
+}
+
+/**
+ * Map a Places locality response to the first {city, province, centroid}, or null
+ * when there is no named locality carrying a centroid — the map won't recentre on a
+ * guess. Province is read from administrative_area_level_1 (null when absent). The
+ * coordinates are the locality centre only (rule #1).
+ */
+export function parseCityCentroid(raw: unknown): CityCentroid | null {
+  const place = (raw as PlacesCityCentroidResponse)?.places?.[0];
+  const city = place?.displayName?.text?.trim();
+  const lat = place?.location?.latitude;
+  const lng = place?.location?.longitude;
+  if (!city || typeof lat !== 'number' || typeof lng !== 'number') return null;
+  const provinceComponent = place?.addressComponents?.find((component) =>
+    component.types?.includes('administrative_area_level_1'),
+  );
+  return { city, province: provinceComponent?.shortText?.trim() || null, lat, lng };
+}
+
+/** The single HTTP edge for city-centroid lookup, injected so tests exercise the
+ * parse/guard logic with a fake instead of a real Google call. */
+export interface CityCentroidClient {
+  searchCityCentroid(query: string): Promise<unknown>;
+}
+
+/**
+ * Resolve one coarse Canadian city to its centroid, or null on any miss/failure.
+ * Never throws — the onboarding map is a best-effort backdrop, and a transport /
+ * quota error must just leave the map where it is (rule #8 boundary). `client`
+ * defaults to the live Places client; tests inject a fake.
+ */
+export async function geocodeCanadianCity(
+  query: string,
+  client: CityCentroidClient = defaultCityCentroidClient(),
+): Promise<CityCentroid | null> {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  try {
+    return parseCityCentroid(await client.searchCityCentroid(trimmed));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Live Places city-centroid client. Same endpoint + key resolution as the other
+ * Places clients (reuse, not a new provider); the request asks for one locality
+ * result in Canada with the centroid field mask. With no key, returns null-shaped
+ * (no places) so geocodeCanadianCity yields null.
+ */
+export function defaultCityCentroidClient(): CityCentroidClient {
+  const apiKey =
+    process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+  return {
+    async searchCityCentroid(query: string): Promise<unknown> {
+      if (!apiKey) return { places: [] };
+      const res = await fetch(PLACES_TEXT_SEARCH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': CITY_CENTROID_FIELD_MASK,
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          maxResultCount: 1,
+          regionCode: 'CA',
+          includedType: 'locality',
+        }),
+        signal: AbortSignal.timeout(PLACES_ATTEMPT_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        throw new Error(`places city centroid failed: ${res.status}`);
+      }
+      return res.json();
+    },
+  };
+}
