@@ -79,7 +79,7 @@ export default function AnswersIndexPage() {
               your own child — with their age and your family in mind — is to ask Concierge.
             </p>
             <div className="mt-8">
-              <a href={`${APP_URL}/sign-up`} className="btn-primary">
+              <a href={`${APP_URL}/onboarding`} className="btn-primary">
                 Ask Concierge about your child
               </a>
             </div>

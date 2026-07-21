@@ -7,7 +7,7 @@ import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug
 /**
  * The slug route is the public YMYL surface. These assertions lock the three
  * things that must hold for every draft: the page renders its answer + JSON-LD,
- * an unreviewed (unpublished) page is noindexed, and the sign-up funnel is wired.
+ * an unreviewed (unpublished) page is noindexed, and the join funnel (onboarding) is wired.
  * Rendered to static markup so no browser/DOM is needed.
  */
 
@@ -55,9 +55,9 @@ describe('answers/[slug] route', () => {
     expect(html.toLowerCase()).toContain('not medical advice');
   });
 
-  it('wires the "Ask Concierge about your child" CTA to the app sign-up', async () => {
+  it('wires the "Ask Concierge about your child" CTA to the onboarding wizard', async () => {
     const html = await render(SLUG);
-    expect(html).toContain(`${APP_URL}/sign-up`);
+    expect(html).toContain(`${APP_URL}/onboarding`);
     expect(html).toContain('Ask Concierge about your child');
   });
 

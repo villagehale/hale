@@ -116,7 +116,7 @@ export default function AboutPage() {
           neighborhood.
         </p>
         <div className="mt-8 flex justify-center">
-          <a href={`${APP_URL}/sign-up`} className="btn-on-navy">
+          <a href={`${APP_URL}/onboarding`} className="btn-on-navy">
             Join the village
           </a>
         </div>

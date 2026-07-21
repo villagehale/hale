@@ -61,7 +61,7 @@ export default function PricingPage() {
           Start free today — and let Hale grow into the rest when you’re ready.
         </p>
         <div className="mt-8 flex justify-center">
-          <a href={`${APP_URL}/sign-up`} className="btn-on-navy">
+          <a href={`${APP_URL}/onboarding`} className="btn-on-navy">
             Join free
           </a>
         </div>
