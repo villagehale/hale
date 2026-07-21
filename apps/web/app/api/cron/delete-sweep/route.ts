@@ -15,8 +15,9 @@ export const runtime = 'nodejs';
  *
  * Cron-secret gated like every cron route: a request without the matching
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and does NOTHING — no DB read,
- * no delete. The erased count is logged so the erasure is recorded durably,
- * outside the rows the cascade removes (rule #6 note in runDeletionSweep).
+ * no delete. The erased + purged-object counts are logged so the erasure (rows AND
+ * storage bytes) is recorded durably, outside the rows the cascade removes (rule #6
+ * note in runDeletionSweep).
  */
 export async function GET(req: Request) {
   const denied = requireCronSecret(req);
@@ -24,7 +25,10 @@ export async function GET(req: Request) {
 
   const summary = await runDeletionSweep(db());
   if (summary.erased > 0) {
-    console.info({ erased: summary.erased }, 'cron/delete-sweep: erased families past grace');
+    console.info(
+      { erased: summary.erased, purgedObjects: summary.purgedObjects },
+      'cron/delete-sweep: erased families past grace',
+    );
   }
   return NextResponse.json({ ok: true, ...summary }, { status: 200 });
 }

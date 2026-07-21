@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNotNull, lte } from 'drizzle-orm';
+import { removeDocument } from '../docs/storage.js';
 
 /**
  * PIPEDA / Law 25 right-to-erasure, REVERSIBLE BY GRACE. A confirm-gated request
@@ -83,29 +84,81 @@ export async function selectFamiliesDueForDeletion(
 
 export interface DeletionSweepSummary {
   erased: number;
+  /** How many storage objects (chat attachments + child documents) had their bytes
+   * purged from the private bucket across the run — the caller logs it so the
+   * byte-level erasure is recorded durably (rule #6 note below). */
+  purgedObjects: number;
+}
+
+/** The storage-object remover, injected so tests record deletes without a live bucket. */
+type RemoveObject = (path: string) => Promise<void>;
+
+/**
+ * Removes every storage object a family owns from the private 'family-docs' bucket,
+ * across BOTH prefixes the family ever wrote: chat attachments (chat/{familyId}/…)
+ * and child documents ({familyId}/{docId}). Both rows carry a direct family_id, so
+ * the scope is a single WHERE — no join. Child documents are swept regardless of
+ * deleted_at: a per-doc soft-delete removes its bytes only AFTER its own commit, so
+ * a crash there can strand an object a soft-deleted row still points at — the family
+ * erase must reclaim it (removeObject tolerates a 404 for the already-gone ones).
+ * Returns the object count so the sweep can report it. The FK cascade erases these
+ * ROWS when the family is deleted, but never the BYTES — that is this function's job.
+ */
+async function purgeFamilyStorage(
+  database: Database,
+  familyId: string,
+  removeObject: RemoveObject,
+): Promise<number> {
+  const attachments = await database
+    .select({ storagePath: schema.chatAttachments.storagePath })
+    .from(schema.chatAttachments)
+    .where(eq(schema.chatAttachments.familyId, familyId));
+  const documents = await database
+    .select({ storagePath: schema.childDocuments.storagePath })
+    .from(schema.childDocuments)
+    .where(eq(schema.childDocuments.familyId, familyId));
+
+  const paths = [...attachments, ...documents].map((row) => row.storagePath);
+  for (const path of paths) {
+    await removeObject(path);
+  }
+  return paths.length;
 }
 
 /**
  * The closing leg of the reversible-by-grace deletion: hard-delete every family
- * whose grace window has elapsed. A single DELETE per family — the families FK
- * cascade erases all of that family's data at once (the point of the cascade
- * posture). Idempotent by construction: a family erased on one run is gone, so a
- * re-run simply finds fewer due families.
+ * whose grace window has elapsed. Per family the bytes go BEFORE the row —
+ * purgeFamilyStorage empties the bucket, THEN a single DELETE drops the family and
+ * the FK cascade erases its rows in one shot (the point of the cascade posture).
+ * The cascade only ever removes ROWS, so without the purge the family's storage
+ * objects would outlive the account (the erasure gap this closes, rule #1 / PIPEDA
+ * right-to-erasure). Idempotent by construction: a family erased on one run is gone,
+ * so a re-run simply finds fewer due families.
+ *
+ * Ordering is load-bearing (rule #8): a storage failure throws out of the purge
+ * before the DELETE, so the family row is untouched and the next sweep retries the
+ * whole erase — bytes can never be stranded with no row pointing at them. Never
+ * catch-and-continue past a purge failure; that would delete the pointer and orphan
+ * the object forever.
  *
  * Audit note (rule #6): the erasure DECISION is durably audited at request time
  * (account_deletion_scheduled lives for the whole grace period). A family-scoped
- * audit row written here would cascade away with the family, so the execution is
- * recorded in the platform log by the caller (family id only, no PII) rather than
- * in a row that deletes itself. A detached, cascade-exempt audit sink for the
- * final erasure is a separate schema change.
+ * audit row written here would cascade away with the family, so the execution —
+ * including the purged-object count — is recorded in the platform log by the caller
+ * (family id + counts only, no PII) rather than in a row that deletes itself. A
+ * detached, cascade-exempt audit sink for the final erasure is a separate schema
+ * change.
  */
 export async function runDeletionSweep(
   database: Database,
   now: Date = new Date(),
+  removeObject: RemoveObject = removeDocument,
 ): Promise<DeletionSweepSummary> {
   const familyIds = await selectFamiliesDueForDeletion(database, now);
+  let purgedObjects = 0;
   for (const familyId of familyIds) {
+    purgedObjects += await purgeFamilyStorage(database, familyId, removeObject);
     await database.delete(schema.families).where(eq(schema.families.id, familyId));
   }
-  return { erased: familyIds.length };
+  return { erased: familyIds.length, purgedObjects };
 }
