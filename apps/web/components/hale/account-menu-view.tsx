@@ -2,14 +2,27 @@ import Link from 'next/link';
 import type { RefObject } from 'react';
 import { ChevronsUpDown, LogOut, Settings } from 'lucide-react';
 import { PLAN_DISPLAY, type PlanTier } from '@hale/types';
+import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
-import { LogoMark } from '~/components/hale/logo-mark';
 import { SETTINGS_NAV } from '~/components/hale/nav';
 import { ThemeToggle } from '~/components/hale/theme-toggle';
+
+/** The parent's initials for the fallback disc — first + last name initial ("Barton
+ * Dong" → "BD"), or a single initial for a one-word name. A neutral dot when there is
+ * no name yet (onboarding incomplete) — the disc is never blank. */
+function parentInitials(name: string | null): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '·';
+  const first = parts[0]?.charAt(0) ?? '';
+  const last = parts.length > 1 ? (parts.at(-1)?.charAt(0) ?? '') : '';
+  return (first + last).toUpperCase();
+}
 
 export interface AccountMenuViewProps {
   open: boolean;
   parentName: string | null;
+  /** The signed-in parent's photo (Google `user.image`), or null → the initials disc. */
+  parentImage?: string | null;
   /** The family's plan, shown as the chip's secondary line per the desktop handoff. */
   planTier: PlanTier;
   canSignOut: boolean;
@@ -35,6 +48,7 @@ export interface AccountMenuViewProps {
 export function AccountMenuView({
   open,
   parentName,
+  parentImage = null,
   planTier,
   canSignOut,
   menuId,
@@ -91,12 +105,14 @@ export function AccountMenuView({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        aria-label="Your account"
+        title="Your account"
         onClick={onToggle}
       >
-        <LogoMark size={32} />
+        <Avatar tone="account" src={parentImage} initials={parentInitials(parentName)} size={32} />
         <span className="account-chip-identity" data-hale-pii>
           <span className="account-chip-name">{displayName}</span>
-          <span className="account-chip-family meta">{planLabel}</span>
+          <span className="account-chip-family meta">You · {planLabel}</span>
         </span>
         <Icon as={ChevronsUpDown} size={16} className="account-chip-caret" />
       </button>
