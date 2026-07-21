@@ -265,7 +265,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
   const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
-  const { defaultLoopRenderer } = await import('~/lib/channel/renderer');
+  const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { createResendEmailChannel } = await import('~/lib/channel/adapters/resend-email');
   const { createExpoPushChannelAdapter } = await import('~/lib/channel/adapters/expo-push');
   const { createTwilioSmsChannel } = await import('~/lib/channel/adapters/twilio-sms');
@@ -303,7 +303,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
         channelSend: (message) =>
           dispatchLoopMessage(
             message,
-            buildDispatchPorts(db(), { channels, renderer: defaultLoopRenderer }),
+            buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
           ).then(() => undefined),
       },
       log: console,
