@@ -3,10 +3,12 @@ import { type Href, router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
+import { Avatar } from '@/components/hale/avatar';
 import { AppText } from '@/components/ui/app-text';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Screen } from '@/components/ui/screen';
 import { useMeadowColor } from '@/constants/meadow';
+import { avatarInitials } from '@/lib/avatar-initials';
 import type {
   MobileApprovalsResponse,
   MobileFamilyResponse,
@@ -109,20 +111,12 @@ function CountBadge({ count }: { count: number }) {
   );
 }
 
-/** The first letter of the viewer's name (or email), for the avatar circle — the app
- * has no uploaded avatars, so an initial stands in (mirrors web's account chip). */
-function avatarInitial(name: string | null, email: string | null): string {
-  const source = name?.trim() || email?.trim() || '';
-  return source.charAt(0).toUpperCase() || '?';
-}
-
-/** The More profile card: an initial avatar + the SIGNED-IN parent's name over a
+/** The More profile card: the SIGNED-IN parent's photo (or initials) + name over a
  * "Profile & family" subtitle, tapping through to Family. The viewer comes from the
  * family route's `viewer` (this session), never members.primary — that slot is the
  * OTHER parent in a co-parent household. Renders quietly: if the family fetch hasn't
  * landed, the card simply stays hidden. */
 function ProfileCard({ viewer }: { viewer: MobileFamilyResponse['viewer'] | undefined }) {
-  const accentText = useMeadowColor('onAccent');
   const chevron = useMeadowColor('ink3');
   if (!viewer) return null;
   const primary = viewer.name?.trim() || viewer.email?.trim() || 'You';
@@ -133,11 +127,11 @@ function ProfileCard({ viewer }: { viewer: MobileFamilyResponse['viewer'] | unde
       onPress={() => router.push('/profile')}
       className="flex-row items-center gap-3 rounded-[20px] border border-rule bg-card px-4 py-3.5 active:opacity-80"
     >
-      <View className="h-11 w-11 items-center justify-center rounded-full bg-accent">
-        <AppText variant="title" style={{ color: accentText }}>
-          {avatarInitial(viewer.name, viewer.email)}
-        </AppText>
-      </View>
+      <Avatar
+        photoUrl={viewer.image}
+        initials={avatarInitials(viewer.name, viewer.email)}
+        size={44}
+      />
       <View className="flex-1">
         <AppText
           numberOfLines={1}

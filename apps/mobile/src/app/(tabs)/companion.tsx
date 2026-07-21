@@ -469,7 +469,22 @@ function MeasurementsCard({ childId, units }: { childId: string; units: UnitSyst
       </Card>
     );
   }
-  if (status === 'loading' || !data) {
+  // Loading must HOLD SPACE, not vanish (a card that disappears on every child switch /
+  // slow refetch reads as "no measurements" — the same misread the error branch fixes).
+  if (status === 'loading') {
+    return (
+      <Card className="gap-2.5">
+        <AppText className="text-[14px] text-ink" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
+          Measurements
+        </AppText>
+        <View className="gap-2">
+          <View className="h-4 w-1/2 rounded bg-chip-gray" />
+          <View className="h-4 w-1/3 rounded bg-chip-gray" />
+        </View>
+      </Card>
+    );
+  }
+  if (!data) {
     return null;
   }
   const series = buildMeasureSeries(data.logs);

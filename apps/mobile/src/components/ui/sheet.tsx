@@ -80,6 +80,7 @@ export function Sheet({
                     accessibilityRole="button"
                     accessibilityLabel="Close"
                     onPress={onClose}
+                    hitSlop={8}
                     className="h-8 w-8 items-center justify-center rounded-full bg-chip-gray active:opacity-80"
                   >
                     <Icon name="x" size={14} color={closeIcon} />
