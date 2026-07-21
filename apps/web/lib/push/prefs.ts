@@ -77,15 +77,19 @@ export function startOfTorontoDay(now: Date): Date {
 }
 
 /**
- * The once-per-family-per-day guard: has this family already received a push of
- * this kind since the start of the Toronto day? Checked against the push_sends
- * ledger before addressing any device, so a family gets at most one push per kind
- * per day even if the cron/drain runs many times.
+ * The once-per-family-per-day guard: has this family already received a push of this
+ * `category` since the start of the Toronto day? Checked against the push_sends ledger
+ * before addressing any device, so a family gets at most one push per category per day
+ * even if the cron/drain runs many times.
+ *
+ * `category` is widened to a free `string` (the ledger's `kind` column is text) so
+ * VIL-213 (A2) can debounce new loop categories (e.g. the Sunday plan) through the same
+ * ledger; the two existing streams pass their PushKind and behave byte-identically.
  */
 export async function sentPushToFamilyToday(
   database: Database,
   familyId: string,
-  kind: PushKind,
+  category: string,
   now: Date = new Date(),
 ): Promise<boolean> {
   const rows = await database
@@ -94,7 +98,7 @@ export async function sentPushToFamilyToday(
     .where(
       and(
         eq(schema.pushSends.familyId, familyId),
-        eq(schema.pushSends.kind, kind),
+        eq(schema.pushSends.kind, category),
         gte(schema.pushSends.sentAt, startOfTorontoDay(now)),
       ),
     )
@@ -103,11 +107,12 @@ export async function sentPushToFamilyToday(
 }
 
 /** Records one fired push in the family debounce ledger (rule #1: no child content —
- * only the family id + coarse stream label + send time). */
+ * only the family id + coarse category label + send time). `category` is a free string
+ * for the same reason as the guard above. */
 export async function recordFamilyPushSent(
   database: Database,
   familyId: string,
-  kind: PushKind,
+  category: string,
 ): Promise<void> {
-  await database.insert(schema.pushSends).values({ familyId, kind });
+  await database.insert(schema.pushSends).values({ familyId, kind: category });
 }
