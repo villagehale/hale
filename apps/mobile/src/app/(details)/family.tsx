@@ -128,27 +128,11 @@ function dobLabel(value: string): string {
   });
 }
 
-/** First letter of a name (or email) for an avatar disc — Hale has no uploaded photos,
- * so an initial stands in (mirrors the More profile card + Profile page). */
-function initialOf(source: string): string {
-  return source.trim().charAt(0).toUpperCase() || '?';
-}
-
-/** The tinted initial disc shared by the parent + child rows (prototype avatar slot). */
-function AvatarDisc({ initial }: { initial: string }) {
-  return (
-    <View className="h-[38px] w-[38px] items-center justify-center rounded-full bg-chip-blue">
-      <AppText className="text-[15px] text-brand" style={{ fontFamily: 'InstrumentSans_700Bold' }}>
-        {initial}
-      </AppText>
-    </View>
-  );
-}
-
 function ParentRow({ member }: { member: MemberView }) {
   return (
     <View className="flex-row items-center gap-3">
-      <AvatarDisc initial={initialOf(member.name ?? member.email)} />
+      <Avatar photoUrl={null} initials={avatarInitials(member.name, member.email)} />
+
       <View className="flex-1">
         <AppText variant="body" numberOfLines={1} className="text-ink">
           {member.name ?? member.email}
@@ -165,7 +149,7 @@ function ParentRow({ member }: { member: MemberView }) {
 function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <AppText variant="meta" className="text-accent" accessibilityRole="alert">
+    <AppText variant="meta" className="text-berry" accessibilityRole="alert">
       {message}
     </AppText>
   );
@@ -404,7 +388,7 @@ function ChildCard({ child, onSaved }: { child: FamilyChildBasics; onSaved: () =
               disabled={avatarBusy}
               onPress={removePhoto}
               hitSlop={6}
-              className="px-2 py-2 active:opacity-70"
+              className="min-h-11 items-center justify-center px-2 active:opacity-70"
             >
               <AppText variant="meta" className="text-berry">
                 Remove
