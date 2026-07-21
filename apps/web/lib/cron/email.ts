@@ -1,4 +1,5 @@
-import { Resend } from 'resend';
+import type { Resend } from 'resend';
+import { createResendTransport } from '~/lib/channel/resend-transport';
 import { BUSINESS_ADDRESS, SENDER_NAME } from './email-compliance';
 
 const DEFAULT_FROM = 'aloha@villagehale.com';
@@ -68,9 +69,9 @@ export function createDigestEmailSender(client?: Resend): DigestEmailSender {
         console.info('digest email skipped: RESEND_API_KEY not set');
         return { accepted: false, providerMessageId: null };
       }
-      const resend = client ?? new Resend(apiKey);
+      const transport = createResendTransport({ apiKey, client });
       const from = process.env.RESEND_FROM ?? DEFAULT_FROM;
-      const { data, error } = await resend.emails.send({
+      const { id, error } = await transport.send({
         from,
         to,
         subject,
@@ -81,7 +82,7 @@ export function createDigestEmailSender(client?: Resend): DigestEmailSender {
         console.error('digest email send failed', error);
         return { accepted: false, providerMessageId: null };
       }
-      return { accepted: true, providerMessageId: data?.id ?? null };
+      return { accepted: true, providerMessageId: id ?? null };
     },
   };
 }

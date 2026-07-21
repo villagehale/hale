@@ -379,6 +379,13 @@
       "when": 1781463060000,
       "tag": "0056_loop_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781463360000,
+      "tag": "0061_channel_messages",
+      "breakpoints": true
     }
   ]
 }

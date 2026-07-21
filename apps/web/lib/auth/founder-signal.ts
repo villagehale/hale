@@ -1,4 +1,5 @@
-import { Resend } from 'resend';
+import type { Resend } from 'resend';
+import { createResendTransport } from '~/lib/channel/resend-transport';
 
 /**
  * The founder new-signup signal: an internal ops alert sent the moment a real
@@ -43,9 +44,9 @@ export function createFounderSignupNotifier(client?: Resend): FounderSignupNotif
       if (!apiKey && !client) {
         return false;
       }
-      const resend = client ?? new Resend(apiKey);
+      const transport = createResendTransport({ apiKey, client });
       const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
-      const { error } = await resend.emails.send({
+      const { error } = await transport.send({
         from,
         to,
         subject: `New Hale signup: ${email}`,

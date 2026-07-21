@@ -1,10 +1,13 @@
 import {
   approvedActionPayloadSchema,
+  channelSendJobPayloadSchema,
   ingestedEventPayloadSchema,
   rerankJobPayloadSchema,
 } from '@hale/tools-contracts';
 import { executeApprovedAction, runOrchestrator } from '@hale/worker/orchestrator';
 import PgBoss from 'pg-boss';
+import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import type { LoopMessage } from '~/lib/channel/types';
 
 /**
  * Serverless drain of the two HOT worker queues — `events.ingested` and
@@ -55,6 +58,11 @@ export interface DrainHandlers {
   /** Materialize one family's feed rank (upsertFeedRank), bound to a db by the
    * caller — injected so the drain loop is testable without a real ranker/db. */
   rerank: (familyId: string) => Promise<void>;
+  /** Dispatch one loop message through the channel seam (consent/quiet/cap/dedupe/
+   * ledger), bound to a db + the real adapters by the caller. A transient channel
+   * error throws so the job re-queues; a permanent one records a failed row and
+   * completes. Injected so the drain loop is testable without a live provider. */
+  channelSend: (message: LoopMessage) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -138,6 +146,27 @@ async function processRerankJob(
   return 'processed';
 }
 
+/** Drive one `channel.send` job into the loop dispatch. Same drop-don't-throw
+ * policy for a schema-invalid payload. A handler throw (transient channel error)
+ * propagates → boss.fail → redelivery with backoff; a permanent failure records a
+ * `failed` ledger row and returns, so the job completes and does not retry. The
+ * dedupe key makes a redelivery idempotent (a re-drain can never double-send). */
+async function processChannelSendJob(
+  deps: DrainDeps,
+  job: { id: string; data: unknown },
+): Promise<'processed' | 'dropped'> {
+  const parsed = channelSendJobPayloadSchema.safeParse(job.data);
+  if (!parsed.success) {
+    deps.log.error(
+      { queue: CHANNEL_SEND_QUEUE, jobId: job.id, issues: parsed.error.issues },
+      'drain: channel.send payload failed contract validation — dropping',
+    );
+    return 'dropped';
+  }
+  await deps.handlers.channelSend(parsed.data);
+  return 'processed';
+}
+
 /**
  * Fetch + process a single queue in bounded batches until it drains, the batch
  * cap is hit, or the wall-clock budget expires. Each job: complete() on a clean
@@ -194,6 +223,10 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     name: RERANK_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
   });
+  await deps.boss.createQueue(CHANNEL_SEND_QUEUE, {
+    name: CHANNEL_SEND_QUEUE,
+    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+  });
 
   const deadlineMs = deps.now() + WALL_CLOCK_BUDGET_MS;
   const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
@@ -201,6 +234,7 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
   await drainQueue(deps, EVENTS_QUEUE, processIngestedJob, deadlineMs, summary);
   await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
   await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
+  await drainQueue(deps, CHANNEL_SEND_QUEUE, processChannelSendJob, deadlineMs, summary);
 
   deps.log.info({ ...summary }, 'drain: run complete');
   return summary;
@@ -227,6 +261,36 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const { db } = await import('~/lib/db');
   const { upsertFeedRank } = await import('~/lib/village/rank/upsert');
 
+  // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
+  // scoped to the runtime entrypoint so importing a drain constant stays test-light.
+  const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
+  const { buildDispatchPorts } = await import('~/lib/channel/wiring');
+  const { defaultLoopRenderer } = await import('~/lib/channel/renderer');
+  const { createResendEmailChannel } = await import('~/lib/channel/adapters/resend-email');
+  const { createExpoPushChannelAdapter } = await import('~/lib/channel/adapters/expo-push');
+  const { createTwilioSmsChannel } = await import('~/lib/channel/adapters/twilio-sms');
+  const { createExpoPushChannel } = await import('~/lib/push/channel');
+  const { createExpoPushClient } = await import('~/lib/push/expo-client');
+  const { schema } = await import('@hale/db');
+  const { eq } = await import('drizzle-orm');
+
+  const channels = {
+    email: createResendEmailChannel({
+      resolveEmail: async (userId: string) => {
+        const rows = await db()
+          .select({ email: schema.users.email })
+          .from(schema.users)
+          .where(eq(schema.users.id, userId))
+          .limit(1);
+        return rows[0]?.email ?? null;
+      },
+    }),
+    push: createExpoPushChannelAdapter({
+      push: createExpoPushChannel({ database: db(), client: createExpoPushClient() }),
+    }),
+    sms: createTwilioSmsChannel(),
+  };
+
   const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });
   await boss.start();
   try {
@@ -236,6 +300,11 @@ export async function runDrainCron(): Promise<DrainSummary> {
         runOrchestrator,
         executeApprovedAction,
         rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
+        channelSend: (message) =>
+          dispatchLoopMessage(
+            message,
+            buildDispatchPorts(db(), { channels, renderer: defaultLoopRenderer }),
+          ).then(() => undefined),
       },
       log: console,
       now: () => Date.now(),

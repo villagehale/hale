@@ -5,6 +5,7 @@ export * from './magic-link-tokens.js';
 export * from './push-tokens.js';
 export * from './notification-prefs.js';
 export * from './loop-prefs.js';
+export * from './channel-messages.js';
 export * from './push-sends.js';
 export * from './families.js';
 export * from './family-areas.js';

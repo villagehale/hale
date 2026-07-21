@@ -117,6 +117,11 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // the teen is notified. The consume side (approving the request → granted=true,
   // and honouring an active grant on read) is a follow-up.
   'teen_content_access',
+  // F11 (VIL-213/A1): a parent's CASL express consent to receive loop SERVICE
+  // messages over SMS. Must be live (granted, not revoked, unexpired) before the
+  // channel seam sends any SMS; STOP revokes it (A3). Per-parent — co-parents
+  // enroll independently (does not trigger the two-parent rule).
+  'sms_service_messages',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
@@ -140,7 +145,19 @@ export const childGenderEnum = pgEnum('child_gender', [
 // ledger row also keeps the send idempotent (one 'welcome' per user).
 // 'verification' is the transactional email-confirmation link sent at sign-up; its
 // ledger row makes the send auditable (PIPEDA right-to-access) like every stream.
-export const emailTypeEnum = pgEnum('email_type', ['daily_digest', 'welcome', 'verification']);
+export const emailTypeEnum = pgEnum('email_type', [
+  'daily_digest',
+  'welcome',
+  'verification',
+  // F11 loop email streams (VIL-213): a loop email writes an email_sends row
+  // alongside channel_messages so CASL opt-outs distinguish loop mail from the
+  // daily digest. One value per loop category so opt-out granularity matches
+  // loop_prefs' per-category model.
+  'weekly_plan',
+  'reminder',
+  'approval',
+  'alert',
+]);
 
 // F11 · The Sunday Loop — a parent's chosen EXCHANGE channel (the two-way
 // "reply to adjust" leg). Push is an always-on DELIVERY leg, not an exchange
@@ -157,4 +174,40 @@ export const childNameLevelEnum = pgEnum('child_name_level', [
   'first_name',
   'relation',
   'generic',
+]);
+
+// F11 · The Sunday Loop — the channel_messages ledger (VIL-213 · A2). One message
+// model, many pipes: the delivery leg a row rode on.
+export const channelMessageChannelEnum = pgEnum('channel_message_channel', [
+  'email',
+  'sms',
+  'push',
+]);
+
+// Direction of a loop message. 'in' rows (replies) are the ONLY rows that carry a
+// verbatim body (A3 writes it; C3 treats it as the approval's legal instrument).
+export const channelMessageDirectionEnum = pgEnum('channel_message_direction', ['out', 'in']);
+
+// The loop taxonomy a message belongs to (mirrors loop_prefs categories, plus the
+// inbound 'reply'). Enforcement (enable/quiet/cap) keys off this.
+export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
+  'weekly_plan',
+  'reminder',
+  'approval',
+  'alert',
+  'reply',
+]);
+
+// Every outcome the dispatch records — a delivered/failed send OR a suppression.
+// A ledger row is written for EACH, so the record is a complete accounting of what
+// the seam did and why (rule #6 + operational truth).
+export const channelMessageStatusEnum = pgEnum('channel_message_status', [
+  'queued',
+  'sent',
+  'delivered',
+  'failed',
+  'suppressed_quiet_hours',
+  'suppressed_cap',
+  'suppressed_consent',
+  'suppressed_pref',
 ]);
