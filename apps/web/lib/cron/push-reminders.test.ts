@@ -46,6 +46,8 @@ function child(
   return {
     id: over.id,
     dateOfBirth: over.dateOfBirth ?? '2025-01-01',
+    lastName: null,
+    avatarUrl: null,
     stage: over.stage,
     ageMonths: over.ageMonths ?? 11,
     name: over.name ?? 'Nadia',

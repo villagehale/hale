@@ -8,14 +8,20 @@ import type { Channel, ChannelKind, LoopCategory, LoopMessage } from './types';
  * A5 per-category enables, quiet hours, caps, dedupe, the channel_messages ledger,
  * audit rows, and the email CASL dual-write all happen exactly once.
  *
- * Order (ticket): category-enable → quiet hours → cap → dedupe → per-leg consent →
- * send → ledger. Delivery legs are the parent's exchange channel (loop_channel)
- * PLUS push when a live token exists (founder model: two exchange channels, three
- * delivery legs). Every outcome — a send OR a suppression — writes a ledger row.
+ * Delivery model (founder, locked): two exchange channels, three delivery legs —
+ * PUSH MIRRORS, it never substitutes. The exchange send always goes via the
+ * parent's loop_channel (email today, sms when live); push is an ADDITIONAL
+ * always-on leg when a live token exists. So a weekly plan lands as an email AND a
+ * push, not one-or-the-other.
+ *
+ * Policy is evaluated PER LEG through this single point, and every leg writes its
+ * own ledger row — a suppressed push leg alongside a delivered email leg is two
+ * rows (one 'suppressed_*', one 'sent'). Dedupe + caps are per (parent, category,
+ * CHANNEL) so a re-drain can't double-send EITHER leg, and the mirror's second leg
+ * is never blocked by the first leg's cap.
  *
  * Pure orchestrator over injected ports so the policy is tested against Fakes with
- * no live provider (ticket's "business logic tested against Fakes" + hard rule #8
- * doesn't apply — this is deterministic, not an LLM).
+ * no live provider.
  */
 
 export type SuppressionStatus =
@@ -47,12 +53,19 @@ export interface DispatchPorts {
   loadParent(userId: string): Promise<{ email: string | null; timezone: string }>;
   /** CASL email opt-out for a loop stream (absence of opt-out = consent). */
   emailOptedOut(userId: string, emailType: string): Promise<boolean>;
-  /** CASL express SMS consent, live (granted, not revoked, unexpired). */
+  /** CASL express SMS consent, live (an active verified parent_channels row). */
   smsConsentLive(userId: string): Promise<boolean>;
   hasLivePushToken(userId: string): Promise<boolean>;
-  /** Non-suppressed sends of this category to this parent since `since`. */
-  countRecent(userId: string, category: LoopCategory, since: Date): Promise<number>;
-  /** A prior send (not a suppression) already carries this dedupe key. */
+  /** Non-suppressed sends of this category on THIS channel to this parent since
+   * `since` — the cap is per delivery leg (so a mirror leg isn't capped by the
+   * other). */
+  countRecent(
+    userId: string,
+    category: LoopCategory,
+    channel: ChannelKind,
+    since: Date,
+  ): Promise<number>;
+  /** A prior send (not a suppression) already carries this per-channel dedupe key. */
   activeDedupe(dedupeKey: string): Promise<boolean>;
   /** Write one channel_messages row; returns its id (for the audit target). */
   record(write: LedgerWrite): Promise<string>;
@@ -72,18 +85,31 @@ export interface DispatchPorts {
     after: Record<string, unknown>;
   }): Promise<void>;
   channels: Partial<Record<ChannelKind, Channel>>;
-  renderer: { render: (m: LoopMessage, c: ChannelKind, nameLevel: LoopPrefsView['childNameLevel']) => import('./types').RenderedContent };
+  renderer: {
+    render: (
+      m: LoopMessage,
+      c: ChannelKind,
+      nameLevel: LoopPrefsView['childNameLevel'],
+    ) => import('./types').RenderedContent;
+  };
 }
 
+export type LegOutcome = 'sent' | 'failed' | 'deduped' | SuppressionStatus;
+
+export interface LegResult {
+  channel: ChannelKind;
+  outcome: LegOutcome;
+}
+
+/** A per-leg accounting the caller / X1 can aggregate (no counter subsystem exists
+ * in the repo, so the seam exports tallies through the return value). */
 export interface DispatchResult {
-  outcome: 'suppressed' | 'dedupe_skipped' | 'delivered';
-  suppression?: SuppressionStatus;
-  sent: ChannelKind[];
-  failed: ChannelKind[];
+  legs: LegResult[];
 }
 
 /** Thrown on a TRANSIENT channel error so the drain re-queues (pg-boss backoff).
- * No terminal ledger row is written — the dedupe key guards the eventual re-send. */
+ * No terminal ledger row is written — the per-channel dedupe key guards the
+ * eventual re-send of just this leg. */
 export class ChannelRetryableError extends Error {
   constructor(
     readonly channel: ChannelKind,
@@ -101,110 +127,112 @@ export async function dispatchLoopMessage(
 ): Promise<DispatchResult> {
   const now = ports.now();
   const prefs = await ports.loadPrefs(msg.parentUserId);
-
-  // ── Message-level policy (once) ──────────────────────────────────────────
-  if (!categoryEnabled(prefs, msg.category)) {
-    await suppress(ports, msg, prefs.loopChannel, 'suppressed_pref');
-    return { outcome: 'suppressed', suppression: 'suppressed_pref', sent: [], failed: [] };
-  }
-
   const parent = await ports.loadParent(msg.parentUserId);
 
-  const timeSensitive = msg.urgency === 'time_sensitive';
-  if (!deliverableNow(prefs, now, parent.timezone, timeSensitive)) {
-    await suppress(ports, msg, prefs.loopChannel, 'suppressed_quiet_hours');
-    return { outcome: 'suppressed', suppression: 'suppressed_quiet_hours', sent: [], failed: [] };
-  }
-
-  const cap = CATEGORY_CAPS[msg.category];
-  const since = new Date(now.getTime() - cap.windowHours * 3_600_000);
-  if ((await ports.countRecent(msg.parentUserId, msg.category, since)) >= cap.max) {
-    await suppress(ports, msg, prefs.loopChannel, 'suppressed_cap');
-    return { outcome: 'suppressed', suppression: 'suppressed_cap', sent: [], failed: [] };
-  }
-
-  if (msg.dedupeKey && (await ports.activeDedupe(msg.dedupeKey))) {
-    return { outcome: 'dedupe_skipped', sent: [], failed: [] };
-  }
-
-  // ── Delivery legs: exchange channel + push when a live token exists ───────
+  // Legs: the exchange channel + push when a live token exists (mirror, not fallback).
   const legs: ChannelKind[] = [prefs.loopChannel];
   if (await ports.hasLivePushToken(msg.parentUserId)) {
     legs.push('push');
   }
 
-  const sent: ChannelKind[] = [];
-  const failed: ChannelKind[] = [];
-  let dedupeConsumed = false;
-
-  for (const channelKind of legs) {
-    // Per-leg consent (email opt-out / SMS express consent; push needs neither).
-    if (channelKind === 'email' && (await ports.emailOptedOut(msg.parentUserId, msg.category))) {
-      await suppress(ports, msg, 'email', 'suppressed_consent');
-      continue;
-    }
-    if (channelKind === 'sms' && !(await ports.smsConsentLive(msg.parentUserId))) {
-      await suppress(ports, msg, 'sms', 'suppressed_consent');
-      continue;
-    }
-
-    const rendered = ports.renderer.render(msg, channelKind, prefs.childNameLevel);
-    const channel = ports.channels[channelKind];
-    if (!channel) {
-      await ports.record(row(msg, channelKind, 'failed', { errorCode: 'channel_unavailable' }));
-      failed.push(channelKind);
-      continue;
-    }
-
-    const result = await channel.send({ userId: msg.parentUserId, rendered });
-    if (result.status === 'error' && result.transient) {
-      // Retryable: let the drain re-queue. Dedupe guards the eventual re-send.
-      throw new ChannelRetryableError(channelKind, result.code, result.message);
-    }
-
-    if (result.status === 'sent') {
-      // The dedupe key rides the FIRST successful send (unique-where-not-null).
-      const dedupeKey = !dedupeConsumed ? (msg.dedupeKey ?? null) : null;
-      const id = await ports.record(
-        row(msg, channelKind, 'sent', {
-          dedupeKey,
-          providerMessageId: result.providerMessageId,
-          sentAt: now,
-        }),
-      );
-      if (dedupeKey) dedupeConsumed = true;
-      sent.push(channelKind);
-
-      if (channelKind === 'email' && parent.email) {
-        // CASL legal sub-ledger, written only on a real send (dual-write).
-        await ports.recordEmailSend({
-          userId: msg.parentUserId,
-          familyId: msg.familyId,
-          emailType: msg.category,
-          recipient: parent.email,
-          providerMessageId: result.providerMessageId,
-        });
-      }
-      await ports.audit({
-        familyId: msg.familyId,
-        actor: 'system',
-        actionTaken: 'channel_sent',
-        targetTable: 'channel_messages',
-        targetId: id,
-        after: { channel: channelKind, category: msg.category },
-      });
-    } else {
-      // Permanent error OR a skip (not configured / disabled / no address).
-      const errorCode = result.status === 'error' ? result.code : result.reason;
-      await ports.record(row(msg, channelKind, 'failed', { errorCode }));
-      failed.push(channelKind);
-    }
+  const results: LegResult[] = [];
+  for (const channel of legs) {
+    results.push(await dispatchLeg(msg, channel, prefs, parent, now, ports));
   }
-
-  return { outcome: 'delivered', sent, failed };
+  return { legs: results };
 }
 
-function row(
+async function dispatchLeg(
+  msg: LoopMessage,
+  channel: ChannelKind,
+  prefs: LoopPrefsView,
+  parent: { email: string | null; timezone: string },
+  now: Date,
+  ports: DispatchPorts,
+): Promise<LegResult> {
+  const suppressed = async (status: SuppressionStatus): Promise<LegResult> => {
+    // A suppression never carries the dedupe key — a legitimate re-attempt (e.g.
+    // after quiet hours) must not be blocked; only a real send consumes the key.
+    await ports.record(rowFor(msg, channel, status, { dedupeKey: null }));
+    return { channel, outcome: status };
+  };
+
+  if (!categoryEnabled(prefs, msg.category)) {
+    return suppressed('suppressed_pref');
+  }
+
+  const timeSensitive = msg.urgency === 'time_sensitive';
+  if (!deliverableNow(prefs, now, parent.timezone, timeSensitive)) {
+    return suppressed('suppressed_quiet_hours');
+  }
+
+  // Per-channel dedupe: this exact leg already sent / is in flight → no-op (a
+  // re-drain can't double-send it), while the mirror leg stays independent.
+  const legKey = msg.dedupeKey ? `${msg.dedupeKey}:${channel}` : null;
+  if (legKey && (await ports.activeDedupe(legKey))) {
+    return { channel, outcome: 'deduped' };
+  }
+
+  const cap = CATEGORY_CAPS[msg.category];
+  const since = new Date(now.getTime() - cap.windowHours * 3_600_000);
+  if ((await ports.countRecent(msg.parentUserId, msg.category, channel, since)) >= cap.max) {
+    return suppressed('suppressed_cap');
+  }
+
+  if (channel === 'email' && (await ports.emailOptedOut(msg.parentUserId, msg.category))) {
+    return suppressed('suppressed_consent');
+  }
+  if (channel === 'sms' && !(await ports.smsConsentLive(msg.parentUserId))) {
+    return suppressed('suppressed_consent');
+  }
+
+  const rendered = ports.renderer.render(msg, channel, prefs.childNameLevel);
+  const adapter = ports.channels[channel];
+  if (!adapter) {
+    await ports.record(rowFor(msg, channel, 'failed', { errorCode: 'channel_unavailable' }));
+    return { channel, outcome: 'failed' };
+  }
+
+  const result = await adapter.send({ userId: msg.parentUserId, rendered });
+  if (result.status === 'error' && result.transient) {
+    throw new ChannelRetryableError(channel, result.code, result.message);
+  }
+
+  if (result.status === 'sent') {
+    const id = await ports.record(
+      rowFor(msg, channel, 'sent', {
+        dedupeKey: legKey,
+        providerMessageId: result.providerMessageId,
+        sentAt: now,
+      }),
+    );
+    if (channel === 'email' && parent.email) {
+      await ports.recordEmailSend({
+        userId: msg.parentUserId,
+        familyId: msg.familyId,
+        emailType: msg.category,
+        recipient: parent.email,
+        providerMessageId: result.providerMessageId,
+      });
+    }
+    await ports.audit({
+      familyId: msg.familyId,
+      actor: 'system',
+      actionTaken: 'channel_sent',
+      targetTable: 'channel_messages',
+      targetId: id,
+      after: { channel, category: msg.category },
+    });
+    return { channel, outcome: 'sent' };
+  }
+
+  // Permanent error OR a skip (not configured / disabled / no address).
+  const errorCode = result.status === 'error' ? result.code : result.reason;
+  await ports.record(rowFor(msg, channel, 'failed', { errorCode }));
+  return { channel, outcome: 'failed' };
+}
+
+function rowFor(
   msg: LoopMessage,
   channel: ChannelKind,
   status: LedgerWrite['status'],
@@ -222,15 +250,4 @@ function row(
     relatedConversationId: msg.relatedConversationId ?? null,
     ...extra,
   };
-}
-
-/** A suppression never carries the dedupe key — a legitimate re-attempt (e.g.
- * after quiet hours) must not be blocked; only a real send consumes the key. */
-async function suppress(
-  ports: DispatchPorts,
-  msg: LoopMessage,
-  channel: ChannelKind,
-  status: SuppressionStatus,
-): Promise<void> {
-  await ports.record(row(msg, channel, status, { dedupeKey: null }));
 }

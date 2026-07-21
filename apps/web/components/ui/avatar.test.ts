@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Avatar } from './avatar';
+import { Avatar, avatarShowsImage } from './avatar';
 
 /**
  * The shared people-avatar: a photo when `src` is set, else a tinted initials disc.
@@ -39,5 +39,25 @@ describe('Avatar', () => {
   it('carries the tone class so account (navy) and child (warm) discs read apart', () => {
     expect(render({ initials: 'BD', tone: 'account' })).toContain('avatar-account');
     expect(render({ initials: 'S', tone: 'child' })).toContain('avatar-child');
+  });
+});
+
+describe('avatarShowsImage — retry a NEW src after a load error', () => {
+  it('shows the image for a present src that has not failed', () => {
+    expect(avatarShowsImage('https://x/a.jpg', null)).toBe(true);
+  });
+
+  it('falls back to initials for the exact src that failed', () => {
+    expect(avatarShowsImage('https://x/a.jpg', 'https://x/a.jpg')).toBe(false);
+  });
+
+  it('RETRIES a different src even after a prior error (recovers without remount)', () => {
+    // a.jpg failed; a re-upload / rotated signed URL gives b.jpg → show it, not initials.
+    expect(avatarShowsImage('https://x/b.jpg', 'https://x/a.jpg')).toBe(true);
+  });
+
+  it('shows initials when there is no src', () => {
+    expect(avatarShowsImage(null, null)).toBe(false);
+    expect(avatarShowsImage(undefined, 'https://x/a.jpg')).toBe(false);
   });
 });

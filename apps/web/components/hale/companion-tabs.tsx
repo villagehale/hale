@@ -241,7 +241,12 @@ function ChildHubHeader({
   return (
     <div className="comp-hub">
       <div className="comp-hub-id" data-hale-pii>
-        <Avatar tone="child" src={null} initials={childInitials(child.name ?? '')} size={64} />
+        <Avatar
+          tone="child"
+          src={child.avatarUrl}
+          initials={childInitials(child.name ?? '', child.lastName)}
+          size={64}
+        />
         <div className="min-w-0">
           <h2 className="comp-hub-name font-display">{child.name ?? 'your child'}</h2>
           <p className="meta mt-1 text-slate-green">
