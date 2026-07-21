@@ -61,6 +61,11 @@ jobs:
       - name: Reviewer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reviewer
 
+      - name: Week-summary eval (cached-only)
+        run: pnpm --filter @hale/worker eval:week-summary
+      - name: Village search intent eval (cached-only)
+        run: pnpm --filter @hale/worker eval:village-search
+
       - name: Build
         run: pnpm build
         env:

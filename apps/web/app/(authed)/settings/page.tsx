@@ -14,9 +14,11 @@ import { PrivacyNote } from '~/components/hale/privacy-note';
 import { SettingsHub } from '~/components/hale/settings-hub';
 import type { SettingsSectionId } from '~/components/hale/settings-sections';
 import { SharedLinks } from '~/components/hale/shared-links';
+import { TextNotifications } from '~/components/hale/text-notifications';
 import { APP_VERSION } from '~/lib/app-version';
 import { signOutAction } from '~/lib/auth-actions';
 import { authConfigured } from '~/lib/auth-config';
+import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
@@ -41,14 +43,16 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  * The page title + subtitle live in the shell top bar (design handoff §3.2).
  */
 export default async function SettingsPage() {
-  const [profile, basics, members, connections, pushPrefs, loopPrefs] = await Promise.all([
-    loadViewerProfile(),
-    loadFamilyBasics(),
-    loadFamilyMembers(),
-    loadFamilyConnectors(),
-    loadPushNotificationPrefs(),
-    loadLoopNotificationPrefs(),
-  ]);
+  const [profile, basics, members, connections, pushPrefs, loopPrefs, smsChannel] =
+    await Promise.all([
+      loadViewerProfile(),
+      loadFamilyBasics(),
+      loadFamilyMembers(),
+      loadFamilyConnectors(),
+      loadPushNotificationPrefs(),
+      loadLoopNotificationPrefs(),
+      loadSmsChannel(),
+    ]);
 
   const planName = PLAN_DISPLAY[basics.planTier].name;
   const canSignOut = authConfigured();
@@ -77,6 +81,11 @@ export default async function SettingsPage() {
               to reset.
             </p>
           </div>
+        </div>
+
+        <div>
+          <SectionLabel>text notifications</SectionLabel>
+          <TextNotifications result={smsChannel} />
         </div>
 
         {profile ? (
@@ -130,7 +139,7 @@ export default async function SettingsPage() {
 
     // ── Plan & billing ───────────────────────────────────────────────────
     plan: (
-      <div className="flex flex-col gap-y-8 max-w-2xl">
+      <div className="flex flex-col gap-y-8">
         <PlanSummaryCard planTier={basics.planTier} />
         <FamilyPlan planTier={basics.planTier} billingConfigured={isStripeCheckoutConfigured()} />
       </div>

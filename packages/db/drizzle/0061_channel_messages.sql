@@ -9,15 +9,13 @@
 -- store a rendered child-data body (rule #1).
 --
 -- Loop email streams are added to email_type so a loop opt-out is distinct from
--- the daily-digest opt-out; sms_service_messages is the CASL express consent the
--- seam requires live before any SMS. Journal slot 0061 (pre-assigned to VIL-213);
--- sequenced after 0056 — 0057-0060 are sibling slots, so sequence order must place
--- whatever of those merged before this.
+-- the daily-digest opt-out. (The sms_service_messages consent value is owned by
+-- VIL-212's 0058_parent_channels — NOT re-added here.) Journal slot 0061, applied
+-- after the merged siblings (0054/0055/0058/0060).
 ALTER TYPE "public"."email_type" ADD VALUE 'weekly_plan';--> statement-breakpoint
 ALTER TYPE "public"."email_type" ADD VALUE 'reminder';--> statement-breakpoint
 ALTER TYPE "public"."email_type" ADD VALUE 'approval';--> statement-breakpoint
 ALTER TYPE "public"."email_type" ADD VALUE 'alert';--> statement-breakpoint
-ALTER TYPE "public"."consent_type" ADD VALUE 'sms_service_messages';--> statement-breakpoint
 CREATE TYPE "public"."channel_message_channel" AS ENUM('email', 'sms', 'push');--> statement-breakpoint
 CREATE TYPE "public"."channel_message_direction" AS ENUM('out', 'in');--> statement-breakpoint
 CREATE TYPE "public"."channel_message_category" AS ENUM('weekly_plan', 'reminder', 'approval', 'alert', 'reply');--> statement-breakpoint

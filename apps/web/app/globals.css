@@ -21,7 +21,10 @@
  * palette so existing page utilities (bg-apricot-tint, text-sage, …) keep
  * resolving while pages are migrated in later phases — the name is the role slot,
  * the comment names the real value:
- *   apricot* = the blue accent (#3B5BDB / #EDF0FA) — links, focus, CTA accent
+ *   apricot* = ink-navy content accent (#17294A / #ECE8DE warm wash) — icons, numbers,
+ *              links, "You" pill, focus rings (re-pointed FROM #3B5BDB blue per the
+ *              founder palette law: navy / warm-white / orange). --color-illustration
+ *              keeps the old #3B5BDB blue for the decorative illo kit only.
  *   sky*     = the teal accent (#0F766E / #E0F2F1) — coach / calm
  *   sage/success = the green accent (#1F8A4C, #2EA35E / #E7F6EC) — done / health
  *   berry*   = the terracotta accent (#C2543F / #FDEBE8) — needs-you / danger
@@ -64,10 +67,18 @@
   --color-brand: #1B2160;       /* NAVY — primary buttons, wordmark, links, active nav — 12.86:1 on canvas; white text on it 14.65:1 */
   --color-brand-hover: #2A327D; /* primary-button hover (a touch lighter navy) */
 
-  /* Blue accent (legacy name: apricot*) — links / focus ring / CTA accent */
-  --color-apricot: #3B5BDB;       /* blue base */
-  --color-apricot-deep: #3B5BDB;  /* text-safe blue — 4.97:1 on canvas, 5.67:1 on white (AA) */
-  --color-apricot-tint: #EDF0FA;  /* blue wash — avatars, selected chip, "You" pill */
+  /* Accent (legacy Tailwind name: apricot*) — RE-POINTED to ink navy for small-scale
+   * content accents (icons, numbers, links, "You" pill, selected borders, focus rings).
+   * Founder palette law: navy / warm-white / orange — no blue-reading small accents.
+   * Large brand FILLS stay --color-brand navy; decorative art keeps --color-illustration. */
+  --color-apricot: #17294A;       /* ink-navy accent (was #3B5BDB blue) — 12.69:1 on canvas */
+  --color-apricot-deep: #17294A;  /* text-safe ink navy — 12.69:1 on canvas */
+  --color-apricot-tint: #ECE8DE;  /* warm-neutral wash — avatars, chips, "You" pill (was #EDF0FA blue); navy on it 12:1 */
+
+  /* Decorative illustration blue — the Meadow illo kit's own periwinkle, kept out of
+   * the content-accent sweep so mascot/scene art is unchanged (illos.tsx only). */
+  --color-illustration: #3B5BDB;
+  --color-illustration-tint: #EDF0FA;
 
   /* Teal accent (legacy name: sky*) — coach / calm */
   --color-sky: #56B9AE;        /* teal illustration */
@@ -192,10 +203,15 @@
   --color-brand: #F6F1E7;        /* 16.08:1 on canvas */
   --color-brand-hover: #E4DED0;
 
-  /* Blue accent (apricot*) — lightened to hold AA on the dark ground. */
-  --color-apricot: #8AA2F2;
-  --color-apricot-deep: #8AA2F2;     /* 7.35:1 on canvas, 5.68:1 on raised */
-  --color-apricot-tint: #1B2748;
+  /* Accent (apricot*) — cream ink on the dark ground, matching the light re-point to
+   * ink navy (dark inverts ink→cream). Small content accents + focus rings. */
+  --color-apricot: #F6F1E7;
+  --color-apricot-deep: #F6F1E7;     /* 16.08:1 on canvas */
+  --color-apricot-tint: #26304A;     /* dark neutral wash — avatars / chips / "You" pill */
+
+  /* Decorative illustration blue — dark variant, kept for the illo kit only. */
+  --color-illustration: #8AA2F2;
+  --color-illustration-tint: #1B2748;
 
   /* Teal accent (sky*) — coach / calm. */
   --color-sky: #56B9AE;
@@ -289,29 +305,39 @@ body {
 }
 
 /* Headlines: Inter, tight tracking, semibold display weight.
- * Sentence-case, never all-caps. */
-h1, h2, h3, h4 {
-  font-family: var(--font-display);
-  font-optical-sizing: auto;
-  letter-spacing: var(--tracking-display);
-  font-weight: 600;
-  line-height: 1.04;
-  color: var(--color-spruce);
-  font-style: normal;
-  text-wrap: balance;
+ * Sentence-case, never all-caps.
+ *
+ * This type ladder lives in `@layer base` so a Tailwind utility (which lives in
+ * the `utilities` layer) wins whenever a heading carries one — an unlayered
+ * element rule would beat every utility on layer order alone, silently pinning
+ * headings like the onboarding H1s to the display clamp regardless of their
+ * `text-[…]`/`font-medium` classes. Within this layer, `.main-stage h1` still
+ * beats bare `h1` by specificity, so the authed stage keeps its tighter ceiling
+ * for headings that carry no utility. */
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: var(--tracking-display);
+    font-weight: 600;
+    line-height: 1.04;
+    color: var(--color-spruce);
+    font-style: normal;
+    text-wrap: balance;
+  }
+
+  h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
+  h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
+  h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
+
+  /* Inside the authed main-stage the column is narrower (sidebar eats ~22vw),
+   * so the page H1/H2 need a tighter ceiling or the headline overflows. */
+  .main-stage h1 { font-size: clamp(1.9rem, 3.1vw, 2.85rem); }
+  .main-stage h2 { font-size: clamp(1.4rem, 2.2vw, 1.95rem); }
+
+  em { font-style: italic; }
+  strong { font-weight: 700; }
 }
-
-h1 { font-size: clamp(2.6rem, 6vw, 4.75rem); }
-h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
-h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
-
-/* Inside the authed main-stage the column is narrower (sidebar eats ~22vw),
- * so the page H1/H2 need a tighter ceiling or the headline overflows. */
-.main-stage h1 { font-size: clamp(1.9rem, 3.1vw, 2.85rem); }
-.main-stage h2 { font-size: clamp(1.4rem, 2.2vw, 1.95rem); }
-
-em { font-style: italic; }
-strong { font-weight: 700; }
 
 /* ── Type utilities ────────────────────────────────────────────────────── */
 
@@ -2444,6 +2470,64 @@ html, body, .sidebar, .panel, .card, .field {
 .loc-item-label { flex: 1; min-width: 0; }
 .loc-item-check { color: var(--color-brand); flex-shrink: 0; }
 
+/* A saved-area row: the activate button (flex-1) + a trailing control — the active
+ * check, or the two-step remove affordance for a non-active area. */
+.loc-item-row { display: flex; align-items: center; gap: 0.15rem; }
+.loc-item-trail { margin-right: 0.35rem; }
+.loc-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--color-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 160ms var(--ease-breathe), background 220ms var(--ease-breathe),
+    color 220ms var(--ease-breathe);
+}
+/* Reveal the remove control on hover / keyboard focus within the row (quiet until
+ * intended); it stays in the a11y tree so it is always reachable by Tab. */
+.loc-item-row:hover .loc-remove,
+.loc-item-row:focus-within .loc-remove { opacity: 1; }
+.loc-remove:hover { background: var(--color-berry-tint); color: var(--color-berry-ink); }
+.loc-remove:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-apricot-deep);
+}
+.loc-remove-confirm {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 0.25rem;
+}
+.loc-remove-yes,
+.loc-remove-no {
+  border: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.15rem 0.1rem;
+}
+.loc-remove-yes { color: var(--color-berry-ink); }
+.loc-remove-no { color: var(--color-slate-green); }
+.loc-remove-yes:disabled,
+.loc-remove-no:disabled { cursor: default; opacity: 0.6; }
+.loc-remove-yes:focus-visible,
+.loc-remove-no:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--color-apricot-deep);
+}
+
 .loc-noresult { padding: 0.6rem 0.5rem 0.4rem; line-height: 1.5; }
 
 /* ── Home quick-link tiles (2×2) + Hale tip card, §4.2 ─────────────────── */
@@ -2492,6 +2576,37 @@ html, body, .sidebar, .panel, .card, .field {
 }
 .dark .ob-bubble > p { background: var(--color-oat); }
 .ob-bubble-avatar { flex: none; margin-top: 2px; }
+
+/* Step 4's city search combobox: the Places-autocomplete predictions drop under the
+   input as a listbox; the active option (keyboard or hover) lifts on the alt surface. */
+.ob-combobox { position: relative; }
+.ob-combobox-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--color-oat);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-sm);
+  box-shadow: 0 12px 28px rgb(23 41 74 / 0.12);
+  max-height: 236px;
+  overflow-y: auto;
+}
+.ob-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: var(--color-spruce);
+  cursor: pointer;
+}
+.ob-combobox-option-active { background: var(--color-alt-surface); }
+.ob-combobox-note { margin-top: 8px; }
 
 /* Step 7's animated "getting ready" checklist: rows reveal one-by-one, each
    fading from 0.22 → 1 with its dot turning green. */
@@ -2577,14 +2692,16 @@ html, body, .sidebar, .panel, .card, .field {
 }
 .hale-tip-dismiss:hover { opacity: 1; }
 
-/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr) with equal-height
- * cards, and a dedicated "from your village" 4th column. Collapses 4 → 2 → 1 at
- * lg / md / sm so nothing overflows below 1024px. (W2 QA fix: Row 1 previously
- * shipped as a 3-col responsive grid that folded the village pick into "up next".) */
+/* ── Home §4.2 Row 1 — the row-of-4 grid (1.05fr 1fr 1fr 1.15fr), and a dedicated
+ * "from your village" 4th column. Collapses 4 → 2 → 1 at lg / md / sm so nothing
+ * overflows below 1024px. Columns are TOP-aligned at their natural content height
+ * (align-items: start): a sparse card — an empty village pick, a caught-up "up
+ * next" — sizes to its content instead of being force-stretched to the tallest
+ * column, which left tall empty voids and pushed the Hale tip to the column foot. */
 .home-row1 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
   gap: 2rem 1.5rem;
 }
 @media (min-width: 768px) {
@@ -2593,21 +2710,22 @@ html, body, .sidebar, .panel, .card, .field {
 @media (min-width: 1024px) {
   .home-row1 { grid-template-columns: 1.05fr 1fr 1fr 1.15fr; }
 }
-/* A column is a full-height flex stack: the eyebrow sits on top and the card grows to
- * fill, so every card in the row bottom-aligns (equal height). A two-card column (the
- * quick links + Hale tip) grows its first group and pins the tip below. */
-.home-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; height: 100%; }
-.home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; height: 100%; }
-.home-col-grow { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-.home-card-fill { flex: 1 1 auto; display: flex; flex-direction: column; }
+/* A column is a flex stack sized to its content (no forced full-column height): the
+ * eyebrow sits on top and the card sits below at its natural height. The two-card
+ * column (quick links + Hale tip) keeps the tip directly under the links card with
+ * the stack gap — no growth spacer that would strand the tip at the column foot. */
+.home-col { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.home-col-stack { display: flex; flex-direction: column; gap: 2rem; min-width: 0; }
+.home-col-grow { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.home-card-fill { display: flex; flex-direction: column; }
 
 /* ── Home §4.2 Row 2 — today's highlights / sleep / meals for the active child, at
- * 1.1fr 1fr 1fr with equal-height cards. Sits under Row 1; collapses 3 → 1 below
- * 1024px so nothing overflows. ─────────────────────────────────────────────── */
+ * 1.1fr 1fr 1fr. Sits under Row 1; collapses 3 → 1 below 1024px so nothing
+ * overflows. Top-aligned at natural height, matching Row 1. ──────────────────── */
 .home-row2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
   gap: 2rem 1.5rem;
   margin-top: 2rem;
 }
@@ -2857,6 +2975,11 @@ html, body, .sidebar, .panel, .card, .field {
 }
 @media (min-width: 640px) {
   .village-map-placeholder { aspect-ratio: 16 / 9; }
+}
+/* Desktop board: the map is a fixed 560px (§4.5), so the pre-mount placeholder
+ * matches that height — no layout jump when the real map replaces it. */
+@media (min-width: 1024px) {
+  .village-map-placeholder { aspect-ratio: auto; height: 35rem; }
 }
 
 

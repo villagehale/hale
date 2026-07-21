@@ -26,8 +26,9 @@ describe('toFamilyBasics', () => {
           gender: 'girl',
           biologicalSex: 'female',
           interests: ['swimming', 'music'],
+          avatarUrl: 'https://signed.example/robin',
         },
-        // 16y → teenager, bare optional fields (biological sex unset)
+        // 16y → teenager, bare optional fields (biological sex unset), no photo
         {
           id: 'b',
           name: 'Sam',
@@ -36,6 +37,7 @@ describe('toFamilyBasics', () => {
           gender: 'unspecified',
           biologicalSex: null,
           interests: [],
+          avatarUrl: null,
         },
       ],
       NOW,
@@ -61,6 +63,7 @@ describe('toFamilyBasics', () => {
         biologicalSex: 'female',
         interests: ['swimming', 'music'],
         stageLabel: 'newborn',
+        avatarUrl: 'https://signed.example/robin',
       },
       {
         id: 'b',
@@ -71,6 +74,7 @@ describe('toFamilyBasics', () => {
         biologicalSex: null,
         interests: [],
         stageLabel: 'teenager',
+        avatarUrl: null,
       },
     ]);
   });

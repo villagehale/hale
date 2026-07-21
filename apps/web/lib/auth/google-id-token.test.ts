@@ -29,6 +29,7 @@ async function signIdToken(claims: {
   sub: string;
   email?: string;
   emailVerified?: boolean;
+  picture?: string;
   iss?: string;
   aud?: string;
   expiresIn?: string | number;
@@ -36,6 +37,7 @@ async function signIdToken(claims: {
   const payload: Record<string, unknown> = {};
   if (claims.email) payload.email = claims.email;
   if (claims.emailVerified !== undefined) payload.email_verified = claims.emailVerified;
+  if (claims.picture) payload.picture = claims.picture;
   const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
     .setSubject(claims.sub)
@@ -57,7 +59,29 @@ describe('verifyGoogleIdToken', () => {
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
-    expect(result).toEqual({ sub: 'google-user-123', email: 'kid.parent@gmail.com' });
+    expect(result).toEqual({
+      sub: 'google-user-123',
+      email: 'kid.parent@gmail.com',
+      picture: undefined,
+    });
+  });
+
+  it('returns the profile picture when the id_token carries one (display only)', async () => {
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', CLIENT_ID);
+    const token = await signIdToken({
+      sub: 'google-user-123',
+      email: 'p@gmail.com',
+      emailVerified: true,
+      picture: 'https://lh3.googleusercontent.com/a/photo',
+    });
+
+    const result = await verifyGoogleIdToken(token, { jwks });
+
+    expect(result).toEqual({
+      sub: 'google-user-123',
+      email: 'p@gmail.com',
+      picture: 'https://lh3.googleusercontent.com/a/photo',
+    });
   });
 
   it('accepts the bare-host issuer variant "accounts.google.com"', async () => {
@@ -71,7 +95,7 @@ describe('verifyGoogleIdToken', () => {
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
-    expect(result).toEqual({ sub: 'google-user-123', email: 'p@gmail.com' });
+    expect(result).toEqual({ sub: 'google-user-123', email: 'p@gmail.com', picture: undefined });
   });
 
   it('returns email undefined when the id_token omits email', async () => {
@@ -80,7 +104,7 @@ describe('verifyGoogleIdToken', () => {
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
-    expect(result).toEqual({ sub: 'google-user-123', email: undefined });
+    expect(result).toEqual({ sub: 'google-user-123', email: undefined, picture: undefined });
   });
 
   it('drops the email when email_verified is false', async () => {
@@ -93,7 +117,7 @@ describe('verifyGoogleIdToken', () => {
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
-    expect(result).toEqual({ sub: 'google-user-123', email: undefined });
+    expect(result).toEqual({ sub: 'google-user-123', email: undefined, picture: undefined });
   });
 
   it('drops the email when email_verified is absent (present email, no claim)', async () => {
@@ -102,7 +126,7 @@ describe('verifyGoogleIdToken', () => {
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
-    expect(result).toEqual({ sub: 'google-user-123', email: undefined });
+    expect(result).toEqual({ sub: 'google-user-123', email: undefined, picture: undefined });
   });
 
   it('accepts a token whose aud is the iOS client id when both ids are configured', async () => {
@@ -117,7 +141,7 @@ describe('verifyGoogleIdToken', () => {
 
     const result = await verifyGoogleIdToken(token, { jwks });
 
-    expect(result).toEqual({ sub: 'google-user-123', email: 'p@gmail.com' });
+    expect(result).toEqual({ sub: 'google-user-123', email: 'p@gmail.com', picture: undefined });
   });
 
   it('rejects a token minted for a different audience', async () => {

@@ -45,15 +45,18 @@ export function storagePathFor(familyId: string, docId: string): string {
 
 /**
  * Uploads a document's bytes to the private bucket at the given path. Uses the
- * service-role key server-side; the client never sees it. `upsert:false` (the
- * default) so a freshly-minted docId path can't silently overwrite an existing
- * object.
+ * service-role key server-side; the client never sees it. `upsert` defaults to false
+ * so a freshly-minted docId path can't silently overwrite an existing object; a
+ * caller with a DETERMINISTIC key that is meant to be replaced in place (a child
+ * avatar — one object per child) passes `upsert=true` to overwrite atomically, which
+ * is orphan-free by construction (no old object to strand on replace).
  */
 export async function uploadDocument(
   path: string,
   body: Buffer,
   mime: string,
   fetchImpl: FetchLike = fetch,
+  upsert = false,
 ): Promise<void> {
   const { supabaseUrl, serviceRoleKey } = readConfig();
   const res = await fetchImpl(`${supabaseUrl}/storage/v1/object/${DOCS_BUCKET}/${path}`, {
@@ -62,8 +65,9 @@ export async function uploadDocument(
       apikey: serviceRoleKey,
       authorization: `Bearer ${serviceRoleKey}`,
       'content-type': mime,
-      // Belt-and-suspenders: never clobber an existing object at this path.
-      'x-upsert': 'false',
+      // Default: never clobber an existing object at this path. Opt-in upsert is for a
+      // deterministic key whose whole point is in-place replacement (avatars).
+      'x-upsert': upsert ? 'true' : 'false',
     },
     body: new Uint8Array(body),
   });

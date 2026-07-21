@@ -1,8 +1,8 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { hasOptedOut, recordEmailSend } from '~/lib/cron/email-compliance';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
-import { smsConsentLive } from './consent';
 import type { DispatchPorts } from './dispatch';
 import { countRecentSends, dedupeActive, recordChannelMessage } from './ledger';
 import type { Channel, ChannelKind, TemplateRenderer } from './types';
@@ -36,7 +36,10 @@ export function buildDispatchPorts(
     },
     emailOptedOut: (userId, emailType) =>
       hasOptedOut(database, userId, emailType as Parameters<typeof hasOptedOut>[2]),
-    smsConsentLive: (userId) => smsConsentLive(userId, database, now()),
+    // The live SMS-consent gate is VIL-212's source of truth: an active, verified,
+    // non-revoked parent_channels row (consent_records is its append-only CASL
+    // ledger, not the live state).
+    smsConsentLive: async (userId) => (await loadSmsChannelState(database, userId)).enrolled,
     hasLivePushToken: async (userId) => {
       const rows = await database
         .select({ id: schema.pushTokens.id })

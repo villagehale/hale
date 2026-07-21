@@ -117,10 +117,12 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // the teen is notified. The consume side (approving the request → granted=true,
   // and honouring an active grant on read) is a follow-up.
   'teen_content_access',
-  // F11 (VIL-213/A1): a parent's CASL express consent to receive loop SERVICE
-  // messages over SMS. Must be live (granted, not revoked, unexpired) before the
-  // channel seam sends any SMS; STOP revokes it (A3). Per-parent — co-parents
-  // enroll independently (does not trigger the two-parent rule).
+  // CASL express consent to receive SMS service messages (weekly plan, reminders,
+  // approvals) on a verified phone. Per-PARENT, not per-family — co-parents enroll
+  // independently, so this never triggers the two-parent-consent rule (#5). Granted
+  // on OTP verify; a granted=false row records a withdrawal (in-app toggle / STOP).
+  // The channel seam (VIL-213) gates SMS on the live parent_channels state, not on
+  // this append-only ledger.
   'sms_service_messages',
 ]);
 
@@ -158,6 +160,13 @@ export const emailTypeEnum = pgEnum('email_type', [
   'approval',
   'alert',
 ]);
+
+// How a family_events row entered the loop's shared "external events" home (VIL-217).
+// 'parent' — a parent added it directly in-app. 'channel' — extracted from a reply
+// on the exchange channel (C2 "add Leo's party Sat 2pm"). 'email' — pulled from an
+// invite email (E-phase). The composer treats all three identically; the source is
+// kept for provenance + audit (rule #6).
+export const familyEventSourceEnum = pgEnum('family_event_source', ['parent', 'channel', 'email']);
 
 // F11 · The Sunday Loop — a parent's chosen EXCHANGE channel (the two-way
 // "reply to adjust" leg). Push is an always-on DELIVERY leg, not an exchange

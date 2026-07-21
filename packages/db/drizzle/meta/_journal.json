@@ -374,6 +374,20 @@
       "breakpoints": true
     },
     {
+      "idx": 54,
+      "version": "7",
+      "when": 1781462940000,
+      "tag": "0054_week_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1781463000000,
+      "tag": "0055_family_events",
+      "breakpoints": true
+    },
+    {
       "idx": 56,
       "version": "7",
       "when": 1781463060000,
@@ -381,9 +395,23 @@
       "breakpoints": true
     },
     {
-      "idx": 61,
+      "idx": 58,
       "version": "7",
-      "when": 1781463360000,
+      "when": 1781463180000,
+      "tag": "0058_parent_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1781463240000,
+      "tag": "0060_child_avatar_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1781463300000,
       "tag": "0061_channel_messages",
       "breakpoints": true
     }

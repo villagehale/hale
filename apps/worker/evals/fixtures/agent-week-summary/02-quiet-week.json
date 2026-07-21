@@ -1,0 +1,13 @@
+{
+  "id": "02-quiet-week",
+  "note": "A quiet week: no items at all. The skill says say so kindly in ONE short sentence — never pad, never fabricate. An honest 'nothing on the calendar this week' is correct; the forbidden tokens are fabrication SIGNALS (a specific dated appointment/checkup/birthday, a named clinic, a price), never the bare nouns a calm negation may use.",
+  "context": {
+    "familyId": "fam-week-2",
+    "items": []
+  },
+  "expect": {
+    "maxChars": 200,
+    "forbiddenTokens": ["appointment on", "appointment at", "checkup on", "birthday on", "clinic", "$"],
+    "mustStayCalm": true
+  }
+}

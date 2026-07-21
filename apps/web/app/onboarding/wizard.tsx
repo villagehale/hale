@@ -1,16 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Ban, Check, MapPin, Plus, ShieldCheck, Sun, X } from 'lucide-react';
-import {
-  type ChildGender,
-  CHILD_GENDERS,
-  type OnboardingIntent,
-  parseIntents,
-} from '@hale/types';
+import { type ChildGender, CHILD_GENDERS, type OnboardingIntent } from '@hale/types';
+import { CityAutocompleteInput } from '~/components/hale/city-autocomplete-input';
 import { GettingReadyChecklist } from '~/components/hale/getting-ready-checklist';
 import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
@@ -18,8 +14,10 @@ import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form'
 import { OnboardingConnect } from '~/components/hale/onboarding-connect';
 import { OnboardingShell } from '~/components/hale/onboarding-shell';
 import { PrivacyNote } from '~/components/hale/privacy-note';
+import { VillageIllustration } from '~/components/hale/village-illustration';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { LocationInput } from '~/lib/family/location-input';
+import type { CityCentroid } from '~/lib/village/geocode';
 import { validateChild } from '~/lib/onboarding/children';
 import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
 import { describeCompleteOnboardingError } from '~/lib/onboarding/complete-onboarding-copy';
@@ -29,8 +27,21 @@ import {
   readIntakeDraft,
   writeIntakeDraft,
 } from '~/lib/onboarding/intake-storage';
+import { resumeFromDraft } from '~/lib/onboarding/resume';
 import { startGoogleSignIn } from '~/lib/onboarding/sign-in-action';
 import { FIRST_POST_AUTH_STEP, clampStep } from '~/lib/onboarding/steps';
+
+/** The interactive step-4 map is lazily imported (ssr:false) so the Google Maps JS
+ * never enters the initial onboarding bundle — it loads only when step 4 mounts. The
+ * village illustration is the load-time (and no-key / failed-script) fallback. */
+const OnboardingLocationMap = dynamic(
+  () => import('~/components/hale/onboarding-location-map').then((m) => m.OnboardingLocationMap),
+  { ssr: false, loading: () => <VillageIllustration /> },
+);
+
+/** Public Maps key (build-inlined); null in previews/forks → the map degrades to the
+ * illustration (rule #1-safe, honest fallback). */
+const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
 
 /**
  * The 9-step onboarding wizard (design handoff §4.1). A linear step machine on
@@ -112,6 +123,9 @@ export function OnboardingWizard({
 
   const [children, setChildren] = useState<SetupChild[]>([emptyChild()]);
   const [area, setArea] = useState('');
+  // The picked city's centroid — drives the step-4 map. Coarse city centre only, never
+  // persisted (rule #1); the map reads it, completeOnboarding stores only {city}.
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [intents, setIntents] = useState<OnboardingIntent[]>([]);
 
   // Step 7's two views: the private-detail form, then the animated getting-ready
@@ -125,19 +139,16 @@ export function OnboardingWizard({
 
   // Hydrate the pre-auth draft on mount so step 7 (post-auth) pre-fills the child
   // names + area the parent gave before signing in. The draft is tab-scoped, so a
-  // magic link opened on another device simply arrives empty — the step-7 form is
-  // self-sufficient (name + birthday + area), so nothing is lost, only re-typed.
+  // magic link opened in a fresh tab / on another device simply arrives empty
+  // (resumeFromDraft(null) → empty fields) — the step-7 form is self-sufficient
+  // (name + birthday + area), so nothing is lost, only re-typed.
   useEffect(() => {
-    const draft = readIntakeDraft();
-    if (!draft) {
-      return;
+    const { childNames, area: draftArea, intents: draftIntents } = resumeFromDraft(readIntakeDraft());
+    if (childNames.length > 0) {
+      setChildren(childNames.map((name) => emptyChild(name)));
     }
-    const names = draft.childNames.map((n) => n.trim()).filter((n) => n.length > 0);
-    if (names.length > 0) {
-      setChildren(names.map((n) => emptyChild(n)));
-    }
-    setArea(draft.city);
-    setIntents(parseIntents(draft.intents ?? []));
+    setArea(draftArea);
+    setIntents(draftIntents);
   }, []);
 
   // Move focus to the new step's heading on every step change (the advancing
@@ -290,10 +301,12 @@ export function OnboardingWizard({
         <StepLocation
           headingRef={headingRef}
           area={area}
+          center={mapCenter}
           onArea={(value) => {
             setArea(value);
             persistDraft({ city: value });
           }}
+          onSelectCity={(centroid) => setMapCenter({ lat: centroid.lat, lng: centroid.lng })}
           onNext={() => {
             persistDraft({});
             go(5);
@@ -546,12 +559,16 @@ function StepChildren({
 function StepLocation({
   headingRef,
   area,
+  center,
   onArea,
+  onSelectCity,
   onNext,
 }: {
   headingRef: HeadingRef;
   area: string;
+  center: { lat: number; lng: number } | null;
   onArea: (value: string) => void;
+  onSelectCity: (centroid: CityCentroid) => void;
   onNext: () => void;
 }) {
   return (
@@ -560,28 +577,20 @@ function StepLocation({
 
       <div className="card space-y-4">
         <div className="relative overflow-hidden rounded-[var(--r-sm)] bg-tile" style={{ height: 230 }}>
-          <Image
-            src="/village-illustration.png"
-            alt=""
-            aria-hidden="true"
-            fill
-            sizes="620px"
-            className="object-contain p-4"
-          />
+          <OnboardingLocationMap apiKey={MAPS_API_KEY} center={center} />
         </div>
         <div>
           <label htmlFor="ob-area" className="eyebrow">
             Search city or area
           </label>
-          <input
-            id="ob-area"
-            type="text"
-            className="field mt-2"
-            value={area}
-            onChange={(e) => onArea(e.currentTarget.value)}
-            placeholder="Toronto, or a postal prefix like M5V"
-            autoComplete="off"
-          />
+          <div className="mt-2">
+            <CityAutocompleteInput
+              inputId="ob-area"
+              value={area}
+              onValueChange={onArea}
+              onSelect={onSelectCity}
+            />
+          </div>
           <p className="meta mt-2">
             <MapPin size={13} strokeWidth={2} aria-hidden="true" className="inline -translate-y-px" />{' '}
             We never store your exact address.

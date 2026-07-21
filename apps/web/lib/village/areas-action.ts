@@ -4,8 +4,14 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { currentFamilyId, resolveUserIdForUser } from '~/lib/family';
-import { addArea, setActiveArea } from './areas';
-import { type CityCandidate, searchCanadianCities } from './geocode';
+import { rateLimitStatus } from '~/lib/rate-limit/apply';
+import { addArea, removeArea, setActiveArea } from './areas';
+import {
+  type CityCentroid,
+  type CityPrediction,
+  autocompleteCanadianCities,
+  resolveCityPlace,
+} from './geocode';
 
 /**
  * Server Actions behind the top-bar location switcher (design handoff §3.2). They
@@ -19,12 +25,36 @@ import { type CityCandidate, searchCanadianCities } from './geocode';
 
 export type SwitchAreaResult = { status: 'ok' } | { status: 'error'; error: string };
 
-/** The switcher's typeahead — up to a handful of coarse {city, province} candidates
- * (rule #1: no coordinates). Auth-gated; a blank query / miss yields []. */
-export async function searchCitiesAction(query: string): Promise<CityCandidate[]> {
+/** The switcher's typeahead — Google-Maps-style fuzzy predictions restricted to
+ * Canadian cities (rule #1: predictions carry no coordinates). Auth-gated and capped
+ * per user against the paid Places provider; over the cap or a blank query yields [].
+ * Pass the search session's token so autocomplete + resolveCityAction bill as one
+ * session. Returns an ARRAY (CityPrediction extends the old {city, province}) so
+ * existing switcher consumers stay source-compatible. */
+export async function searchCitiesAction(
+  query: string,
+  sessionToken?: string,
+): Promise<CityPrediction[]> {
   const session = await auth();
   if (!session?.user?.id) return [];
-  return searchCanadianCities(query);
+  const { allowed } = await rateLimitStatus('city-search', session.user.id);
+  if (!allowed) return [];
+  return autocompleteCanadianCities(query, sessionToken);
+}
+
+/** Resolve a selected prediction to its coarse {city, province, centroid} via Place
+ * Details (rule #1: centroid = city centre, never persisted). Auth-gated + capped per
+ * user; over the cap or a miss yields null. Same session token as searchCitiesAction
+ * closes the billed session. */
+export async function resolveCityAction(
+  placeId: string,
+  sessionToken?: string,
+): Promise<CityCentroid | null> {
+  const session = await auth();
+  if (!session?.user?.id) return null;
+  const { allowed } = await rateLimitStatus('city-search', session.user.id);
+  if (!allowed) return null;
+  return resolveCityPlace(placeId, sessionToken);
 }
 
 async function resolveScope() {
@@ -85,6 +115,27 @@ export async function activateAreaAction(areaId: string): Promise<SwitchAreaResu
     areaId,
   });
   if (activated.status === 'not_found') return { status: 'error', error: 'not_found' };
+
+  revalidateAreaSurfaces();
+  return { status: 'ok' };
+}
+
+/**
+ * Removes a saved area (the switcher's per-row delete). Family-scoped; the ACTIVE
+ * area cannot be removed (switch away first) — surfaced as an honest error the UI
+ * turns into copy, never a silent no-op.
+ */
+export async function deleteAreaAction(areaId: string): Promise<SwitchAreaResult> {
+  const scope = await resolveScope();
+  if (!scope) return { status: 'error', error: 'unauthorized' };
+
+  const removed = await removeArea(scope.database, {
+    familyId: scope.familyId,
+    userId: scope.userId,
+    areaId,
+  });
+  if (removed.status === 'not_found') return { status: 'error', error: 'not_found' };
+  if (removed.status === 'active') return { status: 'error', error: 'active_area' };
 
   revalidateAreaSurfaces();
   return { status: 'ok' };

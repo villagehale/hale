@@ -1,6 +1,7 @@
 import { schema } from '@hale/db';
 import { revalidatePath } from 'next/cache';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { removeDocument } from '~/lib/docs/storage';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import {
@@ -29,6 +30,10 @@ vi.mock('~/lib/family', async () => {
   return { ...actual, resolveFamilyForUser: vi.fn(), ensureUserRow: vi.fn() };
 });
 vi.mock('~/lib/onboarding/persist', () => ({ provisionAndWriteChildren: vi.fn() }));
+// Removing a child must also drop its private-bucket avatar object; the storage
+// adapter is stubbed so the action's decision (remove iff the child had a photo) is
+// tested without a live bucket.
+vi.mock('~/lib/docs/storage', () => ({ removeDocument: vi.fn() }));
 
 let fakeDbHandle: unknown = {};
 
@@ -390,6 +395,36 @@ describe('removeChildAction', () => {
     expect(result).toEqual({ status: 'not_found' });
     expect(deletes).toHaveLength(0);
     expect(inserts).toHaveLength(0);
+  });
+
+  it('also removes the private-bucket avatar object when the removed child had a photo (rule #1: a removed child leaves no bytes)', async () => {
+    const avatarPath = `avatars/${FAMILY_ID}/${CHILD_ID}`;
+    const before = { name: 'Robin', dateOfBirth: '2024-01-01', avatarPath };
+    const { tx, inserts, deletes } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+
+    const result = await removeChildAction(CHILD_ID);
+
+    expect(result).toEqual({ status: 'removed' });
+    expect(deletes).toEqual([{ table: schema.children }]);
+    expect(removeDocument).toHaveBeenCalledWith(avatarPath);
+    // The audit before-snapshot stays name + DOB — avatar_path is operational, not
+    // audit content (rule #6 records the child, not its storage key).
+    expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
+      actionTaken: 'child_removed',
+      targetId: CHILD_ID,
+      before: { name: 'Robin', dateOfBirth: '2024-01-01' },
+    });
+  });
+
+  it('does not touch storage when the removed child had no avatar', async () => {
+    const before = { name: 'Robin', dateOfBirth: '2024-01-01', avatarPath: null };
+    const { tx } = makeTx([before]);
+    fakeDbHandle = txDb(tx);
+
+    await removeChildAction(CHILD_ID);
+
+    expect(removeDocument).not.toHaveBeenCalled();
   });
 });
 

@@ -30,7 +30,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
   }
 
-  let identity: { sub: string; email: string | undefined };
+  let identity: { sub: string; email: string | undefined; picture: string | undefined };
   try {
     identity = await verifyGoogleIdToken(idToken);
   } catch (err) {
@@ -43,6 +43,7 @@ export async function POST(req: Request): Promise<Response> {
   const token = await mintMobileSessionToken({
     sub: identity.sub,
     email: identity.email,
+    picture: identity.picture,
     secureRequest: requestIsSecure(req.headers),
   });
   return NextResponse.json({ token }, { status: 200 });

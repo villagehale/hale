@@ -4,7 +4,7 @@ import { MapPin } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '~/components/ui/icon';
 import { loadMapsLibrary } from '~/lib/onboarding/load-places';
-import { type LatLng, buildVillageMapModel } from '~/lib/village/map-model';
+import { type LatLng, buildVillageMapModel, resolveMapFocus } from '~/lib/village/map-model';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 import { ActivityCard } from './activity-card';
 
@@ -128,13 +128,17 @@ export function VillageMap({
         bounds.extend(marker.position);
       }
 
-      // Fit to the PUBLIC venue markers when present; otherwise rest on the
-      // coarse-area centroid. Never the precise home (rule #1).
-      if (model.markers.length > 0) {
-        map.fitBounds(bounds);
-      } else if (model.center) {
-        map.setCenter(model.center);
+      // Follow the ACTIVE coarse area: its centroid takes priority so the map
+      // recenters on load AND on region switch (candidates are family-scoped, so
+      // markers can belong to a previously-active area — resolveMapFocus). Only when
+      // no coarse centre resolved do we fall back to fitting the public-venue markers.
+      // Never the precise home (rule #1).
+      const focus = resolveMapFocus(model);
+      if (focus.mode === 'center') {
+        map.setCenter(focus.center);
         map.setZoom(FALLBACK_ZOOM);
+      } else if (focus.mode === 'fit') {
+        map.fitBounds(bounds);
       }
 
       setStatus('ready');
@@ -150,7 +154,7 @@ export function VillageMap({
 
   return (
     <div className="space-y-5">
-      <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] overflow-hidden rounded-[var(--r-xl)] border border-rule">
+      <div className="relative w-full aspect-[4/3] sm:aspect-[16/9] lg:aspect-auto lg:h-[35rem] overflow-hidden rounded-[var(--r-lg)] border border-rule">
         <div
           ref={containerRef}
           className="absolute inset-0"

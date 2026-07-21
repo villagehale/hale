@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { BuildYourVillage } from '~/components/hale/build-your-village';
 import { PrivacyNote } from '~/components/hale/privacy-note';
+import { VillageAiSearch } from '~/components/hale/village-ai-search';
 import { VillageBoard } from '~/components/hale/village-board';
 import { VillageFeedSkeleton, VillageSearchRun } from '~/components/hale/village-feed-section';
 import { VillageSeasonSelector } from '~/components/hale/village-season-selector';
@@ -54,14 +55,24 @@ export default async function VillagePage({
         </div>
       ) : (
         <div className="rise rise-2">
-          <VillageBoard
-            candidates={feed.candidates}
-            resources={resources}
-            coarseCenter={feed.coarseCenter}
-            area={feed.areaCoarse}
-            saved={saved}
-            ranked={feed.ranked}
-          />
+          {/* The natural-language search (AI-search lane) owns the search bar and, when
+              a search is active, replaces the board with its real results; the board
+              (its literal-filter box hidden) is the idle view. It resets on a region
+              switch via areaKey. The board is ALSO keyed on the active coarse area so a
+              switch remounts it — clearing any stale filter / selected activity carried
+              from the previous area. Both key on feed.areaCoarse, in lockstep. */}
+          <VillageAiSearch areaKey={feed.areaCoarse ?? ''} area={feed.areaCoarse}>
+            <VillageBoard
+              key={feed.areaCoarse ?? 'no-area'}
+              candidates={feed.candidates}
+              resources={resources}
+              coarseCenter={feed.coarseCenter}
+              area={feed.areaCoarse}
+              saved={saved}
+              ranked={feed.ranked}
+              showInlineSearch={false}
+            />
+          </VillageAiSearch>
         </div>
       )}
 
