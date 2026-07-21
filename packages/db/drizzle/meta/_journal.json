@@ -372,6 +372,20 @@
       "when": 1781462880000,
       "tag": "0053_chat_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1781462940000,
+      "tag": "0054_week_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1781463000000,
+      "tag": "0055_family_events",
+      "breakpoints": true
     }
   ]
 }

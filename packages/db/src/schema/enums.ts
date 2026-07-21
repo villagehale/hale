@@ -141,3 +141,10 @@ export const childGenderEnum = pgEnum('child_gender', [
 // 'verification' is the transactional email-confirmation link sent at sign-up; its
 // ledger row makes the send auditable (PIPEDA right-to-access) like every stream.
 export const emailTypeEnum = pgEnum('email_type', ['daily_digest', 'welcome', 'verification']);
+
+// How a family_events row entered the loop's shared "external events" home (VIL-217).
+// 'parent' — a parent added it directly in-app. 'channel' — extracted from a reply
+// on the exchange channel (C2 "add Leo's party Sat 2pm"). 'email' — pulled from an
+// invite email (E-phase). The composer treats all three identically; the source is
+// kept for provenance + audit (rule #6).
+export const familyEventSourceEnum = pgEnum('family_event_source', ['parent', 'channel', 'email']);
