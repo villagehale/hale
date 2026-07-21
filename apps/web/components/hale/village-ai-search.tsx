@@ -99,7 +99,7 @@ export function VillageAiSearch({
 function SearchLoading() {
   return (
     <output className="rise rise-2 flex items-center gap-3 panel-oat px-6 py-5" aria-live="polite">
-      <Icon as={Sparkles} size={18} className="shrink-0 text-apricot-deep animate-pulse" />
+      <Icon as={Sparkles} size={18} className="shrink-0 text-spruce animate-pulse" />
       <span className="meta text-slate-green">Hale is reading your ask and looking near you…</span>
     </output>
   );
@@ -173,7 +173,7 @@ function ResultShell({
     <div className="rise rise-2 space-y-6">
       <div className="panel-oat px-6 py-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <span className="meta text-spruce">
-          Hale understood: <span className="text-apricot-deep" data-hale-pii>{interpretation}</span>
+          Hale understood: <span className="font-semibold text-spruce" data-hale-pii>{interpretation}</span>
         </span>
         <button type="button" onClick={onClear} className="link">
           back to your village
