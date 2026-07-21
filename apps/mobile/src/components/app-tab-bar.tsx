@@ -15,7 +15,7 @@ const TABS: Record<string, TabMeta> = {
     icon: 'user',
     activeIcon: 'user',
   },
-  ask: { label: 'Hale', icon: 'sparkles', activeIcon: 'sparkles' },
+  ask: { label: 'Ask', icon: 'sparkles', activeIcon: 'sparkles' },
   village: { label: 'Village', icon: 'houses', activeIcon: 'houses' },
   more: { label: 'More', icon: 'ellipsis-filled', activeIcon: 'ellipsis-filled' },
 };
