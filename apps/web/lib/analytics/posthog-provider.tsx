@@ -1,8 +1,7 @@
 'use client';
 
-import posthog from 'posthog-js';
-import { PostHogProvider as PostHogJsProvider, usePostHog } from 'posthog-js/react';
-import { useEffect } from 'react';
+import type { PostHog } from 'posthog-js';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { type AnalyticsEvent, buildEvent } from './events';
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -12,6 +11,14 @@ const HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 export function analyticsEnabled(): boolean {
   return Boolean(KEY);
 }
+
+// The live client, shared through OUR OWN context. posthog-js AND its React
+// bindings (posthog-js/react) are never imported at module scope, because a static
+// import of EITHER pulls the ~50KB analytics core into first-load JS on every
+// route. The client is loaded only after hydration (see the provider), so until it
+// resolves — and always, when no key is configured — this stays null and every
+// capture path no-ops. Mirrors the marketing site's provider.
+const PostHogContext = createContext<PostHog | null>(null);
 
 /**
  * The single posthog-js init config, privacy-first (hard rule #1). Exported as a
@@ -49,28 +56,35 @@ export const POSTHOG_INIT_CONFIG = {
   },
   capture_exceptions: true,
   respect_dnt: true,
-} as const satisfies Partial<Parameters<typeof posthog.init>[1]>;
-
-function initPostHog(): void {
-  if (!KEY || posthog.__loaded) return;
-  posthog.init(KEY, {
-    api_host: HOST ?? 'https://us.i.posthog.com',
-    ...POSTHOG_INIT_CONFIG,
-  });
-}
+} as const satisfies Partial<Parameters<PostHog['init']>[1]>;
 
 /**
- * Wraps the app. When no key is configured it renders children untouched — no
- * init, no network, no errors — so the build ships safely now and starts
- * collecting the moment the key is added.
+ * Wraps the app. posthog-js (~50KB gzipped) is loaded AFTER hydration via a dynamic
+ * import inside the effect, so the analytics core is code-split OUT of every route's
+ * initial client bundle — the LCP-critical paths never pay for it. Until it resolves
+ * (and whenever no key is configured) children render untouched with no provider
+ * mounted; the capture hooks below already no-op on a null client, so nothing is
+ * ever blocked on analytics.
  */
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  const [client, setClient] = useState<PostHog | null>(null);
+
   useEffect(() => {
-    initPostHog();
+    if (!KEY) return;
+    let cancelled = false;
+    void import('posthog-js').then(({ default: posthog }) => {
+      if (cancelled) return;
+      if (!posthog.__loaded) {
+        posthog.init(KEY, { api_host: HOST ?? 'https://us.i.posthog.com', ...POSTHOG_INIT_CONFIG });
+      }
+      setClient(posthog);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (!analyticsEnabled()) return <>{children}</>;
-  return <PostHogJsProvider client={posthog}>{children}</PostHogJsProvider>;
+  return <PostHogContext.Provider value={client}>{children}</PostHogContext.Provider>;
 }
 
 /**
@@ -82,7 +96,7 @@ export function useAnalytics(): (
   event: AnalyticsEvent,
   properties?: Record<string, unknown>,
 ) => void {
-  const client = usePostHog();
+  const client = useContext(PostHogContext);
   return (event, properties) => {
     if (!client) return;
     const { event: name, properties: safe } = buildEvent(event, properties);
@@ -99,7 +113,7 @@ export function useAnalytics(): (
  * so a stack trace can't carry child/family PII.
  */
 export function useCaptureException(): (error: unknown) => void {
-  const client = usePostHog();
+  const client = useContext(PostHogContext);
   return (error) => {
     if (!client) return;
     client.captureException(error);
@@ -112,7 +126,7 @@ export function useCaptureException(): (error: unknown) => void {
  * user id exists.
  */
 export function IdentifyUser({ userId }: { userId: string }) {
-  const client = usePostHog();
+  const client = useContext(PostHogContext);
   useEffect(() => {
     if (client && userId) client.identify(userId);
   }, [client, userId]);
