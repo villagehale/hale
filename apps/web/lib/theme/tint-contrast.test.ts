@@ -53,7 +53,9 @@ describe('attach-chip text on its tint clears AA in light mode (W2b polish b)', 
     expect(contrast(tokenHex(ink), tokenHex(tint))).toBeGreaterThanOrEqual(AA);
   });
 
-  it('the unchanged apricot chip still clears AA (regression guard)', () => {
+  it('the apricot accent (re-pointed to ink navy) on its warm wash clears AA', () => {
+    // apricot-deep/tint were re-pointed from blue (#3B5BDB / #EDF0FA) to ink navy on a
+    // warm-neutral wash (#17294A / #ECE8DE) per the founder palette law; still ≥ AA.
     expect(
       contrast(tokenHex('color-apricot-deep'), tokenHex('color-apricot-tint')),
     ).toBeGreaterThanOrEqual(AA);

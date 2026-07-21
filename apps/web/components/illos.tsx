@@ -20,9 +20,11 @@ const C = {
   oat: 'var(--color-oat)',
   spruce: 'var(--color-spruce)',
   slate: 'var(--color-slate-green)',
-  apricot: 'var(--color-apricot)',
-  apricotDeep: 'var(--color-apricot-deep)',
-  apricotTint: 'var(--color-apricot-tint)',
+  // Decorative blue kept on its own token so the app-wide apricot→ink-navy accent
+  // sweep (founder palette law) doesn't recolor the illustration art.
+  apricot: 'var(--color-illustration)',
+  apricotDeep: 'var(--color-illustration)',
+  apricotTint: 'var(--color-illustration-tint)',
   sky: 'var(--color-sky)',
   skyDeep: 'var(--color-sky-deep)',
   skyTint: 'var(--color-sky-tint)',

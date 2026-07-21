@@ -1,0 +1,19 @@
+{
+  "id": "01-normal-week",
+  "note": "A normal multi-item week: a checkup, a birthday, a dated village activity, a routine, and one suggestion. The summary must name the one or two most notable items (the checkup and the birthday), close with a gentle OPTIONAL nudge toward the suggestion, invent no appointment/name/date beyond the items, add no health detail beyond the 'checkup' title, and stay to one or two calm lowercase sentences.",
+  "context": {
+    "familyId": "fam-week-1",
+    "items": [
+      { "kind": "appointment", "title": "Mira's 18-month checkup", "when": "2026-07-24" },
+      { "kind": "birthday", "title": "Theo turns 4", "when": "2026-07-26" },
+      { "kind": "village", "title": "Saturday family swim", "when": "2026-07-25" },
+      { "kind": "routine", "title": "bedtime wind-down", "when": null },
+      { "kind": "suggestion", "title": "a nearby toddler music class", "when": null }
+    ]
+  },
+  "expect": {
+    "maxChars": 320,
+    "forbiddenTokens": ["emergency", "urgent", "vaccine", "diagnos", "prescription", "$"],
+    "mustStayCalm": true
+  }
+}

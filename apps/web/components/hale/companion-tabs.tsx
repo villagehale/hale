@@ -812,19 +812,23 @@ export function MilestonesSection({ child }: { child: ChildCompanionView }) {
         {child.milestones.map((milestone, idx) => (
           <li
             key={milestone.what}
-            className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-t border-rule pt-4 first:border-t-0 first:pt-0"
+            className="flex items-center gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
           >
-            <span className="shrink-0 grid place-items-center size-7 rounded-full bg-oat folio">
+            <span className="shrink-0 grid place-items-center size-8 rounded-[var(--r-sm)] bg-oat tabular text-[0.8125rem] font-semibold text-spruce">
               {idx + 1}
             </span>
-            <span className="shrink-0 text-apricot-deep">
-              <Icon as={MILESTONE_AREA_ICON[milestone.area]} size={18} />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-base text-spruce leading-relaxed" data-hale-pii>
-                {milestone.what}
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="text-base text-spruce leading-snug" data-hale-pii>
+                  {milestone.what}
+                </span>
+                <Icon
+                  as={MILESTONE_AREA_ICON[milestone.area]}
+                  size={15}
+                  className="shrink-0 text-spruce"
+                />
               </span>
-              <span className="meta text-faded-sage">
+              <span className="meta mt-0.5 block text-faded-sage">
                 {windowPhrase(milestone.typicalWindowMonths)} · {TIMING_LABEL[milestone.timing]}
               </span>
             </span>
