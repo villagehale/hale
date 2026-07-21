@@ -1,5 +1,6 @@
 import { ArrowUpRight } from 'lucide-react';
 import type { Metadata } from 'next';
+import { CtaBand } from '~/components/cta-band';
 import { Village } from '~/components/illos';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -42,7 +43,7 @@ export default function AboutPage() {
       </section>
 
       <section className="shell pb-16 lg:pb-24">
-        <div className="panel-oat px-8 py-14 sm:px-14 sm:py-20 lg:px-20 rise rise-2">
+        <div className="band-cream rounded-[24px] px-8 py-14 sm:px-14 sm:py-20 lg:px-20 rise rise-2">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-y-10 lg:gap-x-16 items-center">
             <div className="lg:col-span-8">
               <span className="eyebrow">Our mission</span>
@@ -101,26 +102,25 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="shell pb-20 lg:pb-28">
-        <div className="panel-apricot-tint px-8 py-14 sm:px-12 flex flex-col sm:flex-row sm:items-center gap-6 sm:gap-10 rise rise-1">
-          <p
-            className="font-display"
-            style={{
-              fontSize: 'clamp(1.25rem, 2.4vw, 1.75rem)',
-              lineHeight: 1.3,
-              letterSpacing: 'var(--tracking-display)',
-              fontWeight: 600,
-              color: 'var(--color-spruce)',
-            }}
-          >
-            Your village starts the day you join — one family, then a street, then a
-            neighborhood.
-          </p>
-          <a href={`${APP_URL}/sign-up`} className="btn-primary shrink-0">
+      <CtaBand>
+        <p
+          className="mx-auto max-w-2xl font-display"
+          style={{
+            fontSize: 'clamp(1.4rem, 2.6vw, 2rem)',
+            lineHeight: 1.3,
+            letterSpacing: 'var(--tracking-display)',
+            fontWeight: 600,
+          }}
+        >
+          Your village starts the day you join — one family, then a street, then a
+          neighborhood.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <a href={`${APP_URL}/sign-up`} className="btn-on-navy">
             Join the village
           </a>
         </div>
-      </section>
+      </CtaBand>
 
       <SiteFooter />
     </main>

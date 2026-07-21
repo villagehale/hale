@@ -525,3 +525,89 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .hale-ken-burns { animation: none; transform: none; }
   .hale-hero-word { animation: none; opacity: 1; transform: none; }
 }
+
+/* ══ Subpages (2026-07) — landing-language primitives ════════════════════ *
+ * The long-form subpages (activities / milestones / about / contact /
+ * answers) already inherit the warm palette through the retuned tokens above;
+ * these three primitives give them the homepage's signature surfaces so they
+ * read as one design system: a deep-navy statement band to close on, a card
+ * hover-lift for the "floating cards on cream" grids, and the cream band that
+ * carries them. Motion respects prefers-reduced-motion via the .lift guard. */
+
+/* Deep-navy closing statement band — the homepage's "Ready to feel on top of
+ * it all?" surface, reused as the CTA close across every subpage. Descendant
+ * text inverts to cream; a page's short byline uses .cta-sub for the softer
+ * tone. Layout (radius, padding, centering) lives on the CtaBand component. */
+.cta-band {
+  background: var(--color-navy);
+  color: var(--color-cream);
+}
+.cta-band :is(h1, h2, h3, p) { color: var(--color-cream); }
+.cta-band .cta-sub { color: var(--color-on-spruce-soft); }
+
+/* Cream band — the warm #f7f5f0 wash the homepage floats its cards on. Applied
+ * full-bleed behind a .shell section to break the warm-white pages into the
+ * landing's warm-white → cream rhythm. */
+.band-cream { background: var(--color-band); }
+
+/* Card hover-lift — the homepage's floating-card feel for the interactive card
+ * grids (city guides, answers, related links). Pairs with .card / .panel-oat;
+ * settles up a hair with a softer shadow on hover, held still under
+ * prefers-reduced-motion. */
+.lift {
+  transition: transform 320ms var(--ease-breathe), box-shadow 320ms var(--ease-breathe);
+}
+.lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -22px rgba(20, 26, 77, 0.32);
+}
+
+/* Cream-pill button on the navy band — the homepage CTA's inverse of
+ * .btn-primary: cream fill, navy ink, a 1px settle on press. */
+.btn-on-navy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.75rem;
+  background: var(--color-cream);
+  color: var(--color-navy);
+  border: 0;
+  border-radius: var(--r-full);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 200ms var(--ease-breathe);
+}
+.btn-on-navy:hover { transform: translateY(-1px); }
+.btn-on-navy:active { transform: translateY(0); }
+.btn-on-navy:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-navy), 0 0 0 5px var(--color-cream);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lift { transition: none; }
+  .lift:hover { transform: none; }
+  .btn-on-navy { transition: none; }
+  .btn-on-navy:hover { transform: none; }
+}
+
+/* Amber hero pill — the homepage's "Ask Hale" eyebrow (amber wash + amber ink),
+ * used to warm the feature-page heros. Icon + label sit inline. */
+.pill-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--r-full);
+  background: var(--color-apricot-tint);
+  color: var(--color-apricot-deep);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
