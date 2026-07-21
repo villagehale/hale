@@ -483,7 +483,7 @@ function StepTomorrow({ headingRef, onNext }: { headingRef: HeadingRef; onNext: 
   );
 }
 
-function StepChildren({
+export function StepChildren({
   headingRef,
   kids,
   onName,
@@ -498,7 +498,11 @@ function StepChildren({
   onRemove: (id: string) => void;
   onNext: () => void;
 }) {
-  const canContinue = kids.some((c) => c.name.trim().length > 0);
+  // A parent can always proceed — with a named child the button confirms the list,
+  // with none it advances and the birthday is collected post-auth at step 7 (the
+  // deferred-details design). It is never disabled, so a parent who wants to add kids
+  // later isn't forced to invent one or Skip the whole wizard (design handoff §4.1 Ob3).
+  const hasNamedChild = kids.some((c) => c.name.trim().length > 0);
   return (
     <section className="ob-step space-y-7">
       <Bubble>Who&rsquo;s your first little person?</Bubble>
@@ -547,8 +551,8 @@ function StepChildren({
         Your children
       </h1>
       <div className="flex justify-end pt-1">
-        <button type="button" className="btn-primary" onClick={onNext} disabled={!canContinue}>
-          {canContinue ? "That's everyone — continue" : 'Continue'}
+        <button type="button" className="btn-primary" onClick={onNext}>
+          {hasNamedChild ? "That's everyone — continue" : 'Continue'}
           <ArrowRight size={18} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>

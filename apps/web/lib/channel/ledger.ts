@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray } from 'drizzle-orm';
 import type { LedgerWrite } from './dispatch';
-import type { LoopCategory } from './types';
+import type { ChannelKind, LoopCategory } from './types';
 
 /**
  * F11 · The Sunday Loop (VIL-213 · A2) — the channel_messages reads/writes the
@@ -39,11 +39,13 @@ export async function recordChannelMessage(
   return inserted.id;
 }
 
-/** How many real sends (not suppressions/failures) of this category reached the
- * parent since `since` — the cap counts what actually landed. */
+/** How many real sends (not suppressions/failures) of this category on THIS
+ * channel reached the parent since `since` — the cap counts what actually landed,
+ * per delivery leg so a mirror leg is not capped by the other. */
 export async function countRecentSends(
   userId: string,
   category: LoopCategory,
+  channel: ChannelKind,
   since: Date,
   database: Database,
 ): Promise<number> {
@@ -54,6 +56,7 @@ export async function countRecentSends(
       and(
         eq(schema.channelMessages.parentUserId, userId),
         eq(schema.channelMessages.category, category),
+        eq(schema.channelMessages.channel, channel),
         gte(schema.channelMessages.createdAt, since),
         inArray(schema.channelMessages.status, ['sent', 'delivered']),
       ),

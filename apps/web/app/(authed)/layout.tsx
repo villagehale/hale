@@ -61,6 +61,7 @@ export default async function AuthedLayout({ children }: { children: React.React
   const kids = basics.children.map((child) => ({
     id: child.id,
     name: child.name,
+    lastName: child.lastName,
     ageLabel: child.stageLabel,
     // The signed avatar URL (or null → initials) so the sidebar switcher shows the
     // child's photo — resolved once in loadFamilyBasics, shared with every surface.

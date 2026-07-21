@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
+import { childInitials } from '~/lib/family/child-initials';
 import {
   COMPANION_TABS,
   type CompanionTabKey,
@@ -44,7 +45,6 @@ import type { ChildCompanionView } from '~/lib/companion/queries';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
 import type { DocumentView } from '~/lib/docs/documents';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
-import { childInitials } from '~/lib/family/child-initials';
 import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
 import type { RoutineProposalView } from '~/lib/village/mappers';
 import { BookButton } from './book-button';
