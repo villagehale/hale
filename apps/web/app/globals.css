@@ -2453,11 +2453,10 @@ html, body, .sidebar, .panel, .card, .field {
   background: var(--color-chrome);
   color: var(--color-spruce);
   text-decoration: none;
-  /* At the 58rem-capped stage the §4.2 four-column row leaves col-3 ≈ 204px, so a
-   * 2×2 tile is only ~68px wide — a long single-word label (documents / routines)
-   * exceeds it. `anywhere` keeps the label inside the tile instead of spilling past
-   * the card edge. Root density fix (widen the Home dashboard to the design canvas)
-   * is tracked separately — see the W2b PR open items. */
+  /* The Home dashboard now opts up to the 72rem canvas (.village-wide on the home
+   * page), so the §4.2 four-column row gives each 2×2 tile real width and labels
+   * fit. `anywhere` is kept as a harmless safety net for the narrowest widths, so a
+   * long single-word label (documents / routines) can never spill past the card. */
   overflow-wrap: anywhere;
   transition: background 220ms var(--ease-breathe), transform 220ms var(--ease-breathe);
 }
@@ -2685,9 +2684,10 @@ html, body, .sidebar, .panel, .card, .field {
  * WEB PHASE W2b — Village 3-column board (design handoff §4.5)
  * Additive only; every value consumes a ROLE token so both themes derive for
  * free. The single literal (the recommendation gradient) carries an explicit
- * .dark override, matching the shipped .hale-tip treatment. The page content is
- * capped at 58rem and centred by .main-stage, so the columns are sized to fit
- * that: full 330|1fr|300 only where the centred column is wide enough (≥1280px),
+ * .dark override, matching the shipped .hale-tip treatment. The board opts up to
+ * the 72rem stage-wide canvas via .village-wide (not the 58rem editorial column),
+ * so the columns are sized to fit that: full 330|1fr|300 only where the centred
+ * column is wide enough (≥1280px),
  * a results+centre pair with the rail below at 1024–1279, and a list-first stack
  * with a collapsible map below 1024 — nothing overflows.
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -2765,12 +2765,14 @@ html, body, .sidebar, .panel, .card, .field {
   padding: 1.1rem 1.15rem 1.2rem;
   border-radius: var(--r-xl);
   /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
-   * role token so the card stays legible instead of glaring (cream ink 16:1 on
+   * role token so the card stays legible instead of glaring (cream ink 13.1:1 on
    * #33260F). */
   background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
 }
 .dark .village-rec { background: var(--color-amber-tint); }
-.village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber); }
+/* amber INK (not the base amber): base amber #B26B1F is only 3.6–4.0:1 on the cream
+ * gradient (sub-AA); the ink #8A5214 is 5.5:1 — matching the .hale-tip-eyebrow family. */
+.village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber-ink); }
 .village-rec-title { font-size: 1.1rem; line-height: 1.25; }
 .village-rec-link {
   display: inline-flex;
@@ -2780,8 +2782,9 @@ html, body, .sidebar, .panel, .card, .field {
   padding: 0;
   border: 0;
   background: transparent;
-  /* Brand ink on the warm card: navy in light (12.86:1), cream in dark (16:1) —
-   * AA in both modes, unlike the sub-4.5 amber-on-cream a body link would be. */
+  /* Brand ink on the warm card: navy in light (12.7:1 on the cream gradient), cream
+   * in dark (13.1:1) — AA in both modes, unlike the sub-4.5 amber-on-cream a body
+   * link would be. */
   color: var(--color-brand);
   font-family: var(--font-body);
   font-size: 0.85rem;
@@ -3248,6 +3251,145 @@ html, body, .sidebar, .panel, .card, .field {
 .care-chip-add:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB — <768px "better in the app" hand-off (design handoff §5)
+ * Flag-gated + session-scoped (see app-promo.tsx). Everything here is
+ * position:fixed and only mounts on a phone viewport, so it adds ZERO layout
+ * shift at ≥768px. The sheet card + its text adapt via role tokens; the slim
+ * banner is fixed brand-navy in BOTH themes — a branded chrome bar (like the
+ * LogoMark's own self-contained Prussian ground), with white text at 14.65:1.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.apppromo-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(20, 28, 60, 0.4);
+}
+
+.apppromo-sheet {
+  padding: 1.6rem 1.5rem 1.9rem;
+  border-radius: 28px 28px 0 0;
+  background: var(--color-oat);
+  text-align: center;
+  animation: apppromo-rise 0.35s var(--ease-breathe);
+}
+@keyframes apppromo-rise {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .apppromo-sheet { animation: none; }
+}
+
+.apppromo-logo {
+  margin: 0 auto 0.9rem;
+  box-shadow: 0 10px 26px rgba(27, 33, 96, 0.22);
+}
+.apppromo-title {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--color-spruce);
+}
+.apppromo-sub {
+  margin: 0.4rem auto 1.25rem;
+  max-width: 19rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-slate-green);
+}
+.apppromo-primary {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1.5rem;
+  border-radius: var(--r-md);
+  background: var(--color-brand);
+  color: var(--color-on-spruce);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.apppromo-secondary {
+  display: block;
+  width: 100%;
+  margin-top: 0.65rem;
+  padding: 0.6rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-faded-sage);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.apppromo-primary:focus-visible,
+.apppromo-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-oat), 0 0 0 5px var(--color-apricot-deep);
+}
+
+/* ── Slim navy banner (after "Continue in browser") ─────────────────────── */
+.apppromo-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  background: #1B2160;
+  color: #FFFFFF;
+}
+.apppromo-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.apppromo-banner-open {
+  flex-shrink: 0;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--r-full);
+  background: #FFFFFF;
+  color: #1B2160;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.apppromo-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: #FFFFFF;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.apppromo-banner-dismiss:hover { opacity: 1; }
+.apppromo-banner-open:focus-visible,
+.apppromo-banner-dismiss:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #1B2160, 0 0 0 4px #FFFFFF;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

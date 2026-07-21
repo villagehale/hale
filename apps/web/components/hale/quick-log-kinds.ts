@@ -1,5 +1,7 @@
 import type { FamilyStage } from '@hale/types';
 import {
+  DIAPER_EPISODE,
+  type DiaperKind,
   FEED_EPISODE,
   type FeedAmount,
   type FeedKind,
@@ -21,21 +23,26 @@ export interface QuickLogChild {
   stage: FamilyStage;
 }
 
-export type Kind = typeof FEED_EPISODE | typeof NAP_EPISODE | typeof MILESTONE_EPISODE;
+export type Kind =
+  | typeof FEED_EPISODE
+  | typeof NAP_EPISODE
+  | typeof DIAPER_EPISODE
+  | typeof MILESTONE_EPISODE;
 
 /**
- * Feed and nap only make sense for the youngest stages; milestones apply at
- * every age. A teen's parent is never offered a feed log: a kind is shown only
- * when some child supports it, and its child selector lists only eligible kids.
+ * Feed, nap and diaper only make sense for the youngest stages; milestones apply
+ * at every age. A teen's parent is never offered a feed/nap/diaper log: a kind is
+ * shown only when some child supports it, and its child selector lists only
+ * eligible kids.
  */
 export const STAGE_KINDS: Record<FamilyStage, Kind[]> = {
-  newborn: [FEED_EPISODE, NAP_EPISODE, MILESTONE_EPISODE],
-  toddler: [FEED_EPISODE, NAP_EPISODE, MILESTONE_EPISODE],
+  newborn: [FEED_EPISODE, NAP_EPISODE, DIAPER_EPISODE, MILESTONE_EPISODE],
+  toddler: [FEED_EPISODE, NAP_EPISODE, DIAPER_EPISODE, MILESTONE_EPISODE],
   child: [MILESTONE_EPISODE],
   teenager: [MILESTONE_EPISODE],
 };
 
-const KIND_ORDER: Kind[] = [FEED_EPISODE, NAP_EPISODE, MILESTONE_EPISODE];
+const KIND_ORDER: Kind[] = [FEED_EPISODE, NAP_EPISODE, DIAPER_EPISODE, MILESTONE_EPISODE];
 
 /** The kind buttons to show: a kind appears when at least one child supports it. */
 export function visibleKindsFor(kids: QuickLogChild[]): Kind[] {
@@ -56,6 +63,10 @@ export interface QuickLogFormValues {
   feedAmount: FeedAmount | '';
   feedKind: FeedKind | '';
   durationMin: string;
+  /** The picked diaper kind — always set (the form defaults to 'wet'), so a diaper
+   * log is never empty and always builds a valid input. */
+  diaperKind: DiaperKind;
+  diaperNote: string;
   milestone: string;
   milestoneNote: string;
   when: string;
@@ -98,6 +109,18 @@ export function buildInput(
       const durationMin = Number(values.durationMin);
       if (!values.durationMin || Number.isNaN(durationMin)) return null;
       return { kind: NAP_EPISODE, childId, durationMin, occurredAt };
+    }
+    case DIAPER_EPISODE: {
+      // The kind always carries a value (the form defaults to 'wet'), so a diaper
+      // needs no empty-guard beyond the childId check above.
+      const note = values.diaperNote.trim();
+      return {
+        kind: DIAPER_EPISODE,
+        childId,
+        diaperKind: values.diaperKind,
+        ...(note ? { note } : {}),
+        occurredAt,
+      };
     }
     case MILESTONE_EPISODE: {
       const milestone = values.milestone.trim();

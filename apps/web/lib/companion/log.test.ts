@@ -155,6 +155,27 @@ describe('logQuickEpisode', () => {
     });
   });
 
+  it('writes a diaper episode with the "Wet diaper" summary and the kind in the payload', async () => {
+    familyMock.mockResolvedValue(FAMILY_ID);
+    childBelongsMock.mockResolvedValue(true);
+    writeEpisodeMock.mockResolvedValue(undefined);
+    const { logQuickEpisode } = await import('./log.js');
+
+    const result = await logQuickEpisode({ kind: 'diaper', childId: CHILD_ID, diaperKind: 'wet' }, NOW);
+
+    expect(result.status).toBe('logged');
+    expect(writeEpisodeMock).toHaveBeenCalledTimes(1);
+    expect(writeEpisodeMock.mock.calls[0]?.[1]).toMatchObject({
+      familyId: FAMILY_ID,
+      childId: CHILD_ID,
+      episodeType: 'diaper',
+      summary: 'Wet diaper',
+      payload: { diaperKind: 'wet' },
+      occurredAt: NOW,
+    });
+    expect(revalidateMock).toHaveBeenCalledWith('/companion');
+  });
+
   it('round-trips a milestone note through to the persisted episode', async () => {
     familyMock.mockResolvedValue(FAMILY_ID);
     childBelongsMock.mockResolvedValue(true);

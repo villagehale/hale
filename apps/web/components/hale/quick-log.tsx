@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Moon, Sparkles, Utensils } from 'lucide-react';
+import { Baby, Moon, Sparkles, Utensils } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Field } from '~/components/ui/field';
 import { Icon } from '~/components/ui/icon';
@@ -9,6 +9,9 @@ import { Modal } from '~/components/ui/modal';
 import { useIsDesktop } from '~/components/hale/use-is-desktop';
 import { logQuickEpisode } from '~/lib/companion/log';
 import {
+  DIAPER_EPISODE,
+  DIAPER_KINDS,
+  type DiaperKind,
   FEED_AMOUNTS,
   FEED_EPISODE,
   FEED_KINDS,
@@ -67,6 +70,14 @@ const KIND_META: Record<
     icon: Moon,
     emptyError: 'enter how long (minutes) before saving',
   },
+  [DIAPER_EPISODE]: {
+    label: 'log a diaper',
+    cardTitle: 'log diaper',
+    cardSubtitle: 'quick log',
+    icon: Baby,
+    // A diaper always has a picked kind (defaults to 'wet'), so this never fires.
+    emptyError: 'pick a diaper kind before saving',
+  },
   [MILESTONE_EPISODE]: {
     label: 'note a milestone',
     cardTitle: 'milestone',
@@ -109,6 +120,8 @@ export function QuickLog({
   const [feedAmount, setFeedAmount] = useState<FeedAmount | ''>('');
   const [feedKind, setFeedKind] = useState<FeedKind | ''>('');
   const [durationMin, setDurationMin] = useState('');
+  const [diaperKind, setDiaperKind] = useState<DiaperKind>('wet');
+  const [diaperNote, setDiaperNote] = useState('');
   const [milestone, setMilestone] = useState('');
   const [milestoneNote, setMilestoneNote] = useState('');
   const [when, setWhen] = useState('');
@@ -125,6 +138,8 @@ export function QuickLog({
     setFeedAmount('');
     setFeedKind('');
     setDurationMin('');
+    setDiaperKind('wet');
+    setDiaperNote('');
     setMilestone('');
     setMilestoneNote('');
   }
@@ -151,6 +166,8 @@ export function QuickLog({
       feedAmount,
       feedKind,
       durationMin,
+      diaperKind,
+      diaperNote,
       milestone,
       milestoneNote,
       when,
@@ -363,6 +380,42 @@ export function QuickLog({
               onChange={(e) => setDurationMin(e.currentTarget.value)}
               placeholder="45"
             />
+          ) : null}
+
+          {open === DIAPER_EPISODE ? (
+            <>
+              <div className="field-group">
+                <span className="field-label">what kind</span>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {DIAPER_KINDS.map((kind) => {
+                    const isSelected = diaperKind === kind;
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => setDiaperKind(kind)}
+                        className={`choice-card rounded-full px-4 py-2 text-sm capitalize leading-none transition-colors ${
+                          isSelected
+                            ? 'bg-oat border border-spruce text-spruce'
+                            : 'border border-rule-strong text-slate-green hover:border-spruce'
+                        }`}
+                      >
+                        {kind}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <Field
+                label="note (optional)"
+                multiline
+                maxLength={280}
+                value={diaperNote}
+                onChange={(e) => setDiaperNote(e.currentTarget.value)}
+                placeholder="anything to remember about it"
+              />
+            </>
           ) : null}
 
           {open === MILESTONE_EPISODE ? (

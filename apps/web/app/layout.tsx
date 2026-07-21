@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Instrument_Sans, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
+import { AppPromo } from '~/components/hale/app-promo';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
@@ -60,6 +61,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <PostHogProvider>{children}</PostHogProvider>
+        {/* <768px "better in the app" hand-off (§5) — flag-gated, session-scoped;
+         * mounted at the root so it covers the authed shell AND the public auth
+         * pages, and renders nothing at ≥768px (no layout shift). */}
+        <AppPromo />
       </body>
     </html>
   );
