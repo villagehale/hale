@@ -44,6 +44,7 @@ import type { ChildCompanionView } from '~/lib/companion/queries';
 import type { RecentLogView } from '~/lib/companion/recent-logs';
 import type { DocumentView } from '~/lib/docs/documents';
 import type { FamilyMembersView } from '~/lib/dashboard/family-members';
+import { childInitials } from '~/lib/family/child-initials';
 import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
 import type { RoutineProposalView } from '~/lib/village/mappers';
 import { BookButton } from './book-button';
@@ -162,12 +163,6 @@ function firstName(name: string | null): string {
   return name?.trim().split(/\s+/)[0] ?? 'your child';
 }
 
-/** The child's first initial for the neutral avatar placeholder — we hold no child
- * photo, so a calm monogram stands in (never a fabricated face). */
-function initialOf(name: string | null): string {
-  return firstName(name).charAt(0).toUpperCase() || '·';
-}
-
 /** "May 12, 2024" — a birth date always carries its year, read in UTC so the bare
  * `YYYY-MM-DD` the parent typed round-trips. */
 function birthDate(dateOfBirth: string): string {
@@ -246,7 +241,12 @@ function ChildHubHeader({
   return (
     <div className="comp-hub">
       <div className="comp-hub-id" data-hale-pii>
-        <Avatar tone="child" src={null} initials={initialOf(child.name)} size={64} />
+        <Avatar
+          tone="child"
+          src={child.avatarUrl}
+          initials={childInitials(child.name ?? '', child.lastName)}
+          size={64}
+        />
         <div className="min-w-0">
           <h2 className="comp-hub-name font-display">{child.name ?? 'your child'}</h2>
           <p className="meta mt-1 text-slate-green">

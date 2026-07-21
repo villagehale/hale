@@ -158,6 +158,8 @@ describe('companion growth section masks the measurement readings', () => {
   const child = {
     id: 'c-1',
     dateOfBirth: '2025-06-01',
+    lastName: null,
+    avatarUrl: null,
     ...companionForChild({ dateOfBirth: '2025-06-01', name: 'Noor' }),
   };
   // A unique reading string so the assertion can't pass on incidental markup.
@@ -194,6 +196,8 @@ describe('companion overview section masks the child name + a scheduled health i
   const child = {
     id: 'c-1',
     dateOfBirth: '2026-05-01',
+    lastName: null,
+    avatarUrl: null,
     ...companionForChild({ dateOfBirth: '2026-05-01', name: 'Noor' }),
   };
   const html = renderToStaticMarkup(

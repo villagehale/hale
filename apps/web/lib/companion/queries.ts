@@ -2,16 +2,21 @@ import { type CompanionView, companionForChild } from '@hale/types';
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
+import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
 import { currentFamilyId } from '~/lib/family';
 import { buildDoneByChild, doneForChild } from './done-markers.js';
 import { HEALTH_DONE_EPISODE, MILESTONE_EPISODE } from './log-types.js';
 
 /** One child's companion view, carrying the child id for stable list keys and
  * the raw date of birth (PII) so a header can echo it and health-item due dates
- * can be derived from the same source-of-truth the schedule is keyed on. */
+ * can be derived from the same source-of-truth the schedule is keyed on. Plus the
+ * optional last name (for the header monogram — first+last, never a parent's
+ * surname) and the pre-signed avatar URL (null → initials fallback). */
 export interface ChildCompanionView extends CompanionView {
   id: string;
   dateOfBirth: string;
+  lastName: string | null;
+  avatarUrl: string | null;
 }
 
 /**
@@ -53,7 +58,10 @@ export async function companionForFamily(
       .select({
         id: schema.children.id,
         name: schema.children.name,
+        lastName: schema.children.lastName,
         dateOfBirth: schema.children.dateOfBirth,
+        avatarPath: schema.children.avatarPath,
+        avatarUpdatedAt: schema.children.avatarUpdatedAt,
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId))
@@ -61,15 +69,22 @@ export async function companionForFamily(
     loadDoneByChild(database, familyId),
   ]);
 
-  return rows.map((row) => ({
-    id: row.id,
-    dateOfBirth: row.dateOfBirth,
-    ...companionForChild(
-      { dateOfBirth: row.dateOfBirth, name: row.name },
-      now,
-      doneForChild(doneByChild, row.id),
-    ),
-  }));
+  // Resolve each child's private-bucket avatar key to a signed URL (with the
+  // cache-buster) so the hub header renders the photo; only children WITH a photo
+  // incur a sign, and an unsignable one degrades to null → initials.
+  return Promise.all(
+    rows.map(async (row) => ({
+      id: row.id,
+      dateOfBirth: row.dateOfBirth,
+      lastName: row.lastName,
+      avatarUrl: await resolveChildAvatarUrl(row.avatarPath, row.avatarUpdatedAt),
+      ...companionForChild(
+        { dateOfBirth: row.dateOfBirth, name: row.name },
+        now,
+        doneForChild(doneByChild, row.id),
+      ),
+    })),
+  );
 }
 
 /** The per-child inputs the WHO growth read needs beyond the companion view: the

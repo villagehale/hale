@@ -62,6 +62,9 @@ export default async function AuthedLayout({ children }: { children: React.React
     id: child.id,
     name: child.name,
     ageLabel: child.stageLabel,
+    // The signed avatar URL (or null → initials) so the sidebar switcher shows the
+    // child's photo — resolved once in loadFamilyBasics, shared with every surface.
+    avatarUrl: child.avatarUrl,
   }));
 
   // The top-bar hero copy is built server-side from live values: the time-of-day
