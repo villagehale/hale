@@ -11,6 +11,7 @@ import type {
   MobilePushPrefsUpdateResponse,
   MobileSettingsUpdateRequest,
   MobileSettingsUpdateResponse,
+  MobileTextRevokeResponse,
 } from './api-types';
 
 /**
@@ -71,5 +72,14 @@ export async function updateLoopPref(body: MobileLoopPrefUpdateRequest): Promise
   await api<MobileLoopPrefUpdateResponse>('/api/mobile/settings/loop', {
     method: 'PATCH',
     body: JSON.stringify(body),
+  });
+}
+
+/** Turn off the parent's SMS channel (VIL-212). DELETEs the text-notifications
+ * route, which soft-revokes the channel + records a CASL consent withdrawal + audit
+ * in one transaction (rules #1/#6). Re-enrolling requires re-verifying a number. */
+export async function revokeTextChannel(): Promise<void> {
+  await api<MobileTextRevokeResponse>('/api/mobile/settings/text-notifications', {
+    method: 'DELETE',
   });
 }

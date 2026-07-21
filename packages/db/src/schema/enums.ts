@@ -117,6 +117,11 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // the teen is notified. The consume side (approving the request → granted=true,
   // and honouring an active grant on read) is a follow-up.
   'teen_content_access',
+  // CASL express consent to receive SMS service messages (weekly plan, reminders,
+  // approvals) on a verified phone. Per-PARENT, not per-family — co-parents enroll
+  // independently, so this never triggers the two-parent-consent rule (#5). Granted
+  // on OTP verify; a granted=false row records a withdrawal (in-app toggle / STOP).
+  'sms_service_messages',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft

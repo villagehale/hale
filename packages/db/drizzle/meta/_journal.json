@@ -393,6 +393,13 @@
       "when": 1781463060000,
       "tag": "0056_loop_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1781463180000,
+      "tag": "0058_parent_channels",
+      "breakpoints": true
     }
   ]
 }
