@@ -72,7 +72,7 @@ export function LegalLayout({
 
         <div className="legal-body mt-12">{children}</div>
 
-        <hr className="rule legal-footer-rule mt-16" />
+        <hr className="rule mt-16" />
         <p className="meta mt-6">
           See also our{' '}
           <Link href={crossLinkHref} className="link">

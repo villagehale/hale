@@ -182,7 +182,7 @@ export function VillageBoard({
       {/* ── 330px | 1fr | 300px (collapses to list-first below 1024px) ────── */}
       <div className="village-3col">
         {/* Left — results list */}
-        <section className="village-results min-w-0">
+        <section className="min-w-0">
           <div className="flex items-baseline justify-between gap-3 mb-4">
             <span className="eyebrow text-faded-sage">
               Near you{area ? ' · ' : ''}
@@ -224,7 +224,7 @@ export function VillageBoard({
         </section>
 
         {/* Centre — the real map + the shared activity drill-in */}
-        <section className="village-center min-w-0">
+        <section className="min-w-0">
           <MapPanel
             candidates={shownActivities}
             coarseCenter={coarseCenter}
