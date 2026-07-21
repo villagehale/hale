@@ -9,7 +9,7 @@
 //
 // Secrets come ONLY from the environment — never inlined, never read from
 // .loop/launch.env by this script:
-//   DATABASE_URL=... [PROBE_BASE_URL=https://villagehale.com] \
+//   DATABASE_URL=... [PROBE_BASE_URL=https://app.villagehale.com] \
 //     pnpm --filter @hale/web probe:ics-feed <family-id> [--revoke]
 //
 // Manual Google Calendar step (after the default run prints the URL):
@@ -38,7 +38,10 @@ if (!url) {
   console.error('DATABASE_URL is not set.');
   process.exit(1);
 }
-const baseUrl = process.env.PROBE_BASE_URL ?? 'https://villagehale.com';
+// The parent-facing subscription URL lives on the APP domain, not the marketing
+// domain (villagehale.com 308-redirects). Same source as appBaseUrl() /
+// email-compliance.ts — never NEXT_PUBLIC_MARKETING_URL.
+const baseUrl = process.env.PROBE_BASE_URL ?? process.env.APP_URL ?? 'https://app.villagehale.com';
 
 const db = createDb({ connectionString: url });
 const now = new Date();
