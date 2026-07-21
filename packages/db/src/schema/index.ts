@@ -33,3 +33,5 @@ export * from './chat-attachments.js';
 export * from './rate-limits.js';
 export * from './enums.js';
 export * from './family-active-days.js';
+export * from './parent-channels.js';
+export * from './phone-verifications.js';

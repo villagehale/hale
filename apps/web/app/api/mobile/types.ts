@@ -408,6 +408,46 @@ export interface MobilePushPrefsUpdateResponse {
   status: 'updated';
 }
 
+// ── text notifications / SMS channel (/api/mobile/settings/text-notifications) ─
+//
+// The parent's verified SMS channel (VIL-212). GET returns the current enrolment
+// state + whether the SMS sender is provisioned yet (senderConfigured=false shows
+// the honest "arrives when SMS launches" state). POST requests an OTP for a number,
+// PATCH verifies a code (which records CASL consent), DELETE revokes the channel.
+
+export interface MobileTextChannelResponse {
+  enrolled: boolean;
+  /** Masked (last four only), or null when not enrolled. */
+  maskedPhone: string | null;
+  /** False until the CPaaS number is provisioned; UI shows the honest launch state. */
+  senderConfigured: boolean;
+}
+
+export interface MobileTextOtpRequest {
+  phone: string;
+}
+
+/** OTP send outcome — mirrors the web action's RequestSmsOtpResult surface. */
+export interface MobileTextOtpRequestResponse {
+  status: 'sent' | 'not_configured' | 'invalid_phone' | 'cooldown';
+  maskedPhone?: string;
+  retryAfterMs?: number;
+}
+
+export interface MobileTextVerifyRequest {
+  code: string;
+}
+
+export interface MobileTextVerifyResponse {
+  status: 'verified' | 'wrong_code' | 'locked' | 'expired' | 'no_pending';
+  maskedPhone?: string;
+  attemptsRemaining?: number;
+}
+
+export interface MobileTextRevokeResponse {
+  status: 'revoked' | 'not_found';
+}
+
 // ── connectors (GET /api/mobile/integrations/connect-url) ─────────────────────
 //
 // The native app can't use the cookie-authed web connect route, so this Bearer
