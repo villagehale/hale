@@ -17,12 +17,13 @@ vi.mock('~/lib/family', () => ({
 interface Capture {
   pushTokens: unknown[];
   conflict: unknown[];
+  deleted: unknown[];
 }
 let capture: Capture;
 
 // The db handle the route writes through. `insert(...).values(...).onConflictDoUpdate(...)`
-// captures the row + conflict clause so the test asserts the resolved user id and
-// the upsert target.
+// captures the row + conflict clause; `delete(...).where(...)` captures the sign-out
+// delete so the test asserts the upsert target and that a delete is issued.
 function fakeDb(cap: Capture): unknown {
   return {
     insert: (table: unknown) => ({
@@ -33,6 +34,11 @@ function fakeDb(cap: Capture): unknown {
             cap.conflict.push(clause);
           },
         };
+      },
+    }),
+    delete: (table: unknown) => ({
+      where: async (predicate: unknown) => {
+        if (table === schema.pushTokens) cap.deleted.push(predicate);
       },
     }),
   };
@@ -67,6 +73,17 @@ async function callPost(body: unknown): Promise<Response> {
   );
 }
 
+async function callDelete(body: unknown): Promise<Response> {
+  const { DELETE } = await import('~/app/api/push/register/route');
+  return DELETE(
+    new Request('http://localhost/api/push/register', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 const VALID_TOKEN = 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]';
 
 describe('POST /api/push/register', () => {
@@ -74,7 +91,7 @@ describe('POST /api/push/register', () => {
     vi.resetModules();
     authMock.mockReset();
     resolveUserIdMock.mockReset();
-    capture = { pushTokens: [], conflict: [] };
+    capture = { pushTokens: [], conflict: [], deleted: [] };
   });
 
   afterEach(() => {
@@ -131,5 +148,60 @@ describe('POST /api/push/register', () => {
 
     expect(res.status).toBe(403);
     expect(capture.pushTokens).toEqual([]);
+  });
+});
+
+describe('DELETE /api/push/register (sign-out hygiene)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    authMock.mockReset();
+    resolveUserIdMock.mockReset();
+    capture = { pushTokens: [], conflict: [], deleted: [] };
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns 401 and never deletes when the caller is not signed in', async () => {
+    authMock.mockResolvedValue(session(null));
+
+    const res = await callDelete({ expoPushToken: VALID_TOKEN });
+
+    expect(res.status).toBe(401);
+    expect(resolveUserIdMock).not.toHaveBeenCalled();
+    expect(capture.deleted).toEqual([]);
+  });
+
+  it('returns 400 on a token that is not a plausible Expo token', async () => {
+    authMock.mockResolvedValue(session('google-1'));
+
+    const res = await callDelete({ expoPushToken: 'not-a-real-token' });
+
+    expect(res.status).toBe(400);
+    expect(capture.deleted).toEqual([]);
+  });
+
+  it('deletes the device token scoped to the resolved user', async () => {
+    authMock.mockResolvedValue(session('google-1'));
+    resolveUserIdMock.mockResolvedValue('user-1');
+
+    const res = await callDelete({ expoPushToken: VALID_TOKEN });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // The delete is keyed to the resolved internal user id (scoped, not by token alone).
+    expect(resolveUserIdMock).toHaveBeenCalledWith('google-1', expect.anything());
+    expect(capture.deleted).toHaveLength(1);
+  });
+
+  it('returns 403 when the signed-in user has no mirrored users row', async () => {
+    authMock.mockResolvedValue(session('google-1'));
+    resolveUserIdMock.mockResolvedValue(null);
+
+    const res = await callDelete({ expoPushToken: VALID_TOKEN });
+
+    expect(res.status).toBe(403);
+    expect(capture.deleted).toEqual([]);
   });
 });

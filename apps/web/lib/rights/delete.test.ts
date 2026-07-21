@@ -108,10 +108,11 @@ const DUE_IDS = [
  */
 function fakeSweepDb(
   dueIds: string[],
-  opts: { attachmentPaths?: string[][]; documentPaths?: string[][] } = {},
+  opts: { attachmentPaths?: string[][]; documentPaths?: string[][]; memberIds?: string[][] } = {},
 ) {
   const attachmentQueue = [...(opts.attachmentPaths ?? dueIds.map(() => []))];
   const documentQueue = [...(opts.documentPaths ?? dueIds.map(() => []))];
+  const memberQueue = [...(opts.memberIds ?? dueIds.map(() => []))];
 
   const events: string[] = [];
   const removeObject = vi.fn(async (path: string) => {
@@ -121,7 +122,12 @@ function fakeSweepDb(
   const deletedWhere = vi.fn(async () => {
     events.push('delete-family');
   });
-  const deleteFn = vi.fn().mockReturnValue({ where: deletedWhere });
+  const deletedTokensWhere = vi.fn(async () => {
+    events.push('delete-tokens');
+  });
+  const deleteFn = vi.fn((table: unknown) => ({
+    where: table === schema.pushTokens ? deletedTokensWhere : deletedWhere,
+  }));
 
   const select = vi.fn(() => ({
     from: (table: unknown) => {
@@ -133,6 +139,10 @@ function fakeSweepDb(
         const rows = (documentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
         return { where: async () => rows };
       }
+      if (table === schema.familyMembers) {
+        const rows = (memberQueue.shift() ?? []).map((userId) => ({ userId }));
+        return { where: async () => rows };
+      }
       return { where: async () => dueIds.map((id) => ({ id })) };
     },
   }));
@@ -140,7 +150,7 @@ function fakeSweepDb(
   return {
     db: { select, delete: deleteFn } as never,
     removeObject,
-    spies: { deleteFn, deletedWhere, events },
+    spies: { deleteFn, deletedWhere, deletedTokensWhere, events },
   };
 }
 
@@ -207,5 +217,26 @@ describe('runDeletionSweep', () => {
     // A failed purge must NEVER strand bytes by erasing their pointer: the family row
     // stays, and the next sweep retries the whole erase (removeObject tolerates 404).
     expect(spies.deleteFn).not.toHaveBeenCalled();
+  });
+
+  it('deletes the erased family members device push tokens (user-scoped, so the family cascade never reaches them — rule #1)', async () => {
+    const { db, removeObject, spies } = fakeSweepDb([FAMILY_ID], {
+      memberIds: [['user-a', 'user-b']],
+    });
+
+    const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
+
+    expect(summary).toEqual({ erased: 1, purgedObjects: 0 });
+    // The device tokens (push_tokens.user_id → users.id, NOT families.id) are removed
+    // so a device address can't outlive the erased account.
+    expect(spies.deletedTokensWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('issues no token delete for a family with no members (no empty delete)', async () => {
+    const { db, removeObject, spies } = fakeSweepDb([FAMILY_ID]);
+
+    await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
+
+    expect(spies.deletedTokensWhere).not.toHaveBeenCalled();
   });
 });
