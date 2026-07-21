@@ -31,24 +31,24 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: 'Hale · the best activities for your child, near you',
+  title: 'Hale · your parenting village, near you',
   description:
-    'Hale finds the best activities for your child near you — real recommendations from GTA parents, and an AI that handles the booking and reminders. Your data stays in Canada.',
+    'Hale brings back the village — the trusted local classes, groups, and drop-ins near you that GTA parents actually value — with a quiet AI that prepares the reminders and plans and never acts without your say-so. Your data stays in Canada.',
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
     siteName: 'Hale',
     url: SITE_URL,
-    title: 'Hale · the best activities for your child, near you',
+    title: 'Hale · your parenting village, near you',
     description:
-      'Real recommendations from parents near you, and an AI that handles the booking — across every stage of childhood. Your data stays in Canada.',
+      'The trusted local village near you — the classes and groups other GTA parents actually value — with a quiet, approval-first AI helper, across every stage of childhood. Your data stays in Canada.',
     locale: 'en_CA',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Hale · the best activities for your child, near you',
+    title: 'Hale · your parenting village, near you',
     description:
-      'Real recommendations from parents near you, and an AI that handles the booking. Your data stays in Canada.',
+      'The trusted local village near you, plus a quiet AI that prepares and never acts without you. Your data stays in Canada.',
   },
 };
 

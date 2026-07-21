@@ -150,11 +150,9 @@ export async function searchVillageAction(prompt: string): Promise<VillageSearch
     areaCoarse,
   };
 
-  try {
-    return await runVillageSearch(ctx, productionDeps());
-  } finally {
-    // Serverless flush: send the intent-parse trace's buffered spans before we return
-    // (rule #8). The fire-and-forget discovery flushes its own trace in its action.
-    await flushTelemetry();
-  }
+  // Flush the intent-parse trace's buffered spans AFTER the response (rule #8) so the
+  // search result returns immediately instead of blocking on the Langfuse network
+  // flush. The fire-and-forget discovery flushes its own trace in its action.
+  after(() => flushTelemetry());
+  return runVillageSearch(ctx, productionDeps());
 }

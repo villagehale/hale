@@ -65,7 +65,7 @@ export function SplashLoader({ onSkip }: { onSkip?: () => void }) {
       onPress={onSkip}
       className="flex-1 items-center justify-center bg-canvas"
     >
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
       <Animated.View
         style={[
           logoStyle,

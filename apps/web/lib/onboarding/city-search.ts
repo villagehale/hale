@@ -1,30 +1,25 @@
 'use server';
 
 import { headers } from 'next/headers';
-import {
-  type CityCentroid,
-  type CityPrediction,
-  autocompleteCanadianCities,
-  resolveCityPlace,
-} from '~/lib/village/geocode';
 import { rateLimitStatus } from '~/lib/rate-limit/apply';
+import { type CityCentroid, resolveCityPlace } from '~/lib/village/geocode';
 
 /**
- * The onboarding step-4 city typeahead, PRE-AUTH (steps 1–6 are public), so it can't
- * be auth-gated the way the switcher's searchCitiesAction is. Rate-limited per CLIENT
- * IP against the paid Places provider (rule: no uncapped provider route); the limiter
- * fails open, so a preview without a DB simply proceeds. A search session's token is
- * threaded through autocomplete + the details call so Google bills them as one
- * session.
+ * The onboarding step-4 city SELECTION action, PRE-AUTH (steps 1–6 are public), so it
+ * can't be auth-gated the way the switcher's action is. The typeahead itself is served
+ * from GET /api/onboarding/city-search (a route handler, so debounced keystroke lookups
+ * parallelize instead of serializing behind each other — WP-12); resolving a PICKED
+ * place stays a Server Action here, since a selection is a single call, not a stream.
  *
- * Privacy (rule #1): only the coarse city text the parent types is sent; the centroid
+ * Rate-limited per CLIENT IP against the paid Places provider (rule: no uncapped
+ * provider route); the limiter fails open, so a preview without a DB simply proceeds.
+ * The session token threads autocomplete + this details call so Google bills them as
+ * one session.
+ *
+ * Privacy (rule #1): only the coarse city text the parent typed is sent; the centroid
  * that comes back centres a city-level map and is never persisted — completeOnboarding
  * stores only {country, city}.
  */
-
-export type CityAutocompleteResult =
-  | { status: 'ok'; predictions: CityPrediction[] }
-  | { status: 'rate_limited' };
 
 export type CityResolveResult =
   | { status: 'ok'; centroid: CityCentroid | null }
@@ -36,17 +31,6 @@ export type CityResolveResult =
 async function clientIdentifier(): Promise<string> {
   const forwarded = (await headers()).get('x-forwarded-for');
   return forwarded?.split(',')[0]?.trim() || 'unknown';
-}
-
-export async function autocompleteCityAction(
-  input: string,
-  sessionToken: string,
-): Promise<CityAutocompleteResult> {
-  // A 2-char floor keeps single-keystroke lookups (and their Places cost) from firing.
-  if (input.trim().length < 2) return { status: 'ok', predictions: [] };
-  const { allowed } = await rateLimitStatus('city-search', await clientIdentifier());
-  if (!allowed) return { status: 'rate_limited' };
-  return { status: 'ok', predictions: await autocompleteCanadianCities(input, sessionToken) };
 }
 
 export async function resolveCityAction(

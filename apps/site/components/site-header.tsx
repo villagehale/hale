@@ -23,7 +23,7 @@ const LINKS = [
   { label: 'Features', href: '/#features' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/#faq' },
-  { label: 'Contact', href: '/#contact' },
+  { label: 'Contact', href: '/contact' },
 ] as const;
 
 export function SiteHeader() {
@@ -46,7 +46,7 @@ export function SiteHeader() {
       }`}
     >
       <div className="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <a href="/#about" className="flex shrink-0 items-center gap-2.5" aria-label="Hale, home">
+        <a href="/" className="flex shrink-0 items-center gap-2.5" aria-label="Hale, home">
           <LogoMark size={34} />
           <span className="font-serif text-[1.35rem] font-semibold leading-none text-[#17294A]">
             Hale

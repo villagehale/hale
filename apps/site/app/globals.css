@@ -110,6 +110,13 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Component + presentational classes live in @layer components so Tailwind v4
+ * utilities (which sit in @layer utilities) win by layer order. UNLAYERED, these
+ * rules outranked every utility — `.card{display:block}` beat `flex`, `.meta`
+ * font-size beat `text-lg` — the exact trap globals.css documents for h1-h4 above
+ * (SITE-01). Base element rules (html/body/::selection) + @keyframes stay out. */
+@layer components {
+
 /* Skip-to-content link — first focusable element on every page; hidden off-screen
  * until keyboard focus pulls it in over the sticky header, then targets <main>. */
 .skip-link {
@@ -144,6 +151,7 @@
   color: var(--color-on-spruce);
 }
 
+}
 /* ── Base ──────────────────────────────────────────────────────────────── */
 
 html {
@@ -203,6 +211,8 @@ body {
 
 em { font-style: italic; }
 strong { font-weight: 700; }
+
+@layer components {
 
 /* ── Type utilities ────────────────────────────────────────────────────── */
 
@@ -458,6 +468,7 @@ strong { font-weight: 700; }
   .turtle-bob { animation: none; transform: none; }
 }
 
+}
 /* ── Selection + scrollbar ─────────────────────────────────────────────── */
 
 ::selection {
@@ -474,6 +485,8 @@ strong { font-weight: 700; }
   input, textarea, select { font-size: 16px !important; }
 }
 
+@layer components {
+
 /* ── Theme switch — ease the color change, never the layout ─────────────── */
 
 html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, .panel-berry-tint, .card, .field, .night {
@@ -486,6 +499,9 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
     transition: none;
   }
 }
+
+}
+@layer components {
 
 /* ══ Landing (2026-07) — warm-white homepage motion + primitives ═════════ *
  * Every animation below has a prefers-reduced-motion static fallback at the
@@ -637,9 +653,13 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   padding: 0.4rem 0.85rem;
   border-radius: var(--r-full);
   background: var(--color-apricot-tint);
-  color: var(--color-apricot-deep);
+  /* SITE-04: spruce ink on the amber tint (11.5:1) — amber-on-amber (#B26B1F on
+   * #FEF0C7) was 3.69:1, below AA for this 0.8rem/600 label. */
+  color: var(--color-spruce);
   font-family: var(--font-body);
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
 }

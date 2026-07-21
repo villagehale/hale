@@ -12,6 +12,13 @@ import { loadVillageFeed } from '~/lib/village/feed';
 import { loadSavedVillageCandidates, loadVillage } from '~/lib/village/queries';
 import { seasonFromParam } from '~/lib/village/season-selector-ui';
 
+// The Village AI search Server Action (searchVillageAction) runs under this segment
+// and kicks a FRESH discovery run in after() — a bounded Anthropic call that takes far
+// longer than the platform's ~10s default. Raise the segment budget to match the
+// discovery crons (maxDuration 300) so the after() work isn't killed mid-run and the
+// promised candidates actually land (mirrors api/mobile/village/search/route.ts).
+export const maxDuration = 300;
+
 /** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
  * above its content. */
 function SectionLabel({ children }: { children: React.ReactNode }) {

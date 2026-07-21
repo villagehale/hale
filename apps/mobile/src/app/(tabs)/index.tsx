@@ -97,6 +97,7 @@ function NotifBell() {
       accessibilityRole="button"
       accessibilityLabel={hasUnread ? 'Notifications, unread' : 'Notifications'}
       onPress={() => router.push('/notifications')}
+      hitSlop={8}
       className="relative p-1 active:opacity-70"
     >
       <Icon name="bell" size={22} color={iconColor} />

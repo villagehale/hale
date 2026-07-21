@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 /**
  * F11 · The Sunday Loop — the pure enforcement hooks over per-parent loop
@@ -86,6 +86,41 @@ export async function loadLoopPrefsView(
     .where(eq(schema.loopPrefs.userId, userId))
     .limit(1);
   return rows[0] ?? DEFAULT_LOOP_PREFS;
+}
+
+/**
+ * Batch counterpart of loadLoopPrefsView: the prefs for many parents in ONE `inArray`
+ * query, as a Map keyed by userId. A userId with NO row is absent from the map — the
+ * caller applies DEFAULT_LOOP_PREFS (row absence is a valid state), so the map carries
+ * only the rows that exist. Lets a cron sweep read every parent's prefs in one round
+ * trip instead of an N+1 per-family read.
+ */
+export async function loadLoopPrefsViewsByUserIds(
+  userIds: string[],
+  database: Database,
+): Promise<Map<string, LoopPrefsView>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await database
+    .select({
+      userId: schema.loopPrefs.userId,
+      loopChannel: schema.loopPrefs.loopChannel,
+      catWeeklyPlan: schema.loopPrefs.catWeeklyPlan,
+      catReminder: schema.loopPrefs.catReminder,
+      catApproval: schema.loopPrefs.catApproval,
+      catAlert: schema.loopPrefs.catAlert,
+      quietHoursStart: schema.loopPrefs.quietHoursStart,
+      quietHoursEnd: schema.loopPrefs.quietHoursEnd,
+      urgentBypassQuietHours: schema.loopPrefs.urgentBypassQuietHours,
+      weeklyPlanSendTime: schema.loopPrefs.weeklyPlanSendTime,
+      childNameLevel: schema.loopPrefs.childNameLevel,
+    })
+    .from(schema.loopPrefs)
+    .where(inArray(schema.loopPrefs.userId, userIds));
+  const byUser = new Map<string, LoopPrefsView>();
+  for (const { userId, ...view } of rows) {
+    byUser.set(userId, view);
+  }
+  return byUser;
 }
 
 const CATEGORY_FLAG: Record<LoopCategory, keyof LoopPrefsView> = {

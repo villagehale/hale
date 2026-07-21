@@ -2,7 +2,7 @@
 
 import { MapPin } from 'lucide-react';
 import { type KeyboardEvent, type MouseEvent, useEffect, useId, useRef, useState } from 'react';
-import { autocompleteCityAction, resolveCityAction } from '~/lib/onboarding/city-search';
+import { resolveCityAction } from '~/lib/onboarding/city-search';
 import type { CityCentroid, CityPrediction } from '~/lib/village/geocode';
 
 /**
@@ -70,18 +70,37 @@ export function CityAutocompleteInput({
     }
     let cancelled = false;
     const timer = setTimeout(async () => {
-      const result = await autocompleteCityAction(query, sessionToken());
+      // A GET route (not a Server Action) so debounced keystroke lookups run in parallel
+      // rather than serializing behind each other (WP-12); the cancelled flag drops any
+      // stale response the newest keystroke has superseded.
+      const params = new URLSearchParams({ q: query, session: sessionToken() });
+      let res: Response;
+      try {
+        res = await fetch(`/api/onboarding/city-search?${params}`);
+      } catch {
+        if (!cancelled) {
+          setLimited(false);
+          setPredictions([]);
+          setNoMatch(true);
+          setOpen(true);
+        }
+        return;
+      }
       if (cancelled) return;
-      if (result.status === 'rate_limited') {
+      if (res.status === 429) {
         setLimited(true);
         setPredictions([]);
         setOpen(true);
         return;
       }
+      const predictions = res.ok
+        ? ((await res.json()) as { predictions: CityPrediction[] }).predictions
+        : [];
+      if (cancelled) return;
       setLimited(false);
-      setPredictions(result.predictions);
-      setNoMatch(result.predictions.length === 0);
-      setActiveIndex(result.predictions.length > 0 ? 0 : -1);
+      setPredictions(predictions);
+      setNoMatch(predictions.length === 0);
+      setActiveIndex(predictions.length > 0 ? 0 : -1);
       setOpen(true);
     }, DEBOUNCE_MS);
     return () => {

@@ -25,7 +25,10 @@ export type AnalyticsEvent =
   | 'ask_hale'
   | 'village_save'
   | 'plan_notify_requested'
-  | 'plan_upgrade_started';
+  | 'plan_upgrade_started'
+  // F11 · The Sunday Loop (VIL-218 · B2): one weekly_plan message enqueued to a
+  // parent. Coarse props only (item/pending counts + category) — feeds X1.
+  | 'loop_plan_sent';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

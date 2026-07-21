@@ -32,6 +32,7 @@ import { LoadingState } from '@/components/ui/screen-state';
 import { TintChip } from '@/components/ui/tint-chip';
 import { type AskSuggestion, ASK_SUGGESTIONS } from '@/constants/ask-data';
 import { useMeadowColor } from '@/constants/meadow';
+import { PROMPT_BAR_ACTION, PROMPT_BAR_CONTAINER, PROMPT_BAR_INPUT } from '@/constants/prompt-bar';
 import { ApiError, api } from '@/lib/api-client';
 import type {
   ChatAttachmentUpload,
@@ -222,7 +223,7 @@ function Composer({
         onRemove={onRemoveAttachment}
         onRetry={onRetryAttachment}
       />
-      <View className="flex-row items-center gap-2 rounded-[18px] border-[1.5px] border-rule-strong bg-card py-1.5 pl-2 pr-1.5">
+      <View className={`flex-row items-center gap-2 ${PROMPT_BAR_CONTAINER} py-1.5 pl-2 pr-1.5`}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Attach a file"
@@ -247,7 +248,7 @@ function Composer({
             minHeight: 40,
             maxHeight: 120,
           }}
-          className="flex-1 text-[16px] leading-[22px]"
+          className={`flex-1 ${PROMPT_BAR_INPUT}`}
         />
         <Pressable
           accessibilityRole="button"
@@ -264,7 +265,7 @@ function Composer({
           accessibilityState={{ disabled }}
           disabled={disabled}
           onPress={onSend}
-          className={`h-10 w-10 items-center justify-center rounded-[14px] bg-brand ${
+          className={`${PROMPT_BAR_ACTION} bg-brand ${
             disabled ? 'opacity-40' : 'active:opacity-90'
           }`}
         >

@@ -6,15 +6,16 @@ import { buildCronGuardDeps } from '~/lib/cron/guards';
 import { loadWeekSummarySkill } from '~/lib/cron/skill';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
+  DEFAULT_LOOP_PREFS,
   type LoopPrefsView,
-  loadLoopPrefsView,
+  loadLoopPrefsViewsByUserIds,
   localParts,
   weeklyPlanWeekday,
 } from '~/lib/loop/prefs';
 import { weekWindow } from '~/lib/plan/spine';
 import { composeWeekPlan } from './compose';
 import { gatherWeekPlanInputs } from './gather';
-import { hasWeekPlan, readWeekPlan, upsertWeekPlan } from './queries';
+import { hasWeekPlan, upsertWeekPlan } from './queries';
 
 /**
  * The weekly-plan cron (VIL-217 — "the Sunday brain"). Runs HOURLY and composes ONE
@@ -38,6 +39,9 @@ const MAX_STEPS = 1;
 const SUMMARY_MAX_TOKENS = 256;
 /** Per-run family cap — the blast-radius bound, mirroring the digest cron. */
 export const MAX_WEEK_PLAN_FAMILIES_PER_RUN = 100;
+/** How many families compose at once — bounded so a full batch fits maxDuration=300
+ * without hammering the model/DB (each family is one gather + one short LLM summary). */
+const WEEK_PLAN_COMPOSE_CONCURRENCY = 5;
 /** The compose window width: one hour, so an hourly cron catches each family's slot
  * exactly once per week, DST-correctly, across any UTC offset (incl. :30/:45 zones). */
 const COMPOSE_SLOT_MINUTES = 60;
@@ -92,8 +96,8 @@ export async function runWeekPlanForFamily(
   const items = composeWeekPlan(inputs, now);
   const summary = await summarizeWeek(items, deps, familyId, db);
 
-  await upsertWeekPlan(db, { familyId, weekStart, summary, items });
-  await writeComposeAudit(db, familyId, weekStart);
+  const { id: planId } = await upsertWeekPlan(db, { familyId, weekStart, summary, items });
+  await writeComposeAudit(db, familyId, planId);
 
   return { familyId, status: 'composed', weekStart, itemCount: items.length, summarized: summary !== null };
 }
@@ -131,16 +135,15 @@ async function summarizeWeek(
   }
 }
 
-/** One immutable audit row per compose (rule #6). Actor 'system' — a scheduled run. */
-async function writeComposeAudit(db: Database, familyId: string, weekStart: string): Promise<void> {
-  const plan = await readWeekPlan(db, familyId, weekStart);
-  if (!plan) return;
+/** One immutable audit row per compose (rule #6). Actor 'system' — a scheduled run.
+ * Takes the plan id straight from the upsert's RETURNING, so no read-back round-trip. */
+async function writeComposeAudit(db: Database, familyId: string, planId: string): Promise<void> {
   await db.insert(schema.auditLog).values({
     familyId,
     actor: 'system',
     actionTaken: 'compose_week_plan',
     targetTable: 'week_plans',
-    targetId: plan.id,
+    targetId: planId,
   });
 }
 
@@ -164,14 +167,25 @@ export async function runWeekPlanCron(
 ): Promise<WeekPlanCronResult> {
   const familyIds = await selectFamiliesToCompose(db, now);
 
+  // Compose with BOUNDED concurrency: a strictly serial run of N × (gather + a ~2-4s LLM
+  // summary) can exceed the route's maxDuration=300, and because the compose slot is a
+  // one-hour window matched hourly, families past the kill point permanently miss their
+  // once-weekly plan. Chunks of WEEK_PLAN_COMPOSE_CONCURRENCY fit the window while
+  // staying gentle on the model/DB. Each family stays isolated — a failure is recorded,
+  // never rejecting its chunk (rule #8).
   const results: WeekPlanCronResult['results'] = [];
-  for (const familyId of familyIds) {
-    try {
-      const result = await runWeekPlanForFamily(familyId, db, deps, now);
-      results.push({ familyId, result });
-    } catch (err) {
-      results.push({ familyId, error: err instanceof Error ? err.message : String(err) });
-    }
+  for (let i = 0; i < familyIds.length; i += WEEK_PLAN_COMPOSE_CONCURRENCY) {
+    const chunk = familyIds.slice(i, i + WEEK_PLAN_COMPOSE_CONCURRENCY);
+    const settled = await Promise.all(
+      chunk.map(async (familyId) => {
+        try {
+          return { familyId, result: await runWeekPlanForFamily(familyId, db, deps, now) };
+        } catch (err) {
+          return { familyId, error: err instanceof Error ? err.message : String(err) };
+        }
+      }),
+    );
+    results.push(...settled);
   }
   return { processed: familyIds.length, results };
 }
@@ -196,14 +210,25 @@ export async function selectFamiliesToCompose(db: Database, now: Date): Promise<
     .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
     .where(eq(schema.familyMembers.role, 'primary_parent'));
 
-  const toCompose: string[] = [];
-  for (const row of rows) {
-    if (toCompose.length >= MAX_WEEK_PLAN_FAMILIES_PER_RUN) break;
-    // Cheap pre-check on the compose weekday alone, so only families on their day
-    // pay for a prefs read.
+  // Cheap weekday pre-check FIRST (no prefs read for families not on their compose day),
+  // then read every remaining parent's prefs in ONE batched query — not an N+1 per-family
+  // round-trip inside the loop.
+  const onDay = rows.filter((row) => {
     const composeWeekday = (weeklyPlanWeekday(row.weekStartDay) + 6) % 7;
-    if (localParts(now, row.timezone).weekday !== composeWeekday) continue;
-    const view = await loadLoopPrefsView(row.userId, db);
+    return localParts(now, row.timezone).weekday === composeWeekday;
+  });
+  if (onDay.length === 0) return [];
+
+  const prefsByUser = await loadLoopPrefsViewsByUserIds(
+    onDay.map((row) => row.userId),
+    db,
+  );
+
+  const toCompose: string[] = [];
+  for (const row of onDay) {
+    if (toCompose.length >= MAX_WEEK_PLAN_FAMILIES_PER_RUN) break;
+    // Absent row → the documented default (weekly plan ON), matching loadLoopPrefsView.
+    const view = prefsByUser.get(row.userId) ?? DEFAULT_LOOP_PREFS;
     if (!view.catWeeklyPlan) continue;
     if (isComposeMoment(view, now, row.timezone, row.weekStartDay)) toCompose.push(row.familyId);
   }

@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { CtaBand } from '~/components/cta-band';
+import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { publishedAnswers } from '~/lib/answers/index';
@@ -85,6 +87,26 @@ export default function AnswersIndexPage() {
             </div>
           </div>
         </section>
+      )}
+
+      {/* Populated index closes on the signature navy CTA (empty state carries its
+          own Ask Concierge panel above). SITE-10: both SEO entry surfaces need a
+          conversion path beyond the header pill. */}
+      {answers.length > 0 && (
+        <CtaBand>
+          <h2 className="mx-auto max-w-2xl font-display text-2xl">
+            Have a question about your own child?
+          </h2>
+          <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
+            Ask Concierge — with your child’s age and your family in mind. Free to start, and your
+            data stays in Canada.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <LandingCta event="answers_cta_signin" href={`${APP_URL}/onboarding`} className="btn-on-navy">
+              Ask Concierge about your child
+            </LandingCta>
+          </div>
+        </CtaBand>
       )}
 
       <SiteFooter />
