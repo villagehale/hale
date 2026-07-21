@@ -763,6 +763,41 @@ export interface MobilePushPrefsUpdateResponse {
   status: 'updated';
 }
 
+// ── loop preferences (GET + PATCH /api/mobile/settings/loop) ───────────────────
+//
+// The F11 "Sunday Loop" delivery preferences (VIL-216 · A5). The wire carries the
+// full LoopPrefsView; the app mirrors only the three controls it renders — the
+// arrival channel (display-only until SMS launches), quiet hours, and the
+// weekly-plan send time. Category toggles + the child-name level stay web-only.
+
+export type LoopChannel = 'email' | 'sms';
+
+export interface LoopPrefsView {
+  loopChannel: LoopChannel;
+  /** Wall-clock local 'HH:MM:SS', interpreted in the parent's timezone server-side. */
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  weeklyPlanSendTime: string;
+}
+
+export interface MobileLoopPrefsResponse {
+  loop: LoopPrefsView;
+}
+
+/** The loop fields the app can PATCH (one at a time). The channel isn't here: Text
+ * is disabled until SMS launches, so Email is fixed and there's nothing to set. */
+export type LoopPrefField = 'quietHoursStart' | 'quietHoursEnd' | 'weeklyPlanSendTime';
+
+export interface MobileLoopPrefUpdateRequest {
+  field: LoopPrefField;
+  /** A 24h 'HH:MM' wall-clock time. */
+  value: string;
+}
+
+export interface MobileLoopPrefUpdateResponse {
+  status: 'updated';
+}
+
 // ── connectors (GET /api/mobile/integrations, POST .../[provider]/disconnect,
 //    GET /api/mobile/integrations/connect-url) ──────────────────────────────────
 //

@@ -386,6 +386,13 @@
       "when": 1781463000000,
       "tag": "0055_family_events",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781463060000,
+      "tag": "0056_loop_prefs",
+      "breakpoints": true
     }
   ]
 }

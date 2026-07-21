@@ -24,7 +24,7 @@ import { draftToOnboardingInput } from '@/lib/onboarding-draft';
 import { onboardingDraftStore } from '@/lib/onboarding-draft-store';
 import { resumeDestination } from '@/lib/resume-destination';
 import { useReducedMotion } from '@/lib/use-reduced-motion';
-import { usePushRegistration } from '@/lib/use-push-registration';
+import { usePushDeepLinks, usePushTokenSync } from '@/lib/use-push';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -146,7 +146,10 @@ function RootNavigator() {
 
   useProtectedRoute(ready);
   useResumeOnboarding(ready);
-  usePushRegistration(ready && !!token);
+  // Never prompt at launch: refresh the token only if already granted, and route any
+  // notification tap. The permission ASK happens at a moment of value (see PushPrime).
+  usePushTokenSync(ready && !!token);
+  usePushDeepLinks();
 
   useEffect(() => {
     const timer = setTimeout(() => setMinElapsed(true), 2400);
