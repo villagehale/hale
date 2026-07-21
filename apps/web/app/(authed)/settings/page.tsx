@@ -7,6 +7,7 @@ import { ExportDataButton } from '~/components/hale/export-data-button';
 import { FamilyChildren } from '~/components/hale/family-children';
 import { FamilyPlan } from '~/components/hale/family-plan';
 import { InviteCoParent } from '~/components/hale/invite-coparent';
+import { LoopPrefs } from '~/components/hale/loop-prefs';
 import { NotificationPrefs } from '~/components/hale/notification-prefs';
 import { PlanSummaryCard } from '~/components/hale/plan-summary-card';
 import { PrivacyNote } from '~/components/hale/privacy-note';
@@ -19,6 +20,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
 import { loadViewerProfile } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
+import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
 import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
 import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 
@@ -39,12 +41,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  * The page title + subtitle live in the shell top bar (design handoff §3.2).
  */
 export default async function SettingsPage() {
-  const [profile, basics, members, connections, pushPrefs] = await Promise.all([
+  const [profile, basics, members, connections, pushPrefs, loopPrefs] = await Promise.all([
     loadViewerProfile(),
     loadFamilyBasics(),
     loadFamilyMembers(),
     loadFamilyConnectors(),
     loadPushNotificationPrefs(),
+    loadLoopNotificationPrefs(),
   ]);
 
   const planName = PLAN_DISPLAY[basics.planTier].name;
@@ -135,9 +138,15 @@ export default async function SettingsPage() {
 
     // ── Notifications ────────────────────────────────────────────────────
     notif: (
-      <div>
-        <SectionLabel>push notifications</SectionLabel>
-        <NotificationPrefs result={pushPrefs} />
+      <div className="flex flex-col gap-y-10 max-w-2xl">
+        <div>
+          <SectionLabel>push notifications</SectionLabel>
+          <NotificationPrefs result={pushPrefs} />
+        </div>
+        <div>
+          <SectionLabel>the sunday loop</SectionLabel>
+          <LoopPrefs result={loopPrefs} />
+        </div>
       </div>
     ),
 
