@@ -57,11 +57,11 @@ export function defaultWeekPlanDeps(): WeekPlanDeps {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   // No key, or the kill switch, disables the summary stage — the composer stays fully
   // functional (rule #8), just without the one-sentence summary.
-  const client =
-    apiKey && process.env.WEEK_PLAN_SUMMARY_DISABLED !== 'true'
-      ? (anthropicClient ??= new Anthropic({ apiKey }))
-      : null;
-  return { client, gather: gatherWeekPlanInputs };
+  if (!apiKey || process.env.WEEK_PLAN_SUMMARY_DISABLED === 'true') {
+    return { client: null, gather: gatherWeekPlanInputs };
+  }
+  anthropicClient ??= new Anthropic({ apiKey });
+  return { client: anthropicClient, gather: gatherWeekPlanInputs };
 }
 
 export type WeekPlanFamilyResult =
