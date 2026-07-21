@@ -33,13 +33,16 @@ function configuredAudiences(): string[] {
 export interface GoogleIdentity {
   sub: string;
   email: string | undefined;
+  /** The profile photo URL Google asserts, or undefined. Non-security (display
+   * only): a wrong/absent picture just falls back to the parent's initials. */
+  picture: string | undefined;
 }
 
 /**
- * Verify a Google id_token and return its subject + email. Throws a jose error on
- * any verification failure (bad signature, wrong issuer/audience, or expiry).
- * `jwks` is injectable so tests verify against a local keypair without hitting
- * the network; production uses Google's remote JWKS.
+ * Verify a Google id_token and return its subject + email (+ profile picture).
+ * Throws a jose error on any verification failure (bad signature, wrong
+ * issuer/audience, or expiry). `jwks` is injectable so tests verify against a local
+ * keypair without hitting the network; production uses Google's remote JWKS.
  */
 export async function verifyGoogleIdToken(
   idToken: string,
@@ -69,5 +72,6 @@ export async function verifyGoogleIdToken(
     payload.email_verified === true && typeof payload.email === 'string'
       ? payload.email
       : undefined;
-  return { sub, email };
+  const picture = typeof payload.picture === 'string' ? payload.picture : undefined;
+  return { sub, email, picture };
 }

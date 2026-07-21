@@ -32,6 +32,10 @@ import type { RateLimitOptions } from './limiter';
  *   a couple of re-runs is 5-6; five per hour covers honest exploration while
  *   blunting a parent (or a script) hammering paid runs. Per-family (not per-user)
  *   because the run and its cost belong to the family, not one parent.
+ * - avatar-upload (20/hour/user): a child photo is set once and replaced rarely, so
+ *   even a parent tidying every child's photo in one sitting is a handful. 20/hour is
+ *   far above that yet stops a script from running up storage/bandwidth on the private
+ *   bucket. Per-user (the upload cost is the uploader's), on an HOUR window.
  * - village-ai-search (20/min/family): the natural-language search's cheap intent
  *   parse (one small model call per submit). It is a per-MINUTE bot guard, NOT the
  *   paid-run cooldown: the expensive discovery it may trigger on thin results is
@@ -52,6 +56,7 @@ export const RATE_LIMITS = {
   auth: { limit: 20, windowSec: 60 },
   preview: { limit: 10, windowSec: 60 },
   'village-search': { limit: 5, windowSec: 3600 },
+  'avatar-upload': { limit: 20, windowSec: 3600 },
   'village-ai-search': { limit: 20, windowSec: 60 },
   'sms-otp-send': { limit: 5, windowSec: 3600 },
   'sms-otp-verify': { limit: 10, windowSec: 3600 },

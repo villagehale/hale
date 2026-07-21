@@ -19,6 +19,17 @@ export const children = pgTable(
      * 'unspecified' default so a skipped answer is a value, not a SQL null. */
     gender: childGenderEnum('gender').notNull().default('unspecified'),
     biologicalSex: text('biological_sex'),
+    /** Private-bucket storage key for an uploaded profile photo, or NULL for the
+     * initials fallback. The most sensitive asset class Hale stores (rule #1): the
+     * bytes live in the PRIVATE 'family-docs' bucket, never public — this holds only
+     * the server-generated key (avatars/{familyId}/{childId}); the viewer reads it
+     * through a short-TTL signed URL. One object per child, overwritten in place on
+     * replace, so the key is stable and reclaimable by (family, child). */
+    avatarPath: text('avatar_path'),
+    /** When the photo was last set. The stable key is overwritten in place, so the
+     * rendered signed URL carries ?v=<this epoch> as a deterministic cache-buster — a
+     * replaced photo can't render stale. Null iff there is no photo. */
+    avatarUpdatedAt: timestamp('avatar_updated_at', { withTimezone: true }),
     gestationalWeeks: integer('gestational_weeks'),
     birthWeightG: integer('birth_weight_g'),
     hospitalOfBirth: text('hospital_of_birth'),

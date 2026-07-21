@@ -71,13 +71,30 @@ describe('GET /api/mobile/family', () => {
 
     expect(res.status).toBe(200);
     // The viewer identifies THIS account, not members.primary — the More profile
-    // header would read wrong for a co-parent otherwise.
+    // header would read wrong for a co-parent otherwise. No image on this session → null.
     expect(await res.json()).toEqual({
       members: MEMBERS,
       basics: BASICS,
-      viewer: { name: 'Beckett', email: 'beckett@hale.test' },
+      viewer: { name: 'Beckett', email: 'beckett@hale.test', image: null },
     });
     expect(loadFamilyMembersMock).toHaveBeenCalledTimes(1);
     expect(loadFamilyBasicsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the parent Google profile photo as viewer.image when the session carries one', async () => {
+    authMock.mockResolvedValue({
+      user: {
+        id: 'ext-1',
+        name: 'Beckett',
+        email: 'beckett@hale.test',
+        image: 'https://lh3.googleusercontent.com/a/photo',
+      },
+    });
+
+    const res = await callGet();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { viewer: { image: string | null } };
+    expect(body.viewer.image).toBe('https://lh3.googleusercontent.com/a/photo');
   });
 });
