@@ -31,11 +31,12 @@ describe('PricingSection (landing pricing)', () => {
     expect(html).toContain('Join free');
   });
 
-  it('sends paid tiers to the waitlist — no checkout, no "Coming soon"', () => {
+  it('routes paid tiers to start-free — no dead waitlist, checkout, or "Coming soon"', () => {
     expect(html).not.toContain('Coming soon');
-    expect(html).toContain('Join the waitlist');
-    expect(html).toContain('href="#waitlist"');
+    expect(html).not.toContain('#waitlist');
     expect(html.toLowerCase()).not.toContain('checkout');
+    // Paid tiers invite starting free now; billing/upgrade is deferred until it ships.
+    expect(html).toContain('Start free — upgrade when it ships');
   });
 
   it('carries the founding-families banner with the first-100 badge promise', () => {

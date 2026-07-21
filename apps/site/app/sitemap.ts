@@ -7,7 +7,7 @@ import { publishedCheckpoints } from '~/lib/milestones/index';
 // Static marketing routes. Add new public pages here as they ship.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq'].map((path) => ({
+  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map((path) => ({
     url: `${SITE_URL}${path}`,
     lastModified,
     changeFrequency: 'monthly',

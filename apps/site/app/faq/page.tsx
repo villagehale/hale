@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
 
 export default function FaqPage() {
   return (
-    <main id="top" className="relative">
+    <main id="main" tabIndex={-1} className="relative">
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
@@ -57,22 +58,23 @@ export default function FaqPage() {
           ))}
         </dl>
 
-        <div className="mt-16 max-w-2xl rise rise-2">
-          <div className="panel-apricot-tint px-8 py-12 sm:px-12">
-            <h2 className="font-display text-2xl text-spruce">Ready to find your village?</h2>
-            <p className="meta mt-3" style={{ lineHeight: 1.6 }}>
-              Free to start. Your data stays in Canada.
-            </p>
-            <LandingCta
-              event="faq_cta_signin"
-              href={`${APP_URL}/sign-in`}
-              className="btn-primary mt-6 inline-flex"
-            >
-              Join the village
-            </LandingCta>
-          </div>
-        </div>
       </section>
+
+      <CtaBand>
+        <h2 className="mx-auto max-w-2xl font-display text-2xl">Ready to find your village?</h2>
+        <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
+          Free to start. Your data stays in Canada.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <LandingCta
+            event="faq_cta_signin"
+            href={`${APP_URL}/sign-in`}
+            className="btn-on-navy"
+          >
+            Join the village
+          </LandingCta>
+        </div>
+      </CtaBand>
 
       <SiteFooter />
     </main>

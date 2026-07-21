@@ -52,8 +52,13 @@ export function BirthdayHelper() {
         <label className="sr-only" htmlFor="birth-month">
           Birth month
         </label>
+        {/* autoComplete off (not bday-*): this is the CHILD's birth month, and
+            bday-* would offer the account holder's own birthday — wrong here, and
+            at odds with the "stays on this device, nothing stored" promise. */}
         <select
           id="birth-month"
+          name="birth-month"
+          autoComplete="off"
           className="field"
           value={month}
           onChange={(e) => setMonth(e.target.value)}
@@ -71,6 +76,8 @@ export function BirthdayHelper() {
         </label>
         <select
           id="birth-year"
+          name="birth-year"
+          autoComplete="off"
           className="field"
           value={year}
           onChange={(e) => setYear(e.target.value)}

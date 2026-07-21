@@ -21,6 +21,7 @@ import { APP_URL } from '~/lib/app-url';
 const LINKS = [
   { label: 'About', href: '/about' },
   { label: 'Features', href: '/#features' },
+  { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/#faq' },
   { label: 'Contact', href: '/#contact' },
 ] as const;
@@ -90,7 +91,8 @@ export function SiteHeader() {
 
       <div
         id="mobile-nav"
-        className={`grid overflow-hidden border-[#F0F2F6] bg-[#FDFCFA]/95 backdrop-blur-md transition-all duration-300 motion-reduce:transition-none md:hidden ${
+        inert={!open ? true : undefined}
+        className={`grid overflow-hidden border-[#F0F2F6] bg-[#FDFCFA]/95 backdrop-blur-md transition-[grid-template-rows,opacity] duration-300 motion-reduce:transition-none md:hidden ${
           open ? 'grid-rows-[1fr] border-b opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
       >

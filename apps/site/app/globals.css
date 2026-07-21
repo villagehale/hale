@@ -110,6 +110,32 @@
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Skip-to-content link — first focusable element on every page; hidden off-screen
+ * until keyboard focus pulls it in over the sticky header, then targets <main>. */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  transform: translateY(-150%);
+  background: var(--color-navy);
+  color: var(--color-cream);
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--r-full);
+  font-family: var(--font-body);
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 200ms var(--ease-breathe);
+}
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--color-cream);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skip-link { transition: none; }
+}
+
 /* The night section is a dark Spruce band that inverts its text to cream — used
  * by the answer/milestone subpages. Light-only site (2026-07 warm-white
  * redesign), so there is no dark-mode override. */
@@ -123,12 +149,15 @@
 html {
   background: var(--color-linen);
   color: var(--color-spruce);
+  color-scheme: light;
   font-family: var(--font-body);
   font-feature-settings: "kern", "liga", "calt";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
+  /* Deep-link targets clear the sticky ~4.5rem header instead of hiding under it. */
+  scroll-padding-top: 4.75rem;
 }
 
 body {
@@ -311,6 +340,9 @@ strong { font-weight: 700; }
 }
 
 .btn-secondary:hover { border-color: var(--color-spruce); background: var(--color-oat); }
+
+.btn-secondary[disabled] { opacity: 0.55; cursor: not-allowed; }
+.btn-secondary[disabled]:hover { border-color: var(--color-rule-strong); background: transparent; }
 
 .btn-secondary:focus-visible {
   outline: none;
