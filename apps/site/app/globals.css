@@ -42,7 +42,7 @@
   --color-sky-deep: #5c6b87;   /* slate — illustration limbs, kept distinct from the navy shell */
   --color-sky-tint: #eef1f7;   /* pale navy wash — chip pills, illustration scutes */
 
-  --color-sea: #1b2160;        /* navy — illustration figures/roofs */
+  --color-sea: #17294a;        /* navy — illustration figures/roofs */
 
   --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
   --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
@@ -66,8 +66,11 @@
   --color-page: #fdfcfa;        /* warm page canvas */
   --color-band: #f7f5f0;        /* warm cream band (testimonials, feature washes) */
   --color-ink: #17294a;         /* headline ink — 12.6:1 on page */
-  --color-navy: #1b2160;        /* brand navy — statement surfaces, CTA fill */
-  --color-navy-deep: #141a4d;   /* navy card depth */
+  --color-navy: #17294a;        /* Prussian navy — statement surfaces, CTA fill.
+                                 * Deliberately NOT the app's --color-brand (#1B2160):
+                                 * that indigo reads violet when flooded across large
+                                 * marketing bands, so the site stays on the ink hue. */
+  --color-navy-deep: #101d36;   /* navy card depth */
   --color-cream: #f7f4ec;       /* text on navy */
   --color-line: #e4e7ee;        /* card border */
   --color-hair: #f0f2f6;        /* hairline */

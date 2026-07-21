@@ -58,12 +58,12 @@ export function FaqAccordion() {
                 aria-expanded={isOpen}
                 aria-controls={panelId}
                 onClick={() => setOpen(isOpen ? -1 : i)}
-                className="group flex w-full items-center justify-between gap-6 py-6 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1B2160] md:py-8"
+                className="group flex w-full items-center justify-between gap-6 py-6 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] md:py-8"
               >
                 <span className="text-xl font-medium tracking-tight text-[#17294A] transition-opacity group-hover:opacity-70 md:text-[1.7rem]">
                   {item.q}
                 </span>
-                <span aria-hidden className="shrink-0 text-[#1B2160]">
+                <span aria-hidden className="shrink-0 text-[#17294A]">
                   {isOpen ? (
                     <Minus className="w-6 md:w-7" strokeWidth={1.5} />
                   ) : (

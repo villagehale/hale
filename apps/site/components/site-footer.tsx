@@ -16,11 +16,12 @@ const PRODUCT = [
 ] as const;
 
 const RESOURCES = [
-  { label: 'Answers', href: '/answers' },
+  { label: 'Parenting answers', href: '/answers' },
   { label: 'About', href: '/about' },
   { label: 'Contact', href: '/contact' },
 ] as const;
 
+/* Legal lives ONLY in the bottom bar — a Legal column would duplicate it. */
 const LEGAL = [
   { label: 'Privacy policy', href: `${APP_URL}/privacy` },
   { label: 'Terms of service', href: `${APP_URL}/terms` },
@@ -29,7 +30,6 @@ const LEGAL = [
 const COLUMNS = [
   { heading: 'Product', links: PRODUCT },
   { heading: 'Resources', links: RESOURCES },
-  { heading: 'Legal', links: LEGAL },
 ] as const;
 
 export function SiteFooter() {
@@ -54,7 +54,7 @@ export function SiteFooter() {
 
           <nav
             aria-label="Footer"
-            className="grid grid-cols-2 gap-8 md:grid-cols-3 md:gap-4 lg:w-[50%]"
+            className="grid grid-cols-2 gap-8 md:gap-4 lg:w-[50%]"
           >
             {COLUMNS.map((column) => (
               <div key={column.heading}>
