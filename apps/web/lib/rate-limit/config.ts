@@ -32,6 +32,14 @@ import type { RateLimitOptions } from './limiter';
  *   a couple of re-runs is 5-6; five per hour covers honest exploration while
  *   blunting a parent (or a script) hammering paid runs. Per-family (not per-user)
  *   because the run and its cost belong to the family, not one parent.
+ * - city-search (60/min): the address/area typeahead reaches the PAID Places
+ *   Autocomplete provider per (debounced) keystroke — the one provider-calling path
+ *   that was previously uncapped. Capped per SIGNED-IN USER on the authed switcher /
+ *   mobile route and per CLIENT IP on the pre-auth onboarding search. A real search
+ *   session is a handful of debounced lookups + one details call (~5-10 provider
+ *   hits); 60/min sits far above an honest burst of several searches yet stops a
+ *   scripted per-keystroke loop from running up Places spend. Client debounce keeps
+ *   legitimate traffic well under this.
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
@@ -40,6 +48,7 @@ export const RATE_LIMITS = {
   auth: { limit: 20, windowSec: 60 },
   preview: { limit: 10, windowSec: 60 },
   'village-search': { limit: 5, windowSec: 3600 },
+  'city-search': { limit: 60, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

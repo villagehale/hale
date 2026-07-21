@@ -1,29 +1,27 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { resolveCityCentroid } from '~/lib/onboarding/city-centroid';
 import { type MapsLibraries, loadMapsLibrary } from '~/lib/onboarding/load-places';
 import { VillageIllustration } from './village-illustration';
 
 /**
  * The interactive, city-level Google Map behind onboarding step 4 (design handoff
- * §4.1 Ob4). It replaces the static village illustration in that slot, recentring on
- * the city the parent searches — a warm, alive backdrop while the search input stays
- * the primary control.
+ * §4.1 Ob4). It replaces the static village illustration in that slot and recentres on
+ * the city the parent picks from the search combobox (CityAutocompleteInput) — a warm,
+ * alive backdrop while the search input stays the primary control.
  *
- * Loaded lazily (StepLocation dynamic-imports this component with ssr:false), so the
- * Maps JS never enters the initial bundle; it boots only when step 4 mounts, through
- * the SAME shared loader as the village map + address autocomplete (loadMapsLibrary).
+ * Loaded lazily (StepLocation dynamic-imports this with ssr:false), so the Maps JS
+ * never enters the initial bundle; it boots only when step 4 mounts, through the SAME
+ * shared loader as the village map + address autocomplete (loadMapsLibrary).
  *
- * Privacy (rule #1), non-negotiable: only the coarse city text the parent types is
- * sent to the server (resolveCityCentroid → a `locality` Places search), and the
- * centroid that comes back is used ONLY to centre the map — never stored. No browser
- * geolocation, no reverse geocoding, and the zoom is capped so a parent can nudge the
- * map but never reach an address. The persisted location stays coarse {country, city}.
+ * Privacy (rule #1), non-negotiable: `center` is a coarse city CENTROID resolved
+ * server-side from a selected locality — never an address, never browser geolocation.
+ * The zoom is capped so a parent can nudge the map but never reach a house; nothing
+ * beyond the coarse {city, province} is persisted.
  *
  * Honest degradation: a missing key (previews/forks) or a failed script both surface
- * as loadMapsLibrary() → null, and the slot shows the original illustration exactly
- * as before — never a broken grey box.
+ * as loadMapsLibrary() → null, and the slot shows the original illustration exactly as
+ * before — never a broken grey box.
  */
 
 interface MapInstance {
@@ -41,9 +39,8 @@ interface MapMarker {
 const CITY_ZOOM = 11;
 const MIN_ZOOM = 8;
 const MAX_ZOOM = 12;
-const RESOLVE_DEBOUNCE_MS = 500;
 
-/** A calm default centre before a city resolves — Toronto, which the field
+/** A calm default centre before a city is picked — Toronto, which the field
  * placeholder already names. Purely decorative; not the parent's real location. */
 const DEFAULT_CENTER = { lat: 43.6532, lng: -79.3832 };
 
@@ -77,7 +74,13 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-export function OnboardingLocationMap({ apiKey, area }: { apiKey: string | null; area: string }) {
+export function OnboardingLocationMap({
+  apiKey,
+  center,
+}: {
+  apiKey: string | null;
+  center: { lat: number; lng: number } | null;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapInstance | null>(null);
   const markerRef = useRef<MapMarker | null>(null);
@@ -86,9 +89,11 @@ export function OnboardingLocationMap({ apiKey, area }: { apiKey: string | null;
     apiKey ? 'loading' : 'unavailable',
   );
 
-  // Build the map exactly once when this lazily-imported component mounts. A missing
-  // key or a failed script both surface as loadMapsLibrary() → null, unifying every
-  // degraded path onto the illustration fallback below.
+  // Build the map exactly once, at a neutral default centre, when this lazily-imported
+  // component mounts. A missing key or a failed script both surface as
+  // loadMapsLibrary() → null, unifying every degraded path onto the illustration
+  // fallback below. The recentre effect drives every later move — so `center` is
+  // intentionally not a dependency here.
   useEffect(() => {
     if (!apiKey) {
       setStatus('unavailable');
@@ -124,34 +129,24 @@ export function OnboardingLocationMap({ apiKey, area }: { apiKey: string | null;
     };
   }, [apiKey]);
 
-  // Recentre on the SEARCHED city (debounced). Only the coarse city text is sent to
-  // the server action; the centroid it returns is used here and never stored. Under
-  // prefers-reduced-motion the centre is jump-set rather than animated (brief a11y).
+  // Recentre on the selected city's centroid + drop a city marker. Runs when the
+  // centroid changes and once the map is ready (a centroid picked while the map was
+  // still loading lands here the moment status flips). Under prefers-reduced-motion
+  // the centre is jump-set rather than animated (brief a11y).
   useEffect(() => {
-    if (status !== 'ready') return;
-    const query = area.trim();
-    if (query.length < 2) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const centroid = await resolveCityCentroid(query);
-      const map = mapRef.current;
-      const lib = libRef.current;
-      if (cancelled || !centroid || !map || !lib) return;
-      const point = { lat: centroid.lat, lng: centroid.lng };
-      if (prefersReducedMotion()) {
-        map.setCenter(point);
-      } else {
-        map.panTo(point);
-      }
-      map.setZoom(CITY_ZOOM);
-      markerRef.current?.setMap(null);
-      markerRef.current = new lib.Marker({ map, position: point, title: centroid.city });
-    }, RESOLVE_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [area, status]);
+    if (status !== 'ready' || !center) return;
+    const map = mapRef.current;
+    const lib = libRef.current;
+    if (!map || !lib) return;
+    if (prefersReducedMotion()) {
+      map.setCenter(center);
+    } else {
+      map.panTo(center);
+    }
+    map.setZoom(CITY_ZOOM);
+    markerRef.current?.setMap(null);
+    markerRef.current = new lib.Marker({ map, position: center });
+  }, [center, status]);
 
   if (!apiKey) {
     return <VillageIllustration />;

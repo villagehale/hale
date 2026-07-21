@@ -1,21 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  type CityCentroidClient,
-  geocodeCanadianCity,
-  parseCityCentroid,
-} from './geocode.js';
+import { type CityDetailsClient, parseCityDetails, resolveCityPlace } from './geocode.js';
 
 /**
- * The onboarding location map needs the SEARCHED city's centroid to recentre a
- * decorative, city-level map. It reuses the same Places provider as the switcher
- * typeahead, but on a `locality` search, so `places.location` is the CITY CENTRE —
- * coarse by construction, never an address (rule #1). We assert: a locality with a
- * centroid maps to {city, province, lat, lng}; a locality WITHOUT a centroid is
- * null (we won't recentre on a guess); an empty query never calls the provider; and
- * any transport error degrades to null (best-effort — the map just doesn't move).
+ * A selected city prediction is resolved to its centroid via Place Details (New),
+ * threaded on the SAME session token as the autocomplete calls (one billed session).
+ * We assert the details response maps to {city, province, centroid} (province from
+ * administrative_area_level_1, coordinates = the locality centre, rule #1); a details
+ * payload with no centroid is null (we won't recentre on a guess); an empty place id
+ * never calls the provider; and a transport error degrades to null.
  */
 
-const TORONTO = {
+const TORONTO_DETAILS = {
   displayName: { text: 'Toronto' },
   addressComponents: [
     { longText: 'Ontario', shortText: 'ON', types: ['administrative_area_level_1', 'political'] },
@@ -24,9 +19,9 @@ const TORONTO = {
   location: { latitude: 43.6532, longitude: -79.3832 },
 };
 
-describe('parseCityCentroid — {city, province, centroid} from a Places locality response', () => {
+describe('parseCityDetails — {city, province, centroid} from a Place Details response', () => {
   it('maps displayName → city, admin_area_level_1 → province, location → centroid', () => {
-    expect(parseCityCentroid({ places: [TORONTO] })).toEqual({
+    expect(parseCityDetails(TORONTO_DETAILS)).toEqual({
       city: 'Toronto',
       province: 'ON',
       lat: 43.6532,
@@ -34,54 +29,52 @@ describe('parseCityCentroid — {city, province, centroid} from a Places localit
     });
   });
 
-  it('is null when the locality has no centroid (nothing coarse to centre on)', () => {
+  it('is null when the place has no centroid (nothing coarse to centre on)', () => {
     expect(
-      parseCityCentroid({ places: [{ displayName: { text: 'Toronto' }, addressComponents: [] }] }),
+      parseCityDetails({ displayName: { text: 'Toronto' }, addressComponents: [] }),
     ).toBeNull();
   });
 
   it('yields province null when no admin-area component is present', () => {
     expect(
-      parseCityCentroid({
-        places: [{ displayName: { text: 'Iqaluit' }, location: { latitude: 63.7, longitude: -68.5 } }],
+      parseCityDetails({
+        displayName: { text: 'Iqaluit' },
+        location: { latitude: 63.7, longitude: -68.5 },
       }),
     ).toEqual({ city: 'Iqaluit', province: null, lat: 63.7, lng: -68.5 });
   });
 
-  it('is null for a malformed / empty response (no place, no name)', () => {
-    expect(parseCityCentroid(null)).toBeNull();
-    expect(parseCityCentroid({})).toBeNull();
-    expect(parseCityCentroid({ places: [] })).toBeNull();
-    expect(parseCityCentroid({ places: [{ location: { latitude: 1, longitude: 2 } }] })).toBeNull();
+  it('is null for a malformed / empty response (no name, no centroid)', () => {
+    expect(parseCityDetails(null)).toBeNull();
+    expect(parseCityDetails({})).toBeNull();
+    expect(parseCityDetails({ location: { latitude: 1, longitude: 2 } })).toBeNull();
   });
 });
 
-describe('geocodeCanadianCity — resolve one coarse city centroid, best-effort', () => {
-  it('returns the parsed centroid from the injected client', async () => {
-    const client: CityCentroidClient = {
-      searchCityCentroid: vi.fn(async () => ({ places: [TORONTO] })),
-    };
-    expect(await geocodeCanadianCity('toron', client)).toEqual({
+describe('resolveCityPlace — resolve a selected place id, best-effort, token threaded', () => {
+  it('returns the centroid and threads the session token to the provider', async () => {
+    const client: CityDetailsClient = { details: vi.fn(async () => TORONTO_DETAILS) };
+    expect(await resolveCityPlace('ChIJ-toronto', 'sess-123', client)).toEqual({
       city: 'Toronto',
       province: 'ON',
       lat: 43.6532,
       lng: -79.3832,
     });
-    expect(client.searchCityCentroid).toHaveBeenCalledWith('toron');
+    expect(client.details).toHaveBeenCalledWith('ChIJ-toronto', 'sess-123');
   });
 
-  it('never calls the provider for an empty/whitespace query', async () => {
-    const client: CityCentroidClient = { searchCityCentroid: vi.fn(async () => ({ places: [TORONTO] })) };
-    expect(await geocodeCanadianCity('   ', client)).toBeNull();
-    expect(client.searchCityCentroid).not.toHaveBeenCalled();
+  it('never calls the provider for an empty place id', async () => {
+    const client: CityDetailsClient = { details: vi.fn(async () => TORONTO_DETAILS) };
+    expect(await resolveCityPlace('  ', 'sess', client)).toBeNull();
+    expect(client.details).not.toHaveBeenCalled();
   });
 
-  it('degrades to null on a transport error (never throws to the client)', async () => {
-    const client: CityCentroidClient = {
-      searchCityCentroid: vi.fn(async () => {
-        throw new Error('places quota exhausted');
+  it('degrades to null on a transport error (never throws to the caller)', async () => {
+    const client: CityDetailsClient = {
+      details: vi.fn(async () => {
+        throw new Error('place details 500');
       }),
     };
-    expect(await geocodeCanadianCity('toronto', client)).toBeNull();
+    expect(await resolveCityPlace('ChIJ-toronto', 'sess', client)).toBeNull();
   });
 });

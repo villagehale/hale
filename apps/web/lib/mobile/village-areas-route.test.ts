@@ -17,6 +17,7 @@ const listAreasMock = vi.fn();
 const addAreaMock = vi.fn();
 const setActiveMock = vi.fn();
 const searchMock = vi.fn();
+const rateLimitMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
@@ -31,7 +32,10 @@ vi.mock('~/lib/village/areas', async (importActual) => ({
   setActiveArea: (...a: unknown[]) => setActiveMock(...a),
 }));
 vi.mock('~/lib/village/geocode', () => ({
-  searchCanadianCities: (...a: unknown[]) => searchMock(...a),
+  autocompleteCanadianCities: (...a: unknown[]) => searchMock(...a),
+}));
+vi.mock('~/lib/rate-limit/apply', () => ({
+  enforceRateLimit: (...a: unknown[]) => rateLimitMock(...a),
 }));
 
 const FAMILY_ID = 'fam-1';
@@ -181,7 +185,15 @@ describe('GET /api/mobile/village/areas/search', () => {
   beforeEach(() => {
     vi.resetModules();
     authMock.mockReset().mockResolvedValue({ user: { id: 'ext-1' } });
-    searchMock.mockReset().mockResolvedValue([{ city: 'Toronto', province: 'ON' }]);
+    // Autocomplete predictions carry a placeId + description; the route strips them to
+    // the coarse {city, province} contract (rule #1: no coordinates ever).
+    searchMock
+      .mockReset()
+      .mockResolvedValue([
+        { placeId: 'p1', city: 'Toronto', province: 'ON', description: 'Toronto, ON, Canada' },
+      ]);
+    // Allowed by default; a specific test flips it to a 429.
+    rateLimitMock.mockReset().mockResolvedValue(null);
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -192,11 +204,24 @@ describe('GET /api/mobile/village/areas/search', () => {
     expect(searchMock).not.toHaveBeenCalled();
   });
 
-  it('returns up to 6 coarse city candidates for the query', async () => {
-    const res = await callSearch('http://localhost/api/mobile/village/areas/search?q=toron');
+  it('returns coarse {city, province} predictions, threading the session token', async () => {
+    const res = await callSearch(
+      'http://localhost/api/mobile/village/areas/search?q=toron&session=sess-9',
+    );
     expect(res.status).toBe(200);
+    // The placeId/description are stripped — the mobile contract stays coarse.
     expect(await res.json()).toEqual({ cities: [{ city: 'Toronto', province: 'ON' }] });
-    expect(searchMock).toHaveBeenCalledWith('toron');
+    expect(searchMock).toHaveBeenCalledWith('toron', 'sess-9');
+    expect(rateLimitMock).toHaveBeenCalledWith('city-search', 'ext-1');
+  });
+
+  it('caps the paid provider: over the limit → 429, and never reaches Places', async () => {
+    rateLimitMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'rate_limited' }), { status: 429 }),
+    );
+    const res = await callSearch('http://localhost/api/mobile/village/areas/search?q=toron');
+    expect(res.status).toBe(429);
+    expect(searchMock).not.toHaveBeenCalled();
   });
 
   it('passes an empty query through (the lib returns [])', async () => {
@@ -204,6 +229,6 @@ describe('GET /api/mobile/village/areas/search', () => {
     const res = await callSearch('http://localhost/api/mobile/village/areas/search');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cities: [] });
-    expect(searchMock).toHaveBeenCalledWith('');
+    expect(searchMock).toHaveBeenCalledWith('', undefined);
   });
 });

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Ban, Check, MapPin, Plus, ShieldCheck, Sun, X } from 'lucide-react';
 import { type ChildGender, CHILD_GENDERS, type OnboardingIntent } from '@hale/types';
+import { CityAutocompleteInput } from '~/components/hale/city-autocomplete-input';
 import { GettingReadyChecklist } from '~/components/hale/getting-ready-checklist';
 import { IntentChips } from '~/components/hale/intent-chips';
 import { LogoMark } from '~/components/hale/logo-mark';
@@ -16,6 +17,7 @@ import { PrivacyNote } from '~/components/hale/privacy-note';
 import { VillageIllustration } from '~/components/hale/village-illustration';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { LocationInput } from '~/lib/family/location-input';
+import type { CityCentroid } from '~/lib/village/geocode';
 import { validateChild } from '~/lib/onboarding/children';
 import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
 import { describeCompleteOnboardingError } from '~/lib/onboarding/complete-onboarding-copy';
@@ -121,6 +123,9 @@ export function OnboardingWizard({
 
   const [children, setChildren] = useState<SetupChild[]>([emptyChild()]);
   const [area, setArea] = useState('');
+  // The picked city's centroid — drives the step-4 map. Coarse city centre only, never
+  // persisted (rule #1); the map reads it, completeOnboarding stores only {city}.
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [intents, setIntents] = useState<OnboardingIntent[]>([]);
 
   // Step 7's two views: the private-detail form, then the animated getting-ready
@@ -296,10 +301,12 @@ export function OnboardingWizard({
         <StepLocation
           headingRef={headingRef}
           area={area}
+          center={mapCenter}
           onArea={(value) => {
             setArea(value);
             persistDraft({ city: value });
           }}
+          onSelectCity={(centroid) => setMapCenter({ lat: centroid.lat, lng: centroid.lng })}
           onNext={() => {
             persistDraft({});
             go(5);
@@ -552,12 +559,16 @@ function StepChildren({
 function StepLocation({
   headingRef,
   area,
+  center,
   onArea,
+  onSelectCity,
   onNext,
 }: {
   headingRef: HeadingRef;
   area: string;
+  center: { lat: number; lng: number } | null;
   onArea: (value: string) => void;
+  onSelectCity: (centroid: CityCentroid) => void;
   onNext: () => void;
 }) {
   return (
@@ -566,21 +577,20 @@ function StepLocation({
 
       <div className="card space-y-4">
         <div className="relative overflow-hidden rounded-[var(--r-sm)] bg-tile" style={{ height: 230 }}>
-          <OnboardingLocationMap apiKey={MAPS_API_KEY} area={area} />
+          <OnboardingLocationMap apiKey={MAPS_API_KEY} center={center} />
         </div>
         <div>
           <label htmlFor="ob-area" className="eyebrow">
             Search city or area
           </label>
-          <input
-            id="ob-area"
-            type="text"
-            className="field mt-2"
-            value={area}
-            onChange={(e) => onArea(e.currentTarget.value)}
-            placeholder="Toronto, or a postal prefix like M5V"
-            autoComplete="off"
-          />
+          <div className="mt-2">
+            <CityAutocompleteInput
+              inputId="ob-area"
+              value={area}
+              onValueChange={onArea}
+              onSelect={onSelectCity}
+            />
+          </div>
           <p className="meta mt-2">
             <MapPin size={13} strokeWidth={2} aria-hidden="true" className="inline -translate-y-px" />{' '}
             We never store your exact address.

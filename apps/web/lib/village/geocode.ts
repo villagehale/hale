@@ -223,164 +223,181 @@ async function fetchOnceRetryingTransient(
   return doFetch();
 }
 
-// ── Forward city search (the region switcher's typeahead) ─────────────────────
+// ── City autocomplete + centroid (switcher typeahead + onboarding map) ────────
 //
-// Reuses the SAME Places Text Search (New) provider + auth as venue geocoding — no
-// new provider (the region-switcher search must not add an integration). The one
-// difference is the request: it asks for up to CITY_SEARCH_MAX locality results
-// (not one venue) and a mask carrying the address components, so each candidate
-// resolves to a coarse {city, province} — never coordinates (rule #1). Restricted
-// to Canada (regionCode 'CA'), the only region Hale is compliance-cleared for.
+// Google Places Autocomplete (New) gives Google-Maps-style fuzzy typeahead —
+// partial input, typo tolerance, live locality suggestions — restricted to Canadian
+// cities (includedPrimaryTypes ["(cities)"], includedRegionCodes ["ca"]). Predictions
+// carry NO coordinates; the SELECTED prediction is resolved to its city centroid via
+// Place Details. A per-search sessionToken threads the autocomplete calls + the one
+// details call into a single BILLED session (autocomplete session pricing).
+//
+// Privacy (rule #1): only the coarse city text the parent types leaves the client,
+// and the only coordinate ever produced is the locality CENTROID (city centre, never
+// an address) — used client-side to centre a city-level map and never persisted;
+// completeOnboarding / the switcher store only {city, province}.
 
-/** A coarse city candidate for the region switcher — no coordinates (rule #1). */
+const PLACES_AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
+const PLACES_DETAILS_URL = 'https://places.googleapis.com/v1/places';
+
+/** A coarse Canadian city — the identity a saved area and a search result share
+ * (rule #1: no coordinates). */
 export interface CityCandidate {
   city: string;
   province: string | null;
 }
 
-const CITY_SEARCH_MAX = 6;
-
-/** Only the fields the switcher needs: the locality name + its address components
- * (to read the province from administrative_area_level_1). No location field is
- * requested — the search never returns or stores coordinates (rule #1). */
-const CITY_FIELD_MASK = 'places.displayName,places.addressComponents';
-
-/** The single HTTP edge for city search, injected so tests exercise the
- * parse/guard logic with a fake instead of a real Google call. */
-export interface CitySearchClient {
-  searchCities(query: string): Promise<unknown>;
+/** An autocomplete prediction: a coarse {city, province} plus the Place id needed to
+ * resolve its centroid on selection, and a ready-to-render description. Extends
+ * CityCandidate so existing {city, province} consumers stay source-compatible. */
+export interface CityPrediction extends CityCandidate {
+  placeId: string;
+  /** Google's structured display text, e.g. "Toronto, ON, Canada". */
+  description: string;
 }
 
-interface PlacesCityResponse {
-  places?: Array<{
-    displayName?: { text?: string };
-    addressComponents?: Array<{ shortText?: string; longText?: string; types?: string[] }>;
+/** A coarse Canadian city plus its centroid (the locality's centre, never an
+ * address — rule #1). Resolved from a selected prediction via Place Details. */
+export interface CityCentroid extends CityCandidate {
+  lat: number;
+  lng: number;
+}
+
+const CITY_SUGGESTION_MAX = 6;
+
+/** Fields each prediction needs — the place id (to resolve the centroid on select)
+ * plus the structured display text. No coordinate field is requested; predictions
+ * are coordinate-free (rule #1). */
+const AUTOCOMPLETE_FIELD_MASK =
+  'suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat';
+
+/** Details fields for a selected city: the centroid + the canonical name/province.
+ * The place is a single locality, so `location` is the city centre (rule #1). */
+const CITY_DETAILS_FIELD_MASK = 'location,displayName,addressComponents';
+
+/** The province short code from a prediction's secondary text ("ON, Canada" → "ON";
+ * "Canada" / absent → null). The authoritative province for a SELECTED city comes
+ * from Place Details; this is the best-effort display/dedup value. */
+function provinceFromSecondary(secondary: string | undefined): string | null {
+  const first = secondary?.split(',')[0]?.trim();
+  if (!first || first.toLowerCase() === 'canada') return null;
+  return first;
+}
+
+interface PlacesAutocompleteResponse {
+  suggestions?: Array<{
+    placePrediction?: {
+      placeId?: string;
+      text?: { text?: string };
+      structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } };
+    };
   }>;
 }
 
 /**
- * Map a Places locality response to up to CITY_SEARCH_MAX coarse {city, province}
- * candidates, province read from the administrative_area_level_1 component (null
- * when absent). Duplicates collapse; a place with no name is skipped. Coordinates
- * are never read — the switcher deals only in coarse names (rule #1).
+ * Map a Places Autocomplete (New) response to up to CITY_SUGGESTION_MAX coarse
+ * predictions. A suggestion with no place id or no main-text city is skipped;
+ * duplicate (city, province) collapse. Coordinates are never read here (rule #1).
  */
-export function parseCityCandidates(raw: unknown): CityCandidate[] {
-  const places = (raw as PlacesCityResponse)?.places ?? [];
-  const out: CityCandidate[] = [];
+export function parseCityPredictions(raw: unknown): CityPrediction[] {
+  const suggestions = (raw as PlacesAutocompleteResponse)?.suggestions ?? [];
+  const out: CityPrediction[] = [];
   const seen = new Set<string>();
-  for (const place of places) {
-    const city = place?.displayName?.text?.trim();
-    if (!city) continue;
-    const provinceComponent = place?.addressComponents?.find((component) =>
-      component.types?.includes('administrative_area_level_1'),
-    );
-    const province = provinceComponent?.shortText?.trim() || null;
+  for (const suggestion of suggestions) {
+    const prediction = suggestion?.placePrediction;
+    const placeId = prediction?.placeId?.trim();
+    const city = prediction?.structuredFormat?.mainText?.text?.trim();
+    if (!placeId || !city) continue;
+    const province = provinceFromSecondary(prediction?.structuredFormat?.secondaryText?.text);
     const key = `${city.toLowerCase()}|${(province ?? '').toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ city, province });
-    if (out.length >= CITY_SEARCH_MAX) break;
+    const description =
+      prediction?.text?.text?.trim() || (province ? `${city}, ${province}` : city);
+    out.push({ placeId, city, province, description });
+    if (out.length >= CITY_SUGGESTION_MAX) break;
   }
   return out;
 }
 
+/** The single HTTP edge for autocomplete, injected so tests exercise the parse/guard
+ * logic with a fake instead of a real Google call. */
+export interface CityAutocompleteClient {
+  autocomplete(input: string, sessionToken?: string): Promise<unknown>;
+}
+
 /**
- * Forward-search Canadian cities for the region switcher, or [] on any
- * miss/failure. Never throws — like venue geocoding this is best-effort, and a
- * transport/quota error must degrade to an empty list, not a 500 (rule #8
- * boundary). `client` defaults to the live Places client; tests inject a fake.
+ * Fuzzy-search Canadian cities for a typeahead, or [] on any miss/failure. Never
+ * throws — best-effort, so a transport/quota error degrades to an empty list rather
+ * than a 500 (rule #8 boundary). Pass the search session's token so autocomplete +
+ * the eventual details call bill as one session.
  */
-export async function searchCanadianCities(
-  query: string,
-  client: CitySearchClient = defaultCitySearchClient(),
-): Promise<CityCandidate[]> {
-  const trimmed = query.trim();
+export async function autocompleteCanadianCities(
+  input: string,
+  sessionToken?: string,
+  client: CityAutocompleteClient = defaultCityAutocompleteClient(),
+): Promise<CityPrediction[]> {
+  const trimmed = input.trim();
   if (!trimmed) return [];
   try {
-    return parseCityCandidates(await client.searchCities(trimmed));
+    return parseCityPredictions(await client.autocomplete(trimmed, sessionToken));
   } catch {
     return [];
   }
 }
 
 /**
- * Live Places city-search client. Same endpoint + key resolution as
- * defaultGeocodeClient (reuse, not a new provider); the request asks for locality
- * results in Canada with the city field mask. With no key, returns null-shaped (no
- * places) so searchCanadianCities yields [].
+ * Live Places Autocomplete (New) client. Same key resolution as the other Places
+ * clients (reuse, not a new provider). With no key, returns null-shaped (no
+ * suggestions) so autocompleteCanadianCities yields [].
  */
-export function defaultCitySearchClient(): CitySearchClient {
+export function defaultCityAutocompleteClient(): CityAutocompleteClient {
   const apiKey =
     process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
   return {
-    async searchCities(query: string): Promise<unknown> {
-      if (!apiKey) return { places: [] };
-      const res = await fetch(PLACES_TEXT_SEARCH_URL, {
+    async autocomplete(input: string, sessionToken?: string): Promise<unknown> {
+      if (!apiKey) return { suggestions: [] };
+      const body: Record<string, unknown> = {
+        input,
+        // The (cities) collection keeps predictions to localities; region 'ca' is the
+        // only compliance-cleared onboarding market (rule #1).
+        includedPrimaryTypes: ['(cities)'],
+        includedRegionCodes: ['ca'],
+        languageCode: 'en',
+      };
+      if (sessionToken) body.sessionToken = sessionToken;
+      const res = await fetch(PLACES_AUTOCOMPLETE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': CITY_FIELD_MASK,
+          'X-Goog-FieldMask': AUTOCOMPLETE_FIELD_MASK,
         },
-        body: JSON.stringify({
-          textQuery: query,
-          maxResultCount: CITY_SEARCH_MAX,
-          // Restrict to Canada (rule #1 compliance baseline); includedType keeps the
-          // results to cities/towns rather than venues.
-          regionCode: 'CA',
-          includedType: 'locality',
-        }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(PLACES_ATTEMPT_TIMEOUT_MS),
       });
       if (!res.ok) {
-        throw new Error(`places city search failed: ${res.status}`);
+        throw new Error(`places autocomplete failed: ${res.status}`);
       }
       return res.json();
     },
   };
 }
 
-// ── City centroid (the onboarding location map) ───────────────────────────────
-//
-// Distinct from the switcher typeahead above, which deliberately omits location so
-// coordinates can never leak into a persisted area (rule #1). The onboarding map is
-// a decorative, city-level backdrop that recentres on the SEARCHED city, so it needs
-// that city's centre. Requesting `places.location` on an includedType:'locality'
-// search returns the CITY CENTROID — coarse by construction, never an address point.
-// The centroid is used only client-side to centre the map and is never persisted;
-// completeOnboarding still stores only the coarse {city, province} (rule #1).
-
-/** A coarse Canadian city plus its centroid (the locality's centre, never an
- * address — rule #1). */
-export interface CityCentroid {
-  city: string;
-  province: string | null;
-  lat: number;
-  lng: number;
-}
-
-/** The city field mask PLUS the locality centroid. Safe because the search is
- * restricted to localities (regionCode CA, includedType 'locality'), so the
- * returned location is the city centre — not a precise place (rule #1). */
-const CITY_CENTROID_FIELD_MASK =
-  'places.displayName,places.addressComponents,places.location';
-
-interface PlacesCityCentroidResponse {
-  places?: Array<{
-    displayName?: { text?: string };
-    addressComponents?: Array<{ shortText?: string; longText?: string; types?: string[] }>;
-    location?: { latitude?: number; longitude?: number };
-  }>;
+interface PlaceDetailsResponse {
+  displayName?: { text?: string };
+  addressComponents?: Array<{ shortText?: string; longText?: string; types?: string[] }>;
+  location?: { latitude?: number; longitude?: number };
 }
 
 /**
- * Map a Places locality response to the first {city, province, centroid}, or null
- * when there is no named locality carrying a centroid — the map won't recentre on a
- * guess. Province is read from administrative_area_level_1 (null when absent). The
- * coordinates are the locality centre only (rule #1).
+ * Map a Place Details (New) response to {city, province, centroid}, or null when it
+ * carries no centroid (nothing coarse to centre on). Province is read from
+ * administrative_area_level_1 (null when absent). The coordinates are the locality
+ * centre only (rule #1).
  */
-export function parseCityCentroid(raw: unknown): CityCentroid | null {
-  const place = (raw as PlacesCityCentroidResponse)?.places?.[0];
+export function parseCityDetails(raw: unknown): CityCentroid | null {
+  const place = raw as PlaceDetailsResponse;
   const city = place?.displayName?.text?.trim();
   const lat = place?.location?.latitude;
   const lng = place?.location?.longitude;
@@ -391,60 +408,54 @@ export function parseCityCentroid(raw: unknown): CityCentroid | null {
   return { city, province: provinceComponent?.shortText?.trim() || null, lat, lng };
 }
 
-/** The single HTTP edge for city-centroid lookup, injected so tests exercise the
- * parse/guard logic with a fake instead of a real Google call. */
-export interface CityCentroidClient {
-  searchCityCentroid(query: string): Promise<unknown>;
+/** The single HTTP edge for Place Details, injected so tests exercise the parse/guard
+ * logic with a fake instead of a real Google call. */
+export interface CityDetailsClient {
+  details(placeId: string, sessionToken?: string): Promise<unknown>;
 }
 
 /**
- * Resolve one coarse Canadian city to its centroid, or null on any miss/failure.
- * Never throws — the onboarding map is a best-effort backdrop, and a transport /
- * quota error must just leave the map where it is (rule #8 boundary). `client`
- * defaults to the live Places client; tests inject a fake.
+ * Resolve a selected place id to its coarse {city, province, centroid}, or null on
+ * any miss/failure. Never throws — a transport/quota error just leaves the map where
+ * it is (rule #8 boundary). Pass the search session's token to close the billed
+ * session opened by autocompleteCanadianCities.
  */
-export async function geocodeCanadianCity(
-  query: string,
-  client: CityCentroidClient = defaultCityCentroidClient(),
+export async function resolveCityPlace(
+  placeId: string,
+  sessionToken?: string,
+  client: CityDetailsClient = defaultCityDetailsClient(),
 ): Promise<CityCentroid | null> {
-  const trimmed = query.trim();
+  const trimmed = placeId.trim();
   if (!trimmed) return null;
   try {
-    return parseCityCentroid(await client.searchCityCentroid(trimmed));
+    return parseCityDetails(await client.details(trimmed, sessionToken));
   } catch {
     return null;
   }
 }
 
 /**
- * Live Places city-centroid client. Same endpoint + key resolution as the other
- * Places clients (reuse, not a new provider); the request asks for one locality
- * result in Canada with the centroid field mask. With no key, returns null-shaped
- * (no places) so geocodeCanadianCity yields null.
+ * Live Place Details (New) client. Same key resolution as the other Places clients.
+ * With no key, returns an empty object so resolveCityPlace yields null.
  */
-export function defaultCityCentroidClient(): CityCentroidClient {
+export function defaultCityDetailsClient(): CityDetailsClient {
   const apiKey =
     process.env.GOOGLE_MAPS_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
   return {
-    async searchCityCentroid(query: string): Promise<unknown> {
-      if (!apiKey) return { places: [] };
-      const res = await fetch(PLACES_TEXT_SEARCH_URL, {
-        method: 'POST',
+    async details(placeId: string, sessionToken?: string): Promise<unknown> {
+      if (!apiKey) return {};
+      const url = new URL(`${PLACES_DETAILS_URL}/${encodeURIComponent(placeId)}`);
+      if (sessionToken) url.searchParams.set('sessionToken', sessionToken);
+      const res = await fetch(url, {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': CITY_CENTROID_FIELD_MASK,
+          'X-Goog-FieldMask': CITY_DETAILS_FIELD_MASK,
         },
-        body: JSON.stringify({
-          textQuery: query,
-          maxResultCount: 1,
-          regionCode: 'CA',
-          includedType: 'locality',
-        }),
         signal: AbortSignal.timeout(PLACES_ATTEMPT_TIMEOUT_MS),
       });
       if (!res.ok) {
-        throw new Error(`places city centroid failed: ${res.status}`);
+        throw new Error(`place details failed: ${res.status}`);
       }
       return res.json();
     },
