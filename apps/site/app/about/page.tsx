@@ -20,7 +20,7 @@ const SOCIALS = [
 
 export default function AboutPage() {
   return (
-    <main id="top" className="relative">
+    <main id="main" tabIndex={-1} className="relative">
       <SiteHeader />
 
       <section className="shell pt-10 sm:pt-16 pb-16 lg:pb-24">

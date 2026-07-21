@@ -77,10 +77,14 @@ export function Testimonials() {
           • Testimonials
         </p>
 
-        <blockquote
-          key={index}
-          className="mt-8 text-[28px] font-normal leading-[1.25] tracking-tight text-[#17294A] md:text-[54px]"
-        >
+        <div aria-live="polite" aria-atomic="true" className="flex flex-col items-center">
+          <p className="sr-only">
+            Testimonial {index + 1} of {count}
+          </p>
+          <blockquote
+            key={index}
+            className="mt-8 text-[28px] font-normal leading-[1.25] tracking-tight text-[#17294A] md:text-[54px]"
+          >
           {words.map((word, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a static word split that never reorders — the index disambiguates repeated words.
             <Fragment key={`${word}-${i}`}>
@@ -122,6 +126,7 @@ export function Testimonials() {
           </span>
           <p className="mt-3 text-base font-semibold text-[#17294A]">{current.name}</p>
           <p className="text-sm text-[#5C6B87]">{current.role}</p>
+        </div>
         </div>
 
         <div className="mt-12 flex items-center justify-center gap-4">

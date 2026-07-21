@@ -13,7 +13,9 @@ import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
 import { siteJsonLd } from '~/lib/site/structured-data';
 
-const SIGN_UP = `${APP_URL}/sign-up`;
+// The landing funnel starts the public onboarding wizard (steps 1–6 build the
+// village before the account ask at step 6), not the account form directly.
+const SIGN_UP = `${APP_URL}/onboarding`;
 const PREVIEW = `${APP_URL}/preview`;
 
 // Real parent quotes are not collected yet; the testimonials band stays gated
@@ -36,7 +38,7 @@ const HERO_SUBTEXT =
 
 export default function LandingPage() {
   return (
-    <main id="top" className="relative bg-[#FDFCFA] text-[#17294A]">
+    <main id="main" tabIndex={-1} className="relative bg-[#FDFCFA] text-[#17294A]">
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
@@ -108,6 +110,7 @@ export default function LandingPage() {
               <ArrowRight
                 size={17}
                 strokeWidth={2}
+                aria-hidden="true"
                 className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
               />
             </LandingCta>
@@ -117,7 +120,7 @@ export default function LandingPage() {
               className="inline-flex items-center gap-1.5 rounded-full border border-[#F7F4EC]/40 px-[26px] py-3 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-[#F7F4EC] hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC] motion-reduce:transition-none"
             >
               See what Hale finds for you
-              <ArrowRight size={17} strokeWidth={2} />
+              <ArrowRight size={17} strokeWidth={2} aria-hidden="true" />
             </LandingCta>
           </div>
 
@@ -147,7 +150,7 @@ export default function LandingPage() {
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#B26B1F]">
-                <Sparkles size={13} strokeWidth={2} />
+                <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
                 Ask Hale
               </span>
               <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
@@ -180,7 +183,7 @@ export default function LandingPage() {
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div className="lg:order-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[#17294A]/25 bg-white px-3.5 py-1.5 text-xs font-semibold text-[#17294A]">
-                <Sparkles size={13} strokeWidth={2} />
+                <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
                 Your Village
               </span>
               <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
@@ -207,7 +210,7 @@ export default function LandingPage() {
       </FadeInUp>
 
       {/* ── 3b · Quiet static trust line (replaces the removed marquee) ────── */}
-      <p className="mx-auto max-w-4xl px-6 text-center text-sm text-[#8B95A9]">
+      <p className="mx-auto max-w-4xl px-6 text-center text-sm text-[#5C6B87]">
         {TRUST_POINTS.join(' · ')}
       </p>
 
@@ -261,7 +264,7 @@ export default function LandingPage() {
                 className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#F7F4EC]/30 px-7 py-3.5 text-base font-semibold text-[#F7F4EC] transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F7F4EC]"
               >
                 Questions? Contact us
-                <ArrowUpRight size={18} strokeWidth={2} />
+                <ArrowUpRight size={18} strokeWidth={2} aria-hidden="true" />
               </a>
             </div>
           </div>
@@ -367,8 +370,8 @@ function VillageMockup() {
         />
         <div className="hale-float mt-[-2rem] rounded-2xl border border-[#E4E7EE] bg-white p-4 shadow-[0_20px_50px_-20px_rgba(20,26,77,0.25)] sm:absolute sm:bottom-8 sm:right-8 sm:mt-0 sm:w-64">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#8B95A9]">Near you</p>
-            <p className="text-[10px] text-[#8B95A9]">Illustrative</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#5C6B87]">Near you</p>
+            <p className="text-[10px] text-[#5C6B87]">Illustrative</p>
           </div>
           <ul className="mt-3 flex flex-col gap-2.5">
             {[

@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 
 export default function ActivitiesHub() {
   return (
-    <main id="top" className="relative">
+    <main id="main" tabIndex={-1} className="relative">
       {publishedCities.length > 0 ? (
         <script
           type="application/ld+json"

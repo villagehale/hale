@@ -21,6 +21,7 @@ import { APP_URL } from '~/lib/app-url';
 const LINKS = [
   { label: 'About', href: '/about' },
   { label: 'Features', href: '/#features' },
+  { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/#faq' },
   { label: 'Contact', href: '/#contact' },
 ] as const;
@@ -68,9 +69,15 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <a
+            href={`${APP_URL}/sign-in`}
+            className="hidden rounded-sm px-2 text-sm font-medium text-[#5C6B87] transition-colors hover:text-[#17294A] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#17294A] sm:inline-flex"
+          >
+            Sign in
+          </a>
           <LandingCta
             event="landing_cta_signin"
-            href={`${APP_URL}/sign-up`}
+            href={`${APP_URL}/onboarding`}
             className="hidden rounded-full bg-[#17294A] px-5 py-2.5 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] sm:inline-flex"
           >
             Get started
@@ -90,7 +97,8 @@ export function SiteHeader() {
 
       <div
         id="mobile-nav"
-        className={`grid overflow-hidden border-[#F0F2F6] bg-[#FDFCFA]/95 backdrop-blur-md transition-all duration-300 motion-reduce:transition-none md:hidden ${
+        inert={!open ? true : undefined}
+        className={`grid overflow-hidden border-[#F0F2F6] bg-[#FDFCFA]/95 backdrop-blur-md transition-[grid-template-rows,opacity] duration-300 motion-reduce:transition-none md:hidden ${
           open ? 'grid-rows-[1fr] border-b opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
       >
@@ -108,11 +116,18 @@ export function SiteHeader() {
             ))}
             <LandingCta
               event="landing_cta_signin"
-              href={`${APP_URL}/sign-up`}
+              href={`${APP_URL}/onboarding`}
               className="mt-2 inline-flex justify-center rounded-full bg-[#17294A] px-5 py-3 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36]"
             >
               Get started
             </LandingCta>
+            <a
+              href={`${APP_URL}/sign-in`}
+              onClick={() => setOpen(false)}
+              className="mt-1 inline-flex justify-center rounded-lg px-2 py-3 text-sm font-medium text-[#5C6B87] transition-colors hover:bg-[#F0F2F6] hover:text-[#17294A]"
+            >
+              Sign in
+            </a>
           </nav>
         </div>
       </div>

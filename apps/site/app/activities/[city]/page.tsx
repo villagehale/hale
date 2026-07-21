@@ -51,7 +51,7 @@ export default async function ActivityCityRoute({ params }: PageProps) {
   const ideas = universalIdeas(city);
 
   return (
-    <main id="top" className="relative">
+    <main id="main" tabIndex={-1} className="relative">
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
