@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { type ReactElement, type ReactNode, memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, type RefreshControlProps, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DocsAddSheet } from '@/components/hale/docs-add-sheet';
 import { DocsSection } from '@/components/hale/docs-section';
@@ -31,7 +32,7 @@ import type {
   UpcomingHealthItem,
 } from '@/lib/api-types';
 import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
-import { groupLogsByDay } from '@/lib/logs-group';
+import { type LogDayGroup, groupLogsByDay } from '@/lib/logs-group';
 import { buildMeasureSeries, MEASURE_KINDS, type MeasureKind } from '@/lib/measurement-series';
 import { displayMeasurement, type UnitSystem } from '@/lib/measurement-units';
 import { SUGGESTED_DAILY_ROUTINE } from '@/lib/stub-data';
@@ -1225,7 +1226,56 @@ function RoutinesSection() {
 // empty-state branch below keeps the Load-older button reachable when a teen-heavy
 // first page is fully redacted (rule #1) — untouched by the restyle.
 
-function DiarySection({ childId }: { childId: string }) {
+/** One reverse-chron diary day: a date eyebrow over a card of tappable log rows.
+ * Memoized with a stable onEdit so paging in older logs, opening the edit sheet, or a
+ * refresh doesn't re-render every already-mounted day. */
+const DiaryDayGroup = memo(function DiaryDayGroup({
+  group,
+  onEdit,
+}: {
+  group: LogDayGroup;
+  onEdit: (log: LogView) => void;
+}) {
+  const iconColor = useMeadowColor('ink3');
+  return (
+    <View className="gap-2">
+      <AppText variant="eyebrow">{group.label}</AppText>
+      <Card className="gap-3">
+        {group.logs.map((log, i) => (
+          <Pressable
+            key={log.id}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit log: ${log.summary}`}
+            onPress={() => onEdit(log)}
+            className={`flex-row items-baseline gap-3 active:opacity-80 ${
+              i === 0 ? '' : 'border-t border-rule pt-3'
+            }`}
+          >
+            <AppText variant="body" className="flex-1">
+              {log.summary}
+            </AppText>
+            <AppText variant="mono" className="text-ink-3">
+              {whenPhrase(log.occurredAt)}
+            </AppText>
+            <Icon name="chevron-right" size={13} color={iconColor} />
+          </Pressable>
+        ))}
+      </Card>
+    </View>
+  );
+});
+
+const DiaryGroupGap = () => <View className="h-4" />;
+
+function CompanionDiary({
+  childId,
+  header,
+  refreshControl,
+}: {
+  childId: string;
+  header: ReactNode;
+  refreshControl: ReactElement<RefreshControlProps>;
+}) {
   const { status, data, error, reload } = useApi<MobileLogsResponse>(
     `/api/mobile/companion/logs?child=${childId}`,
   );
@@ -1236,18 +1286,13 @@ function DiarySection({ childId }: { childId: string }) {
   const [older, setOlder] = useState<LogView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const iconColor = useMeadowColor('ink3');
 
   useEffect(() => {
     setOlder([]);
     setCursor(data?.nextCursor ?? null);
   }, [data]);
 
-  if (status === 'loading') return <LoadingState />;
-  if (status === 'error') return <ErrorState message={error ?? ''} onRetry={reload} />;
-  if (!data) return null;
-
-  async function loadOlder() {
+  const loadOlder = useCallback(async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
@@ -1261,72 +1306,72 @@ function DiarySection({ childId }: { childId: string }) {
     } finally {
       setLoadingMore(false);
     }
-  }
+  }, [cursor, loadingMore, childId]);
 
-  const groups = groupLogsByDay([...data.logs, ...older]);
+  // Stable so the memoized day rows don't re-render when unrelated diary state changes.
+  const onEdit = useCallback((log: LogView) => setEditing(log), []);
+
+  const groups = useMemo(
+    () => (data ? groupLogsByDay([...data.logs, ...older]) : []),
+    [data, older],
+  );
 
   return (
-    <>
-      {groups.length === 0 ? (
-        // Empty state must NOT swallow the Load-older button below: a teen-heavy
-        // first page can be fully redacted while the parent's own older logs sit
-        // on page 2 — they stay reachable.
-        <AppText variant="body" className="py-6">
-          {cursor !== null
-            ? 'Nothing to show in the most recent logs.'
-            : 'Nothing logged yet — note a feed, a nap, or a milestone with quick log and it will show here.'}
-        </AppText>
-      ) : null}
-      <View className="gap-4">
-        {groups.map((group) => (
-          <View key={group.dayKey} className="gap-2">
-            <AppText variant="eyebrow">{group.label}</AppText>
-            <Card className="gap-3">
-              {group.logs.map((log, i) => (
-                <Pressable
-                  key={log.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit log: ${log.summary}`}
-                  onPress={() => setEditing(log)}
-                  className={`flex-row items-baseline gap-3 active:opacity-80 ${
-                    i === 0 ? '' : 'border-t border-rule pt-3'
-                  }`}
-                >
-                  <AppText variant="body" className="flex-1">
-                    {log.summary}
-                  </AppText>
-                  <AppText variant="mono" className="text-ink-3">
-                    {whenPhrase(log.occurredAt)}
-                  </AppText>
-                  <Icon name="chevron-right" size={13} color={iconColor} />
-                </Pressable>
-              ))}
-            </Card>
+    <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'left', 'right']}>
+      <FlatList
+        data={groups}
+        keyExtractor={(group) => group.dayKey}
+        renderItem={({ item }) => <DiaryDayGroup group={item} onEdit={onEdit} />}
+        ItemSeparatorComponent={DiaryGroupGap}
+        ListHeaderComponent={
+          <View className="gap-5" style={{ marginBottom: groups.length > 0 ? 20 : 0 }}>
+            {header}
+            {status === 'ready' && groups.length === 0 ? (
+              // Empty state must NOT swallow the Load-older footer: a teen-heavy first
+              // page can be fully redacted while the parent's own older logs sit on
+              // page 2 — they stay reachable.
+              <AppText variant="body" className="py-6">
+                {cursor !== null
+                  ? 'Nothing to show in the most recent logs.'
+                  : 'Nothing logged yet — note a feed, a nap, or a milestone with quick log and it will show here.'}
+              </AppText>
+            ) : null}
           </View>
-        ))}
-      </View>
-
-      {cursor !== null ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Load older logs"
-          onPress={loadOlder}
-          disabled={loadingMore}
-          className="min-h-11 flex-row items-center justify-center gap-2 self-center rounded-full border border-rule bg-raised px-4 py-2.5 active:opacity-80"
-        >
-          <AppText variant="meta" className="text-ink-2">
-            {loadingMore ? 'Loading…' : 'Load older'}
-          </AppText>
-        </Pressable>
-      ) : null}
-
+        }
+        ListFooterComponent={
+          status === 'loading' ? (
+            <View className="pt-6">
+              <LoadingState />
+            </View>
+          ) : status === 'error' ? (
+            <View className="pt-6">
+              <ErrorState message={error ?? ''} onRetry={reload} />
+            </View>
+          ) : cursor !== null ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Load older logs"
+              onPress={loadOlder}
+              disabled={loadingMore}
+              className="mt-5 min-h-11 flex-row items-center justify-center gap-2 self-center rounded-full border border-rule bg-raised px-4 py-2.5 active:opacity-80"
+            >
+              <AppText variant="meta" className="text-ink-2">
+                {loadingMore ? 'Loading…' : 'Load older'}
+              </AppText>
+            </Pressable>
+          ) : null
+        }
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={refreshControl}
+      />
       <LogEditSheet
         log={editing}
         visible={editing !== null}
         onClose={() => setEditing(null)}
         onChanged={reload}
       />
-    </>
+    </SafeAreaView>
   );
 }
 
@@ -1335,9 +1380,11 @@ function DiarySection({ childId }: { childId: string }) {
 function CompanionBody({
   data,
   onLogged,
+  refreshControl,
 }: {
   data: MobileCompanionResponse;
   onLogged: () => void;
+  refreshControl: ReactElement<RefreshControlProps>;
 }) {
   const [selectedId, setSelectedId] = useState(data.children[0]?.id ?? '');
   const [section, setSection] = useState<SectionKey>('overview');
@@ -1349,12 +1396,14 @@ function CompanionBody({
 
   if (!child) {
     return (
-      <Card className="mt-2 items-center gap-2 py-10">
-        <AppText variant="title">No children yet</AppText>
-        <AppText variant="meta" className="text-center">
-          Add a child in Family and their companion guide will appear here.
-        </AppText>
-      </Card>
+      <Screen scroll className="gap-5" refreshControl={refreshControl}>
+        <Card className="mt-2 items-center gap-2 py-10">
+          <AppText variant="title">No children yet</AppText>
+          <AppText variant="meta" className="text-center">
+            Add a child in Family and their companion guide will appear here.
+          </AppText>
+        </Card>
+      </Screen>
     );
   }
 
@@ -1386,7 +1435,7 @@ function CompanionBody({
     setMenuOpen(false);
   };
 
-  return (
+  const header = (
     <>
       <View className="gap-3 pt-1">
         <View className="flex-row items-center gap-3">
@@ -1423,6 +1472,19 @@ function CompanionBody({
       </View>
 
       <SubTabBar value={section} onSelect={setSection} />
+    </>
+  );
+
+  // The Diary is the app's one unbounded, paginated list, so it owns a virtualized
+  // FlatList scroll (header rides along as its ListHeaderComponent); every other
+  // section is bounded and rides the shared Screen ScrollView.
+  if (section === 'diary') {
+    return <CompanionDiary childId={child.id} header={header} refreshControl={refreshControl} />;
+  }
+
+  return (
+    <Screen scroll className="gap-5" refreshControl={refreshControl}>
+      {header}
 
       {section === 'overview' ? (
         <OverviewSection
@@ -1447,14 +1509,13 @@ function CompanionBody({
         />
       ) : null}
       {section === 'routines' ? <RoutinesSection /> : null}
-      {section === 'diary' ? <DiarySection childId={child.id} /> : null}
       {section === 'docs' ? (
         <DocsSection
           childId={child.id}
           kids={data.children.map((c) => ({ id: c.id, name: c.name }))}
         />
       ) : null}
-    </>
+    </Screen>
   );
 }
 
@@ -1464,11 +1525,16 @@ export default function CompanionScreen() {
     { refetchOnFocus: true },
   );
 
+  const refreshControl = useTintedRefresh(refreshing, refresh);
+
+  if (status === 'ready' && data) {
+    return <CompanionBody data={data} onLogged={refresh} refreshControl={refreshControl} />;
+  }
+
   return (
-    <Screen scroll className="gap-5" refreshControl={useTintedRefresh(refreshing, refresh)}>
+    <Screen scroll className="gap-5" refreshControl={refreshControl}>
       {status === 'loading' ? <LoadingState /> : null}
       {status === 'error' ? <ErrorState message={error ?? ''} onRetry={reload} /> : null}
-      {status === 'ready' && data ? <CompanionBody data={data} onLogged={refresh} /> : null}
     </Screen>
   );
 }
