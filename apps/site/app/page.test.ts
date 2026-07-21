@@ -8,8 +8,9 @@ import LandingPage from './page.js';
  * The warm-white homepage redesign (July 2026): a calm hero, the Ask Hale and
  * Village feature sections, a real-answer FAQ, and a navy CTA band. Every claim
  * is honest — approval-first, Canadian residency, 0–18 scope — and "Get started"
- * always points at the app sign-up funnel. Testimonials stay gated off (no real
- * quotes yet). Rendered to static markup to assert the wiring.
+ * always starts the public onboarding wizard (aha-first: steps 1–6 run pre-auth;
+ * the account ask is step 6). Testimonials stay gated off (no real quotes yet).
+ * Rendered to static markup to assert the wiring.
  */
 const html = renderToStaticMarkup(createElement(LandingPage));
 
@@ -70,20 +71,20 @@ describe('LandingPage (FAQ — real, verified answers)', () => {
   });
 });
 
-describe('LandingPage (funnel — Get started → app sign-up)', () => {
-  it('points every "Get started" CTA at the app sign-up', () => {
+describe('LandingPage (funnel — Get started → onboarding wizard)', () => {
+  it('points every "Get started" CTA at the public onboarding wizard', () => {
     const hrefs = [...html.matchAll(/href="([^"]*)"[^>]*>\s*Get started/g)].map((m) => m[1]);
     expect(hrefs.length).toBeGreaterThan(0);
     for (const href of hrefs) {
-      expect(href).toBe(`${APP_URL}/sign-up`);
+      expect(href).toBe(`${APP_URL}/onboarding`);
     }
   });
 
-  it('wires the restored hero geo CTAs: Join free → sign-up, preview → /preview', () => {
+  it('wires the restored hero geo CTAs: Join free → onboarding, preview → /preview', () => {
     expect(html).toContain('Join free — Toronto and the GTA');
     expect(html).toContain('See what Hale finds for you');
     const joinHref = html.match(/href="([^"]*)"[^>]*>\s*Join free/)?.[1];
-    expect(joinHref).toBe(`${APP_URL}/sign-up`);
+    expect(joinHref).toBe(`${APP_URL}/onboarding`);
     const previewHref = html.match(/href="([^"]*)"[^>]*>\s*See what Hale finds for you/)?.[1];
     expect(previewHref).toBe(`${APP_URL}/preview`);
   });
