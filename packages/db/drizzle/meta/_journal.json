@@ -372,6 +372,13 @@
       "when": 1781462880000,
       "tag": "0053_chat_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781463060000,
+      "tag": "0056_loop_prefs",
+      "breakpoints": true
     }
   ]
 }
