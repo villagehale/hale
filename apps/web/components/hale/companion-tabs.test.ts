@@ -29,7 +29,7 @@ const {
  */
 
 function child(id: string, name: string, dateOfBirth: string): ChildCompanionView {
-  return { id, dateOfBirth, ...companionForChild({ dateOfBirth, name }) };
+  return { id, dateOfBirth, lastName: null, avatarUrl: null, ...companionForChild({ dateOfBirth, name }) };
 }
 
 // Distinct DOBs → distinct stages/ages, so panels are distinguishable in the HTML.
@@ -162,7 +162,13 @@ describe('CompanionTabs done + recently-passed affordances', () => {
     dateOfBirth: string,
     done?: { milestones: Set<string>; health: Set<string> },
   ): ChildCompanionView {
-    return { id: 'c-1', dateOfBirth, ...companionForChild({ dateOfBirth, name: 'Ari' }, NOW, done) };
+    return {
+      id: 'c-1',
+      dateOfBirth,
+      lastName: null,
+      avatarUrl: null,
+      ...companionForChild({ dateOfBirth, name: 'Ari' }, NOW, done),
+    };
   }
 
   it('renders a recently-passed health item with a done affordance instead of hiding it', () => {
