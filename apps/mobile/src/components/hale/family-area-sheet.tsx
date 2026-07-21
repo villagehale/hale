@@ -125,7 +125,7 @@ function AreaRow({
                 onRemove();
               }}
               hitSlop={6}
-              className="rounded-full bg-chip-red px-2.5 py-1 active:opacity-70"
+              className="min-h-11 items-center justify-center rounded-full bg-chip-red px-2.5 active:opacity-70"
             >
               <AppText variant="meta" className="text-berry">
                 Remove
@@ -136,7 +136,7 @@ function AreaRow({
               accessibilityLabel="Keep this area"
               onPress={() => setConfirming(false)}
               hitSlop={6}
-              className="px-2 py-1 active:opacity-70"
+              className="min-h-11 items-center justify-center px-2 active:opacity-70"
             >
               <AppText variant="meta" className="text-ink-3">
                 Keep
@@ -150,7 +150,7 @@ function AreaRow({
             disabled={disabled}
             onPress={() => setConfirming(true)}
             hitSlop={8}
-            className="p-1 active:opacity-60"
+            className="min-h-11 min-w-11 items-center justify-center active:opacity-60"
           >
             <Icon name="x" size={15} color={removeColor} />
           </Pressable>
