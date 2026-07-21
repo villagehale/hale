@@ -229,22 +229,24 @@ export default async function AnswerRoute({ params }: PageProps) {
       </section>
 
       {related.length > 0 && (
-        <section className="shell pb-20 lg:pb-28">
-          <span className="eyebrow">Related answers</span>
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-            {related.map((rel) => (
-              <a key={rel.slug} href={`/answers/${rel.slug}`} className="card flex flex-col gap-3">
-                <span className="eyebrow">{STAGE_LABEL[rel.stage]}</span>
-                <span
-                  className="font-display"
-                  style={{ fontWeight: 600, fontSize: '1.2rem', lineHeight: 1.25 }}
-                >
-                  {rel.question}
-                </span>
-              </a>
-            ))}
-          </div>
-        </section>
+        <div className="band-cream">
+          <section className="shell py-16 lg:py-24">
+            <span className="eyebrow">Related answers</span>
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+              {related.map((rel) => (
+                <a key={rel.slug} href={`/answers/${rel.slug}`} className="card lift flex flex-col gap-3">
+                  <span className="eyebrow">{STAGE_LABEL[rel.stage]}</span>
+                  <span
+                    className="font-display"
+                    style={{ fontWeight: 600, fontSize: '1.2rem', lineHeight: 1.25 }}
+                  >
+                    {rel.question}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </section>
+        </div>
       )}
 
       <SiteFooter />
