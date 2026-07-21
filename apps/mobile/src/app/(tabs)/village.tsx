@@ -28,7 +28,7 @@ import {
   applyFilters,
   cadenceChip,
 } from '@/lib/village-filter';
-import { headerLabel, subtitleCopy } from '@/lib/village-region';
+import { headerLabel, subtitleCopy, villageFeedKey } from '@/lib/village-region';
 import {
   type DiscoverResult,
   SEASON_KEYS,
@@ -824,7 +824,10 @@ export default function VillageScreen() {
         <ErrorState message={error ?? ''} onRetry={reload} />
       ) : null}
       {!pendingSeason && status === 'ready' && data ? (
+        // Key on the active area so switching cities REMOUNTS the body — resetting its
+        // cadence/season filters (a filter set for one city must not persist to another).
         <VillageBody
+          key={villageFeedKey(area)}
           data={data}
           searchSeason={activeSeason}
           showFilter={activeSeason === null}
