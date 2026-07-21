@@ -55,29 +55,33 @@ export async function readHomeStats(
 ): Promise<HomeStats> {
   const since = new Date(now.getTime() - WEEK_WINDOW_MS);
 
-  const children = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId));
-
-  const weekRows = await database
-    .select({
-      childId: schema.familyMemoryEpisodes.childId,
-      authoredBy: schema.familyMemoryEpisodes.authoredBy,
-    })
-    .from(schema.familyMemoryEpisodes)
-    .where(
-      and(
-        eq(schema.familyMemoryEpisodes.familyId, familyId),
-        isNull(schema.familyMemoryEpisodes.deletedAt),
-        gte(schema.familyMemoryEpisodes.occurredAt, since),
-      ),
-    )
-    .orderBy(desc(schema.familyMemoryEpisodes.occurredAt));
+  // The four reads are independent (only logsThisWeek joins children+weekRows in
+  // memory afterwards), so issue them together — ~2 latencies instead of ~5.
+  const [children, weekRows, companion, savedIds] = await Promise.all([
+    database
+      .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId)),
+    database
+      .select({
+        childId: schema.familyMemoryEpisodes.childId,
+        authoredBy: schema.familyMemoryEpisodes.authoredBy,
+      })
+      .from(schema.familyMemoryEpisodes)
+      .where(
+        and(
+          eq(schema.familyMemoryEpisodes.familyId, familyId),
+          isNull(schema.familyMemoryEpisodes.deletedAt),
+          gte(schema.familyMemoryEpisodes.occurredAt, since),
+        ),
+      )
+      .orderBy(desc(schema.familyMemoryEpisodes.occurredAt)),
+    companionForFamily(familyId, database, now),
+    listFamilySavedCandidateIds(database, familyId),
+  ]);
 
   const logsThisWeek = dropTeenEpisodes(weekRows, children, requestingUserId, now).length;
 
-  const companion = await companionForFamily(familyId, database, now);
   const upcomingHealth = companion.reduce(
     (sum, child) =>
       sum +
@@ -87,7 +91,7 @@ export async function readHomeStats(
     0,
   );
 
-  const savedPlaces = (await listFamilySavedCandidateIds(database, familyId)).size;
+  const savedPlaces = savedIds.size;
 
   return { logsThisWeek, upcomingHealth, savedPlaces };
 }

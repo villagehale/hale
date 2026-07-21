@@ -46,17 +46,20 @@ export async function companionForFamily(
   database: Database,
   now: Date = new Date(),
 ): Promise<ChildCompanionView[]> {
-  const rows = await database
-    .select({
-      id: schema.children.id,
-      name: schema.children.name,
-      dateOfBirth: schema.children.dateOfBirth,
-    })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, familyId))
-    .orderBy(schema.children.dateOfBirth);
-
-  const doneByChild = await loadDoneByChild(database, familyId);
+  // The children roster and the done-episodes map are independent family-scoped
+  // reads — fetch them together rather than serializing the two latencies.
+  const [rows, doneByChild] = await Promise.all([
+    database
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, familyId))
+      .orderBy(schema.children.dateOfBirth),
+    loadDoneByChild(database, familyId),
+  ]);
 
   return rows.map((row) => ({
     id: row.id,
