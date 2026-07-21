@@ -43,6 +43,7 @@ function liveEvent(over: Partial<LiveEvent> = {}): LiveEvent {
     deletedAt: null,
     title: 'Checkup',
     childId: 'c1',
+    sensitive: false,
     ...over,
   };
 }
@@ -209,6 +210,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
           deletedAt: null,
           title: 'Checkup',
           childId: 'c1',
+          sensitive: false,
         },
       ],
       [
@@ -219,6 +221,7 @@ describe('runReminderCron — batching + compose-not-send', () => {
           deletedAt: null,
           title: 'Swim',
           childId: 'c2',
+          sensitive: false,
         },
       ],
     ]);
@@ -278,6 +281,22 @@ describe('runReminderCron — batching + compose-not-send', () => {
       { event: 'reminder_sent', distinctId: 'p1', props: { offset: '-PT1H', events: 1 } },
     ]);
     expect(result).toMatchObject({ due: 1, fired: 1 });
+  });
+
+  it('carries family_events.sensitive into the reminder payload (the template then genericizes)', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, enqueued } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      // A non-teen child's HEALTH placement — sensitive on family_events.
+      loadEvent: async () => liveEvent({ title: 'Therapy session', childId: 'c1', sensitive: true }),
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+    const payload = enqueued[0]?.payload as Record<string, unknown>;
+    const event = (payload.events as { sensitive?: boolean; title: string }[])[0];
+    // The flag rides through so eventDescriptor renders "an appointment" for everyone,
+    // not just teens (covered by the reminder template tests).
+    expect(event?.sensitive).toBe(true);
+    expect(event?.title).toBe('Therapy session');
   });
 
   it('compose-not-send: LOOP_SEND_ENABLED off → nothing enqueued, nothing marked sent', async () => {

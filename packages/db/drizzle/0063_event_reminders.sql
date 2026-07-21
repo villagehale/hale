@@ -17,9 +17,15 @@
 -- Column is `fire_offset` (not `offset`, a SQL reserved word); it stores the ISO-8601
 -- duration ('-P1D' | '-PT1H') so the offset set stays extensible.
 --
+-- family_events.sensitive: privacy-sensitive (health) flag, set by the calendar_add
+-- executor from the week_plan item's privacySensitive. The reminder templates read it
+-- to genericize the copy for EVERYONE ("a checkup", never the detail), independent of
+-- the teen age gate. Additive; existing placement rows default false (pre-signal).
+--
 -- Slot note: file 0063 (next after 0062_calendar_placements); the journal is 1:1 with
 -- the files, which is what the consistency gate checks.
 CREATE TYPE "public"."reminder_status" AS ENUM('scheduled', 'sent', 'suppressed', 'cancelled', 'stale');--> statement-breakpoint
+ALTER TABLE "family_events" ADD COLUMN "sensitive" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 CREATE TABLE "event_reminders" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"family_id" uuid NOT NULL,

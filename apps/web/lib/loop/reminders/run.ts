@@ -63,6 +63,8 @@ export interface ReminderParent {
 export interface LiveEvent extends EventSnapshot {
   title: string;
   childId: string | null;
+  /** family_events.sensitive — the reminder templates genericize a sensitive event. */
+  sensitive: boolean;
 }
 
 /** A materialized reminder that is due (status 'scheduled', fire_at ≤ now), joined to
@@ -154,6 +156,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           deletedAt: schema.familyEvents.deletedAt,
           title: schema.familyEvents.title,
           childId: schema.familyEvents.childId,
+          sensitive: schema.familyEvents.sensitive,
         })
         .from(schema.familyEvents)
         .where(
@@ -239,6 +242,7 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
           deletedAt: schema.familyEvents.deletedAt,
           title: schema.familyEvents.title,
           childId: schema.familyEvents.childId,
+          sensitive: schema.familyEvents.sensitive,
         })
         .from(schema.familyEvents)
         .where(eq(schema.familyEvents.id, eventRef))
@@ -299,6 +303,7 @@ interface FiringRow {
   title: string;
   startsAt: Date;
   childId: string | null;
+  sensitive: boolean;
 }
 
 interface ParentFiring {
@@ -399,6 +404,7 @@ export async function runReminderCron(
             title: event.title,
             startsAt: event.startsAt,
             childId: event.childId,
+            sensitive: event.sensitive,
           });
         }
         break;
@@ -436,6 +442,7 @@ export async function runReminderCron(
             title: r.title,
             startsAt: r.startsAt.toISOString(),
             childId: r.childId,
+            sensitive: r.sensitive,
           });
         }
       }

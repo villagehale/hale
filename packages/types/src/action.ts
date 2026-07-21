@@ -38,6 +38,10 @@ export interface CalendarPlacementPayload {
   childId?: string | null;
   /** Provenance of the placed item (the week_plan item's sourceRef, table+id). */
   sourceRef?: { table: string; id: string } | null;
+  /** Whether the placed item is privacy-sensitive (health) — carried from the week_plan
+   * item so the executor stamps family_events.sensitive, which the reminder templates
+   * read to genericize the copy ("a checkup", never the detail) for everyone (VIL-223). */
+  privacySensitive?: boolean;
   /** For calendar_move / calendar_cancel: the family_events row to mutate/remove. */
   reversalHandle?: string;
   /** Action-level dedup hash the reviewer's idempotency check reads. */

@@ -378,6 +378,7 @@ async function calendarPlacement(
     endsAt,
     location,
     childId: typeof payload.childId === 'string' ? payload.childId : null,
+    sensitive: payload.privacySensitive === true,
   });
   return {
     ok: true,

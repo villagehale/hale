@@ -356,6 +356,8 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
       endsAt: new Date('2026-07-10T14:45:00Z'),
       location: 'Rec Centre',
       childId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      // No privacySensitive on the payload → not sensitive (VIL-223).
+      sensitive: false,
     });
     // The orchestrator persists only `detail` into executor_result, so the handle
     // MUST be nested in detail — a top-level reversalHandle would be dropped and
@@ -367,6 +369,16 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
     });
     expect(result.reversalHandle).toBeUndefined();
     expect(result.reversible).toBe(true);
+  });
+
+  it('calendar_add stamps sensitive=true when the payload is privacy-sensitive (VIL-223)', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-1' }));
+    await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', { ...ADD_PAYLOAD, privacySensitive: true }) },
+      deps,
+    );
+    expect(deps.addToCalendar).toHaveBeenCalledWith(expect.objectContaining({ sensitive: true }));
   });
 
   it('calendar_add throws (no false ok) when the title is missing', async () => {
