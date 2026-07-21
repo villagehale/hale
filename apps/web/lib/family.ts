@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { type Database, schema } from '@hale/db';
 import type { UnitSystem } from '@hale/types';
 import { eq } from 'drizzle-orm';
@@ -28,24 +29,37 @@ import { db as defaultDb } from '~/lib/db';
  * membership. Multi-family switching isn't wired yet; the families↔active-family
  * selection lands when that UI exists.
  */
-export async function currentFamilyId(database: Database = defaultDb()): Promise<string | null> {
-  if (!authConfigured()) {
-    // Fail closed in production (rule #1): never surface a family to an
-    // unauthenticated request if auth is missing in prod. The first-family
-    // dev-preview fallback is for local screenshots/demo only.
-    if (process.env.NODE_ENV === 'production') {
+// Wrapped in React cache() so every family-scoped loader on a page (/home fires
+// ~6-8, /companion ~10, each independently resolving the family) shares ONE
+// auth() + users⋈family_members round-trip per request instead of re-running it
+// each time — mirroring loadFamilyBasics. The db is normalized through the public
+// wrapper below so all default-db callers hit the same cache entry (db() is a
+// process singleton). Outside a request (tests) cache() is a pass-through, so
+// behaviour is unchanged.
+const resolveCurrentFamilyId = cache(
+  async (database: Database): Promise<string | null> => {
+    if (!authConfigured()) {
+      // Fail closed in production (rule #1): never surface a family to an
+      // unauthenticated request if auth is missing in prod. The first-family
+      // dev-preview fallback is for local screenshots/demo only.
+      if (process.env.NODE_ENV === 'production') {
+        return null;
+      }
+      return firstFamilyForDevPreview(database);
+    }
+
+    const session = await auth();
+    const externalAuthId = session?.user?.id;
+    if (!externalAuthId) {
       return null;
     }
-    return firstFamilyForDevPreview(database);
-  }
 
-  const session = await auth();
-  const externalAuthId = session?.user?.id;
-  if (!externalAuthId) {
-    return null;
-  }
+    return resolveFamilyForUser(externalAuthId, database);
+  },
+);
 
-  return resolveFamilyForUser(externalAuthId, database);
+export function currentFamilyId(database: Database = defaultDb()): Promise<string | null> {
+  return resolveCurrentFamilyId(database);
 }
 
 /**
@@ -57,12 +71,19 @@ export async function currentFamilyId(database: Database = defaultDb()): Promise
  * signed-in user has no mirrored `users` row yet. A null requester simply gets no
  * exemption — the redaction fails closed (rule #1), never open.
  */
-export async function currentUserId(database: Database = defaultDb()): Promise<string | null> {
+// Same per-request dedup as currentFamilyId: the teen-redaction exemption re-asks
+// "which parent?" on several loaders per render, so cache() collapses the repeated
+// auth() + users lookup to one. Normalized through the public wrapper below.
+const resolveCurrentUserId = cache(async (database: Database): Promise<string | null> => {
   if (!authConfigured()) return null;
   const session = await auth();
   const externalAuthId = session?.user?.id;
   if (!externalAuthId) return null;
   return resolveUserIdForUser(externalAuthId, database);
+});
+
+export function currentUserId(database: Database = defaultDb()): Promise<string | null> {
+  return resolveCurrentUserId(database);
 }
 
 /**

@@ -1,10 +1,14 @@
 import type { Database } from '@hale/db';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // family.ts statically imports the Auth.js session reader for currentFamilyId().
 // ensureUserRow (the unit under test here) never touches it, but the static import
 // would otherwise drag the next-auth runtime into this Node test. Stub the edge.
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
+
+// currentFamilyId/currentUserId gate on authConfigured(); force it on so those two
+// exercise the authed resolution path (the dev-preview branch is separate).
+vi.mock('~/lib/auth-config', () => ({ authConfigured: () => true }));
 
 // eq(col, val) → a marker so resolveFamilyForUser's fake can read the external
 // auth id it filtered on. ensureUserRow's fake ignores the where, so this is safe.
@@ -13,7 +17,18 @@ vi.mock('drizzle-orm', async () => {
   return { ...actual, eq: (_col: unknown, val: unknown) => ({ __eq: true, val }) };
 });
 
-import { EmailInUseError, ensureUserRow, resolveFamilyForUser } from './family.js';
+import { auth } from '~/auth';
+import {
+  currentFamilyId,
+  currentUserId,
+  EmailInUseError,
+  ensureUserRow,
+  resolveFamilyForUser,
+} from './family.js';
+
+// auth (next-auth) is heavily overloaded, so vi.mocked() resolves to an unhelpful
+// overload; treat it as a plain mock for setting the session return.
+const mockedAuth = auth as unknown as ReturnType<typeof vi.fn>;
 
 const GOOGLE_ID = 'google_user_abc';
 const CREDENTIALS_ID = 'credentials:cred-1';
@@ -161,5 +176,59 @@ describe('resolveFamilyForUser — provider-agnostic identity', () => {
     const { db } = familyLookupDb({});
 
     expect(await resolveFamilyForUser(CREDENTIALS_ID, db)).toBeNull();
+  });
+});
+
+/** external_auth_id → users.id fake (select→from→where→limit), the shape
+ * resolveUserIdForUser reads through currentUserId. */
+function userLookupDb(mapping: Record<string, string>) {
+  const select = vi.fn(() => ({
+    from: () => ({
+      where: (marker: { val: string }) => ({
+        limit: async () => {
+          const id = mapping[marker.val];
+          return id ? [{ id }] : [];
+        },
+      }),
+    }),
+  }));
+  return { db: { select } as unknown as Database };
+}
+
+/**
+ * currentFamilyId/currentUserId are wrapped in React cache() for per-request dedup.
+ * That dedup is an RSC-runtime guarantee (cache() is a pass-through outside a
+ * request, so it can't be observed in a Node test); what IS asserted here is that
+ * the wrap preserves behaviour — the resolvers still key off the session identity
+ * and fail closed to null when there is no session (rule #1).
+ */
+describe('currentFamilyId / currentUserId — cache-wrapped request resolvers', () => {
+  const FAMILY_ID = '66666666-6666-4666-8666-666666666666';
+  const USER_ID = '77777777-7777-4777-8777-777777777777';
+
+  afterEach(() => mockedAuth.mockReset());
+
+  it('resolves the signed-in family from the session identity', async () => {
+    mockedAuth.mockResolvedValue({ user: { id: GOOGLE_ID } });
+    const { db } = familyLookupDb({ [GOOGLE_ID]: FAMILY_ID });
+    expect(await currentFamilyId(db)).toBe(FAMILY_ID);
+  });
+
+  it('fails closed to null when there is no signed-in session', async () => {
+    mockedAuth.mockResolvedValue(null);
+    const { db } = familyLookupDb({ [GOOGLE_ID]: FAMILY_ID });
+    expect(await currentFamilyId(db)).toBeNull();
+  });
+
+  it('resolves the signed-in user id from the session identity', async () => {
+    mockedAuth.mockResolvedValue({ user: { id: GOOGLE_ID } });
+    const { db } = userLookupDb({ [GOOGLE_ID]: USER_ID });
+    expect(await currentUserId(db)).toBe(USER_ID);
+  });
+
+  it('fails closed to null user id when there is no session', async () => {
+    mockedAuth.mockResolvedValue(null);
+    const { db } = userLookupDb({ [GOOGLE_ID]: USER_ID });
+    expect(await currentUserId(db)).toBeNull();
   });
 });
