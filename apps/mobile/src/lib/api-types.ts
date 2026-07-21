@@ -436,6 +436,17 @@ export interface MobileVillageAreaSearchResponse {
   cities: CityCandidate[];
 }
 
+/** POST /api/mobile/village/ai-search — the natural-language search outcome (mirrors
+ * web). `interpretation` is Hale's paraphrase (the "Hale understood: …" echo);
+ * `results` are teen-redacted candidate views; `discoveryKicked` means a thin result
+ * set kicked a background discovery run. */
+export interface MobileVillageAiSearchResponse {
+  interpretation: string;
+  results: VillageCandidateView[];
+  degraded: boolean;
+  discoveryKicked: boolean;
+}
+
 /** The More → Saved screen: the family's privately-saved candidates (all saved:true). */
 export interface MobileSavedResponse {
   candidates: VillageCandidateView[];

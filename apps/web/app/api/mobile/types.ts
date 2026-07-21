@@ -112,6 +112,17 @@ export interface MobileVillageAreaSearchResponse {
   cities: CityCandidate[];
 }
 
+/** POST /api/mobile/village/ai-search — the natural-language search outcome (wraps the
+ * shared searchVillageAction). `interpretation` is Hale's paraphrase (the echo);
+ * `results` are teen-redacted candidate views; `discoveryKicked` means a thin result set
+ * kicked a background discovery run (new picks landing for the next read). */
+export interface MobileVillageAiSearchResponse {
+  interpretation: string;
+  results: VillageCandidateView[];
+  degraded: boolean;
+  discoveryKicked: boolean;
+}
+
 /** The `?category=` value the Childcare page sends to narrow the Resources rail
  * server-side. THE single canonical definition lives in board-filter.ts; this
  * re-export makes it part of the mobile request contract, which the native
