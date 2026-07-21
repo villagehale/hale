@@ -1,6 +1,7 @@
 import { CoachConversation } from '~/components/hale/coach-conversation';
 import { connectorChips } from '~/components/hale/coach-context-panel';
 import { ASK_RAIL_LEFT_KEY, ASK_RAIL_RIGHT_KEY } from '~/lib/ask-rail';
+import { draftFromQueryParam } from '~/lib/coach/ask-seed';
 import { authConfigured } from '~/lib/auth-config';
 import { loadConversations } from '~/lib/coach/history';
 import { loadThreadShellForRequest } from '~/lib/coach/thread';
@@ -25,7 +26,7 @@ const NO_FLASH_RAILS = `(function(){try{var d=document.documentElement.dataset;d
 export default async function CoachPage({
   searchParams,
 }: {
-  searchParams: Promise<{ child?: string }>;
+  searchParams: Promise<{ child?: string; q?: string | string[] }>;
 }) {
   const canAsk = authConfigured();
   const [askSeed, connections, name, conversations] = await Promise.all([
@@ -35,7 +36,10 @@ export default async function CoachPage({
     loadConversations(),
   ]);
   const connectors = connectorChips(connections);
-  const { child } = await searchParams;
+  const { child, q } = await searchParams;
+  // The Home ask bar (AskBar) GET-submits the typed question as `q`; seed it into the
+  // composer so it isn't silently dropped on navigation (WEB-02).
+  const initialDraft = draftFromQueryParam(q);
   // Contextual entry (e.g. from a child's companion page): pre-scope to that child,
   // but only if it's actually one of this family's children (no arbitrary id).
   const initialFocusedChildId = askSeed.children.some((c) => c.id === child)
@@ -52,6 +56,7 @@ export default async function CoachPage({
         connectors={connectors}
         initialConversations={conversations}
         initialFocusedChildId={initialFocusedChildId}
+        initialDraft={initialDraft}
         viewerName={name}
       />
     </>

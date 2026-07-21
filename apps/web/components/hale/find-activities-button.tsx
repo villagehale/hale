@@ -84,7 +84,7 @@ export function FindActivitiesButton({
       </button>
       {message ? (
         <p
-          className={message.tone === 'error' ? 'meta italic text-apricot-deep' : 'meta text-slate-green'}
+          className={message.tone === 'error' ? 'meta italic text-berry' : 'meta text-slate-green'}
           role={message.tone === 'error' ? 'alert' : undefined}
         >
           {message.text}

@@ -126,12 +126,17 @@ export async function dispatchLoopMessage(
   ports: DispatchPorts,
 ): Promise<DispatchResult> {
   const now = ports.now();
-  const prefs = await ports.loadPrefs(msg.parentUserId);
-  const parent = await ports.loadParent(msg.parentUserId);
+  // Three independent per-parent reads — fetch in parallel (one round-trip instead of
+  // three serial ones on the every-minute drain hot path).
+  const [prefs, parent, hasLivePush] = await Promise.all([
+    ports.loadPrefs(msg.parentUserId),
+    ports.loadParent(msg.parentUserId),
+    ports.hasLivePushToken(msg.parentUserId),
+  ]);
 
   // Legs: the exchange channel + push when a live token exists (mirror, not fallback).
   const legs: ChannelKind[] = [prefs.loopChannel];
-  if (await ports.hasLivePushToken(msg.parentUserId)) {
+  if (hasLivePush) {
     legs.push('push');
   }
 

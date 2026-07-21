@@ -40,6 +40,9 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CityCandidate[]>([]);
+  // A relocate/activate failure used to leave the popover open with zero feedback
+  // (WEB-04); surfaced here as a berry alert row instead.
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -94,27 +97,42 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
     setOpen(false);
     setQuery('');
     setResults([]);
+    setError(null);
   };
 
   const relocate = (candidate: CityCandidate) => {
+    setError(null);
     startTransition(async () => {
-      const res = await relocateToCityAction({
-        city: candidate.city,
-        province: candidate.province,
-      });
-      if (res.status === 'ok') {
-        close();
-        router.refresh();
+      try {
+        const res = await relocateToCityAction({
+          city: candidate.city,
+          province: candidate.province,
+        });
+        if (res.status === 'ok') {
+          close();
+          router.refresh();
+        } else {
+          setError('Couldn’t switch to that area — try again.');
+        }
+      } catch {
+        setError('Couldn’t switch to that area — check your connection and try again.');
       }
     });
   };
 
   const activate = (areaId: string) => {
+    setError(null);
     startTransition(async () => {
-      const res = await activateAreaAction(areaId);
-      if (res.status === 'ok') {
-        close();
-        router.refresh();
+      try {
+        const res = await activateAreaAction(areaId);
+        if (res.status === 'ok') {
+          close();
+          router.refresh();
+        } else {
+          setError('Couldn’t switch to that area — try again.');
+        }
+      } catch {
+        setError('Couldn’t switch to that area — check your connection and try again.');
       }
     });
   };
@@ -172,6 +190,12 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
               </button>
             ) : null}
           </div>
+
+          {error ? (
+            <p className="loc-noresult meta text-berry" role="alert">
+              {error}
+            </p>
+          ) : null}
 
           {searching ? (
             results.length > 0 ? (

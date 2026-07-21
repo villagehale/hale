@@ -59,13 +59,13 @@ export function ChildSwitcherView({
   const active = kids.find((c) => c.id === activeId) ?? kids[0];
   if (!active) {
     return (
-      <Link href={addHref} className="account-chip" title="Add a child">
+      <Link href={addHref} className="account-chip" title="add a child">
         <span className="child-avatar" aria-hidden="true">
           <Icon as={Plus} size={16} />
         </span>
         <span className="account-chip-identity">
-          <span className="account-chip-name">Add a child</span>
-          <span className="account-chip-family meta">Start their profile</span>
+          <span className="account-chip-name">add a child</span>
+          <span className="account-chip-family meta">start their profile</span>
         </span>
       </Link>
     );
@@ -74,12 +74,17 @@ export function ChildSwitcherView({
   return (
     <div className="account-menu" ref={rootRef}>
       {open ? (
-        <div className="account-pop" role="menu" id={menuId} aria-label="switch child">
+        <div
+          className="account-pop"
+          id={menuId}
+          // biome-ignore lint/a11y/useSemanticElements: a non-modal child-switcher popover (selectable children + an add-child link, not pure menuitems) — matches the bell/location dialog pattern, Escape + outside-click close, not the native <dialog> (WEB-11)
+          role="dialog"
+          aria-label="switch child"
+        >
           {kids.map((child) => (
             <button
               key={child.id}
               type="button"
-              role="menuitem"
               aria-current={child.id === active.id ? 'true' : undefined}
               className="account-pop-item"
               onClick={() => onSelect(child.id)}
@@ -94,11 +99,11 @@ export function ChildSwitcherView({
             </button>
           ))}
           <div className="account-pop-divider" />
-          <Link href={addHref} role="menuitem" className="account-pop-item account-pop-add">
+          <Link href={addHref} className="account-pop-item account-pop-add">
             <span className="child-avatar" aria-hidden="true">
               <Icon as={Plus} size={16} />
             </span>
-            <span>Add child</span>
+            <span>add child</span>
           </Link>
         </div>
       ) : null}
@@ -107,7 +112,7 @@ export function ChildSwitcherView({
         type="button"
         ref={triggerRef}
         className="account-chip"
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label="Switch child"

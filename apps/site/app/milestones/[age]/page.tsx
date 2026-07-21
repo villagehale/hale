@@ -116,14 +116,14 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
             <h1 className="mt-3">What most children are doing around {checkpoint.ageLabel}</h1>
           </div>
 
-          <p className="meta mt-6 rise rise-2" style={{ lineHeight: 1.6 }}>
+          <p className="mt-6 rise rise-2 text-base text-slate-green md:text-lg" style={{ lineHeight: 1.6 }}>
             These are milestones most children — 75 percent or more — can do by this age, from the
             CDC’s 2022 “Learn the Signs. Act Early.” checklists, with Canadian guidance from the
             Canadian Paediatric Society. Think of it as a picture of typical, not a finish line.
             Last reviewed {checkpoint.updated}.
           </p>
 
-          <p className="meta mt-4 rise rise-2" style={{ lineHeight: 1.6 }}>
+          <p className="mt-4 rise rise-2 text-base text-slate-green md:text-lg" style={{ lineHeight: 1.6 }}>
             This isn’t a quiz, and there’s nothing to score. You can’t fail it and neither can your
             child. It’s a way to enjoy noticing what’s emerging — and to know what tends to come
             next.
@@ -339,7 +339,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
               Start free with your family
             </a>
           </div>
-          <p className="meta mt-4">
+          <p className="meta mt-4 text-slate-green">
             No credit card. Your family’s data stays in Canada and is never sold.
           </p>
         </div>

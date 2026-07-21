@@ -11,7 +11,7 @@ import { APP_URL } from '~/lib/app-url';
 const PRODUCT = [
   { label: 'Features', href: '/#features' },
   { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/#faq' },
+  { label: 'FAQ', href: '/faq' },
   { label: 'Activities', href: '/activities' },
   { label: 'Milestones', href: '/milestones' },
 ] as const;
@@ -40,7 +40,7 @@ export function SiteFooter() {
       <footer className="mx-auto max-w-[1100px] rounded-[28px] border border-[#F0F2F6] bg-white px-6 py-10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.03)] md:px-12 md:py-12 lg:px-[72px] lg:py-[56px]">
         <div className="mb-12 flex flex-col justify-between gap-12 lg:flex-row lg:gap-8">
           <div className="lg:w-[40%]">
-            <a href="/#about" className="flex items-center gap-2.5" aria-label="Hale, home">
+            <a href="/" className="flex items-center gap-2.5" aria-label="Hale, home">
               <LogoMark size={30} />
               <span className="font-serif text-[19px] font-semibold tracking-tight text-[#17294A]">
                 Hale

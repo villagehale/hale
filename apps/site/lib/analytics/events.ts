@@ -16,6 +16,7 @@ export type AnalyticsEvent =
   // sign-in intent to the page that earned it (which content actually converts).
   | 'faq_cta_signin'
   | 'activities_cta_signin'
+  | 'answers_cta_signin'
   // Plus/Family waitlist form submitted (coarse event only — never the email).
   | 'waitlist_signup';
 

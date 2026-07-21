@@ -177,8 +177,14 @@ export function QuickLog({
       return;
     }
     setStatus({ kind: 'saving' });
-    const result = await logQuickEpisode(input);
-    applyResult(result);
+    try {
+      const result = await logQuickEpisode(input);
+      applyResult(result);
+    } catch {
+      // A network-failed action would otherwise freeze the form on "saving…" forever
+      // with the button disabled (WEB-04) — surface it so the parent can retry.
+      setStatus({ kind: 'error', message: 'couldn’t save — check your connection and try again' });
+    }
   }
 
   function applyResult(result: LogResult) {
@@ -449,7 +455,7 @@ export function QuickLog({
           </div>
 
           {status.kind === 'error' ? (
-            <p className="meta italic text-apricot-deep" role="alert">
+            <p className="meta italic text-berry" role="alert">
               {status.message}
             </p>
           ) : null}

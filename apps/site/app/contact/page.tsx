@@ -67,7 +67,7 @@ export default function ContactPage() {
               </div>
             ))}
           </div>
-          <p className="meta mt-6">
+          <p className="meta mt-6 text-slate-green">
             Hale is built by Village Hale Technologies Inc., Georgetown, Ontario, Canada.
           </p>
         </section>

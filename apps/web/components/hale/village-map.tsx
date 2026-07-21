@@ -60,6 +60,27 @@ const HALE_MAP_STYLE = [
   },
 ];
 
+// Dark counterpart — otherwise the map stays a bright cream block glaring against the
+// dark canvas (WEB-14). Same features, dark-navy ground / dark sage parks / dark water
+// / muted labels, so it reads as part of the dark theme.
+const HALE_MAP_STYLE_DARK = [
+  { elementType: 'geometry', stylers: [{ color: '#1a2230' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8b97a8' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#12161f' }] },
+  { featureType: 'poi', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#232c3b' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a2230' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2c3446' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1a2230' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1e2a24' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b7d64' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#16222a' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#5b7d7d' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#3a4453' }] },
+];
+
 export function VillageMap({
   candidates,
   coarseCenter,
@@ -101,13 +122,14 @@ export function VillageMap({
         return;
       }
 
+      const isDark = document.documentElement.classList.contains('dark');
       const map = new lib.Map(container, {
         center: model.center ?? model.markers[0]?.position ?? { lat: 0, lng: 0 },
         zoom: FALLBACK_ZOOM,
         disableDefaultUI: true,
         zoomControl: true,
         clickableIcons: false,
-        styles: HALE_MAP_STYLE,
+        styles: isDark ? HALE_MAP_STYLE_DARK : HALE_MAP_STYLE,
       }) as unknown as MapInstance;
       mapRef.current = map;
 
@@ -164,11 +186,8 @@ export function VillageMap({
          * multiply overlay tints the raster map toward the Hale linen palette
          * without needing a cloud Map ID. pointer-events-none keeps pins clickable. */}
         {status === 'ready' ? (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
-            style={{ background: '#f1eadb', mixBlendMode: 'multiply', opacity: 0.5 }}
-          />
+          <div aria-hidden="true" className="village-map-tint pointer-events-none absolute inset-0" />
+
         ) : null}
         {status !== 'ready' ? (
           <div className="absolute inset-0 flex items-center justify-center panel-oat text-center px-6">

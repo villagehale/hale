@@ -95,11 +95,13 @@ interface QuickActionRow {
   href: NextRoute;
 }
 
+// Deep-link the tiles to the companion tab they promise (companion honours `?tab=`
+// via tabFromParam) instead of dumping the parent on Overview / the wrong tab (WEB-08).
 const QUICK_ACTIONS: QuickActionRow[] = [
   { icon: Sparkles, label: 'add a memory', href: '/companion' },
-  { icon: Ruler, label: 'track growth', href: '/companion' },
-  { icon: Route, label: 'view routines', href: '/village' },
-  { icon: Files, label: 'all documents', href: '/companion' },
+  { icon: Ruler, label: 'track growth', href: '/companion?tab=growth' as NextRoute },
+  { icon: Route, label: 'view routines', href: '/companion?tab=routines' as NextRoute },
+  { icon: Files, label: 'all documents', href: '/companion?tab=documents' as NextRoute },
 ];
 
 export default async function HomePage() {
@@ -128,8 +130,11 @@ export default async function HomePage() {
             family.
           </p>
           <div className="pt-2">
-            <Link href="/onboarding" className="btn-primary">
-              set up your family →
+            {/* The add-child editor lives at /family/members. /onboarding for an
+                already-provisioned family renders the terminal "already set up" card —
+                a dead loop back to this same empty Home (WEB-08). */}
+            <Link href="/family/members" className="btn-primary">
+              add your child →
             </Link>
           </div>
         </section>

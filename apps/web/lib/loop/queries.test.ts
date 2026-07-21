@@ -108,6 +108,7 @@ function fakeDb(store: {
   weekPlanRows?: Record<string, unknown>[];
   eventRows?: FamilyEventRow[];
   insertedEventId?: string;
+  insertedWeekPlanId?: string;
 }) {
   const capture: Capture = { inserts: [], conflicts: [] };
 
@@ -153,7 +154,14 @@ function fakeDb(store: {
         );
       p.onConflictDoUpdate = (cfg) => {
         capture.conflicts.push({ table, target: cfg.target, set: cfg.set });
-        return Promise.resolve(undefined);
+        const q = Promise.resolve(undefined) as Promise<undefined> & {
+          returning: () => Promise<Array<Record<string, unknown>>>;
+        };
+        q.returning = () =>
+          Promise.resolve(
+            table === schema.weekPlans ? [{ id: store.insertedWeekPlanId ?? PLAN_ID }] : [],
+          );
+        return q;
       };
       return p;
     },

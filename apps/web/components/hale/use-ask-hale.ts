@@ -241,10 +241,13 @@ export interface UseAskHale {
 export function useAskHale(
   seed: ThreadSeed,
   initialFocusedChildId: string | null = null,
+  initialDraft = '',
 ): UseAskHale {
   const [turns, setTurns] = useState<Turn[]>(() => timelineToTurns(seed.timeline));
   const [conversationId, setConversationId] = useState<string | null>(seed.conversationId);
-  const [draft, setDraft] = useState('');
+  // Seeded from the Home ask bar's `q` so a question typed there lands in the composer
+  // (ready to send) instead of being dropped on navigation (WEB-02).
+  const [draft, setDraft] = useState(initialDraft);
   const [status, setStatus] = useState<AskStatus>('idle');
   // The id of the assistant turn currently being streamed into, or null before the
   // first token (typing indicator) and after the stream ends.

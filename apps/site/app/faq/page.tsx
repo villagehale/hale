@@ -51,7 +51,7 @@ export default function FaqPage() {
           {FAQ.map((item) => (
             <div key={item.question} className="rise rise-2 border-t border-rule pt-8">
               <dt className="font-display text-xl sm:text-2xl text-spruce">{item.question}</dt>
-              <dd className="meta mt-4" style={{ lineHeight: 1.65 }}>
+              <dd className="mt-4 text-base leading-relaxed text-slate-green md:text-lg">
                 {item.answer}
               </dd>
             </div>
@@ -68,7 +68,7 @@ export default function FaqPage() {
         <div className="mt-8 flex justify-center">
           <LandingCta
             event="faq_cta_signin"
-            href={`${APP_URL}/sign-in`}
+            href={`${APP_URL}/onboarding`}
             className="btn-on-navy"
           >
             Join the village

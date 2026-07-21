@@ -19,7 +19,8 @@ import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
  * Upserts the family's plan for one week, idempotent per (family_id, week_start):
  * a recompose lands on the same row (the unique index is the conflict target)
  * rather than creating a duplicate. `status` defaults to 'composed' — B2 advances
- * the lifecycle from there.
+ * the lifecycle from there. Returns the row id (insert OR conflict-update) so the
+ * caller's audit write doesn't need a redundant read-back round-trip (rule #6).
  */
 export async function upsertWeekPlan(
   db: Database,
@@ -30,10 +31,10 @@ export async function upsertWeekPlan(
     items: schema.WeekPlanItem[];
     status?: string;
   },
-): Promise<void> {
+): Promise<{ id: string }> {
   const status = args.status ?? 'composed';
   const composedAt = new Date();
-  await db
+  const upserted = await db
     .insert(schema.weekPlans)
     .values({
       familyId: args.familyId,
@@ -46,7 +47,13 @@ export async function upsertWeekPlan(
     .onConflictDoUpdate({
       target: [schema.weekPlans.familyId, schema.weekPlans.weekStart],
       set: { summary: args.summary, items: args.items, status, composedAt },
-    });
+    })
+    .returning({ id: schema.weekPlans.id });
+  const row = upserted[0];
+  if (!row) {
+    throw new Error('upsertWeekPlan: week_plans upsert returned no row');
+  }
+  return { id: row.id };
 }
 
 /**

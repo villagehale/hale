@@ -112,15 +112,15 @@ describe('VillageBoard — the one ranked recommendation (§4.5, rule #1 + hones
   it('labels the top pick "Hale recommends" ONLY when the feed is genuinely ranked', () => {
     const c = view({ id: 'swim', title: 'Toddler swim' });
     const ranked = render([c], { ranked: true });
-    expect(ranked).toContain('Hale recommends');
+    expect(ranked).toContain('hale recommends');
     expect(ranked).toContain('See details');
     // A discovery-order (unranked) feed shows no recommendation — never a fabricated
     // highlight over an order the agent did not choose.
-    expect(render([c], { ranked: false })).not.toContain('Hale recommends');
+    expect(render([c], { ranked: false })).not.toContain('hale recommends');
   });
 
   it('never recommends a teen-attributed top pick — no preview, no recommend (rule #1)', () => {
     const teen = view({ id: 'teen', title: TEEN_REDACTED_PLACEHOLDER, teenAttributed: true });
-    expect(render([teen], { ranked: true })).not.toContain('Hale recommends');
+    expect(render([teen], { ranked: true })).not.toContain('hale recommends');
   });
 });

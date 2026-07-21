@@ -36,7 +36,7 @@ describe('AccountMenuView', () => {
     expect(html).toContain('Maya');
     expect(html).toContain('Free plan');
     expect(html).not.toContain('View profile');
-    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-haspopup="dialog"');
   });
 
   it('shows the tier name as the plan label for a paid tier', () => {
@@ -52,14 +52,14 @@ describe('AccountMenuView', () => {
   it('renders no menu and reports collapsed when closed', () => {
     const html = render({ open: false });
     expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain('role="menu"');
+    expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain('sign out');
   });
 
   it('opens to settings, appearance, and sign out when open (history moved out per the desktop handoff)', () => {
     const html = render({ open: true });
     expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain('role="menu"');
+    expect(html).toContain('role="dialog"');
     expect(html).toContain('settings');
     expect(html).toContain('appearance');
     expect(html).toContain('sign out');
@@ -71,7 +71,7 @@ describe('AccountMenuView', () => {
 
   it('hides sign out when the session cannot sign out (dev preview)', () => {
     const html = render({ open: true, canSignOut: false });
-    expect(html).toContain('role="menu"');
+    expect(html).toContain('role="dialog"');
     expect(html).toContain('settings');
     expect(html).not.toContain('sign out');
   });

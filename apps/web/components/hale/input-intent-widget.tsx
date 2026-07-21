@@ -421,7 +421,7 @@ function QuickLogCard({
 
       <output className="meta italic block" aria-live="polite">
         {status.kind === 'error' ? (
-          <span className="text-apricot-deep" role="alert">
+          <span className="text-berry" role="alert">
             {status.message}
           </span>
         ) : status.kind === 'preview' ? (
@@ -606,7 +606,7 @@ function CreatePlanCard({
 
       <output className="meta italic block" aria-live="polite">
         {status.kind === 'error' ? (
-          <span className="text-apricot-deep" role="alert">
+          <span className="text-berry" role="alert">
             {status.message}
           </span>
         ) : status.kind === 'preview' ? (

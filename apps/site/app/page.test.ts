@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { APP_URL } from '~/lib/app-url.js';
+import { FAQ } from '~/lib/faq/index.js';
 import LandingPage from './page.js';
 
 /**
@@ -19,10 +20,10 @@ describe('LandingPage (hero)', () => {
   // so assert against the tag-stripped visible text, not a contiguous HTML slice.
   const heroText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
-  it('leads with the "done alone" headline and the honest, approval-first subtext', () => {
+  it('leads with the "done alone" headline and a village-thesis subtext that threads local activities', () => {
     expect(heroText).toContain('Parenting was never meant to be done alone.');
     expect(heroText).toContain(
-      'Hale quietly prepares the helpful things — reminders, logs, plans, local ideas — and never acts without your say-so.',
+      'Hale brings back the village — the trusted local classes and groups near you — and quietly prepares the rest: reminders, logs, and plans you approve before anything happens.',
     );
   });
 
@@ -54,20 +55,23 @@ describe('LandingPage (feature sections)', () => {
   });
 });
 
-describe('LandingPage (FAQ — real, verified answers)', () => {
-  it('renders the five real questions', () => {
-    expect(html).toContain('Is my family’s data safe with Hale?');
-    expect(html).toContain('Will Hale ever act without me?');
-    expect(html).toContain('What ages does Hale support?');
-    expect(html).toContain('What does Hale cost?');
-    expect(html).toContain('Can both parents use it?');
+describe('LandingPage (FAQ — single-sourced from lib/faq)', () => {
+  // The homepage accordion derives its items from lib/faq (the same set /faq
+  // renders + derives its FAQPage schema from), so a homepage answer can never
+  // drift from the /faq answer (SITE-03). Answers strip tags because item 0 is
+  // revealed word-by-word via AnimatedText.
+  const faqText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  it('renders every question from the shared lib/faq source (no hardcoded copy that can drift)', () => {
+    for (const item of FAQ) {
+      expect(html).toContain(item.question);
+    }
   });
 
-  it('answers honestly: observe-only, 0–18 scope, free right now, co-parent', () => {
-    expect(html).toContain('observe-only mode');
-    expect(html).toContain('newborn through the teen years');
-    expect(html).toContain('free to use right now');
-    expect(html).toContain('invite a co-parent');
+  it('surfaces the honest posture answers from that source', () => {
+    expect(faqText).toContain('observe-only mode');
+    expect(faqText).toContain('free to start');
+    expect(faqText).toContain('stored in Canada');
   });
 });
 

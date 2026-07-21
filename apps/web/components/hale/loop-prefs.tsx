@@ -50,6 +50,18 @@ export function LoopPrefs({ result }: { result: LoadLoopPrefsResult }) {
   return <LoopForm initial={result.prefs} />;
 }
 
+/** Roll a FAILED save back to its pre-optimistic value — but ONLY that field, applied
+ * functionally over the latest state, so a DIFFERENT field a concurrent save changed in
+ * the meantime is preserved. A stale full-snapshot restore would rewind the other
+ * field's successful write too (control says one thing, server another, until reload). */
+export function rollbackPref(
+  current: LoopPrefsView,
+  previous: LoopPrefsView,
+  field: LoopPrefUpdate['field'],
+): LoopPrefsView {
+  return { ...current, [field]: previous[field] };
+}
+
 function LoopForm({ initial }: { initial: LoopPrefsView }) {
   const [prefs, setPrefs] = useState<LoopPrefsView>(initial);
   const [note, setNote] = useState<string | null>(null);
@@ -65,7 +77,7 @@ function LoopForm({ initial }: { initial: LoopPrefsView }) {
     setNote(null);
     const outcome = await setLoopPrefAction(update);
     if (outcome.status !== 'updated') {
-      setPrefs(previous);
+      setPrefs((current) => rollbackPref(current, previous, update.field));
       setNote(
         outcome.status === 'not_found'
           ? 'Finish setting up your family, then you can tune your loop.'
@@ -222,7 +234,7 @@ function LoopForm({ initial }: { initial: LoopPrefsView }) {
       </div>
 
       {note ? (
-        <p className="meta text-apricot-deep" role="alert">
+        <p className="meta text-berry" role="alert">
           {note}
         </p>
       ) : null}

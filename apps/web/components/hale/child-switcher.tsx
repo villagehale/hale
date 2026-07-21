@@ -1,6 +1,7 @@
 'use client';
 
 import type { Route } from 'next';
+import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChildSwitcherView, type SwitcherChild } from '~/components/hale/child-switcher-view';
 
@@ -8,8 +9,10 @@ import { ChildSwitcherView, type SwitcherChild } from '~/components/hale/child-s
  * The sidebar child switcher: the chip shows one child, the popover switches which
  * one and links to "Add child". This wrapper owns the open-state, the selected
  * child, and dismissal (Escape + click-outside) — the same ownership split as
- * AccountMenu. Selecting a child sets which child the chip shows; binding the wider
- * app to the active child is a later phase (mirrors the prototype's local `active`).
+ * AccountMenu. Selecting a child opens that child's companion hub (`/companion?child=`)
+ * — a real, honest action instead of the old no-op that only relabelled the chip
+ * (WEB-10). Full cross-surface active-child sync (also driving Home's snapshot) is a
+ * later phase; today the switcher scopes the companion hub it navigates to.
  *
  * The mobile drawer closes on route change (AppShell watches the pathname), so the
  * "Add child" link needs no explicit close here.
@@ -21,6 +24,7 @@ export function ChildSwitcher({
   kids: SwitcherChild[];
   addHref?: Route;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(kids[0]?.id ?? null);
   const menuId = useId();
@@ -61,6 +65,7 @@ export function ChildSwitcher({
       onSelect={(id) => {
         setActiveId(id);
         setOpen(false);
+        router.push(`/companion?child=${id}` as Route);
       }}
       rootRef={rootRef}
       triggerRef={triggerRef}

@@ -1,7 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { sniffMime } from '../docs/documents.js';
-import { type FetchLike, removeDocument, signDocumentUrl, uploadDocument } from '../docs/storage.js';
+import {
+  type FetchLike,
+  SIGNED_URL_TTL_SECONDS,
+  removeDocument,
+  signDocumentUrl,
+  uploadDocument,
+} from '../docs/storage.js';
 
 /**
  * The child-avatar store — DB + storage side of a parent uploading a child's profile
@@ -171,12 +177,39 @@ function withCacheBuster(url: string, avatarUpdatedAt: Date | null): string {
 }
 
 /**
+ * Cross-request memo of minted signed URLs (rule 3.4). loadFamilyBasics runs in the
+ * force-dynamic authed layout, so WITHOUT this every page navigation re-signs every
+ * child's avatar — one storage POST per child per nav on TTFB, and a fresh token each
+ * time so the <img> src identity changes and the browser can never cache the photo.
+ * Keyed on path + the avatar's updated-at stamp (a replace changes the key, so a stale
+ * URL is never served), TTL'd at HALF the sign TTL so a served URL always has ample
+ * validity left, and size-bounded (LRU by Map recency) so it can't grow unboundedly on
+ * a long-lived instance. Holds only short-lived signed URLs the client already receives
+ * — no new persistence, no cross-family reach (a caller only ever gets the URL for a
+ * path it already resolved, family-scoped, rule #1). */
+const AVATAR_URL_MEMO_TTL_MS = (SIGNED_URL_TTL_SECONDS / 2) * 1000;
+const AVATAR_URL_MEMO_MAX = 500;
+const avatarUrlMemo = new Map<string, { url: string; expiresAt: number }>();
+
+function avatarMemoKey(avatarPath: string, avatarUpdatedAt: Date | null): string {
+  return `${avatarPath}:${avatarUpdatedAt?.getTime() ?? 0}`;
+}
+
+/** Test-only: clear the module-level signed-URL memo so its state can't leak between
+ * cases (mirrors setRateLimiterForTesting). */
+export function __clearAvatarUrlMemo(): void {
+  avatarUrlMemo.clear();
+}
+
+/**
  * Resolves a child's avatar_path to a short-TTL signed URL (with a deterministic
  * ?v=<avatar_updated_at> cache-buster so a replaced photo can't render stale), or null
- * when there is no avatar. An unresolvable avatar (storage hiccup) degrades to null so
- * the surface falls back to initials rather than erroring the page — a display boundary
- * where null is a valid, expected state (rule #1: most restrictive, never a public URL;
- * never break the page over a photo).
+ * when there is no avatar. Repeated resolutions of the same photo reuse a memoized
+ * signed URL (above) so the browser image cache actually hits across navigations. An
+ * unresolvable avatar (storage hiccup) degrades to null so the surface falls back to
+ * initials rather than erroring the page — a display boundary where null is a valid,
+ * expected state (rule #1: most restrictive, never a public URL; never break the page
+ * over a photo).
  */
 export async function resolveChildAvatarUrl(
   avatarPath: string | null,
@@ -184,8 +217,23 @@ export async function resolveChildAvatarUrl(
   signImpl: (path: string) => Promise<string> = signDocumentUrl,
 ): Promise<string | null> {
   if (!avatarPath) return null;
+  const key = avatarMemoKey(avatarPath, avatarUpdatedAt);
+  const now = Date.now();
+  const hit = avatarUrlMemo.get(key);
+  if (hit && hit.expiresAt > now) {
+    // Refresh recency (Map iterates in insertion order → re-set moves to newest).
+    avatarUrlMemo.delete(key);
+    avatarUrlMemo.set(key, hit);
+    return withCacheBuster(hit.url, avatarUpdatedAt);
+  }
   try {
-    return withCacheBuster(await signImpl(avatarPath), avatarUpdatedAt);
+    const signed = await signImpl(avatarPath);
+    avatarUrlMemo.set(key, { url: signed, expiresAt: now + AVATAR_URL_MEMO_TTL_MS });
+    if (avatarUrlMemo.size > AVATAR_URL_MEMO_MAX) {
+      const oldest = avatarUrlMemo.keys().next().value;
+      if (oldest !== undefined) avatarUrlMemo.delete(oldest);
+    }
+    return withCacheBuster(signed, avatarUpdatedAt);
   } catch {
     return null;
   }

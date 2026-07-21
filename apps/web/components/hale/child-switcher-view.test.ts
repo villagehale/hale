@@ -37,21 +37,21 @@ describe('ChildSwitcherView', () => {
     const html = render();
     expect(html).toContain('Sebastian');
     expect(html).toContain('toddler');
-    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain('aria-haspopup="dialog"');
   });
 
   it('renders no menu when closed', () => {
     const html = render({ open: false });
     expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain('role="menu"');
+    expect(html).not.toContain('role="dialog"');
   });
 
   it('opens to every child plus an Add child link into the existing add-child surface', () => {
     const html = render({ open: true });
-    expect(html).toContain('role="menu"');
+    expect(html).toContain('role="dialog"');
     expect(html).toContain('Sebastian');
     expect(html).toContain('Aurora');
-    expect(html).toContain('Add child');
+    expect(html).toContain('add child');
     expect(html).toContain('href="/family"');
     // The shown child is marked current so the popover reflects the chip.
     expect(html).toMatch(/aria-current="true"[^>]*>\s*<span[^>]*>S<\/span>/);
@@ -59,8 +59,8 @@ describe('ChildSwitcherView', () => {
 
   it('degrades to a single Add-a-child prompt with no children (never a fake name)', () => {
     const html = render({ kids: [], activeId: null });
-    expect(html).toContain('Add a child');
+    expect(html).toContain('add a child');
     expect(html).toContain('href="/family"');
-    expect(html).not.toContain('aria-haspopup="menu"');
+    expect(html).not.toContain('aria-haspopup="dialog"');
   });
 });
