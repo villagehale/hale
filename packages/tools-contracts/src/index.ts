@@ -50,6 +50,26 @@ export const rerankJobPayloadSchema = z.object({
 export type RerankJobPayload = z.infer<typeof rerankJobPayloadSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// F11 · The Sunday Loop (VIL-213 · A2): the channel.send queue payload — one loop
+// message to dispatch. The dispatch resolves the parent's prefs/consent/timezone
+// from Postgres, so the payload carries ids + a structured (already-safe) payload
+// object, never a rendered child-data body (rule #1).
+// ─────────────────────────────────────────────────────────────────────────────
+export const channelSendJobPayloadSchema = z.object({
+  templateKey: z.string().min(1),
+  familyId: z.string().uuid(),
+  parentUserId: z.string().uuid(),
+  category: z.enum(['weekly_plan', 'reminder', 'approval', 'alert']),
+  urgency: z.enum(['normal', 'time_sensitive']),
+  payload: z.record(z.unknown()),
+  dedupeKey: z.string().optional(),
+  relatedActionId: z.string().uuid().optional(),
+  relatedConversationId: z.string().uuid().optional(),
+  deepLink: z.string().optional(),
+});
+export type ChannelSendJobPayload = z.infer<typeof channelSendJobPayloadSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // check_calendar_conflict
 // ─────────────────────────────────────────────────────────────────────────────
 export const calendarConflictInput = z.object({

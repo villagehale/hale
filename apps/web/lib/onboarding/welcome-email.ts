@@ -1,5 +1,6 @@
 import type { FamilyStage } from '@hale/types';
-import { Resend } from 'resend';
+import type { Resend } from 'resend';
+import { createResendTransport } from '~/lib/channel/resend-transport';
 import { BUSINESS_ADDRESS, SENDER_NAME, appBaseUrl } from '~/lib/cron/email-compliance';
 
 /**
@@ -234,11 +235,11 @@ export function createWelcomeEmailSender(client?: Resend): WelcomeEmailSender {
         console.info('welcome email skipped: RESEND_API_KEY not set');
         return { accepted: false, providerMessageId: null };
       }
-      const resend = client ?? new Resend(apiKey);
+      const transport = createResendTransport({ apiKey, client });
       const from = process.env.WELCOME_FROM ?? DEFAULT_FROM;
       // Optional founder copy of each welcome (new-signup signal); set WELCOME_BCC in prod.
       const bcc = process.env.WELCOME_BCC;
-      const { data, error } = await resend.emails.send({
+      const { id, error } = await transport.send({
         from,
         to,
         ...(bcc ? { bcc } : {}),
@@ -250,7 +251,7 @@ export function createWelcomeEmailSender(client?: Resend): WelcomeEmailSender {
         console.error('welcome email send failed', error);
         return { accepted: false, providerMessageId: null };
       }
-      return { accepted: true, providerMessageId: data?.id ?? null };
+      return { accepted: true, providerMessageId: id ?? null };
     },
   };
 }

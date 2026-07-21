@@ -15,7 +15,21 @@ import { type DrainBoss, type DrainDeps, HOT_QUEUE_EXPIRE_SECONDS, drainHotQueue
 const EVENTS = 'events.ingested';
 const ACTIONS = 'actions.approved';
 const RERANK = 'village.rerank';
+const CHANNEL = 'channel.send';
 const FAMILY = '11111111-1111-1111-1111-111111111111';
+const PARENT = '22222222-2222-2222-2222-222222222222';
+
+function validChannelSend() {
+  return {
+    templateKey: 'weekly-plan-v1',
+    familyId: FAMILY,
+    parentUserId: PARENT,
+    category: 'weekly_plan' as const,
+    urgency: 'normal' as const,
+    payload: {},
+    dedupeKey: 'fam:2026-W23:weekly',
+  };
+}
 const ACTION = '22222222-2222-2222-2222-222222222222';
 
 function validIngested(): IngestedEventPayload {
@@ -48,16 +62,19 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [EVENTS, [...(initial[EVENTS] ?? [])]],
     [ACTIONS, [...(initial[ACTIONS] ?? [])]],
     [RERANK, [...(initial[RERANK] ?? [])]],
+    [CHANNEL, [...(initial[CHANNEL] ?? [])]],
   ]);
   const completed = new Map<string, string[]>([
     [EVENTS, []],
     [ACTIONS, []],
     [RERANK, []],
+    [CHANNEL, []],
   ]);
   const failed = new Map<string, string[]>([
     [EVENTS, []],
     [ACTIONS, []],
     [RERANK, []],
+    [CHANNEL, []],
   ]);
   const created: Array<{ name: string; expireInSeconds?: number }> = [];
 
@@ -96,6 +113,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       runOrchestrator: vi.fn(async () => undefined),
       executeApprovedAction: vi.fn(async () => undefined),
       rerank: vi.fn(async () => undefined),
+      channelSend: vi.fn(async () => undefined),
       ...overrides,
     },
     log: { info: vi.fn(), error: vi.fn() },
@@ -141,6 +159,51 @@ describe('drainHotQueues', () => {
     expect(completed(RERANK)).toEqual(['bad']);
     expect(failed(RERANK)).toEqual([]);
     expect(summary.dropped).toBe(1);
+  });
+
+  it('dispatches a pending channel.send job through the loop seam and completes it', async () => {
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL]: [{ id: 'c1', data: validChannelSend() }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.channelSend).toHaveBeenCalledTimes(1);
+    expect(deps.handlers.channelSend).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'weekly_plan', parentUserId: PARENT }),
+    );
+    expect(completed(CHANNEL)).toEqual(['c1']);
+    expect(summary.processed).toBe(1);
+  });
+
+  it('DROPS a schema-invalid channel.send payload (never reaches the seam)', async () => {
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL]: [{ id: 'bad', data: { ...validChannelSend(), category: 'not_a_category' } }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.channelSend).not.toHaveBeenCalled();
+    expect(completed(CHANNEL)).toEqual(['bad']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  it('re-queues a channel.send job whose handler throws (transient) — never drops it', async () => {
+    const { boss, completed, failed } = makeFakeBoss({
+      [CHANNEL]: [{ id: 'c2', data: validChannelSend() }],
+    });
+    const deps = makeDeps(boss, {
+      channelSend: vi.fn(async () => {
+        throw new Error('transient channel error');
+      }),
+    });
+
+    await drainHotQueues(deps);
+
+    expect(failed(CHANNEL)).toEqual(['c2']); // boss.fail → redelivery, not completed
+    expect(completed(CHANNEL)).toEqual([]);
   });
 
   it('runs the orchestrator for a pending events.ingested job and completes it', async () => {
