@@ -24,7 +24,9 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   display: 'swap',
-  weight: ['400', '500', '600'],
+  // Only the 400 weight renders (the footer pronunciation); the site's other
+  // mono spots resolve to the serif accent, so 500/600 shipped unused.
+  weight: ['400'],
 });
 
 export const metadata: Metadata = {
@@ -51,7 +53,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#17294A',
+  // Matches the warm-white page background so the mobile browser chrome blends
+  // with the top of every page (the site is light-only).
+  themeColor: '#FDFCFA',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -61,6 +65,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${instrumentSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
     >
       <body>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
         <PostHogProvider>{children}</PostHogProvider>
         <SpeedInsights />
       </body>

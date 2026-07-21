@@ -99,8 +99,8 @@ export function PricingSection() {
                   Join free
                 </a>
               ) : (
-                <a href="#waitlist" className="btn-secondary self-start mt-8">
-                  Join the waitlist
+                <a href={`${APP_URL}/sign-up`} className="btn-secondary self-start mt-8">
+                  Start free — upgrade when it ships
                 </a>
               )}
             </div>
@@ -108,7 +108,7 @@ export function PricingSection() {
         })}
       </div>
       <p className="meta mt-6">
-        The village is free to start. Plus and Family open to the waitlist first.
+        The village is free to start. Plus and Family open as their integrations ship.
       </p>
     </section>
   );

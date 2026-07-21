@@ -20,18 +20,21 @@ export function ShareAgeLink({ slug, ageLabel }: { slug: string; ageLabel: strin
   }
 
   return (
-    <button
-      type="button"
-      onClick={copy}
-      className="btn-secondary"
-      aria-label={`Copy the link to the ${ageLabel} milestone guide`}
-    >
-      {copied ? (
-        <Check size={16} strokeWidth={2.25} aria-hidden="true" />
-      ) : (
-        <Link2 size={16} strokeWidth={2.25} aria-hidden="true" />
-      )}
-      {copied ? 'Link copied' : 'Share this age guide'}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={copy}
+        className="btn-secondary"
+        aria-label={`Copy the link to the ${ageLabel} milestone guide`}
+      >
+        {copied ? (
+          <Check size={16} strokeWidth={2.25} aria-hidden="true" />
+        ) : (
+          <Link2 size={16} strokeWidth={2.25} aria-hidden="true" />
+        )}
+        {copied ? 'Link copied' : 'Share this age guide'}
+      </button>
+      <output className="sr-only">{copied ? 'Link copied' : ''}</output>
+    </>
   );
 }

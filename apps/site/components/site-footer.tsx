@@ -10,6 +10,7 @@ import { APP_URL } from '~/lib/app-url';
 
 const PRODUCT = [
   { label: 'Features', href: '/#features' },
+  { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/#faq' },
   { label: 'Activities', href: '/activities' },
   { label: 'Milestones', href: '/milestones' },
@@ -47,7 +48,7 @@ export function SiteFooter() {
             <p className="mb-4 mt-5 max-w-[340px] text-[13px] leading-[1.6] text-[#5C6B87]">
               Hale is the quiet helper for busy families — always prepared, never acting without you.
             </p>
-            <p className="text-[12px] leading-[1.6] text-[#8B95A9]">
+            <p className="text-[12px] leading-[1.6] text-[#5C6B87]">
               Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
             </p>
           </div>
@@ -79,7 +80,9 @@ export function SiteFooter() {
         <hr className="mb-6 border-[#F0F2F6]" />
 
         <div className="flex flex-col-reverse items-start justify-between gap-4 md:flex-row md:items-center">
-          <p className="text-[13px] text-[#8B95A9]">© 2026 Hale. All rights reserved.</p>
+          <p className="text-[13px] text-[#5C6B87]">
+            © {new Date().getFullYear()} Hale. All rights reserved.
+          </p>
           <div className="flex flex-wrap gap-6">
             {LEGAL.map((item) => (
               <a

@@ -33,7 +33,7 @@ export default function MilestonesHubPage() {
   const bySlug = new Map(allCheckpoints.map((c) => [c.slug, c]));
 
   return (
-    <main id="top" className="relative">
+    <main id="main" tabIndex={-1} className="relative">
       {publishedCheckpoints.length > 0 && (
         <script
           type="application/ld+json"

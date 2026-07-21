@@ -74,7 +74,8 @@ export function FaqAccordion() {
             </h3>
             <div
               id={panelId}
-              className={`grid transition-all duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none ${
+              inert={!isOpen ? true : undefined}
+              className={`grid transition-[grid-template-rows,opacity] duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none ${
                 isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
               }`}
             >
