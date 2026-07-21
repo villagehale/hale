@@ -4,6 +4,10 @@ import type { MobileVillageAiSearchResponse } from '../../types';
 
 // Node runtime: the wrapped action makes an LLM (Anthropic SDK) call for the intent parse.
 export const runtime = 'nodejs';
+// The wrapped action kicks a FRESH discovery run in after() (a bounded Anthropic call
+// far longer than the ~10s default). Match the discovery crons (maxDuration 300) so the
+// after() work isn't killed mid-run (mirrors api/mobile/village/search/route.ts:11).
+export const maxDuration = 300;
 
 /**
  * POST /api/mobile/village/ai-search — the native counterpart to the web Village

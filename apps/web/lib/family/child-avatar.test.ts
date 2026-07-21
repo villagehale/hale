@@ -8,10 +8,12 @@ vi.mock('../docs/storage.js', () => ({
   uploadDocument: vi.fn(async () => {}),
   signDocumentUrl: vi.fn(async () => 'https://signed.example/avatar'),
   removeDocument: vi.fn(async () => {}),
+  SIGNED_URL_TTL_SECONDS: 600,
 }));
 
 import { removeDocument, signDocumentUrl, uploadDocument } from '../docs/storage.js';
 import {
+  __clearAvatarUrlMemo,
   avatarStoragePathFor,
   removeChildAvatar,
   resolveChildAvatarUrl,
@@ -185,6 +187,26 @@ describe('setChildAvatar', () => {
 
 describe('resolveChildAvatarUrl', () => {
   const STAMP = new Date('2026-07-20T00:00:00.000Z');
+
+  // The signed-URL memo is module-level; clear it between cases so one test's cached
+  // URL can't leak into the next (WP-4).
+  beforeEach(() => __clearAvatarUrlMemo());
+
+  it('memoizes the signed URL across navigations (path + stamp), so the browser cache hits', async () => {
+    const sign = vi.fn(async (p: string) => `https://signed/${p}?token=one`);
+    const first = await resolveChildAvatarUrl(PATH, STAMP, sign);
+    const second = await resolveChildAvatarUrl(PATH, STAMP, sign);
+    // Same URL identity across the two navigations, but the provider was signed ONCE.
+    expect(second).toBe(first);
+    expect(sign).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-signs when the photo is replaced (the stamp — part of the memo key — advances)', async () => {
+    const sign = vi.fn(async (p: string) => `https://signed/${p}?token=t`);
+    await resolveChildAvatarUrl(PATH, new Date('2026-07-20T00:00:00Z'), sign);
+    await resolveChildAvatarUrl(PATH, new Date('2026-07-20T09:30:00Z'), sign);
+    expect(sign).toHaveBeenCalledTimes(2);
+  });
 
   it('signs a present avatar_path and appends the ?v= cache-buster from the stamp', async () => {
     const sign = vi.fn(async (p: string) => `https://signed/${p}?token=abc`);

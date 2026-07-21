@@ -9,7 +9,7 @@ import type { ComposeInputs } from './compose';
 // transitively pull next-auth; stub the auth edge so this Node test resolves.
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
 vi.mock('~/lib/dashboard/trail-query', () => ({ readFamilyTimezone: vi.fn() }));
-vi.mock('./queries', () => ({ hasWeekPlan: vi.fn(), upsertWeekPlan: vi.fn(), readWeekPlan: vi.fn() }));
+vi.mock('./queries', () => ({ hasWeekPlan: vi.fn(), upsertWeekPlan: vi.fn() }));
 vi.mock('~/lib/cron/skill', () => ({ loadWeekSummarySkill: vi.fn() }));
 vi.mock('~/lib/cron/guards', () => ({ buildCronGuardDeps: vi.fn(() => ({})) }));
 vi.mock('@hale/agent', async (orig) => ({
@@ -21,7 +21,7 @@ import { runAgent } from '@hale/agent';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { isComposeMoment, runWeekPlanForFamily, type WeekPlanDeps } from './cron';
-import { hasWeekPlan, readWeekPlan, upsertWeekPlan } from './queries';
+import { hasWeekPlan, upsertWeekPlan } from './queries';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 // Saturday 2026-07-25 19:30 EDT → the upcoming Monday week starts 2026-07-27.
@@ -54,8 +54,9 @@ function fakeDb() {
 describe('runWeekPlanForFamily', () => {
   beforeEach(() => {
     asMock(readFamilyTimezone).mockResolvedValue('America/Toronto');
-    asMock(readWeekPlan).mockResolvedValue({ id: 'wp-1' });
-    asMock(upsertWeekPlan).mockResolvedValue(undefined);
+    // upsertWeekPlan now returns the plan id; writeComposeAudit uses it directly (WP-11
+    // removed the read-back), so the audit's targetId comes from this return.
+    asMock(upsertWeekPlan).mockResolvedValue({ id: 'wp-1' });
     asMock(hasWeekPlan).mockReset();
     asMock(runAgent).mockReset();
   });
