@@ -3,6 +3,8 @@ import type {
   MobileFamilyUpdateRequest,
   MobileFamilyUpdateResponse,
   MobileInviteResponse,
+  MobileLoopPrefUpdateRequest,
+  MobileLoopPrefUpdateResponse,
   MobilePreferencesUpdateRequest,
   MobilePreferencesUpdateResponse,
   MobilePushPrefsUpdateRequest,
@@ -57,6 +59,16 @@ export async function updatePreferences(body: MobilePreferencesUpdateRequest): P
  * route, which resolves the family + audits the change (rules #1/#6). */
 export async function updatePushPref(body: MobilePushPrefsUpdateRequest): Promise<void> {
   await api<MobilePushPrefsUpdateResponse>('/api/mobile/settings/notifications', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Set one F11 loop time preference (quiet-hours start/end, weekly-plan send time).
+ * PATCHes the loop route, which validates the field/value, resolves the family, and
+ * audits the change (rules #1/#6). Times go as a 24h 'HH:MM'. */
+export async function updateLoopPref(body: MobileLoopPrefUpdateRequest): Promise<void> {
+  await api<MobileLoopPrefUpdateResponse>('/api/mobile/settings/loop', {
     method: 'PATCH',
     body: JSON.stringify(body),
   });

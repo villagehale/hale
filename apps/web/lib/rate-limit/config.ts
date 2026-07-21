@@ -36,6 +36,12 @@ import type { RateLimitOptions } from './limiter';
  *   even a parent tidying every child's photo in one sitting is a handful. 20/hour is
  *   far above that yet stops a script from running up storage/bandwidth on the private
  *   bucket. Per-user (the upload cost is the uploader's), on an HOUR window.
+ * - village-ai-search (20/min/family): the natural-language search's cheap intent
+ *   parse (one small model call per submit). It is a per-MINUTE bot guard, NOT the
+ *   paid-run cooldown: the expensive discovery it may trigger on thin results is
+ *   itself bounded by village-search (5/hour). A parent exploring types a couple of
+ *   phrasings a minute; 20 is well above that yet stops a scripted loop from running
+ *   up spend on the parse. Per-family (the search reads the family's village).
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
@@ -45,6 +51,7 @@ export const RATE_LIMITS = {
   preview: { limit: 10, windowSec: 60 },
   'village-search': { limit: 5, windowSec: 3600 },
   'avatar-upload': { limit: 20, windowSec: 3600 },
+  'village-ai-search': { limit: 20, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

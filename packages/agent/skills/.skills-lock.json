@@ -31,6 +31,10 @@
     "file": "log-care.md",
     "sha256": "7e026f111a88cd15b0a6c06ad3692fff9f27cfa907a837cb46976c0d9a55f5db"
   },
+  "parse-village-search.md": {
+    "file": "parse-village-search.md",
+    "sha256": "0f601d5fb3dcc1cccee224c6c0e9d7bd3bd82dc1379a175c6ecefbc04d761c76"
+  },
   "rank-recommendations.md": {
     "file": "rank-recommendations.md",
     "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"

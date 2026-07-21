@@ -22,6 +22,7 @@ import { api, ApiError } from '@/lib/api-client';
 import { historyStatusTag, humanizeActionType, verdictTag } from '@/lib/approval-format';
 import { useApi } from '@/lib/use-api';
 import { ApprovalPayloadBlock } from '@/components/hale/approval-payload';
+import { PushPrime } from '@/components/hale/push-prime';
 
 const ActionCard = memo(function ActionCard({
   action,
@@ -248,6 +249,10 @@ export default function ApprovalsScreen() {
     ? { approvals: pending.data.approvals.filter((a) => !resolved.has(a.id)) }
     : null;
 
+  // A pending approval is a moment of value: this is exactly what a push would nudge
+  // about, so offer notifications here (once, calmly — see PushPrime).
+  const hasPending = (visiblePending?.approvals.length ?? 0) > 0;
+
   return (
     <Screen
       scroll
@@ -266,6 +271,7 @@ export default function ApprovalsScreen() {
       {segment === 'history' && history.status === 'ready' && history.data ? (
         <HistoryBody history={history.data.history} />
       ) : null}
+      <PushPrime active={hasPending} />
     </Screen>
   );
 }

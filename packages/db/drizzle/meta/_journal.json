@@ -374,9 +374,16 @@
       "breakpoints": true
     },
     {
-      "idx": 54,
+      "idx": 56,
       "version": "7",
-      "when": 1781462940000,
+      "when": 1781463060000,
+      "tag": "0056_loop_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1781463120000,
       "tag": "0060_child_avatar_path",
       "breakpoints": true
     }

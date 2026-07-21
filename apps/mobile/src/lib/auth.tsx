@@ -1,6 +1,7 @@
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import { registerOnUnauthorized } from './api-client';
+import { deregisterPushToken } from './push-registration';
 import { TOKEN_KEY, tokenStorage } from './token-storage';
 
 type AuthState = {
@@ -38,6 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(next);
       },
       signOut: async () => {
+        // Drop this device's push token while still authed (the api client needs the
+        // Bearer), THEN clear the session — so a signed-out phone stops receiving pushes.
+        await deregisterPushToken();
         await tokenStorage.remove(TOKEN_KEY);
         setToken(null);
       },
