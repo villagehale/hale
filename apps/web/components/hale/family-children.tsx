@@ -57,13 +57,15 @@ export function FamilyChildren({ kids }: { kids: FamilyChild[] }) {
             ) : (
               <Card key={child.id}>
                 <div className="flex items-baseline justify-between gap-4">
-                  <div data-hale-pii>
-                    <p className="font-display text-[1.5rem] leading-tight">{child.name}</p>
+                  <div className="min-w-0" data-hale-pii>
+                    <p className="font-display text-[1.5rem] leading-tight break-words">
+                      {child.name}
+                    </p>
                     <p className="meta mt-1">{child.stageLabel}</p>
                   </div>
                   <button
                     type="button"
-                    className="link meta inline-flex items-center gap-1.5"
+                    className="link meta inline-flex shrink-0 items-center gap-1.5"
                     onClick={() => {
                       setAdding(false);
                       setEditingId(child.id);

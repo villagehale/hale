@@ -56,15 +56,15 @@ export function HomeChildPanels({
             {kids.length > 1 ? (
               <div
                 className="mb-4 flex flex-wrap justify-center gap-1 rounded-full bg-linen p-1"
-                role="tablist"
-                aria-label="choose child"
+                // biome-ignore lint/a11y/useSemanticElements: a segmented single-select control re-scoping the whole dashboard (this card, "up next", Row 2) to the chosen child — a labelled group of aria-pressed toggle buttons, not the WAI tab pattern it can't honour, and not a <fieldset> of form fields
+                role="group"
+                aria-label="Choose child"
               >
                 {kids.map((child) => (
                   <button
                     key={child.id}
                     type="button"
-                    role="tab"
-                    aria-selected={child.id === active.id}
+                    aria-pressed={child.id === active.id}
                     onClick={() => setActiveId(child.id)}
                     className={`min-h-9 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
                       child.id === active.id
@@ -80,7 +80,10 @@ export function HomeChildPanels({
             ) : null}
 
             <div className="border-b border-rule pb-4">
-              <h2 className="font-display text-[1.25rem] leading-tight text-spruce" data-hale-pii>
+              <h2
+                className="font-display text-[1.25rem] leading-tight text-spruce break-words"
+                data-hale-pii
+              >
                 {active.name}
               </h2>
               <p className="meta mt-0.5 text-faded-sage">{active.stageLabel}</p>

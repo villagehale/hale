@@ -61,7 +61,10 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
       <div className="card home-card-fill">
         {topPick ? (
           <>
-            <p className="font-display text-[1.05rem] leading-snug text-spruce" data-hale-pii>
+            <p
+              className="font-display text-[1.05rem] leading-snug text-spruce break-words"
+              data-hale-pii
+            >
               {topPick.title}
             </p>
             {villageWhen(topPick) ? (
