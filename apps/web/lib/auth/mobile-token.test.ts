@@ -69,6 +69,39 @@ describe('mintMobileSessionToken', () => {
     expect(decoded).not.toHaveProperty('email');
   });
 
+  it('round-trips the profile picture as the standard `picture` claim (→ session.user.image on the Bearer path)', async () => {
+    const token = await mintMobileSessionToken({
+      sub: 'google-oauth-sub-42',
+      email: 'plain@hale.test',
+      picture: 'https://lh3.googleusercontent.com/a/photo',
+      secureRequest: true,
+    });
+
+    const decoded = await getToken({
+      req: bearerRequest('https://x/api/anything', token),
+      secret: TEST_SECRET,
+      secureCookie: true,
+    });
+
+    expect(decoded?.picture).toBe('https://lh3.googleusercontent.com/a/photo');
+  });
+
+  it('omits the picture claim entirely when no picture is provided', async () => {
+    const token = await mintMobileSessionToken({
+      sub: 'google-oauth-sub-42',
+      email: 'plain@hale.test',
+      secureRequest: true,
+    });
+
+    const decoded = await getToken({
+      req: bearerRequest('https://x/api/anything', token),
+      secret: TEST_SECRET,
+      secureCookie: true,
+    });
+
+    expect(decoded).not.toHaveProperty('picture');
+  });
+
   it('fails to decode across salts (secure mint, insecure read)', async () => {
     const token = await mintMobileSessionToken({
       sub: 'credentials:test-cred-1',

@@ -108,10 +108,15 @@ const DUE_IDS = [
  */
 function fakeSweepDb(
   dueIds: string[],
-  opts: { attachmentPaths?: string[][]; documentPaths?: string[][] } = {},
+  opts: {
+    attachmentPaths?: string[][];
+    documentPaths?: string[][];
+    avatarPaths?: string[][];
+  } = {},
 ) {
   const attachmentQueue = [...(opts.attachmentPaths ?? dueIds.map(() => []))];
   const documentQueue = [...(opts.documentPaths ?? dueIds.map(() => []))];
+  const avatarQueue = [...(opts.avatarPaths ?? dueIds.map(() => []))];
 
   const events: string[] = [];
   const removeObject = vi.fn(async (path: string) => {
@@ -131,6 +136,10 @@ function fakeSweepDb(
       }
       if (table === schema.childDocuments) {
         const rows = (documentQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
+        return { where: async () => rows };
+      }
+      if (table === schema.children) {
+        const rows = (avatarQueue.shift() ?? []).map((storagePath) => ({ storagePath }));
         return { where: async () => rows };
       }
       return { where: async () => dueIds.map((id) => ({ id })) };
@@ -191,6 +200,28 @@ describe('runDeletionSweep', () => {
     expect(deleteAt).toBe(3);
     expect(spies.events.slice(0, deleteAt).every((e) => e.startsWith('remove:'))).toBe(true);
     expect(summary).toEqual({ erased: 1, purgedObjects: 3 });
+  });
+
+  it('purges each child AVATAR object from the bucket too — a third path source erasure must not miss (rule #1 / PIPEDA, child photos are the most sensitive asset)', async () => {
+    const attachmentPaths = [`chat/${FAMILY_ID}/att-1`];
+    const documentPaths = [`${FAMILY_ID}/doc-1`];
+    const avatarPaths = [`avatars/${FAMILY_ID}/child-1`, `avatars/${FAMILY_ID}/child-2`];
+    const { db, removeObject } = fakeSweepDb([FAMILY_ID], {
+      attachmentPaths: [attachmentPaths],
+      documentPaths: [documentPaths],
+      avatarPaths: [avatarPaths],
+    });
+
+    const summary = await runDeletionSweep(db, new Date('2026-07-10T12:00:00.000Z'), removeObject);
+
+    // Every child's avatar bytes leave the private bucket alongside attachments + docs;
+    // before the fix, purgeFamilyStorage never queried children, so these two objects
+    // survived the account erasure — a stranded child photo (the exact gap this closes).
+    const purged = removeObject.mock.calls.map((c) => c[0]);
+    expect(purged).toEqual(expect.arrayContaining(avatarPaths));
+    expect(summary.purgedObjects).toBe(
+      attachmentPaths.length + documentPaths.length + avatarPaths.length,
+    );
   });
 
   it('surfaces a storage failure and leaves the family row intact for the next sweep (rule #8)', async () => {

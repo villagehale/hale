@@ -32,6 +32,10 @@ import type { RateLimitOptions } from './limiter';
  *   a couple of re-runs is 5-6; five per hour covers honest exploration while
  *   blunting a parent (or a script) hammering paid runs. Per-family (not per-user)
  *   because the run and its cost belong to the family, not one parent.
+ * - avatar-upload (20/hour/user): a child photo is set once and replaced rarely, so
+ *   even a parent tidying every child's photo in one sitting is a handful. 20/hour is
+ *   far above that yet stops a script from running up storage/bandwidth on the private
+ *   bucket. Per-user (the upload cost is the uploader's), on an HOUR window.
  */
 export const RATE_LIMITS = {
   coach: { limit: 60, windowSec: 60 },
@@ -40,6 +44,7 @@ export const RATE_LIMITS = {
   auth: { limit: 20, windowSec: 60 },
   preview: { limit: 10, windowSec: 60 },
   'village-search': { limit: 5, windowSec: 3600 },
+  'avatar-upload': { limit: 20, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

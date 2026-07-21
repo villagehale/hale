@@ -28,9 +28,18 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     expect(RATE_LIMITS['village-search'].limit).toBeLessThanOrEqual(10);
   });
 
-  it('uses a one-minute window for every route except the paid village-search cooldown', () => {
+  it('caps avatar-upload on an hour window — a photo is set once and rarely replaced, so a script, not a parent, trips it', () => {
+    // Not a per-minute burst guard: uploading child photos is infrequent, so the
+    // storage-abuse cap sits on an HOUR window, generous for a parent tidying a few
+    // kids' photos yet well under a scripted flood.
+    expect(RATE_LIMITS['avatar-upload'].windowSec).toBe(3600);
+    expect(RATE_LIMITS['avatar-upload'].limit).toBeGreaterThanOrEqual(10);
+  });
+
+  it('uses a one-minute window for every route except the hour-window cooldowns (village-search, avatar-upload)', () => {
+    const hourWindow = new Set(['village-search', 'avatar-upload']);
     for (const [route, opts] of Object.entries(RATE_LIMITS)) {
-      if (route === 'village-search') continue;
+      if (hourWindow.has(route)) continue;
       expect(opts.windowSec).toBe(60);
     }
   });

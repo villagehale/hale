@@ -1,0 +1,21 @@
+-- children.avatar_path: the private-bucket storage key for a child's uploaded profile
+-- photo, or NULL for the initials fallback. Additive only (rule #9).
+--
+-- Privacy (rule #1): a child's photo is the most sensitive asset class Hale stores. The
+-- bytes live in the PRIVATE 'family-docs' bucket, never public — this column holds only
+-- the SERVER-GENERATED object key (avatars/{familyId}/{childId}); the viewer reads the
+-- image through a short-TTL signed URL, never a public URL. One object per child,
+-- overwritten in place on replace, so the key is stable and reclaimable by (family,
+-- child) on erasure / child-delete. No filename or PII ever reaches the key.
+--
+-- avatar_updated_at stamps when the photo was last set. Because the storage key is
+-- stable (overwritten in place), the rendered signed URL needs a deterministic version
+-- marker so a REPLACED photo can't render stale from a browser/CDN cache — the read
+-- path appends ?v=<avatar_updated_at epoch>. Nullable: null iff there is no photo.
+--
+-- Slot note: this is file 0060 (journal idx 54) — the numeric gap over 0053 is
+-- deliberate coordination headroom for concurrent migration authors; the journal is
+-- 1:1 with the files (0037 is likewise absent), which is what the consistency gate
+-- checks.
+ALTER TABLE "children" ADD COLUMN "avatar_path" text;--> statement-breakpoint
+ALTER TABLE "children" ADD COLUMN "avatar_updated_at" timestamp with time zone;

@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
+import { removeDocument } from '~/lib/docs/storage';
 import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { writeUserPreferences } from '~/lib/settings/user-preferences';
@@ -218,7 +219,11 @@ export async function removeChildAction(childId: string): Promise<RemoveChildRes
     // Scope the delete to the caller's family (rule #1): a childId from another
     // family must not be removable. The where(familyId) makes that structural.
     const existing = await tx
-      .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
+      .select({
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+        avatarPath: schema.children.avatarPath,
+      })
       .from(schema.children)
       .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)))
       .limit(1);
@@ -231,13 +236,21 @@ export async function removeChildAction(childId: string): Promise<RemoveChildRes
       .delete(schema.children)
       .where(and(eq(schema.children.id, childId), eq(schema.children.familyId, familyId)));
 
+    // A removed child leaves no bytes: drop its avatar object too (rule #1). Removed
+    // AFTER the row-claim so a storage failure rolls the delete back and the next
+    // attempt retries (removeDocument tolerates a 404) — the erase-sweep ordering, and
+    // never after commit, which would strand an object the child row no longer covers.
+    if (before.avatarPath) {
+      await removeDocument(before.avatarPath);
+    }
+
     await tx.insert(schema.auditLog).values({
       familyId,
       actor: userId,
       actionTaken: 'child_removed',
       targetTable: 'children',
       targetId: childId,
-      before,
+      before: { name: before.name, dateOfBirth: before.dateOfBirth },
     });
     return true;
   });

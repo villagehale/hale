@@ -183,8 +183,8 @@ export interface MobileFamilyResponse {
   basics: FamilyBasicsView;
   /** The signed-in parent (from THIS session), so the More profile header identifies
    * the viewer — members.primary reads wrong for a co-parent. Name may be null; email
-   * always resolves from the account. */
-  viewer: { name: string | null; email: string | null };
+   * always resolves from the account; image is the Google profile photo or null. */
+  viewer: { name: string | null; email: string | null; image: string | null };
 }
 
 export interface MobileApprovalsResponse {
