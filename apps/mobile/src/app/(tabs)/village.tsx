@@ -15,6 +15,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { Tag } from '@/components/ui/tag';
 import { TintChip } from '@/components/ui/tint-chip';
 import { useMeadowColor } from '@/constants/meadow';
+import { PROMPT_BAR_ACTION, PROMPT_BAR_CONTAINER, PROMPT_BAR_INPUT } from '@/constants/prompt-bar';
 import { ApiError, api } from '@/lib/api-client';
 import type {
   MobileVillageAiSearchResponse,
@@ -81,7 +82,8 @@ function FilterChip({
  * The Filters sheet: season chips that narrow the ALREADY-LOADED feed client-side
  * (no request, no new location signal — rule #1). This is the loaded-feed SEASON
  * filter, kept deliberately distinct from the season SEARCH (a separate LLM discovery
- * run in SeasonSearch). The other honest axis — cadence — lives inline as the chip row
+ * run from the season chips under the search bar). The other honest axis — cadence —
+ * lives inline as the chip row
  * (the handoff's primary filter chips), so the sheet holds only seasons. Kind is a
  * single hardcoded value today and distance has no family centroid, so both are
  * omitted rather than faked. Selections are staged locally and applied on "Show N
@@ -218,7 +220,7 @@ function CadencePill({
       accessibilityLabel={`Filter: ${label}`}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      className={`rounded-full border px-4 py-2 active:opacity-80 ${
+      className={`min-h-11 items-center justify-center rounded-full border px-4 py-2 active:opacity-80 ${
         active ? 'border-brand bg-brand' : 'border-rule bg-card'
       }`}
     >
@@ -367,7 +369,10 @@ function BenefitsLink() {
  * magnifier), leaving the cadence chips below as the single, visually-distinct
  * FILTER. The two rows no longer look like duplicates of each other.
  */
-function SeasonSearch({
+/** Season suggestion chips under the single search bar (prototype: one search field +
+ * a scrolling chip row — NOT a second look-alike search field). Tapping a chip runs the
+ * season discovery; the active season's chip highlights with a clear affordance. */
+function SeasonChips({
   activeSeason,
   onSearch,
   onClear,
@@ -378,71 +383,42 @@ function SeasonSearch({
   onClear: () => void;
   disabled: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const iconColor = useMeadowColor('ink3');
   const accentIcon = useMeadowColor('accentFill');
-
-  if (activeSeason) {
-    return (
-      <View className="flex-row items-center gap-2 rounded-full border border-accent bg-accent-tint px-4 py-2.5">
-        <Icon name="search" size={15} color={accentIcon} />
-        <AppText variant="meta" className="flex-1 capitalize text-ink">
-          {activeSeason} activities
-        </AppText>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Clear season search, back to your feed"
-          hitSlop={8}
-          onPress={onClear}
-          className="active:opacity-70"
-        >
-          <Icon name="circle-x" size={18} color={iconColor} />
-        </Pressable>
-      </View>
-    );
-  }
-
   return (
-    <View className="gap-2">
-      <Pressable
-        accessibilityRole="search"
-        accessibilityLabel="Search activities by season"
-        accessibilityState={{ expanded: open, disabled }}
-        disabled={disabled}
-        onPress={() => setOpen((o) => !o)}
-        className={`h-12 flex-row items-center gap-2.5 rounded-full border border-rule bg-card px-4 active:opacity-80 ${
-          disabled ? 'opacity-50' : ''
-        }`}
-      >
-        <Icon name="search" size={16} color={iconColor} />
-        <AppText variant="body" className="flex-1 text-ink-3">
-          Search activities by season
-        </AppText>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} color={iconColor} />
-      </Pressable>
-
-      {open ? (
-        <View className="flex-row flex-wrap gap-2 px-1">
-          {SEASON_KEYS.map((season) => (
-            <Pressable
-              key={season}
-              accessibilityRole="button"
-              accessibilityLabel={`Search ${season} activities`}
-              disabled={disabled}
-              onPress={() => {
-                setOpen(false);
-                onSearch(season);
-              }}
-              className="min-h-11 items-center justify-center rounded-full border border-rule bg-raised px-4 py-2.5 active:opacity-80"
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerClassName="gap-2 px-0.5"
+      keyboardShouldPersistTaps="handled"
+    >
+      {SEASON_KEYS.map((season) => {
+        const active = activeSeason === season;
+        return (
+          <Pressable
+            key={season}
+            accessibilityRole="button"
+            accessibilityLabel={
+              active ? `Clear ${season} activities search` : `Search ${season} activities`
+            }
+            accessibilityState={{ selected: active, disabled }}
+            disabled={disabled}
+            onPress={() => (active ? onClear() : onSearch(season))}
+            className={`min-h-11 flex-row items-center gap-1.5 rounded-full border px-4 py-2 active:opacity-80 ${
+              active ? 'border-accent bg-accent-tint' : 'border-rule bg-card'
+            }`}
+          >
+            <AppText
+              variant="meta"
+              className={`capitalize ${active ? 'text-ink' : 'text-ink-2'}`}
+              style={{ fontFamily: 'InstrumentSans_600SemiBold' }}
             >
-              <AppText variant="meta" className="capitalize text-ink-2">
-                {season}
-              </AppText>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-    </View>
+              {season}
+            </AppText>
+            {active ? <Icon name="x" size={13} color={accentIcon} /> : null}
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -741,13 +717,17 @@ function VillageAiSearch({
   onSubmit,
   pending,
   active,
+  dirty,
   onClear,
 }: {
   value: string;
   onChange: (t: string) => void;
   onSubmit: () => void;
   pending: boolean;
+  /** A search/result is showing (a clear is offered). */
   active: boolean;
+  /** The prompt differs from the last-searched one — a fresh submit is possible. */
+  dirty: boolean;
   onClear: () => void;
 }) {
   const placeholderColor = useMeadowColor('ink3');
@@ -756,8 +736,11 @@ function VillageAiSearch({
   const sendColor = useMeadowColor('onAccent');
   const clearColor = useMeadowColor('ink3');
   const canSend = value.trim().length > 0 && !pending;
+  // Send stays VISIBLE and re-enables the moment the prompt changes, so editing a shown
+  // search always has a submit affordance; clear is the secondary control while active.
+  const sendEnabled = canSend && (!active || dirty);
   return (
-    <View className="flex-row items-center gap-2 rounded-[16px] border-[1.5px] border-rule-strong bg-card py-1.5 pl-3 pr-1.5">
+    <View className={`flex-row items-center gap-2 ${PROMPT_BAR_CONTAINER} py-1.5 pl-3 pr-1.5`}>
       <Icon name="sparkles" size={16} color={sparkle} />
       <TextInput
         value={value}
@@ -769,32 +752,28 @@ function VillageAiSearch({
         onSubmitEditing={onSubmit}
         editable={!pending}
         style={{ color: inputColor, fontFamily: 'InstrumentSans_400Regular' }}
-        className="flex-1 text-[14.5px]"
+        className={`flex-1 ${PROMPT_BAR_INPUT}`}
       />
       {active ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Clear search"
           onPress={onClear}
-          hitSlop={6}
-          className="h-9 w-9 items-center justify-center active:opacity-70"
+          className="h-10 w-10 items-center justify-center active:opacity-70"
         >
-          <Icon name="x" size={16} color={clearColor} />
+          <Icon name="x" size={18} color={clearColor} />
         </Pressable>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Search"
-          accessibilityState={{ disabled: !canSend }}
-          disabled={!canSend}
-          onPress={onSubmit}
-          className={`h-9 w-9 items-center justify-center rounded-[12px] bg-brand ${
-            canSend ? 'active:opacity-90' : 'opacity-40'
-          }`}
-        >
-          <Icon name="arrow-up" size={16} color={sendColor} />
-        </Pressable>
-      )}
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Search"
+        accessibilityState={{ disabled: !sendEnabled }}
+        disabled={!sendEnabled}
+        onPress={onSubmit}
+        className={`${PROMPT_BAR_ACTION} bg-brand ${sendEnabled ? 'active:opacity-90' : 'opacity-40'}`}
+      >
+        <Icon name="arrow-up" size={18} color={sendColor} />
+      </Pressable>
     </View>
   );
 }
@@ -803,7 +782,7 @@ function VillageAiSearch({
  * interpreted terms weight-differentiated from the label. */
 function AiInterpretation({ text }: { text: string }) {
   return (
-    <AppText variant="meta" className="text-ink-2">
+    <AppText variant="meta" className="text-ink-2" accessibilityLiveRegion="polite">
       Hale understood:{' '}
       <AppText
         variant="meta"
@@ -825,6 +804,9 @@ export default function VillageScreen() {
   const [aiView, setAiView] = useState<AiSearchView | null>(null);
   const [aiPending, setAiPending] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  /** The prompt the current AI result is for — drives the send/clear affordance and the
+   * AI-mode pull-to-refresh (which re-runs THIS search, not the hidden feed). */
+  const [lastSearched, setLastSearched] = useState('');
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [area, setArea] = useState<SavedAreaLabel | null>(null);
@@ -850,35 +832,40 @@ export default function VillageScreen() {
     setAiView(null);
     setAiError(null);
     setAiPrompt('');
+    setLastSearched('');
   }, []);
 
   // Stable so RecCard's memo holds — opens the shared Activity route by candidate id.
   const openActivity = useCallback((rec: VillageCandidateView) => router.push(`/activity/${rec.id}`), []);
 
-  const runAiSearch = useCallback(async () => {
-    const prompt = aiPrompt.trim();
-    if (!prompt || aiPending) return;
-    setAiPending(true);
-    setAiError(null);
-    // AI search takes over the body — clear any season search underneath it.
-    setActiveSeason(null);
-    setSearchError(null);
-    try {
-      const res = await api<MobileVillageAiSearchResponse>('/api/mobile/village/ai-search', {
-        method: 'POST',
-        body: JSON.stringify({ prompt }),
-        // The intent parse (and a possible discovery kick) is an LLM call — far slower
-        // than the 15s default, so a working search must not be aborted early.
-        timeoutMs: 120_000,
-      });
-      setAiView(aiSearchViewFrom(res));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return;
-      setAiError(aiSearchErrorMessage(e instanceof ApiError ? e.status : 0));
-    } finally {
-      setAiPending(false);
-    }
-  }, [aiPrompt, aiPending]);
+  const runAiSearch = useCallback(
+    async (promptArg?: string) => {
+      const prompt = (promptArg ?? aiPrompt).trim();
+      if (!prompt || aiPending) return;
+      setAiPending(true);
+      setAiError(null);
+      setLastSearched(prompt);
+      // AI search takes over the body — clear any season search underneath it.
+      setActiveSeason(null);
+      setSearchError(null);
+      try {
+        const res = await api<MobileVillageAiSearchResponse>('/api/mobile/village/ai-search', {
+          method: 'POST',
+          body: JSON.stringify({ prompt }),
+          // The intent parse (and a possible discovery kick) is an LLM call — far slower
+          // than the 15s default, so a working search must not be aborted early.
+          timeoutMs: 120_000,
+        });
+        setAiView(aiSearchViewFrom(res));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) return;
+        setAiError(aiSearchErrorMessage(e instanceof ApiError ? e.status : 0));
+      } finally {
+        setAiPending(false);
+      }
+    },
+    [aiPrompt, aiPending],
+  );
 
   // The active area changed in the switcher — re-query the feed so it reflects the new
   // area. A season search or an AI search is cleared back to the standing feed (their
@@ -913,8 +900,16 @@ export default function VillageScreen() {
     }
   }, []);
 
+  // In AI mode, pull-to-refresh re-runs the SHOWN search (not the hidden standing feed —
+  // that gesture would spin with no visible effect); on the feed it refetches as usual.
+  const inAiMode = aiPending || aiView !== null || aiError !== null;
+  const refreshControl = useTintedRefresh(
+    inAiMode ? aiPending : refreshing,
+    inAiMode ? () => void runAiSearch(lastSearched) : refresh,
+  );
+
   return (
-    <Screen scroll className="gap-4" refreshControl={useTintedRefresh(refreshing, refresh)}>
+    <Screen scroll className="gap-4" refreshControl={refreshControl}>
       <View className="pt-2">
         <View className="flex-row items-center justify-between">
           <AppText variant="display">Village</AppText>
@@ -931,6 +926,7 @@ export default function VillageScreen() {
         onSubmit={runAiSearch}
         pending={aiPending}
         active={aiView !== null || aiError !== null}
+        dirty={aiPrompt.trim() !== lastSearched}
         onClear={clearAiSearch}
       />
 
@@ -940,13 +936,13 @@ export default function VillageScreen() {
         aiPending ? (
           <Card className="items-center gap-3 py-8">
             <TypingDots />
-            <AppText variant="meta" className="text-ink-3">
+            <AppText variant="meta" className="text-ink-3" accessibilityLiveRegion="polite">
               Searching your village…
             </AppText>
           </Card>
         ) : aiError ? (
           <Card className="items-center gap-3 py-6">
-            <AppText variant="meta" className="text-center">
+            <AppText variant="meta" className="text-center" accessibilityLiveRegion="polite">
               {aiError}
             </AppText>
             <Pressable
@@ -972,7 +968,7 @@ export default function VillageScreen() {
               </View>
             ) : (
               <Card className="items-center gap-2 py-8">
-                <AppText variant="title">
+                <AppText variant="title" accessibilityLiveRegion="polite">
                   {aiView.kind === 'out-looking' ? 'Hale is out looking' : 'No specific matches'}
                 </AppText>
                 <AppText variant="meta" className="text-center">
@@ -986,7 +982,7 @@ export default function VillageScreen() {
         ) : null
       ) : (
         <>
-          <SeasonSearch
+          <SeasonChips
             activeSeason={activeSeason}
             onSearch={runSearch}
             onClear={clearToFeed}
@@ -995,7 +991,7 @@ export default function VillageScreen() {
 
           {searchError ? (
             <Card className="items-center gap-3 py-6">
-              <AppText variant="meta" className="text-center">
+              <AppText variant="meta" className="text-center" accessibilityLiveRegion="polite">
                 {searchError}
               </AppText>
               <Pressable
