@@ -30,8 +30,13 @@ function fakeDb(tokens: Array<{ id: string; expoPushToken: string }>, cap: Captu
   };
 }
 
-function fakeClient(send: ExpoPushClient['send']): ExpoPushClient {
-  return { send };
+/** A loosely-typed mock (like send.test.ts) so `mock.calls` isn't a strict empty tuple. */
+function fakeClient(send: ExpoPushClient['send']): {
+  client: ExpoPushClient;
+  send: ReturnType<typeof vi.fn>;
+} {
+  const mock = vi.fn(send);
+  return { client: { send: mock }, send: mock };
 }
 
 const MSG = { title: 'A gentle nudge', body: 'Nadia has a check-up tomorrow' };
@@ -47,10 +52,10 @@ afterEach(() => {
 describe('createExpoPushChannel().send', () => {
   it('is disabled (no send) when the flag is off', async () => {
     vi.stubEnv('PUSH_SEND_ENABLED', '');
-    const send = vi.fn(async () => []);
+    const { client, send } = fakeClient(async () => []);
     const channel = createExpoPushChannel({
       database: fakeDb([{ id: 't1', expoPushToken: 'ExponentPushToken[a]' }], capture) as never,
-      client: fakeClient(send),
+      client,
     });
 
     expect(await channel.send(USER_ID, MSG)).toEqual({ status: 'disabled' });
@@ -58,10 +63,10 @@ describe('createExpoPushChannel().send', () => {
   });
 
   it('reports no_address (no HTTP) when the user has no registered device', async () => {
-    const send = vi.fn(async () => []);
+    const { client, send } = fakeClient(async () => []);
     const channel = createExpoPushChannel({
       database: fakeDb([], capture) as never,
-      client: fakeClient(send),
+      client,
     });
 
     expect(await channel.send(USER_ID, MSG)).toEqual({ status: 'no_address' });
@@ -69,7 +74,7 @@ describe('createExpoPushChannel().send', () => {
   });
 
   it('delivers one message per token and reports the count', async () => {
-    const send = vi.fn(async () => [{ status: 'ok' as const }, { status: 'ok' as const }]);
+    const { client, send } = fakeClient(async () => [{ status: 'ok' }, { status: 'ok' }]);
     const channel = createExpoPushChannel({
       database: fakeDb(
         [
@@ -78,7 +83,7 @@ describe('createExpoPushChannel().send', () => {
         ],
         capture,
       ) as never,
-      client: fakeClient(send),
+      client,
     });
 
     expect(await channel.send(USER_ID, MSG)).toEqual({
@@ -91,9 +96,9 @@ describe('createExpoPushChannel().send', () => {
   });
 
   it('prunes a DeviceNotRegistered token and reports it', async () => {
-    const send = vi.fn(async () => [
-      { status: 'ok' as const },
-      { status: 'error' as const, details: { error: 'DeviceNotRegistered' } },
+    const { client } = fakeClient(async () => [
+      { status: 'ok' },
+      { status: 'error', details: { error: 'DeviceNotRegistered' } },
     ]);
     const channel = createExpoPushChannel({
       database: fakeDb(
@@ -103,7 +108,7 @@ describe('createExpoPushChannel().send', () => {
         ],
         capture,
       ) as never,
-      client: fakeClient(send),
+      client,
     });
 
     expect(await channel.send(USER_ID, MSG)).toEqual({
@@ -115,12 +120,12 @@ describe('createExpoPushChannel().send', () => {
   });
 
   it('returns a typed transport error (not a throw) when the provider send fails', async () => {
-    const send = vi.fn(async () => {
+    const { client } = fakeClient(async () => {
       throw new Error('Expo push send failed (503)');
     });
     const channel = createExpoPushChannel({
       database: fakeDb([{ id: 't1', expoPushToken: 'ExponentPushToken[a]' }], capture) as never,
-      client: fakeClient(send),
+      client,
     });
 
     const result = await channel.send(USER_ID, MSG);
