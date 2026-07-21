@@ -10,7 +10,10 @@ import { resolveActiveAreaCoarse } from './areas';
 import { geocodeVenue } from './geocode';
 import type { LatLng } from './map-model';
 import type { VillageCandidateView } from './mappers';
+import { orderCandidates } from './order-candidates';
 import { readVillage } from './queries';
+
+export { orderCandidates };
 
 /**
  * The agent-ranked village feed — the home/primary surface's data source. It is
@@ -73,31 +76,6 @@ function coarseCenterCached(areaCoarse: string): Promise<LatLng | null> {
     { revalidate: CENTER_TTL_SECONDS, tags: ['village-coarse-center'] },
   );
   return run();
-}
-
-/** Reorder candidate views to match the agent's ordered ids; any view whose id
- * the order omits is appended in its original position (defence in depth — the
- * ranker already reconciles, but the feed never drops a card). */
-export function orderCandidates(
-  candidates: VillageCandidateView[],
-  orderedIds: string[],
-): VillageCandidateView[] {
-  const byId = new Map(candidates.map((c) => [c.id, c]));
-  const ordered: VillageCandidateView[] = [];
-  const seen = new Set<string>();
-  for (const id of orderedIds) {
-    const candidate = byId.get(id);
-    if (candidate && !seen.has(id)) {
-      seen.add(id);
-      ordered.push(candidate);
-    }
-  }
-  for (const candidate of candidates) {
-    if (!seen.has(candidate.id)) {
-      ordered.push(candidate);
-    }
-  }
-  return ordered;
 }
 
 /**

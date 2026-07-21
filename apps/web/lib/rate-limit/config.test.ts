@@ -40,9 +40,19 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     }
   });
 
+  it('guards the AI-search intent parse as a generous per-minute bot guard, not the paid cooldown', () => {
+    // The natural-language search's per-submit intent parse is a CHEAP model call;
+    // the expensive discovery it may trigger is separately bounded by village-search
+    // (5/hour). So this stays a per-minute guard on a burst, generous enough that a
+    // parent exploring phrasings never hits it — only a scripted loop does.
+    expect(RATE_LIMITS['village-ai-search'].windowSec).toBe(60);
+    expect(RATE_LIMITS['village-ai-search'].limit).toBeGreaterThanOrEqual(15);
+  });
+
   it('uses a one-minute window for the silent bot-guard routes (not the per-hour cost caps)', () => {
     // The per-hour COST-cap routes (a billable LLM run, or a per-message SMS spend)
-    // are genuine cooldowns; every OTHER route is an invisible bot guard on a minute.
+    // are genuine cooldowns; every OTHER route is an invisible bot guard on a minute
+    // (the cheap AI-search intent parse included).
     const hourWindowCostCaps = new Set(['village-search', 'sms-otp-send', 'sms-otp-verify']);
     for (const [route, opts] of Object.entries(RATE_LIMITS)) {
       if (hourWindowCostCaps.has(route)) continue;
