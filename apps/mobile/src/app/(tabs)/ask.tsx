@@ -44,6 +44,7 @@ import {
   attachmentTone,
   buildCoachSendPayload,
   canSendAsk,
+  exceedsAttachmentSize,
   readyAttachmentIds,
   uploadErrorMessage,
 } from '@/lib/ask-attachments';
@@ -57,6 +58,11 @@ import { timeGreeting } from '@/lib/greeting';
 import { type QuickLogMatch, detectQuickLog } from '@/lib/quick-log-detect';
 import { useVoiceInput } from '@/lib/use-voice-input';
 import { viewerFirstName } from '@/lib/viewer-name';
+
+// Image/PDF uploads over a mobile network need more headroom than the api client's
+// tight 15s default — otherwise a working multi-file upload is aborted and reported as
+// a false failure. Mirrors how the Village season search passes a longer timeoutMs.
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** A streaming Concierge turn. `text` grows as deltas arrive; `trail` is the live
  * step list (with the in-flight tool pulsing); once `streaming` is false the trail
@@ -437,6 +443,7 @@ export default function AskScreen() {
       const stored = await api<ChatAttachmentUpload[]>('/api/coach/attachments', {
         method: 'POST',
         body: form,
+        timeoutMs: UPLOAD_TIMEOUT_MS,
       });
       setAttachments((prev) =>
         prev.map((a) => {
@@ -476,36 +483,59 @@ export default function AskScreen() {
     });
     if (result.canceled) return;
     const picked = result.assets.slice(0, remaining);
-    setUploadNote(
-      result.assets.length > remaining ? `You can attach up to ${MAX_ATTACHMENTS} files.` : null,
-    );
     const batchId = `b-${Date.now()}`;
     const base = attachments.length;
-    const batch: PendingAttachment[] = picked.map((f, i) => ({
-      localId: `${batchId}-${i}`,
-      batchId,
-      name: f.name,
-      sizeBytes: f.size ?? 0,
-      tone: attachmentTone(base + i),
-      status: 'uploading',
-      file: { uri: f.uri, name: f.name, type: f.mimeType ?? 'application/octet-stream' },
-    }));
-    setAttachments((prev) => [...prev, ...batch]);
-    await uploadBatch(batch);
+    // Reject over-cap files on-device: an oversized file becomes its own terminal
+    // (non-retryable) error chip and is never sent, so it can't fail the shared upload
+    // request and strand the good files in the same pick. The rest upload normally.
+    const chips: PendingAttachment[] = picked.map((f, i) => {
+      const sizeBytes = f.size ?? 0;
+      const oversize = exceedsAttachmentSize(sizeBytes);
+      return {
+        localId: `${batchId}-${i}`,
+        batchId,
+        name: f.name,
+        sizeBytes,
+        tone: attachmentTone(base + i),
+        status: oversize ? 'error' : 'uploading',
+        file: { uri: f.uri, name: f.name, type: f.mimeType ?? 'application/octet-stream' },
+        ...(oversize ? { retryable: false } : {}),
+      };
+    });
+    setAttachments((prev) => [...prev, ...chips]);
+
+    const truncated = result.assets.length > remaining;
+    const anyOversize = chips.some((c) => c.status === 'error');
+    setUploadNote(
+      truncated
+        ? `You can attach up to ${MAX_ATTACHMENTS} files.`
+        : anyOversize
+          ? uploadErrorMessage(413, 'file_too_large').note
+          : null,
+    );
+
+    const uploadable = chips.filter((c) => c.status === 'uploading');
+    if (uploadable.length > 0) await uploadBatch(uploadable);
   };
 
   const removeAttachment = (localId: string) => {
-    setAttachments((prev) => prev.filter((a) => a.localId !== localId));
+    const next = attachments.filter((a) => a.localId !== localId);
+    setAttachments(next);
+    // The upload note explains an errored chip; once none remain, retire it.
+    if (!next.some((a) => a.status === 'error')) setUploadNote(null);
   };
 
   const retryBatch = (batchId: string) => {
+    // Re-upload only the retryable files of the batch; a pre-rejected oversized chip
+    // (retryable: false) is terminal and must not be re-sent into the shared request.
+    const retryable = attachments.filter((a) => a.batchId === batchId && a.retryable);
+    if (retryable.length === 0) return;
     setUploadNote(null);
-    const batch = attachments.filter((a) => a.batchId === batchId);
-    if (batch.length === 0) return;
+    const retryIds = new Set(retryable.map((a) => a.localId));
     setAttachments((prev) =>
-      prev.map((a) => (a.batchId === batchId ? { ...a, status: 'uploading' } : a)),
+      prev.map((a) => (retryIds.has(a.localId) ? { ...a, status: 'uploading' } : a)),
     );
-    void uploadBatch(batch.map((a) => ({ ...a, status: 'uploading' })));
+    void uploadBatch(retryable.map((a) => ({ ...a, status: 'uploading' })));
   };
 
   const send = async (text: string) => {

@@ -11,6 +11,18 @@ import type { ChipTone } from '@/components/ui/tint-chip';
  * the /api/coach attachmentIds cap (apps/web/lib/coach/attachments.ts). */
 export const MAX_ATTACHMENTS = 5;
 
+/** Hard per-file size cap, mirroring the server's MAX_ATTACHMENT_BYTES
+ * (apps/web/lib/coach/attachments.ts). Enforced on-device before upload so an
+ * over-cap file is rejected as its own errored chip and never poisons the rest of a
+ * mixed batch (the upload is one all-or-nothing multipart request). */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/** True when a picked file is over the size cap and must be rejected client-side — a
+ * terminal, non-retryable failure, since the same bytes always exceed the cap. */
+export function exceedsAttachmentSize(bytes: number): boolean {
+  return bytes > MAX_ATTACHMENT_BYTES;
+}
+
 /** The four doc-glyph tile tints, cycled by attachment index (handoff palette). */
 const ATTACHMENT_TONES = ['red', 'blue', 'green', 'yellow'] as const satisfies readonly ChipTone[];
 
