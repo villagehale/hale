@@ -21,7 +21,10 @@
  * palette so existing page utilities (bg-apricot-tint, text-sage, …) keep
  * resolving while pages are migrated in later phases — the name is the role slot,
  * the comment names the real value:
- *   apricot* = the blue accent (#3B5BDB / #EDF0FA) — links, focus, CTA accent
+ *   apricot* = ink-navy content accent (#17294A / #ECE8DE warm wash) — icons, numbers,
+ *              links, "You" pill, focus rings (re-pointed FROM #3B5BDB blue per the
+ *              founder palette law: navy / warm-white / orange). --color-illustration
+ *              keeps the old #3B5BDB blue for the decorative illo kit only.
  *   sky*     = the teal accent (#0F766E / #E0F2F1) — coach / calm
  *   sage/success = the green accent (#1F8A4C, #2EA35E / #E7F6EC) — done / health
  *   berry*   = the terracotta accent (#C2543F / #FDEBE8) — needs-you / danger
@@ -64,10 +67,18 @@
   --color-brand: #1B2160;       /* NAVY — primary buttons, wordmark, links, active nav — 12.86:1 on canvas; white text on it 14.65:1 */
   --color-brand-hover: #2A327D; /* primary-button hover (a touch lighter navy) */
 
-  /* Blue accent (legacy name: apricot*) — links / focus ring / CTA accent */
-  --color-apricot: #3B5BDB;       /* blue base */
-  --color-apricot-deep: #3B5BDB;  /* text-safe blue — 4.97:1 on canvas, 5.67:1 on white (AA) */
-  --color-apricot-tint: #EDF0FA;  /* blue wash — avatars, selected chip, "You" pill */
+  /* Accent (legacy Tailwind name: apricot*) — RE-POINTED to ink navy for small-scale
+   * content accents (icons, numbers, links, "You" pill, selected borders, focus rings).
+   * Founder palette law: navy / warm-white / orange — no blue-reading small accents.
+   * Large brand FILLS stay --color-brand navy; decorative art keeps --color-illustration. */
+  --color-apricot: #17294A;       /* ink-navy accent (was #3B5BDB blue) — 12.69:1 on canvas */
+  --color-apricot-deep: #17294A;  /* text-safe ink navy — 12.69:1 on canvas */
+  --color-apricot-tint: #ECE8DE;  /* warm-neutral wash — avatars, chips, "You" pill (was #EDF0FA blue); navy on it 12:1 */
+
+  /* Decorative illustration blue — the Meadow illo kit's own periwinkle, kept out of
+   * the content-accent sweep so mascot/scene art is unchanged (illos.tsx only). */
+  --color-illustration: #3B5BDB;
+  --color-illustration-tint: #EDF0FA;
 
   /* Teal accent (legacy name: sky*) — coach / calm */
   --color-sky: #56B9AE;        /* teal illustration */
@@ -192,10 +203,15 @@
   --color-brand: #F6F1E7;        /* 16.08:1 on canvas */
   --color-brand-hover: #E4DED0;
 
-  /* Blue accent (apricot*) — lightened to hold AA on the dark ground. */
-  --color-apricot: #8AA2F2;
-  --color-apricot-deep: #8AA2F2;     /* 7.35:1 on canvas, 5.68:1 on raised */
-  --color-apricot-tint: #1B2748;
+  /* Accent (apricot*) — cream ink on the dark ground, matching the light re-point to
+   * ink navy (dark inverts ink→cream). Small content accents + focus rings. */
+  --color-apricot: #F6F1E7;
+  --color-apricot-deep: #F6F1E7;     /* 16.08:1 on canvas */
+  --color-apricot-tint: #26304A;     /* dark neutral wash — avatars / chips / "You" pill */
+
+  /* Decorative illustration blue — dark variant, kept for the illo kit only. */
+  --color-illustration: #8AA2F2;
+  --color-illustration-tint: #1B2748;
 
   /* Teal accent (sky*) — coach / calm. */
   --color-sky: #56B9AE;

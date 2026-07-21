@@ -814,7 +814,7 @@ export function MilestonesSection({ child }: { child: ChildCompanionView }) {
             key={milestone.what}
             className="flex items-center gap-4 border-t border-rule pt-4 first:border-t-0 first:pt-0"
           >
-            <span className="shrink-0 grid place-items-center size-8 rounded-[var(--r-sm)] bg-oat tabular text-[0.8125rem] font-semibold text-slate-green">
+            <span className="shrink-0 grid place-items-center size-8 rounded-[var(--r-sm)] bg-oat tabular text-[0.8125rem] font-semibold text-spruce">
               {idx + 1}
             </span>
             <span className="min-w-0 flex-1">
@@ -825,7 +825,7 @@ export function MilestonesSection({ child }: { child: ChildCompanionView }) {
                 <Icon
                   as={MILESTONE_AREA_ICON[milestone.area]}
                   size={15}
-                  className="shrink-0 text-slate-green"
+                  className="shrink-0 text-spruce"
                 />
               </span>
               <span className="meta mt-0.5 block text-faded-sage">
