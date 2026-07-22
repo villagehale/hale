@@ -28,6 +28,15 @@ export interface ReminderEventView {
   sensitive?: boolean;
 }
 
+/**
+ * VIL-229 reminder voice object — voice-only fields (facts stay slots, never generated).
+ * One human line for now; an object (not a bare string) so it matches the generic
+ * composeVoice<TVoice> seam and can grow (e.g. an opener) without a breaking field change.
+ */
+export interface ReminderVoice {
+  line: string;
+}
+
 export interface ReminderPayload {
   offset: '-P1D' | '-PT1H';
   /** The family IANA timezone — the event time labels ("10:00") are family-local. */
@@ -38,6 +47,16 @@ export interface ReminderPayload {
   deepLink: string | null;
   /** CASL unsubscribe for the email leg; null only when email is not a target. */
   unsubscribeUrl: string | null;
+  /**
+   * VIL-229 voice slot — the LLM-composed human line, composed at the evening converge
+   * tick from the SAME redacted view the template renders (teen-gated, sensitive-
+   * genericized, name-leveled), so the email shell renders it verbatim without a second
+   * privacy gate. The email uses `voice.line` as the serif signature line (single) or a
+   * serif lead above the list (batch); facts (the time) stay slot-injected, never in the
+   * voice string. Absent/null (composeVoice degraded) → the deterministic line is the
+   * fail-open fallback (rule #8). Email-only; SMS/push keep their terse deterministic copy.
+   */
+  voice?: ReminderVoice | null;
 }
 
 function isReminderEventView(value: unknown): value is ReminderEventView {
