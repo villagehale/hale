@@ -38,6 +38,16 @@ export interface ReminderPayload {
   deepLink: string | null;
   /** CASL unsubscribe for the email leg; null only when email is not a target. */
   unsubscribeUrl: string | null;
+  /**
+   * VIL-229 voice slot — ONE LLM-composed human line for the message, composed at the
+   * evening converge tick from the SAME redacted view the template renders (teen-gated,
+   * sensitive-genericized, name-leveled), so the email shell renders it verbatim without
+   * a second privacy gate. The email uses it as the serif signature line (single) or a
+   * serif lead above the list (batch); facts (the time) stay slot-injected, never in the
+   * voice string. Absent/null → the deterministic line is the fail-open fallback (rule
+   * #8). Email-only; SMS/push keep their terse deterministic copy.
+   */
+  voice?: string | null;
 }
 
 function isReminderEventView(value: unknown): value is ReminderEventView {

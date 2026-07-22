@@ -191,6 +191,37 @@ describe('email fail-closed CASL', () => {
   });
 });
 
+describe('VIL-229 voice slot — email-only serif signature, deterministic fallback', () => {
+  const VOICE = "Tomorrow's the big swim day for Maya";
+
+  it('single: the voice line is the serif signature, replacing the deterministic descriptor', () => {
+    const e = email(payload({ offset: '-P1D', events: [swimAt430], voice: VOICE }), 'first_name');
+    expect(e.html).toContain(VOICE);
+    // Replaces the deterministic serif line…
+    expect(e.html).not.toContain(`Maya ${EM_DASH} Swim class`);
+    // …but the TIME stays slot-injected (never in the voice string).
+    expect(e.html).toContain('4:30');
+  });
+
+  it('batch: the voice opens as a serif lead; the per-event facts stay in the list', () => {
+    const e = email(payload({ offset: '-P1D', events: [apptAt10, swimAt430], voice: VOICE }), 'first_name');
+    expect(e.html).toContain(VOICE);
+    expect(e.html).toContain('Swim class'); // list keeps the descriptor facts
+    expect(e.html).toContain('10:00');
+  });
+
+  it('falls back to the deterministic line when the voice is absent (rule #8 fail-open)', () => {
+    const e = email(payload({ offset: '-PT1H', events: [swimAt430], deepLink: null }), 'first_name');
+    expect(e.html).toContain(`Maya ${EM_DASH} Swim class`);
+  });
+
+  it('SMS and push ignore the voice (email-only) — their deterministic budgets are kept', () => {
+    const p = payload({ offset: '-P1D', events: [swimAt430], voice: VOICE });
+    expect(sms(p, 'first_name')).not.toContain(VOICE);
+    expect(push(p, 'first_name').body).not.toContain(VOICE);
+  });
+});
+
 describe('registry routing by templateKey', () => {
   it('routes a reminder message to the reminder renderer', () => {
     const r = loopTemplateRenderer.render(msg(batch), 'push', 'first_name');

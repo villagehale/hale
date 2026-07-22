@@ -52,31 +52,39 @@ function localTimeParts(startsAt: string, timeZone: string): { clock: string; me
 }
 
 /** The single-event note: the time as a big serif anchor with a short amber underline,
- * the event on the serif line beneath. This is the reminder at its most glanceable. */
+ * the event on the serif line beneath. This is the reminder at its most glanceable. The
+ * serif line is the VIL-229 voice line when present (already privacy-redacted at
+ * composition), else the deterministic descriptor (rule #8 fallback). */
 function singleBlock(
   event: ReminderEventView,
   children: readonly ReminderChild[],
   level: ChildNameLevel,
   now: Date,
   timeZone: string,
+  voice: string | null,
 ): string {
   const { clock, meridiem } = localTimeParts(event.startsAt, timeZone);
-  const descriptor = escapeHtml(eventDescriptor(event, children, level, now));
+  const what = escapeHtml(voice ?? eventDescriptor(event, children, level, now));
   const time = `<p style="margin:0;color:${NAVY};font-family:${SERIF};font-size:46px;font-weight:700;line-height:1;letter-spacing:-0.01em;">${escapeHtml(clock)}<span style="font-family:${SANS};font-size:15px;font-weight:600;color:${SLATE};letter-spacing:0.04em;">&nbsp;${escapeHtml(meridiem)}</span></p>`;
   const underline = `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="width:44px;height:3px;background:${AMBER};border-radius:2px;font-size:0;line-height:0;">&nbsp;</td></tr></table>`;
-  const what = `<p style="margin:16px 0 0;color:${NAVY};font-family:${SERIF};font-size:21px;font-weight:400;line-height:1.35;">${descriptor}</p>`;
-  return `${time}<div style="padding-top:14px;">${underline}</div>${what}`;
+  const line = `<p style="margin:16px 0 0;color:${NAVY};font-family:${SERIF};font-size:21px;font-weight:400;line-height:1.35;">${what}</p>`;
+  return `${time}<div style="padding-top:14px;">${underline}</div>${line}`;
 }
 
 /** The batch note: a shared evening as a tabular time→event list (the times align so
- * the eye scans the column), each event's descriptor on the serif side. */
+ * the eye scans the column), each event's descriptor on the serif side. A VIL-229 voice
+ * line, when present, opens as a serif lead sentence above the list. */
 function batchBlock(
   events: readonly ReminderEventView[],
   children: readonly ReminderChild[],
   level: ChildNameLevel,
   now: Date,
   timeZone: string,
+  voice: string | null,
 ): string {
+  const lead = voice
+    ? `<p style="margin:0 0 18px;color:${NAVY};font-family:${SERIF};font-size:19px;font-weight:400;line-height:1.45;">${escapeHtml(voice)}</p>`
+    : '';
   const rows = events
     .map((event, i) => {
       const { clock, meridiem } = localTimeParts(event.startsAt, timeZone);
@@ -85,7 +93,7 @@ function batchBlock(
       return `<tr><td width="96" valign="top" style="${border}padding:12px 12px 12px 0;color:${NAVY};font-family:${SANS};font-size:15px;font-weight:700;white-space:nowrap;">${escapeHtml(clock)} <span style="font-weight:600;color:${SLATE};font-size:12px;">${escapeHtml(meridiem)}</span></td><td valign="top" style="${border}padding:12px 0;color:${NAVY};font-family:${SERIF};font-size:18px;line-height:1.35;">${descriptor}</td></tr>`;
     })
     .join('');
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>`;
+  return `${lead}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>`;
 }
 
 function renderText(
@@ -122,11 +130,14 @@ export function renderReminderEmail(
 
   const kicker = `<p style="margin:0 0 18px;color:${SLATE};font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">${escapeHtml(lead)}</p>`;
 
+  // The voice line is the LLM-composed serif signature (VIL-229), already redacted to
+  // the rendered view at composition; null/absent → the deterministic line (rule #8).
+  const voice = payload.voice ?? null;
   const [first] = payload.events;
   const body =
     payload.events.length === 1 && first
-      ? singleBlock(first, payload.children, level, now, payload.timeZone)
-      : batchBlock(payload.events, payload.children, level, now, payload.timeZone);
+      ? singleBlock(first, payload.children, level, now, payload.timeZone, voice)
+      : batchBlock(payload.events, payload.children, level, now, payload.timeZone, voice);
 
   // One quiet action, navy (links use navy) — the T-24h note only; the T-1h ping is
   // link-free (rule #6).
