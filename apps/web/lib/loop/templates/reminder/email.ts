@@ -132,7 +132,7 @@ export function renderReminderEmail(
 
   // The voice line is the LLM-composed serif signature (VIL-229), already redacted to
   // the rendered view at composition; null/absent → the deterministic line (rule #8).
-  const voice = payload.voice ?? null;
+  const voice = payload.voice?.line ?? null;
   const [first] = payload.events;
   const body =
     payload.events.length === 1 && first

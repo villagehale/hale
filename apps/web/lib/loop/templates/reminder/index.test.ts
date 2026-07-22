@@ -195,7 +195,7 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
   const VOICE = "Tomorrow's the big swim day for Maya";
 
   it('single: the voice line is the serif signature, replacing the deterministic descriptor', () => {
-    const e = email(payload({ offset: '-P1D', events: [swimAt430], voice: VOICE }), 'first_name');
+    const e = email(payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } }), 'first_name');
     expect(e.html).toContain(VOICE);
     // Replaces the deterministic serif line…
     expect(e.html).not.toContain(`Maya ${EM_DASH} Swim class`);
@@ -204,7 +204,7 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
   });
 
   it('batch: the voice opens as a serif lead; the per-event facts stay in the list', () => {
-    const e = email(payload({ offset: '-P1D', events: [apptAt10, swimAt430], voice: VOICE }), 'first_name');
+    const e = email(payload({ offset: '-P1D', events: [apptAt10, swimAt430], voice: { line: VOICE } }), 'first_name');
     expect(e.html).toContain(VOICE);
     expect(e.html).toContain('Swim class'); // list keeps the descriptor facts
     expect(e.html).toContain('10:00');
@@ -216,7 +216,7 @@ describe('VIL-229 voice slot — email-only serif signature, deterministic fallb
   });
 
   it('SMS and push ignore the voice (email-only) — their deterministic budgets are kept', () => {
-    const p = payload({ offset: '-P1D', events: [swimAt430], voice: VOICE });
+    const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } });
     expect(sms(p, 'first_name')).not.toContain(VOICE);
     expect(push(p, 'first_name').body).not.toContain(VOICE);
   });
