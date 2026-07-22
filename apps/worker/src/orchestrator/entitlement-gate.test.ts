@@ -103,6 +103,7 @@ vi.mock('../services/memory-writer.js', () => ({
     hasCoParent: false,
     coParentConsentGranted: false,
   })),
+  hasAutonomousActionOptIn: vi.fn(async () => true),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: ['newborn'],

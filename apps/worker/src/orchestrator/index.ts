@@ -28,6 +28,7 @@ import { redactEventPayload } from '../redaction/redact.js';
 import { runExecutor } from '../services/executor.js';
 import {
   getMemorySlice,
+  hasAutonomousActionOptIn,
   loadActionApprovalHistory,
   loadActionForApproval,
   loadActionForEvent,
@@ -603,6 +604,28 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
       actionType: draft.actionType,
       reason: 'streak',
       detail: { required: 5 },
+    });
+    return;
+  }
+
+  // G1 (VIL-222) — per-action-type autonomy OPT-IN. The 5-streak proves Hale is
+  // reliable at this action type; this gate proves the parent has explicitly TURNED
+  // IT ON (a standing consent_records opt-in). Both must hold before Hale acts
+  // unprompted (rule #4). Pure tightening: it can only hold an action for approval,
+  // never make a family more autonomous. The AUTO surface that grants this ships in
+  // the C-phase; until then every action is held here (safe by construction).
+  if (!(await hasAutonomousActionOptIn(familyId, draft.actionType))) {
+    await markEventStage(familyId, eventId, 'reviewed');
+    logger.info(
+      { familyId, actionId, actionType: draft.actionType },
+      'orchestrator: action type not opted into autonomy — drafted for approval',
+    );
+    await recordActionGate({
+      familyId,
+      actionId,
+      actionType: draft.actionType,
+      reason: 'autonomy_not_opted_in',
+      detail: { consentType: 'autonomous_action_class', consentScope: draft.actionType },
     });
     return;
   }

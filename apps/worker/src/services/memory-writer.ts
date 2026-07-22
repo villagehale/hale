@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { schema, type Database } from '@hale/db';
 import type {
   EventType,
@@ -588,7 +588,8 @@ export type ActionGateReason =
   | 'streak'
   | 'cross_parent_consent'
   | 'teen_redaction'
-  | 'over_allowance';
+  | 'over_allowance'
+  | 'autonomy_not_opted_in';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -1064,6 +1065,62 @@ export async function loadCrossParentConsent(
     .limit(1);
 
   return { hasCoParent: true, coParentConsentGranted: consents.length > 0 };
+}
+
+/**
+ * The rule-#4 per-action-type AUTONOMY OPT-IN (G1 / VIL-222). Beyond the 5-streak
+ * (which measures Hale's demonstrated reliability), a PRIMARY parent must have
+ * explicitly opted an action type into autonomous execution — a standing
+ * consent_records row (type 'autonomous_action_class', scope = the actionType).
+ *
+ * Reads the LATEST such row by grantedAt and requires granted=true AND revokedAt
+ * null. Latest-row-wins is correct under BOTH withdrawal conventions in this
+ * codebase — an append-only newer granted=false row (how SMS CASL records a
+ * withdrawal) OR a revokedAt UPDATE on the grant (how loadCrossParentConsent reads)
+ * — either makes the latest row fail the predicate, so a withdrawn opt-in never
+ * reads as granted (the naive-granted=true trap). No writer for this scope exists
+ * yet (the grant lands with the C-phase AUTO surface), so the reader is robust to
+ * whichever convention that writer picks; until then the gate holds every action
+ * for approval — a pure tightening.
+ */
+export async function hasAutonomousActionOptIn(
+  familyId: string,
+  actionType: ActionType,
+  database: Database = db(),
+): Promise<boolean> {
+  const primary = await database
+    .select({ userId: schema.familyMembers.userId })
+    .from(schema.familyMembers)
+    .where(
+      and(
+        eq(schema.familyMembers.familyId, familyId),
+        eq(schema.familyMembers.role, 'primary_parent'),
+      ),
+    )
+    .limit(1);
+  const primaryUserId = primary[0]?.userId;
+  if (!primaryUserId) {
+    return false;
+  }
+
+  const latest = await database
+    .select({
+      granted: schema.consentRecords.granted,
+      revokedAt: schema.consentRecords.revokedAt,
+    })
+    .from(schema.consentRecords)
+    .where(
+      and(
+        eq(schema.consentRecords.userId, primaryUserId),
+        eq(schema.consentRecords.consentType, 'autonomous_action_class'),
+        eq(schema.consentRecords.consentScope, actionType),
+      ),
+    )
+    .orderBy(desc(schema.consentRecords.grantedAt))
+    .limit(1);
+
+  const row = latest[0];
+  return !!row && row.granted && row.revokedAt === null;
 }
 
 /**

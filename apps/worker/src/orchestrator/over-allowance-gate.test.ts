@@ -99,6 +99,7 @@ vi.mock('../services/memory-writer.js', () => ({
     Array.from({ length: 5 }, () => ({ actionType: 'send_email', humanApproved: true })),
   ),
   loadCrossParentConsent: vi.fn(async () => ({ hasCoParent: false, coParentConsentGranted: false })),
+  hasAutonomousActionOptIn: vi.fn(async () => true),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: childStages,
