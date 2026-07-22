@@ -92,15 +92,16 @@ describe('T-24h batch — Tomorrow lead, every event listed', () => {
     expect(text).not.toContain('http');
   });
 
-  it('email lists both events with the time bold and carries the Open-your-week button', () => {
+  it('email lists both events as a time→event note and carries the See-your-week link', () => {
     const e = email(batch, 'first_name');
     expect(e.subject).toBe(`Tomorrow: an appointment at 10:00, Maya ${EM_DASH} Swim class at 4:30`);
     expect(e.html).toContain('Swim class');
     expect(e.html).toContain('an appointment');
-    expect(e.html).toContain('<strong style="font-weight:700;">4:30</strong>');
-    expect(e.html).toContain('<strong style="font-weight:700;">10:00</strong>');
+    // Both times are surfaced in the note body (the batch tabular list).
+    expect(e.html).toContain('4:30');
+    expect(e.html).toContain('10:00');
     expect(e.html).toContain(`href="${DEEP_LINK}"`);
-    expect(e.html).toContain('Open your week');
+    expect(e.html).toContain('See your week');
   });
 });
 
@@ -119,10 +120,10 @@ describe('T-1h single — In an hour lead, glanceable, no links anywhere (rule #
     expect(text).not.toContain('http');
   });
 
-  it('email has no Open-your-week button and no /plan link', () => {
+  it('email has no See-your-week link and no /plan link (glanceable, rule #6)', () => {
     const e = email(single, 'first_name');
     expect(e.subject).toBe(`In an hour: Maya ${EM_DASH} Swim class at 4:30`);
-    expect(e.html).not.toContain('Open your week');
+    expect(e.html).not.toContain('See your week');
     expect(e.html).not.toContain('/plan');
   });
 });
