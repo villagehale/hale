@@ -78,9 +78,14 @@ describe('runSundaySendCron', () => {
     let readPlanWeekStart = '';
     const deps: SundaySendDeps = {
       selectParents: async () => [parent],
+      // KEY-STRICT, like the real store: the composer keys the artifact on the
+      // UPCOMING Monday (cron.ts weekWindow offset 1). NOW is Sun 19:30 Toronto
+      // Jan 18, so the only findable key is 2026-01-19. A wrong-week lookup
+      // returns null — this is what catches the outgoing-week regression the
+      // first prod probe found (offset 0 keyed the OUTGOING Monday).
       readPlan: async (_db, _familyId, weekStart) => {
         readPlanWeekStart = weekStart;
-        return plan;
+        return weekStart === '2026-01-19' ? plan : null;
       },
       loadChildren: async () => [
         { id: 'c1', name: 'Maya', dateOfBirth: '2021-01-01', gender: 'girl' },
@@ -144,6 +149,8 @@ describe('runSundaySendCron', () => {
     const { deps, enqueued, weekStartOf } = makeDeps();
     await runSundaySendCron({} as never, deps, NOW);
     expect(enqueued[0]?.dedupeKey).toBe(`fam-1:${weekStartOf()}:u1`);
-    expect(weekStartOf()).toBe('2026-01-12'); // Monday of the current week (not Sun-start)
+    // The UPCOMING Monday — the week the Sunday-evening send announces, and the
+    // key the composer wrote the artifact under (cron.ts weekWindow offset 1).
+    expect(weekStartOf()).toBe('2026-01-19');
   });
 });
