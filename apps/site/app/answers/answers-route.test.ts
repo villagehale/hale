@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { APP_URL } from '~/lib/app-url.js';
 import { allAnswers, getAnswer } from '~/lib/answers/index.js';
+import { APP_URL } from '~/lib/app-url.js';
 import AnswerPageRoute, { generateMetadata, generateStaticParams } from './[slug]/page.js';
 
 /**
@@ -53,6 +53,13 @@ describe('answers/[slug] route', () => {
   it('carries the "not medical advice" YMYL framing', async () => {
     const html = await render(SLUG);
     expect(html.toLowerCase()).toContain('not medical advice');
+  });
+
+  it('presents the library as Parenting guides without changing its /answers URLs', async () => {
+    const html = await render(SLUG);
+    expect(html).toContain('Parenting guides');
+    expect(html).toContain('Related guides');
+    expect(html).toContain('href="/answers"');
   });
 
   it('wires the "Ask Concierge about your child" CTA to the onboarding wizard', async () => {

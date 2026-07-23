@@ -17,7 +17,7 @@ const PRODUCT = [
 ] as const;
 
 const RESOURCES = [
-  { label: 'Parenting answers', href: '/answers' },
+  { label: 'Parenting guides', href: '/answers' },
   { label: 'About', href: '/about' },
   { label: 'Contact', href: '/contact' },
   { label: 'Sign in', href: `${APP_URL}/sign-in` },
@@ -47,17 +47,15 @@ export function SiteFooter() {
               </span>
             </a>
             <p className="mb-4 mt-5 max-w-[340px] text-[13px] leading-[1.6] text-[#5C6B87]">
-              Hale is the quiet helper for busy families — always prepared, never acting without you.
+              Hale is the quiet helper for busy families — always prepared, never acting without
+              you.
             </p>
             <p className="text-[12px] leading-[1.6] text-[#5C6B87]">
               Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
             </p>
           </div>
 
-          <nav
-            aria-label="Footer"
-            className="grid grid-cols-2 gap-8 md:gap-4 lg:w-[50%]"
-          >
+          <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:gap-4 lg:w-[50%]">
             {COLUMNS.map((column) => (
               <div key={column.heading}>
                 <h2 className="mb-5 text-[14px] font-semibold text-[#17294A]">{column.heading}</h2>

@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import { CtaBand } from '~/components/cta-band';
 import { LandingCta } from '~/components/landing-cta';
+import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
-import { FAQ, faqJsonLd } from '~/lib/faq/index';
+import { faqJsonLd } from '~/lib/faq/index';
 
 const TITLE = 'Is Hale free, private, and right for your family? · Hale';
 const DESCRIPTION =
@@ -47,17 +48,9 @@ export default function FaqPage() {
           </p>
         </div>
 
-        <dl className="mt-14 flex flex-col gap-10 max-w-2xl">
-          {FAQ.map((item) => (
-            <div key={item.question} className="rise rise-2 border-t border-rule pt-8">
-              <dt className="font-display text-xl sm:text-2xl text-spruce">{item.question}</dt>
-              <dd className="mt-4 text-base leading-relaxed text-slate-green md:text-lg">
-                {item.answer}
-              </dd>
-            </div>
-          ))}
-        </dl>
-
+        <div className="mt-14 max-w-3xl rise rise-2">
+          <ProductFaqAccordion />
+        </div>
       </section>
 
       <CtaBand>
@@ -66,11 +59,7 @@ export default function FaqPage() {
           Free to start. Your data stays in Canada.
         </p>
         <div className="mt-8 flex justify-center">
-          <LandingCta
-            event="faq_cta_signin"
-            href={`${APP_URL}/onboarding`}
-            className="btn-on-navy"
-          >
+          <LandingCta event="faq_cta_signin" href={`${APP_URL}/onboarding`} className="btn-on-navy">
             Join the village
           </LandingCta>
         </div>

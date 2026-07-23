@@ -2,12 +2,10 @@ import { ArrowRight, ArrowUpRight, MapPin, Mic, SendHorizonal, Sparkles } from '
 import Image from 'next/image';
 import { Fragment } from 'react';
 import village from '~/assets/village-illustration-alpha.png';
-import { AnimatedText } from '~/components/landing/animated-text';
+import { LandingCta } from '~/components/landing-cta';
 import { FadeInUp } from '~/components/landing/fade-in-up';
 import { HeroBackdrop } from '~/components/landing/hero-backdrop';
-import { FaqAccordion } from '~/components/landing/faq-accordion';
 import { Testimonials } from '~/components/landing/testimonials';
-import { LandingCta } from '~/components/landing-cta';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
@@ -54,9 +52,7 @@ export default function LandingPage() {
        * arrive in sequence — badge, then the headline/subtext word-by-word,
        * then the buttons. `-mt-[4.5rem]` tucks the stage up under the sticky
        * 4.5rem header so the art reads behind it. */}
-      <section
-        className="relative isolate -mt-[4.5rem] flex min-h-screen flex-col justify-end overflow-hidden px-6 pb-16 pt-[4.5rem] md:pb-20"
-      >
+      <section className="relative isolate -mt-[4.5rem] flex min-h-screen flex-col justify-end overflow-hidden px-6 pb-16 pt-[4.5rem] md:pb-20">
         <HeroBackdrop />
 
         <div
@@ -143,22 +139,22 @@ export default function LandingPage() {
         </section>
       </FadeInUp>
 
-      {/* ── 2 · Feature — Ask Hale ────────────────────────────────────────── */}
+      {/* ── 2 · Feature — Hale Concierge ──────────────────────────────────── */}
       <FadeInUp>
         <section id="features" className="mx-auto max-w-7xl px-6 pb-24 pt-16">
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#17294A]">
                 <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
-                Ask Hale
+                Hale Concierge
               </span>
               <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
                 One quiet helper for the whole household.
               </h2>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5C6B87]">
-                Ask Hale to log a nap in a sentence, draft the daycare email, or find something to do
-                this weekend. It prepares each one and waits — every action needs your approval
-                before anything happens.
+                Ask Concierge to log a nap in a sentence, draft the daycare email, or find something
+                to do this weekend. It prepares each one and waits — every action needs your
+                approval before anything happens.
               </p>
               <div className="mt-8">
                 <LandingCta
@@ -171,7 +167,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <AskHaleMockup />
+            <ConciergeMockup />
           </div>
         </section>
       </FadeInUp>
@@ -216,31 +212,7 @@ export default function LandingPage() {
       {/* ── 4 · Testimonials (gated) ──────────────────────────────────────── */}
       {SHOW_TESTIMONIALS && <Testimonials />}
 
-      {/* ── 5 · FAQ ───────────────────────────────────────────────────────── */}
-      <section id="faq" className="mx-auto max-w-[1440px] px-6 pb-24 pt-24 md:px-12 md:pt-32 lg:px-24">
-        <div className="grid gap-8 lg:grid-cols-12 lg:gap-16">
-          <div className="lg:col-span-4">
-            <div className="flex items-center gap-2.5">
-              <span aria-hidden className="h-1.5 w-1.5 bg-[#17294A]" />
-              <AnimatedText
-                text="Questions, answered"
-                className="text-sm font-semibold uppercase tracking-[0.08em] text-[#5C6B87]"
-              />
-            </div>
-          </div>
-          <div className="lg:col-span-8 lg:max-w-[54rem]">
-            <AnimatedText
-              as="h2"
-              text="Frequently asked questions"
-              stepMs={50}
-              className="mb-16 block text-4xl font-medium leading-[1.05] tracking-tight text-[#17294A] md:text-5xl lg:text-7xl"
-            />
-            <FaqAccordion />
-          </div>
-        </div>
-      </section>
-
-      {/* ── 6 · Navy CTA band + footer ────────────────────────────────────── */}
+      {/* ── 5 · Navy CTA band + footer ────────────────────────────────────── */}
       <FadeInUp>
         <section id="contact" className="px-4 py-16 sm:px-6">
           <div className="mx-auto max-w-[1100px] rounded-[28px] bg-[#17294A] px-6 py-16 text-center md:py-24">
@@ -303,8 +275,8 @@ function RevealWords({
   );
 }
 
-/** Pure HTML/CSS product mockup of the approval-first Ask Hale flow. Illustrative. */
-function AskHaleMockup() {
+/** Pure HTML/CSS product mockup of the approval-first Concierge flow. Illustrative. */
+function ConciergeMockup() {
   return (
     <div className="rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#FFF9F1] to-[#FBEDDC] p-6 sm:p-8">
       <div className="hale-card-in hale-float rounded-2xl bg-[#17294A]/95 p-4 shadow-[0_24px_60px_-20px_rgba(20,26,77,0.55)] backdrop-blur">

@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { FRAMEWORK_SOURCES } from '~/lib/answers/frameworks';
+import { allAnswers, getAnswer } from '~/lib/answers/index';
 import { answerJsonLd } from '~/lib/answers/structured-data';
 import { APP_URL } from '~/lib/app-url';
 
@@ -72,7 +72,7 @@ export default async function AnswerRoute({ params }: PageProps) {
         <div className="max-w-3xl">
           <nav aria-label="Breadcrumb" className="rise rise-1">
             <a href="/answers" className="link text-sm">
-              Answers
+              Parenting guides
             </a>
           </nav>
 
@@ -92,7 +92,10 @@ export default async function AnswerRoute({ params }: PageProps) {
             General guidance, last reviewed {page.updated} — not medical advice.
           </p>
 
-          <section aria-labelledby="key-takeaways" className="panel-oat mt-8 px-6 py-6 sm:px-8 rise rise-2">
+          <section
+            aria-labelledby="key-takeaways"
+            className="panel-oat mt-8 px-6 py-6 sm:px-8 rise rise-2"
+          >
             <h2 id="key-takeaways" className="eyebrow" style={{ marginBottom: 0 }}>
               Key takeaways
             </h2>
@@ -191,11 +194,17 @@ export default async function AnswerRoute({ params }: PageProps) {
       </article>
 
       <section className="shell pb-16 lg:pb-24">
-        <div className="night px-8 py-12 sm:px-14 sm:py-16 max-w-3xl" style={{ borderRadius: 'var(--r-xl)' }}>
+        <div
+          className="night px-8 py-12 sm:px-14 sm:py-16 max-w-3xl"
+          style={{ borderRadius: 'var(--r-xl)' }}
+        >
           <span className="eyebrow" style={{ color: 'var(--color-on-spruce-soft)' }}>
             Please read
           </span>
-          <h2 className="mt-3" style={{ color: 'var(--color-on-spruce)', fontSize: 'clamp(1.5rem, 3vw, 2.1rem)' }}>
+          <h2
+            className="mt-3"
+            style={{ color: 'var(--color-on-spruce)', fontSize: 'clamp(1.5rem, 3vw, 2.1rem)' }}
+          >
             This is general guidance, not medical advice.
           </h2>
           <p className="mt-4" style={{ color: 'var(--color-on-spruce-soft)', lineHeight: 1.6 }}>
@@ -231,10 +240,14 @@ export default async function AnswerRoute({ params }: PageProps) {
       {related.length > 0 && (
         <div className="band-cream">
           <section className="shell py-16 lg:py-24">
-            <span className="eyebrow">Related answers</span>
+            <span className="eyebrow">Related guides</span>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
               {related.map((rel) => (
-                <a key={rel.slug} href={`/answers/${rel.slug}`} className="card lift flex flex-col gap-3">
+                <a
+                  key={rel.slug}
+                  href={`/answers/${rel.slug}`}
+                  className="card lift flex flex-col gap-3"
+                >
                   <span className="eyebrow">{STAGE_LABEL[rel.stage]}</span>
                   <span
                     className="font-display"

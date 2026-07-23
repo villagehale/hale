@@ -2,19 +2,17 @@
 
 import { Minus, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { AnimatedText } from '~/components/landing/animated-text';
 import { FAQ } from '~/lib/faq';
 
 /**
- * FAQ accordion. Items come from the single lib/faq source of truth (the same set
- * /faq renders and derives its FAQPage schema from), so a homepage answer can never
- * drift from the /faq answer. Every answer is verified against Hale's real privacy
- * policy and product rules — no overclaiming. Single-open: the first item is open by
- * default; the open answer expands via a 0fr → 1fr grid transition (static under
- * prefers-reduced-motion). Item 0's answer is rendered word-by-word via AnimatedText.
+ * The canonical product FAQ accordion on /faq. Items come from the same lib/faq
+ * source that derives the route's FAQPage schema. Every answer is verified against
+ * Hale's real privacy policy and product rules — no overclaiming. Single-open: the
+ * first item is open by default; the open answer expands via a 0fr → 1fr grid
+ * transition (static under prefers-reduced-motion).
  */
 
-export function FaqAccordion() {
+export function ProductFaqAccordion() {
   const [open, setOpen] = useState(0);
 
   return (
@@ -54,19 +52,9 @@ export function FaqAccordion() {
               }`}
             >
               <div className="overflow-hidden">
-                {i === 0 ? (
-                  <AnimatedText
-                    as="p"
-                    text={item.answer}
-                    baseDelayMs={120}
-                    stepMs={18}
-                    className="pb-8 pr-4 text-base leading-relaxed text-[#5C6B87] md:pr-12 md:text-lg"
-                  />
-                ) : (
-                  <p className="pb-8 pr-4 text-base leading-relaxed text-[#5C6B87] md:pr-12 md:text-lg">
-                    {item.answer}
-                  </p>
-                )}
+                <p className="pb-8 pr-4 text-base leading-relaxed text-[#5C6B87] md:pr-12 md:text-lg">
+                  {item.answer}
+                </p>
               </div>
             </div>
           </div>

@@ -1,10 +1,4 @@
-import {
-  ArrowUpRight,
-  Footprints,
-  HeartHandshake,
-  Lightbulb,
-  MessageCircle,
-} from 'lucide-react';
+import { ArrowUpRight, Footprints, HeartHandshake, Lightbulb, MessageCircle } from 'lucide-react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ShareAgeLink } from '~/components/share-age-link';
@@ -12,14 +6,14 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
 import {
+  type MilestoneDomain,
   adjacentCheckpoints,
   allCheckpoints,
   getCheckpoint,
-  type MilestoneDomain,
 } from '~/lib/milestones/index';
+import { relatedAnswersForStage } from '~/lib/milestones/related-answers';
 import { MILESTONE_SOURCES } from '~/lib/milestones/sources';
 import { checkpointJsonLd } from '~/lib/milestones/structured-data';
-import { relatedAnswersForStage } from '~/lib/milestones/related-answers';
 
 interface PageProps {
   params: Promise<{ age: string }>;
@@ -116,14 +110,20 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
             <h1 className="mt-3">What most children are doing around {checkpoint.ageLabel}</h1>
           </div>
 
-          <p className="mt-6 rise rise-2 text-base text-slate-green md:text-lg" style={{ lineHeight: 1.6 }}>
+          <p
+            className="mt-6 rise rise-2 text-base text-slate-green md:text-lg"
+            style={{ lineHeight: 1.6 }}
+          >
             These are milestones most children — 75 percent or more — can do by this age, from the
             CDC’s 2022 “Learn the Signs. Act Early.” checklists, with Canadian guidance from the
             Canadian Paediatric Society. Think of it as a picture of typical, not a finish line.
             Last reviewed {checkpoint.updated}.
           </p>
 
-          <p className="mt-4 rise rise-2 text-base text-slate-green md:text-lg" style={{ lineHeight: 1.6 }}>
+          <p
+            className="mt-4 rise rise-2 text-base text-slate-green md:text-lg"
+            style={{ lineHeight: 1.6 }}
+          >
             This isn’t a quiz, and there’s nothing to score. You can’t fail it and neither can your
             child. It’s a way to enjoy noticing what’s emerging — and to know what tends to come
             next.
@@ -179,10 +179,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
 
           <div className="card mt-12 rise rise-2">
             <h2 style={{ fontSize: 'clamp(1.35rem, 2.8vw, 1.75rem)' }}>Every child is different</h2>
-            <p
-              className="mt-4"
-              style={{ color: 'var(--color-slate-green)', lineHeight: 1.65 }}
-            >
+            <p className="mt-4" style={{ color: 'var(--color-slate-green)', lineHeight: 1.65 }}>
               All children develop skills at different times — the Canadian Paediatric Society notes
               it’s normal for a child to be ahead in some areas and still emerging in others at the
               same time. A child who took their first steps “late” and one who took them “early”
@@ -207,10 +204,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
                 {prev && (
                   <a href={`/milestones/${prev.slug}`} className="card lift flex flex-col gap-1.5">
                     <span className="meta">Looking back</span>
-                    <span
-                      className="font-display"
-                      style={{ fontWeight: 600, fontSize: '1.15rem' }}
-                    >
+                    <span className="font-display" style={{ fontWeight: 600, fontSize: '1.15rem' }}>
                       Around {prev.ageLabel}
                     </span>
                   </a>
@@ -218,10 +212,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
                 {next && (
                   <a href={`/milestones/${next.slug}`} className="card lift flex flex-col gap-1.5">
                     <span className="meta">Looking ahead</span>
-                    <span
-                      className="font-display"
-                      style={{ fontWeight: 600, fontSize: '1.15rem' }}
-                    >
+                    <span className="font-display" style={{ fontWeight: 600, fontSize: '1.15rem' }}>
                       Around {next.ageLabel}
                     </span>
                   </a>
@@ -331,7 +322,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
             }}
           >
             Wondering about these for your own child? Hale keeps your child’s age in mind for you —
-            every answer, suggestion, and plan is tuned to their exact stage, from newborn to teen.
+            every guide, suggestion, and plan is tuned to their exact stage, from newborn to teen.
             Free to start, private by design, built in Canada.
           </p>
           <div className="mt-8">
@@ -348,7 +339,7 @@ export default async function MilestoneAgeRoute({ params }: PageProps) {
       {related.length > 0 && (
         <div className="band-cream">
           <section className="shell py-16 lg:py-24">
-            <span className="eyebrow">Related answers</span>
+            <span className="eyebrow">Related guides</span>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
               {related.map((rel) => (
                 <a

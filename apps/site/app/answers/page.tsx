@@ -17,9 +17,9 @@ const STAGE_LABEL: Record<string, string> = {
 // published it has nothing to index, so it stays out of search — it becomes
 // indexable on its own once the first answer goes live.
 export const metadata: Metadata = {
-  title: 'Answers · Hale',
+  title: 'Parenting guides · Hale',
   description:
-    'Calm, cited answers to the parenting-health questions families search for — general guidance, grounded in trusted frameworks, never a substitute for your provider.',
+    'Calm, cited parenting guides for the questions families search for — general guidance grounded in trusted frameworks, never a substitute for your provider.',
   alternates: { canonical: '/answers' },
   robots: publishedAnswers.length > 0 ? undefined : { index: false, follow: true },
 };
@@ -33,17 +33,17 @@ export default function AnswersIndexPage() {
 
       <section className="shell pt-10 sm:pt-16 pb-12">
         <div className="max-w-2xl rise rise-1">
-          <span className="eyebrow">Answers</span>
+          <span className="eyebrow">Parenting guides</span>
           <h1 className="mt-3">
-            Calm, cited answers for <span className="accent">every stage</span>.
+            Calm, cited guidance for <span className="accent">every stage</span>.
           </h1>
           <p
             className="mt-6 text-lg"
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
-            Plain answers to the questions parents actually search — each one grounded in trusted
-            parenting-health frameworks and honest about its limits. General guidance, never a
-            replacement for your provider.
+            Practical guides for the questions parents actually search — each one grounded in
+            trusted parenting-health frameworks and honest about its limits. General guidance, never
+            a replacement for your provider.
           </p>
         </div>
       </section>
@@ -77,8 +77,9 @@ export default function AnswersIndexPage() {
         <section className="shell pb-20 lg:pb-28">
           <div className="panel-oat px-8 py-14 sm:px-12 max-w-2xl rise rise-2">
             <p className="text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
-              Our first answers are in review. In the meantime, the fastest way to get an answer for
-              your own child — with their age and your family in mind — is to ask Concierge.
+              Our first parenting guides are in review. In the meantime, the fastest way to get
+              guidance for your own child — with their age and your family in mind — is to ask
+              Concierge.
             </p>
             <div className="mt-8">
               <a href={`${APP_URL}/onboarding`} className="btn-primary">
@@ -102,7 +103,11 @@ export default function AnswersIndexPage() {
             data stays in Canada.
           </p>
           <div className="mt-8 flex justify-center">
-            <LandingCta event="answers_cta_signin" href={`${APP_URL}/onboarding`} className="btn-on-navy">
+            <LandingCta
+              event="answers_cta_signin"
+              href={`${APP_URL}/onboarding`}
+              className="btn-on-navy"
+            >
               Ask Concierge about your child
             </LandingCta>
           </div>
