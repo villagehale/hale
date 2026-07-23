@@ -1,9 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { type AgentClient, runAgent } from '@hale/agent';
-import { type Database, schema, type WeekPlanItem } from '@hale/db';
+import type { AgentClient } from '@hale/agent';
+import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
-import { buildCronGuardDeps } from '~/lib/cron/guards';
-import { loadWeekSummarySkill } from '~/lib/cron/skill';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
   DEFAULT_LOOP_PREFS,
@@ -16,6 +14,7 @@ import { weekWindow } from '~/lib/plan/spine';
 import { composeWeekPlan } from './compose';
 import { gatherWeekPlanInputs } from './gather';
 import { hasWeekPlan, upsertWeekPlan } from './queries';
+import { composeWeekVoice } from './voice/week-voice';
 
 /**
  * The weekly-plan cron (VIL-217 — "the Sunday brain"). Runs HOURLY and composes ONE
@@ -29,14 +28,13 @@ import { hasWeekPlan, upsertWeekPlan } from './queries';
  *   2. idempotent SPEND guard: if this week is already composed, skip before any model
  *      call (a wide send-slot + a retry must never re-spend).
  *   3. gather live signals → deterministic compose → typed items.
- *   4. optional one-sentence LLM summary via the agent seam; if the client is absent
- *      (no key / disabled) or the call fails, the plan persists WITHOUT the summary
- *      (graceful degradation, rule #8).
+ *   4. optional LLM VOICE stage (VIL-229) via the agent seam — the warm sentences
+ *      wrapped around the deterministic facts; if the client is absent (no key /
+ *      disabled) or the voice call fails/degrades, the plan persists WITHOUT voice
+ *      (graceful degradation, rule #8 — the send is never blocked on the model).
  *   5. idempotent upsert (family_id, week_start) + an immutable audit row (rule #6).
  */
 
-const MAX_STEPS = 1;
-const SUMMARY_MAX_TOKENS = 256;
 /** Per-run family cap — the blast-radius bound, mirroring the digest cron. */
 export const MAX_WEEK_PLAN_FAMILIES_PER_RUN = 100;
 /** How many families compose at once — bounded so a full batch fits maxDuration=300
@@ -59,8 +57,8 @@ let anthropicClient: Anthropic | undefined;
 
 export function defaultWeekPlanDeps(): WeekPlanDeps {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  // No key, or the kill switch, disables the summary stage — the composer stays fully
-  // functional (rule #8), just without the one-sentence summary.
+  // No key, or the kill switch, disables the voice stage — the composer stays fully
+  // functional (rule #8), just without the model-composed voice.
   if (!apiKey || process.env.WEEK_PLAN_SUMMARY_DISABLED === 'true') {
     return { client: null, gather: gatherWeekPlanInputs };
   }
@@ -69,7 +67,7 @@ export function defaultWeekPlanDeps(): WeekPlanDeps {
 }
 
 export type WeekPlanFamilyResult =
-  | { familyId: string; status: 'composed'; weekStart: string; itemCount: number; summarized: boolean }
+  | { familyId: string; status: 'composed'; weekStart: string; itemCount: number; voiced: boolean }
   | { familyId: string; status: 'skipped_existing'; weekStart: string };
 
 /**
@@ -94,45 +92,21 @@ export async function runWeekPlanForFamily(
 
   const inputs = await deps.gather(db, familyId, window, timeZone, now);
   const items = composeWeekPlan(inputs, now);
-  const summary = await summarizeWeek(items, deps, familyId, db);
 
-  const { id: planId } = await upsertWeekPlan(db, { familyId, weekStart, summary, items });
+  // The single agent STAGE (VIL-229): compose the week's VOICE over the already-
+  // redacted items. Fail-open (rule #8) — a null client (no key / kill switch) or any
+  // voice failure persists the deterministic plan WITHOUT voice. `summary` keeps the
+  // narrative sentence (voice.weekFraming) as the deterministic fallback field the
+  // email uses when voice is absent (and older rows already carry).
+  const { voice } = deps.client
+    ? await composeWeekVoice(items, familyId, db, deps.client)
+    : { voice: null };
+  const summary = voice?.weekFraming ?? null;
+
+  const { id: planId } = await upsertWeekPlan(db, { familyId, weekStart, summary, items, voice });
   await writeComposeAudit(db, familyId, planId);
 
-  return { familyId, status: 'composed', weekStart, itemCount: items.length, summarized: summary !== null };
-}
-
-/**
- * The single agent STAGE: one warm sentence summarizing the week, through the house
- * seam (skill body = the prompt, rule #2; model tier from the skill's task). Returns
- * null — and the plan persists without it — when the client is absent (no key / kill
- * switch) or the call fails/returns nothing (graceful degradation, rule #8). The
- * agent has NO tools: the composed items ride in `context`, so it can't fetch or act.
- */
-async function summarizeWeek(
-  items: WeekPlanItem[],
-  deps: WeekPlanDeps,
-  familyId: string,
-  db: Database,
-): Promise<string | null> {
-  if (!deps.client || items.length === 0) return null;
-  try {
-    const skill = await loadWeekSummarySkill();
-    const result = await runAgent({
-      skill,
-      context: { items: items.map((i) => ({ kind: i.kind, title: i.title, when: i.startsAt })) },
-      tools: [],
-      client: deps.client,
-      maxSteps: MAX_STEPS,
-      maxTokens: SUMMARY_MAX_TOKENS,
-      toolContext: { familyId, actor: 'system' },
-      guardDeps: buildCronGuardDeps(db),
-    });
-    return result.answer;
-  } catch {
-    // Degrade: the deterministic plan is already composed; the summary is optional.
-    return null;
-  }
+  return { familyId, status: 'composed', weekStart, itemCount: items.length, voiced: voice !== null };
 }
 
 /** One immutable audit row per compose (rule #6). Actor 'system' — a scheduled run.

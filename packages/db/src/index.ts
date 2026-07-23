@@ -6,6 +6,7 @@ export type {
   WeekPlanItem,
   WeekPlanItemKind,
   WeekPlanItemNeeds,
+  WeekPlanVoice,
   NewWeekPlan,
 } from './schema/week-plans.js';
 export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';

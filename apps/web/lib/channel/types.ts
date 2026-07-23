@@ -9,6 +9,18 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
  * Message CONTENT (the real renderers) lives with each template (B2/D1/E3) and is
  * out of A2 scope — A2 owns the interfaces + the dispatch + the ledger, and ships
  * Fakes so the policy is tested without any live provider.
+ *
+ * VIL-229 · VOICE CONTRACT (binding): a template MAY carry a model-composed `voice`
+ * on its payload/content, but that field is NULLABLE BY CONSTRUCTION and every
+ * template MUST keep a deterministic fallback for each voiced slot. The renderer is
+ * always `voice ? voiced(voice, facts) : deterministic(facts)` — never
+ * `voiced(voice)` unconditionally. FACTS (times, dates, child names, links) stay in
+ * the deterministic shell and are INJECTED into the render; the model composes only
+ * the surrounding words, schema-constrained to the voice fields and lint-guarded so a
+ * voiced string can carry no invented time/link (apps/web/lib/loop/voice/*). This is
+ * rule #8 made structural: voice is composed at COMPOSE time (or inline at trigger),
+ * NEVER at send time, and a send is never blocked on model availability — a null
+ * voice renders the deterministic copy and still sends.
  */
 
 export type ChannelKind = 'email' | 'sms' | 'push';

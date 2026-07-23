@@ -44,7 +44,9 @@ export type AgentTraceName =
   | 'classify-event'
   | 'draft-action'
   | 'review-action'
-  | 'village-search-intent';
+  | 'village-search-intent'
+  | 'weekly-plan-voice'
+  | 'welcome-voice';
 
 export interface AgentTraceContext {
   name: AgentTraceName;

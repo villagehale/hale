@@ -41,6 +41,10 @@
   },
   "week-summary.md": {
     "file": "week-summary.md",
-    "sha256": "93952633e61d6a75b31db98570883a2234da5b2b0ec443c071aff5797608d840"
+    "sha256": "31516403c39dfcbdb17e9dd6ad1ea4a4eb84dfe052b61cba5f8002a17123b803"
+  },
+  "welcome-voice.md": {
+    "file": "welcome-voice.md",
+    "sha256": "ac4d96725da949f8181f4849ac25e32b2a8ab1e1e8085b84a3e470af6de994fa"
   }
 }

@@ -283,6 +283,48 @@ function containsAny(haystackLower, tokens) {
   return (tokens ?? []).filter((t) => haystackLower.includes(t.toLowerCase()));
 }
 
+// --- voice-object parse + invented-fact lint (VIL-229) ----------------------
+// The voice skills answer with a single JSON object of voice fields. We replicate
+// the first-balanced-object extraction + the facts lint (times/URLs not grounded in
+// the injected slots) the web composer runs — same discipline as the discovery
+// replicate: the web modules are cross-process, so the eval mirrors the contract.
+
+function firstJsonObject(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function parseVoiceObject(answer) {
+  if (!answer) return null;
+  const json = firstJsonObject(answer);
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/** Times/URLs in `text` not present in any grounded slot — the invented-fact guard. */
+function inventedTimesUrls(text, grounded) {
+  const hay = grounded.join(' ');
+  const toks = [
+    ...(text.match(/\b\d{1,2}:\d{2}\b/g) ?? []),
+    ...(text.match(/https?:\/\/\S+/g) ?? []).map((u) => u.replace(/[).,;:!?'"]+$/, '')),
+  ];
+  return [...new Set(toks)].filter((t) => !hay.includes(t));
+}
+
 // ===========================================================================
 // SUITE 1: ask-hale (real runAgent loop, real skill, fixture tools)
 // ===========================================================================
