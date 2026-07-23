@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.99,
+    "rationale": "Clear reschedule of a specific dated appointment (Leo's conference, July 28, 3:00 PM → 4:30 PM) from official school sender."
+  },
+  "latencyMs": 1089
+}

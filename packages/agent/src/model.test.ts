@@ -19,6 +19,8 @@ describe('pickModel', () => {
     ['infer', SONNET_MODEL],
     ['discover', SONNET_MODEL],
     ['high-stakes-judgment', OPUS_MODEL],
+    ['triage', HAIKU_MODEL],
+    ['extract', SONNET5_MODEL],
   ])('maps %s → %s', (task, expected) => {
     expect(pickModel(task)).toBe(expected);
   });

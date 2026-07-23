@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Zoo field trip",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-22T09:00:00-04:00",
+      "new_time": null,
+      "location": null
+    },
+    "kind": "cancellation",
+    "source_confidence": 0.9,
+    "quote_evidence": "Due to the forecasted severe storm, tomorrow's (Wednesday, July 22nd) zoo field trip for Leo's class has been cancelled.",
+    "teen_content": false
+  },
+  "latencyMs": 2911
+}

@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Maya's counselling session",
+      "child_ref": "child-maya",
+      "original_time": "2026-07-23T09:00:00-04:00",
+      "new_time": "2026-07-29T15:00:00-04:00",
+      "location": null
+    },
+    "kind": "reschedule",
+    "source_confidence": 0.85,
+    "quote_evidence": "Maya's counselling session is moving from this Thursday, July 23rd to next Wednesday, July 29th at 3:00 PM",
+    "teen_content": true
+  },
+  "latencyMs": 3480
+}

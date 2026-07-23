@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.72,
+    "rationale": "Daycare sender mentioning specific child (Leo) and \"heads up about something happening\" suggests a potential schedule change or event, though snippet is deliberately vague and lacks concrete dated detail."
+  },
+  "latencyMs": 1299
+}

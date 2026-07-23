@@ -1,0 +1,16 @@
+{
+  "value": {
+    "kind": "reminder_only",
+    "event": {
+      "title": "Check-up appointment with Dr. Chen",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-21T14:00:00-04:00",
+      "new_time": null,
+      "location": "Riverside Pediatrics"
+    },
+    "source_confidence": 0.95,
+    "quote_evidence": "Leo has a check-up appointment with Dr. Chen scheduled for this Tuesday, July 21st at 2:00 PM.",
+    "teen_content": false
+  },
+  "latencyMs": 2440
+}

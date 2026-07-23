@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "Appointment reminder for named child (Leo) on a specific dated occasion (Tuesday 2:00 PM)"
+  },
+  "latencyMs": 1134
+}

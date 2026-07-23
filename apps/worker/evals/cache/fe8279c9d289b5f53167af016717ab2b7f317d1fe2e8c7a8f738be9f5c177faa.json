@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "Swimming class cancellation for a named child on a specific date (Saturday, July 25 at 10am)"
+  },
+  "latencyMs": 1042
+}

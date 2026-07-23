@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Newsletter with general parenting advice—no specific dated event, cancellation, reschedule, or appointment change."
+  },
+  "latencyMs": 1025
+}

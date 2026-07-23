@@ -1,0 +1,15 @@
+{
+  "value": {
+    "kind": "new_event",
+    "event": {
+      "title": "Fall Assembly & Open House",
+      "child_ref": null,
+      "original_time": null,
+      "new_time": "2026-09-11T09:00:00-04:00",
+      "location": "school gymnasium"
+    },
+    "quote_evidence": "Please save the date for our Fall Assembly and Open House on Friday, September 11th at 9:00 AM in the school gymnasium.",
+    "teen_content": false
+  },
+  "latencyMs": 2286
+}

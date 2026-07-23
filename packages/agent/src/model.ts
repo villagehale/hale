@@ -24,9 +24,12 @@ export type ModelId =
  * pin a concrete model (which would drift from the cost/latency assumptions).
  *
  * Tiers (per the user's subagent-tiering policy + this package's brief):
- *  - simple-lookup → Haiku  (cheap, mechanical)
- *  - classify / review → Sonnet 5  (eval-proven; classify carries teen_content —
- *    a rule-#1 safety call, gated on teenAccuracy ≥ Sonnet-4.6 in the model matrix)
+ *  - simple-lookup / triage → Haiku  (cheap, mechanical; triage is a bool+confidence
+ *    skim over subject/from/snippet only — the E2 cost-shaped first stage that must
+ *    discard >95% of inbox noise before any body is fetched)
+ *  - classify / review / extract → Sonnet 5  (eval-proven; classify and extract both
+ *    carry teen_content — a rule-#1 safety call, gated on teenAccuracy ≥ Sonnet-4.6 in
+ *    the model matrix)
  *  - converse / draft / infer / discover → Sonnet (4.6)
  *  - high-stakes-judgment → Opus  (run-rarely, judgment-dense)
  */
@@ -38,7 +41,9 @@ export type AgentTask =
   | 'review'
   | 'infer'
   | 'discover'
-  | 'high-stakes-judgment';
+  | 'high-stakes-judgment'
+  | 'triage'
+  | 'extract';
 
 const TASK_MODEL: Record<AgentTask, ModelId> = {
   classify: SONNET5_MODEL,
@@ -49,6 +54,8 @@ const TASK_MODEL: Record<AgentTask, ModelId> = {
   infer: SONNET_MODEL,
   discover: SONNET_MODEL,
   'high-stakes-judgment': OPUS_MODEL,
+  triage: HAIKU_MODEL,
+  extract: SONNET5_MODEL,
 };
 
 /** The set of valid task names — used by the skill loader to validate frontmatter. */

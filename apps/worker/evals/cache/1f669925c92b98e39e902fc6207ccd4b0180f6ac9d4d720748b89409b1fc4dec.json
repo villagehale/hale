@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.95,
+    "rationale": "Explicit reschedule of a named child's dated appointment (counselling session moved from Thursday to next Wednesday 3pm) — classic calendar-change event."
+  },
+  "latencyMs": 1497
+}

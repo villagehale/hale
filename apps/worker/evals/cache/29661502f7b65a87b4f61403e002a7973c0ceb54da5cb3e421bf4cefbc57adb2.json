@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.85,
+    "rationale": "Follow-up check-in on a counselling session; no dated schedule change (no cancellation, reschedule, or new event invite)"
+  },
+  "latencyMs": 1314
+}

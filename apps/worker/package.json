@@ -23,6 +23,7 @@
     "eval:week-summary": "node evals/run-agent-eval.mjs --cached-only --suite=week-summary",
     "eval:reviewer": "node evals/run-reviewer-eval.mjs --cached-only",
     "eval:village-search": "node evals/run-village-search-eval.mjs --cached-only",
+    "eval:sentinel": "node evals/run-sentinel-eval.mjs --cached-only",
     "eval:vil143": "node evals/run-vil143-eval.mjs",
     "clean": "rm -rf dist .turbo *.tsbuildinfo",
     "prompts:push": "node scripts/sync-prompts.mjs push",

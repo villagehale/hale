@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "U8 Soccer Practice",
+      "child_ref": null,
+      "original_time": "2026-07-21T17:00:00-04:00",
+      "new_time": "2026-07-23T17:00:00-04:00",
+      "location": null
+    },
+    "kind": "reschedule",
+    "source_confidence": 0.85,
+    "quote_evidence": "this week's U8 practice is moving from Tuesday, July 21st at 5:00 PM to Thursday, July 23rd at 5:00 PM",
+    "teen_content": false
+  },
+  "latencyMs": 2596
+}

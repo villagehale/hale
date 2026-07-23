@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Marketing/promotional email from a meal-kit vendor offering a discount; no dated event, appointment, or schedule change for a child"
+  },
+  "latencyMs": 2013
+}
