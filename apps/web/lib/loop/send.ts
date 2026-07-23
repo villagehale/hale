@@ -175,7 +175,11 @@ export async function runSundaySendCron(
   let skippedNoPlan = 0;
 
   for (const parent of parents) {
-    const weekStart = weekWindow(now, parent.timezone, 1, 0).startKey;
+    // Offset 1 = the UPCOMING Monday — symmetric with the composer (cron.ts
+    // weekWindow(now, tz, 1, 1)). The send fires the evening BEFORE the week
+    // starts, so offset 0 would key the OUTGOING week and never find the
+    // artifact (caught by the first full-loop prod probe).
+    const weekStart = weekWindow(now, parent.timezone, 1, 1).startKey;
     const plan = await deps.readPlan(db, parent.familyId, weekStart);
     if (!plan) {
       skippedNoPlan += 1;

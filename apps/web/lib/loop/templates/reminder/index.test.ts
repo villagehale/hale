@@ -92,15 +92,16 @@ describe('T-24h batch — Tomorrow lead, every event listed', () => {
     expect(text).not.toContain('http');
   });
 
-  it('email lists both events with the time bold and carries the Open-your-week button', () => {
+  it('email lists both events as a time→event note and carries the See-your-week link', () => {
     const e = email(batch, 'first_name');
     expect(e.subject).toBe(`Tomorrow: an appointment at 10:00, Maya ${EM_DASH} Swim class at 4:30`);
     expect(e.html).toContain('Swim class');
     expect(e.html).toContain('an appointment');
-    expect(e.html).toContain('<strong style="font-weight:700;">4:30</strong>');
-    expect(e.html).toContain('<strong style="font-weight:700;">10:00</strong>');
+    // Both times are surfaced in the note body (the batch tabular list).
+    expect(e.html).toContain('4:30');
+    expect(e.html).toContain('10:00');
     expect(e.html).toContain(`href="${DEEP_LINK}"`);
-    expect(e.html).toContain('Open your week');
+    expect(e.html).toContain('See your week');
   });
 });
 
@@ -119,10 +120,10 @@ describe('T-1h single — In an hour lead, glanceable, no links anywhere (rule #
     expect(text).not.toContain('http');
   });
 
-  it('email has no Open-your-week button and no /plan link', () => {
+  it('email has no See-your-week link and no /plan link (glanceable, rule #6)', () => {
     const e = email(single, 'first_name');
     expect(e.subject).toBe(`In an hour: Maya ${EM_DASH} Swim class at 4:30`);
-    expect(e.html).not.toContain('Open your week');
+    expect(e.html).not.toContain('See your week');
     expect(e.html).not.toContain('/plan');
   });
 });
@@ -187,6 +188,37 @@ describe('email fail-closed CASL', () => {
     const e = email(batch, 'first_name');
     expect(e.html).toContain('Village Hale Technologies Inc.');
     expect(e.html).toContain('https://app.villagehale.com/unsubscribe?u=user-1&amp;t=daily_digest&amp;sig=abc');
+  });
+});
+
+describe('VIL-229 voice slot — email-only serif signature, deterministic fallback', () => {
+  const VOICE = "Tomorrow's the big swim day for Maya";
+
+  it('single: the voice line is the serif signature, replacing the deterministic descriptor', () => {
+    const e = email(payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } }), 'first_name');
+    expect(e.html).toContain(VOICE);
+    // Replaces the deterministic serif line…
+    expect(e.html).not.toContain(`Maya ${EM_DASH} Swim class`);
+    // …but the TIME stays slot-injected (never in the voice string).
+    expect(e.html).toContain('4:30');
+  });
+
+  it('batch: the voice opens as a serif lead; the per-event facts stay in the list', () => {
+    const e = email(payload({ offset: '-P1D', events: [apptAt10, swimAt430], voice: { line: VOICE } }), 'first_name');
+    expect(e.html).toContain(VOICE);
+    expect(e.html).toContain('Swim class'); // list keeps the descriptor facts
+    expect(e.html).toContain('10:00');
+  });
+
+  it('falls back to the deterministic line when the voice is absent (rule #8 fail-open)', () => {
+    const e = email(payload({ offset: '-PT1H', events: [swimAt430], deepLink: null }), 'first_name');
+    expect(e.html).toContain(`Maya ${EM_DASH} Swim class`);
+  });
+
+  it('SMS and push ignore the voice (email-only) — their deterministic budgets are kept', () => {
+    const p = payload({ offset: '-P1D', events: [swimAt430], voice: { line: VOICE } });
+    expect(sms(p, 'first_name')).not.toContain(VOICE);
+    expect(push(p, 'first_name').body).not.toContain(VOICE);
   });
 });
 

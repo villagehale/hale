@@ -85,6 +85,9 @@ let approvalHistory: { actionType: string; humanApproved: boolean }[] = Array.fr
 );
 let crossParent = { hasCoParent: false, coParentConsentGranted: false };
 let childStages: FamilyStage[] = ['newborn'];
+// G1 (VIL-222): default opted-in so the baseline clears the new gate; a test flips
+// it to prove the gate holds a streak-satisfied action without the standing opt-in.
+let optedIn = true;
 
 const recordActionGate = vi.fn(async () => {});
 const recordExecution = vi.fn(async () => {});
@@ -106,6 +109,7 @@ vi.mock('../services/memory-writer.js', () => ({
   loadFamilyCreatedAt: vi.fn(async () => familyCreatedAt),
   loadActionApprovalHistory: vi.fn(async () => approvalHistory),
   loadCrossParentConsent: vi.fn(async () => crossParent),
+  hasAutonomousActionOptIn: vi.fn(async () => optedIn),
   getMemorySlice: vi.fn(async () => ({ facts: [], episodes: [] })),
   loadFamilyContext: vi.fn(async () => ({
     stages: childStages,
@@ -139,6 +143,7 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
     }));
     crossParent = { hasCoParent: false, coParentConsentGranted: false };
     childStages = ['newborn'];
+    optedIn = true;
   });
 
   it('baseline (old family, full streak, single-parent, newborn) → executes autonomously', async () => {
@@ -207,6 +212,22 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
       humanApproved: true,
     }));
     crossParent = { hasCoParent: false, coParentConsentGranted: false };
+    await runOrchestrator(job);
+    expect(runExecutor).toHaveBeenCalledTimes(1);
+    expect(recordActionGate).not.toHaveBeenCalled();
+  });
+
+  it('G1 opt-in: streak satisfied but action type NOT opted into autonomy → gated, never executes', async () => {
+    optedIn = false;
+    await runOrchestrator(job);
+    expect(runExecutor).not.toHaveBeenCalled();
+    expect(recordActionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'autonomy_not_opted_in', actionType: 'send_email' }),
+    );
+  });
+
+  it('G1 opt-in: streak satisfied AND opted in → proceeds and executes', async () => {
+    optedIn = true;
     await runOrchestrator(job);
     expect(runExecutor).toHaveBeenCalledTimes(1);
     expect(recordActionGate).not.toHaveBeenCalled();
