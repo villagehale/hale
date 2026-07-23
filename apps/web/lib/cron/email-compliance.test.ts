@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BUSINESS_ADDRESS,
   hasOptedOut,
+  isLoopEmailType,
   processUnsubscribe,
   recordOptOut,
   recordEmailSend,
@@ -86,24 +87,42 @@ describe('opt-out store', () => {
     expect(await hasOptedOut(dbEmpty, USER_ID, 'daily_digest')).toBe(false);
   });
 
-  it('recordOptOut inserts into email_opt_outs idempotently (onConflictDoNothing)', async () => {
+  it('recordOptOut inserts into email_opt_outs idempotently (onConflictDoNothing) and reports it was new', async () => {
     const captured: Array<{ table: unknown; values: unknown; conflict: boolean }> = [];
     const db = {
       insert: (table: unknown) => ({
         values: (values: unknown) => ({
-          onConflictDoNothing: async () => {
-            captured.push({ table, values, conflict: true });
-          },
+          onConflictDoNothing: () => ({
+            returning: async () => {
+              captured.push({ table, values, conflict: true });
+              return [{ id: 'row-1' }];
+            },
+          }),
         }),
       }),
     } as never;
 
-    await recordOptOut(db, USER_ID, 'daily_digest');
+    const firstTime = await recordOptOut(db, USER_ID, 'daily_digest');
 
+    expect(firstTime).toBe(true);
     expect(captured).toHaveLength(1);
     expect(captured[0]?.table).toBe(schema.emailOptOuts);
     expect(captured[0]?.conflict).toBe(true);
     expect(captured[0]?.values).toMatchObject({ userId: USER_ID, emailType: 'daily_digest' });
+  });
+
+  it('recordOptOut reports false (not new) when the row already existed — the conflict branch', async () => {
+    const db = {
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({
+            returning: async () => [],
+          }),
+        }),
+      }),
+    } as never;
+
+    expect(await recordOptOut(db, USER_ID, 'daily_digest')).toBe(false);
   });
 
   it('recordEmailSend writes one ledger row with recipient + provider id', async () => {
@@ -136,30 +155,56 @@ describe('opt-out store', () => {
 });
 
 describe('processUnsubscribe', () => {
-  function captureDb() {
+  function captureDb(existing = false) {
     const optOuts: unknown[] = [];
     const db = {
       insert: () => ({
         values: (values: unknown) => ({
-          onConflictDoNothing: async () => {
-            optOuts.push(values);
-          },
+          onConflictDoNothing: () => ({
+            returning: async () => {
+              if (existing) return [];
+              optOuts.push(values);
+              return [{ id: 'row-1' }];
+            },
+          }),
         }),
       }),
     } as never;
     return { db, optOuts };
   }
 
-  it('records the opt-out for a validly-signed link', async () => {
+  it('records the opt-out for a validly-signed link (firstTime: true)', async () => {
     const { db, optOuts } = captureDb();
     const sig = signUnsubscribeToken({ userId: USER_ID, emailType: 'daily_digest' }) as string;
 
     const result = await processUnsubscribe(db, { u: USER_ID, t: 'daily_digest', sig });
 
-    expect(result).toEqual({ status: 'unsubscribed', emailType: 'daily_digest' });
+    expect(result).toEqual({ status: 'unsubscribed', emailType: 'daily_digest', firstTime: true });
     expect(optOuts).toHaveLength(1);
     expect(optOuts[0]).toMatchObject({ userId: USER_ID, emailType: 'daily_digest' });
   });
+
+  it('a repeat click on the same link reports firstTime: false (the STOP alert must not re-fire)', async () => {
+    const { db } = captureDb(true);
+    const sig = signUnsubscribeToken({ userId: USER_ID, emailType: 'weekly_plan' }) as string;
+
+    const result = await processUnsubscribe(db, { u: USER_ID, t: 'weekly_plan', sig });
+
+    expect(result).toEqual({ status: 'unsubscribed', emailType: 'weekly_plan', firstTime: false });
+  });
+
+  it.each(['weekly_plan', 'reminder', 'approval', 'alert'] as const)(
+    'accepts an unsubscribe for the loop stream %s (regression: these were missing from the whitelist)',
+    async (emailType) => {
+      const { db, optOuts } = captureDb();
+      const sig = signUnsubscribeToken({ userId: USER_ID, emailType }) as string;
+
+      const result = await processUnsubscribe(db, { u: USER_ID, t: emailType, sig });
+
+      expect(result).toEqual({ status: 'unsubscribed', emailType, firstTime: true });
+      expect(optOuts).toHaveLength(1);
+    },
+  );
 
   it('fails closed (no write) on a forged signature', async () => {
     const { db, optOuts } = captureDb();
@@ -193,5 +238,17 @@ describe('processUnsubscribe', () => {
 describe('CASL footer content', () => {
   it('exposes a business mailing address constant', () => {
     expect(BUSINESS_ADDRESS).toContain('Village Hale Technologies Inc.');
+  });
+});
+
+describe('isLoopEmailType — the STOP guardrail classifier', () => {
+  it('is true for the four loop streams, false for the legacy streams', () => {
+    expect(isLoopEmailType('weekly_plan')).toBe(true);
+    expect(isLoopEmailType('reminder')).toBe(true);
+    expect(isLoopEmailType('approval')).toBe(true);
+    expect(isLoopEmailType('alert')).toBe(true);
+    expect(isLoopEmailType('daily_digest')).toBe(false);
+    expect(isLoopEmailType('welcome')).toBe(false);
+    expect(isLoopEmailType('verification')).toBe(false);
   });
 });

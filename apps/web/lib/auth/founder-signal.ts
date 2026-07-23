@@ -23,8 +23,9 @@ export interface FounderSignupNotifier {
 
 /** The founder alert destination: FOUNDER_ALERT_EMAIL, falling back to the existing
  * WELCOME_BCC hook. Null when neither is set, so the signal is a clean no-op until
- * an address is configured. */
-function founderAddress(): string | null {
+ * an address is configured. Exported: X1's STOP alert + loop-health digest
+ * (VIL-227) reuse this same resolution rather than a second copy. */
+export function founderAddress(): string | null {
   const explicit = process.env.FOUNDER_ALERT_EMAIL?.trim();
   if (explicit) {
     return explicit;
