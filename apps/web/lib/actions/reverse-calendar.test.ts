@@ -168,3 +168,59 @@ describe('reverseExecutedCalendarAction — the UNDO primitive', () => {
     expect(result).toEqual({ status: 404, error: 'action_not_found' });
   });
 });
+
+describe('reverseExecutedCalendarAction — X1 (VIL-227) loop_undo instrumentation', () => {
+  it('fires loop_undo with only the actionType (no family/child detail) on a successful reversal', async () => {
+    const { db } = fakeDb(executedAdd());
+    const capture = vi.fn(async () => {});
+
+    const result = await reverseExecutedCalendarAction(db, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      revertedBy: REVERTER,
+      now: NOW,
+      capture,
+    });
+
+    expect(result.status).toBe(200);
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(capture).toHaveBeenCalledWith('loop_undo', REVERTER, { actionType: 'calendar_add' });
+  });
+
+  it('does NOT fire loop_undo when the reversal is refused (e.g. window expired)', async () => {
+    const stale = executedAdd({
+      executedAt: new Date(NOW.getTime() - (UNDO_WINDOW_HOURS + 1) * 60 * 60 * 1000),
+    });
+    const { db } = fakeDb(stale);
+    const capture = vi.fn(async () => {});
+
+    await reverseExecutedCalendarAction(db, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      revertedBy: REVERTER,
+      now: NOW,
+      capture,
+    });
+
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('does not throw (the already-committed undo is unaffected) when capture fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { db } = fakeDb(executedAdd());
+    const capture = vi.fn(async () => {
+      throw new Error('posthog down');
+    });
+
+    const result = await reverseExecutedCalendarAction(db, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      revertedBy: REVERTER,
+      now: NOW,
+      capture,
+    });
+
+    expect(result.status).toBe(200);
+    errorSpy.mockRestore();
+  });
+});

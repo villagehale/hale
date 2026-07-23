@@ -16,7 +16,7 @@ export const BUSINESS_ADDRESS =
   'Village Hale Technologies Inc., 13394 10 Line, Georgetown, ON L7G 4S8';
 export const SENDER_NAME = 'Hale';
 
-type EmailType = schema.NewEmailSend['emailType'];
+export type EmailType = schema.NewEmailSend['emailType'];
 
 /** Stable handle an unsubscribe link carries: who, and which email stream. */
 interface UnsubscribePayload {
@@ -85,19 +85,25 @@ export async function hasOptedOut(
 /**
  * Records a recipient's opt-out. Idempotent: the unique (user_id, email_type)
  * index folds a repeated unsubscribe click into the existing row rather than
- * erroring, so the link works every time it is clicked.
+ * erroring, so the link works every time it is clicked. Returns whether THIS call
+ * inserted the row (true) or the recipient was already opted out (false, the
+ * conflict branch) — the atomic `RETURNING` on an `ON CONFLICT DO NOTHING` is the
+ * race-safe way to know "first time" without a separate SELECT (X1 · VIL-227's
+ * STOP alert must fire once per unsubscribe, not once per click).
  */
 export async function recordOptOut(
   database: Database,
   userId: string,
   emailType: EmailType,
-): Promise<void> {
-  await database
+): Promise<boolean> {
+  const inserted = await database
     .insert(schema.emailOptOuts)
     .values({ userId, emailType })
     .onConflictDoNothing({
       target: [schema.emailOptOuts.userId, schema.emailOptOuts.emailType],
-    });
+    })
+    .returning({ id: schema.emailOptOuts.id });
+  return inserted.length > 0;
 }
 
 /**
@@ -143,13 +149,26 @@ export async function recordEmailSend(
 }
 
 export type UnsubscribeResult =
-  | { status: 'unsubscribed'; emailType: EmailType }
+  | { status: 'unsubscribed'; emailType: EmailType; firstTime: boolean }
   | { status: 'invalid' };
 
-const EMAIL_TYPES: readonly EmailType[] = ['daily_digest', 'welcome'];
+/** F11 loop email streams (VIL-213): the loop composer mints a per-category
+ * unsubscribe link for each of these (send.ts, reminders/run.ts) — a working
+ * one-click unsubscribe is CASL-required on every one, same as daily_digest. X1
+ * (VIL-227) treats landing on one of these (not daily_digest/welcome) as the STOP
+ * guardrail. */
+export const LOOP_EMAIL_TYPES: readonly EmailType[] = ['weekly_plan', 'reminder', 'approval', 'alert'];
+
+const EMAIL_TYPES: readonly EmailType[] = ['daily_digest', 'welcome', ...LOOP_EMAIL_TYPES];
 
 function isEmailType(value: string): value is EmailType {
   return (EMAIL_TYPES as readonly string[]).includes(value);
+}
+
+/** Whether an email stream is one of the loop taxonomy's categories (as opposed to
+ * the legacy daily_digest/welcome streams) — the STOP guardrail's classifier. */
+export function isLoopEmailType(emailType: EmailType): boolean {
+  return (LOOP_EMAIL_TYPES as readonly string[]).includes(emailType);
 }
 
 /**
@@ -170,8 +189,8 @@ export async function processUnsubscribe(
   if (!verifyUnsubscribeToken({ userId, emailType }, sig)) {
     return { status: 'invalid' };
   }
-  await recordOptOut(database, userId, emailType);
-  return { status: 'unsubscribed', emailType };
+  const firstTime = await recordOptOut(database, userId, emailType);
+  return { status: 'unsubscribed', emailType, firstTime };
 }
 
 /** The base URL the unsubscribe link points at. */

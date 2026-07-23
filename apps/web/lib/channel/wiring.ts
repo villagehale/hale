@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { hasOptedOut, recordEmailSend } from '~/lib/cron/email-compliance';
 import { loadLoopPrefsView } from '~/lib/loop/prefs';
@@ -52,6 +53,7 @@ export function buildDispatchPorts(
       countRecentSends(userId, category, channel, since, database),
     activeDedupe: (dedupeKey) => dedupeActive(dedupeKey, database),
     record: (write) => recordChannelMessage(write, database),
+    capture: captureServerEvent,
     recordEmailSend: (input) =>
       recordEmailSend(database, {
         userId: input.userId,

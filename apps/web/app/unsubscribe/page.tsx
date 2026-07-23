@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { type UnsubscribeResult, isLoopEmailType, processUnsubscribe } from '~/lib/cron/email-compliance';
 import { db } from '~/lib/db';
-import { type UnsubscribeResult, processUnsubscribe } from '~/lib/cron/email-compliance';
+import { createLoopStopNotifier, dispatchLoopStopSideEffects } from '~/lib/loop/stop-alert';
 
 // Node runtime: verifying the unsubscribe signature uses node:crypto, and the
 // opt-out is written through the Drizzle client — neither works on the edge.
@@ -24,7 +26,18 @@ async function unsubscribe(params: { u?: string; t?: string; sig?: string }): Pr
   if (!process.env.DATABASE_URL) {
     return { status: 'invalid' };
   }
-  return processUnsubscribe(db(), { u: params.u, t: params.t, sig: params.sig });
+  const result = await processUnsubscribe(db(), { u: params.u, t: params.t, sig: params.sig });
+  // X1 (VIL-227) STOP guardrail: page the founder + fire loop_stop the FIRST time a
+  // loop-category stream is unsubscribed (never on a repeat click of the same
+  // link — `firstTime` is the idempotency gate). Best-effort: a failure here must
+  // never turn a successful unsubscribe into a broken confirmation page.
+  if (result.status === 'unsubscribed' && result.firstTime && isLoopEmailType(result.emailType)) {
+    await dispatchLoopStopSideEffects(
+      { userId: params.u as string, category: result.emailType },
+      { founder: createLoopStopNotifier(), captureServerEvent },
+    );
+  }
+  return result;
 }
 
 export default async function UnsubscribePage({ searchParams }: PageProps) {
