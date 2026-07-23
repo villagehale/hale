@@ -66,6 +66,9 @@ jobs:
       - name: Village search intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:village-search
 
+      - name: Sentinel triage/extraction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:sentinel
+
       - name: Build
         run: pnpm build
         env:

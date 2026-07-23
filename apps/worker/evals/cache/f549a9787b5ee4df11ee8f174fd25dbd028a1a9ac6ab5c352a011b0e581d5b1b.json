@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": false,
+    "confidence": 0.95,
+    "rationale": "Shipping/order notification — product delivery, not a scheduled event or appointment change affecting a child's week."
+  },
+  "latencyMs": 1164
+}

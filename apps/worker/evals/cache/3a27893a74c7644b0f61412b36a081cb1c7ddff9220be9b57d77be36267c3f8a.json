@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Picture Day",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-24T09:00:00-04:00",
+      "new_time": null,
+      "location": null
+    },
+    "kind": "reminder_only",
+    "source_confidence": 0.9,
+    "quote_evidence": "Just a reminder that Picture Day for all students is this Friday, July 24th.",
+    "teen_content": false
+  },
+  "latencyMs": 2556
+}

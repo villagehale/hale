@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.98,
+    "rationale": "Specific dated schedule change: Leo's swim class moved from 10:00 AM to 11:30 AM this Saturday only — direct impact on a child's weekly plan."
+  },
+  "latencyMs": 2625
+}

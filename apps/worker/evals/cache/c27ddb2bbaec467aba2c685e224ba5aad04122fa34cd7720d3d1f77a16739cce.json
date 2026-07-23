@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Swim Class (Level 2)",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-25T10:00:00-04:00",
+      "new_time": null,
+      "location": null
+    },
+    "kind": "cancellation",
+    "source_confidence": 0.95,
+    "quote_evidence": "Leo's Level 2 swim class this Saturday, July 25th at 10:00 AM has been cancelled due to a pool maintenance issue.",
+    "teen_content": false
+  },
+  "latencyMs": 2670
+}

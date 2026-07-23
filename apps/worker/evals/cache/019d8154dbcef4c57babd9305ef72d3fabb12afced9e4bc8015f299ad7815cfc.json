@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Parent-Teacher Conference",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-28T15:00:00-04:00",
+      "new_time": "2026-07-28T16:30:00-04:00",
+      "location": null
+    },
+    "kind": "reschedule",
+    "source_confidence": 0.97,
+    "quote_evidence": "Your parent-teacher conference regarding Leo, originally scheduled for 3:00 PM on Tuesday, July 28th, has been moved to 4:30 PM that same day due to a scheduling conflict with another family.",
+    "teen_content": false
+  },
+  "latencyMs": 2866
+}

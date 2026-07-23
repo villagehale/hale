@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Picture Day (Grade 9)",
+      "child_ref": "child-maya",
+      "original_time": "2026-07-24T09:00:00-04:00",
+      "new_time": null,
+      "location": null
+    },
+    "kind": "reminder_only",
+    "source_confidence": 0.9,
+    "quote_evidence": "A reminder that Picture Day for all Grade 9 students, including Maya, is this Friday, July 24th during homeroom.",
+    "teen_content": false
+  },
+  "latencyMs": 2315
+}

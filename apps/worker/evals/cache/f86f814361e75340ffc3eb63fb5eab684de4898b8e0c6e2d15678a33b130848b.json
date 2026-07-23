@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Pool Party for Noah's 7th Birthday",
+      "child_ref": "child-leo",
+      "original_time": null,
+      "new_time": "2026-08-02T13:00:00-04:00",
+      "location": "456 Lakeside Drive"
+    },
+    "kind": "new_event",
+    "source_confidence": 0.9,
+    "quote_evidence": "Pool Party for Noah's 7th Birthday Sunday, August 2nd, 1:00 PM – 3:00 PM",
+    "teen_content": false
+  },
+  "latencyMs": 2610
+}

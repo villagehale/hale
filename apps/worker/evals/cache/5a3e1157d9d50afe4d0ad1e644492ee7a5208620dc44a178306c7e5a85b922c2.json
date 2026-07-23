@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.95,
+    "rationale": "Evite birthday party invite for a specific dated child event (Saturday, August 8th at 2:00 PM) on Leo's schedule"
+  },
+  "latencyMs": 1331
+}

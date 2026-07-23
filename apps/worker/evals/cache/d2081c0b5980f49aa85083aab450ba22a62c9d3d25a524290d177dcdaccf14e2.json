@@ -1,0 +1,8 @@
+{
+  "value": {
+    "child_related": true,
+    "confidence": 0.95,
+    "rationale": "Reschedule of a specific dated practice (Tuesday → Thursday this week) for a child's weekly activity."
+  },
+  "latencyMs": 1774
+}

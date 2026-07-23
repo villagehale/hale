@@ -19,6 +19,10 @@
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"
   },
+  "extract-child-event.md": {
+    "file": "extract-child-event.md",
+    "sha256": "99be20c3915b05a6a6aeab67dffd877c0769b42655beba75bb317509e96b046b"
+  },
   "find-activities.md": {
     "file": "find-activities.md",
     "sha256": "ae7851375ce913f6a66a552922cc1411c4733be83369cf082e0e0f1cc7c166fb"
@@ -42,6 +46,10 @@
   "reminder-voice.md": {
     "file": "reminder-voice.md",
     "sha256": "5f615fe10ab15c420a76cfbb13bc53c8abd463b63f7e7b2795176a04e61ab6a6"
+  },
+  "triage-child-event.md": {
+    "file": "triage-child-event.md",
+    "sha256": "da61a03c350cead4b23749a00ae1c688612298a387dcbef9ca0356447256b497"
   },
   "week-summary.md": {
     "file": "week-summary.md",

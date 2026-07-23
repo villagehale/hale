@@ -1,0 +1,16 @@
+{
+  "value": {
+    "kind": "cancellation",
+    "event": {
+      "title": "Cours de natation",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-25T10:00:00-04:00",
+      "new_time": null,
+      "location": null
+    },
+    "source_confidence": 0.95,
+    "quote_evidence": "le cours de natation de Léo prévu samedi le 25 juillet à 10h00 est annulé en raison d'un problème technique à la piscine",
+    "teen_content": false
+  },
+  "latencyMs": 2836
+}

@@ -1,0 +1,16 @@
+{
+  "value": {
+    "event": {
+      "title": "Swim Class",
+      "child_ref": "child-leo",
+      "original_time": "2026-07-25T10:00:00-04:00",
+      "new_time": "2026-07-25T11:30:00-04:00",
+      "location": null
+    },
+    "kind": "reschedule",
+    "source_confidence": 0.95,
+    "quote_evidence": "For this Saturday, July 25th only, Leo's swim class is moving from 10:00 AM to 11:30 AM due to a pool scheduling conflict.",
+    "teen_content": false
+  },
+  "latencyMs": 2757
+}
