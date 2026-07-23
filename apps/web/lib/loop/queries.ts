@@ -29,10 +29,14 @@ export async function upsertWeekPlan(
     weekStart: string;
     summary: string | null;
     items: schema.WeekPlanItem[];
+    /** VIL-229 · the model-composed voice, or null when the voice stage degraded (the
+     * deterministic plan still persists + renders — rule #8). */
+    voice?: schema.WeekPlanVoice | null;
     status?: string;
   },
 ): Promise<{ id: string }> {
   const status = args.status ?? 'composed';
+  const voice = args.voice ?? null;
   const composedAt = new Date();
   const upserted = await db
     .insert(schema.weekPlans)
@@ -41,12 +45,13 @@ export async function upsertWeekPlan(
       weekStart: args.weekStart,
       summary: args.summary,
       items: args.items,
+      voice,
       status,
       composedAt,
     })
     .onConflictDoUpdate({
       target: [schema.weekPlans.familyId, schema.weekPlans.weekStart],
-      set: { summary: args.summary, items: args.items, status, composedAt },
+      set: { summary: args.summary, items: args.items, voice, status, composedAt },
     })
     .returning({ id: schema.weekPlans.id });
   const row = upserted[0];

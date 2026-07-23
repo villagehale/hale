@@ -1,7 +1,10 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { recordEmailSend, unsubscribeUrl } from '~/lib/cron/email-compliance';
+import { voiceClient } from '~/lib/loop/voice/compose';
+import { composeWelcomeVoice } from '~/lib/loop/voice/welcome-voice';
 import {
   type WelcomeContent,
   type WelcomeEmailSender,
@@ -40,10 +43,14 @@ export type SendWelcomeResult =
 
 export interface WelcomeDeps {
   email: WelcomeEmailSender;
+  /** VIL-229 · the voice client for the inline welcome-voice stage, or null/absent to
+   * skip it — the deterministic welcome still sends (rule #8). Injected so tests never
+   * make a real model call. */
+  voiceClient?: AgentClient | null;
 }
 
 export function defaultWelcomeDeps(): WelcomeDeps {
-  return { email: createWelcomeEmailSender() };
+  return { email: createWelcomeEmailSender(), voiceClient: voiceClient() };
 }
 
 export interface WelcomeRecipient {
@@ -104,6 +111,7 @@ async function buildContent(
     firstName: firstNameToken(name),
     place: placePhrase(familyRow?.areaCoarse ?? null, familyRow?.city ?? null),
     stage: stagePhrase(stages),
+    voice: null,
   };
 }
 
@@ -122,6 +130,15 @@ export async function sendWelcomeEmail(
   }
 
   const content = await buildContent(database, recipient);
+
+  // VIL-229 · compose the welcome voice INLINE at the trigger over the coarse intake
+  // only (rule #1). Fail-open (rule #8): a null client (no key / kill switch) or any
+  // degrade leaves content.voice null and the deterministic welcome sends unchanged.
+  if (deps.voiceClient) {
+    const { voice } = await composeWelcomeVoice(content, recipient.familyId, database, deps.voiceClient);
+    content.voice = voice;
+  }
+
   const sendResult = await deps.email.sendWelcome(recipient.email, content, unsubUrl);
 
   if (!sendResult.accepted) {

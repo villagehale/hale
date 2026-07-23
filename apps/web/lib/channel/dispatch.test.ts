@@ -21,10 +21,17 @@ const TORONTO = 'America/Toronto';
 const NOON = new Date('2026-06-01T16:00:00Z'); // 12:00 EDT — outside quiet hours
 const NIGHT = new Date('2026-06-02T02:00:00Z'); // 22:00 EDT — inside quiet hours
 
+interface Capture {
+  event: string;
+  distinctId: string;
+  properties: Record<string, unknown>;
+}
+
 function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPrefsView> } = {}) {
   const ledger: LedgerWrite[] = [];
   const emailSends: { emailType: string; recipient: string }[] = [];
   const audits: { actionTaken: string; after: Record<string, unknown> }[] = [];
+  const captures: Capture[] = [];
   const prefs: LoopPrefsView = { ...DEFAULT_LOOP_PREFS, ...(overrides.prefs ?? {}) };
 
   const ports: DispatchPorts = {
@@ -46,11 +53,14 @@ function makePorts(overrides: Partial<DispatchPorts> & { prefs?: Partial<LoopPre
     audit: async (r) => {
       audits.push({ actionTaken: r.actionTaken, after: r.after });
     },
+    capture: async (event, distinctId, properties = {}) => {
+      captures.push({ event, distinctId, properties });
+    },
     channels: { email: fakeChannel('email'), sms: fakeChannel('sms'), push: fakeChannel('push') },
     renderer: fakeRenderer,
     ...overrides,
   };
-  return { ports, ledger, emailSends, audits };
+  return { ports, ledger, emailSends, audits, captures };
 }
 
 function message(over: Partial<LoopMessage> = {}): LoopMessage {
@@ -236,5 +246,72 @@ describe('provider outcomes', () => {
     const result = await dispatchLoopMessage(message(), ports);
     expect(result.legs).toEqual([{ channel: 'email', outcome: 'failed' }]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'channel_unavailable' });
+  });
+});
+
+describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics event', () => {
+  it('a suppression writes one ledger row and one loop_message_failed capture, reason = the suppression status', async () => {
+    const { ports, ledger, captures } = makePorts({ prefs: { catReminder: false } });
+    await dispatchLoopMessage(message({ category: 'reminder' }), ports);
+    expect(captures).toHaveLength(ledger.length);
+    expect(captures).toEqual([
+      {
+        event: 'loop_message_failed',
+        distinctId: 'user-1',
+        properties: { channel: 'email', category: 'reminder', templateKey: 'weekly-plan-v1', reason: 'suppressed_pref' },
+      },
+    ]);
+  });
+
+  it('a real send writes one ledger row and one loop_message_sent capture, reason = sent', async () => {
+    const { ports, ledger, captures } = makePorts();
+    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    expect(captures).toHaveLength(ledger.length);
+    expect(captures).toEqual([
+      {
+        event: 'loop_message_sent',
+        distinctId: 'user-1',
+        properties: { channel: 'email', category: 'weekly_plan', templateKey: 'weekly-plan-v1', reason: 'sent' },
+      },
+    ]);
+  });
+
+  it('a permanent provider error writes one ledger row and one loop_message_failed capture', async () => {
+    const { ports, ledger, captures } = makePorts({
+      channels: { email: fakeChannel('email', { status: 'error', transient: false, code: 'invalid_recipient', message: 'bad' }) },
+    });
+    await dispatchLoopMessage(message(), ports);
+    expect(captures).toHaveLength(ledger.length);
+    expect(captures[0]).toMatchObject({ event: 'loop_message_failed', properties: { reason: 'failed' } });
+  });
+
+  it('two mirror legs (a suppressed email + a delivered push) fire two paired captures, one per row', async () => {
+    const { ports, ledger, captures } = makePorts({
+      emailOptedOut: async () => true,
+      hasLivePushToken: async () => true,
+    });
+    await dispatchLoopMessage(message({ category: 'weekly_plan' }), ports);
+    expect(captures).toHaveLength(ledger.length);
+    expect(captures.map((c) => `${c.properties.channel}:${c.event}`)).toEqual([
+      'email:loop_message_failed',
+      'push:loop_message_sent',
+    ]);
+  });
+
+  it('a deduped leg writes NEITHER a ledger row nor a capture (no row ⇒ no event)', async () => {
+    const { ports, ledger, captures } = makePorts({ activeDedupe: async () => true });
+    const result = await dispatchLoopMessage(message({ dedupeKey: 'fam-1:key' }), ports);
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'deduped' }]);
+    expect(ledger).toHaveLength(0);
+    expect(captures).toHaveLength(0);
+  });
+
+  it('a transient (retryable) error writes no terminal row and fires no capture', async () => {
+    const { ports, ledger, captures } = makePorts({
+      channels: { email: fakeChannel('email', { status: 'error', transient: true, code: 'rate_limited', message: 'later' }) },
+    });
+    await expect(dispatchLoopMessage(message(), ports)).rejects.toBeInstanceOf(ChannelRetryableError);
+    expect(ledger).toHaveLength(0);
+    expect(captures).toHaveLength(0);
   });
 });

@@ -54,7 +54,7 @@ describe('notification-prefs', () => {
     vi.mocked(ensureUserRow).mockReset().mockResolvedValue(USER_ID);
     vi.mocked(hasOptedOut).mockReset();
     vi.mocked(recordOptIn).mockReset().mockResolvedValue(undefined);
-    vi.mocked(recordOptOut).mockReset().mockResolvedValue(undefined);
+    vi.mocked(recordOptOut).mockReset().mockResolvedValue(true);
     vi.stubEnv('DATABASE_URL', 'postgres://test');
     configureAuth(true);
     authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'ada@hale.test' } });

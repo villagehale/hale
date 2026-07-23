@@ -43,12 +43,20 @@
     "file": "rank-recommendations.md",
     "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"
   },
+  "reminder-voice.md": {
+    "file": "reminder-voice.md",
+    "sha256": "5f615fe10ab15c420a76cfbb13bc53c8abd463b63f7e7b2795176a04e61ab6a6"
+  },
   "triage-child-event.md": {
     "file": "triage-child-event.md",
     "sha256": "da61a03c350cead4b23749a00ae1c688612298a387dcbef9ca0356447256b497"
   },
   "week-summary.md": {
     "file": "week-summary.md",
-    "sha256": "93952633e61d6a75b31db98570883a2234da5b2b0ec443c071aff5797608d840"
+    "sha256": "31516403c39dfcbdb17e9dd6ad1ea4a4eb84dfe052b61cba5f8002a17123b803"
+  },
+  "welcome-voice.md": {
+    "file": "welcome-voice.md",
+    "sha256": "ac4d96725da949f8181f4849ac25e32b2a8ab1e1e8085b84a3e470af6de994fa"
   }
 }

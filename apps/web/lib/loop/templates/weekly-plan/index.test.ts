@@ -38,6 +38,7 @@ function payload(over: Partial<WeeklyPlanPayload>): WeeklyPlanPayload {
   return {
     weekStart: '2026-07-20',
     summary: null,
+    voice: null,
     items: [],
     children: [],
     deepLink: 'https://app.villagehale.com/plan',
@@ -255,6 +256,47 @@ describe('all-placed week (items > 0, pending == 0)', () => {
     const text = sms(placed, 'first_name');
     expect(text).toContain('All on your calendar.');
     expect(text).not.toContain('need your OK');
+  });
+});
+
+describe('VIL-229 voice — email uses voice fields, facts stay deterministic', () => {
+  // healthAppt is items[0]; the birthday is items[1]. itemLines is keyed by index.
+  const voiced = payload({
+    children: [maya, liam],
+    summary: 'a deterministic fallback sentence',
+    items: [
+      healthAppt,
+      item({ kind: 'birthday', title: "Liam's birthday", childIds: ['c-liam'], startsAt: '2026-07-22' }),
+    ],
+    voice: {
+      greeting: 'hi there, here is the week ahead',
+      weekFraming: 'a calm week with one checkup to book and a birthday to enjoy',
+      itemLines: { '0': 'a quick health check, nothing more', '1': 'a little one turns a year older' },
+      signOff: 'reply any time — we read every note',
+    },
+  });
+
+  it('renders greeting, framing, per-item lines, and sign-off in the email', () => {
+    const html = email(voiced, 'first_name').html;
+    expect(html).toContain('hi there, here is the week ahead');
+    expect(html).toContain('a calm week with one checkup to book and a birthday to enjoy');
+    expect(html).toContain('a quick health check, nothing more');
+    expect(html).toContain('a little one turns a year older');
+    expect(html).toContain('reply any time — we read every note');
+    // The framing REPLACES the deterministic summary (voice.weekFraming ?? summary).
+    expect(html).not.toContain('a deterministic fallback sentence');
+  });
+
+  it('keeps the deterministic facts (title, day, provenance) alongside the voice', () => {
+    const html = email(voiced, 'first_name').html;
+    expect(html).toContain('6-month checkup'); // the injected fact, not model-written
+    expect(html).toContain('Liam');
+  });
+
+  it('falls back to the deterministic summary + reply invite when voice is null', () => {
+    const html = email(payload({ children: [maya], items: [healthAppt], summary: 'quiet week note' }), 'first_name').html;
+    expect(html).toContain('quiet week note');
+    expect(html.toLowerCase()).toContain('reply to this email to adjust');
   });
 });
 

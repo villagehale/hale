@@ -76,21 +76,33 @@ function whenPrefix(item: WeekPlanItem, withDay: boolean): string {
   return parts.length ? `${parts.join(' ')} ` : '';
 }
 
-/** One plan item as a `<p>` line: an optional bold when-prefix, the name-leveled
- * "what", and a quiet provenance caption. `withDay` is false inside a day group
- * (the group heading already carries the day). */
+/** Looks up an item's model-composed framing line, or null. VIL-229: the fact line
+ * (day/time/title/provenance) is always the DETERMINISTIC shell; a voiced framing line
+ * rides quietly beneath it when present, never in place of the facts. */
+export type VoiceLineFn = (item: WeekPlanItem) => string | null;
+
+/** One plan item as `<p>` lines: the DETERMINISTIC fact line (optional bold
+ * when-prefix, name-leveled "what", quiet provenance caption), plus an optional voiced
+ * framing caption beneath it (VIL-229). `withDay` is false inside a day group (the
+ * group heading already carries the day). */
 function itemLine(
   item: WeekPlanItem,
   children: readonly PlanChild[],
   level: ChildNameLevel,
   now: Date,
   withDay: boolean,
+  voiceLine: VoiceLineFn,
 ): string {
   const when = whenPrefix(item, withDay);
   const whenHtml = when ? `<strong style="color:${NAVY};font-weight:700;">${escapeHtml(when)}</strong>` : '';
   const what = escapeHtml(leveledWhat(item, children, level, now));
   const prov = `<span style="color:${SLATE};font-size:12px;">${MIDDLE_DOT} ${escapeHtml(provenanceLabel(item.kind))}</span>`;
-  return `<p style="margin:6px 0 0;color:${NAVY};font-family:${SANS};font-size:15px;line-height:1.5;">${whenHtml}${what} ${prov}</p>`;
+  const fact = `<p style="margin:6px 0 0;color:${NAVY};font-family:${SANS};font-size:15px;line-height:1.5;">${whenHtml}${what} ${prov}</p>`;
+  const voiced = voiceLine(item);
+  const voicedHtml = voiced
+    ? `<p style="margin:1px 0 0;color:${SLATE};font-family:${SERIF};font-size:13px;line-height:1.5;font-style:italic;">${escapeHtml(voiced)}</p>`
+    : '';
+  return `${fact}${voicedHtml}`;
 }
 
 /** The amber-wash decision region: "N need your OK" over the pending items. Amber
@@ -100,9 +112,10 @@ function pendingSection(
   children: readonly PlanChild[],
   level: ChildNameLevel,
   now: Date,
+  voiceLine: VoiceLineFn,
 ): string {
   const heading = `<p style="margin:0 0 6px;color:${NAVY};font-family:${SANS};font-size:14px;font-weight:700;letter-spacing:0.01em;">${escapeHtml(`${pending.length} need your OK`)}</p>`;
-  const lines = pending.map((i) => itemLine(i, children, level, now, true)).join('');
+  const lines = pending.map((i) => itemLine(i, children, level, now, true, voiceLine)).join('');
   return `<tr><td style="padding:2px 0 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${WASH};border-left:3px solid ${AMBER};border-radius:10px;padding:16px 18px;">${heading}${lines}</td></tr></table></td></tr>`;
 }
 
@@ -131,11 +144,12 @@ function handledSection(
   children: readonly PlanChild[],
   level: ChildNameLevel,
   now: Date,
+  voiceLine: VoiceLineFn,
 ): string {
   const groups = groupByDay(handled)
     .map((g) => {
       const label = `<p style="margin:14px 0 0;color:${SLATE};font-family:${SANS};font-size:13px;font-weight:700;">${escapeHtml(g.label)}</p>`;
-      const rows = g.items.map((i) => itemLine(i, children, level, now, false)).join('');
+      const rows = g.items.map((i) => itemLine(i, children, level, now, false, voiceLine)).join('');
       return `${label}${rows}`;
     })
     .join('');
@@ -150,9 +164,14 @@ function renderText(
   handled: readonly WeekPlanItem[],
   level: ChildNameLevel,
   now: Date,
+  voiceLine: VoiceLineFn,
 ): string {
+  // VIL-229: voice greeting + framing (framing falls back to the deterministic summary).
+  const voice = payload.voice;
+  const framing = voice?.weekFraming ?? payload.summary;
   const lines: string[] = [subjectLine, weekRangeLabel(payload.weekStart), ''];
-  if (payload.summary) lines.push(payload.summary, '');
+  if (voice?.greeting) lines.push(voice.greeting, '');
+  if (framing) lines.push(framing, '');
   if (pending.length === 0 && handled.length === 0) {
     lines.push(QUIET_LINE, '');
   }
@@ -162,6 +181,8 @@ function renderText(
       lines.push(
         `  ${whenPrefix(item, true)}${leveledWhat(item, payload.children, level, now)} (${provenanceLabel(item.kind)})`,
       );
+      const voiced = voiceLine(item);
+      if (voiced) lines.push(`    ${voiced}`);
     }
     lines.push('');
   }
@@ -173,11 +194,13 @@ function renderText(
         lines.push(
           `  ${whenPrefix(item, false)}${leveledWhat(item, payload.children, level, now)} (${provenanceLabel(item.kind)})`,
         );
+        const voiced = voiceLine(item);
+        if (voiced) lines.push(`    ${voiced}`);
       }
     }
     lines.push('');
   }
-  lines.push(REPLY_INVITE, '', EM_DASH, `Sent by ${SENDER_NAME} ${MIDDLE_DOT} ${BUSINESS_ADDRESS}`);
+  lines.push(voice?.signOff ?? REPLY_INVITE, '', EM_DASH, `Sent by ${SENDER_NAME} ${MIDDLE_DOT} ${BUSINESS_ADDRESS}`);
   lines.push(`Unsubscribe: ${payload.unsubscribeUrl}`);
   return lines.join('\n');
 }
@@ -198,34 +221,55 @@ export function renderWeeklyPlanEmail(
   const subjectLine = `${weekSubject(headerNames(inPlan, level, now))} week ahead`;
   const { pending, handled } = partitionByNeed(payload.items);
 
+  // VIL-229 · the voice slots. Facts stay in the deterministic shell; the model wrote
+  // only the words. Each maps to a slot with a deterministic fallback: framing ←
+  // summary, sign-off ← reply invite; greeting + per-item lines are voice-only (they
+  // simply don't render without voice). `voiceLineFor` is keyed by item index — the id
+  // the composer handed the model — and survives partition/group reordering by identity.
+  const voice = payload.voice;
+  const framing = voice?.weekFraming ?? payload.summary;
+  const voiceLineFor: VoiceLineFn = (item) => {
+    if (!voice) return null;
+    const idx = payload.items.indexOf(item);
+    if (idx < 0) return null;
+    const line = voice.itemLines[String(idx)];
+    return line && line.trim().length > 0 ? line : null;
+  };
+
   const kicker = `<p style="margin:16px 0 0;color:${KICKER};font-family:${SANS};font-size:12px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;">${escapeHtml(weekRangeLabel(payload.weekStart))}</p>`;
   const headline = `<h1 style="margin:8px 0 0;color:${CREAM};font-family:${SERIF};font-size:30px;font-weight:700;line-height:1.2;letter-spacing:-0.01em;">${escapeHtml(subjectLine)}</h1>`;
   const header = `<tr><td style="background:${NAVY};border-radius:20px 20px 0 0;padding:38px 40px 30px;text-align:center;">${LOGO_IMG}${kicker}${headline}</td></tr>`;
 
-  // The summary is the assistant's serif *voice* — quieter than the headline (smaller,
-  // slate), so scale ranks the one signature above it.
-  const summaryHtml = payload.summary
-    ? `<p style="margin:0 0 20px;color:${SLATE};font-family:${SERIF};font-size:18px;line-height:1.6;">${escapeHtml(payload.summary)}</p>`
+  // The voice greeting opens the card (voice-only — no deterministic equivalent), above
+  // the serif framing line. The framing is the assistant's serif *voice* — quieter than
+  // the headline (smaller, slate) so scale ranks the one signature above it — and falls
+  // back to the deterministic summary when voice is absent.
+  const greetingHtml = voice?.greeting
+    ? `<p style="margin:0 0 10px;color:${NAVY};font-family:${SERIF};font-size:18px;line-height:1.5;">${escapeHtml(voice.greeting)}</p>`
+    : '';
+  const summaryHtml = framing
+    ? `<p style="margin:0 0 20px;color:${SLATE};font-family:${SERIF};font-size:18px;line-height:1.6;">${escapeHtml(framing)}</p>`
     : '';
 
   let body: string;
   if (pending.length === 0 && handled.length === 0) {
     body = `<tr><td><p style="margin:0;color:${SLATE};font-family:${SANS};font-size:16px;line-height:1.6;">${escapeHtml(QUIET_LINE)}</p></td></tr>`;
   } else {
-    const pendingHtml = pending.length > 0 ? pendingSection(pending, payload.children, level, now) : '';
-    const handledHtml = handled.length > 0 ? handledSection(handled, payload.children, level, now) : '';
+    const pendingHtml = pending.length > 0 ? pendingSection(pending, payload.children, level, now, voiceLineFor) : '';
+    const handledHtml = handled.length > 0 ? handledSection(handled, payload.children, level, now, voiceLineFor) : '';
     body = `${pendingHtml}${handledHtml}`;
   }
 
-  const reply = `<tr><td style="padding:22px 0 0;"><p style="margin:0;color:${SLATE};font-family:${SANS};font-size:15px;line-height:1.6;">${escapeHtml(REPLY_INVITE)}</p></td></tr>`;
+  // The sign-off falls back to the deterministic reply invite when voice is absent.
+  const reply = `<tr><td style="padding:22px 0 0;"><p style="margin:0;color:${SLATE};font-family:${SANS};font-size:15px;line-height:1.6;">${escapeHtml(voice?.signOff ?? REPLY_INVITE)}</p></td></tr>`;
 
   const cardInner = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}${reply}</table>`;
-  const card = `<tr><td style="background:${CARD};border:1px solid ${CARD_BORDER};border-top:none;border-radius:0 0 22px 22px;padding:28px 34px 16px;">${summaryHtml}${cardInner}</td></tr>`;
+  const card = `<tr><td style="background:${CARD};border:1px solid ${CARD_BORDER};border-top:none;border-radius:0 0 22px 22px;padding:28px 34px 16px;">${greetingHtml}${summaryHtml}${cardInner}</td></tr>`;
 
   const footer = `<tr><td style="padding:22px 8px 0;"><p style="margin:0;color:${SLATE};font-family:${SANS};font-size:12px;line-height:1.6;">Sent by ${escapeHtml(SENDER_NAME)} ${MIDDLE_DOT} ${escapeHtml(BUSINESS_ADDRESS)}<br/>You're receiving this because you turned on your weekly plan. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${NAVY};">Unsubscribe</a>.</p></td></tr>`;
 
   const html = `<div style="margin:0;background:${PAGE};font-family:${SANS};padding:24px 0 40px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;">${header}${card}${footer}</table></div>`;
 
-  const text = renderText(payload, subjectLine, pending, handled, level, now);
+  const text = renderText(payload, subjectLine, pending, handled, level, now, voiceLineFor);
   return { kind: 'email', subject: subjectLine, html, text };
 }

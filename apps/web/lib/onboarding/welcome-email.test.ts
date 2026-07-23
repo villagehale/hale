@@ -20,7 +20,7 @@ const UNSUB_URL = 'https://app.example.com/unsubscribe?u=u1&t=welcome&sig=abc';
 
 /** A greeting-ready WelcomeContent; overrides tweak individual slots per test. */
 function content(overrides: Partial<WelcomeContent> = {}): WelcomeContent {
-  return { firstName: 'Avery', place: null, stage: null, ...overrides };
+  return { firstName: 'Avery', place: null, stage: null, voice: null, ...overrides };
 }
 
 interface SendPayload {
@@ -178,6 +178,35 @@ describe('createWelcomeEmailSender', () => {
     // all in the rendered HTML (case-insensitive).
     expect(payload.html).toContain('#C2410C');
     expect(payload.html.toLowerCase()).not.toContain('#f97316');
+  });
+
+  it('VIL-229: uses the voice greeting / village line / closing note when present, keeps the deterministic shell', async () => {
+    const { client, send } = fakeResend();
+    const sender = createWelcomeEmailSender(client);
+
+    await sender.sendWelcome(
+      'parent@example.com',
+      content({
+        firstName: 'Barton',
+        voice: {
+          greeting: 'hi Barton — so glad you found us',
+          villageLine: 'Hale is the quiet village around your family',
+          closingNote: 'write back whenever — a person is always here',
+        },
+      }),
+      UNSUB_URL,
+    );
+
+    const payload = send.mock.calls[0]?.[0] as SendPayload;
+    for (const part of [payload.html, payload.text]) {
+      expect(part).toContain('hi Barton — so glad you found us');
+      expect(part).toContain('Hale is the quiet village around your family');
+      expect(part).toContain('write back whenever — a person is always here');
+      // The deterministic shell (step links) is unchanged.
+      expect(part).toContain('https://app.villagehale.com/village');
+    }
+    // The voice greeting REPLACES the deterministic "Hi Barton," line.
+    expect(payload.text).not.toContain('Hi Barton,');
   });
 
   it('reports not-accepted (does not throw) when the provider returns an error', async () => {

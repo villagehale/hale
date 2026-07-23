@@ -1,3 +1,4 @@
+import type { AnalyticsEvent } from '~/lib/analytics/events';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { CATEGORY_CAPS } from './config';
 import type { Channel, ChannelKind, LoopCategory, LoopMessage } from './types';
@@ -69,6 +70,10 @@ export interface DispatchPorts {
   activeDedupe(dedupeKey: string): Promise<boolean>;
   /** Write one channel_messages row; returns its id (for the audit target). */
   record(write: LedgerWrite): Promise<string>;
+  /** X1 (VIL-227) loop taxonomy: fires the analytics event paired 1:1 with the
+   * ledger row `record` just wrote — see `writeLedgerRow` below, the single point
+   * both are called from. */
+  capture(event: AnalyticsEvent, distinctId: string, properties?: Record<string, unknown>): Promise<void>;
   recordEmailSend(input: {
     userId: string;
     familyId: string;
@@ -158,7 +163,7 @@ async function dispatchLeg(
   const suppressed = async (status: SuppressionStatus): Promise<LegResult> => {
     // A suppression never carries the dedupe key — a legitimate re-attempt (e.g.
     // after quiet hours) must not be blocked; only a real send consumes the key.
-    await ports.record(rowFor(msg, channel, status, { dedupeKey: null }));
+    await writeLedgerRow(ports, msg, channel, status, { dedupeKey: null });
     return { channel, outcome: status };
   };
 
@@ -194,7 +199,7 @@ async function dispatchLeg(
   const rendered = ports.renderer.render(msg, channel, prefs.childNameLevel);
   const adapter = ports.channels[channel];
   if (!adapter) {
-    await ports.record(rowFor(msg, channel, 'failed', { errorCode: 'channel_unavailable' }));
+    await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'channel_unavailable' });
     return { channel, outcome: 'failed' };
   }
 
@@ -204,13 +209,11 @@ async function dispatchLeg(
   }
 
   if (result.status === 'sent') {
-    const id = await ports.record(
-      rowFor(msg, channel, 'sent', {
-        dedupeKey: legKey,
-        providerMessageId: result.providerMessageId,
-        sentAt: now,
-      }),
-    );
+    const id = await writeLedgerRow(ports, msg, channel, 'sent', {
+      dedupeKey: legKey,
+      providerMessageId: result.providerMessageId,
+      sentAt: now,
+    });
     if (channel === 'email' && parent.email) {
       await ports.recordEmailSend({
         userId: msg.parentUserId,
@@ -233,8 +236,32 @@ async function dispatchLeg(
 
   // Permanent error OR a skip (not configured / disabled / no address).
   const errorCode = result.status === 'error' ? result.code : result.reason;
-  await ports.record(rowFor(msg, channel, 'failed', { errorCode }));
+  await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
   return { channel, outcome: 'failed' };
+}
+
+/** The single point every terminal channel_messages write goes through: it writes
+ * the ledger row AND fires the paired X1 taxonomy event, so "one ledger row ⇒
+ * exactly one analytics event" holds by construction rather than by every call
+ * site remembering both halves. `reason` carries the full ledger status (not just
+ * a boolean) so the founder digest's suppression breakdown can distinguish WHY a
+ * leg failed — safe to send (an enum, not user content). */
+async function writeLedgerRow(
+  ports: DispatchPorts,
+  msg: LoopMessage,
+  channel: ChannelKind,
+  status: LedgerWrite['status'],
+  extra: Partial<LedgerWrite> = {},
+): Promise<string> {
+  const id = await ports.record(rowFor(msg, channel, status, extra));
+  const event: AnalyticsEvent = status === 'sent' ? 'loop_message_sent' : 'loop_message_failed';
+  await ports.capture(event, msg.parentUserId, {
+    channel,
+    category: msg.category,
+    templateKey: msg.templateKey,
+    reason: status,
+  });
+  return id;
 }
 
 function rowFor(

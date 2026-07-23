@@ -1,6 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
+import { captureServerEvent } from '~/lib/analytics/server-capture';
 
 /**
  * How long after execution a calendar placement can be undone. The window derives
@@ -37,12 +38,24 @@ export type ReverseResult =
  * The state gate is also the double-undo guard: a second call sees the action in
  * 'reverted' (no longer 'autonomous') and returns 409, so the placement is never
  * soft-deleted twice.
+ *
+ * X1 (VIL-227): fires `loop_undo` (actionType only — no family/child detail) on a
+ * successful reversal, AFTER the transaction commits. `capture` is injected
+ * (defaulting to the real captureServerEvent) so tests assert on it without a
+ * network call, matching this codebase's other injected-analytics call sites.
  */
 export async function reverseExecutedCalendarAction(
   database: Database,
-  args: { actionId: string; familyId: string; revertedBy: string; now?: Date },
+  args: {
+    actionId: string;
+    familyId: string;
+    revertedBy: string;
+    now?: Date;
+    capture?: typeof captureServerEvent;
+  },
 ): Promise<ReverseResult> {
   const now = args.now ?? new Date();
+  const capture = args.capture ?? captureServerEvent;
 
   const rows = await database
     .select({
@@ -115,6 +128,15 @@ export async function reverseExecutedCalendarAction(
       actionTaken: 'action.reverted_by_human',
       targetTable: 'actions',
       targetId: action.id,
+    });
+  });
+
+  // X1 (VIL-227): fired only after the reversal transaction commits — an aborted
+  // undo (a throw inside the tx) never emits it. Best-effort: a telemetry hiccup
+  // must not turn an already-committed undo into a thrown error for the caller.
+  await capture('loop_undo', args.revertedBy, { actionType: action.actionType }).catch((err) => {
+    console.error('loop_undo analytics failed (undo unaffected)', {
+      message: err instanceof Error ? err.message : 'unknown error',
     });
   });
 

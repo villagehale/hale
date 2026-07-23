@@ -95,6 +95,9 @@ export const agentNameEnum = pgEnum('agent_name', [
   'discovery',
   'rank-recommendations',
   'curate-shortlist',
+  'weekly-plan-voice',
+  'welcome-voice',
+  'reminder-voice',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [

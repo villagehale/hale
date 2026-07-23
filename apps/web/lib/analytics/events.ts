@@ -31,7 +31,18 @@ export type AnalyticsEvent =
   | 'loop_plan_sent'
   // F11 · reminders (VIL-223 · D1): one reminder message (a T-1h ping or a batched
   // T-24h evening) enqueued to a parent. Coarse props only (offset enum + event count).
-  | 'reminder_sent';
+  | 'reminder_sent'
+  // F11 · X1 loop metrics (VIL-227): the taxonomy at the A2 dispatch seam. One
+  // channel_messages ledger row emits exactly one of the two below — 'sent' maps to
+  // loop_message_sent, every other terminal status (failed + each suppression
+  // reason) maps to loop_message_failed with `reason` carrying the ledger status.
+  | 'loop_message_sent'
+  | 'loop_message_failed'
+  // The UNDO primitive (reverse-calendar.ts) reversing an executed placement.
+  | 'loop_undo'
+  // A loop-category CASL email unsubscribe landing — the beta guardrail pages the
+  // founder at ANY occurrence (stop-alert.ts).
+  | 'loop_stop';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

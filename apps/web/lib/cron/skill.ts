@@ -31,3 +31,11 @@ export function loadInferMemorySkill(): Promise<Skill> {
 export function loadWeekSummarySkill(): Promise<Skill> {
   return loadCronSkill('week-summary');
 }
+
+export function loadWelcomeVoiceSkill(): Promise<Skill> {
+  return loadCronSkill('welcome-voice');
+}
+
+export function loadReminderVoiceSkill(): Promise<Skill> {
+  return loadCronSkill('reminder-voice');
+}

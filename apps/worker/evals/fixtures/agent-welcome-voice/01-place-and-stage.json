@@ -1,0 +1,15 @@
+{
+  "id": "01-place-and-stage",
+  "note": "The common case: a firstName token plus BOTH coarse phrases supplied. The greeting must use 'Barton' verbatim; the village line may naturally weave in the place and/or stage but must invent no sharper detail (no neighbourhood name, no child age/name). No time or link — this skill is never handed one.",
+  "context": {
+    "familyId": "fam-welcome-1",
+    "firstName": "Barton",
+    "place": "around Toronto",
+    "stage": "the toddler years"
+  },
+  "expect": {
+    "maxChars": 500,
+    "forbiddenTokens": ["congratulations", "amazing journey", "$"],
+    "mustStayCalm": true
+  }
+}

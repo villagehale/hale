@@ -1,15 +1,19 @@
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
 import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { appBaseUrl, unsubscribeUrl } from '~/lib/cron/email-compliance';
+import { type ChildNameLevel, loadLoopPrefsView } from '~/lib/loop/prefs';
 import { loopSendEnabled } from '~/lib/loop/send';
 import type {
   ReminderChild,
   ReminderEventView,
   ReminderPayload,
 } from '~/lib/loop/templates/reminder/payload';
+import { voiceClient } from '~/lib/loop/voice/compose';
+import { composeReminderVoice } from '~/lib/loop/voice/reminder-voice';
 import { getQueue } from '~/lib/queue';
 import {
   type EventSnapshot,
@@ -121,6 +125,12 @@ export interface ReminderRunDeps {
   loadChildren: (db: Database, familyId: string) => Promise<ReminderChild[]>;
   enqueue: (job: ChannelSendJob) => Promise<void>;
   capture: typeof captureServerEvent;
+  /** VIL-229 · the agent client for the per-batch voice stage, or null to run WITHOUT
+   * it (the deterministic time + event descriptor still render + send — rule #8). */
+  client: AgentClient | null;
+  /** VIL-229 · the parent's resolved child-name-level dial, for the SAME redacted view
+   * (rule #1) the voice stage hands the model and the template later renders. */
+  loadNameLevel: (db: Database, userId: string) => Promise<ChildNameLevel>;
 }
 
 function sqlExcluded(column: string) {
@@ -279,6 +289,8 @@ export function defaultReminderRunDeps(): ReminderRunDeps {
       await queue.send(CHANNEL_SEND_QUEUE, job, { expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
     },
     capture: captureServerEvent,
+    client: voiceClient(),
+    loadNameLevel: async (db, userId) => (await loadLoopPrefsView(userId, db)).childNameLevel,
   };
 }
 
@@ -428,6 +440,10 @@ export async function runReminderCron(
     const batches = batchReminders(group.rows, group.timezone);
     const children = await deps.loadChildren(db, group.familyId);
     const rowByRef = new Map(group.rows.map((r) => [r.eventRef, r] as const));
+    // VIL-229 · resolve the parent's name-level dial ONCE per parent (not per batch) —
+    // only when voice can actually run, so a disabled or compose-not-send run skips
+    // the read entirely (rule #8, cost discipline).
+    const nameLevel = sendEnabled && deps.client ? await deps.loadNameLevel(db, parentUserId) : null;
 
     for (const batch of batches) {
       const [firstRef] = batch.eventRefs;
@@ -447,6 +463,27 @@ export async function runReminderCron(
         }
       }
 
+      // VIL-229 · the per-batch voice stage, over the SAME redacted view (eventDescriptor
+      // at the resolved name level) the template renders (rule #1). Fail-open (rule
+      // #8): a null client/level, or any compose degrade, leaves voice null and the
+      // deterministic time + descriptor still render + send.
+      const voice =
+        deps.client && nameLevel
+          ? (
+              await composeReminderVoice(
+                events,
+                children,
+                nameLevel,
+                group.timezone,
+                batch.offset,
+                group.familyId,
+                db,
+                deps.client,
+                now,
+              )
+            ).voice
+          : null;
+
       // Rule #6: no deep link on the glanceable T-1h; /plan on the evening-before T-24h.
       const deepLink = batch.offset === '-P1D' ? `${appBaseUrl()}/plan` : null;
       const payload: ReminderPayload = {
@@ -456,6 +493,7 @@ export async function runReminderCron(
         children,
         deepLink,
         unsubscribeUrl: unsubscribeUrl({ userId: parentUserId, emailType: REMINDER_EMAIL_TYPE }),
+        voice,
       };
       // Batch key: the single event for T-1h, the evening for a merged T-24h.
       const batchKey = batch.offset === '-P1D' ? batch.eveningKey : firstRef;
