@@ -190,6 +190,7 @@ export async function runSundaySendCron(
     const payload: WeeklyPlanPayload = {
       weekStart: plan.weekStart,
       summary: plan.summary,
+      voice: plan.voice,
       items: plan.items,
       children,
       deepLink: `${appBaseUrl()}/plan`,

@@ -49,6 +49,17 @@ const SLATE = '#47587A';
 const FADED_SAGE = '#5b6b86';
 const FONT_STACK = "Inter,-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif";
 
+/** VIL-229 · the model-composed voice for a welcome — the warm sentences around the
+ * coarse intake facts, never the facts themselves. Nullable by construction (rule #8):
+ * null when the voice stage is disabled/degraded, and the deterministic greeting /
+ * village line / reply line render instead. Composed inline at trigger from the coarse
+ * intake ONLY (firstName token, coarse place/stage phrase — never a child name/DOB). */
+export interface WelcomeVoice {
+  greeting: string;
+  villageLine: string;
+  closingNote: string;
+}
+
 /** The personalized, non-PII content of a welcome. `firstName` is already the
  * greeting-ready token ('Barton' or 'there'); `place` and `stage` are pre-derived
  * coarse phrases (or null), never a child name or DOB. */
@@ -59,6 +70,8 @@ export interface WelcomeContent {
   place: string | null;
   /** Warm stage phrase derived from the children's ages, or null. */
   stage: string | null;
+  /** VIL-229 · the model-composed voice, or null → deterministic copy renders (rule #8). */
+  voice: WelcomeVoice | null;
 }
 
 export interface WelcomeEmailSender {
@@ -119,6 +132,25 @@ function greeting(firstName: string): string {
   return `Hi ${firstName},`;
 }
 
+/** The deterministic reply line — the fallback for the voice `closingNote`. */
+const REPLY_LINE = 'Reply any time — a real person reads these.';
+
+// VIL-229 · the voice slots. Each resolves to the model-composed line when present,
+// else the deterministic copy — the design shell (structure, links, CTA, footer) is
+// always deterministic. Facts (the coarse place/stage words) are injected via the
+// deterministic villageLine fallback and the model's own grounded prose.
+function greetingLine(content: WelcomeContent): string {
+  return content.voice?.greeting ?? greeting(content.firstName);
+}
+
+function villageSentence(content: WelcomeContent): string {
+  return content.voice?.villageLine ?? villageLine(content);
+}
+
+function closingLine(content: WelcomeContent): string {
+  return content.voice?.closingNote ?? REPLY_LINE;
+}
+
 /** The one warm line about the village, tailored to the family's place + stage
  * from real data only (rule #1 — coarse, forward-safe). Both slots are optional;
  * the sentence reads naturally with either, both, or neither. A place phrase
@@ -138,13 +170,13 @@ function villageLine(content: WelcomeContent): string {
 
 function bodyText(content: WelcomeContent): string {
   return [
-    greeting(content.firstName),
-    villageLine(content),
+    greetingLine(content),
+    villageSentence(content),
     "Here's where to start:",
     `1. See what your village recommends: ${LINKS.village}`,
     `2. Add your first activity to your week: ${LINKS.home}`,
     `3. Invite a parent you trust: ${LINKS.family}`,
-    'Reply any time — a real person reads these.',
+    closingLine(content),
     '— the team at Hale',
   ].join('\n\n');
 }
@@ -168,7 +200,7 @@ function renderHtml(content: WelcomeContent, unsubscribeUrl: string): string {
   const para = (text: string) =>
     `<p style="margin:0 0 16px;color:${SLATE};font-size:16px;line-height:1.65;">${text}</p>`;
 
-  const intro = [para(escapeHtml(greeting(content.firstName))), para(escapeHtml(villageLine(content)))].join('');
+  const intro = [para(escapeHtml(greetingLine(content))), para(escapeHtml(villageSentence(content)))].join('');
 
   const cta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr><td style="border-radius:12px;background:${LINK};"><a href="${escapeHtml(
     LINKS.village,
@@ -200,7 +232,7 @@ function renderHtml(content: WelcomeContent, unsubscribeUrl: string): string {
       "You're one of Hale's founding families — everything's free while we grow, and when paid plans open you'll be first in line.",
     )}</p>`,
     `<p style="margin:8px 0 0;color:${SLATE};font-size:16px;line-height:1.65;">${escapeHtml(
-      'Reply any time — a real person reads these.',
+      closingLine(content),
     )}</p>`,
     `<p style="margin:8px 0 0;color:${SLATE};font-size:16px;line-height:1.65;">${escapeHtml(
       '— the team at Hale',

@@ -4,24 +4,21 @@ import type { WeekWindow } from '~/lib/plan/spine';
 import type { ComposeInputs } from './compose';
 
 // Edges stubbed so the test exercises the cron ORCHESTRATION (window, idempotent
-// pre-check, degradation, audit) — not infra. gather is injected via deps.
+// pre-check, voice-threading, degradation, audit) — not infra. gather is injected via
+// deps. The single agent STAGE is the composeWeekVoice seam (VIL-229), mocked here so
+// the cron test stays on orchestration; voice internals have their own tests.
 // cron.ts statically imports ./gather (for the default dep), whose query modules
 // transitively pull next-auth; stub the auth edge so this Node test resolves.
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
 vi.mock('~/lib/dashboard/trail-query', () => ({ readFamilyTimezone: vi.fn() }));
 vi.mock('./queries', () => ({ hasWeekPlan: vi.fn(), upsertWeekPlan: vi.fn() }));
-vi.mock('~/lib/cron/skill', () => ({ loadWeekSummarySkill: vi.fn() }));
-vi.mock('~/lib/cron/guards', () => ({ buildCronGuardDeps: vi.fn(() => ({})) }));
-vi.mock('@hale/agent', async (orig) => ({
-  ...(await orig<typeof import('@hale/agent')>()),
-  runAgent: vi.fn(),
-}));
+vi.mock('./voice/week-voice', () => ({ composeWeekVoice: vi.fn() }));
 
-import { runAgent } from '@hale/agent';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 import { isComposeMoment, runWeekPlanForFamily, type WeekPlanDeps } from './cron';
 import { hasWeekPlan, upsertWeekPlan } from './queries';
+import { composeWeekVoice } from './voice/week-voice';
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 // Saturday 2026-07-25 19:30 EDT → the upcoming Monday week starts 2026-07-27.
@@ -52,17 +49,24 @@ function fakeDb() {
 }
 
 describe('runWeekPlanForFamily', () => {
+  const VOICE = {
+    greeting: 'hi there, here is your week',
+    weekFraming: 'a calm week — one storytime to enjoy',
+    itemLines: { '0': 'a gentle outing' },
+    signOff: 'reply any time',
+  };
+
   beforeEach(() => {
     asMock(readFamilyTimezone).mockResolvedValue('America/Toronto');
     // upsertWeekPlan now returns the plan id; writeComposeAudit uses it directly (WP-11
     // removed the read-back), so the audit's targetId comes from this return.
     asMock(upsertWeekPlan).mockResolvedValue({ id: 'wp-1' });
     asMock(hasWeekPlan).mockReset();
-    asMock(runAgent).mockReset();
+    asMock(composeWeekVoice).mockReset();
   });
   afterEach(() => vi.clearAllMocks());
 
-  it('skips (no gather, no upsert, no spend) when the week is already composed', async () => {
+  it('skips (no gather, no upsert, no voice) when the week is already composed', async () => {
     asMock(hasWeekPlan).mockResolvedValue(true);
     const gather = fakeGather();
     const { db } = fakeDb();
@@ -72,50 +76,51 @@ describe('runWeekPlanForFamily', () => {
     expect(result).toEqual({ familyId: FAMILY, status: 'skipped_existing', weekStart: WEEK_START });
     expect(gather).not.toHaveBeenCalled();
     expect(upsertWeekPlan).not.toHaveBeenCalled();
-    expect(runAgent).not.toHaveBeenCalled();
+    expect(composeWeekVoice).not.toHaveBeenCalled();
   });
 
-  it('composes + persists WITHOUT the LLM when the client is absent (graceful degradation)', async () => {
+  it('composes + persists WITHOUT the voice stage when the client is absent (graceful degradation)', async () => {
     asMock(hasWeekPlan).mockResolvedValue(false);
     const gather = fakeGather();
     const { db, audits } = fakeDb();
 
     const result = await runWeekPlanForFamily(FAMILY, db, { client: null, gather }, NOW);
 
-    expect(result).toMatchObject({ status: 'composed', weekStart: WEEK_START, itemCount: 1, summarized: false });
-    expect(runAgent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'composed', weekStart: WEEK_START, itemCount: 1, voiced: false });
+    expect(composeWeekVoice).not.toHaveBeenCalled();
     expect(upsertWeekPlan).toHaveBeenCalledWith(
       db,
-      expect.objectContaining({ familyId: FAMILY, weekStart: WEEK_START, summary: null }),
+      expect.objectContaining({ familyId: FAMILY, weekStart: WEEK_START, summary: null, voice: null }),
     );
     // Rule #6: an immutable audit row for the compose.
     expect(audits).toHaveLength(1);
     expect(audits[0]).toMatchObject({ familyId: FAMILY, actor: 'system', actionTaken: 'compose_week_plan', targetTable: 'week_plans', targetId: 'wp-1' });
   });
 
-  it('persists the one-sentence summary when the agent step succeeds', async () => {
+  it('persists the voice + its framing as summary when the voice stage succeeds', async () => {
     asMock(hasWeekPlan).mockResolvedValue(false);
-    asMock(runAgent).mockResolvedValue({ answer: 'a calm week — one storytime to enjoy.', steps: 1, hitMaxSteps: false, usage: { promptTokens: 0, completionTokens: 0 } });
+    asMock(composeWeekVoice).mockResolvedValue({ voice: VOICE, degraded: false });
     const { db } = fakeDb();
 
     const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather: fakeGather() }, NOW);
 
-    expect(result).toMatchObject({ status: 'composed', summarized: true });
+    expect(result).toMatchObject({ status: 'composed', voiced: true });
     expect(upsertWeekPlan).toHaveBeenCalledWith(
       db,
-      expect.objectContaining({ summary: 'a calm week — one storytime to enjoy.' }),
+      // summary is the deterministic-fallback field = voice.weekFraming.
+      expect.objectContaining({ summary: VOICE.weekFraming, voice: VOICE }),
     );
   });
 
-  it('degrades to no summary — but still persists the plan — when the agent step throws', async () => {
+  it('degrades to no voice — but still persists the plan — when the voice stage fails', async () => {
     asMock(hasWeekPlan).mockResolvedValue(false);
-    asMock(runAgent).mockRejectedValue(new Error('model timeout'));
+    asMock(composeWeekVoice).mockResolvedValue({ voice: null, degraded: true });
     const { db } = fakeDb();
 
     const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather: fakeGather() }, NOW);
 
-    expect(result).toMatchObject({ status: 'composed', summarized: false });
-    expect(upsertWeekPlan).toHaveBeenCalledWith(db, expect.objectContaining({ summary: null }));
+    expect(result).toMatchObject({ status: 'composed', voiced: false });
+    expect(upsertWeekPlan).toHaveBeenCalledWith(db, expect.objectContaining({ summary: null, voice: null }));
   });
 });
 

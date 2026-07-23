@@ -55,6 +55,31 @@ export interface WeekPlanItem {
 }
 
 /**
+ * VIL-229 · the model-composed VOICE for a week plan — the warm sentences wrapped
+ * AROUND the deterministic facts, never the facts themselves. The composer's voice
+ * stage writes these from the same redacted items the renderer sees; the renderer
+ * uses a voice field where present and falls back to its deterministic copy where
+ * not. NULLABLE by construction (rule #8): the whole object is null when the voice
+ * stage is disabled or degraded, and the deterministic plan still renders.
+ *
+ *   greeting    — a warm opener above the plan
+ *   weekFraming — the one/two-sentence narrative (the serif "voice" line; falls back
+ *                 to the deterministic `summary`)
+ *   itemLines   — optional per-item framing, keyed by the item's index in `items`
+ *                 (the id the model was handed); an item with no line renders bare
+ *   signOff     — a warm closing (falls back to the deterministic reply invite)
+ *
+ * Facts (times, dates, names, links) are INJECTED by the renderer, never generated —
+ * the voice strings are lint-guarded at compose time to carry no invented time/link.
+ */
+export interface WeekPlanVoice {
+  greeting: string;
+  weekFraming: string;
+  itemLines: Record<string, string>;
+  signOff: string;
+}
+
+/**
  * One composed weekly plan per family per week (VIL-217 — "the Sunday brain").
  * `week_start` is the Monday of the week the plan COVERS, as a family-local
  * calendar date (the composer runs Saturday night family-local and composes the
@@ -87,6 +112,10 @@ export const weekPlans = pgTable(
     /** The typed item union B2/B3 consume. Defaults to an empty array so an empty
      * week is a real, queryable artifact (`items: []`), never a null. */
     items: jsonb('items').$type<WeekPlanItem[]>().notNull().default([]),
+    /** VIL-229 · the model-composed voice (warm sentences around the facts), or null
+     * when the voice stage is disabled/degraded — the deterministic plan still renders
+     * (rule #8). Additive + nullable by construction. */
+    voice: jsonb('voice').$type<WeekPlanVoice>(),
     /** Lifecycle: 'composed' (initial) → B2 sets 'delivered' / 'stale_delivered'
      * (a mid-week change recomposed after the Sunday text already went). Text (not
      * an enum) so B2 can extend the lifecycle without a migration. */

@@ -1,0 +1,15 @@
+{
+  "id": "03-teen-stage",
+  "note": "The teen-stage phrase, with a place. The village line must stay coarse — it must not invent a teen's age, name, or interests, only the given season-of-parenting phrase.",
+  "context": {
+    "familyId": "fam-welcome-3",
+    "firstName": "Priya",
+    "place": "your neighbourhood",
+    "stage": "the teenage years"
+  },
+  "expect": {
+    "maxChars": 500,
+    "forbiddenTokens": ["congratulations", "years old", "grade", "$"],
+    "mustStayCalm": true
+  }
+}

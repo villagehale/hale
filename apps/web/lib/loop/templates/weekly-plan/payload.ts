@@ -26,11 +26,19 @@ export interface PlanChild {
 
 export type WeekPlanItem = schema.WeekPlan['items'][number];
 
+export type WeekPlanVoice = schema.WeekPlanVoice;
+
 export interface WeeklyPlanPayload {
   /** Monday of the covered week (the artifact's weekStart key), YYYY-MM-DD. */
   weekStart: string;
-  /** B1's one-sentence LLM summary, or null. */
+  /** The deterministic-fallback narrative sentence (voice.weekFraming when voiced, or
+   * an older row's LLM summary), or null. The email uses `voice.weekFraming ?? summary`. */
   summary: string | null;
+  /** VIL-229 · the model-composed voice (warm sentences around the facts), or null when
+   * the voice stage degraded / an older row predates it. The renderer uses voice fields
+   * where present and its deterministic copy where not — nullable BY CONSTRUCTION so a
+   * template ALWAYS has a deterministic fallback (rule #8). */
+  voice: WeekPlanVoice | null;
   /** The composed items, in artifact order (renderer sorts chronologically). */
   items: WeekPlanItem[];
   /** Every child referenced by the plan's items, for name-level rendering. */
@@ -67,9 +75,29 @@ export function asWeeklyPlanPayload(payload: Record<string, unknown>): WeeklyPla
   return {
     weekStart: p.weekStart,
     summary: typeof p.summary === 'string' ? p.summary : null,
+    voice: narrowWeekVoice(p.voice),
     items: p.items,
     children: p.children,
     deepLink: p.deepLink,
     unsubscribeUrl: typeof p.unsubscribeUrl === 'string' ? p.unsubscribeUrl : null,
   };
+}
+
+/** Narrow the payload's JSON-round-tripped `voice` back to a typed WeekPlanVoice, or
+ * null. The composer already validated + lint-guarded it before persisting, so this is
+ * a light structural check: a malformed value degrades to null (the deterministic plan
+ * still renders — rule #8), never throws. */
+function narrowWeekVoice(value: unknown): WeekPlanVoice | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Partial<WeekPlanVoice>;
+  if (
+    typeof v.greeting !== 'string' ||
+    typeof v.weekFraming !== 'string' ||
+    typeof v.signOff !== 'string' ||
+    typeof v.itemLines !== 'object' ||
+    v.itemLines === null
+  ) {
+    return null;
+  }
+  return { greeting: v.greeting, weekFraming: v.weekFraming, itemLines: v.itemLines, signOff: v.signOff };
 }
