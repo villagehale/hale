@@ -1,4 +1,4 @@
-import { type AgentClient } from '@hale/agent';
+import type { AgentClient } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { loadWelcomeVoiceSkill } from '~/lib/cron/skill';
@@ -76,7 +76,10 @@ export async function composeWelcomeVoice(
   try {
     skill = await loadWelcomeVoiceSkill();
   } catch (err) {
-    console.error({ err, familyId, voice: 'welcome-voice' }, 'voice: welcome-voice skill load failed — deterministic welcome');
+    console.error(
+      { err, familyId, voice: 'welcome-voice' },
+      'voice: welcome-voice skill load failed — deterministic welcome',
+    );
     return { voice: null, degraded: true };
   }
 

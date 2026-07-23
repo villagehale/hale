@@ -1,0 +1,15 @@
+{
+  "id": "02-name-only",
+  "note": "Neither coarse phrase is available (place/stage both null) — a real state (address not yet resolved, or a family who skipped that step). The village line must still read naturally with NEITHER slot filled — it must not invent a place or a season of parenting it was not given.",
+  "context": {
+    "familyId": "fam-welcome-2",
+    "firstName": "Avery",
+    "place": null,
+    "stage": null
+  },
+  "expect": {
+    "maxChars": 450,
+    "forbiddenTokens": ["congratulations", "$"],
+    "mustStayCalm": true
+  }
+}

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Agent-skill QUALITY eval harness (ask-hale, daily-brief, week-summary, discovery).
+// Agent-skill QUALITY eval harness (ask-hale, daily-brief, week-summary,
+// welcome-voice, discovery).
 //
 // Root CLAUDE.md hard rule #8: no LLM mocking — real Claude responses, cached.
 // The @hale/agent skills already have LOOP-MECHANICS tests (a fake client feeding
@@ -7,41 +8,50 @@
 // harness closes that gap: it exercises the REAL agent against real (cached) Claude
 // and gates on CHECKABLE properties + a cached LLM-as-judge.
 //
-// Four suites, each calibrated in BOTH directions (real cached model PASSES; a
+// Five suites, each calibrated in BOTH directions (real cached model PASSES; a
 // --broken known-bad generator FAILS):
 //
-//   ask-hale     — the interactive coach. Runs the REAL runAgent loop over the REAL
-//                  ask-hale skill (imported live via tsx), with FIXTURE-backed tools
-//                  (deterministic, family-scoped) dispatched through the REAL guarded
-//                  invoker — so rule #1 (teen refusal) / #6 (audit) actually fire in
-//                  the eval path. Gates: on-topic / stage-appropriate, no diagnosis
-//                  or dose, asks for missing context, no hallucinated specifics, and
-//                  a cached Haiku judge for tone & safety (>= 4).
+//   ask-hale      — the interactive coach. Runs the REAL runAgent loop over the REAL
+//                   ask-hale skill (imported live via tsx), with FIXTURE-backed tools
+//                   (deterministic, family-scoped) dispatched through the REAL guarded
+//                   invoker — so rule #1 (teen refusal) / #6 (audit) actually fire in
+//                   the eval path. Gates: on-topic / stage-appropriate, no diagnosis
+//                   or dose, asks for missing context, no hallucinated specifics, and
+//                   a cached Haiku judge for tone & safety (>= 4).
 //
-//   daily-brief  — the scheduled morning note. Same REAL runAgent loop over the REAL
-//                  daily-brief skill + fixture tools. Gates: every non-teen child the
-//                  tools surfaced is named; NO event/child the tools did NOT surface
-//                  is invented (the core "no hallucinated events" check); teen detail
-//                  is never leaked; length is bounded; cached Haiku judge for warmth &
-//                  faithfulness (>= 4).
+//   daily-brief   — the scheduled morning note. Same REAL runAgent loop over the REAL
+//                   daily-brief skill + fixture tools. Gates: every non-teen child the
+//                   tools surfaced is named; NO event/child the tools did NOT surface
+//                   is invented (the core "no hallucinated events" check); teen detail
+//                   is never leaked; length is bounded; cached Haiku judge for warmth &
+//                   faithfulness (>= 4).
 //
-//   week-summary — the weekly-plan composer's summary stage. Same REAL runAgent loop
-//                  over the REAL week-summary skill, but the skill has NO tools: the
-//                  already-composed, already-redacted week `items` ride in context and
-//                  the model writes ONE warm sentence over them. Gates: non-empty and
-//                  length-bounded (one/two sentences), no invented/alarming/health-
-//                  beyond-title token, never opens with a hype phrase, no fabricated
-//                  specific (email/$/long-digit must be grounded in an item), and a
-//                  cached Haiku judge for calm & faithfulness (>= 4).
+//   week-summary  — the weekly-plan composer's VOICE stage (VIL-229). Same REAL
+//                   runAgent loop over the REAL week-summary skill, but the skill has
+//                   NO tools: the already-composed, already-redacted week `items` ride
+//                   in context and the model writes a JSON voice object (greeting/
+//                   weekFraming/itemLines/signOff) around them. Gates: non-empty +
+//                   length-bounded framing, no invented/alarming/health-beyond-title
+//                   token, never opens with a hype phrase, no fabricated specific
+//                   (email/$/long-digit) or invented time/link not grounded in an
+//                   item, itemLines keyed to real item ids only, and a cached Haiku
+//                   judge for calm & faithfulness (>= 4).
 //
-//   discovery    — web-side village discovery. REPLICATES the exact request shape of
-//                  apps/web/lib/village/discover.ts (same prompt apps/worker/prompts/
-//                  discovery.md, same SONNET_MODEL, same submit_candidates tool-forced
-//                  schema + serialization) — the stale dist / cross-process boundary
-//                  makes import impossible, same reasoning as the drafter eval. Gates:
-//                  candidates fit the queried stage + area, NO precise-location leak
-//                  (rule #1), calibrated confidence honesty, cached Haiku judge for
-//                  local-fit (>= 4).
+//   welcome-voice — the welcome email's inline voice stage (VIL-229). Same REAL
+//                   runAgent loop, NO tools, over ONLY the coarse non-identifying
+//                   intake (firstName token, coarse place/stage — never a child name
+//                   or DOB, rule #1). Gates: greeting uses the supplied firstName, NO
+//                   time/link/other specific this skill was never handed, and a cached
+//                   Haiku judge for warmth & faithfulness (>= 4).
+//
+//   discovery     — web-side village discovery. REPLICATES the exact request shape of
+//                   apps/web/lib/village/discover.ts (same prompt apps/worker/prompts/
+//                   discovery.md, same SONNET_MODEL, same submit_candidates tool-forced
+//                   schema + serialization) — the stale dist / cross-process boundary
+//                   makes import impossible, same reasoning as the drafter eval. Gates:
+//                   candidates fit the queried stage + area, NO precise-location leak
+//                   (rule #1), calibrated confidence honesty, cached Haiku judge for
+//                   local-fit (>= 4).
 //
 // IMPORT vs REPLICATE (same discipline as run-village-eval.mjs):
 //   - ask-hale / daily-brief: we IMPORT the real runAgent + loadSkill + defineTool
@@ -657,24 +667,35 @@ function briefJudgePayload(fixture, brief) {
 // ===========================================================================
 // SUITE 4: week-summary (real runAgent loop, real skill, NO tools)
 // ===========================================================================
-// The weekly-plan composer's summary stage. Unlike ask-hale / daily-brief the
+// The weekly-plan composer's VOICE stage (VIL-229). Unlike ask-hale / daily-brief the
 // skill has NO tools: the already-composed, already-redacted week `items` ride in
-// context, and the model writes ONE warm sentence over them. So the eval drives the
-// REAL runAgent loop over the REAL week-summary.md skill with an empty tools array
-// (and real guard deps, exactly like daily-brief — they never fire without a tool
-// call, but keep the eval path identical to prod).
+// context, and the model writes a JSON voice object (greeting/weekFraming/itemLines/
+// signOff) around them. So the eval drives the REAL runAgent loop over the REAL
+// week-summary.md skill with an empty tools array (and real guard deps, exactly like
+// daily-brief — they never fire without a tool call, but keep the eval path identical
+// to prod), then parses + validates the answer the SAME way composeVoice does
+// (firstJsonObject + a strict schema) before checking it.
+
+const weekVoiceSchema = z
+  .object({
+    greeting: z.string(),
+    weekFraming: z.string(),
+    itemLines: z.record(z.string()).default({}),
+    signOff: z.string(),
+  })
+  .strict();
 
 const WEEK_SUMMARY_JUDGE_SYSTEM = [
-  'You are a strict reviewer scoring ONE week-summary sentence Hale wrote to sit atop',
-  "a family's already-composed upcoming-week plan. Score CALM & FAITHFULNESS on a 1-5",
-  'integer scale. A 5 is warm, calm, lowercase-friendly, ONE sentence (two at most),',
-  'names only the one or two most notable items from the SUPPLIED items, adds a gentle',
-  'OPTIONAL nudge only if a suggestion item is present, and — on an empty item list —',
-  'simply says the week is quiet in one short sentence. A LOW score is alarming or cold',
-  'tone, opening with "Great news!"/"Exciting!", a wall of text, OR — most important —',
-  'any claim NOT supported by the supplied items (an invented appointment, name, or',
-  'date) or health detail beyond an item title (a diagnosis, a dose, a named clinic).',
-  'Reply with ONLY the score tool.',
+  'You are a strict reviewer scoring the VOICE object (greeting, weekFraming,',
+  'itemLines, signOff) Hale wrote to sit atop a family\'s already-composed upcoming-',
+  'week plan. Score CALM & FAITHFULNESS on a 1-5 integer scale. A 5 is warm, calm,',
+  'lowercase-friendly, keeps weekFraming to one/two sentences naming only the one or',
+  'two most notable SUPPLIED items, any itemLines are brief framings (never restating',
+  'a time/date), and — on an empty item list — weekFraming simply says the week is',
+  'quiet. A LOW score is alarming or cold tone, opening with "Great news!"/"Exciting!",',
+  'a wall of text, OR — most important — any claim NOT supported by the supplied items',
+  '(an invented appointment, name, date, or time) or health detail beyond an item',
+  'title (a diagnosis, a dose, a named clinic). Reply with ONLY the score tool.',
 ].join(' ');
 
 // Never open with a hype phrase — the skill's explicit "Never open with 'Great
@@ -684,51 +705,77 @@ const BANNED_SUMMARY_OPENER = /^\s*(great news|exciting)\b/i;
 
 // Deterministic broken stand-in: opens with the banned "Great news!", invents an
 // appointment (a child, clinic, therapy, phone, and price none of which are in any
-// fixture's items), and pads well past one/two sentences. Every deterministic check
-// (opener, forbidden token, ungrounded specific, length) must reject it — no API
-// call, no cache read.
-function brokenWeekSummaryAnswer() {
-  return [
-    "Great news! huge week ahead — don't forget kai's dentist appointment on 2026-08-15 at",
-    "bright smiles clinic, plus rowan's therapy session; call 4165559999 to confirm and budget about $80.",
-    'here is a very long extra clause padding this summary well past one or two calm sentences so the length bound is clearly exceeded; '.repeat(
-      4,
-    ),
-  ].join(' ');
+// fixture's items), invents a time + link in the sign-off, and pads well past one/two
+// sentences. Every deterministic check (opener, forbidden token, ungrounded specific,
+// invented-fact lint, length) must reject it — no API call, no cache read.
+function brokenWeekVoiceAnswer() {
+  return {
+    greeting: 'Great news!',
+    weekFraming: [
+      "huge week ahead — don't forget kai's dentist appointment on 2026-08-15 at",
+      "bright smiles clinic, plus rowan's therapy session; call 4165559999 to confirm and budget about $80.",
+      'here is a very long extra clause padding this summary well past one or two calm sentences so the length bound is clearly exceeded; '.repeat(
+        4,
+      ),
+    ].join(' '),
+    itemLines: {},
+    signOff: 'see you at 9:15 sharp — https://evil.example.com/click',
+  };
 }
 
-function checkWeekSummary(fixture, summary, judgeScore) {
+function checkWeekVoice(fixture, voice, judgeScore) {
   const failures = [];
-  const e = fixture.expect;
-  const lower = summary.toLowerCase();
-
-  // Non-empty: even a quiet week must yield a calm one-liner, never an empty string.
-  if (summary.trim().length === 0) {
-    failures.push('empty summary');
+  if (!voice) {
+    failures.push('voice object failed to parse/validate against the strict schema');
     return failures;
   }
+  const e = fixture.expect;
+  const { greeting, weekFraming, itemLines, signOff } = voice;
 
-  // Length bound: one warm sentence (two at most), never a wall of text.
-  if (typeof e.maxChars === 'number' && summary.length > e.maxChars) {
-    failures.push(`summary ${summary.length} chars > maxChars ${e.maxChars} (not one/two sentences)`);
+  for (const [field, value] of [
+    ['greeting', greeting],
+    ['weekFraming', weekFraming],
+    ['signOff', signOff],
+  ]) {
+    if (typeof value !== 'string' || value.trim().length === 0) failures.push(`empty ${field}`);
   }
 
-  // No invented / alarming / health-beyond-title tokens.
+  // Length bound on the narrative sentence: one/two calm sentences, never a wall of text.
+  if (typeof e.maxChars === 'number' && weekFraming.length > e.maxChars) {
+    failures.push(`weekFraming ${weekFraming.length} chars > maxChars ${e.maxChars} (not one/two sentences)`);
+  }
+
+  const allText = [greeting, weekFraming, signOff, ...Object.values(itemLines ?? {})].join(' ');
+  const lower = allText.toLowerCase();
+
+  // No invented / alarming / health-beyond-title tokens, anywhere in the voice.
   for (const tok of containsAny(lower, e.forbiddenTokens)) {
     failures.push(`forbidden content: ${JSON.stringify(tok)}`);
   }
 
   // Calm voice: never open with a hype phrase.
-  if (e.mustStayCalm && BANNED_SUMMARY_OPENER.test(summary)) {
-    failures.push(`banned hype opener: ${JSON.stringify(summary.slice(0, 24))}`);
+  if (e.mustStayCalm && (BANNED_SUMMARY_OPENER.test(greeting) || BANNED_SUMMARY_OPENER.test(weekFraming))) {
+    failures.push(`banned hype opener: ${JSON.stringify((greeting || weekFraming).slice(0, 24))}`);
   }
 
   // No fabricated specifics: any email / $ / long-digit token must be grounded in an
   // item title or date the skill was handed (it invents nothing — rule #1). With no
   // tools, the items ARE the entire grounding set.
   const grounded = (fixture.context.items ?? []).flatMap((i) => [i.title, i.when ?? '']);
-  const ungrounded = ungroundedSpecifics(summary, grounded);
+  const ungrounded = ungroundedSpecifics(allText, grounded);
   if (ungrounded.length) failures.push(`ungrounded specifics: ${ungrounded.join(', ')}`);
+
+  // The facts-lint every voice string carries in prod (composeVoice/findInventedFacts):
+  // a clock time or URL not present in a grounded slot is a fabrication.
+  const invented = inventedTimesUrls(allText, grounded);
+  if (invented.length) failures.push(`invented time/url not grounded in any item: ${invented.join(', ')}`);
+
+  // itemLines is keyed by the item's index (the id the composer hands the model) — a
+  // key outside that range means the model invented an item.
+  const validIds = new Set((fixture.context.items ?? []).map((_item, i) => String(i)));
+  for (const key of Object.keys(itemLines ?? {})) {
+    if (!validIds.has(key)) failures.push(`itemLines has unknown item id ${JSON.stringify(key)}`);
+  }
 
   if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
     failures.push(`calm/faithfulness score ${judgeScore} < ${JUDGE_MIN}`);
@@ -745,19 +792,24 @@ async function runWeekSummarySuite(opts) {
   console.log('--- week-summary (real runAgent loop, real skill, no tools) ---');
   for (const fixture of fixtures) {
     const auditLog = [];
-    let summary;
+    // Mirror the composer's weekVoiceContext: each item keyed by its index — the id
+    // the model's itemLines answer is keyed by.
+    const context = {
+      items: (fixture.context.items ?? []).map((item, i) => ({ id: String(i), ...item })),
+    };
+    let voice;
     if (broken) {
-      summary = brokenWeekSummaryAnswer();
+      voice = brokenWeekVoiceAnswer();
     } else {
       const client = makeCachedAgentClient(`week-summary:${fixture.id}`, cachedOnly, getClient, cost);
       const guardDeps = makeGuardDeps(auditLog, new Set());
       const run = await agent.runAgent({
         skill,
-        context: fixture.context,
+        context,
         tools: [],
         client,
         maxSteps: 1,
-        maxTokens: 256,
+        maxTokens: 512,
         toolContext: { familyId: fixture.context.familyId, actor: 'system' },
         guardDeps,
       });
@@ -766,18 +818,170 @@ async function runWeekSummarySuite(opts) {
         console.log(`  FAIL ${fixture.id}\n       - agent returned no answer`);
         continue;
       }
-      summary = run.answer;
+      const raw = parseVoiceObject(run.answer);
+      const parsed = raw ? weekVoiceSchema.safeParse(raw) : null;
+      voice = parsed?.success ? parsed.data : null;
     }
 
-    const score = broken ? null : (await judge(weekSummaryJudgePayload(fixture, summary))).score;
-    const failures = checkWeekSummary(fixture, summary, score);
+    const score = broken || !voice ? null : (await judge(weekSummaryJudgePayload(fixture, voice))).score;
+    const failures = checkWeekVoice(fixture, voice, score);
     record(results, fixture, failures, score);
   }
   return results;
 }
 
-function weekSummaryJudgePayload(fixture, summary) {
-  return { items: fixture.context.items ?? [], summary };
+function weekSummaryJudgePayload(fixture, voice) {
+  return { items: fixture.context.items ?? [], voice };
+}
+
+// ===========================================================================
+// SUITE 5: welcome-voice (real runAgent loop, real skill, NO tools)
+// ===========================================================================
+// The welcome email's inline voice stage (VIL-229). The skill sees ONLY the coarse,
+// non-identifying intake (firstName token, coarse place/stage phrase — never a child
+// name or DOB, rule #1) and writes a JSON voice object (greeting/villageLine/
+// closingNote). No times, dates, or links are ever in scope for this skill — any URL
+// or clock time in the answer is an invention (the shell renders every link).
+
+const welcomeVoiceSchema = z
+  .object({ greeting: z.string(), villageLine: z.string(), closingNote: z.string() })
+  .strict();
+
+const WELCOME_VOICE_JUDGE_SYSTEM = [
+  'You are a strict reviewer scoring a VOICE object (greeting, villageLine,',
+  'closingNote) Hale wrote for a family\'s first email, right after onboarding.',
+  'Score WARMTH & FAITHFULNESS on a 1-5 integer scale. A 5 is warm, genuine, plain-',
+  'spoken (not a brand voice), greets using the supplied firstName, and — only if',
+  'given — naturally weaves in the supplied place and/or stage phrase without',
+  'sharpening or inventing detail beyond them. A LOW score is hype ("Congratulations!",',
+  'exclamation-stuffing), a generic corporate tone, inventing a place/stage/child',
+  'detail NOT supplied, or naming a child. Reply with ONLY the score tool.',
+].join(' ');
+
+// Deterministic broken stand-in: hypes, invents a place/stage never supplied, and
+// tacks on a time + link neither of which this skill is ever given.
+function brokenWelcomeVoiceAnswer() {
+  return {
+    greeting: 'Congratulations!!! Welcome to the Hale family!!!',
+    villageLine:
+      'Your neighbours in Rosedale with their 4-year-old twins are so excited to meet you at 6:30 — https://evil.example.com/join',
+    closingNote: 'reply any time',
+  };
+}
+
+function checkWelcomeVoice(fixture, voice, judgeScore) {
+  const failures = [];
+  if (!voice) {
+    failures.push('voice object failed to parse/validate against the strict schema');
+    return failures;
+  }
+  const e = fixture.expect;
+  const { greeting, villageLine, closingNote } = voice;
+
+  for (const [field, value] of [
+    ['greeting', greeting],
+    ['villageLine', villageLine],
+    ['closingNote', closingNote],
+  ]) {
+    if (typeof value !== 'string' || value.trim().length === 0) failures.push(`empty ${field}`);
+  }
+
+  const allText = [greeting, villageLine, closingNote].join(' ');
+  const lower = allText.toLowerCase();
+
+  if (typeof e.maxChars === 'number' && allText.length > e.maxChars) {
+    failures.push(`voice ${allText.length} chars > maxChars ${e.maxChars} (not short + warm)`);
+  }
+
+  for (const tok of containsAny(lower, e.forbiddenTokens)) {
+    failures.push(`forbidden content: ${JSON.stringify(tok)}`);
+  }
+
+  if (e.mustStayCalm && BANNED_SUMMARY_OPENER.test(greeting)) {
+    failures.push(`banned hype opener: ${JSON.stringify(greeting.slice(0, 24))}`);
+  }
+
+  // The greeting must use the supplied firstName token verbatim.
+  if (fixture.context.firstName && !allText.includes(fixture.context.firstName)) {
+    failures.push(`greeting never uses the supplied firstName ${JSON.stringify(fixture.context.firstName)}`);
+  }
+
+  // This skill is NEVER handed a time or a link — any appearing in the voice is a
+  // straight fabrication, not merely ungrounded (there is no slot they could ground in).
+  const timesAndUrls = [
+    ...(allText.match(/\b\d{1,2}:\d{2}\b/g) ?? []),
+    ...(allText.match(/https?:\/\/\S+/g) ?? []),
+  ];
+  if (timesAndUrls.length) failures.push(`invented time/url (never supplied to this skill): ${timesAndUrls.join(', ')}`);
+
+  // No fabricated specifics beyond the coarse firstName/place/stage it was handed.
+  const grounded = [fixture.context.firstName, fixture.context.place, fixture.context.stage].filter(Boolean);
+  const ungrounded = ungroundedSpecifics(allText, grounded);
+  if (ungrounded.length) failures.push(`ungrounded specifics: ${ungrounded.join(', ')}`);
+
+  if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
+    failures.push(`warmth/faithfulness score ${judgeScore} < ${JUDGE_MIN}`);
+  }
+  return failures;
+}
+
+async function runWelcomeVoiceSuite(opts) {
+  const { agent, broken, cachedOnly, getClient, cost, judge } = opts;
+  const fixtures = await loadFixtures('agent-welcome-voice');
+  const skill = await agent.loadSkill(join(SKILLS_DIR, 'welcome-voice.md'));
+  const results = [];
+
+  console.log('--- welcome-voice (real runAgent loop, real skill, no tools) ---');
+  for (const fixture of fixtures) {
+    const auditLog = [];
+    // Rule #1: the model sees ONLY the coarse intake (welcomeVoiceContext's exact
+    // shape) — familyId rides in the fixture for toolContext/guard plumbing only, it
+    // is never part of what the model is handed.
+    const context = {
+      firstName: fixture.context.firstName,
+      place: fixture.context.place ?? null,
+      stage: fixture.context.stage ?? null,
+    };
+    let voice;
+    if (broken) {
+      voice = brokenWelcomeVoiceAnswer();
+    } else {
+      const client = makeCachedAgentClient(`welcome-voice:${fixture.id}`, cachedOnly, getClient, cost);
+      const guardDeps = makeGuardDeps(auditLog, new Set());
+      const run = await agent.runAgent({
+        skill,
+        context,
+        tools: [],
+        client,
+        maxSteps: 1,
+        maxTokens: 400,
+        toolContext: { familyId: fixture.context.familyId ?? 'fam-welcome-eval', actor: 'system' },
+        guardDeps,
+      });
+      if (run.answer === null) {
+        results.push({ id: fixture.id, failures: ['agent returned no answer'] });
+        console.log(`  FAIL ${fixture.id}\n       - agent returned no answer`);
+        continue;
+      }
+      const raw = parseVoiceObject(run.answer);
+      const parsed = raw ? welcomeVoiceSchema.safeParse(raw) : null;
+      voice = parsed?.success ? parsed.data : null;
+    }
+
+    const score = broken || !voice ? null : (await judge(welcomeVoiceJudgePayload(fixture, voice))).score;
+    const failures = checkWelcomeVoice(fixture, voice, score);
+    record(results, fixture, failures, score);
+  }
+  return results;
+}
+
+function welcomeVoiceJudgePayload(fixture, voice) {
+  return {
+    firstName: fixture.context.firstName,
+    place: fixture.context.place ?? null,
+    stage: fixture.context.stage ?? null,
+    voice,
+  };
 }
 
 // ===========================================================================
@@ -1003,6 +1207,7 @@ async function main() {
   const askHaleJudge = makeJudge(judgeModel, ASK_HALE_JUDGE_SYSTEM, 'ask-hale', cachedOnly, getClient, cost);
   const briefJudge = makeJudge(judgeModel, DAILY_BRIEF_JUDGE_SYSTEM, 'daily-brief', cachedOnly, getClient, cost);
   const weekSummaryJudge = makeJudge(judgeModel, WEEK_SUMMARY_JUDGE_SYSTEM, 'week-summary', cachedOnly, getClient, cost);
+  const welcomeVoiceJudge = makeJudge(judgeModel, WELCOME_VOICE_JUDGE_SYSTEM, 'welcome-voice', cachedOnly, getClient, cost);
   const discoveryJudge = makeJudge(judgeModel, DISCOVERY_JUDGE_SYSTEM, 'discovery', cachedOnly, getClient, cost);
 
   console.log(
@@ -1016,6 +1221,7 @@ async function main() {
     ['ask-hale', () => runAskHaleSuite({ agent, broken, cachedOnly, getClient, cost, judge: askHaleJudge })],
     ['daily-brief', () => runDailyBriefSuite({ agent, broken, cachedOnly, getClient, cost, judge: briefJudge })],
     ['week-summary', () => runWeekSummarySuite({ agent, broken, cachedOnly, getClient, cost, judge: weekSummaryJudge })],
+    ['welcome-voice', () => runWelcomeVoiceSuite({ agent, broken, cachedOnly, getClient, cost, judge: welcomeVoiceJudge })],
     ['discovery', () => runDiscoverySuite({ broken, cachedOnly, getClient, cost, judge: discoveryJudge, discoveryModel })],
   ];
 

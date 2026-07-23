@@ -1,5 +1,5 @@
-import { type AgentClient } from '@hale/agent';
-import { type Database, type WeekPlanItem, type WeekPlanVoice } from '@hale/db';
+import type { AgentClient } from '@hale/agent';
+import type { Database, WeekPlanItem, WeekPlanVoice } from '@hale/db';
 import { z } from 'zod';
 import { loadWeekSummarySkill } from '~/lib/cron/skill';
 import { timeLabel } from '~/lib/loop/templates/weekly-plan/core';
@@ -105,7 +105,10 @@ export async function composeWeekVoice(
   } catch (err) {
     // Send-safety (binding architecture): the voice stage NEVER throws — a missing/
     // broken skill degrades to the deterministic plan rather than failing the compose.
-    console.error({ err, familyId, voice: 'weekly-plan-voice' }, 'voice: week-summary skill load failed — deterministic plan');
+    console.error(
+      { err, familyId, voice: 'weekly-plan-voice' },
+      'voice: week-summary skill load failed — deterministic plan',
+    );
     return { voice: null, degraded: true };
   }
 

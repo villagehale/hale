@@ -1,5 +1,13 @@
+import type { AgentClient } from '@hale/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReminderStatus, SuppressReason } from './schedule';
+
+// VIL-229: the voice stage is a mocked module boundary (mirrors cron.test.ts's
+// composeWeekVoice mock) — these tests drive the WIRING (called/not-called, fail-open
+// on degrade), not the voice quality (that's reminder-voice.test.ts + the cached eval).
+vi.mock('~/lib/loop/voice/reminder-voice', () => ({ composeReminderVoice: vi.fn() }));
+
+import { composeReminderVoice } from '~/lib/loop/voice/reminder-voice';
 import {
   type ChannelSendJob,
   type DueReminder,
@@ -16,6 +24,8 @@ import {
  * the same-evening T-24h batch, the glanceable link-less T-1h, and the compose-not-send
  * LOOP_SEND_ENABLED gate.
  */
+
+const asMock = <T>(fn: T) => fn as unknown as ReturnType<typeof vi.fn>;
 
 const TZ = 'America/Toronto';
 // A 10:00 EDT event: startsAt 14:00Z, its T-1h fire moment 13:00Z.
@@ -85,10 +95,16 @@ function makeDeps(over: Partial<ReminderRunDeps> = {}) {
     capture: async (event, distinctId, props = {}) => {
       captured.push({ event, distinctId, props });
     },
+    // VIL-229: no client by default → the voice stage never runs (existing tests'
+    // behavior is unchanged). Tests below override both to exercise the wiring.
+    client: null,
+    loadNameLevel: async () => 'generic',
     ...over,
   };
   return { deps, enqueued, marked, reanchored, upserts, captured };
 }
+
+afterEach(() => asMock(composeReminderVoice).mockReset());
 
 describe('runReminderCron — Phase A converge', () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -311,5 +327,86 @@ describe('runReminderCron — batching + compose-not-send', () => {
     expect(marked).toHaveLength(0); // the fire row stays 'scheduled'
     expect(captured).toHaveLength(0);
     expect(result).toMatchObject({ due: 1, fired: 0, sendEnabled: false });
+  });
+});
+
+describe('runReminderCron — VIL-229 voice wiring (fail-open, rule #8)', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('never calls composeReminderVoice when no client is configured — payload.voice stays null', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, enqueued } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(composeReminderVoice).not.toHaveBeenCalled();
+    const payload = enqueued[0]?.payload as Record<string, unknown>;
+    expect(payload.voice).toBeNull();
+  });
+
+  it('composes the voice over the SAME redacted batch (rule #1) and sets payload.voice', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    asMock(composeReminderVoice).mockResolvedValue({
+      voice: { line: 'a quick evening check-in' },
+      degraded: false,
+    });
+    const client = {} as AgentClient;
+    const loadNameLevel = vi.fn(async () => 'relation' as const);
+    const { deps, enqueued } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+      client,
+      loadNameLevel,
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(loadNameLevel).toHaveBeenCalledWith({}, 'p1');
+    expect(composeReminderVoice).toHaveBeenCalledWith(
+      [expect.objectContaining({ eventRef: 'e1' })],
+      expect.any(Array),
+      'relation',
+      TZ,
+      '-PT1H',
+      'fam-1',
+      {},
+      client,
+      NOW_T1H,
+    );
+    const payload = enqueued[0]?.payload as Record<string, unknown>;
+    expect(payload.voice).toEqual({ line: 'a quick evening check-in' });
+  });
+
+  it('fail-open: still enqueues + marks sent when the voice stage degrades (voice null)', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    asMock(composeReminderVoice).mockResolvedValue({ voice: null, degraded: true });
+    const { deps, enqueued, marked } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+      client: {} as AgentClient,
+    });
+    const result = await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(enqueued).toHaveLength(1);
+    const payload = enqueued[0]?.payload as Record<string, unknown>;
+    expect(payload.voice).toBeNull();
+    expect(marked).toEqual([{ id: 'r1', status: 'sent', reason: null }]);
+    expect(result).toMatchObject({ fired: 1 });
+  });
+
+  it('skips the compose call (and the name-level read) entirely when compose-not-send is off', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', '');
+    const loadNameLevel = vi.fn(async () => 'relation' as const);
+    const { deps } = makeDeps({
+      loadDueReminders: async () => [dueRow()],
+      loadEvent: async () => liveEvent(),
+      client: {} as AgentClient,
+      loadNameLevel,
+    });
+    await runReminderCron({} as never, deps, NOW_T1H);
+
+    expect(loadNameLevel).not.toHaveBeenCalled();
+    expect(composeReminderVoice).not.toHaveBeenCalled();
   });
 });
