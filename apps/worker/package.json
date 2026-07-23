@@ -36,7 +36,7 @@
     "@hale/db": "workspace:*",
     "@hale/tools-contracts": "workspace:*",
     "@hale/types": "workspace:*",
-    "drizzle-orm": "^0.38.3",
+    "drizzle-orm": "^0.45.2",
     "pg-boss": "^10.1.6",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",

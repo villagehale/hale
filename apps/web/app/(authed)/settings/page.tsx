@@ -1,6 +1,7 @@
 import { PLAN_DISPLAY } from '@hale/types';
 import { AccountPreferencesCard } from '~/components/hale/account-preferences-card';
 import { AccountProfileCard } from '~/components/hale/account-profile-card';
+import { ConnectedAssistants } from '~/components/hale/connected-assistants';
 import { Connectors } from '~/components/hale/connectors';
 import { DeleteAccountButton } from '~/components/hale/delete-account-button';
 import { ExportDataButton } from '~/components/hale/export-data-button';
@@ -20,8 +21,11 @@ import { signOutAction } from '~/lib/auth-actions';
 import { authConfigured } from '~/lib/auth-config';
 import { loadSmsChannel } from '~/lib/channels/sms-consent';
 import { loadFamilyBasics, loadFamilyMembers } from '~/lib/dashboard/queries';
+import { db } from '~/lib/db';
 import { loadViewerProfile } from '~/lib/family';
+import { currentFamilyId, currentUserId } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
+import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
 import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
 import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
@@ -43,16 +47,30 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  * The page title + subtitle live in the shell top bar (design handoff §3.2).
  */
 export default async function SettingsPage() {
-  const [profile, basics, members, connections, pushPrefs, loopPrefs, smsChannel] =
-    await Promise.all([
-      loadViewerProfile(),
-      loadFamilyBasics(),
-      loadFamilyMembers(),
-      loadFamilyConnectors(),
-      loadPushNotificationPrefs(),
-      loadLoopNotificationPrefs(),
-      loadSmsChannel(),
-    ]);
+  const database = db();
+  const [
+    profile,
+    basics,
+    members,
+    connections,
+    pushPrefs,
+    loopPrefs,
+    smsChannel,
+    familyId,
+    userId,
+  ] = await Promise.all([
+    loadViewerProfile(),
+    loadFamilyBasics(),
+    loadFamilyMembers(),
+    loadFamilyConnectors(),
+    loadPushNotificationPrefs(),
+    loadLoopNotificationPrefs(),
+    loadSmsChannel(),
+    currentFamilyId(database),
+    currentUserId(database),
+  ]);
+  const assistantConnections =
+    familyId && userId ? await listMcpConnectionsForUser(database, familyId, userId) : [];
 
   const planName = PLAN_DISPLAY[basics.planTier].name;
   const canSignOut = authConfigured();
@@ -161,9 +179,15 @@ export default async function SettingsPage() {
 
     // ── Connected apps ───────────────────────────────────────────────────
     apps: (
-      <div>
-        <SectionLabel>connected accounts</SectionLabel>
-        <Connectors connections={connections} />
+      <div className="flex flex-col gap-y-10">
+        <div>
+          <SectionLabel>connected accounts</SectionLabel>
+          <Connectors connections={connections} />
+        </div>
+        <div>
+          <SectionLabel>external assistants</SectionLabel>
+          <ConnectedAssistants connections={assistantConnections} />
+        </div>
       </div>
     ),
 

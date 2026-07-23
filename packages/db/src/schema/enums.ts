@@ -127,6 +127,10 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // The channel seam (VIL-213) gates SMS on the live parent_channels state, not on
   // this append-only ledger.
   'sms_service_messages',
+  // A parent authorizing a named third-party MCP client to receive only the
+  // explicitly selected Hale scopes. Revocation appends granted=false; the
+  // mcp_grants row is the live enforcement seam.
+  'mcp_third_party_model',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
@@ -136,12 +140,7 @@ export const planTierEnum = pgEnum('plan_tier', ['free', 'plus', 'family']);
 // A child's gender, captured as an OPTIONAL onboarding field (rule #1: sensitive).
 // Non-null with an explicit 'unspecified' default so a skipped answer is a value,
 // not a SQL null. Values mirror @hale/types ChildGender.
-export const childGenderEnum = pgEnum('child_gender', [
-  'boy',
-  'girl',
-  'nonbinary',
-  'unspecified',
-]);
+export const childGenderEnum = pgEnum('child_gender', ['boy', 'girl', 'nonbinary', 'unspecified']);
 
 // The kind of email Hale sends, tracked in the send ledger + opt-out store so each
 // row is honest about which stream it belongs to. 'daily_digest' is the
@@ -191,11 +190,7 @@ export const loopChannelEnum = pgEnum('loop_channel', ['email', 'sms']);
 // 'relation' → "your daughter/son" (from child gender; falls back to "your
 // child"), 'generic' → "your kid". COMPOSES WITH the deterministic teen age gate:
 // a 13+ child (deriveStage) is always forced to generic regardless of this pref.
-export const childNameLevelEnum = pgEnum('child_name_level', [
-  'first_name',
-  'relation',
-  'generic',
-]);
+export const childNameLevelEnum = pgEnum('child_name_level', ['first_name', 'relation', 'generic']);
 
 // F11 · The Sunday Loop — the channel_messages ledger (VIL-213 · A2). One message
 // model, many pipes: the delivery leg a row rode on.

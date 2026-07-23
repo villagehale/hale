@@ -3,8 +3,8 @@ import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
-import { safeInternalRedirect } from '~/lib/auth/redirect';
 import { credentialsConfigured, googleConfigured } from '~/lib/auth-config';
+import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 // AUTH_SECRET is a runtime-only secret, so evaluate configuredness at request time
 // rather than caching a build-time "not configured" fallback.
@@ -55,7 +55,7 @@ export default async function SignInPage({ searchParams }: PageProps) {
 
       {google && magicLink ? <div className="auth-or">or</div> : null}
 
-      {magicLink ? <MagicLinkRequestForm variant="inline" /> : null}
+      {magicLink ? <MagicLinkRequestForm variant="inline" callbackUrl={redirectTo} /> : null}
 
       <Link href="/onboarding" className="btn-ghost self-start">
         New here? Join the village &rarr;

@@ -34,7 +34,11 @@ function thenable(result: unknown[]) {
 }
 const fakeDb = {
   update() {
-    return { set() { return { where: () => thenable([]) }; } };
+    return {
+      set() {
+        return { where: () => thenable([]) };
+      },
+    };
   },
   insert() {
     return {
@@ -128,6 +132,24 @@ describe('POST /api/auth/magic-link/request (web)', () => {
     // The emailed token, hashed, is exactly what was persisted — only Resend mocked.
     expect(stored).toHaveLength(1);
     expect(stored[0]?.tokenHash).toBe(sha256(tokenFromUrl(url)));
+  });
+
+  it('preserves a safe internal OAuth callback and rejects an external one', async () => {
+    await callWeb({
+      email: 'parent@example.com',
+      callbackUrl: '/oauth/authorize?client_id=hale_client_test',
+    });
+    await vi.waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
+    expect(
+      new URL(capturedUrl(`${APP_BASE}/magic-link?token=`)).searchParams.get('callbackUrl'),
+    ).toBe('/oauth/authorize?client_id=hale_client_test');
+
+    sendMock.mockClear();
+    await callWeb({ email: 'parent@example.com', callbackUrl: 'https://evil.example/steal' });
+    await vi.waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
+    expect(
+      new URL(capturedUrl(`${APP_BASE}/magic-link?token=`)).searchParams.has('callbackUrl'),
+    ).toBe(false);
   });
 
   it('returns the same 200 body for a malformed email but mints and sends nothing (enumeration-safe, uniform)', async () => {

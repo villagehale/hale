@@ -38,6 +38,14 @@ function fakeDb(args: {
   children: ChildRow[];
   members: MemberRow[];
   saves?: { title: string; savedAt: Date }[];
+  assistants?: {
+    clientName: string;
+    scopes: string[];
+    createdAt: Date;
+    lastUsedAt: Date | null;
+    expiresAt: Date;
+    revokedAt: Date | null;
+  }[];
 }) {
   const whereFamilyIds: unknown[] = [];
 
@@ -62,15 +70,21 @@ function fakeDb(args: {
     return { orderBy: vi.fn().mockResolvedValue(args.saves ?? []) };
   });
 
+  const assistantsWhere = vi.fn((cond: unknown) => {
+    whereFamilyIds.push(cond);
+    return { orderBy: vi.fn().mockResolvedValue(args.assistants ?? []) };
+  });
+
   // Route each select to the right terminal by call order: family, children,
-  // members, then the village-saves join.
+  // members, the village-saves join, then this parent's assistant grants.
   let selectCall = 0;
   const select = vi.fn(() => {
     const which = selectCall++;
     if (which === 0) return { from: () => ({ where: familyWhere }) };
     if (which === 1) return { from: () => ({ where: childrenWhere }) };
     if (which === 2) return { from: () => ({ innerJoin: () => ({ where: membersWhere }) }) };
-    return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
+    if (which === 3) return { from: () => ({ innerJoin: () => ({ where: savesWhere }) }) };
+    return { from: () => ({ innerJoin: () => ({ where: assistantsWhere }) }) };
   });
 
   const values = vi.fn().mockResolvedValue(undefined);
@@ -131,6 +145,7 @@ describe('assembleFamilyExport', () => {
     expect(doc.children[0]?.name).toBe('Mika');
     expect(doc.members.primary?.email).toBe('ana@example.com');
     expect(doc.savedActivities).toEqual([]);
+    expect(doc.assistantConnections).toEqual([]);
   });
 
   it('includes the family village saves — user-generated rows belong in the right-to-access copy', async () => {
@@ -149,6 +164,41 @@ describe('assembleFamilyExport', () => {
     expect(doc.savedActivities).toEqual([
       { title: 'Saturday story-time', savedAt: '2026-07-01T12:00:00.000Z' },
     ]);
+  });
+
+  it('includes non-secret assistant connection history without internal ids or token material', async () => {
+    const { db } = fakeDb({
+      family: FAMILY,
+      children: [],
+      members: [],
+      assistants: [
+        {
+          clientName: 'Example assistant',
+          scopes: ['events.read', 'actions.propose'],
+          createdAt: new Date('2026-07-01T12:00:00Z'),
+          lastUsedAt: new Date('2026-07-20T09:00:00Z'),
+          expiresAt: new Date('2026-08-01T12:00:00Z'),
+          revokedAt: null,
+        },
+      ],
+    });
+
+    const doc = await assembleFamilyExport(db, FAMILY_ID, {
+      actorUserId: ACTOR_USER_ID,
+      loadTrail: async () => [],
+      now: new Date('2026-07-22T12:00:00Z'),
+    });
+
+    expect(doc.assistantConnections).toEqual([
+      expect.objectContaining({
+        clientName: 'Example assistant',
+        scopes: ['events.read', 'actions.propose'],
+        status: 'active',
+      }),
+    ]);
+    expect(JSON.stringify(doc.assistantConnections)).not.toMatch(
+      /token|grantId|clientId|consentId/i,
+    );
   });
 
   it('carries the ALREADY-REDACTED trail rows — a redacted teen row exports the placeholder, never raw content (rule #1)', async () => {
@@ -188,11 +238,12 @@ describe('assembleFamilyExport', () => {
       loadTrail: async () => [],
     });
 
-    // Four family-scoped selects (family, children, members, village saves)
+    // Five scoped selects (family, children, members, village saves, this parent's
+    // assistant grants)
     // each recorded a where-condition; none was left unscoped. (The condition
     // objects are opaque Drizzle SQL, so we assert on arity — every select
     // passed through a where.)
-    expect(spies.whereFamilyIds).toHaveLength(4);
+    expect(spies.whereFamilyIds).toHaveLength(5);
     expect(OTHER_FAMILY_ID).not.toBe(FAMILY_ID);
   });
 });
