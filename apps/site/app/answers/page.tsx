@@ -17,9 +17,9 @@ const STAGE_LABEL: Record<string, string> = {
 // published it has nothing to index, so it stays out of search — it becomes
 // indexable on its own once the first answer goes live.
 export const metadata: Metadata = {
-  title: 'Answers · Hale',
+  title: 'Parenting guides · Hale',
   description:
-    'Calm, cited answers to the parenting-health questions families search for — general guidance, grounded in trusted frameworks, never a substitute for your provider.',
+    'Calm, cited parenting guides for the questions families search for — general guidance grounded in trusted frameworks, never a substitute for your provider.',
   alternates: { canonical: '/answers' },
   robots: publishedAnswers.length > 0 ? undefined : { index: false, follow: true },
 };
@@ -33,17 +33,17 @@ export default function AnswersIndexPage() {
 
       <section className="shell pt-10 sm:pt-16 pb-12">
         <div className="max-w-2xl rise rise-1">
-          <span className="eyebrow">Answers</span>
+          <span className="eyebrow">Parenting guides</span>
           <h1 className="mt-3">
-            Calm, cited answers for <span className="accent">every stage</span>.
+            Calm, cited guidance for <span className="accent">every stage</span>.
           </h1>
           <p
             className="mt-6 text-lg"
             style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}
           >
-            Plain answers to the questions parents actually search — each one grounded in trusted
-            parenting-health frameworks and honest about its limits. General guidance, never a
-            replacement for your provider.
+            Practical guides for the questions parents actually search — each one grounded in
+            trusted parenting-health frameworks and honest about its limits. General guidance, never
+            a replacement for your provider.
           </p>
         </div>
       </section>
@@ -77,12 +77,13 @@ export default function AnswersIndexPage() {
         <section className="shell pb-20 lg:pb-28">
           <div className="panel-oat px-8 py-14 sm:px-12 max-w-2xl rise rise-2">
             <p className="text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
-              Our first answers are in review. In the meantime, the fastest way to get an answer for
-              your own child — with their age and your family in mind — is to ask Concierge.
+              Our first parenting guides are in review. In the meantime, the fastest way to get
+              guidance for your own child — with their age and your family in mind — is to ask
+              Ask Hale.
             </p>
             <div className="mt-8">
               <a href={`${APP_URL}/onboarding`} className="btn-primary">
-                Ask Concierge about your child
+                Ask Hale about your child
               </a>
             </div>
           </div>
@@ -90,7 +91,7 @@ export default function AnswersIndexPage() {
       )}
 
       {/* Populated index closes on the signature navy CTA (empty state carries its
-          own Ask Concierge panel above). SITE-10: both SEO entry surfaces need a
+          own Ask Hale panel above). SITE-10: both SEO entry surfaces need a
           conversion path beyond the header pill. */}
       {answers.length > 0 && (
         <CtaBand>
@@ -98,12 +99,16 @@ export default function AnswersIndexPage() {
             Have a question about your own child?
           </h2>
           <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
-            Ask Concierge — with your child’s age and your family in mind. Free to start, and your
+            Ask Hale — with your child’s age and your family in mind. Free to start, and your
             data stays in Canada.
           </p>
           <div className="mt-8 flex justify-center">
-            <LandingCta event="answers_cta_signin" href={`${APP_URL}/onboarding`} className="btn-on-navy">
-              Ask Concierge about your child
+            <LandingCta
+              event="answers_cta_signin"
+              href={`${APP_URL}/onboarding`}
+              className="btn-on-navy"
+            >
+              Ask Hale about your child
             </LandingCta>
           </div>
         </CtaBand>

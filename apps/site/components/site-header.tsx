@@ -22,7 +22,7 @@ const LINKS = [
   { label: 'About', href: '/about' },
   { label: 'Features', href: '/#features' },
   { label: 'Pricing', href: '/pricing' },
-  { label: 'FAQ', href: '/#faq' },
+  { label: 'FAQ', href: '/faq' },
   { label: 'Contact', href: '/contact' },
 ] as const;
 
