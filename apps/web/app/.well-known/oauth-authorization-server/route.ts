@@ -17,6 +17,9 @@ export function GET(req: Request): Response {
       grant_types_supported: ['authorization_code'],
       code_challenge_methods_supported: ['S256'],
       token_endpoint_auth_methods_supported: ['none'],
+      // RFC 9207: we return `iss` on every authorization response (success + error),
+      // so a client can pin the issuer and defend against mix-up attacks.
+      authorization_response_iss_parameter_supported: true,
     },
     {
       headers: {

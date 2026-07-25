@@ -96,6 +96,8 @@ describe('POST /api/oauth/authorize', () => {
     expect(location.origin + location.pathname).toBe(CLIENT.redirectUris[0]);
     expect(location.searchParams.get('code')).toBe('hale_code_test');
     expect(location.searchParams.get('state')).toBe('opaque-state');
+    // RFC 9207: issuer identification on the success redirect (mix-up defense).
+    expect(location.searchParams.get('iss')).toBe(ORIGIN);
     expect(createCode).toHaveBeenCalledWith(
       {},
       expect.objectContaining({
@@ -113,6 +115,9 @@ describe('POST /api/oauth/authorize', () => {
     const location = new URL(response.headers.get('location') as string);
     expect(location.searchParams.get('error')).toBe('access_denied');
     expect(location.searchParams.get('state')).toBe('opaque-state');
+    // RFC 9207: iss MUST also ride error responses once advertised, or a compliant
+    // client rejects them.
+    expect(location.searchParams.get('iss')).toBe(ORIGIN);
     expect(createCode).not.toHaveBeenCalled();
   });
 });

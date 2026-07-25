@@ -33,6 +33,7 @@ export interface McpToolAudit {
 export interface McpToolDeps {
   getWeekPlan: (input: {
     familyId: string;
+    userId: string;
     weekStart?: string;
   }) => Promise<unknown>;
   getUpcomingEvents: (input: {
@@ -134,6 +135,7 @@ export async function invokeMcpTool(
         }
         output = await deps.getWeekPlan({
           familyId: grant.familyId,
+          userId: grant.userId,
           weekStart: parsed.data.weekStart,
         });
         break;

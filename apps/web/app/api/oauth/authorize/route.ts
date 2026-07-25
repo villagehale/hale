@@ -66,6 +66,7 @@ export async function POST(req: Request): Promise<Response> {
       oauthRedirect(authorization.redirectUri, {
         error: 'access_denied',
         state: authorization.state,
+        iss: origin,
       }),
       303,
     );
@@ -88,6 +89,7 @@ export async function POST(req: Request): Promise<Response> {
       oauthRedirect(authorization.redirectUri, {
         error: 'invalid_scope',
         state: authorization.state,
+        iss: origin,
       }),
       303,
     );
@@ -103,6 +105,7 @@ export async function POST(req: Request): Promise<Response> {
       oauthRedirect(authorization.redirectUri, {
         error: 'access_denied',
         state: authorization.state,
+        iss: origin,
       }),
       303,
     );
@@ -121,7 +124,7 @@ export async function POST(req: Request): Promise<Response> {
   });
 
   return NextResponse.redirect(
-    oauthRedirect(authorization.redirectUri, { code, state: authorization.state }),
+    oauthRedirect(authorization.redirectUri, { code, state: authorization.state, iss: origin }),
     303,
   );
 }
