@@ -22,6 +22,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.41.0",
     "@hale/agent": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@hale/db": "workspace:*",
     "@hale/tools-contracts": "workspace:*",
     "@hale/types": "workspace:*",
@@ -34,6 +35,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "drizzle-orm": "^0.38.3",
     "jose": "^5.10.0",
+    "mcp-handler": "^1.1.0",
     "lucide-react": "^1.20.0",
     "next": "^15.1.4",
     "next-auth": "5.0.0-beta.25",

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { authConfigured } from '~/lib/auth-config';
 import { requestMagicLink } from '~/lib/auth/magic-link';
 import { authRateLimited } from '~/lib/auth/rate-limit';
+import { safeInternalRedirect } from '~/lib/auth/redirect';
 import { createVerificationEmailSender } from '~/lib/auth/verification-email';
 import { db } from '~/lib/db';
 
@@ -26,8 +27,13 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'unavailable' }, { status: 503 });
   }
 
-  const body = (await req.json().catch(() => null)) as { email?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    email?: string;
+    callbackUrl?: string;
+  } | null;
   const email = typeof body?.email === 'string' ? body.email : '';
+  const callbackUrl =
+    typeof body?.callbackUrl === 'string' ? safeInternalRedirect(body.callbackUrl, '') : '';
   if (!email) {
     return NextResponse.json({ error: 'invalid_request' }, { status: 400 });
   }
@@ -38,9 +44,11 @@ export async function POST(req: Request): Promise<Response> {
 
   const result = await requestMagicLink(email, db());
   if (result.token) {
-    const magicUrl = `${APP_BASE}/magic-link?token=${encodeURIComponent(result.token)}`;
+    const magicUrl = new URL('/magic-link', APP_BASE);
+    magicUrl.searchParams.set('token', result.token);
+    if (callbackUrl) magicUrl.searchParams.set('callbackUrl', callbackUrl);
     void createVerificationEmailSender()
-      .sendMagicLink(result.email, magicUrl)
+      .sendMagicLink(result.email, magicUrl.toString())
       .catch((err) => {
         const message = err instanceof Error ? err.message : 'unknown error';
         console.error('magic-link email failed (response unaffected)', { message });

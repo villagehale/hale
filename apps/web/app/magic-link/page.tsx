@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { MagicLinkRedeem } from '~/components/hale/magic-link-redeem';
 import { credentialsConfigured } from '~/lib/auth-config';
+import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; callbackUrl?: string }>;
 }
 
 /**
@@ -16,7 +17,8 @@ interface PageProps {
  * path back to request a fresh one.
  */
 export default async function MagicLinkPage({ searchParams }: PageProps) {
-  const { token } = await searchParams;
+  const { token, callbackUrl } = await searchParams;
+  const redirectTo = safeInternalRedirect(callbackUrl);
 
   if (!credentialsConfigured()) {
     return (
@@ -41,7 +43,7 @@ export default async function MagicLinkPage({ searchParams }: PageProps) {
 
   return (
     <AuthShell heading="Sign in to Hale">
-      <MagicLinkRedeem token={token} />
+      <MagicLinkRedeem token={token} redirectTo={redirectTo} />
     </AuthShell>
   );
 }

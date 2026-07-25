@@ -17,9 +17,11 @@ import { type FormEvent, useState } from 'react';
  * button; 'inline' is the auth-card field container with a circular submit.
  */
 export function MagicLinkRequestForm({
+  callbackUrl,
   onSent,
   variant = 'stacked',
 }: {
+  callbackUrl?: string;
   onSent?: (email: string) => void;
   variant?: 'stacked' | 'inline';
 }) {
@@ -40,7 +42,7 @@ export function MagicLinkRequestForm({
       const res = await fetch('/api/auth/magic-link/request', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: value }),
+        body: JSON.stringify({ email: value, callbackUrl }),
       });
       if (res.status === 429) {
         setState({
@@ -111,7 +113,9 @@ export function MagicLinkRequestForm({
             type="submit"
             className="auth-submit"
             disabled={disabled}
-            aria-label={state.kind === 'sending' ? 'Sending sign-in link' : 'Email me a sign-in link'}
+            aria-label={
+              state.kind === 'sending' ? 'Sending sign-in link' : 'Email me a sign-in link'
+            }
             aria-live="polite"
           >
             <span className="auth-submit-ring" aria-hidden="true" />

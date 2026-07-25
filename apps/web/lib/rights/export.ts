@@ -1,9 +1,10 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { type FamilyBasicsView, toFamilyBasics } from '~/lib/dashboard/family-basics';
 import { type FamilyMembersView, toFamilyMembersView } from '~/lib/dashboard/family-members';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { loadTrailForFamily } from '~/lib/dashboard/trail-query';
+import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
 
 /**
  * PIPEDA / Law 25 right-to-access + portability: assembles everything Hale can
@@ -34,6 +35,19 @@ export interface FamilyExportDocument {
    * generated rows, so the right-to-access copy must include them. Title only:
    * the candidate title is the family-facing fact; ids stay internal. */
   savedActivities: { title: string; savedAt: string }[];
+  /**
+   * This parent's third-party assistant connection history. Deliberately omits
+   * grant/client/consent ids and every token-derived value.
+   */
+  assistantConnections: {
+    clientName: string;
+    scopes: McpScope[];
+    status: 'active' | 'expired' | 'revoked';
+    connectedAt: string;
+    lastUsedAt: string | null;
+    expiresAt: string;
+    revokedAt: string | null;
+  }[];
   /** The full, teen-redacted audit trail — the right-to-access record. */
   trail: TrailView[];
 }
@@ -119,6 +133,46 @@ export async function assembleFamilyExport(
     savedAt: row.savedAt.toISOString(),
   }));
 
+  const assistantRows = await database
+    .select({
+      clientName: schema.mcpOauthClients.clientName,
+      scopes: schema.mcpGrants.scopes,
+      createdAt: schema.mcpGrants.createdAt,
+      lastUsedAt: schema.mcpGrants.lastUsedAt,
+      expiresAt: schema.mcpGrants.expiresAt,
+      revokedAt: schema.mcpGrants.revokedAt,
+    })
+    .from(schema.mcpGrants)
+    .innerJoin(
+      schema.mcpOauthClients,
+      eq(schema.mcpGrants.clientId, schema.mcpOauthClients.clientId),
+    )
+    .where(
+      and(eq(schema.mcpGrants.familyId, familyId), eq(schema.mcpGrants.userId, deps.actorUserId)),
+    )
+    .orderBy(schema.mcpGrants.createdAt);
+  const assistantConnections = assistantRows.flatMap((row) => {
+    if (!Array.isArray(row.scopes) || row.scopes.some((scope) => !isMcpScope(String(scope)))) {
+      return [];
+    }
+    const status: 'active' | 'expired' | 'revoked' = row.revokedAt
+      ? 'revoked'
+      : row.expiresAt <= now
+        ? 'expired'
+        : 'active';
+    return [
+      {
+        clientName: row.clientName,
+        scopes: MCP_SCOPES.filter((scope) => row.scopes.includes(scope)),
+        status,
+        connectedAt: row.createdAt.toISOString(),
+        lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+        expiresAt: row.expiresAt.toISOString(),
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+      },
+    ];
+  });
+
   await database.insert(schema.auditLog).values({
     familyId,
     actor: deps.actorUserId,
@@ -139,6 +193,7 @@ export async function assembleFamilyExport(
     children: basics.children,
     members,
     savedActivities,
+    assistantConnections,
     trail,
   };
 }

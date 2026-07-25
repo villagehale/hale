@@ -4,6 +4,7 @@ import { AuthError } from 'next-auth';
 import { redirect } from 'next/navigation';
 import { signIn } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { safeInternalRedirect } from '~/lib/auth/redirect';
 
 /**
  * Server action for the /magic-link redeem page. Mirrors resetPasswordAction: it
@@ -25,6 +26,7 @@ const GENERIC_ERROR = 'This sign-in link is invalid or has expired. Request a ne
 
 export async function redeemMagicLinkAction(
   token: string,
+  callbackUrl: string,
   _prev: MagicLinkRedeemState,
   _formData: FormData,
 ): Promise<MagicLinkRedeemState> {
@@ -33,7 +35,7 @@ export async function redeemMagicLinkAction(
   }
 
   try {
-    await signIn('magic-link', { token, redirectTo: '/home' });
+    await signIn('magic-link', { token, redirectTo: safeInternalRedirect(callbackUrl) });
   } catch (err) {
     if (err instanceof AuthError && err.type === 'CredentialsSignin') {
       return { status: 'error', message: GENERIC_ERROR };

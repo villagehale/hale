@@ -57,12 +57,26 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     expect(RATE_LIMITS['village-ai-search'].limit).toBeGreaterThanOrEqual(15);
   });
 
+  it('bounds MCP registration and parent consent per hour while allowing normal tool bursts', () => {
+    expect(RATE_LIMITS['mcp-register']).toEqual({ limit: 20, windowSec: 3600 });
+    expect(RATE_LIMITS['mcp-authorize']).toEqual({ limit: 20, windowSec: 3600 });
+    expect(RATE_LIMITS['mcp-token'].windowSec).toBe(60);
+    expect(RATE_LIMITS['mcp-tool'].limit).toBeGreaterThanOrEqual(60);
+  });
+
   it('uses a one-minute window for the silent bot-guard routes (not the per-hour cooldowns)', () => {
     // The per-hour routes are genuine cooldowns: a billable LLM run (village-search),
     // a per-message SMS spend (sms-otp-*), or a storage-abuse guard (avatar-upload).
     // Every OTHER route is an invisible bot guard on a minute (the cheap AI-search
     // intent parse included).
-    const hourWindow = new Set(['village-search', 'avatar-upload', 'sms-otp-send', 'sms-otp-verify']);
+    const hourWindow = new Set([
+      'village-search',
+      'avatar-upload',
+      'sms-otp-send',
+      'sms-otp-verify',
+      'mcp-register',
+      'mcp-authorize',
+    ]);
     for (const [route, opts] of Object.entries(RATE_LIMITS)) {
       if (hourWindow.has(route)) continue;
       expect(opts.windowSec).toBe(60);

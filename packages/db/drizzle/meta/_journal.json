@@ -449,6 +449,13 @@
       "when": 1781463600000,
       "tag": "0066_reminder_voice_agent_name",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1781463660000,
+      "tag": "0067_mcp_interface",
+      "breakpoints": true
     }
   ]
 }

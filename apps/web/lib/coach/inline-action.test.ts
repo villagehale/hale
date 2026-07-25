@@ -1,7 +1,7 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { approveDraftedAction, type ApproveQueue } from '~/lib/actions/approve';
+import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
 import { draftInlineAction } from './inline-action';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
@@ -100,7 +100,8 @@ function fakeDb(capture: Capture, children: { id: string; dateOfBirth: string }[
   const select = vi.fn().mockImplementation((proj: Record<string, unknown>) => {
     const keys = Object.keys(proj ?? {});
     const rows = (): unknown[] => {
-      if (keys.includes('dateOfBirth')) return children.map((c) => ({ dateOfBirth: c.dateOfBirth }));
+      if (keys.includes('dateOfBirth'))
+        return children.map((c) => ({ dateOfBirth: c.dateOfBirth }));
       return []; // actions idempotency (no dupe), reviewer child names, etc.
     };
     return {
@@ -214,7 +215,13 @@ describe('draftInlineAction', () => {
 
     await expect(
       draftInlineAction(
-        { familyId: FAMILY_ID, actor: ACTOR, intentKind: 'wire_money', childId: null, sourceAnswer: 'x' },
+        {
+          familyId: FAMILY_ID,
+          actor: ACTOR,
+          intentKind: 'wire_money',
+          childId: null,
+          sourceAnswer: 'x',
+        },
         db,
         approvingReviewer(),
         NOW,
@@ -230,7 +237,13 @@ describe('draftInlineAction', () => {
     const db = fakeDb(capture, [{ id: TEEN_ID, dateOfBirth: TEEN_DOB }]);
 
     await draftInlineAction(
-      { familyId: FAMILY_ID, actor: ACTOR, intentKind: 'find_activities', childId: TEEN_ID, sourceAnswer: 'x' },
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'find_activities',
+        childId: TEEN_ID,
+        sourceAnswer: 'x',
+      },
       db,
       approvingReviewer(),
       NOW,
@@ -245,7 +258,13 @@ describe('draftInlineAction', () => {
     const db = fakeDb(capture, [{ id: TODDLER_ID, dateOfBirth: TODDLER_DOB }]);
 
     await draftInlineAction(
-      { familyId: FAMILY_ID, actor: ACTOR, intentKind: 'find_activities', childId: TODDLER_ID, sourceAnswer: 'x' },
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'find_activities',
+        childId: TODDLER_ID,
+        sourceAnswer: 'x',
+      },
       db,
       approvingReviewer(),
       NOW,
@@ -260,7 +279,13 @@ describe('draftInlineAction', () => {
     const db = fakeDb(capture);
 
     await draftInlineAction(
-      { familyId: FAMILY_ID, actor: ACTOR, intentKind: 'find_activities', childId: null, sourceAnswer: 'x' },
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'find_activities',
+        childId: null,
+        sourceAnswer: 'x',
+      },
       db,
       approvingReviewer(),
       NOW,
@@ -268,6 +293,37 @@ describe('draftInlineAction', () => {
 
     expect(capture.events).toHaveLength(1);
     expect((capture.events[0] as Record<string, unknown>).teenContent).toBe(false);
+  });
+
+  it('uses an explicit MCP origin while preserving the same held approval spine', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture);
+
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'set_reminder',
+        childId: null,
+        sourceAnswer: 'Remind the family tomorrow.',
+        origin: 'mcp',
+      },
+      db,
+      approvingReviewer(),
+      NOW,
+    );
+
+    expect(capture.events[0]).toMatchObject({
+      source: 'mcp',
+      eventType: 'mcp.action_proposal',
+      status: 'drafted',
+    });
+    expect(capture.actions[0]).toMatchObject({
+      userVisibleState: 'drafted_for_approval',
+    });
+    expect(capture.audit).toContainEqual(
+      expect.objectContaining({ actionTaken: 'mcp.action_drafted' }),
+    );
   });
 });
 
@@ -354,7 +410,13 @@ describe('draftInlineAction → approve spine (Slice 0, add_to_routine)', () => 
     const client = scriptedReviewer([SUBMIT('approve', 'looks fine to me')]);
 
     const { actionId } = await draftInlineAction(
-      { familyId: FAMILY_ID, actor: ACTOR, intentKind: 'add_to_plan', childId: null, sourceAnswer: 'x' },
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'add_to_plan',
+        childId: null,
+        sourceAnswer: 'x',
+      },
       db,
       client,
       NOW,
