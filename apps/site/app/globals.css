@@ -644,7 +644,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .btn-on-navy:hover { transform: none; }
 }
 
-/* Amber hero pill — the homepage's Concierge eyebrow (amber wash + amber ink),
+/* Amber hero pill — the homepage's Ask Hale eyebrow (amber wash + amber ink),
  * used to warm the feature-page heros. Icon + label sit inline. */
 .pill-eyebrow {
   display: inline-flex;

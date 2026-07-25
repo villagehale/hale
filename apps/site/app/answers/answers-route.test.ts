@@ -62,10 +62,10 @@ describe('answers/[slug] route', () => {
     expect(html).toContain('href="/answers"');
   });
 
-  it('wires the "Ask Concierge about your child" CTA to the onboarding wizard', async () => {
+  it('wires the "Ask Hale about your child" CTA to the onboarding wizard', async () => {
     const html = await render(SLUG);
     expect(html).toContain(`${APP_URL}/onboarding`);
-    expect(html).toContain('Ask Concierge about your child');
+    expect(html).toContain('Ask Hale about your child');
   });
 
   it('noindexes every unpublished (unreviewed) page (review-before-index gate)', async () => {

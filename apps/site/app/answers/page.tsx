@@ -79,11 +79,11 @@ export default function AnswersIndexPage() {
             <p className="text-lg" style={{ color: 'var(--color-slate-green)', lineHeight: 1.6 }}>
               Our first parenting guides are in review. In the meantime, the fastest way to get
               guidance for your own child — with their age and your family in mind — is to ask
-              Concierge.
+              Ask Hale.
             </p>
             <div className="mt-8">
               <a href={`${APP_URL}/onboarding`} className="btn-primary">
-                Ask Concierge about your child
+                Ask Hale about your child
               </a>
             </div>
           </div>
@@ -91,7 +91,7 @@ export default function AnswersIndexPage() {
       )}
 
       {/* Populated index closes on the signature navy CTA (empty state carries its
-          own Ask Concierge panel above). SITE-10: both SEO entry surfaces need a
+          own Ask Hale panel above). SITE-10: both SEO entry surfaces need a
           conversion path beyond the header pill. */}
       {answers.length > 0 && (
         <CtaBand>
@@ -99,7 +99,7 @@ export default function AnswersIndexPage() {
             Have a question about your own child?
           </h2>
           <p className="cta-sub mx-auto mt-4 max-w-xl" style={{ lineHeight: 1.6 }}>
-            Ask Concierge — with your child’s age and your family in mind. Free to start, and your
+            Ask Hale — with your child’s age and your family in mind. Free to start, and your
             data stays in Canada.
           </p>
           <div className="mt-8 flex justify-center">
@@ -108,7 +108,7 @@ export default function AnswersIndexPage() {
               href={`${APP_URL}/onboarding`}
               className="btn-on-navy"
             >
-              Ask Concierge about your child
+              Ask Hale about your child
             </LandingCta>
           </div>
         </CtaBand>

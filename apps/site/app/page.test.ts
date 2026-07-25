@@ -6,7 +6,7 @@ import { FAQ } from '~/lib/faq/index.js';
 import LandingPage from './page.js';
 
 /**
- * The warm-white homepage redesign (July 2026): a calm hero, the Concierge and
+ * The warm-white homepage redesign (July 2026): a calm hero, the Ask Hale and
  * Village feature sections, and a navy CTA band. Every claim
  * is honest — approval-first, Canadian residency, 0–18 scope — and "Get started"
  * always starts the public onboarding wizard (aha-first: steps 1–6 run pre-auth;
@@ -48,9 +48,9 @@ describe('LandingPage (hero)', () => {
 });
 
 describe('LandingPage (feature sections)', () => {
-  it('names both feature headlines and uses the product’s Concierge language', () => {
-    expect(html).toContain('Hale Concierge');
-    expect(html).toContain('Ask Concierge to log a nap');
+  it('names both feature headlines and uses the product’s Ask Hale language', () => {
+    expect(html).toContain('Ask Hale');
+    expect(html).toContain('Ask Hale to log a nap');
     expect(html).toContain('One quiet helper for the whole household.');
     expect(html).toContain('Your neighbourhood, working for you.');
   });

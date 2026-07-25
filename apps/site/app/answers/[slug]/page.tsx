@@ -232,7 +232,7 @@ export default async function AnswerRoute({ params }: PageProps) {
             in mind.
           </p>
           <a href={`${APP_URL}/onboarding`} className="btn-primary shrink-0">
-            Ask Concierge about your child
+            Ask Hale about your child
           </a>
         </div>
       </section>

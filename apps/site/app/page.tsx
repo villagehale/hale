@@ -139,20 +139,20 @@ export default function LandingPage() {
         </section>
       </FadeInUp>
 
-      {/* ── 2 · Feature — Hale Concierge ──────────────────────────────────── */}
+      {/* ── 2 · Feature — Ask Hale ──────────────────────────────────── */}
       <FadeInUp>
         <section id="features" className="mx-auto max-w-7xl px-6 pb-24 pt-16">
           <div className="grid items-center gap-16 lg:grid-cols-2">
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#FEF0C7] px-3.5 py-1.5 text-xs font-semibold text-[#17294A]">
                 <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
-                Hale Concierge
+                Ask Hale
               </span>
               <h2 className="mt-6 text-4xl font-semibold tracking-tight text-[#17294A] md:text-5xl">
                 One quiet helper for the whole household.
               </h2>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-[#5C6B87]">
-                Ask Concierge to log a nap in a sentence, draft the daycare email, or find something
+                Ask Hale to log a nap in a sentence, draft the daycare email, or find something
                 to do this weekend. It prepares each one and waits — every action needs your
                 approval before anything happens.
               </p>
@@ -167,7 +167,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <ConciergeMockup />
+            <AskHaleMockup />
           </div>
         </section>
       </FadeInUp>
@@ -275,8 +275,8 @@ function RevealWords({
   );
 }
 
-/** Pure HTML/CSS product mockup of the approval-first Concierge flow. Illustrative. */
-function ConciergeMockup() {
+/** Pure HTML/CSS product mockup of the approval-first Ask Hale flow. Illustrative. */
+function AskHaleMockup() {
   return (
     <div className="rounded-3xl border border-[#E4E7EE] bg-gradient-to-br from-[#FFF9F1] to-[#FBEDDC] p-6 sm:p-8">
       <div className="hale-card-in hale-float rounded-2xl bg-[#17294A]/95 p-4 shadow-[0_24px_60px_-20px_rgba(20,26,77,0.55)] backdrop-blur">
