@@ -69,6 +69,15 @@ export const RATE_LIMITS = {
   'sms-otp-send': { limit: 5, windowSec: 3600 },
   'sms-otp-verify': { limit: 10, windowSec: 3600 },
   'city-search': { limit: 60, windowSec: 60 },
+  // One MCP assistant grant can make quick read bursts, but no human-approved
+  // connection needs more than two tool calls per second sustained. Fail-closed.
+  'mcp-tool': { limit: 120, windowSec: 60 },
+  // Dynamic client registration is public and cheap but persistent. Per-IP.
+  'mcp-register': { limit: 20, windowSec: 3600 },
+  // Authorization-code exchange is public and bearer-sensitive. Per-IP.
+  'mcp-token': { limit: 60, windowSec: 60 },
+  // A signed-in parent explicitly approves a connection. Per-user, fail-closed.
+  'mcp-authorize': { limit: 20, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

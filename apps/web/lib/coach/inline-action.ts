@@ -3,9 +3,9 @@ import { type AgentClient, SONNET_MODEL } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
-import { actionTypeForIntent } from './action-intent';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
+import { actionTypeForIntent } from './action-intent';
 
 /**
  * Routes an inline Ask Hale action intent through the EXISTING approval engine: it
@@ -43,6 +43,9 @@ export interface InlineActionInput {
   childId: string | null;
   /** The answer text that implied the action — carried as the draft's rationale. */
   sourceAnswer: string;
+  /** Which trusted interface requested the draft. Both reuse this same approval
+   * spine; the origin only changes provenance/audit labels. */
+  origin?: 'ask_hale' | 'mcp';
 }
 
 export interface InlineActionResult {
@@ -63,7 +66,10 @@ export async function draftInlineAction(
 
   // A unique synthetic id keeps the dedup hash distinct per draft so re-tapping a
   // chip mints a fresh draft rather than colliding on the one-action-per-event index.
-  const dedupHash = dedupHashFor(input.familyId, 'ask_hale', `${input.intentKind}|${randomUUID()}`);
+  const origin = input.origin ?? 'ask_hale';
+  const eventType = origin === 'mcp' ? 'mcp.action_proposal' : 'ask_hale.action_intent';
+  const auditAction = origin === 'mcp' ? 'mcp.action_drafted' : 'ask_hale.action_drafted';
+  const dedupHash = dedupHashFor(input.familyId, origin, `${input.intentKind}|${randomUUID()}`);
 
   // teen_content = age-derived at the write site: a synthetic event scoped to a 13+
   // child must carry the teen flag (rule #1), so the downstream redaction cap sees
@@ -76,11 +82,11 @@ export async function draftInlineAction(
     .insert(schema.events)
     .values({
       familyId: input.familyId,
-      source: 'ask_hale',
-      eventType: 'ask_hale.action_intent',
+      source: origin,
+      eventType,
       childId: input.childId,
       teenContent,
-      payload: { intentKind: input.intentKind, sourceAnswer: input.sourceAnswer },
+      payload: { intentKind: input.intentKind, sourceAnswer: input.sourceAnswer, origin },
       classifierSuggestion: { kind: 'autonomous_action', actionType },
       classifiedAt: now,
       dedupHash,
@@ -114,10 +120,10 @@ export async function draftInlineAction(
   await database.insert(schema.auditLog).values({
     familyId: input.familyId,
     actor: input.actor,
-    actionTaken: 'ask_hale.action_drafted',
+    actionTaken: auditAction,
     targetTable: 'actions',
     targetId: actionId,
-    after: { actionType, intentKind: input.intentKind, childId: input.childId },
+    after: { actionType, intentKind: input.intentKind, childId: input.childId, origin },
   });
 
   // Review inline (rule #3) so the draft carries a verdict the approve path will
