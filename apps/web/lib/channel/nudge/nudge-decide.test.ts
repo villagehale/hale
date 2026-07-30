@@ -4,6 +4,7 @@ import type {
   RadarCandidate,
   RadarChild,
 } from '~/lib/channel/intake/radar-decide';
+import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { REGISTRATION_HORIZON_DAYS, decideNudge } from './nudge-decide.js';
@@ -29,6 +30,19 @@ const SUNDAY = '2026-08-02';
 
 function child(overrides: Partial<RadarChild> = {}): RadarChild {
   return { name: 'Maya', ageMonths: 48, dobPrecision: 'derived', ...overrides };
+}
+
+/** The same child, as M8's matcher needs her. 48 months sits in the 4-to-6-year
+ * checkpoint, so a health nudge is always on the table in these cases. */
+function healthChild(overrides: Partial<HealthChild> = {}): HealthChild {
+  return {
+    id: 'child-1',
+    name: 'Maya',
+    ageMonths: 48,
+    dobPrecision: 'derived',
+    isTeen: false,
+    ...overrides,
+  };
 }
 
 function candidate(overrides: Partial<RadarCandidate> = {}): RadarCandidate {
@@ -93,6 +107,11 @@ function decide(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
     windows: [],
     weather: [],
     teenChildIds: [],
+    // M8's inputs default to "no health checkpoint on the table", so these M4 cases keep
+    // deciding between a registration date and a weekend.
+    healthChildren: [],
+    areaCoarse: null,
+    suppressedCheckpointRefs: new Set<string>(),
     now: FRIDAY,
     timeZone: TZ,
     ...overrides,
@@ -311,5 +330,67 @@ describe('decideNudge — silence', () => {
 
   it('returns nothing when there is village data but no forecast to justify a swap', () => {
     expect(decide({ candidates: [candidate(), candidate({ id: 'c-2' })] })).toBeNull();
+  });
+});
+
+/**
+ * VIL-243 · M8 — where the health checkpoint sits in the ranking, and why.
+ *
+ * A registration date is a HARD deadline measured in minutes; a health-admin window is
+ * measured in months; a weekend suggestion expires but costs nothing to skip. So the
+ * order is deadline, obligation, offer — and the middle one is new.
+ */
+describe('decideNudge — health checkpoints', () => {
+  const health = { healthChildren: [healthChild()], areaCoarse: 'M4C' };
+
+  it('yields to a registration window a family can still act on', () => {
+    const nudge = decide({ ...health, windows: [match()] });
+    expect(nudge?.kind).toBe('registration');
+  });
+
+  it('outranks a weekend swap, which is an offer rather than an obligation', () => {
+    const nudge = decide({
+      ...health,
+      candidates: [candidate()],
+      weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
+    });
+    expect(nudge?.kind).toBe('health_checkpoint');
+  });
+
+  it('carries the checkpoint by reference and never names a 13+ child', () => {
+    const nudge = decide({
+      healthChildren: [healthChild({ id: 'teen-1', name: null, ageMonths: 180, isTeen: true })],
+      areaCoarse: 'M4C',
+    });
+    expect(nudge).toMatchObject({
+      kind: 'health_checkpoint',
+      kidNames: [],
+      teenOnly: true,
+      teenCount: 1,
+    });
+  });
+
+  it('moves on to the next checkpoint once one is marked done, then goes quiet', () => {
+    const done = new Set<string>();
+    const seen: string[] = [];
+
+    // Every checkpoint this child is inside, one "done" at a time. The point is that a
+    // done suppresses exactly ONE checkpoint — not the family, and not the feature.
+    for (let round = 0; round < 5; round += 1) {
+      const nudge = decide({
+        healthChildren: [healthChild()],
+        areaCoarse: 'L4C',
+        suppressedCheckpointRefs: done,
+      });
+      if (nudge === null) break;
+      if (nudge.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
+      seen.push(nudge.checkpointRef.id);
+      done.add(nudge.ref);
+    }
+
+    expect(seen).toEqual(['immunization_4_to_6_years', 'dental_school_screening']);
+    expect(
+      decide({ healthChildren: [healthChild()], areaCoarse: 'L4C', suppressedCheckpointRefs: done }),
+    ).toBeNull();
   });
 });

@@ -16,6 +16,9 @@ import {
   buildOutboundGatePorts,
   resolveSendTarget,
 } from '~/lib/channel/outbound-gate';
+import { healthNudgeDedupeKey } from '~/lib/health/checkpoints';
+import type { HealthChild } from '~/lib/health/match';
+import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { weekWindow } from '~/lib/plan/spine';
@@ -146,6 +149,8 @@ export interface NudgeRunDeps {
   loadChildren(database: Database, familyId: string): Promise<NudgeChildRow[]>;
   loadCandidates(database: Database, familyId: string): Promise<RadarCandidate[]>;
   loadWindows(database: Database, areaCoarse: string): Promise<RegistrationWindow[]>;
+  /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
+  loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
   weather: WeatherPort;
   /** A factory, not an instance: the gate's ports close over the db handle the sweep
    * is given, so a caller cannot accidentally gate one database against another. */
@@ -205,6 +210,12 @@ export function dedupeKeyFor(nudge: Nudge, familyId: string, now: Date, timeZone
   if (nudge.kind === 'registration') {
     return `nudge:${familyId}:registration:${nudge.windowRef.id}`;
   }
+  if (nudge.kind === 'health_checkpoint') {
+    // The ref the MATCHER minted, carried through untouched: per child for a one-time
+    // visit, per household per school year for the annual records check. Rebuilding it
+    // here would be a second place to get that scope wrong.
+    return healthNudgeDedupeKey(familyId, nudge.ref);
+  }
   return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}`;
 }
 
@@ -215,12 +226,32 @@ export function dedupeKeyFor(nudge: Nudge, familyId: string, now: Date, timeZone
  * the way out — a 13+ child is never named, never drives an age match, and never has
  * an activity attributed to them over SMS. `deriveStage` is computed LIVE from the
  * date of birth, never stored, so the gate cannot go stale on a birthday.
+ *
+ * `healthChildren` (VIL-243 · M8) is the ONE list that includes 13+ children, and it is
+ * built here so the exception is visible next to the rule it bends. A school records
+ * check is the PARENT'S legal obligation for a teenager exactly as it is for a
+ * seven-year-old, so silence would be the privacy-preserving choice that costs a family
+ * a school-attendance problem. What changes for a teen is the WORDING, never the
+ * existence of the message — and the name is stripped HERE, at the source, so a teen's
+ * name cannot reach a template even if a downstream check were removed.
  */
 function splitByStage(rows: readonly NudgeChildRow[], now: Date) {
   const children: RadarChild[] = [];
   const teenChildIds: string[] = [];
+  const healthChildren: HealthChild[] = [];
   for (const row of rows) {
-    if (deriveStage(row.dateOfBirth) === 'teenager') {
+    // `now`, not the wall clock: a HealthChild carries a stage AND an age, and reading
+    // them at two different instants would let a child on their thirteenth birthday be
+    // teen-gated at one age and band-matched at another.
+    const isTeen = deriveStage(row.dateOfBirth, now) === 'teenager';
+    healthChildren.push({
+      id: row.id,
+      name: isTeen ? null : row.name,
+      ageMonths: ageInMonths(row.dateOfBirth, now),
+      dobPrecision: 'derived',
+      isTeen,
+    });
+    if (isTeen) {
       teenChildIds.push(row.id);
       continue;
     }
@@ -232,7 +263,7 @@ function splitByStage(rows: readonly NudgeChildRow[], now: Date) {
       dobPrecision: 'derived',
     });
   }
-  return { children, teenChildIds };
+  return { children, teenChildIds, healthChildren };
 }
 
 async function decideForFamily(
@@ -242,19 +273,23 @@ async function decideForFamily(
   now: Date,
 ): Promise<Nudge | null> {
   const childRows = await deps.loadChildren(database, family.familyId);
-  const { children, teenChildIds } = splitByStage(childRows, now);
-  // A household with only 13+ children gets no proactive text at all: there is nothing
-  // Hale could say about them that rule #1 permits over this channel.
-  if (children.length === 0) return null;
+  const { children, teenChildIds, healthChildren } = splitByStage(childRows, now);
+  // A family with no children on file has nothing any nudge class could rest on.
+  if (healthChildren.length === 0) return null;
 
   const area = family.areaCoarse;
-  const [candidates, windowRows, weather] = await Promise.all([
-    deps.loadCandidates(database, family.familyId),
-    area ? deps.loadWindows(database, area) : Promise.resolve([]),
+  // A household with no under-13s can only ever receive a health checkpoint, so the
+  // village read, the registration read and the outbound weather call are all spend on
+  // a decision that is already made.
+  const weekendPossible = children.length > 0;
+  const [candidates, windowRows, weather, suppressedCheckpointRefs] = await Promise.all([
+    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
+    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
     // Weather is an input, never a blocker: the port swallows its own failures.
-    area
+    area && weekendPossible
       ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
       : Promise.resolve([]),
+    deps.loadSuppressedCheckpoints(database, family.familyId),
   ]);
 
   const windows = area
@@ -274,6 +309,9 @@ async function decideForFamily(
     windows,
     weather,
     teenChildIds,
+    healthChildren,
+    areaCoarse: area,
+    suppressedCheckpointRefs,
     now,
     timeZone: family.timeZone,
   });
@@ -354,8 +392,14 @@ async function runForFamily(
     actionTaken: 'proactive_nudge_sent',
     targetTable: 'channel_messages',
     targetId: messageId,
-    // Enum-shaped provenance only — never the rendered body (rule #1).
-    after: { kind: nudge.kind, cohort },
+    // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
+    // also names its checkpoint (a reviewed table constant, never PII), so the trail
+    // says WHICH errand was raised without a join back to the ledger row's dedupe key.
+    after: {
+      kind: nudge.kind,
+      cohort,
+      ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
+    },
   });
   return { kind: 'sent' };
 }
@@ -447,6 +491,8 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     loadChildren: readNudgeChildren,
     loadCandidates: (database, familyId) => readVillageCandidates(database, familyId),
     loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
+    loadSuppressedCheckpoints: (database, familyId) =>
+      loadSuppressedCheckpointRefs(database, familyId),
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),

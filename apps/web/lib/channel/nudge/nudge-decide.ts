@@ -10,6 +10,8 @@ import {
 } from '~/lib/channel/intake/radar-decide';
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
+import type { HealthRegion } from '~/lib/health/checkpoints';
+import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { type Season, seasonOf } from '~/lib/village/visibility';
 import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weather/open-meteo';
@@ -21,13 +23,18 @@ import { type DailyOutlook, isOutdoorFriendly, outdoorBlocker } from '~/lib/weat
  * parent said, so a plausible-sounding fabrication arrives with no context to correct
  * it and no question it was replying to.
  *
- * Two things can earn an unprompted text, in strict priority order:
+ * Three things can earn an unprompted text, in strict priority order:
  *
  *   1. A REGISTRATION WINDOW inside {@link REGISTRATION_HORIZON_DAYS}. It wins
- *      unconditionally because it is the only thing here with a deadline — a swim
+ *      unconditionally because it is the only thing here with a HARD deadline — a swim
  *      class that fills in nine minutes is the difference between Hale being useful
  *      and Hale being a newsletter.
- *   2. A WEATHER-FIT WEEKEND SWAP: the forecast rules the weekend out and there is a
+ *   2. A HEALTH-ADMIN CHECKPOINT (VIL-243 · M8): an Ontario paperwork window this
+ *      family is inside. Below registration because a cadence tolerates a week's wait
+ *      and a nine-minute swim class does not — but above the weekend, because a
+ *      registration deadline and a school records check are both things a parent
+ *      cannot reconstruct later, and a weekend suggestion is an offer they can.
+ *   3. A WEATHER-FIT WEEKEND SWAP: the forecast rules the weekend out and there is a
  *      real indoor option, or a day is genuinely good and there is a real FREE outdoor
  *      one. Both halves must be true. A forecast with no candidate is a weather app;
  *      a candidate with no forecast is a guess.
@@ -86,7 +93,26 @@ export interface WeatherSwapNudge {
   whyFacts: string[];
 }
 
-export type Nudge = RegistrationNudge | WeatherSwapNudge;
+/**
+ * VIL-243 · M8. Carries the checkpoint by REFERENCE, not by copy: the renderable
+ * strings live in the reviewed content table (lib/health/checkpoints.ts) and are looked
+ * up at render time, so a copy correction lands everywhere at once and no decision
+ * object can ever hold a stale sentence.
+ */
+export interface HealthCheckpointNudge {
+  kind: 'health_checkpoint';
+  checkpointRef: { id: string; region: HealthRegion };
+  /** This checkpoint's identity for this family: what the sweep dedupes on and what a
+   * "done" reply suppresses. Built by the matcher, never rebuilt. Never rendered. */
+  ref: string;
+  /** Under-13 children only. A 13+ child is NEVER named over this channel (rule #1). */
+  kidNames: string[];
+  /** True when every matched child is 13+, and the copy must go generic. */
+  teenOnly: boolean;
+  teenCount: number;
+}
+
+export type Nudge = RegistrationNudge | HealthCheckpointNudge | WeatherSwapNudge;
 
 export interface DecideNudgeInput {
   children: readonly RadarChild[];
@@ -97,6 +123,17 @@ export interface DecideNudgeInput {
   weather: readonly DailyOutlook[];
   /** Candidates attributed to these children never leave the building (rule #1). */
   teenChildIds: readonly string[];
+  /**
+   * EVERY child, 13+ included, with the ids the health checkpoints key on. A separate
+   * list from `children` on purpose: `children` is the under-13 roster a weekend
+   * suggestion may be built around, while a school records check is the parent's legal
+   * obligation for a teenager too — it is only the WORDING that changes.
+   */
+  healthChildren: readonly HealthChild[];
+  /** The family's FSA. Health checkpoints are region-gated; null means none apply. */
+  areaCoarse: string | null;
+  /** Checkpoints the family must not be raised about again (already told, or done). */
+  suppressedCheckpointRefs: ReadonlySet<string>;
   now: Date;
   timeZone: string;
 }
@@ -142,7 +179,33 @@ function decideRegistration(input: DecideNudgeInput): RegistrationNudge | null {
   };
 }
 
-// ── priority 2: a weather-fit weekend swap ───────────────────────────────────
+// ── priority 2: a health-admin checkpoint ────────────────────────────────────
+
+/**
+ * The ONE administrative window worth a text, or nothing. The matcher already ordered
+ * by which window closes first and already dropped anything the family marked done, so
+ * the head of its list is the whole decision.
+ */
+function decideHealthCheckpoint(input: DecideNudgeInput): HealthCheckpointNudge | null {
+  const [match] = matchHealthCheckpoints({
+    children: input.healthChildren,
+    areaCoarse: input.areaCoarse,
+    suppressedRefs: input.suppressedCheckpointRefs,
+    now: input.now,
+  });
+  if (!match) return null;
+
+  return {
+    kind: 'health_checkpoint',
+    checkpointRef: { id: match.checkpoint.id, region: match.checkpoint.region },
+    ref: match.ref,
+    kidNames: match.kidNames,
+    teenOnly: match.teenOnly,
+    teenCount: match.teenCount,
+  };
+}
+
+// ── priority 3: a weather-fit weekend swap ───────────────────────────────────
 
 interface Fitted {
   candidate: RadarCandidate;
@@ -248,6 +311,12 @@ function firstSwap(
 }
 
 function decideWeatherSwap(input: DecideNudgeInput): WeatherSwapNudge | null {
+  // A household with only 13+ children gets no weekend suggestion at all: there is
+  // nothing Hale could say about their weekend that rule #1 permits over this channel.
+  // (M8 moved this guard here from the caller, which now has to keep looking on behalf
+  // of the health checkpoints — those DO apply to a teenager, generically.)
+  if (input.children.length === 0) return null;
+
   // Only the weekend days we actually have a forecast for. With none, there is no
   // weather fact to act on and therefore no weather swap — a "might be nice out"
   // message is a guess dressed as a service.
@@ -283,5 +352,5 @@ function decideWeatherSwap(input: DecideNudgeInput): WeatherSwapNudge | null {
 }
 
 export function decideNudge(input: DecideNudgeInput): Nudge | null {
-  return decideRegistration(input) ?? decideWeatherSwap(input);
+  return decideRegistration(input) ?? decideHealthCheckpoint(input) ?? decideWeatherSwap(input);
 }
