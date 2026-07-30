@@ -19,7 +19,8 @@
     "next": "^15.1.4",
     "posthog-js": "^1.393.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "uqr": "^0.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

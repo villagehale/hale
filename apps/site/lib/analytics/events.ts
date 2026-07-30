@@ -18,7 +18,10 @@ export type AnalyticsEvent =
   | 'activities_cta_signin'
   | 'answers_cta_signin'
   // Plus/Family waitlist form submitted (coarse event only — never the email).
-  | 'waitlist_signup';
+  | 'waitlist_signup'
+  // The /text entry page (VIL-240), carrying the QR card's venue code as `source`
+  // — which physical spot actually starts conversations.
+  | 'text_entry_viewed';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;
