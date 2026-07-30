@@ -37,6 +37,17 @@ describe('sourceCodeFromBody / venueForCode', () => {
     expect(sourceCodeFromBody('')).toBeNull();
   });
 
+  it('reads the "(via <code>)" suffix the /text entry page prefills (VIL-240 convention)', () => {
+    expect(sourceCodeFromBody('Hi (via earlyon-richmondhill)')).toBe('earlyon-richmondhill');
+    expect(sourceCodeFromBody('Hi (VIA Earlyon-Richmondhill)')).toBe('earlyon-richmondhill');
+    expect(venueForCode('earlyon-richmondhill')?.name).toBe('EarlyON centre');
+  });
+
+  it('refuses an unknown suffix code and ignores a mid-message "(via …)"', () => {
+    expect(sourceCodeFromBody('Hi (via atlantis-nowhere)')).toBeNull();
+    expect(sourceCodeFromBody('we went (via the highway) to the park')).toBeNull();
+  });
+
   it('carries a coarse area per venue — never a precise address (rule #1)', () => {
     const venue = venueForCode('LIBRARY');
     expect(venue?.areaCoarse).toMatch(/^[A-Z]\d[A-Z]$/); // an FSA, not a full postal code

@@ -32,23 +32,40 @@ export const SOURCE_VENUES: Record<string, SourceVenue> = {
   REC: { name: 'rec centre', areaCoarse: 'M6K' },
   CLINIC: { name: 'clinic', areaCoarse: 'M4K' },
   SCHOOL: { name: 'school', areaCoarse: 'L7G' },
+  'earlyon-richmondhill': { name: 'EarlyON centre', areaCoarse: 'L4C' },
 };
 
 /**
- * The prefilled-body convention. A Hale QR code encodes an `sms:` link whose body is
- * `HALE <CODE>` — the parent taps it, their messaging app opens with the text already
- * written, and they press send. So the venue rides IN the first message rather than in
- * a per-venue phone number (one number, many posters) or a link they'd have to open.
+ * The prefilled-body conventions. Two forms, both venue-in-the-message (one number,
+ * many posters — the venue rides IN the first text rather than in a per-venue phone
+ * number or a link the parent would have to open):
+ *   1. `HALE <CODE>` — the whole body is the tag (original QR cards).
+ *   2. `Hi (via <code>)` — the /text entry page's convention (VIL-240): a human first
+ *      message with the tag as a trailing, visibly-disclosed suffix. Suffix-anchored so
+ *      an ordinary sentence containing "(via …)" mid-message never matches.
  */
-const SOURCE_TAG = /^hale[\s:-]+([a-z0-9-]{2,24})$/i;
+const SOURCE_TAG = /^hale[\s:-]+([a-z0-9-]{2,48})$/i;
+const SOURCE_TAG_SUFFIX = /\(via\s+([a-z0-9]+(?:-[a-z0-9]+)*)\)$/i;
+
+/** The canonical registry key for a raw tag, matched case-insensitively. */
+function resolveCode(raw: string): string | null {
+  if (raw in SOURCE_VENUES) return raw;
+  const upper = raw.toUpperCase();
+  if (upper in SOURCE_VENUES) return upper;
+  const lower = raw.toLowerCase();
+  if (lower in SOURCE_VENUES) return lower;
+  return null;
+}
 
 /** The venue CODE (registry key) for a prefilled first body, or null when the body
  * carries no tag or a tag we don't recognise. */
 export function sourceCodeFromBody(body: string): string | null {
-  const match = SOURCE_TAG.exec(body.trim());
-  if (!match) return null;
-  const code = (match[1] as string).toUpperCase();
-  return code in SOURCE_VENUES ? code : null;
+  const trimmed = body.trim();
+  const full = SOURCE_TAG.exec(trimmed);
+  if (full) return resolveCode(full[1] as string);
+  const suffix = SOURCE_TAG_SUFFIX.exec(trimmed);
+  if (suffix) return resolveCode(suffix[1] as string);
+  return null;
 }
 
 /** The registry entry for a stored source code, or null. */
