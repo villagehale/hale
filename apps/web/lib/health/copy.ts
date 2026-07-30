@@ -1,4 +1,5 @@
 import type { HealthCheckpointNudge } from '~/lib/channel/nudge/nudge-decide';
+import { smsEncoding } from '~/lib/channel/sms-segments';
 import { checkpointById } from './checkpoints';
 
 /**
@@ -44,10 +45,40 @@ function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
+/** The most names a subject may carry, and the longest one it may carry. */
+const MAX_SUBJECT_NAMES = 3;
+const MAX_NAME_CHARS = 16;
+
+/**
+ * The names this subject may actually spend budget on.
+ *
+ * A kid name here is free text an LLM lifted from a stranger's SMS: no length bound, no
+ * character restriction, any script. The rest of this message is fixed and already
+ * spends both segments, and ONE character outside GSM-7 flips the whole SMS to UCS-2
+ * and halves the budget (sms-segments.ts).
+ *
+ * Which characters those are is not guessable, so it is measured rather than assumed:
+ * GSM 03.38 carries "Chloé" and "Zoä" for one septet each but has no ë, ç or â, and no
+ * script beyond Latin at all — so "Zoë", "François" and any name in Chinese, Arabic or
+ * Devanagari would each cost this message a segment it does not have. Toronto has all
+ * of them.
+ *
+ * A name that would blow the budget is DROPPED rather than allowed to truncate the
+ * task: the administrative window is the payload, the roll call is the courtesy, and
+ * losing the courtesy is the cheaper failure. When every name is dropped the message
+ * simply renders without a subject, which is a shape the lint already covers.
+ */
+function affordableNames(names: readonly string[]): string[] {
+  return names
+    .filter((name) => name.length <= MAX_NAME_CHARS && smsEncoding(name) === 'gsm7')
+    .slice(0, MAX_SUBJECT_NAMES);
+}
+
 /** Who the message opens on, or '' when there is nobody Hale may name. */
 function subjectFor(nudge: HealthCheckpointNudge): string {
   if (nudge.teenOnly) return nudge.teenCount > 1 ? 'Your teens:' : 'Your teen:';
-  if (nudge.kidNames.length > 0) return `${joinNames(nudge.kidNames)}:`;
+  const names = affordableNames(nudge.kidNames);
+  if (names.length > 0) return `${joinNames(names)}:`;
   return '';
 }
 

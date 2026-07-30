@@ -142,6 +142,18 @@ export async function handleHealthCheckpointReply(
 export const HEALTH_FACT_KEY_PREFIX = 'health_checkpoint:';
 
 /**
+ * Stamped on every fact this module writes, and REQUIRED on every fact it reads back.
+ *
+ * `family_memory_facts` is not a private table: the Ask Hale `save_memory` tool lets a
+ * model choose both `fact_type` and `fact_key` freely, so the key namespace above is
+ * writable by anything that can get one sentence into a coach turn. Reading suppression
+ * state without pinning the WRITER would mean a single injected memory could silence a
+ * family's records-check reminder permanently, silently, and with no audit row — the
+ * exact harm this feature exists to prevent. The writer is the trust boundary.
+ */
+const HEALTH_FACT_WRITER = 'health-nudge-reply';
+
+/**
  * Typed 'logistic', NOT 'medical', and the distinction is the point: this row records
  * that a parent completed an ADMINISTRATIVE task. It holds no clinical observation, no
  * vaccine, no date of any visit — Hale has none of those and never will. Filing it as
@@ -158,21 +170,31 @@ export async function recordCheckpointDone(
     ref: string;
   },
 ): Promise<void> {
-  await database.insert(schema.familyMemoryFacts).values({
-    familyId: input.familyId,
-    childId: input.childId,
-    factType: 'logistic',
-    factKey: `${HEALTH_FACT_KEY_PREFIX}${input.ref}`,
-    factValue: { checkpointId: input.checkpointId, status: 'done' },
-    inferredBy: 'health-nudge-reply',
-  });
-  await database.insert(schema.auditLog).values({
-    familyId: input.familyId,
-    actor: input.parentUserId,
-    actionTaken: 'health_checkpoint_marked_done',
-    targetTable: 'family_memory_facts',
-    targetId: input.childId ?? input.familyId,
-    after: { checkpointId: input.checkpointId, ref: input.ref },
+  // One transaction, audit FIRST — the same discipline recordWatchConsent uses. A
+  // suppression that landed without its audit row would be a permanent state change
+  // with no trail, which rule #6 admits no exception to.
+  //
+  // The audit payload names the CHECKPOINT and the family, never the child: the one
+  // teen-reachable non-recurring row scopes its ref to a 13+ child's id, and audit_log
+  // is immutable, PIPEDA-exportable, and has none of the teen redaction that guards a
+  // memory-fact read. The fact row keeps the child scope, because suppression needs it.
+  await database.transaction(async (tx) => {
+    await tx.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      actionTaken: 'health_checkpoint_marked_done',
+      targetTable: 'family_memory_facts',
+      targetId: input.familyId,
+      after: { checkpointId: input.checkpointId },
+    });
+    await tx.insert(schema.familyMemoryFacts).values({
+      familyId: input.familyId,
+      childId: input.childId,
+      factType: 'logistic',
+      factKey: `${HEALTH_FACT_KEY_PREFIX}${input.ref}`,
+      factValue: { checkpointId: input.checkpointId, status: 'done' },
+      inferredBy: HEALTH_FACT_WRITER,
+    });
   });
 }
 
@@ -188,8 +210,12 @@ export async function loadDoneCheckpointRefs(
     .where(
       and(
         eq(schema.familyMemoryFacts.familyId, familyId),
+        // The trust boundary: only rows THIS module wrote may suppress a reminder.
+        eq(schema.familyMemoryFacts.inferredBy, HEALTH_FACT_WRITER),
         eq(schema.familyMemoryFacts.factType, 'logistic'),
-        like(schema.familyMemoryFacts.factKey, `${HEALTH_FACT_KEY_PREFIX}%`),
+        // '_' is a single-character wildcard in LIKE, so the underscore in the prefix is
+        // escaped — an unescaped prefix would also match a neighbouring namespace.
+        like(schema.familyMemoryFacts.factKey, `${HEALTH_FACT_KEY_PREFIX.replace('_', '\\_')}%`),
         isNull(schema.familyMemoryFacts.validUntil),
       ),
     );

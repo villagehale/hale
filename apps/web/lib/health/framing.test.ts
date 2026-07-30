@@ -210,6 +210,52 @@ describe('the shipped health content', () => {
       });
     }
   });
+
+  it('never writes the opt-out itself — the shell appends it exactly once (CASL)', () => {
+    for (const { id, variant, body } of everyRenderedMessage()) {
+      expect({ id, variant, duplicated: body.includes(NUDGE_OPT_OUT) }).toEqual({
+        id,
+        variant,
+        duplicated: false,
+      });
+    }
+  });
+
+  /**
+   * A kid name is free text an LLM lifted from a stranger's SMS. The budget guarantees
+   * above are worthless if a single routine Ontario name can break them, so the two
+   * shapes that would are pinned here: a name outside GSM-7, and a very long one.
+   */
+  it('drops a name it cannot afford rather than blowing the budget', () => {
+    const render = (kidNames: string[]) =>
+      renderHealthNudge({
+        kind: 'health_checkpoint',
+        checkpointRef: { id: 'school_records_ispa', region: 'toronto' },
+        ref: 'school_records_ispa:*:2026',
+        kidNames,
+        teenOnly: false,
+        teenCount: 0,
+      });
+
+    // GSM 03.38 has é but no ë, and no CJK at all — either would flip the whole SMS to
+    // UCS-2 and halve 306 septets to 134 units. Both are dropped; the sibling whose
+    // name the alphabet does carry is kept, accent and all.
+    const mixed = render(['Zoë', '李明', 'Chloé']);
+    expect(mixed).toContain('Chloé:');
+    expect(mixed).not.toContain('Zoë');
+    expect(mixed).not.toContain('李明');
+    expect(smsEncoding(mixed)).toBe('gsm7');
+    expect(smsSegments(`${mixed}\n\n${NUDGE_OPT_OUT}`)).toBeLessThanOrEqual(2);
+
+    // Every name unaffordable: the task still ships, without a roll call.
+    const anonymous = render(['Zoë', 'A'.repeat(200)]);
+    expect(anonymous.startsWith('Toronto Public Health')).toBe(true);
+    expect(smsSegments(`${anonymous}\n\n${NUDGE_OPT_OUT}`)).toBeLessThanOrEqual(2);
+
+    // A crowd is capped, so a six-kid household cannot spend the whole message on names.
+    const crowd = render(['Ann', 'Ben', 'Cal', 'Dot', 'Eli', 'Fay']);
+    expect(smsSegments(`${crowd}\n\n${NUDGE_OPT_OUT}`)).toBeLessThanOrEqual(2);
+  });
 });
 
 describe('the checkpoint table', () => {

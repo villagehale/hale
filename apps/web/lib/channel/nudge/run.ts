@@ -388,8 +388,14 @@ async function runForFamily(
     actionTaken: 'proactive_nudge_sent',
     targetTable: 'channel_messages',
     targetId: messageId,
-    // Enum-shaped provenance only — never the rendered body (rule #1).
-    after: { kind: nudge.kind, cohort },
+    // Enum-shaped provenance only — never the rendered body (rule #1). A health nudge
+    // also names its checkpoint (a reviewed table constant, never PII), so the trail
+    // says WHICH errand was raised without a join back to the ledger row's dedupe key.
+    after: {
+      kind: nudge.kind,
+      cohort,
+      ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
+    },
   });
   return { kind: 'sent' };
 }
