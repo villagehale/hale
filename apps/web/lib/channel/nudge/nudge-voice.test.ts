@@ -4,6 +4,7 @@ import type { Nudge } from './nudge-decide.js';
 import {
   MAX_NUDGE_SEGMENTS,
   NUDGE_OPT_OUT,
+  type VoicedNudge,
   nudgeFactSlots,
   nudgeVoiceContext,
   nudgeVoiceStrings,
@@ -57,7 +58,9 @@ const BARE_SWAP: Nudge = {
   whyFacts: [],
 };
 
-const ALL: Nudge[] = [REGISTRATION, SWAP, BARE_SWAP];
+/** The kinds a model may compose. M8's health checkpoints are deliberately absent —
+ * they are static copy and never touch the voice path (see health/copy.ts). */
+const ALL: VoicedNudge[] = [REGISTRATION, SWAP, BARE_SWAP];
 
 describe('nudgeVoiceContext', () => {
   it('hands the model the facts and no internal identifiers', () => {

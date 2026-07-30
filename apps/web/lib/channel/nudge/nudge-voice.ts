@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { townLabel } from '~/lib/channel/intake/radar-voice';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadNudgeVoiceSkill } from '~/lib/cron/skill';
+import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
-import type { Nudge } from './nudge-decide';
+import type { HealthCheckpointNudge, Nudge } from './nudge-decide';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -43,6 +44,14 @@ export interface NudgeVoice {
   message: string;
 }
 
+/**
+ * The nudge kinds a MODEL may write words for. Health-admin checkpoints (VIL-243 · M8)
+ * are excluded by construction rather than by a runtime check: their copy is static so
+ * a human can review once and know what every family receives, and excluding them from
+ * this type means a future voice path cannot quietly start composing them.
+ */
+export type VoicedNudge = Exclude<Nudge, HealthCheckpointNudge>;
+
 /** Voice fields ONLY, strict: an unknown/extra top-level key fails the parse and the
  * caller falls back to the deterministic render. */
 const nudgeVoiceSchema = z.object({ message: z.string() }).strict();
@@ -53,7 +62,7 @@ const nudgeVoiceSchema = z.object({ message: z.string() }).strict();
  * different emphasis — a deadline is urgent, a weekend swap is an offer — and the
  * skill needs to know which one it is holding.
  */
-export function nudgeVoiceContext(nudge: Nudge): unknown {
+export function nudgeVoiceContext(nudge: VoicedNudge): unknown {
   if (nudge.kind === 'registration') {
     return {
       kind: nudge.kind,
@@ -77,7 +86,7 @@ export function nudgeVoiceContext(nudge: Nudge): unknown {
 }
 
 /** Every renderable fact, for the invented-fact lint. */
-export function nudgeFactSlots(nudge: Nudge): string[] {
+export function nudgeFactSlots(nudge: VoicedNudge): string[] {
   if (nudge.kind === 'registration') {
     const slots = [
       townLabel(nudge.windowRef.municipality),
@@ -122,7 +131,7 @@ export function parseNudgeVoiceAnswer(answer: string | null): NudgeVoice | null 
 
 /** Whether a composed message may be sent as-is: grounded, free of the shell's own
  * opt-out line, and inside the segment budget once that line is appended. */
-export function usableNudgeMessage(message: string, nudge: Nudge): boolean {
+export function usableNudgeMessage(message: string, nudge: VoicedNudge): boolean {
   if (findInventedFacts(message, nudgeFactSlots(nudge)).length > 0) return false;
   if (message.includes(NUDGE_OPT_OUT)) return false;
   return smsSegments(`${message}\n\n${NUDGE_OPT_OUT}`) <= MAX_NUDGE_SEGMENTS;
@@ -147,6 +156,10 @@ function dayLabel(day: string): string {
  * halve the character budget (see sms-segments.ts).
  */
 export function renderNudgeDeterministically(nudge: Nudge): string {
+  // M8's health-admin copy has no voiced form at all — the static render IS the
+  // message, not a fallback for one.
+  if (nudge.kind === 'health_checkpoint') return renderHealthNudge(nudge);
+
   if (nudge.kind === 'registration') {
     const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
     const resident = nudge.residentNote ? ` - ${nudge.residentNote}` : '';
@@ -173,7 +186,10 @@ export async function composeNudgeMessage(
   deps: { familyId: string; database: Database; client: AgentClient | null },
 ): Promise<string> {
   const deterministic = renderNudgeDeterministically(nudge);
-  if (!deps.client) return deterministic;
+  // A health checkpoint never reaches the model (VIL-243 · M8): deterministic copy is
+  // REVIEWABLE copy, and this is the one message class where a warmer sentence is not
+  // worth the chance of a sentence nobody approved.
+  if (nudge.kind === 'health_checkpoint' || !deps.client) return deterministic;
 
   // Inside the fallback boundary, like M3's: a proactive send that is otherwise ready
   // should still go out in Hale's plainest words rather than not go out at all.

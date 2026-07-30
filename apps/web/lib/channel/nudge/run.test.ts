@@ -6,6 +6,7 @@ import type { RadarCandidate } from '~/lib/channel/intake/radar-decide';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import { NUDGE_OPT_OUT } from './nudge-voice.js';
 import {
+  type NudgeChildRow,
   type NudgeFamily,
   type NudgeRunDeps,
   f14EnabledFor,
@@ -78,6 +79,14 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
   } as RegistrationWindow;
 }
 
+/** 6 months old on FRIDAY_10AM — squarely inside M8's 6-month checkpoint. */
+const SIX_MONTH_OLD: NudgeChildRow[] = [
+  { id: 'child-1', name: 'Maya', dateOfBirth: '2026-01-31' },
+];
+
+/** 15 years old — inside the 14-to-16 checkpoint, and never nameable (rule #1). */
+const TEEN_ONLY: NudgeChildRow[] = [{ id: 'teen-1', name: 'Ava', dateOfBirth: '2011-03-04' }];
+
 const WET: DailyOutlook[] = [
   { date: SATURDAY, precipitationChancePct: 95, highTempC: 18 },
   { date: SUNDAY, precipitationChancePct: 95, highTempC: 18 },
@@ -100,6 +109,8 @@ function harness(
     consented?: boolean;
     recentSends?: number;
     transport?: FakeTransport | null;
+    children?: NudgeChildRow[];
+    doneCheckpoints?: Set<string>;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -108,11 +119,13 @@ function harness(
 
   const deps: NudgeRunDeps = {
     selectFamilies: async () => options.families ?? [family()],
-    loadChildren: async () => [
-      { id: 'child-1', name: 'Maya', dateOfBirth: '2022-07-31' },
-    ],
+    // 36 months: deliberately inside the registration window under test and OUTSIDE
+    // every M8 health checkpoint band, so these M4 cases keep testing M4.
+    loadChildren: async () =>
+      options.children ?? [{ id: 'child-1', name: 'Maya', dateOfBirth: '2023-07-31' }],
     loadCandidates: async () => options.candidates ?? [],
     loadWindows: async () => options.windows ?? [],
+    loadDoneCheckpoints: async () => options.doneCheckpoints ?? new Set<string>(),
     weather: { getDailyOutlook: async () => options.weather ?? [] },
     buildGate: () => ({
       channelEnrolled: async () => options.enrolled ?? true,
@@ -347,13 +360,17 @@ describe('runNudgeCron — silence', () => {
     expect(audit?.payload.after).toMatchObject({ reason: 'nothing_worth_saying' });
   });
 
-  it('says nothing to a household whose only children are 13+ (rule #1)', async () => {
+  it('suggests no weekend to a household whose only children are 13+ (rule #1)', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ candidates: [candidate()], weather: WET });
-    const loadChildren: NudgeRunDeps['loadChildren'] = async () => [
-      { id: 'teen-1', name: 'Ava', dateOfBirth: '2011-03-04' },
-    ];
-    const result = await runNudgeCron(db(), { ...h.deps, loadChildren }, FRIDAY_10AM);
+    // Toronto-less area + a done checkpoint leaves nothing but the weekend on the
+    // table, and the weekend is exactly what a teen-only household never gets.
+    const h = harness({
+      candidates: [candidate()],
+      weather: WET,
+      children: TEEN_ONLY,
+      doneCheckpoints: new Set(['immunization_14_to_16_years:teen-1:0']),
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
     expect(result).toMatchObject({ sent: 0, quiet: 1 });
     expect(h.transport.sent).toHaveLength(0);
@@ -390,5 +407,132 @@ describe('runNudgeCron — failure isolation', () => {
     expect(result.evaluated).toBe(2);
     expect(result.failed).toBe(1);
     expect(result.sent).toBe(1);
+  });
+});
+
+/**
+ * VIL-243 · M8 — the health-admin checkpoint, riding the SAME pipeline.
+ *
+ * The point of these cases is that M8 added a message CLASS, not a channel: it competes
+ * for the one weekly slot the outbound gate grants a family, it loses to a registration
+ * deadline, and it obeys the same dedupe and the same rule #1.
+ */
+describe('runNudgeCron — health checkpoints (M8)', () => {
+  it('sends the static checkpoint copy, named, linked and reply-able', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ children: SIX_MONTH_OLD });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 1, quiet: 0 });
+    const body = h.transport.bodies()[0] as string;
+    expect(body).toContain('Maya:');
+    expect(body).toContain('a visit at 6 months');
+    expect(body).toContain('https://www.ontario.ca/page/ontarios-routine-immunization-schedule');
+    expect(body).toContain('Done, or want a reminder next week?');
+    expect(body.endsWith(NUDGE_OPT_OUT)).toBe(true);
+  });
+
+  it('never runs the voice model for health copy', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ children: SIX_MONTH_OLD });
+    // A client that throws the moment it is touched: health copy is static, always.
+    const client = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('health copy must never reach the model');
+        },
+      },
+    ) as NudgeRunDeps['client'];
+    const result = await runNudgeCron(db(), { ...h.deps, client }, FRIDAY_10AM);
+    expect(result.sent).toBe(1);
+  });
+
+  it('loses to a registration deadline, and beats a weekend suggestion', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const beaten = harness({ children: SIX_MONTH_OLD, windows: [win({ ageMinMonths: 0 })] });
+    await runNudgeCron(db(), beaten.deps, FRIDAY_10AM);
+    expect(beaten.transport.bodies()[0]).toContain('Fall 2026');
+
+    const wins = harness({ children: SIX_MONTH_OLD, candidates: [candidate()], weather: WET });
+    await runNudgeCron(db(), wins.deps, FRIDAY_10AM);
+    expect(wins.transport.bodies()[0]).toContain('a visit at 6 months');
+  });
+
+  it('keys the send to the child and the run of the checkpoint', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ children: SIX_MONTH_OLD });
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect([...h.dedupeKeys]).toEqual(['nudge:fam-1:health:immunization_6_months:child-1:0']);
+  });
+
+  it('sends once across two cron fires in the same slot', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ children: SIX_MONTH_OLD });
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    const second = await runNudgeCron(db(), h.deps, new Date('2026-07-31T14:30:00.000Z'));
+
+    expect(second.deduped).toBe(1);
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('competes for the SAME weekly slot as every other nudge', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // recentSends = a nudge of any class already landed this week. The health nudge is
+    // held, not queued: a household is one audience with one weekly budget.
+    const h = harness({ children: SIX_MONTH_OLD, recentSends: 1 });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result.held.frequency_cap).toBe(1);
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('sends nothing to a family that pressed STOP or never opted into watching', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const stopped = harness({ children: SIX_MONTH_OLD, enrolled: false });
+    expect((await runNudgeCron(db(), stopped.deps, FRIDAY_10AM)).held.not_enrolled).toBe(1);
+    expect(stopped.transport.sent).toHaveLength(0);
+
+    const unwatched = harness({ children: SIX_MONTH_OLD, consented: false });
+    expect((await runNudgeCron(db(), unwatched.deps, FRIDAY_10AM)).held.no_watch_consent).toBe(1);
+    expect(unwatched.transport.sent).toHaveLength(0);
+  });
+
+  it('goes quiet on a checkpoint the parent already said was done', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      children: SIX_MONTH_OLD,
+      doneCheckpoints: new Set(['immunization_6_months:child-1:0']),
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('tells a 13+ household the ADMIN task and never the specifics (rule #1)', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ children: TEEN_ONLY });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result.sent).toBe(1);
+    const body = h.transport.bodies()[0] as string;
+    expect(body).toContain('Your teen:');
+    expect(body).toContain('A routine vaccine record check is due');
+    // The name never leaves the building, and neither does anything clinical.
+    expect(body).not.toContain('Ava');
+    expect(body.toLowerCase()).not.toMatch(/\b(dose|booster|shot|hpv|hepatitis)\b/);
+  });
+
+  it('says nothing outside Ontario, where none of this content applies', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      children: SIX_MONTH_OLD,
+      families: [family({ areaCoarse: 'V6B' })],
+    });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(h.transport.sent).toHaveLength(0);
   });
 });
