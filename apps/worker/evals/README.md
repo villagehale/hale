@@ -195,6 +195,55 @@ populate cost **$0.0736 USD** (24 calls). Calibrated BOTH directions: `--broken`
 invents a splash pad, a price and a time, re-asks the watch question and rambles) is rejected by
 the fabrication, question, budget and sentence gates on 12/12 fixtures — 0 API calls.
 
+# Proactive nudge composer eval harness (VIL-239 · M4 — the unsolicited text)
+
+The ONE model call in M4: turning a selector's decision into a text message nobody asked for. Run
+from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-nudge-eval.mjs            # live, then caches
+node --env-file=../../.env evals/run-nudge-eval.mjs --broken   # calibration: must FAIL
+node evals/run-nudge-eval.mjs --cached-only                    # CI: replay only
+node evals/run-nudge-eval.mjs --cached-only --show             # print each composed message
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:nudge`**.
+
+Same REPLICATE-not-import convention as the radar harness above, and the same split: the selector
+and the F14 outbound gate are PURE code with no model in them, covered by vitest in
+`apps/web/lib/channel/nudge/nudge-decide.test.ts` and `apps/web/lib/channel/outbound-gate.test.ts`,
+and are deliberately not re-tested here.
+
+What differs from M3, and it is the whole reason this is a separate harness: **nobody asked for
+this message**. There is no question it was answering, so a plausible invention arrives with
+nothing around it to correct it, and a message that is merely *fine* is still an interruption.
+
+- **10 fixtures**: registration windows at 1 / 2 / 3 kids (including a resident head start and an
+  approximate age fit), weather swaps across wet / cold / dry, a pick with no venue, a family whose
+  children were never named — plus two that must **never reach the model at all** (nothing worth
+  saying, and a family that pressed STOP).
+- **The hard gate is FABRICATION**: every number, every non-sentence-initial proper noun, and —
+  unlike the radar harness — **every weekday name wherever it appears** must trace back to the
+  nudge. Days get their own check because the capitalised-word heuristic skips the first word of
+  each sentence, and "Sunday is the backup." is exactly the invention this message turns on (it
+  slipped through during calibration until the day check was added).
+- **The CASL gate**: a fixture the outbound gate or the selector ruled out must produce NO message.
+- Plus: never writes the "Reply STOP to opt out." line the sender appends, never asks a question,
+  ≤ 2 SMS segments for the whole payload, ≤ 2 sentences (tighter than the radar's three), and
+  per-fixture must-recall / forbidden tokens derived from the decision — including "says wet when
+  the fact is cold", a fabrication with a correct conclusion.
+- **Tone judge** (cached Haiku, ≥ 4/5), scored kind-aware: a deadline leads with the date, a
+  weekend suggestion leads with the forecast and is NOT marked down for lacking urgency it was
+  never given.
+
+Result (live, claude-sonnet-4-6 compose / claude-haiku-4-5 judge): 10/10 fixtures pass, 0
+fabrications, 0 composed behind a closed gate, 0 over budget, 0 questions, 0 self-written opt-outs,
+mean voice 5.00, every payload 1 segment. Live populate cost **$0.0628 USD** (16 calls).
+Calibrated BOTH directions: `--broken` (a composer that
+invents a splash pad, a price, a time and a Friday, writes the opt-out itself, asks to book it and
+rambles) is rejected by the fabrication, opt-out, question and sentence gates on 8/8 composed
+fixtures — 0 API calls.
+
 # VIL-143 launch evals (memory-cost curve + model-per-role matrix)
 
 Two evals that answer the launch questions the per-agent evals above don't: (1) does the coach stay cheap + accurate as

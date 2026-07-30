@@ -39,6 +39,10 @@
     "file": "log-care.md",
     "sha256": "7e026f111a88cd15b0a6c06ad3692fff9f27cfa907a837cb46976c0d9a55f5db"
   },
+  "nudge-voice.md": {
+    "file": "nudge-voice.md",
+    "sha256": "f39ab8a8f9873b6abf795c85f5fcdb68a69b4782a295d0a9cd3721cb776b4445"
+  },
   "parse-village-search.md": {
     "file": "parse-village-search.md",
     "sha256": "0f601d5fb3dcc1cccee224c6c0e9d7bd3bd82dc1379a175c6ecefbc04d761c76"

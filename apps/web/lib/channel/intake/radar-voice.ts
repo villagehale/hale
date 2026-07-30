@@ -46,7 +46,7 @@ const radarVoiceSchema = z.object({ message: z.string() }).strict();
 
 /** 'richmond_hill' → 'Richmond Hill'. The municipality enum is an internal token; the
  * town's name is the public fact a parent recognises. */
-function townLabel(municipality: string): string {
+export function townLabel(municipality: string): string {
   return municipality
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

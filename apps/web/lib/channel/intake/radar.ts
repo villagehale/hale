@@ -95,7 +95,7 @@ async function readTeenChildIds(database: Database, familyId: string): Promise<s
  * imported because that module pulls the authenticated session resolver in with it, and
  * the radar runs on an inbound SMS with no session at all.
  */
-async function readCandidates(database: Database, familyId: string): Promise<RadarCandidate[]> {
+export async function readCandidates(database: Database, familyId: string): Promise<RadarCandidate[]> {
   const rows = await database
     .select({
       id: schema.villageCandidates.id,
@@ -126,7 +126,7 @@ async function readCandidates(database: Database, familyId: string): Promise<Rad
 /** The registration windows this family's FSA can act on. An FSA outside the covered
  * set resolves to no municipality — and then to no query and no claim (M1's rule: a
  * neighbouring town's dates are worse than silence). */
-async function readWindows(database: Database, areaCoarse: string) {
+export async function readWindows(database: Database, areaCoarse: string) {
   const municipalities = resolveMunicipalities(areaCoarse);
   if (municipalities.length === 0) return [];
   return database

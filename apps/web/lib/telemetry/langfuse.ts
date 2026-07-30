@@ -48,7 +48,8 @@ export type AgentTraceName =
   | 'weekly-plan-voice'
   | 'welcome-voice'
   | 'reminder-voice'
-  | 'radar-voice';
+  | 'radar-voice'
+  | 'nudge-voice';
 
 export interface AgentTraceContext {
   name: AgentTraceName;

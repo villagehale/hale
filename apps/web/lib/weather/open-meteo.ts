@@ -57,11 +57,18 @@ export interface WeatherPort {
 /** Whether a day is a reasonable one to send a family outside. Pure, so the radar's
  * weather rule is unit-testable without a network. */
 export function isOutdoorFriendly(day: DailyOutlook): boolean {
-  return (
-    day.precipitationChancePct <= WET_THRESHOLD_PCT &&
-    day.highTempC >= MIN_OUTDOOR_TEMP_C &&
-    day.highTempC <= MAX_OUTDOOR_TEMP_C
-  );
+  return outdoorBlocker(day) === null;
+}
+
+/** Why a day is a bad one to send a family outside, or null when it isn't. The reason
+ * is needed, not just the verdict: a message that swaps a family indoors has to say
+ * WHICH fact it is acting on, and "it's going to rain" on a merely freezing day is a
+ * fabrication even though the swap itself is right. */
+export function outdoorBlocker(day: DailyOutlook): 'wet' | 'cold' | 'hot' | null {
+  if (day.precipitationChancePct > WET_THRESHOLD_PCT) return 'wet';
+  if (day.highTempC < MIN_OUTDOOR_TEMP_C) return 'cold';
+  if (day.highTempC > MAX_OUTDOOR_TEMP_C) return 'hot';
+  return null;
 }
 
 function numberAt(value: unknown, index: number): number | null {

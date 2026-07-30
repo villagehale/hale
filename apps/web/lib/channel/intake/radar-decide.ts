@@ -240,7 +240,7 @@ function priceRankOf(priceLevel: string | null): number {
 
 /** Who a candidate is for. An unreadable age label covers everyone (we have no fact
  * that excludes anybody), but `band === null` is remembered so no age claim is made. */
-function coverageOf(children: readonly RadarChild[], band: AgeBand | null): number[] {
+export function coverageOf(children: readonly RadarChild[], band: AgeBand | null): number[] {
   if (band === null) return children.map((_, index) => index);
   return children
     .map((child, index) => (fitsBand(child, band, slackFor(child)) ? index : -1))
@@ -354,7 +354,7 @@ function namesOf(children: readonly RadarChild[], indexes: readonly number[]): s
 
 /** Intl can emit a narrow no-break space around "a.m." depending on the ICU build, and
  * one non-ASCII character doubles the cost of the whole SMS (see sms-segments.ts). */
-function asciiSpaces(text: string): string {
+export function asciiSpaces(text: string): string {
   return text.replace(/[   ]/g, ' ');
 }
 
