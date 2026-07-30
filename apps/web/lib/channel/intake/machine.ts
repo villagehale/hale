@@ -7,6 +7,15 @@ import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import {
+  declineOpenInviteOnStop,
+  loadOpenInviteByPhone,
+} from '~/lib/channel/caregiver/invites';
+import {
+  type CaregiverOutcome,
+  handleCaregiverInviteReply,
+  handleKnownNumberInbound,
+} from '~/lib/channel/caregiver/route';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
   AMBIGUOUS_CLARIFY,
@@ -83,7 +92,11 @@ export type IntakeOutcome =
   | { status: 'region_unavailable' }
   | { status: 'rate_limited' }
   | { status: 'duplicate' }
-  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' };
+  | { status: 'ignored'; reason: 'invalid_number' | 'no_open_conversation' }
+  // VIL-241 · M6 — the caregiver branches. They share this entry point because a
+  // caregiver texts the SAME number a parent does; what differs is who the number
+  // belongs to, which is a lookup, not a second inbox.
+  | CaregiverOutcome;
 
 interface Inbound {
   from: string;
@@ -136,9 +149,25 @@ export async function handleInboundSms(
     if (session) {
       return { status: 'ignored', reason: 'no_open_conversation' };
     }
+
+    // VIL-241 · a number we have texted an invite to is answering a QUESTION we asked.
+    // Checked before the greeting, or a caregiver's "yes" would be read as a stranger
+    // starting an intake and they would be asked for their children's names.
+    const invite = await loadOpenInviteByPhone(database, phoneE164, now);
+    if (invite?.state === 'awaiting_caregiver_reply') {
+      return handleCaregiverInviteReply(database, { invite, phoneE164, inbound, now }, deps);
+    }
+
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
     if (existing) {
-      return { status: 'ignored', reason: 'no_open_conversation' };
+      // Either a caregiver (who gets the one scoped line) or a parent adding one. Any
+      // other message keeps the old silence.
+      const outcome = await handleKnownNumberInbound(
+        database,
+        { owner: existing, phoneE164, inbound, now },
+        deps,
+      );
+      return outcome ?? { status: 'ignored', reason: 'no_open_conversation' };
     }
     return greet(database, { phoneE164, inbound, now }, deps);
   }
@@ -537,9 +566,16 @@ async function handleStop(
 ): Promise<IntakeOutcome> {
   const { phoneE164, inbound, session, now } = args;
 
+  // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
+  // invite: a STOP from someone we asked but who never accepted closes the invitation
+  // itself. Otherwise the only promise we made them would cover nothing.
+  await declineOpenInviteOnStop(database, phoneE164, now);
+
   // A STOP after provisioning must revoke the real channel + append the consent
   // withdrawal + audit — the enrolment engine already owns that transaction, so this
   // reuses it rather than writing a second revocation path that could drift from it.
+  // Per-USER by construction: a caregiver's STOP revokes the caregiver's channel and
+  // leaves every parent in the household subscribed.
   const owner =
     session?.familyId && session.userId
       ? { userId: session.userId, familyId: session.familyId }

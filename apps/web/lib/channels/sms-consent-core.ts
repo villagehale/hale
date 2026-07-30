@@ -433,27 +433,35 @@ export async function resolveVerifiedChannelByPhone(
   const canonical = normalizePhoneE164(fromPhone);
   if (!canonical) return null;
 
-  const [row] = await database
+  const hash = phoneBlindIndex(canonical);
+  const rows = await database
     .select({
       userId: schema.parentChannels.userId,
       familyId: schema.parentChannels.familyId,
       id: schema.parentChannels.id,
+      phoneE164Hash: schema.parentChannels.phoneE164Hash,
       verifiedAt: schema.parentChannels.verifiedAt,
       revokedAt: schema.parentChannels.revokedAt,
     })
     .from(schema.parentChannels)
     .where(
       and(
-        eq(schema.parentChannels.phoneE164Hash, phoneBlindIndex(canonical)),
+        eq(schema.parentChannels.phoneE164Hash, hash),
         isNotNull(schema.parentChannels.verifiedAt),
         isNull(schema.parentChannels.revokedAt),
       ),
     )
     .limit(1);
 
-  // Defense in depth: only ever resolve a genuinely active, verified channel, even if
-  // the query were to return otherwise — a revoked/unverified row must never route.
-  if (!row || row.verifiedAt === null || row.revokedAt !== null) {
+  // Defense in depth: only ever resolve a genuinely active, verified channel FOR THIS
+  // NUMBER, even if the query were to return otherwise — a revoked/unverified row must
+  // never route, and neither must someone else's. The hash re-check matters now that a
+  // household holds several channels (VIL-241 caregivers): routing an inbound to the
+  // wrong member is a cross-person disclosure, not just a wrong reply.
+  const row = rows.find(
+    (r) => r.phoneE164Hash === hash && r.verifiedAt !== null && r.revokedAt === null,
+  );
+  if (!row) {
     return null;
   }
   return { userId: row.userId, familyId: row.familyId, channelId: row.id };
