@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no thanks, we're good",
+    "rationale": "explicit refusal \"no thanks\"",
+    "confidence": 0.98
+  },
+  "latencyMs": 1982
+}

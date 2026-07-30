@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.95,
+    "intent": "ambiguous",
+    "rationale": "Hedged/conditional reply deferring to spouse, not a clear yes",
+    "verbatim": "maybe, let me ask my husband"
+  },
+  "latencyMs": 1855
+}

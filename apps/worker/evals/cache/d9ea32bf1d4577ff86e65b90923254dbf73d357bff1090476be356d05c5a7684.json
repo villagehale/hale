@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.98,
+    "intent": "assent",
+    "rationale": "Clear affirmative \"sure, go ahead\" directly answers the yes/no question",
+    "verbatim": "sure, go ahead"
+  },
+  "latencyMs": 2405
+}

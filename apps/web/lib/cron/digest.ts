@@ -67,8 +67,10 @@ export function defaultDigestDeps(): DigestDeps {
 }
 
 /** The primary parent (id + email) — the brief's recipient. Null when the family
- * has no primary parent linked yet (onboarding incomplete): nothing to send, not
- * an error. The id keys the per-recipient opt-out + send ledger. */
+ * has no primary parent linked yet (onboarding incomplete) OR that parent has no
+ * email address at all (VIL-237: an SMS-provisioned parent — the phone number is
+ * the account): in both cases there is nothing to EMAIL, which is a skip, not an
+ * error. The id keys the per-recipient opt-out + send ledger. */
 async function recipient(
   familyId: string,
   database: Database,
@@ -85,7 +87,7 @@ async function recipient(
     )
     .limit(1);
   const row = rows[0];
-  return row ? { userId: row.userId, email: row.email } : null;
+  return row?.email ? { userId: row.userId, email: row.email } : null;
 }
 
 /** Today in the digest's date column format (YYYY-MM-DD), in America/Toronto —

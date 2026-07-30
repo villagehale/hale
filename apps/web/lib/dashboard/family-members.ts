@@ -5,7 +5,9 @@ export type FamilyRole = (typeof schema.familyMembers.$inferSelect)['role'];
 export interface MemberView {
   /** Display name; null when the mirrored Google profile carries no name yet. */
   name: string | null;
-  email: string;
+  /** Null for an SMS-provisioned parent (VIL-237: the phone number is the account,
+   * `users.email` is nullable). Renderers must show the account without one. */
+  email: string | null;
   role: FamilyRole;
 }
 
@@ -24,7 +26,7 @@ export interface FamilyMembersView {
  * members aren't parents and are excluded here.
  */
 export function toFamilyMembersView(
-  rows: ReadonlyArray<{ name: string | null; email: string; role: FamilyRole }>,
+  rows: ReadonlyArray<{ name: string | null; email: string | null; role: FamilyRole }>,
 ): FamilyMembersView {
   const primary = rows.find((r) => r.role === 'primary_parent') ?? null;
   const coParent = rows.find((r) => r.role === 'co_parent') ?? null;

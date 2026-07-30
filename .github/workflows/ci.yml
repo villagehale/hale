@@ -69,6 +69,9 @@ jobs:
       - name: Sentinel triage/extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:sentinel
 
+      - name: SMS intake extraction/intent eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intake
+
       - name: Build
         run: pnpm build
         env:

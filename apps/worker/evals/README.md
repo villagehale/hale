@@ -115,6 +115,45 @@ IMPORT vs REPLICATE: ask-hale / daily-brief IMPORT the real `runAgent` + `loadSk
 genuine skill instructions, not a re-implementation; only the TOOLS are fixture-backed (the eval controls the data, the
 agent's reasoning is real). Discovery REPLICATES because its web-only modules can't be imported here.
 
+# SMS intake eval harness (VIL-237 · M2 — extraction + reply intent)
+
+The two LLM stages of the conversational SMS intake. Run from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-intake-eval.mjs            # live, then caches
+node --env-file=../../.env evals/run-intake-eval.mjs --broken   # calibration: must FAIL
+node evals/run-intake-eval.mjs --cached-only                    # CI: replay only
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:intake`**.
+
+REPLICATES the forced-tool request shapes `apps/web/lib/channel/intake/{extract,intent}.ts`
+build (the `~/` alias isn't resolvable from here — same reason as the sentinel/drafter evals),
+while IMPORTING the real skill bodies + `pickModel` live from `packages/agent`, so a skill edit
+or a re-tiering re-keys the cache. The state machine's deterministic half (CASL keywords, region
+gate, one-follow-up cap, provisioning, consent-before-flag ordering) is covered by vitest in
+`apps/web/lib/channel/intake/*.test.ts` and is deliberately not re-tested here.
+
+- **extraction** (12 fixtures): field-by-field against SPEC-derived expectations — child count,
+  names (a null name stays null; "my son" is never named "son"), `age_months` within a per-fixture
+  tolerance ("4" → 48, "18 months" → 18, "grade 2" → 88 ±8), and the postal code. Plus a
+  deterministic FABRICATION check: every name and postal code returned must appear verbatim in the
+  input, so an invented child or a completed postal code fails with no judge involved.
+  Traps included: bare ages with no names (`"4 and 1"` is two children, not one named "4"), a
+  neighbourhood that is not a postal code, French, a typo, and an unreadable message.
+- **intent** (21 fixtures): the assent/decline/ambiguous reading the consent record is written
+  from. The gate that matters is the 10-case FALSE-POSITIVE battery — "thanks!", "ok", "👍",
+  questions back, hedges, and more intake detail — none of which may EVER read as `assent`, since
+  one would be a consent record for a family that never agreed. Zero tolerated, in both that
+  direction and for a decline read as assent. The verbatim-echo check is gated too (0 mismatches):
+  a model that paraphrased the reply did not read the reply it was given.
+
+Result (live, claude-sonnet-5 both stages): extraction 12/12 with 0 fabrications, intent 21/21
+with 0 consent false positives, 0 declines-as-assent, 0 verbatim mismatches. First live populate
+cost **$0.2465 USD** (33 calls). Calibrated BOTH directions: `--broken` (an extractor that always
+invents "Charlie" + a postal code, an intent reader that calls everything assent) fails the
+fabrication gate, both accuracy gates AND the consent false-positive gate — 0 API calls.
+
 # VIL-143 launch evals (memory-cost curve + model-per-role matrix)
 
 Two evals that answer the launch questions the per-agent evals above don't: (1) does the coach stay cheap + accurate as

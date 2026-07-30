@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "how much does this cost?",
+    "rationale": "Reply is a question back, not a yes/no answer to the question asked",
+    "confidence": 0.97
+  },
+  "latencyMs": 1886
+}

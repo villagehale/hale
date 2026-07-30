@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no — what would you even watch?",
+    "rationale": "Explicit \"no\" precedes the question, and a clear refusal is treated as decline even with follow-up curiosity",
+    "confidence": 0.95
+  },
+  "latencyMs": 2585
+}

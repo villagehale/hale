@@ -78,6 +78,13 @@ export const RATE_LIMITS = {
   'mcp-token': { limit: 60, windowSec: 60 },
   // A signed-in parent explicitly approves a connection. Per-user, fail-closed.
   'mcp-authorize': { limit: 20, windowSec: 3600 },
+  // VIL-237 inbound SMS intake, per NUMBER (the blind index — the raw number never
+  // reaches the limiter table). Each inbound can cost a model call AND an outbound
+  // SMS, so this is a genuine cap, not a bot guard. A whole intake conversation is
+  // 3-5 texts; 30/hour leaves a parent who retypes, corrects, and chats far clear of
+  // it while stopping a script from running up spend or pumping SMS traffic. Over the
+  // limit the machine goes SILENT — replying would hand an attacker the amplification.
+  'sms-inbound': { limit: 30, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

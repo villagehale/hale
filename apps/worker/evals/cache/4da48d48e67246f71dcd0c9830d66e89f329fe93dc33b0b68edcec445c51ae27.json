@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.97,
+    "intent": "assent",
+    "rationale": "\"that would be great\" is a clear affirmative response to the question asked",
+    "verbatim": "that would be great honestly"
+  },
+  "latencyMs": 2380
+}
