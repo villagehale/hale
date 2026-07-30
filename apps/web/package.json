@@ -16,6 +16,7 @@
     "probe:week-plan": "tsx scripts/probe-week-plan.ts",
     "probe:ics-feed": "tsx scripts/probe-ics-feed.ts",
     "seed:curated-resources": "tsx scripts/seed-curated-resources.ts",
+    "seed:registration-windows": "tsx scripts/seed-registration-windows.ts",
     "sync-who-growth": "node scripts/sync-who-growth.mjs",
     "clean": "rm -rf .next .turbo *.tsbuildinfo"
   },

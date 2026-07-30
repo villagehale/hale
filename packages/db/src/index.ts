@@ -10,3 +10,9 @@ export type {
   NewWeekPlan,
 } from './schema/week-plans.js';
 export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
+export type {
+  Municipality,
+  ProgramDomain,
+  RegistrationWindow,
+  NewRegistrationWindow,
+} from './schema/registration-windows.js';
