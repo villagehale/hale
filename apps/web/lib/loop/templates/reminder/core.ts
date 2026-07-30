@@ -47,6 +47,21 @@ function isTeen(child: ReminderChild, now: Date): boolean {
 }
 
 /**
+ * Whether an event may carry NO detail outbound: a 13+ child's event (the deterministic
+ * age gate, rule #1) or one flagged sensitive. The single predicate behind every
+ * outbound surface's genericization — the reminder copy here and the per-event calendar
+ * invite (VIL-249), so the two can never drift apart.
+ */
+export function isPrivateEvent(
+  event: ReminderEventView,
+  children: readonly ReminderChild[],
+  now: Date,
+): boolean {
+  const child = eventChild(event, children);
+  return (child !== undefined && isTeen(child, now)) || event.sensitive === true;
+}
+
+/**
  * The event's "what": a teen's or flagged-sensitive event is the bare generic (rule
  * #1 / rule 6). Otherwise the placed title, attributed to the child at the parent's
  * name level ("Maya — Swim class" / "your daughter — Swim class"), but never doubly
@@ -61,7 +76,7 @@ export function eventDescriptor(
   now: Date,
 ): string {
   const child = eventChild(event, children);
-  if ((child && isTeen(child, now)) || event.sensitive) return GENERIC_DESCRIPTOR;
+  if (isPrivateEvent(event, children, now)) return GENERIC_DESCRIPTOR;
   if (child && level !== 'generic' && !event.title.toLowerCase().includes(child.name.toLowerCase())) {
     const leveled = loopChildName({ ...child, gender: child.gender ?? '' }, level, now);
     return `${leveled} — ${event.title}`;
