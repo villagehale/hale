@@ -122,9 +122,13 @@ export function TrailTimeline({ entries }: { entries: TrailView[] }) {
                 {day.date}
               </h2>
               {day.rows.map((entry) => (
+                // VIL-244 · M9: the row's audit_log id is its anchor, so an outbound
+                // channel message can deep-link the exact receipt (`/trail#<id>`).
+                // scroll-mt clears the sticky day heading above it.
                 <article
                   key={entry.id}
-                  className="py-8 lg:py-10 border-b border-rule last:border-b-0"
+                  id={entry.id}
+                  className="scroll-mt-24 py-8 lg:py-10 border-b border-rule last:border-b-0"
                 >
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-y-3 md:gap-x-8">
                     <div className="md:col-span-2">

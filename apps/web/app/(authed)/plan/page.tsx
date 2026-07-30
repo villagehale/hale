@@ -6,18 +6,30 @@ import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { PrivacyNote } from '~/components/hale/privacy-note';
 import { ShareWeekButton } from '~/components/hale/share-week-button';
-import { WeekPlanCard, itemNeedsOk } from '~/components/hale/week-plan-card';
+import {
+  WeekPlanCard,
+  WeekPlanToday,
+  type WeekPlanKid,
+  itemNeedsOk,
+} from '~/components/hale/week-plan-card';
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
 import { loadFamilyTimezone } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, loadViewerProfile } from '~/lib/family';
+import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { type AuthoredPlanView, loadAuthoredPlans } from '~/lib/plan/authored';
-import { type DayColumn, buildPlanSpine, groupRoutineByDay, weekWindow } from '~/lib/plan/spine';
+import {
+  type DayColumn,
+  buildPlanSpine,
+  dayKeyIn,
+  groupRoutineByDay,
+  weekWindow,
+} from '~/lib/plan/spine';
 import { type PlanChildItem, planChildItems } from '~/lib/plan/week';
 import { loadVillage } from '~/lib/village/queries';
 
@@ -63,9 +75,30 @@ export default async function PlanPage() {
 
   const kids = scopeChildren(children);
 
+  // VIL-244 · M9 (D4/D20): under the receipts-room IA this page IS the landing surface,
+  // so it leads with a compact Today strip (the demoted feed's job, cut to one day of the
+  // SAME artifact) and arranges the week day-first then by kid, oldest first. Item titles
+  // are untouched — already teen-gated at compose time — and the who-labels are derived
+  // from each child's live stage, so a 13+ child is never named (rule #1).
+  const receiptsIa = receiptsIaEnabled();
+  const planKids: WeekPlanKid[] = children.map((child) => ({
+    id: child.id,
+    name: child.name ?? 'your child',
+    dateOfBirth: child.dateOfBirth,
+    stage: child.stage,
+  }));
+  const todayKey = dayKeyIn(new Date(), timeZone);
+
   return (
     <div>
       {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
+
+      {/* ── Today — the compact strip that replaces the demoted daily feed ─ */}
+      {receiptsIa && weekPlan ? (
+        <section className="rise rise-1 mb-8">
+          <WeekPlanToday plan={weekPlan} kids={planKids} todayKey={todayKey} />
+        </section>
+      ) : null}
 
       {/* ── The week ahead — B1's composed artifact, the Sunday text's twin ─ */}
       {weekPlan ? (
@@ -76,7 +109,7 @@ export default async function PlanPage() {
               ? ` · ${weekPlanNeedsOk} ${weekPlanNeedsOk === 1 ? 'needs' : 'need'} your OK`
               : ''}
           </SectionLabel>
-          <WeekPlanCard plan={weekPlan} />
+          <WeekPlanCard plan={weekPlan} kids={receiptsIa ? planKids : undefined} />
         </section>
       ) : null}
 

@@ -6,7 +6,7 @@ import { Menu } from 'lucide-react';
 import { Icon } from '~/components/ui/icon';
 import { useShell } from '~/components/hale/app-shell';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { ALL_NAV } from '~/components/hale/nav';
+import { allNav } from '~/components/hale/nav';
 
 /**
  * The sticky header frame above the scrolling main stage. The brand and the
@@ -14,11 +14,13 @@ import { ALL_NAV } from '~/components/hale/nav';
  * opens the off-canvas nav drawer. Appearance (theme) lives in Settings, not
  * here — there is exactly one such control in the app.
  */
-export function TopHeader() {
+export function TopHeader({ receiptsIa = false }: { receiptsIa?: boolean }) {
   const pathname = usePathname();
   const { openDrawer, drawerOpen } = useShell();
 
-  const current = ALL_NAV.find((n) => pathname === n.href || pathname?.startsWith(`${n.href}/`));
+  const current = allNav(receiptsIa).find(
+    (n) => pathname === n.href || pathname?.startsWith(`${n.href}/`),
+  );
 
   return (
     <header className="runninghead">

@@ -42,7 +42,9 @@ export default async function ApprovalsPage() {
       {approvals.length > 0 ? (
         <ul className="rise rise-2 grid gap-4">
           {approvals.map((approval) => (
-            <li key={approval.id} className="card">
+            // VIL-244 · M9: the draft's action id is its anchor, so an outbound
+            // channel message can deep-link the exact row it is asking about.
+            <li key={approval.id} id={approval.id} className="card scroll-mt-24">
               {/* Card body: eyebrow (clock + action type + child tag), subject,
                * detail, and the drafted-at requester line (design handoff §4.6). */}
               <div className="min-w-0" data-hale-pii>
