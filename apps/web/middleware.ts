@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
 import { bridgeBearerToSessionCookie } from '~/lib/auth/bearer-bridge';
+import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { inviteGateDecision } from '~/lib/onboarding/invite-gate';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
@@ -97,6 +98,15 @@ export default auth((req) => {
 
   if (!isProtected(pathname)) {
     return NextResponse.next();
+  }
+
+  // VIL-244 · M9 (D4/D20): under the receipts-room IA the daily feed is DEMOTED and the
+  // week view is the landing surface. The forward lives HERE rather than in the page,
+  // because a page-level `redirect()` under a streaming `force-dynamic` layout resolves
+  // as a mid-stream client navigation (200 + a soft push), not a redirect the browser
+  // or a link-checker can see. The route itself is untouched — deleting it is a later PR.
+  if (receiptsIaEnabled() && (pathname === '/home' || pathname.startsWith('/home/'))) {
+    return NextResponse.redirect(new URL('/plan', req.nextUrl), 302);
   }
 
   if (!authConfigured()) {

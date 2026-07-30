@@ -17,7 +17,7 @@ import { useShell } from '~/components/hale/app-shell';
 import { ChildSwitcher } from '~/components/hale/child-switcher';
 import type { SwitcherChild } from '~/components/hale/child-switcher-view';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { PRIMARY_NAV } from '~/components/hale/nav';
+import { primaryNav } from '~/components/hale/nav';
 
 function NavLink({
   href,
@@ -57,6 +57,7 @@ export function Sidebar({
   parentImage = null,
   planTier = 'free',
   kids = [],
+  receiptsIa = false,
 }: {
   authControls?: boolean;
   signedIn?: boolean;
@@ -67,6 +68,9 @@ export function Sidebar({
   planTier?: PlanTier;
   /** The family's children, for the foot child switcher. */
   kids?: SwitcherChild[];
+  /** VIL-244 · M9: the receipts-room stops. Resolved from F14_RECEIPTS_IA by the
+   * authed layout — a server-read variable can't be read from this client module. */
+  receiptsIa?: boolean;
 }) {
   const pathname = usePathname();
   const { collapsed, toggleCollapsed, closeDrawer } = useShell();
@@ -106,7 +110,7 @@ export function Sidebar({
       </div>
 
       <nav className="sidebar-nav" aria-label="primary">
-        {PRIMARY_NAV.map((item) => (
+        {primaryNav(receiptsIa).map((item) => (
           <NavLink
             key={item.href}
             href={item.href}

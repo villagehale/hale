@@ -19,12 +19,15 @@ import { Icon } from '~/components/ui/icon';
 export function PageHero({
   roots,
   variant,
+  receiptsIa = false,
 }: {
   roots: Record<RootRoute, RootHero>;
   variant: 'topbar' | 'stage';
+  /** VIL-244 · M9: promotes Approvals / Week / Trail to hero roots, matching the nav. */
+  receiptsIa?: boolean;
 }) {
   const pathname = usePathname();
-  const resolved = resolveHero(pathname, roots);
+  const resolved = resolveHero(pathname, roots, receiptsIa);
   if (!resolved) return null;
 
   if (resolved.kind === 'drill') {

@@ -5,6 +5,7 @@ import { GoogleGlyph } from '~/components/hale/google-glyph';
 import { MagicLinkRequestForm } from '~/components/hale/magic-link-request-form';
 import { credentialsConfigured, googleConfigured } from '~/lib/auth-config';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
+import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 
 // AUTH_SECRET is a runtime-only secret, so evaluate configuredness at request time
 // rather than caching a build-time "not configured" fallback.
@@ -37,25 +38,36 @@ export default async function SignInPage({ searchParams }: PageProps) {
     );
   }
 
+  // VIL-244 · M9: a phone-first family has no password and often no Google account on
+  // the device they're holding, so under the receipts-room IA the emailed link leads and
+  // Google follows. Presentation order only — neither provider nor any auth logic moves.
+  const linkFirst = receiptsIaEnabled();
+
+  const googleButton = google ? (
+    <form
+      action={async () => {
+        'use server';
+        await signIn('google', { redirectTo });
+      }}
+    >
+      <button type="submit" className="auth-google">
+        <GoogleGlyph />
+        Continue with Google
+      </button>
+    </form>
+  ) : null;
+
+  const magicLinkForm = magicLink ? (
+    <MagicLinkRequestForm variant="inline" callbackUrl={redirectTo} />
+  ) : null;
+
   return (
     <AuthShell heading="Welcome back" subtitle="Sign in to your village.">
-      {google ? (
-        <form
-          action={async () => {
-            'use server';
-            await signIn('google', { redirectTo });
-          }}
-        >
-          <button type="submit" className="auth-google">
-            <GoogleGlyph />
-            Continue with Google
-          </button>
-        </form>
-      ) : null}
+      {linkFirst ? magicLinkForm : googleButton}
 
       {google && magicLink ? <div className="auth-or">or</div> : null}
 
-      {magicLink ? <MagicLinkRequestForm variant="inline" callbackUrl={redirectTo} /> : null}
+      {linkFirst ? googleButton : magicLinkForm}
 
       <Link href="/onboarding" className="btn-ghost self-start">
         New here? Join the village &rarr;

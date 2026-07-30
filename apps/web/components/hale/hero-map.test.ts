@@ -44,6 +44,36 @@ describe('resolveHero', () => {
   });
 });
 
+/**
+ * VIL-244 · M9 — under the receipts-room IA, Approvals / Week / Trail are top-level
+ * stops. A stop that still renders "‹ Family · back" contradicts the nav it was just
+ * promoted into, so the hero must resolve them as ROOTS when the flag is on — and as
+ * the same drills as ever when it is off.
+ */
+describe('resolveHero under the receipts-room IA', () => {
+  it('promotes the three demoted-tab drills to roots with their own hero copy', () => {
+    for (const path of ['/approvals', '/plan', '/trail']) {
+      const res = resolveHero(path, roots, true);
+      expect(res?.kind).toBe('root');
+      expect((res?.hero as RootHero).subtitle.length).toBeGreaterThan(0);
+    }
+    expect((resolveHero('/plan', roots, true)?.hero as RootHero).title).toBe('Week');
+    expect((resolveHero('/trail', roots, true)?.hero as RootHero).title).toBe('Trail');
+    expect((resolveHero('/approvals', roots, true)?.hero as RootHero).title).toBe('Approvals');
+  });
+
+  it('leaves every other resolution exactly as it was, flag on or off', () => {
+    for (const path of ['/home', '/village', '/settings', '/companion/logs', '/messages', '/saved']) {
+      expect(resolveHero(path, roots, true)).toEqual(resolveHero(path, roots, false));
+    }
+  });
+
+  it('is a no-op when the flag is off — the three stay Family drills', () => {
+    expect(resolveHero('/plan', roots, false)).toEqual(resolveHero('/plan', roots));
+    expect(resolveHero('/plan', roots)?.kind).toBe('drill');
+  });
+});
+
 describe('buildRootHeroes', () => {
   it('interpolates the single child name into the companion subtitle', () => {
     const withChild = buildRootHeroes({ greeting: 'Hi', childName: 'Aurora' });

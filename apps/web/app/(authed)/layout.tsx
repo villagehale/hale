@@ -13,6 +13,7 @@ import { authConfigured } from '~/lib/auth-config';
 import { loadNotifications } from '~/lib/dashboard/notifications';
 import { loadFamilyBasics } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
+import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { loadViewerName, resolveFamilyForUser } from '~/lib/family';
 import { homeGreeting } from '~/lib/home/greeting';
 import { markFamilyActiveToday } from '~/lib/metrics/activity';
@@ -75,6 +76,11 @@ export default async function AuthedLayout({ children }: { children: React.React
   const singleChildName = basics.children.length === 1 ? (basics.children[0]?.name ?? null) : null;
   const roots = buildRootHeroes({ greeting: homeGreeting(viewerName), childName: singleChildName });
 
+  // VIL-244 · M9: the IA flag is a server-read variable, so it is resolved here once
+  // and handed to the two client nav consumers as a boolean — the sidebar and the
+  // running head can never disagree about which IA they are rendering.
+  const receiptsIa = receiptsIaEnabled();
+
   return (
     <>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: pre-paint collapse script must run before hydration to avoid a rail flash */}
@@ -92,12 +98,18 @@ export default async function AuthedLayout({ children }: { children: React.React
             parentImage={session?.user?.image ?? null}
             planTier={basics.planTier}
             kids={kids}
+            receiptsIa={receiptsIa}
           />
         }
         header={
           <>
-            <TopHeader />
-            <AppTopBar roots={roots} notifications={notifications} areaData={areaData} />
+            <TopHeader receiptsIa={receiptsIa} />
+            <AppTopBar
+              roots={roots}
+              notifications={notifications}
+              areaData={areaData}
+              receiptsIa={receiptsIa}
+            />
           </>
         }
       >
@@ -106,7 +118,7 @@ export default async function AuthedLayout({ children }: { children: React.React
           {/* Narrow-viewport hero: the desktop top bar is hidden < 1024px, so the same
            * PageHero renders inline at the top of the stage there (CSS shows exactly
            * one). Pages carry no header of their own. */}
-          <PageHero roots={roots} variant="stage" />
+          <PageHero roots={roots} variant="stage" receiptsIa={receiptsIa} />
           {!authEnabled && (
             <output className="dev-preview-banner">
               Auth disabled — development preview. This route group is unprotected because Google

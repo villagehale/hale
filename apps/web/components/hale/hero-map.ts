@@ -63,6 +63,21 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
 };
 
 /**
+ * VIL-244 · M9 — the three surfaces the receipts-room nav promotes out of the Family
+ * tab. Under that IA they are top-level stops, so they must read as ROOTS (hero title +
+ * subtitle) rather than drills with a back-to-Family breadcrumb pointing at a tab that
+ * is no longer a stop. Static copy — nothing here is interpolated per request.
+ */
+export const RECEIPTS_ROOT_HEROES: Record<string, RootHero> = {
+  '/approvals': {
+    title: 'Approvals',
+    subtitle: 'What Hale has drafted, waiting on your yes or no.',
+  },
+  '/plan': { title: 'Week', subtitle: 'Your week ahead, gathered by Hale.' },
+  '/trail': { title: 'Trail', subtitle: 'Every action, by Hale or by you, on the record.' },
+};
+
+/**
  * Resolve the hero for a pathname: a drill match wins (so /companion/logs reads as
  * a drill, not the /companion root), otherwise the longest matching root prefix.
  * Returns null when the path is outside the app surfaces (no hero shown).
@@ -70,8 +85,11 @@ export const DRILL_HEROES: Record<string, DrillHero> = {
 export function resolveHero(
   pathname: string | null,
   roots: Record<string, RootHero>,
+  receiptsIa = false,
 ): HeroResolution | null {
   if (!pathname) return null;
+  const promoted = receiptsIa ? RECEIPTS_ROOT_HEROES[pathname] : undefined;
+  if (promoted) return { kind: 'root', hero: promoted };
   const drill = DRILL_HEROES[pathname];
   if (drill) return { kind: 'drill', hero: drill };
   const root = ROOT_ROUTES.find((r) => pathname === r || pathname.startsWith(`${r}/`));

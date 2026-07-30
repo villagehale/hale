@@ -19,15 +19,18 @@ export function AppTopBar({
   roots,
   notifications,
   areaData,
+  receiptsIa = false,
 }: {
   roots: Record<RootRoute, RootHero>;
   notifications: NotificationItem[];
   areaData: AreaSwitcherData;
+  /** VIL-244 · M9: passed through to the hero so it matches the reframed nav. */
+  receiptsIa?: boolean;
 }) {
   return (
     <div className="app-topbar">
       <div className="app-topbar-hero">
-        <PageHero roots={roots} variant="topbar" />
+        <PageHero roots={roots} variant="topbar" receiptsIa={receiptsIa} />
       </div>
       <div className="app-topbar-actions">
         <LocationSwitcher data={areaData} />
