@@ -43,6 +43,10 @@
     "file": "parse-village-search.md",
     "sha256": "0f601d5fb3dcc1cccee224c6c0e9d7bd3bd82dc1379a175c6ecefbc04d761c76"
   },
+  "radar-voice.md": {
+    "file": "radar-voice.md",
+    "sha256": "4f77e5317286e43143c7b13c21558339c36ddf645c5d8e9cbcddef4f8ca6c191"
+  },
   "rank-recommendations.md": {
     "file": "rank-recommendations.md",
     "sha256": "3e02bc007a994ef820156a9d1d87346f993f97cdfecdc0e4957ee01f893a7a01"

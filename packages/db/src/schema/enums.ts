@@ -104,6 +104,7 @@ export const agentNameEnum = pgEnum('agent_name', [
   'weekly-plan-voice',
   'welcome-voice',
   'reminder-voice',
+  'radar-voice',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [
