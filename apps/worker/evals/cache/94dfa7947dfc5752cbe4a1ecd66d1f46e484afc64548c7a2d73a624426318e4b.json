@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.97,
+    "intent": "ambiguous",
+    "rationale": "Reply is a question back, not an answer to the yes/no question",
+    "verbatim": "what would you be watching?"
+  },
+  "latencyMs": 1938
+}

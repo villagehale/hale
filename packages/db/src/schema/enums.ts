@@ -14,6 +14,12 @@ export const onboardingStageEnum = pgEnum('onboarding_stage', [
   'observation_mode', // L1: observe-only first 7 days
   'drafts_mode', // L2: drafts for approval
   'autonomous_mode', // L3+: routine autonomous
+  // VIL-237 · the SMS-first intake (the phone number IS the account). The family is
+  // provisioned into 'sms_intake' the moment the details land, and moves to
+  // 'sms_active' only once the watch-offer has been ANSWERED — so the stage itself
+  // records whether proactive contact was ever agreed to, rather than inferring it.
+  'sms_intake',
+  'sms_active',
 ]);
 
 export const eventStatusEnum = pgEnum('event_status', [
@@ -131,6 +137,13 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // explicitly selected Hale scopes. Revocation appends granted=false; the
   // mcp_grants row is the live enforcement seam.
   'mcp_third_party_model',
+  // VIL-237: the parent's answer to the intake watch-offer ("want me to keep an eye
+  // on all of this for you?"). Distinct from sms_service_messages (permission to USE
+  // the channel) and from autonomous_action_class (permission to ACT): this is
+  // permission to watch UNPROMPTED and text when something matters. Read from free
+  // text, so the row always carries `evidence` — the verbatim reply plus the
+  // interpretation made of it. A decline appends granted=false.
+  'proactive_watch',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
@@ -212,6 +225,11 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   'approval',
   'alert',
   'reply',
+  // VIL-237 · the conversational SMS intake exchange, in both directions. Its own
+  // category (not 'reply') because loop enforcement — quiet hours, caps, per-category
+  // prefs — must never apply to it: intake is a live conversation the parent started,
+  // and there are no prefs to read until the family exists.
+  'intake',
 ]);
 
 // Every outcome the dispatch records — a delivered/failed send OR a suppression.

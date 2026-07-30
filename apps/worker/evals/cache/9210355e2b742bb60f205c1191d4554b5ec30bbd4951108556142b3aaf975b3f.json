@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "ok",
+    "rationale": "\"ok\" is a bare acknowledgement, not a clear yes",
+    "confidence": 0.85
+  },
+  "latencyMs": 1765
+}

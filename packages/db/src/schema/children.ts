@@ -15,6 +15,12 @@ export const children = pgTable(
      * and many single-name records predate it. */
     lastName: text('last_name'),
     dateOfBirth: date('date_of_birth').notNull(),
+    /** How the date_of_birth was obtained: 'exact' when a parent typed the real
+     * date, 'derived' when it was inferred from a stated AGE (the SMS intake path —
+     * "she's four" → today − 4y − 6mo, the midpoint of the stated year). Downstream
+     * reads must not present a derived DOB as a birthday. Non-null with an 'exact'
+     * default so every pre-VIL-237 row keeps its meaning. */
+    dobPrecision: text('dob_precision').notNull().default('exact'),
     /** Optional, sensitive (rule #1) gender. Non-null with an explicit
      * 'unspecified' default so a skipped answer is a value, not a SQL null. */
     gender: childGenderEnum('gender').notNull().default('unspecified'),

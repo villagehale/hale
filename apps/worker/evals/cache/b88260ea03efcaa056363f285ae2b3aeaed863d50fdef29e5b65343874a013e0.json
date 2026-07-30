@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "ambiguous",
+    "verbatim": "also we have a third, he is 7",
+    "rationale": "answers a different question (family details), not a yes/no to the request",
+    "confidence": 0.97
+  },
+  "latencyMs": 2054
+}

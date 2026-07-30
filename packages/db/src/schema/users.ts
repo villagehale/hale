@@ -4,7 +4,12 @@ export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    email: text('email').notNull().unique(),
+    /** NULLABLE since VIL-237: an SMS-provisioned parent (the phone number IS the
+     * account) has no address at all. Still UNIQUE — Postgres permits many NULLs in
+     * a unique index, so "one account per address" holds for everyone who has one.
+     * Every email-sending path must therefore treat a null address as "skip", not
+     * as an error (rule #8 boundary, not a masked null). */
+    email: text('email').unique(),
     name: text('name'),
     locale: text('locale').notNull().default('en-CA'),
     timezone: text('timezone').notNull().default('America/Toronto'),

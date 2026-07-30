@@ -1,0 +1,9 @@
+{
+  "value": {
+    "intent": "decline",
+    "verbatim": "no",
+    "rationale": "Direct refusal to the question asked",
+    "confidence": 0.98
+  },
+  "latencyMs": 2505
+}

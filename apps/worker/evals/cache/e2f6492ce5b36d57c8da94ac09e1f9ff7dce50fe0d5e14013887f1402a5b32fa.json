@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.97,
+    "intent": "ambiguous",
+    "rationale": "Reply is a postal code, unrelated intake detail, not an answer to the yes/no question",
+    "verbatim": "M5V 2T6"
+  },
+  "latencyMs": 1911
+}

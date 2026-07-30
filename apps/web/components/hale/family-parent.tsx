@@ -20,7 +20,7 @@ type State =
  * comes free from Google and is shown read-only — it is the account identity and is
  * never re-entered.
  */
-export function FamilyParent({ name, email }: { name: string | null; email: string }) {
+export function FamilyParent({ name, email }: { name: string | null; email: string | null }) {
   const [value, setValue] = useState(name ?? '');
   const [state, setState] = useState<State>({ kind: 'idle' });
 
@@ -63,13 +63,15 @@ export function FamilyParent({ name, email }: { name: string | null; email: stri
         placeholder="your name"
         autoComplete="name"
       />
-      <div>
-        <p className="field-label">email</p>
-        <p className="font-display text-[1.25rem] mt-1 break-words" data-hale-pii>
-          {email}
-        </p>
-        <p className="meta mt-1">from your Google account — your account identity.</p>
-      </div>
+      {email ? (
+        <div>
+          <p className="field-label">email</p>
+          <p className="font-display text-[1.25rem] mt-1 break-words" data-hale-pii>
+            {email}
+          </p>
+          <p className="meta mt-1">from your Google account — your account identity.</p>
+        </div>
+      ) : null}
       {state.kind === 'saved' ? (
         <output className="meta text-slate-green block">saved.</output>
       ) : null}

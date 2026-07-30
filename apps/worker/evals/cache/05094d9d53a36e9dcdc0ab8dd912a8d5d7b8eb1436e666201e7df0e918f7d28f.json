@@ -1,0 +1,9 @@
+{
+  "value": {
+    "confidence": 0.98,
+    "intent": "assent",
+    "rationale": "\"yep!\" is a direct affirmative answer to the yes/no question asked",
+    "verbatim": "yep!"
+  },
+  "latencyMs": 1931
+}

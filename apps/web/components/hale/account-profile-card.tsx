@@ -3,8 +3,8 @@ import type { ViewerProfile } from '~/lib/family';
 
 /** The first initial for the neutral monogram avatar — we hold no parent photo, so
  * a calm monogram stands in (never a fabricated face), matching the child header. */
-function initialOf(name: string | null, email: string): string {
-  const from = name?.trim() || email;
+function initialOf(name: string | null, email: string | null): string {
+  const from = name?.trim() || email?.trim() || '';
   return from.charAt(0).toUpperCase() || '·';
 }
 
@@ -99,7 +99,9 @@ export function AccountProfileCard({
               </span>
             ) : null}
           </div>
-          <p className="meta mt-0.5 text-slate-green break-words">{profile.email}</p>
+          {profile.email ? (
+            <p className="meta mt-0.5 text-slate-green break-words">{profile.email}</p>
+          ) : null}
         </div>
       </div>
 

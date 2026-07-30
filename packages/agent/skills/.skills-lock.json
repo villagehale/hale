@@ -31,6 +31,10 @@
     "file": "infer-memory.md",
     "sha256": "e59396e8e8de4ccd095c5740ef8d79d911b9d21f77ad751cbdd97d3f37c1adb2"
   },
+  "intake-extraction.md": {
+    "file": "intake-extraction.md",
+    "sha256": "26aa8805d13d141215aec2afc578bf16885f7398856b8c7b145306cab111a548"
+  },
   "log-care.md": {
     "file": "log-care.md",
     "sha256": "7e026f111a88cd15b0a6c06ad3692fff9f27cfa907a837cb46976c0d9a55f5db"
@@ -46,6 +50,10 @@
   "reminder-voice.md": {
     "file": "reminder-voice.md",
     "sha256": "5f615fe10ab15c420a76cfbb13bc53c8abd463b63f7e7b2795176a04e61ab6a6"
+  },
+  "reply-intent.md": {
+    "file": "reply-intent.md",
+    "sha256": "322e26a774f0c1a5d492dda049ce98d548fd7830c6ee76aa68c600c406e9b13f"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",

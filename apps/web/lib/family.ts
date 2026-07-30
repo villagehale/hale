@@ -114,7 +114,8 @@ export async function loadViewerName(database: Database = defaultDb()): Promise<
  * fabricate). */
 export interface ViewerProfile {
   name: string | null;
-  email: string;
+  /** Null for an SMS-provisioned parent (VIL-237) — `users.email` is nullable. */
+  email: string | null;
   timezone: string;
   locale: string;
   units: UnitSystem;
