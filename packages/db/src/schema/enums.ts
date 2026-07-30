@@ -5,6 +5,14 @@ export const familyRoleEnum = pgEnum('family_role', [
   'co_parent',
   'extended',
   'service',
+  // VIL-241 · M6 — the NAMED caregiver roles. 'extended' and 'service' were the
+  // original vague buckets and are deliberately left in place (rule #9: nothing is
+  // dropped), but no flow grants them and they carry NO scope: a role is a redaction
+  // level (apps/web/lib/channel/role-scope.ts), and a bucket whose meaning nobody can
+  // state cannot have one. New grants use these three.
+  'grandparent',
+  'nanny',
+  'babysitter',
 ]);
 
 export const onboardingStageEnum = pgEnum('onboarding_stage', [
@@ -146,6 +154,16 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // text, so the row always carries `evidence` — the verbatim reply plus the
   // interpretation made of it. A decline appends granted=false.
   'proactive_watch',
+  // VIL-241 · the PARENT's authorization to disclose a scoped slice of their family's
+  // week to a NAMED third party (a grandparent/nanny/babysitter) on a NAMED number.
+  // Disclosure to someone outside the household is a decision only a parent can make,
+  // so it is its own record — never inferred from the family_members row.
+  'caregiver_access_grant',
+  // VIL-241 · the CAREGIVER's OWN CASL express consent to be texted, given by replying
+  // to the invite from the number itself. Distinct from sms_service_messages (a
+  // parent's channel consent): the scope column carries the ROLE, because what they
+  // agreed to receive is defined by that role's scope and nothing wider.
+  'caregiver_scoped_messages',
 ]);
 
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
@@ -236,6 +254,11 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // because the outbound gate's frequency cap COUNTS it: sharing 'reminder' would let
   // a D1 event reminder eat a family's weekly nudge budget, and vice versa.
   'nudge',
+  // VIL-241 · the caregiver-invite exchange (parent-side and caregiver-side). Its own
+  // category so loop enforcement never applies to it — an invite is a live
+  // conversation the parent started — and so a caregiver's ledger is separable from
+  // the parents' for a PIPEDA right-to-access read.
+  'caregiver',
 ]);
 
 // Every outcome the dispatch records — a delivered/failed send OR a suppression.

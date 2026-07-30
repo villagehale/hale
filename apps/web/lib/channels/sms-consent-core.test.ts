@@ -375,6 +375,20 @@ describe('revokeSmsChannel', () => {
   });
 });
 
+/** An active-looking parent_channels row for PHONE. The blind index is part of the
+ * fixture because the lookup re-checks it: a household now holds several channels
+ * (VIL-241 caregivers), so routing to the wrong row is a cross-person disclosure. */
+function channelRow(overrides: { verifiedAt: Date | null; revokedAt: Date | null; hash?: string }) {
+  return {
+    userId: USER_ID,
+    familyId: FAMILY_ID,
+    id: 'channel-1',
+    phoneE164Hash: overrides.hash ?? phoneBlindIndex(PHONE),
+    verifiedAt: overrides.verifiedAt,
+    revokedAt: overrides.revokedAt,
+  };
+}
+
 describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
   beforeEach(() => {
     process.env.APP_ENCRYPTION_KEY = KEY;
@@ -387,7 +401,7 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
         t === schema.parentChannels
-          ? [{ userId: USER_ID, familyId: FAMILY_ID, id: 'channel-1', verifiedAt: NOW, revokedAt: null }]
+          ? [channelRow({ verifiedAt: NOW, revokedAt: null })]
           : [],
     });
 
@@ -401,7 +415,7 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
         t === schema.parentChannels
-          ? [{ userId: USER_ID, familyId: FAMILY_ID, id: 'channel-1', verifiedAt: NOW, revokedAt: NOW }]
+          ? [channelRow({ verifiedAt: NOW, revokedAt: NOW })]
           : [],
     });
     expect(await resolveVerifiedChannelByPhone(db, PHONE)).toBeNull();
@@ -411,7 +425,17 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
     const { db } = makeFakeDb({
       selectRows: (t) =>
         t === schema.parentChannels
-          ? [{ userId: USER_ID, familyId: FAMILY_ID, id: 'channel-1', verifiedAt: null, revokedAt: null }]
+          ? [channelRow({ verifiedAt: null, revokedAt: null })]
+          : [],
+    });
+    expect(await resolveVerifiedChannelByPhone(db, PHONE)).toBeNull();
+  });
+
+  it("does NOT resolve someone ELSE's channel that came back from a widened query", async () => {
+    const { db } = makeFakeDb({
+      selectRows: (t) =>
+        t === schema.parentChannels
+          ? [channelRow({ verifiedAt: NOW, revokedAt: null, hash: phoneBlindIndex('+15195559999') })]
           : [],
     });
     expect(await resolveVerifiedChannelByPhone(db, PHONE)).toBeNull();
