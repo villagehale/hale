@@ -43,3 +43,7 @@ export function loadReminderVoiceSkill(): Promise<Skill> {
 export function loadRadarVoiceSkill(): Promise<Skill> {
   return loadCronSkill('radar-voice');
 }
+
+export function loadNudgeVoiceSkill(): Promise<Skill> {
+  return loadCronSkill('nudge-voice');
+}

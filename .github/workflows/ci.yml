@@ -75,6 +75,9 @@ jobs:
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 
+      - name: Proactive nudge composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:nudge
+
       - name: Build
         run: pnpm build
         env:

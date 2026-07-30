@@ -105,6 +105,7 @@ export const agentNameEnum = pgEnum('agent_name', [
   'welcome-voice',
   'reminder-voice',
   'radar-voice',
+  'nudge-voice',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [
@@ -231,6 +232,10 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // prefs — must never apply to it: intake is a live conversation the parent started,
   // and there are no prefs to read until the family exists.
   'intake',
+  // VIL-239 · F14's unprompted "Hale noticed something" message. Its own category
+  // because the outbound gate's frequency cap COUNTS it: sharing 'reminder' would let
+  // a D1 event reminder eat a family's weekly nudge budget, and vice versa.
+  'nudge',
 ]);
 
 // Every outcome the dispatch records — a delivered/failed send OR a suppression.
