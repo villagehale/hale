@@ -20,7 +20,17 @@ export interface ResendTransport {
     html?: string;
     text: string;
     bcc?: string;
+    attachments?: ResendAttachment[];
   }): Promise<{ id: string | null; error: { name: string; message: string } | null }>;
+}
+
+/** A file the message carries alongside its body. `content` is base64 (the wire form
+ * the Resend API takes); `contentType` is the part's MIME type — a calendar invite
+ * needs its iTIP method on it, e.g. `text/calendar; charset=utf-8; method=REQUEST`. */
+export interface ResendAttachment {
+  filename: string;
+  content: string;
+  contentType: string;
 }
 
 /** The no-op used when the transport has no way to reach the provider (no api key
