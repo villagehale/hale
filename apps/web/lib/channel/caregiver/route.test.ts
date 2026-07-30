@@ -8,12 +8,14 @@ import { encryptString } from '~/lib/crypto/string-cipher';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   ADD_EXAMPLE,
+  ALREADY_INVITED,
   CAREGIVER_WELCOME,
   CO_PARENT_REDIRECT,
   NUMBER_IN_USE,
   OWN_NUMBER,
+  TOO_MANY_INVITES,
 } from './copy';
-import { INVITE_SILENCE_MS } from './invites';
+import { INVITE_DAILY_CAP, INVITE_SILENCE_MS } from './invites';
 
 /**
  * VIL-241 · M6 — the caregiver invite driven end to end through the ONE inbound entry
@@ -252,6 +254,95 @@ describe('caregiver invite · the ways it does not happen', () => {
     expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'number_in_use' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: NUMBER_IN_USE });
     expect(inserts(fake, schema.familyMembers).some((r) => r.role === 'nanny')).toBe(false);
+  });
+
+  it('confirms the caregiver the parent described LAST, not the one they moved on from', async () => {
+    const { fake, transport, deps } = harness();
+    await seedFamily(fake);
+    await text(fake, transport, deps, PARENT_PHONE, 'add grandma 647-555-0199 as grandparent');
+    // They changed their mind mid-thought and described someone else instead of answering.
+    await text(fake, transport, deps, PARENT_PHONE, 'add Priya 416-555-0143 as nanny');
+
+    await text(fake, transport, deps, PARENT_PHONE, 'yes');
+
+    const invited = transport.sent.filter((s) => s.to !== PARENT_PHONE);
+    expect(invited).toHaveLength(1);
+    expect(invited[0]?.to).toBe('+14165550143');
+    expect(invited[0]?.body).toContain('as nanny');
+    // The abandoned one is closed as superseded, not left open to be confirmed later.
+    expect(auditActions(fake)).toContain('caregiver_invite_superseded');
+  });
+
+  it('will not ask the same person twice while they are still deciding', async () => {
+    const { fake, transport, deps } = harness();
+    await upToInvite(fake, transport, deps);
+    const sentSoFar = transport.sent.length;
+
+    const again = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add grandma 647-555-0199 as nanny',
+    );
+
+    expect(again).toEqual({ status: 'caregiver_add_refused', reason: 'already_invited' });
+    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: ALREADY_INVITED });
+    // One reply to the parent, and not a second text to grandma.
+    expect(transport.sent.slice(sentSoFar).every((s) => s.to === PARENT_PHONE)).toBe(true);
+  });
+
+  it('meters invites per family per day, so a text cannot point Hale at a phone book', async () => {
+    const { fake, transport, deps } = harness();
+    await seedFamily(fake);
+
+    const numbers = ['647-555-0101', '647-555-0102', '647-555-0103', '647-555-0104', '647-555-0105'];
+    for (const number of numbers) {
+      await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
+      expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
+        status: 'caregiver_invite_sent',
+      });
+    }
+    const strangersTexted = transport.sent.filter((s) => s.to !== PARENT_PHONE).length;
+    expect(strangersTexted).toBe(INVITE_DAILY_CAP);
+
+    const capped = await text(fake, transport, deps, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
+
+    expect(capped).toEqual({ status: 'caregiver_add_refused', reason: 'too_many' });
+    expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: TOO_MANY_INVITES });
+    // The meter stopped a SIXTH stranger being texted, which is the only thing it is for.
+    expect(transport.sent.filter((s) => s.to !== PARENT_PHONE)).toHaveLength(INVITE_DAILY_CAP);
+  });
+
+  it('does not charge a fumbled wording against the meter — nobody was texted', async () => {
+    const { fake, transport, deps } = harness();
+    await seedFamily(fake);
+
+    for (const number of ['647-555-0101', '647-555-0102', '647-555-0103', '647-555-0104', '647-555-0105']) {
+      await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
+    }
+
+    // Five descriptions, zero confirmations: every one superseded the last, so no
+    // stranger has heard from Hale and the sixth attempt is still allowed.
+    await text(fake, transport, deps, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
+    expect(await text(fake, transport, deps, PARENT_PHONE, 'yes')).toEqual({
+      status: 'caregiver_invite_sent',
+    });
+    expect(transport.sent.filter((s) => s.to !== PARENT_PHONE)).toHaveLength(1);
+  });
+
+  it('lets the meter roll off a day later', async () => {
+    const { fake, transport, deps } = harness();
+    await seedFamily(fake);
+    for (const number of ['647-555-0101', '647-555-0102', '647-555-0103', '647-555-0104', '647-555-0105']) {
+      await text(fake, transport, deps, PARENT_PHONE, `add helper ${number} as nanny`);
+      await text(fake, transport, deps, PARENT_PHONE, 'yes');
+    }
+
+    const tomorrow: IntakeDeps = { ...deps, now: new Date(NOW.getTime() + 25 * 60 * 60 * 1000) };
+    const outcome = await text(fake, transport, tomorrow, PARENT_PHONE, 'add helper 647-555-0106 as nanny');
+
+    expect(outcome).toEqual({ status: 'caregiver_invite_started' });
   });
 
   it("refuses the parent's own number", async () => {

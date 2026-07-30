@@ -11,13 +11,23 @@ import { deriveStage } from '@hale/types';
  * deterministic table rather than a set of `if (role === …)` checks scattered across
  * the senders: a scope you cannot read off one page is a scope nobody can audit.
  *
- * WHERE THIS SITS. The dispatch (dispatch.ts) is the single point every send passes
- * through; this module is the per-recipient filter that runs BEFORE a message is
- * composed for someone. It is the role dimension of the F14 outbound gate — when that
- * module lands, it composes with this one rather than replacing it: the gate answers
- * "may this family be texted at all", this answers "how much of it may THIS person
- * see". (F14's `apps/web/lib/channel/outbound-gate.ts` is not on main as of this
- * change; the caregiver senders that follow must route through both.)
+ * WHERE THIS SITS. This is the ROLE dimension of the F14 outbound chokepoint
+ * (`outbound-gate.ts`), and the two compose rather than overlap — they answer
+ * different questions and neither substitutes for the other:
+ *
+ *   outbound-gate  — MAY a message leave at all? (enrolment, consent, cap, quiet hours)
+ *   role-scope     — HOW MUCH of the household may THIS recipient see?
+ *
+ * So the caregiver content senders that follow M6 must call BOTH: add a caregiver kind
+ * to `ProactiveSendKind` + `PROACTIVE_CAP` for the volume budget, and filter the
+ * artifact through `scopeWeekItemsForRole` for the content. A sender that passes the
+ * gate and skips this one sends a grandmother a teenager's week.
+ *
+ * The M6 invite exchange itself does NOT route through the gate, and the reason is
+ * structural rather than an exemption: every check the gate makes is about an ENROLLED
+ * parent (`channelEnrolled`, `watchConsentGranted`, that parent's quiet hours), and the
+ * invite is by definition addressed to someone with no channel — it is the message that
+ * creates one. Its bound is a per-family invite cap instead (see caregiver/invites.ts).
  *
  * TWO GATES, ONE DIRECTION. The teen age gate composes ON TOP of the role scope and
  * is applied first, deterministically, from the child's DATE OF BIRTH via

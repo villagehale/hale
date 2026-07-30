@@ -77,6 +77,15 @@ export const NUMBER_IN_USE =
 
 export const OWN_NUMBER = "That's your own number — you're already here.";
 
+/** They have already been asked and have not answered. Asking again would be the
+ * second unsolicited text they never agreed to. */
+export const ALREADY_INVITED =
+  "I've already texted them — I'll let you know as soon as they answer.";
+
+/** The per-family invite meter. Says the bound plainly instead of failing silently. */
+export const TOO_MANY_INVITES =
+  "That's a lot of people in one day — I'll pick this up tomorrow. Nobody new has been texted.";
+
 /** The whole of what a caregiver can ask Hale in v1: nothing. Said warmly, once per
  * message, so they know where the boundary is rather than being ignored. */
 export function scopedReply(parentName: string | null): string {

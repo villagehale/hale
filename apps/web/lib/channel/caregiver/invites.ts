@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gte, isNull } from 'drizzle-orm';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import type { CaregiverRole } from '~/lib/channel/role-scope';
 import { POLICY_VERSION } from '~/lib/consent';
@@ -44,11 +44,31 @@ export type CaregiverInviteState =
   | 'accepted'
   /** Either side said no (or the caregiver sent STOP). Terminal. */
   | 'declined'
+  /** The parent described someone else before confirming this one. Terminal, and kept
+   * DISTINCT from 'declined' because nobody was ever texted — which is exactly what the
+   * volume meter below needs to know. */
+  | 'superseded'
   /** 72h of silence on whichever side we were waiting for. Terminal. */
   | 'expired';
 
 /** Either side silent for this long and the invite lapses. */
 export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * How many strangers one family may have Hale text in a rolling day.
+ *
+ * This is the bound that stands in for the F14 outbound gate on this path. M6 gives a
+ * text the power to make Hale message an ARBITRARY number, which is the same power the
+ * gate exists to meter — but every one of the gate's checks is about an enrolled
+ * parent, and an invitee has no channel by construction.
+ *
+ * What is metered is the thing that actually costs someone something: an invite that
+ * REACHED a stranger. A superseded invite (described, then thought better of) texted
+ * nobody, so it does not consume the budget — a parent fumbling the wording five times
+ * is not the abuse case, and charging them for it would leave them stuck.
+ */
+export const INVITE_DAILY_CAP = 5;
+const INVITE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface CaregiverInvite {
   id: string;
@@ -73,6 +93,7 @@ type InviteRow = {
   state: string;
   expiresAt: Date;
   closedAt: Date | null;
+  createdAt: Date;
 };
 
 function toInvite(row: InviteRow): CaregiverInvite {
@@ -99,6 +120,7 @@ const INVITE_COLUMNS = {
   state: schema.caregiverInvites.state,
   expiresAt: schema.caregiverInvites.expiresAt,
   closedAt: schema.caregiverInvites.closedAt,
+  createdAt: schema.caregiverInvites.createdAt,
 };
 
 async function openInvites(database: Database): Promise<InviteRow[]> {
@@ -134,7 +156,13 @@ export async function loadOpenInviteByPhone(
   return throughExpiry(database, row, now);
 }
 
-/** The invite THIS parent still owes a yes/no on, if any. */
+/**
+ * The invite THIS parent still owes a yes/no on. At most one can exist — starting a new
+ * one supersedes the last (see {@link startCaregiverInvite}) — which is what makes a
+ * bare "yes" answerable at all. Ordering two pending invites by timestamp was the
+ * tempting fix and the wrong one: two invites described in the same minute tie, and the
+ * loser of that tie is a stranger getting texted a family's schedule.
+ */
 export async function loadPendingAssent(
   database: Database,
   invitedByUserId: string,
@@ -178,10 +206,41 @@ export async function activeChannelOwner(
   return row ? { userId: row.userId, familyId: row.familyId } : null;
 }
 
+/** Invites this family actually sent inside the cap window — the meter's reading. A row
+ * still awaiting the parent's confirmation has texted nobody yet either. */
+async function invitesDeliveredSince(
+  database: Database,
+  familyId: string,
+  since: Date,
+): Promise<number> {
+  const rows = await database
+    .select({
+      familyId: schema.caregiverInvites.familyId,
+      state: schema.caregiverInvites.state,
+      createdAt: schema.caregiverInvites.createdAt,
+    })
+    .from(schema.caregiverInvites)
+    .where(
+      and(
+        eq(schema.caregiverInvites.familyId, familyId),
+        gte(schema.caregiverInvites.createdAt, since),
+      ),
+    );
+  return rows.filter(
+    (r) =>
+      r.familyId === familyId &&
+      new Date(r.createdAt).getTime() >= since.getTime() &&
+      r.state !== 'awaiting_parent_assent' &&
+      r.state !== 'superseded',
+  ).length;
+}
+
 export type StartInviteResult =
   | { status: 'started'; invite: CaregiverInvite; reply: string }
   | { status: 'own_number' }
-  | { status: 'number_in_use' };
+  | { status: 'number_in_use' }
+  | { status: 'already_invited' }
+  | { status: 'too_many' };
 
 /**
  * Open an invite and state the scope back to the parent. NOTHING is sent to the
@@ -206,6 +265,32 @@ export async function startCaregiverInvite(
   if (await activeChannelOwner(database, parsed.phoneE164)) return { status: 'number_in_use' };
 
   const hash = phoneBlindIndex(parsed.phoneE164);
+  const open = await openInvites(database);
+  // One open invite per number (the partial unique index says so). Asking twice would
+  // also be the second unsolicited text this person never agreed to receive.
+  if (open.some((r) => r.phoneE164Hash === hash)) return { status: 'already_invited' };
+
+  const since = new Date(now.getTime() - INVITE_CAP_WINDOW_MS);
+  if ((await invitesDeliveredSince(database, input.familyId, since)) >= INVITE_DAILY_CAP) {
+    return { status: 'too_many' };
+  }
+
+  // Describing a second caregiver before confirming the first ABANDONS the first — that
+  // is what happened in the conversation, so it is what the rows say. Superseding here
+  // is why "yes" can only ever mean one thing (see loadPendingAssent).
+  const superseded = open.find(
+    (r) => r.invitedByUserId === input.invitedByUserId && r.state === 'awaiting_parent_assent',
+  );
+  if (superseded) {
+    await closeInvite(
+      database,
+      toInvite(superseded),
+      'superseded',
+      now,
+      'caregiver_invite_superseded',
+    );
+  }
+
   const [row] = await database
     .insert(schema.caregiverInvites)
     .values({
@@ -217,6 +302,10 @@ export async function startCaregiverInvite(
       phoneE164Hash: hash,
       state: 'awaiting_parent_assent',
       expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+      // Written explicitly rather than left to the column default: the cap above reads
+      // it back, and a meter that depends on the clock the row was written by cannot be
+      // reasoned about (or tested) deterministically.
+      createdAt: now,
     })
     .returning({ id: schema.caregiverInvites.id });
   const id = row?.id;
@@ -314,7 +403,7 @@ export async function recordParentAssent(
 async function closeInvite(
   database: Database,
   invite: CaregiverInvite,
-  state: Extract<CaregiverInviteState, 'declined' | 'expired'>,
+  state: Extract<CaregiverInviteState, 'declined' | 'expired' | 'superseded'>,
   now: Date,
   actionTaken: string,
   actor?: string,
@@ -334,10 +423,12 @@ async function closeInvite(
 }
 
 /**
- * A no from either side. The caregiver's no is a CASL refusal from the number itself,
- * so it writes a granted=false consent row in their own name-less right (there is no
- * user row for someone who never accepted — the refusal lives on the invite + audit).
- * The parent's no needs no consent row: nothing was ever authorised.
+ * A no from either side. Neither writes a consent row, and that is correct rather than
+ * an omission: a consent_records row belongs to a USER, and nobody who refused an
+ * invitation has one — creating an identity for someone in order to record that they
+ * declined would be exactly backwards. The refusal lives on the invite's terminal state
+ * plus its audit row, which is what a PIPEDA read of "what did you do with my number"
+ * needs to answer.
  */
 export async function declineInvite(
   database: Database,

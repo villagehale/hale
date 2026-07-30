@@ -5,12 +5,14 @@ import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import {
   ADD_EXAMPLE,
+  ALREADY_INVITED,
   CAREGIVER_ANSWER_PROMPT,
   CAREGIVER_DECLINE_ACK,
   CAREGIVER_WELCOME,
   CO_PARENT_REDIRECT,
   NUMBER_IN_USE,
   OWN_NUMBER,
+  TOO_MANY_INVITES,
   inviteDroppedAck,
   inviteSentAck,
   scopedReply,
@@ -56,7 +58,13 @@ export type CaregiverOutcome =
   | { status: 'caregiver_invite_dropped' }
   | {
       status: 'caregiver_add_refused';
-      reason: 'own_number' | 'number_in_use' | 'unsupported_role' | 'unparseable';
+      reason:
+        | 'own_number'
+        | 'number_in_use'
+        | 'already_invited'
+        | 'too_many'
+        | 'unsupported_role'
+        | 'unparseable';
     }
   | { status: 'caregiver_accepted' }
   | { status: 'caregiver_declined' }
@@ -384,19 +392,23 @@ async function startFromCommand(
   const { owner, inbound, now } = args;
   if (!looksLikeAddCommand(inbound.body)) return null;
 
+  // Ledgered before anything acts on it: the parent's instruction is the first link in
+  // the chain that ends with a stranger being texted, so it is recorded whether or not
+  // we end up able to read it.
+  await record(database, {
+    familyId: owner.familyId,
+    parentUserId: owner.userId,
+    direction: 'in',
+    providerId: inbound.providerId,
+    body: inbound.body,
+    now,
+  });
+
   const parsed = parseAddCaregiver(inbound.body);
   const answer = async (
     body: string,
     outcome: CaregiverOutcome,
   ): Promise<CaregiverOutcome> => {
-    await record(database, {
-      familyId: owner.familyId,
-      parentUserId: owner.userId,
-      direction: 'in',
-      providerId: inbound.providerId,
-      body: inbound.body,
-      now,
-    });
     await reply(database, deps, {
       to: args.parentPhoneE164,
       body,
@@ -429,6 +441,15 @@ async function startFromCommand(
   }
   if (started.status === 'number_in_use') {
     return answer(NUMBER_IN_USE, { status: 'caregiver_add_refused', reason: 'number_in_use' });
+  }
+  if (started.status === 'already_invited') {
+    return answer(ALREADY_INVITED, {
+      status: 'caregiver_add_refused',
+      reason: 'already_invited',
+    });
+  }
+  if (started.status === 'too_many') {
+    return answer(TOO_MANY_INVITES, { status: 'caregiver_add_refused', reason: 'too_many' });
   }
   return answer(started.reply, { status: 'caregiver_invite_started' });
 }
