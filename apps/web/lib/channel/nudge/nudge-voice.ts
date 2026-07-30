@@ -8,6 +8,7 @@ import { renderHealthNudge } from '~/lib/health/copy';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import type { HealthCheckpointNudge, Nudge } from './nudge-decide';
+import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from './shell';
 
 /**
  * VIL-239 · M4 — COMPOSE: the decision object, said out loud in Hale's voice.
@@ -27,18 +28,9 @@ import type { HealthCheckpointNudge, Nudge } from './nudge-decide';
 
 const VOICE_MAX_TOKENS = 300;
 
-/**
- * The CASL opt-out, appended to every proactive nudge. Not the model's to write and
- * not optional: an unsolicited commercial electronic message has to carry a working
- * unsubscribe, and 'STOP' is the keyword the intake machine actually honours
- * (lib/channel/intake/keywords.ts), so the copy names it verbatim.
- */
-export const NUDGE_OPT_OUT = 'Reply STOP to opt out.';
-
-/** The whole payload — this message plus the appended opt-out — must fit two SMS
- * segments. The deterministic render always fits, so the fallback is never itself
- * over budget. */
-export const MAX_NUDGE_SEGMENTS = 2;
+// Re-exported so every existing importer keeps its import path: these moved to ./shell
+// only to break the cycle between this file and the static health renderer.
+export { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT };
 
 export interface NudgeVoice {
   message: string;

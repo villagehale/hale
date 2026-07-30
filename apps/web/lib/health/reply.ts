@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, isNull, like } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -198,9 +198,65 @@ export async function recordCheckpointDone(
   });
 }
 
-/** Every checkpoint this family has told us is handled. Read once per sweep and handed
- * to the matcher, which drops those rows before anything else runs. */
-export async function loadDoneCheckpointRefs(
+/**
+ * Every checkpoint this family should not be raised about again — the ONE input the
+ * matcher takes, and it is a union of two different facts on purpose:
+ *
+ *   TOLD  — a nudge for it already went out. A health window is months wide, so a
+ *           checkpoint that stayed the top candidate after being sent would keep
+ *           winning the priority order, dead-end the sweep on the send-time dedupe
+ *           guard, and silence every OTHER nudge class for the whole band — up to
+ *           three years for the 4-to-6-year row, invisibly, because a deduped outcome
+ *           writes no audit row. Being told once is the design; being told once and
+ *           then muted is a bug, and it belongs here in SELECTION rather than at the
+ *           send guard, which cannot fall through to a lower-priority candidate.
+ *   DONE  — the parent said it is handled.
+ *
+ * Both are "do not raise this again", so they are one set. Keeping them apart would
+ * mean two places that can disagree about whether a family is owed a message.
+ */
+export async function loadSuppressedCheckpointRefs(
+  database: Database,
+  familyId: string,
+): Promise<Set<string>> {
+  const [told, done] = await Promise.all([
+    loadSentCheckpointRefs(database, familyId),
+    loadDoneCheckpointRefs(database, familyId),
+  ]);
+  for (const ref of done) told.add(ref);
+  return told;
+}
+
+/** The checkpoints this family has already been texted about, read off the ledger the
+ * sweep writes. Same status set the dedupe guard uses, so selection and idempotency
+ * cannot disagree about what counts as sent. */
+async function loadSentCheckpointRefs(
+  database: Database,
+  familyId: string,
+): Promise<Set<string>> {
+  const prefix = healthNudgeDedupeKeyPrefix(familyId);
+  const rows = await database
+    .select({ dedupeKey: schema.channelMessages.dedupeKey })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.familyId, familyId),
+        eq(schema.channelMessages.direction, 'out'),
+        eq(schema.channelMessages.category, 'nudge'),
+        like(schema.channelMessages.dedupeKey, `${prefix}%`),
+        inArray(schema.channelMessages.status, ['queued', 'sent', 'delivered']),
+      ),
+    );
+  const refs = new Set<string>();
+  for (const row of rows) {
+    const ref = row.dedupeKey?.slice(prefix.length);
+    if (ref && parseCheckpointRef(ref)) refs.add(ref);
+  }
+  return refs;
+}
+
+/** Every checkpoint this family has told us is handled. */
+async function loadDoneCheckpointRefs(
   database: Database,
   familyId: string,
 ): Promise<Set<string>> {

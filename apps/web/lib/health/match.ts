@@ -74,7 +74,8 @@ export interface HealthCheckpointMatch {
   /** This checkpoint's identity for this family right now. Built HERE and carried
    * everywhere, so nothing downstream ever rebuilds it and gets the scope wrong. */
   ref: string;
-  /** Under-13 matched children, by the names the parent gave. Empty for a teen-only
+  /** The children this message may name — exactly the ones {@link ref} suppresses, so
+   * a "done" always covers everyone the parent was told about. Empty for a teen-only
    * match, and empty when the parent named nobody. */
   kidNames: string[];
   /** True when EVERY matched child is 13+ — the render goes generic (rule #1). */
@@ -122,8 +123,9 @@ interface Admitted {
 export function matchHealthCheckpoints(input: {
   children: readonly HealthChild[];
   areaCoarse: string | null;
-  /** The checkpoint refs this family has already told us are handled. */
-  doneRefs: ReadonlySet<string>;
+  /** Checkpoints this family must not be raised about again: already told, or told to
+   * us as done. See loadSuppressedCheckpointRefs for why those are one set. */
+  suppressedRefs: ReadonlySet<string>;
   now: Date;
 }): HealthCheckpointMatch[] {
   const regions = healthRegionsFor(input.areaCoarse);
@@ -142,7 +144,7 @@ export function matchHealthCheckpoints(input: {
       if (!inBand(checkpoint, child)) continue;
 
       const ref = checkpointRef(checkpoint, child.id, occurrence);
-      if (input.doneRefs.has(ref)) continue;
+      if (input.suppressedRefs.has(ref)) continue;
       admitted.push({ child, ref, monthsLeft: checkpoint.maxMonths - child.ageMonths });
     }
     if (admitted.length === 0) continue;
@@ -152,11 +154,21 @@ export function matchHealthCheckpoints(input: {
       entries.reduce((best, entry) => (entry.monthsLeft < best.monthsLeft ? entry : best));
     const primary = soonest(named.length > 0 ? named : admitted);
 
+    // THE ROLL CALL IS EXACTLY THE REF'S SCOPE, and that is the invariant rather than a
+    // stylistic choice. A household-scoped ref (the annual records check) is suppressed
+    // for everyone at once, so the message may name everyone. A child-scoped ref is
+    // suppressed for ONE child, so naming a sibling would promise something the
+    // suppression cannot keep: twins both at six months would be named together, the
+    // parent would reply "done", and the sibling's still-open ref would raise the same
+    // paperwork again the following week. Scope the words to the identity and the
+    // mismatch cannot exist.
+    const covered = checkpoint.annual ? named : named.filter((entry) => entry === primary);
+
     matches.push({
       checkpoint,
       primaryChildId: primary.child.id,
       ref: primary.ref,
-      kidNames: named
+      kidNames: covered
         .map((entry) => entry.child.name)
         .filter((name): name is string => typeof name === 'string' && name.trim().length > 0),
       teenOnly: named.length === 0,

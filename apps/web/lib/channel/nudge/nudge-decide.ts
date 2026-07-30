@@ -132,8 +132,8 @@ export interface DecideNudgeInput {
   healthChildren: readonly HealthChild[];
   /** The family's FSA. Health checkpoints are region-gated; null means none apply. */
   areaCoarse: string | null;
-  /** Checkpoint refs the family has already told us are handled. */
-  doneCheckpointRefs: ReadonlySet<string>;
+  /** Checkpoints the family must not be raised about again (already told, or done). */
+  suppressedCheckpointRefs: ReadonlySet<string>;
   now: Date;
   timeZone: string;
 }
@@ -190,7 +190,7 @@ function decideHealthCheckpoint(input: DecideNudgeInput): HealthCheckpointNudge 
   const [match] = matchHealthCheckpoints({
     children: input.healthChildren,
     areaCoarse: input.areaCoarse,
-    doneRefs: input.doneCheckpointRefs,
+    suppressedRefs: input.suppressedCheckpointRefs,
     now: input.now,
   });
   if (!match) return null;

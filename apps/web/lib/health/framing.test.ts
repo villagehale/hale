@@ -8,7 +8,6 @@ import {
 } from './checkpoints';
 import { HEALTH_CLOSE, HEALTH_CLOSE_BOOKING, renderHealthNudge } from './copy';
 import { HEALTH_BANNED_PHRASES, findBannedPhrases } from './framing';
-import { AGE_TOLERANCE_MONTHS } from '~/lib/registration/match-registration-windows';
 
 /**
  * VIL-243 · M8 — THE CONTENT REVIEW GATE.
@@ -74,7 +73,7 @@ describe('findBannedPhrases', () => {
   it('catches the judgment vocabulary this feature exists to avoid', () => {
     expect(findBannedPhrases('Maya is behind on her shots')).toContain('behind');
     expect(findBannedPhrases('This visit is overdue')).toContain('overdue');
-    expect(findBannedPhrases('She should already be walking')).toContain('should already');
+    expect(findBannedPhrases('She should already be walking')).toContain('should');
     expect(findBannedPhrases('a milestone was missed')).toContain('missed');
     expect(findBannedPhrases('possible developmental delay')).toContain('delay');
   });
@@ -113,6 +112,21 @@ describe('findBannedPhrases', () => {
       'urgently, please',
       'immediate action',
       'abnormalities noted',
+      'past due',
+      'her record expired',
+      'coverage lapsed',
+      'an incomplete record',
+      'not up to date',
+      'this is out of date',
+      'non-compliant families',
+      'required by law',
+      'excluded from school',
+      'act now',
+      'last chance',
+      'running out of time',
+      'the deadline is Friday',
+      'your child is lagging',
+      'she is not where she should be',
     ];
     for (const text of slips) {
       expect({ text, banned: findBannedPhrases(text).length > 0 }).toEqual({ text, banned: true });
@@ -123,6 +137,7 @@ describe('findBannedPhrases', () => {
     const slips = [
       'you will need to report this',
       "you'll need to file it",
+      'youll need to file it',
       'you really should report it',
       'be sure that you file it',
     ];
@@ -306,7 +321,10 @@ describe('the checkpoint table', () => {
 
   it('gives every teen-reachable checkpoint a generic, teen-safe task (rule #1)', () => {
     for (const checkpoint of HEALTH_CHECKPOINTS) {
-      const reachesTeens = checkpoint.maxMonths + AGE_TOLERANCE_MONTHS >= TEEN_STAGE_MIN_MONTHS;
+      // Reachability is the band's END, with NO tolerance: the derived-DOB slack widens
+      // the early edge only (match.ts), so a checkpoint reaches a teen exactly when its
+      // window does. Adding the tolerance here would model a rule inBand never applies.
+      const reachesTeens = checkpoint.maxMonths >= TEEN_STAGE_MIN_MONTHS;
       if (!reachesTeens) continue;
       expect({ id: checkpoint.id, teenSafe: typeof checkpoint.teenSafeTask }).toEqual({
         id: checkpoint.id,

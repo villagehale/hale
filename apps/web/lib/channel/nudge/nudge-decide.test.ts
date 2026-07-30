@@ -111,7 +111,7 @@ function decide(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
     // deciding between a registration date and a weekend.
     healthChildren: [],
     areaCoarse: null,
-    doneCheckpointRefs: new Set<string>(),
+    suppressedCheckpointRefs: new Set<string>(),
     now: FRIDAY,
     timeZone: TZ,
     ...overrides,
@@ -380,7 +380,7 @@ describe('decideNudge — health checkpoints', () => {
       const nudge = decide({
         healthChildren: [healthChild()],
         areaCoarse: 'L4C',
-        doneCheckpointRefs: done,
+        suppressedCheckpointRefs: done,
       });
       if (nudge === null) break;
       if (nudge.kind !== 'health_checkpoint') throw new Error('expected a health nudge');
@@ -390,7 +390,7 @@ describe('decideNudge — health checkpoints', () => {
 
     expect(seen).toEqual(['immunization_4_to_6_years', 'dental_school_screening']);
     expect(
-      decide({ healthChildren: [healthChild()], areaCoarse: 'L4C', doneCheckpointRefs: done }),
+      decide({ healthChildren: [healthChild()], areaCoarse: 'L4C', suppressedCheckpointRefs: done }),
     ).toBeNull();
   });
 });

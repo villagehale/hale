@@ -83,8 +83,18 @@ const ICON_PORTAL = 'https://tph.icon.ehealthontario.ca/#!/welcome';
 const TPH_REPORT_STUDENT_VACCINATION =
   'https://www.toronto.ca/community-people/health-wellness-care/health-programs-advice/immunization/report-student-vaccination/';
 
-/** The one sentence every immunization row repeats, because it is the whole point of
- * D11 and the single fact most parents do not know. */
+/**
+ * The single fact most parents do not know, and the whole point of D11.
+ *
+ * It rides ONLY on rows whose link is the vaccines-and-school page, because that is the
+ * page carrying it ("Health-care providers do not report these records for you"). The
+ * routine-schedule page does not say it, so putting this line on a row that links there
+ * would send a parent to a page that does not contain the instruction they were given.
+ *
+ * It is also absent from the infant rows for a second reason: the reporting duty
+ * attaches at child care and school (ISPA/CCEYA), so asserting it to the parent of a
+ * two-month-old would state a legal obligation that has not begun.
+ */
 const PARENT_REPORTS = 'Parents report it to the health unit themselves.';
 
 /**
@@ -99,7 +109,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     maxMonths: 3,
     annual: false,
     task: "Ontario's routine vaccine schedule has visits at 2 and 4 months.",
-    detail: PARENT_REPORTS,
+    detail: null,
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
@@ -112,7 +122,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     maxMonths: 5,
     annual: false,
     task: "Ontario's routine vaccine schedule has a visit at 4 months.",
-    detail: PARENT_REPORTS,
+    detail: null,
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
@@ -125,7 +135,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     maxMonths: 11,
     annual: false,
     task: "Ontario's routine vaccine schedule has a visit at 6 months.",
-    detail: PARENT_REPORTS,
+    detail: null,
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
@@ -138,7 +148,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     maxMonths: 14,
     annual: false,
     task: "Ontario's routine vaccine schedule has a visit at 1 year.",
-    detail: PARENT_REPORTS,
+    detail: null,
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
@@ -151,7 +161,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     maxMonths: 17,
     annual: false,
     task: "Ontario's routine vaccine schedule has a visit at 15 months.",
-    detail: PARENT_REPORTS,
+    detail: null,
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
@@ -164,7 +174,7 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     maxMonths: 23,
     annual: false,
     task: "Ontario's routine vaccine schedule has a visit at 18 months.",
-    detail: PARENT_REPORTS,
+    detail: null,
     teenSafeTask: null,
     linkUrl: ONTARIO_ROUTINE_SCHEDULE,
     sourceUrl: ONTARIO_ROUTINE_SCHEDULE,
@@ -217,9 +227,9 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     // The one recurring row: a record check is worth doing once a school year, and a
     // family who did it last September is not done forever.
     annual: true,
-    task: 'Toronto Public Health holds its own copy of student vaccine records, and parents file it - about 5 minutes on ICON.',
+    task: 'Toronto Public Health holds its own copy of student vaccine records, and parents file it on ICON.',
     detail: 'Have the health card number handy.',
-    teenSafeTask: 'A student vaccine record check is due - about 5 minutes on ICON.',
+    teenSafeTask: 'A student vaccine record check is due on ICON.',
     linkUrl: ICON_PORTAL,
     sourceUrl: TPH_REPORT_STUDENT_VACCINATION,
     booking: false,
@@ -228,7 +238,11 @@ export const HEALTH_CHECKPOINTS: readonly HealthCheckpoint[] = [
     id: 'immunization_grade_7',
     region: 'ontario',
     minMonths: 144,
-    maxMonths: 155,
+    // Through 13, not through 12: roughly half a grade-7 cohort turns 13 during the
+    // school year, and a band that stopped at the teen boundary would drop exactly
+    // those students — the ones whose consent form is already in a backpack. This is
+    // the row that makes the teen-safe wording load-bearing rather than decorative.
+    maxMonths: 167,
     annual: false,
     task: 'Grade 7 vaccines are given at school in Ontario, and the consent form comes home first.',
     detail: 'Signing and returning it is the whole task.',

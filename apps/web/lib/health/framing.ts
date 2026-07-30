@@ -71,18 +71,29 @@ const JUDGMENT: RegExp[] = [
   stem('overdue'),
   stem('abnormal'),
   stem('milestone'),
+  stem('expire'),
+  stem('lapse'),
+  stem('incomplete'),
+  stem('lagging'),
   word('late'),
   word('miss'),
   word('normal'),
   word('slow'),
   word('ahead'),
   word('risk'),
-  phrase('should already'),
-  phrase('should have'),
+  // Bare 'should' and 'must' — every instruction and every judgment of the child runs
+  // through one of them ("she should be", "you must file"), and no administrative
+  // sentence needs either.
+  word('should'),
+  word('must'),
   phrase('on track'),
   phrase('off track'),
   phrase('at risk'),
   phrase('catch up'),
+  phrase('past due'),
+  phrase('up to date'),
+  phrase('out of date'),
+  phrase('not where'),
 ];
 
 /** Clinical register. Hale describes paperwork, not health. */
@@ -107,7 +118,17 @@ const ALARM: RegExp[] = [
   stem('suspend'),
   stem('suspension'),
   stem('penalt'),
+  stem('deadline'),
+  stem('exclud'),
+  stem('exclusion'),
+  stem('complian'),
+  stem('noncomplian'),
   phrase('right away'),
+  phrase('act now'),
+  phrase('last chance'),
+  phrase('running out'),
+  phrase('required by law'),
+  phrase('legally required'),
   word('asap'),
 ];
 
@@ -117,7 +138,9 @@ const ALARM: RegExp[] = [
  * so the gap is what is matched rather than each spelling of it.
  */
 const PRESSURE: RegExp[] = [
-  /\byou\b[\w\s']{0,20}\b(?:must|need to|have to|should)\b/i,
+  // `you\w*` so the contracted and mis-spelled subjects count too ("you'll", "youll",
+  // "youre"); the bounded gap so any amount of hedging between subject and verb does.
+  /\byou['’]?\w*[\w\s'’]{0,20}?\b(?:must|need to|needs to|have to|should)\b/i,
   /\bmake sure\b/i,
   /\bbe sure\b/i,
   /\b(?:don't|don’t|dont|do not)\s+forget\b/i,

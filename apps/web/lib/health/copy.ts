@@ -1,5 +1,6 @@
 import type { HealthCheckpointNudge } from '~/lib/channel/nudge/nudge-decide';
-import { smsEncoding } from '~/lib/channel/sms-segments';
+import { MAX_NUDGE_SEGMENTS, NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { checkpointById } from './checkpoints';
 
 /**
@@ -74,12 +75,16 @@ function affordableNames(names: readonly string[]): string[] {
     .slice(0, MAX_SUBJECT_NAMES);
 }
 
-/** Who the message opens on, or '' when there is nobody Hale may name. */
-function subjectFor(nudge: HealthCheckpointNudge): string {
+/** Who the message opens on, given the names it has been allowed to keep. */
+function subjectFor(nudge: HealthCheckpointNudge, names: readonly string[]): string {
   if (nudge.teenOnly) return nudge.teenCount > 1 ? 'Your teens:' : 'Your teen:';
-  const names = affordableNames(nudge.kidNames);
   if (names.length > 0) return `${joinNames(names)}:`;
   return '';
+}
+
+/** Whether this body still fits once the shell's opt-out is appended. */
+function withinBudget(body: string): boolean {
+  return smsSegments(`${body}\n\n${NUDGE_OPT_OUT}`) <= MAX_NUDGE_SEGMENTS;
 }
 
 /**
@@ -102,10 +107,24 @@ export function renderHealthNudge(nudge: HealthCheckpointNudge): string {
     throw new Error(`renderHealthNudge: '${checkpoint.id}' has no teen-safe wording`);
   }
 
-  const parts = nudge.teenOnly
-    ? [subjectFor(nudge), checkpoint.teenSafeTask]
-    : [subjectFor(nudge), checkpoint.task, checkpoint.detail];
+  const assemble = (names: readonly string[]): string => {
+    const parts = nudge.teenOnly
+      ? [subjectFor(nudge, names), checkpoint.teenSafeTask]
+      : [subjectFor(nudge, names), checkpoint.task, checkpoint.detail];
+    parts.push(checkpoint.linkUrl, checkpoint.booking ? HEALTH_CLOSE_BOOKING : HEALTH_CLOSE);
+    return parts
+      .filter((part): part is string => typeof part === 'string' && part.length > 0)
+      .join(' ');
+  };
 
-  parts.push(checkpoint.linkUrl, checkpoint.booking ? HEALTH_CLOSE_BOOKING : HEALTH_CLOSE);
-  return parts.filter((part): part is string => typeof part === 'string' && part.length > 0).join(' ');
+  // Drop one name at a time until the whole payload fits. Per-name filtering alone is
+  // not enough — three individually affordable names still overflow the two rows whose
+  // task runs long — and the message that matters is the ASSEMBLED one, so that is what
+  // is measured. The task always survives; only the roll call is negotiable.
+  const names = affordableNames(nudge.kidNames);
+  for (let kept = names.length; kept > 0; kept -= 1) {
+    const body = assemble(names.slice(0, kept));
+    if (withinBudget(body)) return body;
+  }
+  return assemble([]);
 }

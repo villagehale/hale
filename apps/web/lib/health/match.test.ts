@@ -33,13 +33,13 @@ const IN_SCHOOL_YEAR_2026 = new Date('2026-11-15T12:00:00');
 function match(input: {
   children: HealthChild[];
   areaCoarse?: string | null;
-  doneRefs?: Set<string>;
+  suppressedRefs?: Set<string>;
   now?: Date;
 }) {
   return matchHealthCheckpoints({
     children: input.children,
     areaCoarse: input.areaCoarse === undefined ? YORK : input.areaCoarse,
-    doneRefs: input.doneRefs ?? new Set<string>(),
+    suppressedRefs: input.suppressedRefs ?? new Set<string>(),
     now: input.now ?? IN_SCHOOL_YEAR_2026,
   });
 }
@@ -210,7 +210,7 @@ describe('done suppression', () => {
     const [first] = match({ children: [child()] });
     if (!first) throw new Error('expected a match to suppress');
 
-    expect(ids({ children: [child()], doneRefs: new Set([first.ref]) })).not.toContain(
+    expect(ids({ children: [child()], suppressedRefs: new Set([first.ref]) })).not.toContain(
       first.checkpoint.id,
     );
   });
@@ -222,7 +222,7 @@ describe('done suppression', () => {
       child({ id: 'a', name: 'Maya', ageMonths: 6 }),
       child({ id: 'b', name: 'Noah', ageMonths: 6 }),
     ];
-    const [first] = match({ children, doneRefs: new Set([checkpointRef(six, 'a', 0)]) });
+    const [first] = match({ children, suppressedRefs: new Set([checkpointRef(six, 'a', 0)]) });
 
     expect(first?.checkpoint.id).toBe(SIX_MONTH);
     expect(first?.primaryChildId).toBe('b');
@@ -241,7 +241,7 @@ describe('done suppression', () => {
     const done = new Set([checkpointRef(annual, 'a', schoolYearOf(IN_SCHOOL_YEAR_2026))]);
 
     expect(ids({ children, areaCoarse: TORONTO })).toContain(annual.id);
-    expect(ids({ children, areaCoarse: TORONTO, doneRefs: done })).not.toContain(annual.id);
+    expect(ids({ children, areaCoarse: TORONTO, suppressedRefs: done })).not.toContain(annual.id);
   });
 });
 
@@ -268,13 +268,13 @@ describe('occurrence', () => {
     const done = new Set([checkpointRef(annual, 'a', 2026)]);
 
     expect(
-      ids({ children: kids, areaCoarse: TORONTO, doneRefs: done, now: IN_SCHOOL_YEAR_2026 }),
+      ids({ children: kids, areaCoarse: TORONTO, suppressedRefs: done, now: IN_SCHOOL_YEAR_2026 }),
     ).not.toContain(annual.id);
     expect(
       ids({
         children: kids,
         areaCoarse: TORONTO,
-        doneRefs: done,
+        suppressedRefs: done,
         now: new Date('2027-11-15T12:00:00'),
       }),
     ).toContain(annual.id);

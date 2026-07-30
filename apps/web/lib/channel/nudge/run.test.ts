@@ -92,6 +92,13 @@ const WET: DailyOutlook[] = [
   { date: SUNDAY, precipitationChancePct: 95, highTempC: 18 },
 ];
 
+/** The Friday after {@link FRIDAY_10AM}, and its washed-out weekend. */
+const NEXT_FRIDAY_10AM = new Date('2026-08-07T14:00:00.000Z');
+const NEXT_WEEK_WET: DailyOutlook[] = [
+  { date: '2026-08-08', precipitationChancePct: 95, highTempC: 18 },
+  { date: '2026-08-09', precipitationChancePct: 95, highTempC: 18 },
+];
+
 interface Harness {
   deps: NudgeRunDeps;
   transport: FakeTransport;
@@ -125,7 +132,16 @@ function harness(
       options.children ?? [{ id: 'child-1', name: 'Maya', dateOfBirth: '2023-07-31' }],
     loadCandidates: async () => options.candidates ?? [],
     loadWindows: async () => options.windows ?? [],
-    loadDoneCheckpoints: async () => options.doneCheckpoints ?? new Set<string>(),
+    // Mirrors prod: the suppression set is the union of what the family was already
+    // TOLD (read back off the ledger the sweep itself writes) and what they said is
+    // DONE. Faking only the latter would hide the fall-through this feature depends on.
+    loadSuppressedCheckpoints: async (_db, familyId) => {
+      const prefix = `nudge:${familyId}:health:`;
+      const told = [...dedupeKeys]
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => key.slice(prefix.length));
+      return new Set([...told, ...(options.doneCheckpoints ?? [])]);
+    },
     weather: { getDailyOutlook: async () => options.weather ?? [] },
     buildGate: () => ({
       channelEnrolled: async () => options.enrolled ?? true,
@@ -472,8 +488,47 @@ describe('runNudgeCron — health checkpoints (M8)', () => {
     await runNudgeCron(db(), h.deps, FRIDAY_10AM);
     const second = await runNudgeCron(db(), h.deps, new Date('2026-07-31T14:30:00.000Z'));
 
-    expect(second.deduped).toBe(1);
+    expect(second.sent).toBe(0);
     expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('still refuses at the send guard when selection has not caught up', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // Selection now drops a checkpoint the family was already told about, so the
+    // send-time dedupe guard is no longer the thing that stops the second fire. It is
+    // still the backstop for the race it was built for — two invocations overlapping
+    // before the ledger row is visible to the next read — so it is pinned separately
+    // rather than left to be proven by a path that no longer reaches it.
+    const h = harness({ children: SIX_MONTH_OLD });
+    const blind: NudgeRunDeps = { ...h.deps, loadSuppressedCheckpoints: async () => new Set() };
+
+    await runNudgeCron(db(), blind, FRIDAY_10AM);
+    const second = await runNudgeCron(db(), blind, new Date('2026-07-31T14:30:00.000Z'));
+
+    expect(second).toMatchObject({ sent: 0, deduped: 1 });
+    expect(h.transport.sent).toHaveLength(1);
+  });
+
+  it('yields the slot to the next class once its checkpoint has been sent', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // A health window is months wide, so a checkpoint that stayed the top candidate
+    // after it had already been sent would dead-end the sweep on the dedupe guard and
+    // silence every other nudge class for the whole band — up to three years for the
+    // 4-to-6-year row. Being told once is the design; being told once and then muted
+    // is not.
+    const h = harness({
+      children: SIX_MONTH_OLD,
+      candidates: [candidate()],
+      weather: [...WET, ...NEXT_WEEK_WET],
+    });
+
+    const first = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(first.sent).toBe(1);
+    expect(h.transport.bodies()[0]).toContain('a visit at 6 months');
+
+    const second = await runNudgeCron(db(), h.deps, NEXT_FRIDAY_10AM);
+    expect(second).toMatchObject({ sent: 1, deduped: 0 });
+    expect(h.transport.bodies()[1]).toContain('Library story time');
   });
 
   it('competes for the SAME weekly slot as every other nudge', async () => {
