@@ -42,7 +42,7 @@ export class FakeIntentReader implements ReplyIntentReader {
 /** A radar stand-in with a fixed, obviously-synthetic message. */
 export const fakeRadar: RadarComposer = {
   async compose() {
-    return { message: 'RADAR', itemCount: 0 };
+    return { message: 'RADAR', itemCount: 0, followUpNeeded: false };
   },
 };
 

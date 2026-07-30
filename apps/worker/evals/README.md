@@ -154,6 +154,47 @@ cost **$0.2465 USD** (33 calls). Calibrated BOTH directions: `--broken` (an extr
 invents "Charlie" + a postal code, an intent reader that calls everything assent) fails the
 fabrication gate, both accuracy gates AND the consent false-positive gate — 0 API calls.
 
+# Radar composer eval harness (VIL-238 · M3 — the <60-second first-value reply)
+
+The ONE model call in M3: turning a decision object into the first useful text message Hale ever
+sends a family. Run from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-radar-eval.mjs            # live, then caches
+node --env-file=../../.env evals/run-radar-eval.mjs --broken   # calibration: must FAIL
+node evals/run-radar-eval.mjs --cached-only                    # CI: replay only
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:radar`**.
+
+REPLICATES the request `runAgent` builds for a no-tools voice skill (system = skill body +
+serialized context, first user turn = the same context), while IMPORTING the real `radar-voice`
+skill body + `pickModel` live from `packages/agent`. The DECIDE cascade — every filter, the
+free-first ordering, the both-kids preference, the sibling-conflict suppression, the weather
+degradation — is PURE code with no model in it, covered by vitest in
+`apps/web/lib/channel/intake/radar-decide.test.ts`, and is deliberately not re-tested here. That
+split is the design: a ranking a model invents is a ranking nobody can test.
+
+- **12 decision fixtures** spanning the four axes that change what an honest message may say:
+  family size (1 / 2 / 3 kids), registration window present / absent, weather good / bad /
+  unavailable, and village data rich / thin.
+- **The hard gate is FABRICATION**: every number and every non-sentence-initial proper noun in the
+  message must trace back to the decision object it was handed. A venue, price, date, or time that
+  is in no fact fails the run with no judge involved — in a family's FIRST message from Hale, an
+  invented find is indistinguishable from a real one.
+- Plus: no question of its own (the state machine appends the one watch offer — a composer that
+  also asks it asks twice), ≤ 2 SMS segments for the whole payload (counted the way a carrier
+  counts: GSM-7 vs UCS-2), ≤ 3 sentences, and per-fixture must-recall tokens derived from the
+  DECISION so a message that drops the fact it exists to deliver fails however nicely it reads.
+- **Tone judge** (cached Haiku, ≥ 4/5): quiet-operator voice — a competent neighbour who already
+  looked something up, not an ad, not a database row read aloud.
+
+Result (live, claude-sonnet-4-6 compose / claude-haiku-4-5 judge): 12/12 fixtures pass, 0
+fabrications, 0 over budget, 0 questions, mean voice 5.00, payloads 1–2 segments. First live
+populate cost **$0.0736 USD** (24 calls). Calibrated BOTH directions: `--broken` (a composer that
+invents a splash pad, a price and a time, re-asks the watch question and rambles) is rejected by
+the fabrication, question, budget and sentence gates on 12/12 fixtures — 0 API calls.
+
 # VIL-143 launch evals (memory-cost curve + model-per-role matrix)
 
 Two evals that answer the launch questions the per-agent evals above don't: (1) does the coach stay cheap + accurate as

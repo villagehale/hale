@@ -72,6 +72,9 @@ jobs:
       - name: SMS intake extraction/intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake
 
+      - name: Radar payload composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:radar
+
       - name: Build
         run: pnpm build
         env:
