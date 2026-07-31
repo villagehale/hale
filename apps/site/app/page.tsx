@@ -3,13 +3,16 @@ import Image from 'next/image';
 import { Fragment } from 'react';
 import village from '~/assets/village-illustration-alpha.png';
 import { LandingCta } from '~/components/landing-cta';
+import { ChiefOfStaffLanding } from '~/components/landing/chief-of-staff';
 import { FadeInUp } from '~/components/landing/fade-in-up';
 import { HeroBackdrop } from '~/components/landing/hero-backdrop';
 import { Testimonials } from '~/components/landing/testimonials';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { APP_URL } from '~/lib/app-url';
+import { f14LandingEnabled } from '~/lib/flags/landing';
 import { siteJsonLd } from '~/lib/site/structured-data';
+import { readSmsNumber } from '~/lib/text-entry';
 
 // The landing funnel starts the public onboarding wizard (steps 1–6 build the
 // village before the account ask at step 6), not the account form directly.
@@ -34,7 +37,19 @@ const TRUST_POINTS = [
 const HERO_SUBTEXT =
   'Hale brings back the village — the trusted local classes and groups near you — and quietly prepares the rest: reminders, logs, and plans you approve before anything happens.';
 
+/**
+ * VIL-250 · M14 (D20/D21) — the homepage is one of two variants, resolved on the
+ * server. Dark by default: with NEXT_PUBLIC_F14_LANDING unset this is byte-for-byte
+ * the village landing below. Both live here until the removal PR after the flip.
+ */
 export default function LandingPage() {
+  if (f14LandingEnabled()) {
+    return <ChiefOfStaffLanding smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)} />;
+  }
+  return <VillageLanding />;
+}
+
+function VillageLanding() {
   return (
     <main id="main" tabIndex={-1} className="relative bg-[#FDFCFA] text-[#17294A]">
       <script
