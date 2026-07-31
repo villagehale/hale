@@ -1,6 +1,7 @@
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
 import { APP_URL } from '~/lib/app-url';
+import { EmailCta } from '~/components/email-cta';
 import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
 
 /**
@@ -63,10 +64,7 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
         </div>
       ) : (
         <div className="mt-10 rise rise-2">
-          <a href={`mailto:${CONTACT_EMAIL}`} className="btn-primary">
-            Email me
-          </a>
-          <p className="mt-4 font-mono text-spruce">{CONTACT_EMAIL}</p>
+          <EmailCta email={CONTACT_EMAIL} buttonClassName="btn-primary" />
           <p className="meta mt-4">The number’s coming — this page isn’t announced yet.</p>
         </div>
       )}

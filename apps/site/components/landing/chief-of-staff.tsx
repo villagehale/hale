@@ -1,3 +1,4 @@
+import { EmailCta } from '~/components/email-cta';
 import { QrCode } from '~/components/qr-code';
 import { APP_URL } from '~/lib/app-url';
 import { type ImpactNumber, impactNumbers } from '~/lib/landing/impact';
@@ -107,10 +108,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             </div>
           ) : (
             <div className="mt-9">
-              <a href={`mailto:${CONTACT_EMAIL}`} className="btn-primary">
-                Email me
-              </a>
-              <p className="mt-4 font-mono text-spruce">{CONTACT_EMAIL}</p>
+              <EmailCta email={CONTACT_EMAIL} buttonClassName="btn-primary" />
               <p className="meta mt-4">
                 The number’s coming. Until it answers, email is the honest way to reach me.
               </p>
@@ -258,9 +256,11 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             </div>
           ) : (
             <div className="mt-9 flex justify-center">
-              <a href={`mailto:${CONTACT_EMAIL}`} className="btn-on-navy">
-                Email me
-              </a>
+              <EmailCta
+                email={CONTACT_EMAIL}
+                buttonClassName="btn-on-navy"
+                copyClassName="btn-on-navy"
+              />
             </div>
           )}
         </div>
