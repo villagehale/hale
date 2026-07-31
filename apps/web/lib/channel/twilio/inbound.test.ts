@@ -118,8 +118,13 @@ function harness(): Harness {
   return h;
 }
 
-/** An enrolled parent whose intake is finished — the family C1's handoff is for. */
-function enrolParent(fake: FakeDb, phone = PHONE): { familyId: string; userId: string } {
+/** An enrolled household member whose intake is finished. Defaults to a parent — the
+ * family C1's handoff is for; `role` drives the authorization tests. */
+function enrol(
+  fake: FakeDb,
+  role = 'primary_parent',
+  phone = PHONE,
+): { familyId: string; userId: string } {
   const familyId = '00000000-0000-4000-8000-0000000000f1';
   const userId = '00000000-0000-4000-8000-0000000000u1';
   fake.db
@@ -132,7 +137,17 @@ function enrolParent(fake: FakeDb, phone = PHONE): { familyId: string; userId: s
       phoneE164Hash: phoneBlindIndex(phone),
       verifiedAt: NOW,
     } as never);
+  fake.db.insert(schema.familyMembers).values({ userId, familyId, role } as never);
   return { familyId, userId };
+}
+
+/** A family whose intake conversation is over, so the machine defers to A3. */
+function closeIntake(fake: FakeDb): void {
+  fake.db.insert(schema.smsIntakeSessions).values({
+    phoneHash: phoneBlindIndex(PHONE),
+    state: 'complete',
+    closedAt: NOW,
+  } as never);
 }
 
 function inbound(overrides: Partial<{ body: string; providerId: string; from: string }> = {}) {
@@ -279,7 +294,7 @@ describe('signature gate — red team', () => {
 describe('routing', () => {
   it('hands STOP to the machine, which revokes and confirms — media does not divert it', async () => {
     const h = harness();
-    enrolParent(h.fake);
+    enrol(h.fake);
 
     const outcome = await routeTwilioInbound(h.deps, inbound({ body: 'STOP' }), 1);
 
@@ -316,6 +331,26 @@ describe('routing', () => {
     );
   });
 
+  it('sends NOTHING to a number that unsubscribed, even a friendly attachment line', async () => {
+    const h = harness();
+    h.fake.db.insert(schema.parentChannels).values({
+      userId: '00000000-0000-4000-8000-0000000000u1',
+      familyId: '00000000-0000-4000-8000-0000000000f1',
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+      revokedAt: NOW,
+    } as never);
+
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: '' }), 1);
+
+    // An app link to someone who pressed STOP is a CASL breach; it would also be
+    // rejected by Twilio (21610) and throw the webhook into a retry loop.
+    expect(outcome).toBe('unsubscribed');
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
   it('stays silent when the media path is over the limit', async () => {
     const h = harness();
     const limiter = h.deps.intake().limiter as FakeRateLimiter;
@@ -340,13 +375,8 @@ describe('routing', () => {
 describe('handoff to C1', () => {
   it('records a post-intake reply and queues it, with its audit row', async () => {
     const h = harness();
-    const { familyId, userId } = enrolParent(h.fake);
-    // A finished intake: the machine finds no open conversation and defers to A3.
-    h.fake.db.insert(schema.smsIntakeSessions).values({
-      phoneHash: phoneBlindIndex(PHONE),
-      state: 'complete',
-      closedAt: NOW,
-    } as never);
+    const { familyId, userId } = enrol(h.fake);
+    closeIntake(h.fake);
 
     const outcome = await routeTwilioInbound(
       h.deps,
@@ -396,11 +426,7 @@ describe('handoff to C1', () => {
       verifiedAt: NOW,
       revokedAt: NOW,
     } as never);
-    h.fake.db.insert(schema.smsIntakeSessions).values({
-      phoneHash: phoneBlindIndex(PHONE),
-      state: 'complete',
-      closedAt: NOW,
-    } as never);
+    closeIntake(h.fake);
 
     const outcome = await routeTwilioInbound(h.deps, inbound({ body: 'hello again' }), 0);
 
@@ -413,14 +439,74 @@ describe('handoff to C1', () => {
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
   });
 
+  it.each(['extended', 'service'])(
+    'refuses to hand a %s member off to a household agent, even with a verified channel',
+    async (role) => {
+      const h = harness();
+      enrol(h.fake, role);
+      closeIntake(h.fake);
+
+      const outcome = await routeTwilioInbound(h.deps, inbound({ body: "what's on today?" }), 0);
+
+      // These two are the gap M6 does not close: `isCaregiverRole` is FALSE for them, so
+      // they fall past the caregiver branch into the parent branch. role-scope.ts gives
+      // them an empty scope precisely so they fail closed — a negative check here would
+      // have handed them to an agent that answers with household data.
+      expect(outcome).toBe('not_a_parent');
+      expect(h.jobs).toHaveLength(0);
+      expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+    },
+  );
+
+  it.each(['grandparent', 'nanny', 'babysitter'])(
+    'leaves a %s to M6 and never queues them for C1',
+    async (role) => {
+      const h = harness();
+      enrol(h.fake, role);
+      closeIntake(h.fake);
+
+      const outcome = await routeTwilioInbound(h.deps, inbound({ body: "what's on today?" }), 0);
+
+      // The named caregiver roles are caught UPSTREAM: the machine answers with M6's one
+      // scoped line, so A3's handoff is never reached. Asserted so a change to either
+      // side that let a caregiver into the conversation queue fails here.
+      expect(outcome).toBe('intake');
+      expect(h.jobs).toHaveLength(0);
+    },
+  );
+
+  it('refuses a verified channel whose owner has no family_members row at all', async () => {
+    const h = harness();
+    h.fake.db.insert(schema.parentChannels).values({
+      userId: '00000000-0000-4000-8000-0000000000u1',
+      familyId: '00000000-0000-4000-8000-0000000000f1',
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(PHONE),
+      phoneE164Hash: phoneBlindIndex(PHONE),
+      verifiedAt: NOW,
+    } as never);
+    closeIntake(h.fake);
+
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: 'hello' }), 0);
+
+    expect(outcome).toBe('not_a_parent');
+    expect(h.jobs).toHaveLength(0);
+  });
+
+  it('hands off a co_parent, not only the primary parent', async () => {
+    const h = harness();
+    enrol(h.fake, 'co_parent');
+    closeIntake(h.fake);
+
+    expect(await routeTwilioInbound(h.deps, inbound({ body: 'move swimming' }), 0)).toBe(
+      'handed_off',
+    );
+  });
+
   it('is idempotent on a webhook RETRY — one ledger row, one job', async () => {
     const h = harness();
-    enrolParent(h.fake);
-    h.fake.db.insert(schema.smsIntakeSessions).values({
-      phoneHash: phoneBlindIndex(PHONE),
-      state: 'complete',
-      closedAt: NOW,
-    } as never);
+    enrol(h.fake);
+    closeIntake(h.fake);
 
     const first = await routeTwilioInbound(h.deps, inbound({ body: 'move swimming' }), 0);
     const retry = await routeTwilioInbound(h.deps, inbound({ body: 'move swimming' }), 0);
@@ -441,7 +527,7 @@ describe('privacy (rule #1)', () => {
       });
     }
     const h = harness();
-    enrolParent(h.fake);
+    enrol(h.fake);
     const secret = 'Maya has an appointment at 4';
 
     await handleTwilioInboundRequest(

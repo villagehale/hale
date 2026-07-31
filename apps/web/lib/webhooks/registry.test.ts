@@ -6,7 +6,11 @@ import { getAdapter, SUPPORTED_PROVIDERS } from './registry.js';
  * external-id field each carries), never copied from runtime output:
  *   gmail   → emailAddress           gcal   → channelId / resourceId
  *   outlook → subscriptionId         stripe → account
- *   twilio  → AccountSid
+ *
+ * 'twilio' is deliberately ABSENT: VIL-214 · A3 removed its adapter (its verify()
+ * could never be correct here — this interface never sees the request URL that
+ * Twilio signs). All Twilio ingress goes through /api/channels/twilio/*, so this
+ * route must now treat it as an unknown provider.
  *
  * The three scaffold legs (brightwheel / himama / google_classroom) are
  * KNOWN-but-NOT-LIVE: verify() must return not_configured so the route answers
@@ -14,7 +18,7 @@ import { getAdapter, SUPPORTED_PROVIDERS } from './registry.js';
  * even if the leg's documented secret env var happens to be present.
  */
 
-const LIVE_PROVIDERS = ['gmail', 'gcal', 'outlook', 'stripe', 'twilio'] as const;
+const LIVE_PROVIDERS = ['gmail', 'gcal', 'outlook', 'stripe'] as const;
 const SCAFFOLD_PROVIDERS = ['brightwheel', 'himama', 'google_classroom'] as const;
 
 afterEach(() => {
@@ -89,13 +93,18 @@ describe('live providers — behaviour preserved', () => {
     expect(getAdapter('stripe')?.extractExternalId({ account: 'acct_1' })).toBe('acct_1');
   });
 
-  it('twilio extracts the AccountSid', () => {
-    expect(getAdapter('twilio')?.extractExternalId({ AccountSid: 'AC123' })).toBe('AC123');
+  it('does NOT resolve a twilio adapter — this route is no longer a Twilio ingress', () => {
+    // The removed placeholder returned `verified` for ANY non-empty signature once
+    // TWILIO_AUTH_TOKEN existed. A3 sets that variable, so leaving it would have armed
+    // a forged path into events.ingested. 404 (unknown provider) is the correct answer.
+    vi.stubEnv('TWILIO_AUTH_TOKEN', 'a_real_token');
+    expect(getAdapter('twilio')).toBeNull();
+    expect(SUPPORTED_PROVIDERS).not.toContain('twilio');
   });
 
   it('extractExternalId returns null for a malformed (non-object) payload', () => {
     expect(getAdapter('gmail')?.extractExternalId(null)).toBeNull();
-    expect(getAdapter('twilio')?.extractExternalId('not-json')).toBeNull();
+    expect(getAdapter('stripe')?.extractExternalId('not-json')).toBeNull();
   });
 
   it('extractExternalId returns null when the documented field is absent', () => {
@@ -109,12 +118,10 @@ describe('live providers — behaviour preserved', () => {
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', '');
     vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', '');
     vi.stubEnv('MICROSOFT_OAUTH_CLIENT_ID', '');
-    vi.stubEnv('TWILIO_AUTH_TOKEN', '');
 
     expect(getAdapter('stripe')?.verify('v1=sig', 'body').status).toBe('not_configured');
     expect(getAdapter('gmail')?.verify('sig', 'body').status).toBe('not_configured');
     expect(getAdapter('outlook')?.verify('sig', 'body').status).toBe('not_configured');
-    expect(getAdapter('twilio')?.verify('sig', 'body').status).toBe('not_configured');
   });
 
   it('toIngestedEvent shapes the events.ingested contract with the provider as source', () => {

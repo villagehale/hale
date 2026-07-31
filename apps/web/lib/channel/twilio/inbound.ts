@@ -4,6 +4,7 @@ import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
+import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
@@ -65,6 +66,8 @@ export type TwilioInboundOutcome =
   | 'malformed'
   | 'invalid_number'
   | 'media_unsupported'
+  /** The number pressed STOP — nothing is sent to it and nothing is routed. */
+  | 'unsubscribed'
   | 'rate_limited'
   /** Recorded and handed to C1's queue. */
   | 'handed_off'
@@ -73,7 +76,9 @@ export type TwilioInboundOutcome =
   /** The machine handled it; its own outcome is the detail. */
   | 'intake'
   /** No live channel to route to (never enrolled, or unsubscribed). */
-  | 'ignored';
+  | 'ignored'
+  /** A verified channel, but not a parent's — never handed to a household agent. */
+  | 'not_a_parent';
 
 /** Twilio's count of attached media parts. Absent/garbage reads as none. */
 function mediaCount(params: Record<string, string>): number {
@@ -95,7 +100,7 @@ export async function routeTwilioInbound(
 
   // Media is answered here, but never before the CASL keywords: see the module note.
   if (media > 0 && !matchKeyword(inbound.body)) {
-    return replyMediaUnsupported(inbound, intake);
+    return replyMediaUnsupported(deps.database, inbound, intake);
   }
 
   const outcome = await handleInboundSms(deps.database, inbound, intake);
@@ -106,16 +111,29 @@ export async function routeTwilioInbound(
 }
 
 /**
- * The MMS answer. It re-checks the SAME limiter, key, and route the machine uses, so
- * the two paths share one budget rather than each granting its own — otherwise an
- * attacker could double the outbound they can provoke just by attaching a picture.
+ * The MMS answer. Two guards before it can text anyone:
+ *
+ * CONSENT. A number whose channel is revoked pressed STOP, and this is the one
+ * outbound A3 owns outright — so it refuses rather than sending an app link to
+ * someone who asked to be left alone (rule #1 / CASL). It would fail anyway once
+ * Twilio's opt-out list rejects the send (error 21610), and that failure would throw
+ * out of the transport and turn the webhook into a 500 Twilio then retries.
+ *
+ * RATE. It re-checks the SAME limiter, key, and route the machine uses, so the two
+ * paths share one budget rather than each granting its own — otherwise an attacker
+ * could double the outbound they can provoke just by attaching a picture.
  */
 async function replyMediaUnsupported(
+  database: Database,
   inbound: InboundMessage,
   intake: IntakeDeps,
 ): Promise<TwilioInboundOutcome> {
   const phoneE164 = normalizePhoneE164(inbound.from);
   if (!phoneE164) return 'invalid_number';
+
+  if (await findRevokedChannelOwner(database, phoneE164)) {
+    return 'unsubscribed';
+  }
 
   const decision = await intake.limiter.check(
     phoneBlindIndex(phoneE164),
@@ -131,10 +149,25 @@ async function replyMediaUnsupported(
 /**
  * Record a post-intake reply and hand it to C1.
  *
+ * TWO gates, and they answer different questions. `resolveVerifiedChannelByPhone` asks
+ * "may we talk to this number at all" (active, verified, not revoked — so a STOP can
+ * never become a conversation). The ROLE check asks "is this person a parent", which
+ * the channel lookup cannot answer: it resolves any household member holding a verified
+ * channel, caregivers included.
+ *
+ * The role gate is a POSITIVE list on purpose. M6 catches caregivers upstream via
+ * `isCaregiverRole`, but that is false for the legacy `extended` and `service` roles —
+ * the two buckets role-scope.ts gives an EMPTY scope precisely so they fail closed. A
+ * negative check would let those fall through to be recorded as `parent_user_id` and
+ * handed to an agent that answers with household data. Anyone who is not demonstrably a
+ * parent is dropped, so a role we cannot vouch for is silence rather than disclosure.
+ *
  * Idempotent on the provider's message id: a webhook retry (Twilio resends when we time
  * out) must not add a second ledger row or a second job. The lookup rides the index A2
  * left on `provider_message_id` for exactly this kind of resolution.
  */
+const PARENT_ROLES: readonly string[] = ['primary_parent', 'co_parent'];
+
 async function handOffToConversation(
   deps: TwilioInboundDeps,
   inbound: InboundMessage,
@@ -144,6 +177,21 @@ async function handOffToConversation(
 
   const owner = await resolveVerifiedChannelByPhone(deps.database, phoneE164);
   if (!owner) return 'ignored';
+
+  const members = await deps.database
+    .select({
+      familyId: schema.familyMembers.familyId,
+      userId: schema.familyMembers.userId,
+      role: schema.familyMembers.role,
+    })
+    .from(schema.familyMembers)
+    .where(eq(schema.familyMembers.userId, owner.userId));
+  const member = members.find(
+    (row) => row.userId === owner.userId && row.familyId === owner.familyId,
+  );
+  if (!member || !PARENT_ROLES.includes(member.role)) {
+    return 'not_a_parent';
+  }
 
   const seen = await deps.database
     .select({ id: schema.channelMessages.id })

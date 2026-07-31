@@ -83,7 +83,7 @@ function defaultToIngestedEvent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Live signal providers (gmail / gcal / outlook / twilio).
+// Live signal providers (gmail / gcal / outlook).
 //
 // These are the agent-pipeline signal legs: a verified, family-bound webhook
 // flows to events.ingested. Their per-provider verification mirrors the prior
@@ -150,24 +150,21 @@ const outlookAdapter: ProviderAdapter = {
   },
 };
 
-const twilioAdapter: ProviderAdapter = {
-  provider: 'twilio',
-  verify(signature) {
-    if (isDevUnsigned(signature)) return { status: 'verified' };
-    // Twilio: HMAC-SHA1 over URL + sorted form params. Wired with SMS feature.
-    if (!process.env.TWILIO_AUTH_TOKEN) {
-      return { status: 'not_configured', reason: 'TWILIO_AUTH_TOKEN not configured' };
-    }
-    if (!signature) return { status: 'invalid', reason: 'missing signature header' };
-    return { status: 'verified' };
-  },
-  extractExternalId(payload) {
-    return isRecord(payload) ? readString(payload.AccountSid) : null;
-  },
-  toIngestedEvent(familyId, payload) {
-    return defaultToIngestedEvent('twilio', familyId, payload);
-  },
-};
+// ── TWILIO: removed (VIL-214 · A3) ────────────────────────────────────────────
+// There was a `twilioAdapter` here whose verify() returned `verified` for ANY
+// non-empty signature header once TWILIO_AUTH_TOKEN existed — a placeholder that
+// was harmless only because the env var was never set (so it answered 501). A3
+// provisions TWILIO_AUTH_TOKEN, which would have ARMED it: forged JSON → this
+// registry → events.ingested, i.e. attacker-controlled text into a family's
+// agent pipeline.
+//
+// It is deleted rather than fixed because this interface cannot express Twilio's
+// scheme at all: `verify(signature, rawBody)` never sees the request URL, and
+// Twilio signs URL + sorted params. The correct implementation needs the URL, so
+// it lives with the endpoint that has one — apps/web/lib/channel/twilio/signature.ts,
+// behind POST /api/channels/twilio/{inbound,status}, which now owns all Twilio
+// ingress. `POST /api/webhooks/twilio` is consequently an unknown provider (404).
+// The 'twilio' integration_provider enum value is untouched (rule #9: data stays).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stripe (Connect signal leg).
@@ -305,7 +302,6 @@ const ADAPTERS: readonly ProviderAdapter[] = [
   gcalAdapter,
   outlookAdapter,
   stripeAdapter,
-  twilioAdapter,
   brightwheelAdapter,
   himamaAdapter,
   googleClassroomAdapter,
