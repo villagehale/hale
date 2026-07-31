@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectActionIntents, detectInputIntents } from './action-intent';
+import { actionTypeForIntent, detectActionIntents, detectInputIntents } from './action-intent';
 
 /**
  * The inline-action thesis: when an answer IMPLIES a real Hale action, the UI
@@ -181,5 +181,35 @@ describe('detectInputIntents', () => {
       (i) => i.kind === 'quick_log',
     );
     expect(logs).toHaveLength(1);
+  });
+});
+
+/**
+ * VIL-242 · M7 — the registration shortlist is minted by a CRON, never detected from
+ * text. It still needs an entry in the closed map, because `actionTypeForIntent` is the
+ * server's trust boundary: an intent kind with no mapping cannot be drafted at all.
+ */
+describe('the server-minted registration_shortlist intent', () => {
+  it('maps to a surface-only action type — Hale never registers for anyone', () => {
+    // The D8 hard boundary, held in the type system: approving a shortlist must not be
+    // able to dispatch an executor that submits a form on a parent's behalf.
+    expect(actionTypeForIntent('registration_shortlist')).toBe('add_to_digest_only');
+  });
+
+  it('is never produced by reading an answer or an instruction', () => {
+    // No pattern can match it. A parent talking about registration gets Hale's ordinary
+    // answer, not a shortlist for a window nobody matched.
+    for (const text of [
+      'registration shortlist',
+      'shortlist the fall registration for me',
+      'sign me up for swimming registration',
+    ]) {
+      expect(detectActionIntents(text).map((i) => i.kind)).not.toContain('registration_shortlist');
+      expect(detectInputIntents(text).map((i) => i.kind)).not.toContain('registration_shortlist');
+    }
+  });
+
+  it('leaves an unknown kind unmappable', () => {
+    expect(actionTypeForIntent('register_my_child_for_swimming')).toBeNull();
   });
 });

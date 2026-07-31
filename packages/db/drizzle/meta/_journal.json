@@ -491,6 +491,13 @@
       "when": 1781463960000,
       "tag": "0072_caregiver_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1781464020000,
+      "tag": "0073_registration_sequences",
+      "breakpoints": true
     }
   ]
 }

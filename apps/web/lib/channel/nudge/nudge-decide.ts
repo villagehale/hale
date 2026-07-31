@@ -134,6 +134,13 @@ export interface DecideNudgeInput {
   areaCoarse: string | null;
   /** Checkpoints the family must not be raised about again (already told, or done). */
   suppressedCheckpointRefs: ReadonlySet<string>;
+  /**
+   * Registration windows an M7 sequence (VIL-242) has claimed for this family. The
+   * sequence sends its own heads-up leg for a window it is preparing, so announcing it
+   * here too would be the same news twice from the same number. Per WINDOW, never per
+   * family: a claim defers one date, it does not mute the class.
+   */
+  claimedWindowIds: ReadonlySet<string>;
   now: Date;
   timeZone: string;
 }
@@ -148,8 +155,11 @@ function namesOf(children: readonly RadarChild[], indexes: readonly number[]): s
 
 function decideRegistration(input: DecideNudgeInput): RegistrationNudge | null {
   // The matcher already dropped windows that have opened and ordered the rest by when
-  // THIS family must act, so the soonest is the only one worth considering.
-  const match = input.windows[0];
+  // THIS family must act, so the soonest UNCLAIMED one is the only one worth
+  // considering — a claimed window is M7's to announce, and skipping to the next
+  // candidate (rather than returning null) is what keeps a claim from silencing the
+  // whole class for the family.
+  const match = input.windows.find((candidate) => !input.claimedWindowIds.has(candidate.window.id));
   if (!match) return null;
 
   const horizon = input.now.getTime() + REGISTRATION_HORIZON_DAYS * 86_400_000;

@@ -23,6 +23,7 @@ import { localParts } from '~/lib/loop/prefs';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { weekWindow } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
+import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, decideNudge } from './nudge-decide';
 import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice';
@@ -151,6 +152,9 @@ export interface NudgeRunDeps {
   loadWindows(database: Database, areaCoarse: string): Promise<RegistrationWindow[]>;
   /** Health checkpoints this family must not be raised about again (VIL-243 · M8). */
   loadSuppressedCheckpoints(database: Database, familyId: string): Promise<Set<string>>;
+  /** Registration windows an M7 sequence (VIL-242) is already preparing this family
+   * for — the sequence announces those itself, on its own ladder. */
+  loadClaimedWindowIds(database: Database, familyId: string): Promise<Set<string>>;
   weather: WeatherPort;
   /** A factory, not an instance: the gate's ports close over the db handle the sweep
    * is given, so a caller cannot accidentally gate one database against another. */
@@ -282,15 +286,17 @@ async function decideForFamily(
   // village read, the registration read and the outbound weather call are all spend on
   // a decision that is already made.
   const weekendPossible = children.length > 0;
-  const [candidates, windowRows, weather, suppressedCheckpointRefs] = await Promise.all([
-    weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
-    area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
-    // Weather is an input, never a blocker: the port swallows its own failures.
-    area && weekendPossible
-      ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
-      : Promise.resolve([]),
-    deps.loadSuppressedCheckpoints(database, family.familyId),
-  ]);
+  const [candidates, windowRows, weather, suppressedCheckpointRefs, claimedWindowIds] =
+    await Promise.all([
+      weekendPossible ? deps.loadCandidates(database, family.familyId) : Promise.resolve([]),
+      area && weekendPossible ? deps.loadWindows(database, area) : Promise.resolve([]),
+      // Weather is an input, never a blocker: the port swallows its own failures.
+      area && weekendPossible
+        ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => [])
+        : Promise.resolve([]),
+      deps.loadSuppressedCheckpoints(database, family.familyId),
+      deps.loadClaimedWindowIds(database, family.familyId),
+    ]);
 
   const windows = area
     ? matchRegistrationWindows({
@@ -312,6 +318,7 @@ async function decideForFamily(
     healthChildren,
     areaCoarse: area,
     suppressedCheckpointRefs,
+    claimedWindowIds,
     now,
     timeZone: family.timeZone,
   });
@@ -493,6 +500,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     loadWindows: (database, areaCoarse) => readRegistrationWindows(database, areaCoarse),
     loadSuppressedCheckpoints: (database, familyId) =>
       loadSuppressedCheckpointRefs(database, familyId),
+    loadClaimedWindowIds: (database, familyId) => loadClaimedWindowIds(database, familyId),
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),

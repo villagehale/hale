@@ -54,6 +54,32 @@ export function resolveMunicipalities(postal: string): Municipality[] {
   return [...municipalitiesForFsa(fsa)];
 }
 
+/**
+ * When THIS family can first register for `window`, given where they live.
+ *
+ * Conservatism 2, in the one place it is decided: a resident head start is claimed only
+ * when the FSA resolves to exactly ONE municipality. Extracted from the matcher because
+ * the M7 sequence (VIL-242) has to answer the same question days later, for a family
+ * whose whole reminder ladder is anchored on the answer — and two copies of this rule
+ * would eventually disagree about which date a household is owed.
+ */
+export function resolveFamilyOpen(
+  window: RegistrationWindow,
+  /** The family's postal code or FSA. Null (a family with no area on file) resolves to
+   * nothing, which is the safe answer: they get the general date, never a head start
+   * they cannot use. */
+  postal: string | null,
+): { isResidentWindow: boolean; opensForFamilyAt: Date } {
+  const municipalities = postal === null ? [] : resolveMunicipalities(postal);
+  const isResidentWindow =
+    municipalities.length === 1 && municipalities[0] === window.municipality;
+  return {
+    isResidentWindow,
+    opensForFamilyAt:
+      isResidentWindow && window.residentOpenAt ? window.residentOpenAt : window.openAt,
+  };
+}
+
 /** Whether a child's age sits inside the band, allowing `slack` months either side. */
 function inBand(ageMonths: number, min: number | null, max: number | null, slack: number): boolean {
   if (min !== null && ageMonths < min - slack) return false;
@@ -73,8 +99,6 @@ export function matchRegistrationWindows(input: {
   const municipalities = resolveMunicipalities(postal);
   if (municipalities.length === 0) return [];
   const covered = new Set<Municipality>(municipalities);
-  // Residency is only established when the FSA points at ONE town (conservatism 2).
-  const residentMunicipality = municipalities.length === 1 ? municipalities[0] : null;
 
   const matches: RegistrationMatch[] = [];
   for (const window of windows) {
@@ -88,9 +112,7 @@ export function matchRegistrationWindows(input: {
       inBand(age, window.ageMinMonths, window.ageMaxMonths, 0),
     );
 
-    const isResidentWindow = window.municipality === residentMunicipality;
-    const opensForFamilyAt =
-      isResidentWindow && window.residentOpenAt ? window.residentOpenAt : window.openAt;
+    const { isResidentWindow, opensForFamilyAt } = resolveFamilyOpen(window, postal);
     if (opensForFamilyAt.getTime() <= now.getTime()) continue;
 
     matches.push({

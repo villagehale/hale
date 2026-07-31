@@ -18,7 +18,8 @@ export type ActionIntentKind =
   | 'add_to_plan'
   | 'book_checkup'
   | 'set_reminder'
-  | 'create_plan';
+  | 'create_plan'
+  | 'registration_shortlist';
 
 export interface ActionIntent {
   kind: ActionIntentKind;
@@ -59,6 +60,21 @@ const INTENT_RULES: readonly IntentRule[] = [
     label: 'Set a reminder',
     actionType: 'create_calendar_event',
     patterns: [/\b(?:set|add)\s+a\s+reminder\b/i, /\bremind you\b/i],
+  },
+  {
+    // VIL-242 · M7. SERVER-MINTED ONLY: the empty pattern list is the point, not an
+    // omission. The registration sweep drafts this from a matched M1 window; no answer
+    // and no instruction can produce it, so a parent talking about registration gets an
+    // ordinary answer rather than a shortlist for a window nobody matched.
+    //
+    // `add_to_digest_only` is the D8 hard boundary held in the type system: the approval
+    // surfaces the shortlist and unlocks the reminder ladder, and there is no executor
+    // behind it that could submit a form on a parent's behalf. That is also why M7 adds
+    // no new ActionType — it asks the executor for nothing it cannot already do.
+    kind: 'registration_shortlist',
+    label: 'Approve the registration shortlist',
+    actionType: 'add_to_digest_only',
+    patterns: [],
   },
 ];
 

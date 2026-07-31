@@ -34,6 +34,7 @@ export * from './event-reminders.js';
 export * from './village.js';
 export * from './curated-resources.js';
 export * from './registration-windows.js';
+export * from './registration-sequences.js';
 export * from './waitlist.js';
 export * from './conversations.js';
 export * from './chat-attachments.js';
