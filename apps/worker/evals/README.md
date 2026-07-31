@@ -244,6 +244,57 @@ invents a splash pad, a price, a time and a Friday, writes the opt-out itself, a
 rambles) is rejected by the fabrication, opt-out, question and sentence gates on 8/8 composed
 fixtures — 0 API calls.
 
+# Birthday-party extraction eval harness (VIL-245 · M10 — the read behind a PUBLIC page)
+
+The ONE model call in M10: turning "Max's 5th birthday, Aug 23, 2pm, our place" into an occasion
+Hale may offer to publish. Run from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-rsvp-eval.mjs            # live, then caches
+node --env-file=../../.env evals/run-rsvp-eval.mjs --broken   # calibration: must FAIL
+node evals/run-rsvp-eval.mjs --cached-only                    # CI: replay only
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:rsvp`**.
+
+Same REPLICATE-not-import convention as the intake/radar/nudge harnesses, and the same split: the
+deterministic half of M10 — the keyword matchers, the 30-minute offer window, the teen redaction,
+the guest write path and the CASL send filter — is pure/DB code with no model in it, covered by
+vitest in `apps/web/lib/party/*.test.ts` and deliberately not re-tested here.
+
+What differs from every other extraction harness, and it is why this one exists: **what this stage
+reads ends up on a page strangers open.** An intake misread costs one correction from the parent; a
+misread here puts a wrong date or a wrong address in fifteen households' hands, and the host cannot
+un-share a forwarded link. So the gates are asymmetric and the corpus is built around the two ways
+that happens.
+
+- **12 fixtures** with a PINNED clock (`RECEIVED_AT` = Monday 2026-07-20 09:00 America/Toronto), so
+  every relative phrase resolves deterministically: a clean full line, a date with no time (the
+  skill's documented 14:00 default), "this Saturday", a January date that must roll into next year,
+  a missing location, a partial address that must NOT be completed, an unnamed child — plus two
+  that must **refuse to date themselves** ("sometime in August", "I'll confirm the day") and three
+  hosting traps that must never read as a party this family is throwing.
+- **Three hard zeros.** `content fabrications` — every child name and every word of the location
+  must trace to the message. `datetime hallucinations` — a date returned for a message carrying
+  none, or one outside the window the runtime itself accepts (in the past, or >2 years out; the
+  eval mirrors `resolvePartyStart`). `hosting false positives` — "we're going to Leo's party" read
+  as a party to publish.
+- Plus `field accuracy ≥ 85%`, `hosting recall ≥ 85%`, and `date-refusal recall = 100%` (the
+  refusal is what earns the ONE deterministic clarifying question instead of a guess).
+
+Result (live, claude-sonnet-5): 12/12 fixtures pass, 100.0% field accuracy, 0 fabrications, 0
+datetime hallucinations, 0 hosting false positives, 100% hosting recall, 100% date-refusal recall.
+Live populate cost **$0.1339 USD** (14 calls, including two on a fixture later removed). Calibrated
+BOTH directions: `--broken` (an extractor that invents a venue, a child and a 2019 date, and calls
+every message a party it is hosting) fails the fabrication gate on 12/12, the datetime gate on
+12/12, the hosting gate on 3/3 traps and the accuracy gate at 0.0% — 0 API calls.
+
+One case is DELIBERATELY not a fixture and the reason is written into `rsvp-fixtures.mjs`: a bare
+"Ana's birthday, Sept 5, 1pm, 14 Elm" split across runs, which is the honest answer for a message a
+human could not classify either. Pinning one sample of a coin flip would make the suite assert a
+behaviour the skill does not have; the stakes are bounded because nothing is public until the host
+replies YES.
+
 # VIL-143 launch evals (memory-cost curve + model-per-role matrix)
 
 Two evals that answer the launch questions the per-agent evals above don't: (1) does the coach stay cheap + accurate as

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "is_party": false,
+    "confidence": 0.95,
+    "child_name": null,
+    "location": null,
+    "starts_at": null,
+    "title": null
+  },
+  "latencyMs": 2173
+}

@@ -42,7 +42,15 @@ export type AnalyticsEvent =
   | 'loop_undo'
   // A loop-category CASL email unsubscribe landing — the beta guardrail pages the
   // founder at ANY occurrence (stop-alert.ts).
-  | 'loop_stop';
+  | 'loop_stop'
+  // F14 · M10 the viral loop (VIL-245). Three coarse steps, and they are the whole
+  // funnel: a host publishes an invite, a guest answers it without an account, and a
+  // guest follows the one soft line to Hale. `party_invite_created` and
+  // `rsvp_submitted` are keyed on the INVITE, never on a guest — a party guest is a
+  // non-user who agreed to tell a host they were coming, not a person Hale identifies.
+  | 'party_invite_created'
+  | 'rsvp_submitted'
+  | 'rsvp_guest_cta';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

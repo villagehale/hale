@@ -1,0 +1,11 @@
+{
+  "value": {
+    "is_party": true,
+    "title": "my son's birthday party",
+    "starts_at": "2026-08-30T13:00:00-04:00",
+    "location": "the park",
+    "child_name": null,
+    "confidence": 0.85
+  },
+  "latencyMs": 2016
+}

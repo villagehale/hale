@@ -102,7 +102,7 @@ export async function createFamilyEvent(
     startsAt: Date;
     endsAt: Date | null;
     location: string | null;
-    source: 'parent' | 'channel' | 'email';
+    source: 'parent' | 'channel' | 'email' | 'party';
     createdBy: string | null;
   },
 ): Promise<string> {
