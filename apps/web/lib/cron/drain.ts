@@ -187,10 +187,15 @@ async function processChannelSendJob(
  *
  * A handler throw propagates → boss.fail → redelivery. That is safe to retry because
  * the payload carries only POINTERS: the parent's message is on the channel_messages
- * row A3 wrote, so a re-run re-reads the same text rather than losing it. It is not,
- * however, exactly-once — a crash after the transport send and before the ledger write
- * would re-send the reply. The ordering guarantee (the singleton policy) is what keeps
- * that bounded to a repeat rather than a scramble.
+ * row A3 wrote, so a re-run re-reads the same text rather than losing it.
+ *
+ * It is at-least-once, not exactly-once, and the two visible artifacts of a mid-turn
+ * crash are a duplicated `messages` row for the parent's turn and a re-sent reply.
+ * Neither is a wrong answer: the approvals spine refuses a second approval of an action
+ * that has left `drafted_for_approval`, so a retry produces the honest failure line
+ * rather than acting twice, and the singleton policy keeps a retry in order rather than
+ * interleaved with a newer text. De-duplicating the turn itself would need a key on
+ * `messages`, which is a schema change this ticket deliberately does not make.
  */
 async function processChannelMessageJob(
   deps: DrainDeps,
