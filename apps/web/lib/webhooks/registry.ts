@@ -83,34 +83,64 @@ function defaultToIngestedEvent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Live signal providers (gmail / gcal / outlook).
+// Signal providers whose real verification is NOT IMPLEMENTED (VIL-253).
 //
-// These are the agent-pipeline signal legs: a verified, family-bound webhook
-// flows to events.ingested. Their per-provider verification mirrors the prior
-// signatures.ts behaviour — until each provider's secret/OAuth client id is
-// provisioned, verify returns `not_configured` (route 501) rather than
-// accepting unsigned traffic. In non-production with no signature header we
-// allow the request through for local testing (verified) — unchanged.
+// gmail / gcal / outlook previously returned `verified` for ANY non-empty
+// signature header once their OAuth client-id env var was set — and
+// GOOGLE_OAUTH_CLIENT_ID is provisioned in production, so a forged POST to
+// /api/webhooks/gmail carrying a known `emailAddress` reached events.ingested,
+// putting attacker-controlled text in front of the classifier and the family
+// digest surfaces (rule #1). They also accepted ANY unsigned request whenever
+// NODE_ENV !== 'production'.
+//
+// The rule this file now enforces without exception: a leg whose verification
+// is not implemented REFUSES EVERYTHING. Presence of a credential is not
+// evidence of a verified request — those are independent facts, and conflating
+// them is what made this exploitable. There is deliberately no shared
+// "dev-unsigned" helper left to copy: the previous one existed to be reused,
+// and it was, three times.
+//
+// Implementing these for real is more than a verify() body, which is why it is
+// not done here rather than half-done:
+//   gmail / gcal   Google Pub/Sub push authenticates with an OIDC JWT in the
+//                  `Authorization: Bearer` header — NOT a signature header this
+//                  interface is even given. Real verification = fetch Google's
+//                  JWKS (https://www.googleapis.com/oauth2/v3/certs, cached),
+//                  verify RS256, then check `iss` (accounts.google.com), `aud`
+//                  (the audience configured on the push subscription), `exp`,
+//                  and the service-account `email` claim. Needs the route to
+//                  pass the Authorization header through, plus a live push
+//                  subscription to verify against — neither exists yet.
+//   outlook        Microsoft Graph uses a two-step scheme: a `validationToken`
+//                  query-param echo at subscription time, then a per-message
+//                  `clientState` secret compared against the value stored when
+//                  the subscription was created. Needs subscription storage
+//                  that does not exist yet.
+// Both are gated on the connectors build (Gmail/Cal read-only sync), which is
+// poll-based today — so no legitimate push traffic exists to break.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isDevUnsigned(signature: string | null): boolean {
-  return process.env.NODE_ENV !== 'production' && !signature;
+/**
+ * The verify() of a leg that is not live: refuse unconditionally, whatever the
+ * signature, the body, or the environment. Sharing ONE implementation is the
+ * point — there is no per-provider branch in which an accept can be written by
+ * accident.
+ */
+function refuseUnimplemented(reason: string): ProviderAdapter['verify'] {
+  return () => ({ status: 'not_configured', reason });
 }
 
-function googleAdapter(provider: string, extract: (p: Record<string, unknown>) => string | null): ProviderAdapter {
+function unimplementedSignalAdapter(
+  provider: string,
+  reason: string,
+  extract: (p: Record<string, unknown>) => string | null,
+): ProviderAdapter {
   return {
     provider,
-    verify(signature) {
-      if (isDevUnsigned(signature)) return { status: 'verified' };
-      // Google Pub/Sub push uses an OIDC JWT — verify via the audience claim
-      // against our webhook URL. Wired in M1.5. Until GOOGLE_OAUTH_CLIENT_ID is
-      // provisioned the leg is not live.
-      if (!process.env.GOOGLE_OAUTH_CLIENT_ID) {
-        return { status: 'not_configured', reason: 'GOOGLE_OAUTH_CLIENT_ID not configured' };
-      }
-      if (!signature) return { status: 'invalid', reason: 'missing signature header' };
-      return { status: 'verified' };
-    },
+    verify: refuseUnimplemented(reason),
+    // Kept: resolve-family dispatches through this to read the external id, and
+    // it is pure payload parsing that grants nothing on its own. It is only ever
+    // reached after a `verified` result the verify() above can never return.
     extractExternalId(payload) {
       return isRecord(payload) ? extract(payload) : null;
     },
@@ -120,35 +150,26 @@ function googleAdapter(provider: string, extract: (p: Record<string, unknown>) =
   };
 }
 
-const gmailAdapter = googleAdapter('gmail', (payload) =>
+const gmailAdapter = unimplementedSignalAdapter(
+  'gmail',
+  'gmail push verification not implemented (Google Pub/Sub OIDC JWT)',
   // Gmail push delivers the mailbox address inside the Pub/Sub message.
-  readString(payload.emailAddress),
+  (payload) => readString(payload.emailAddress),
 );
 
-const gcalAdapter = googleAdapter('gcal', (payload) =>
+const gcalAdapter = unimplementedSignalAdapter(
+  'gcal',
+  'gcal push verification not implemented (Google Pub/Sub OIDC JWT)',
   // Google Calendar push echoes the watch channel id.
-  readString(payload.channelId) ?? readString(payload.resourceId),
+  (payload) => readString(payload.channelId) ?? readString(payload.resourceId),
 );
 
-const outlookAdapter: ProviderAdapter = {
-  provider: 'outlook',
-  verify(signature) {
-    if (isDevUnsigned(signature)) return { status: 'verified' };
-    // Microsoft Graph webhooks use a validation token then HMAC. Wired in M1.5.
-    if (!process.env.MICROSOFT_OAUTH_CLIENT_ID) {
-      return { status: 'not_configured', reason: 'MICROSOFT_OAUTH_CLIENT_ID not configured' };
-    }
-    if (!signature) return { status: 'invalid', reason: 'missing signature header' };
-    return { status: 'verified' };
-  },
-  extractExternalId(payload) {
-    // Microsoft Graph change notifications carry the subscription id.
-    return isRecord(payload) ? readString(payload.subscriptionId) : null;
-  },
-  toIngestedEvent(familyId, payload) {
-    return defaultToIngestedEvent('outlook', familyId, payload);
-  },
-};
+const outlookAdapter = unimplementedSignalAdapter(
+  'outlook',
+  'outlook push verification not implemented (Graph validationToken + clientState)',
+  // Microsoft Graph change notifications carry the subscription id.
+  (payload) => readString(payload.subscriptionId),
+);
 
 // ── TWILIO: removed (VIL-214 · A3) ────────────────────────────────────────────
 // There was a `twilioAdapter` here whose verify() returned `verified` for ANY
@@ -175,12 +196,20 @@ const outlookAdapter: ProviderAdapter = {
 // stripe-billing.ts and short-circuited in the route before registry dispatch.
 // Like the others, the Connect leg verifies HMAC-SHA256 only once
 // STRIPE_WEBHOOK_SECRET is provisioned.
+//
+// VIL-253: this is the ONLY adapter that verifies anything for real, and its
+// `NODE_ENV !== 'production' && !signature → verified` shortcut is gone. It was
+// the last accept-by-default path in the file, and the pattern the three broken
+// adapters were copied from. Removing it makes the invariant absolute and
+// checkable: NO code path in this registry returns `verified` without
+// cryptographic proof. Local testing is unaffected in practice — `stripe listen
+// --forward-to` signs forwarded events with the webhook secret, which is how
+// Stripe intends test traffic to be produced.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const stripeAdapter: ProviderAdapter = {
   provider: 'stripe',
   verify(signature, rawBody) {
-    if (isDevUnsigned(signature)) return { status: 'verified' };
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!secret) {
       return { status: 'not_configured', reason: 'STRIPE_WEBHOOK_SECRET not configured' };
@@ -227,12 +256,12 @@ interface ScaffoldSpec {
 function scaffoldAdapter(spec: ScaffoldSpec): ProviderAdapter {
   return {
     provider: spec.provider,
-    verify() {
-      // Scaffold: the leg is not live. We refuse to process unconditionally —
-      // even a well-formed signed request — until `secretEnvVar` exists and the
-      // real verify scheme is implemented. The route turns this into a 501.
-      return { status: 'not_configured', reason: spec.reason };
-    },
+    // Scaffold: the leg is not live. It refuses to process unconditionally —
+    // even a well-formed signed request — until `secretEnvVar` exists and the
+    // real verify scheme is implemented. The route turns this into a 501. Shares
+    // one implementation with the unimplemented signal legs (VIL-253) so "not
+    // live" means exactly the same thing everywhere in this file.
+    verify: refuseUnimplemented(spec.reason),
     extractExternalId(payload) {
       // Documented for the real leg; unused while not_configured (verify gates
       // the route before this is ever called).

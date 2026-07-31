@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAdapter, SUPPORTED_PROVIDERS } from './registry.js';
 
@@ -20,6 +21,23 @@ import { getAdapter, SUPPORTED_PROVIDERS } from './registry.js';
 
 const LIVE_PROVIDERS = ['gmail', 'gcal', 'outlook', 'stripe'] as const;
 const SCAFFOLD_PROVIDERS = ['brightwheel', 'himama', 'google_classroom'] as const;
+
+/** VIL-253: the legs whose real verification is not implemented. They must refuse
+ * everything — stripe is excluded because it verifies an HMAC for real. */
+const UNIMPLEMENTED_PROVIDERS = [
+  'gmail',
+  'gcal',
+  'outlook',
+  ...SCAFFOLD_PROVIDERS,
+] as const;
+
+/** The env vars whose mere presence used to flip a leg to accept-by-default. */
+const CREDENTIAL_ENV_VARS = [
+  'GOOGLE_OAUTH_CLIENT_ID',
+  'MICROSOFT_OAUTH_CLIENT_ID',
+  'BRIGHTWHEEL_WEBHOOK_SECRET',
+  'HIMAMA_WEBHOOK_SECRET',
+] as const;
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -72,6 +90,80 @@ describe('scaffold providers — known but not live', () => {
     vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'test-client-id');
     const adapter = getAdapter('google_classroom');
     expect(adapter?.verify('sig', '{}').status).toBe('not_configured');
+  });
+});
+
+describe('VIL-253 · unimplemented legs refuse every request (red team)', () => {
+  /**
+   * The regression: gmail/gcal/outlook returned `verified` for ANY non-empty
+   * signature once their OAuth client-id env var was set — and
+   * GOOGLE_OAUTH_CLIENT_ID is provisioned in production, so the gmail path was
+   * live-reachable. Each case below is a forged request shape; none may ever come
+   * back `verified`, because none of them carries proof of anything.
+   */
+  const FORGED_CASES: Array<{ name: string; signature: string | null; body: string }> = [
+    { name: 'no signature header at all', signature: null, body: '{"emailAddress":"a@b.com"}' },
+    { name: 'an empty signature header', signature: '', body: '{"emailAddress":"a@b.com"}' },
+    { name: 'an arbitrary non-empty signature', signature: 'anything', body: '{}' },
+    { name: 'a plausible base64 signature', signature: 'L/OH5YylLD5NRKLltdqwSvS0BnU=', body: '{}' },
+    { name: 'a stripe-shaped signature', signature: 'v1=deadbeef', body: '{}' },
+    { name: 'a bearer-token-shaped signature', signature: 'Bearer eyJhbGciOiJSUzI1NiJ9.e30.x', body: '{}' },
+    { name: 'a signature over an empty body', signature: 'sig', body: '' },
+    {
+      name: 'a fully plausible payload naming a real external id',
+      signature: 'sig',
+      body: '{"emailAddress":"parent@example.com","subscriptionId":"sub_1","channelId":"chan_1"}',
+    },
+  ];
+
+  for (const provider of UNIMPLEMENTED_PROVIDERS) {
+    it.each(FORGED_CASES)(`${provider} refuses %s`, ({ signature, body }) => {
+      const result = getAdapter(provider)?.verify(signature, body);
+      expect(result?.status).toBe('not_configured');
+    });
+  }
+
+  it.each(UNIMPLEMENTED_PROVIDERS)(
+    '%s refuses even with EVERY credential env var present — a credential is not a verified request',
+    (provider) => {
+      for (const name of CREDENTIAL_ENV_VARS) {
+        vi.stubEnv(name, 'provisioned-value');
+      }
+      // This is the exact production condition that made gmail exploitable.
+      expect(getAdapter(provider)?.verify('sig', '{"emailAddress":"a@b.com"}').status).toBe(
+        'not_configured',
+      );
+    },
+  );
+
+  it.each(UNIMPLEMENTED_PROVIDERS)(
+    '%s refuses an unsigned request outside production — no dev shortcut survives',
+    (provider) => {
+      // Vitest runs with NODE_ENV=test, so the deleted `isDevUnsigned` helper WOULD
+      // have returned verified here. If this ever passes again, the bypass is back.
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'provisioned-value');
+      expect(getAdapter(provider)?.verify(null, '{}').status).toBe('not_configured');
+    },
+  );
+
+  it('stripe — the one leg that verifies for real — also has no unsigned shortcut', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+
+    // Unsigned is now `invalid`, not `verified`: the secret exists, so the request
+    // is refused for the right reason rather than waved through by environment.
+    expect(getAdapter('stripe')?.verify(null, '{}').status).toBe('invalid');
+    expect(getAdapter('stripe')?.verify('v1=deadbeef', '{}').status).toBe('invalid');
+  });
+
+  it('stripe still ACCEPTS a correctly signed request (the refusal is not blanket)', () => {
+    const secret = 'whsec_test';
+    const body = '{"account":"acct_1"}';
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', secret);
+    const hex = createHmac('sha256', secret).update(body).digest('hex');
+
+    expect(getAdapter('stripe')?.verify(`v1=${hex}`, body).status).toBe('verified');
   });
 });
 
