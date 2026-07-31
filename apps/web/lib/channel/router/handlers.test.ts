@@ -2,7 +2,8 @@ import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { HealthReplyDeps } from '~/lib/health/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
-import { approvalHandler, healthReplyHandler } from './handlers';
+import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
+import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import type { HandlerContext } from './route';
 
 /**
@@ -151,5 +152,179 @@ describe('who owns "yes"', () => {
     expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(false);
     expect((await healthReplyHandler(health).handle(DB, turn('yes'))).claimed).toBe(true);
     expect(health.drafted).toEqual(['book_checkup']);
+  });
+});
+
+/**
+ * M7's deps, scripted. `open` decides whether this family is inside a check-in window —
+ * the lookup M7 does BEFORE it parses, and the thing that makes its claims conditional.
+ */
+function sequenceDeps(
+  options: { open?: boolean; reaskedAt?: Date | null } = {},
+): SequenceReplyDeps & { recorded: Array<{ outcome: string; position: number | null }>; reasks: number } {
+  const recorded: Array<{ outcome: string; position: number | null }> = [];
+  const reasks: { n: number } = { n: 0 };
+  const sequence: AwaitingSequence = {
+    sequenceId: 'seq-1',
+    familyId: FAMILY,
+    parentUserId: PARENT,
+    state: {
+      openAt: new Date('2026-07-29T11:00:00.000Z'),
+      timeZone: 'America/Toronto',
+      optIn: 'opted_in',
+      outcome: null,
+      waitlistStartedAt: null,
+      waitlistResponseHours: 36,
+    },
+    shortlist: {
+      windowRef: {
+        id: 'win-1',
+        municipality: 'Markham',
+        programDomain: 'swim',
+        cycleLabel: 'Fall 2026',
+      },
+      programDomainLabel: 'swim lessons',
+      opensForFamilyAt: new Date('2026-07-29T11:00:00.000Z'),
+      sourceUrl: 'https://example.invalid/register',
+      isResidentWindow: true,
+      residentPriorityDays: null,
+      waitlistResponseHours: 36,
+      fitNotes: [],
+      ageApproximate: false,
+    },
+    reaskedAt: options.reaskedAt ?? null,
+  };
+
+  return {
+    get recorded() {
+      return recorded;
+    },
+    get reasks() {
+      return reasks.n;
+    },
+    loadAwaitingSequence: async () => (options.open === false ? null : sequence),
+    recordOutcome: async (_db, input) => {
+      recorded.push({ outcome: input.outcome, position: input.position });
+    },
+    recordReask: async () => {
+      reasks.n += 1;
+    },
+  } as SequenceReplyDeps & {
+    recorded: Array<{ outcome: string; position: number | null }>;
+    reasks: number;
+  };
+}
+
+describe('sequenceReplyHandler', () => {
+  it('claims a waitlist report and files the position', async () => {
+    const deps = sequenceDeps();
+    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('waitlisted #3'));
+
+    expect(verdict.claimed).toBe(true);
+    expect(deps.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
+  });
+
+  it('claims a got-in report', async () => {
+    const deps = sequenceDeps();
+    const verdict = await sequenceReplyHandler(deps).handle(DB, turn("we're in"));
+
+    expect(verdict.claimed).toBe(true);
+    expect(deps.recorded).toEqual([{ outcome: 'registered', position: null }]);
+  });
+
+  it('claims nothing when no check-in window is open', async () => {
+    const deps = sequenceDeps({ open: false });
+    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('waitlisted #3'));
+
+    expect(verdict.claimed).toBe(false);
+    expect(deps.recorded).toEqual([]);
+  });
+
+  /** The claim that makes this handler BROAD, and the reason it runs last. */
+  it('claims an unreadable message once inside an open window (the re-ask)', async () => {
+    const deps = sequenceDeps();
+    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('what a morning'));
+
+    expect(verdict.claimed).toBe(true);
+    expect(deps.reasks).toBe(1);
+  });
+
+  it('stops claiming unreadable messages once the re-ask is spent', async () => {
+    const deps = sequenceDeps({ reaskedAt: new Date('2026-07-30T09:00:00.000Z') });
+    const verdict = await sequenceReplyHandler(deps).handle(DB, turn('what a morning'));
+
+    expect(verdict.claimed).toBe(false);
+  });
+});
+
+/**
+ * The three-way interactions. Each asserts the FIRST handler in the shipped order that
+ * claims the message, with every other handler's state left untouched — which is what
+ * the router's first-claim-wins loop actually does.
+ */
+describe('handler order — registration last', () => {
+  /**
+   * The collision the order exists to prevent: a parent filing OHIP paperwork during an
+   * open registration window. M7 cannot read "done", so ahead of M8 it would answer with
+   * the check-in menu and the paperwork would go unfiled.
+   */
+  it('gives "done" to the health handler even with an open registration window', async () => {
+    const health = healthDeps(PAPERWORK_CHECKPOINT);
+    const sequence = sequenceDeps();
+
+    const healthVerdict = await healthReplyHandler(health).handle(DB, turn('done'));
+
+    expect(healthVerdict.claimed).toBe(true);
+    expect(health.done).toEqual(['dental_school_screening']);
+    // Never consulted, so the family's one re-ask is still theirs to spend.
+    expect(sequence.reasks).toBe(0);
+  });
+
+  /** A drafted action still wins a bare "yes" — the approval handler is unchanged. */
+  it('gives a bare "yes" to the approval handler when an action is drafted', async () => {
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const sequence = sequenceDeps();
+
+    expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(true);
+    expect(s.approved).toEqual(['a-1']);
+    expect(sequence.reasks).toBe(0);
+  });
+
+  /** With nothing drafted, the health nudge's own offer still gets its "yes" — the
+   * registration re-ask does not reach it. */
+  it('gives a bare "yes" to the health nudge before the registration re-ask', async () => {
+    const s = spine([]);
+    const health = healthDeps(BOOKING_CHECKPOINT);
+    const sequence = sequenceDeps();
+
+    expect((await approvalHandler(s).handle(DB, turn('yes'))).claimed).toBe(false);
+    expect((await healthReplyHandler(health).handle(DB, turn('yes'))).claimed).toBe(true);
+    expect(health.drafted).toEqual(['book_checkup']);
+    expect(sequence.reasks).toBe(0);
+  });
+
+  /** And the registration report itself is unreadable to the two ahead of it, so it
+   * reaches M7 untouched. */
+  it('lets a waitlist report fall through the two handlers ahead of it', async () => {
+    const s = spine([{ actionId: 'a-1', actionType: 'calendar_add' }]);
+    const health = healthDeps(PAPERWORK_CHECKPOINT);
+    const sequence = sequenceDeps();
+
+    expect((await approvalHandler(s).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect((await healthReplyHandler(health).handle(DB, turn('waitlisted #3'))).claimed).toBe(false);
+    expect((await sequenceReplyHandler(sequence).handle(DB, turn('waitlisted #3'))).claimed).toBe(true);
+    expect(sequence.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
+  });
+});
+
+/**
+ * The order production actually ships. The tests above drive each handler directly, so
+ * without this one the whole ordering argument could hold while `defaultHandlers`
+ * returned them in some other sequence.
+ */
+describe('the shipped order', () => {
+  it('is approval, then health, then registration', async () => {
+    const { defaultHandlers } = await import('./wiring');
+    expect(defaultHandlers().map((h) => h.name)).toEqual(['approval', 'health', 'registration']);
   });
 });

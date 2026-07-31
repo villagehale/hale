@@ -7,6 +7,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply } from './copy';
+import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
 import {
   type AckTimer,
@@ -545,5 +546,132 @@ describe('the C2 seam', () => {
 
     expect(h.transport.bodies()).toEqual([capabilityReply()]);
     expect(capabilityReply()).toMatch(/past me for now/);
+  });
+});
+
+/**
+ * The deterministic chain built from the REAL adapters, in the order production ships
+ * them, driven through the real router against the real coach stub.
+ *
+ * The unit tests above prove each handler's verdict in isolation; this proves the thing
+ * a parent actually experiences — that a registration report is answered without a model
+ * ever being asked, and that the reply they get is M7's, not the stub's.
+ */
+describe('the shipped chain, end to end', () => {
+  const CHILD = '44444444-4444-4444-8444-444444444444';
+
+  function realChain(options: { pending?: Array<{ actionId: string; actionType: string }> } = {}) {
+    const spine = {
+      listPending: async () => options.pending ?? [],
+      latestUndoable: async () => null,
+      approve: async () => true,
+      decline: async () => true,
+      undo: async () => true,
+    };
+    const health = {
+      loadLastCheckpointRef: async () => `dental_school_screening:${CHILD}:1`,
+      recordDone: async () => {},
+      draftCheckup: async () => ({ actionId: 'drafted-1' }),
+    };
+    const recorded: Array<{ outcome: string; position: number | null }> = [];
+    const sequence = {
+      loadAwaitingSequence: async () => ({
+        sequenceId: 'seq-1',
+        familyId: FAMILY,
+        parentUserId: PARENT,
+        state: {
+          openAt: new Date('2026-07-29T11:00:00.000Z'),
+          timeZone: 'America/Toronto',
+          optIn: 'opted_in' as const,
+          outcome: null,
+          waitlistStartedAt: null,
+          waitlistResponseHours: 36,
+        },
+        shortlist: {
+          windowRef: {
+            id: 'win-1',
+            municipality: 'Markham',
+            programDomain: 'swim' as const,
+            cycleLabel: 'Fall 2026',
+          },
+          programDomainLabel: 'swim lessons',
+          opensForFamilyAt: new Date('2026-07-29T11:00:00.000Z'),
+          sourceUrl: 'https://example.invalid/register',
+          isResidentWindow: true,
+          residentPriorityDays: null,
+          waitlistResponseHours: 36,
+          fitNotes: [],
+          ageApproximate: false,
+        },
+        reaskedAt: null,
+      }),
+      recordOutcome: async (_db: unknown, input: { outcome: string; position: number | null }) => {
+        recorded.push({ outcome: input.outcome, position: input.position });
+      },
+      recordReask: async () => {},
+    };
+    return {
+      recorded,
+      // The production order (wiring.defaultHandlers): narrow claimers, then the broad one.
+      handlers: [
+        approvalHandler(spine as never),
+        healthReplyHandler(health as never),
+        sequenceReplyHandler(sequence as never),
+      ],
+    };
+  }
+
+  it('answers "waitlisted #3" without ever reaching the agent', async () => {
+    const chain = realChain();
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'waitlisted #3' }, handlers: chain.handlers, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(result.handler).toBe('registration');
+    expect(coach.calls).toBe(0);
+    expect(chain.recorded).toEqual([{ outcome: 'waitlisted', position: 3 }]);
+    // The parent is told the clock started — M7's copy, not the stub's boundary line.
+    expect(h.transport.bodies()).toHaveLength(1);
+    expect(h.transport.bodies()[0]).not.toBe(capabilityReply());
+  });
+
+  it('answers "done" from the health handler, not the registration re-ask', async () => {
+    const chain = realChain();
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'done' }, handlers: chain.handlers, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.handler).toBe('health');
+    expect(coach.calls).toBe(0);
+    expect(chain.recorded).toEqual([]);
+  });
+
+  it('gives a bare "yes" to the drafted action ahead of everything else', async () => {
+    const chain = realChain({ pending: [{ actionId: 'a-1', actionType: 'calendar_add' }] });
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'yes' }, handlers: chain.handlers, coach });
+
+    expect((await routeChannelMessage(h.deps, job())).handler).toBe('approval');
+    expect(coach.calls).toBe(0);
+  });
+
+  /** Ordinary conversation is claimed by NO handler's grammar — but M7's open window
+   * still owns the single re-ask, so this is the one case where a readable question is
+   * answered deterministically. Pinned so the behaviour is visible rather than
+   * surprising when C2 lands and takes the branch over. */
+  it('spends the one re-ask on an unreadable message inside an open window', async () => {
+    const chain = realChain();
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'anything indoors this weekend?' },
+      handlers: chain.handlers,
+      coach,
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).handler).toBe('registration');
+    expect(coach.calls).toBe(0);
   });
 });

@@ -1,4 +1,8 @@
 import type { Database } from '@hale/db';
+import {
+  type SequenceReplyDeps,
+  handleSequenceReply,
+} from '~/lib/registration/sequence/reply';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { checkupDraftedReply, healthDoneReply } from './copy';
@@ -31,6 +35,16 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  * An ORDINAL ("YES 2") never reaches the health handler at all: M8 matches exact words,
  * so it declines anything carrying a number, and the approval handler answers it even
  * when the queue is empty.
+ *
+ * WHY REGISTRATION IS LAST. The first two handlers claim only words they recognise
+ * exactly. M7's does something none of the others do: inside an open check-in window it
+ * also claims a message it CANNOT read, answering it with the re-ask menu (bounded to
+ * one per window by `reasked_at`). A handler that claims unreadable messages placed
+ * ahead of one that matches exact words would starve it — a parent texting "done" about
+ * their OHIP paperwork during an open registration window would get "how did
+ * registration go?" and their answer would go unfiled. Narrow before broad puts each
+ * word with the handler that actually recognises it, and leaves M7 exactly where its own
+ * module note puts it: last before the conversational layer.
  */
 
 /**
@@ -86,6 +100,36 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
         default:
           return { claimed: false };
       }
+    },
+  };
+}
+
+/**
+ * M7's registration check-in replies — "we got in", "waitlisted #3", "missed it".
+ *
+ * Unlike the two above, this one renders its own copy (the outcome shapes carry a
+ * `reply`), so the adapter passes it through untouched: the 36-hour waitlist clock and
+ * the sentence describing it are set in the same call, and a second copy here could
+ * disagree with the deadline actually stored.
+ *
+ * The `reasked` branch is a genuine claim, not a fallback: M7 has already stamped
+ * `reasked_at` and rendered the menu, so declining it here would spend the family's one
+ * re-ask and then say something else. When C2 lands (VIL-221), M7's own note says the
+ * re-ask should be handed to the conversational layer instead — at that point this
+ * adapter returns `claimed: false` for `reasked` and keeps claiming `recorded`. Until
+ * then the menu is a better answer than the stub's out-of-scope line.
+ */
+export function sequenceReplyHandler(deps: SequenceReplyDeps): DeterministicHandler {
+  return {
+    name: 'registration',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handleSequenceReply(
+        database,
+        { familyId: ctx.familyId, body: ctx.body, now: ctx.now },
+        deps,
+      );
+      if (outcome.status === 'ignored') return { claimed: false };
+      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
     },
   };
 }

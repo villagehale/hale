@@ -8,11 +8,12 @@ import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import type { ApprovalSpine, PendingAction } from './approval';
 import { capabilityStubRuntime } from './coach-runtime';
-import { approvalHandler, healthReplyHandler } from './handlers';
+import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import {
   type ChannelRouterDeps,
   type DeterministicHandler,
@@ -169,18 +170,15 @@ export function defaultApprovalSpine(): ApprovalSpine {
 }
 
 /**
- * The handler chain, in the order it runs. See handlers.ts for why "yes" resolves the
- * way it does.
- *
- * M7 (VIL-242, registration prepare-and-remind) adds a third link here — its
- * `handleSequenceReply` already returns the same claimed/ignored shape, so wiring it is
- * one adapter and one array entry. It is deliberately NOT stubbed in advance: an empty
- * slot for a module that does not exist on this branch would be an abstraction with no
- * second implementation, and the chain is an array precisely so adding one costs
- * nothing.
+ * The handler chain, in the order it runs — narrow claimers before broad ones. See
+ * handlers.ts for why "yes" resolves the way it does and why registration is last.
  */
 export function defaultHandlers(): DeterministicHandler[] {
-  return [approvalHandler(defaultApprovalSpine()), healthReplyHandler(defaultHealthReplyDeps())];
+  return [
+    approvalHandler(defaultApprovalSpine()),
+    healthReplyHandler(defaultHealthReplyDeps()),
+    sequenceReplyHandler(defaultSequenceReplyDeps()),
+  ];
 }
 
 export function channelRouterDeps(database: Database): ChannelRouterDeps {
