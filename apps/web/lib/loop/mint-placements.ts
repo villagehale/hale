@@ -4,6 +4,7 @@ import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
+import { zonedLocalInstant } from '~/lib/plan/spine';
 
 /**
  * Mints held `calendar_add` drafts from a composed week plan (VIL-219 / B3).
@@ -185,15 +186,10 @@ function placementDedupKey(weekStart: string, item: WeekPlanItem): string {
 /**
  * The UTC instant of family-local start-of-day for a `YYYY-MM-DD` day-key — the
  * inverse of dayKeyIn, and the established all-day storage convention (family_events
- * comment). Offset is measured by formatting one instant in the target zone vs UTC;
- * the machine's own timezone cancels out of the difference.
+ * comment).
  */
 export function zonedDayStartInstant(dayKey: string, timeZone: string): Date {
-  const utcMidnight = new Date(`${dayKey}T00:00:00Z`);
-  const inZone = new Date(utcMidnight.toLocaleString('en-US', { timeZone }));
-  const inUtc = new Date(utcMidnight.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const offsetMs = inUtc.getTime() - inZone.getTime();
-  return new Date(utcMidnight.getTime() + offsetMs);
+  return zonedLocalInstant(dayKey, '00:00', timeZone);
 }
 
 /** Whether a child is a teenager right now (age-derived, never a stored flag).

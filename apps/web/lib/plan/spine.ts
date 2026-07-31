@@ -85,6 +85,29 @@ export function addDaysToKey(key: string, days: number): string {
   return at.toISOString().slice(0, 10);
 }
 
+/**
+ * The UTC instant of a family-local wall-clock moment — the inverse of `dayKeyIn`, for
+ * callers holding a day key and a `HH:MM` the family said out loud.
+ *
+ * The offset is measured AT the target moment (format the naive instant in the target
+ * zone and in UTC; the machine's own zone cancels out of the difference), so a 4:30pm
+ * event resolves against the offset in force at 4:30pm rather than at midnight — which
+ * is the one hour a day-start measurement gets wrong on a DST changeover day.
+ */
+export function zonedLocalInstant(dayKey: string, time: string, timeZone: string): Date {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) {
+    throw new Error(`zonedLocalInstant: time must be HH:MM, got '${time}'`);
+  }
+  const naive = new Date(`${dayKey}T${match[1]}:${match[2]}:00Z`);
+  if (Number.isNaN(naive.getTime())) {
+    throw new Error(`zonedLocalInstant: '${dayKey}' is not a YYYY-MM-DD day key`);
+  }
+  const inZone = new Date(naive.toLocaleString('en-US', { timeZone }));
+  const inUtc = new Date(naive.toLocaleString('en-US', { timeZone: 'UTC' }));
+  return new Date(naive.getTime() + (inUtc.getTime() - inZone.getTime()));
+}
+
 export interface WeekWindow {
   /** The chosen-first-day (Monday by default) calendar-day key of the week. */
   startKey: string;

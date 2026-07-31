@@ -535,10 +535,13 @@ describe('logs carry no bodies', () => {
   });
 });
 
-// ── the coach stub ───────────────────────────────────────────────────────────
+// ── the coach seam ───────────────────────────────────────────────────────────
 
 describe('the C2 seam', () => {
-  it('answers with the Conversation Design capability reply until VIL-221 lands', async () => {
+  /** The stub is no longer what production wires (VIL-221 · C2 is), but it stays as the
+   * degraded runtime: any deployment without a model still answers with the
+   * Conversation Design's honest boundary rather than with silence. */
+  it('still answers with the Conversation Design capability reply when it is the runtime', async () => {
     const { capabilityStubRuntime } = await import('./coach-runtime');
     const h = harness({ coach: capabilityStubRuntime() });
 
@@ -658,11 +661,17 @@ describe('the shipped chain, end to end', () => {
     expect(coach.calls).toBe(0);
   });
 
-  /** Ordinary conversation is claimed by NO handler's grammar — but M7's open window
-   * still owns the single re-ask, so this is the one case where a readable question is
-   * answered deterministically. Pinned so the behaviour is visible rather than
-   * surprising when C2 lands and takes the branch over. */
-  it('spends the one re-ask on an unreadable message inside an open window', async () => {
+  /**
+   * VIL-221 · C2 took this branch over, which is what M7's own module note said should
+   * happen once a conversational layer existed. An open registration window no longer
+   * turns a readable question into the check-in menu: "anything indoors this weekend?"
+   * is a question the coach can actually answer, and answering it with "how did
+   * registration go?" was only ever the best available reply, never a good one.
+   *
+   * M7 keeps everything that is genuinely its: the three certainties it CAN read
+   * ("waitlisted #3" above), the window bookkeeping, and the re-ask stamp.
+   */
+  it('sends an unreadable message inside an open window to the coach, not the re-ask', async () => {
     const chain = realChain();
     const coach = fakeCoach();
     const h = harness({
@@ -671,7 +680,10 @@ describe('the shipped chain, end to end', () => {
       coach,
     });
 
-    expect((await routeChannelMessage(h.deps, job())).handler).toBe('registration');
-    expect(coach.calls).toBe(0);
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(result.handler).toBeNull();
+    expect(coach.calls).toBe(1);
   });
 });

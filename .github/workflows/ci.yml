@@ -81,6 +81,9 @@ jobs:
       - name: Birthday-party extraction eval (cached-only)
         run: pnpm --filter @hale/worker eval:rsvp
 
+      - name: Channel coach eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-channel
+
       - name: Build
         run: pnpm build
         env:

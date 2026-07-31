@@ -505,6 +505,13 @@
       "when": 1781464080000,
       "tag": "0074_party_rsvp",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1781464140000,
+      "tag": "0075_channel_coach_agent_name",
+      "breakpoints": true
     }
   ]
 }

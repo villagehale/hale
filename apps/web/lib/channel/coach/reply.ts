@@ -1,0 +1,156 @@
+import { smsSegments } from '~/lib/channel/sms-segments';
+import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
+
+/**
+ * VIL-221 · C2 — everything that happens to the model's answer between the loop
+ * returning it and the carrier taking it.
+ *
+ * The skill already asks for short, plain, ASCII prose (see coach-channel-sms.md), so
+ * none of this fires on a well-behaved answer. It exists for the answers that are not,
+ * because the model is the one component on this path that cannot be made to behave by
+ * construction — and each of the three things below is a real cost when it slips:
+ *
+ *   MARKDOWN is rendered literally by a phone. "**Two swims**" arrives with the
+ *   asterisks, which reads as broken software rather than as emphasis.
+ *
+ *   ONE typographic character — a curly apostrophe, an em dash, an emoji — flips the
+ *   entire body from GSM-7 to UCS-2 and cuts the character budget from 160 to 70, for a
+ *   difference nobody reading it on a phone can see (see sms-segments.ts). So they are
+ *   transliterated rather than counted: the parent gets more words for the same money.
+ *
+ *   A TEEN'S NAME is the one leak the tools cannot prevent. The agent context redacts a
+ *   13+ child to stage (coach/context.ts), the child-content guard refuses their
+ *   profile, and lookup_week reads through the teen-safe projections — but the PARENT
+ *   can type the name, and the model can echo it back. This is the deterministic
+ *   age-derived floor under all of that (rule #1), applied to the outbound body itself.
+ */
+
+/** The ceiling the ticket sets, and what the eval gates against. Two segments is about
+ * two sentences of GSM-7 — the length a parent reads without opening the message. */
+export const MAX_REPLY_SEGMENTS = 2;
+
+/** A child of this family, as the redactor needs them: enough to age the gate and to
+ * render the replacement identifier at the right level. */
+export interface ReplyChild {
+  name: string;
+  gender: string;
+  dateOfBirth: string;
+}
+
+export interface SmsReplyArgs {
+  children: readonly ReplyChild[];
+  /** The app URL a trimmed reply points at — passed in so this module holds no config. */
+  appLink: string;
+  now?: Date;
+}
+
+/**
+ * Replace every 13+ child's first name with their generic identifier (rule #1).
+ *
+ * The gate is `resolveChildNameLevel` — the same age-derived resolver the weekly plan
+ * and the reminder templates use — so a child who turned 13 this morning is redacted
+ * this afternoon without anything being re-stamped. A younger child is left named,
+ * because a reply that will not say "Milo" is a reply the parent has to decode.
+ */
+export function redactTeenNames(
+  text: string,
+  children: readonly ReplyChild[],
+  now: Date = new Date(),
+): string {
+  let out = text;
+  for (const child of children) {
+    if (resolveChildNameLevel(child.dateOfBirth, 'first_name', now) !== 'generic') continue;
+    const pattern = new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi');
+    out = out.replace(pattern, renderChildName(child, 'generic'));
+  }
+  return out;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Characters a model reaches for that cost more than twice what their ASCII twin does. */
+const GSM7_SUBSTITUTIONS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/[‘’‛]/g, "'"],
+  [/[“”]/g, '"'],
+  [/[–—―]/g, '-'],
+  [/…/g, '...'],
+  [/[\u00a0\u2007\u202f\u2009]/g, ' '],
+  [/[•·]/g, ''],
+];
+
+/**
+ * Markdown out, one line in. The list markers are dropped rather than rewritten into
+ * "1. 2. 3." — the skill's answer shape is prose, and a list that survived the strip
+ * would just be prose with stray numbers in it.
+ */
+function plainText(text: string): string {
+  let out = text;
+  out = out.replace(/```[\s\S]*?```/g, ' ');
+  out = out.replace(/`([^`]*)`/g, '$1');
+  out = out.replace(/!?\[([^\]]*)\]\(([^)]*)\)/g, '$1 $2');
+  out = out.replace(/^\s{0,3}#{1,6}\s+/gm, '');
+  out = out.replace(/^\s{0,3}>\s?/gm, '');
+  out = out.replace(/^\s*(?:[-*+]|\d{1,2}[.)])\s+/gm, '');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '$1');
+  out = out.replace(/\*([^*]+)\*/g, '$1');
+  out = out.replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1$2');
+  for (const [pattern, replacement] of GSM7_SUBSTITUTIONS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+/** Sentence-ish chunks, kept WITH their terminator so re-joining them reads normally. */
+function sentences(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+/).filter((part) => part.trim().length > 0);
+}
+
+/**
+ * Bring a body inside the segment budget, dropping whole sentences from the end and
+ * handing the rest to the app.
+ *
+ * Sentence-first because a body cut mid-clause reads as a bug, and because the FIRST
+ * sentence is where the skill puts the answer — so the part that survives is the part
+ * that mattered. Only when a single sentence is itself over budget does it fall back to
+ * a word-boundary trim, which is still never mid-word.
+ */
+function fitToBudget(body: string, appLink: string, max: number): string {
+  if (smsSegments(body) <= max) return body;
+
+  const tail = `More in the app: ${appLink}`;
+  const parts = sentences(body);
+  for (let count = parts.length - 1; count >= 1; count -= 1) {
+    const candidate = `${parts.slice(0, count).join(' ')} ${tail}`;
+    if (smsSegments(candidate) <= max) return candidate;
+  }
+
+  const words = (parts[0] ?? body).split(' ');
+  for (let count = words.length - 1; count >= 1; count -= 1) {
+    const candidate = `${words.slice(0, count).join(' ')}... ${tail}`;
+    if (smsSegments(candidate) <= max) return candidate;
+  }
+  // The link alone already exceeds the budget — a misconfigured appLink, not a long
+  // answer. Return it anyway: an over-budget honest pointer beats a silent empty send.
+  return tail;
+}
+
+/**
+ * The full outbound treatment, in the order the steps depend on each other: flatten to
+ * plain ASCII prose first (so the redactor and the counter both see the real body),
+ * redact teen names second (so a trim can never be what removes the leak), then fit the
+ * budget last (so the count is of exactly what goes on the wire).
+ *
+ * An empty body THROWS rather than sending whitespace: the router reads a throw as a
+ * failed turn and answers with the honesty template, which is the correct outcome for a
+ * model that returned nothing (rule #8 — no silent no-op).
+ */
+export function toSmsReply(raw: string, args: SmsReplyArgs): string {
+  const flattened = plainText(raw);
+  if (flattened === '') {
+    throw new Error('channel coach: model answer was empty after post-processing');
+  }
+  const redacted = redactTeenNames(flattened, args.children, args.now);
+  return fitToBudget(redacted, args.appLink, MAX_REPLY_SEGMENTS);
+}

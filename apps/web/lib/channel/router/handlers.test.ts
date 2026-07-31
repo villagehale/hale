@@ -240,16 +240,21 @@ describe('sequenceReplyHandler', () => {
     expect(deps.recorded).toEqual([]);
   });
 
-  /** The claim that makes this handler BROAD, and the reason it runs last. */
-  it('claims an unreadable message once inside an open window (the re-ask)', async () => {
+  /**
+   * VIL-221 · C2. An unreadable message is now the COACH's, per M7's own module note:
+   * a parent who texts something the check-in grammar cannot read is far more likely to
+   * be asking Hale something than to be reporting a registration outcome in words M7
+   * does not know. The stamp is still spent inside M7 (it owns the window's
+   * bookkeeping); what changed is that the menu no longer wins the message.
+   */
+  it('declines an unreadable message so the coach can answer it', async () => {
     const deps = sequenceDeps();
     const verdict = await sequenceReplyHandler(deps).handle(DB, turn('what a morning'));
 
-    expect(verdict.claimed).toBe(true);
-    expect(deps.reasks).toBe(1);
+    expect(verdict.claimed).toBe(false);
   });
 
-  it('stops claiming unreadable messages once the re-ask is spent', async () => {
+  it('still declines once the re-ask is spent', async () => {
     const deps = sequenceDeps({ reaskedAt: new Date('2026-07-30T09:00:00.000Z') });
     const verdict = await sequenceReplyHandler(deps).handle(DB, turn('what a morning'));
 

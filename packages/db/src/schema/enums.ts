@@ -114,6 +114,7 @@ export const agentNameEnum = pgEnum('agent_name', [
   'reminder-voice',
   'radar-voice',
   'nudge-voice',
+  'coach-channel-sms',
 ]);
 
 export const agentRunStatusEnum = pgEnum('agent_run_status', [

@@ -33,13 +33,13 @@ export interface ChannelCoachRuntime {
 }
 
 /**
- * The stub C1 ships with, and the reason the inbound leg can go live before C2 does.
+ * The stub C1 shipped with, and the reason the inbound leg went live before C2 did.
  *
- * It answers every non-deterministic message with the Conversation Design's
- * out-of-scope line (§3) — an honest statement of what Hale can do today plus where the
- * rest lives. That is a worse answer than C2 will give and a much better one than
- * silence, and it is the same reply C2 will keep for genuinely out-of-scope asks, so
- * swapping the implementation narrows the stub rather than replacing it.
+ * Production now wires the real runtime (`~/lib/channel/coach/runtime`, VIL-221), but
+ * this stays: it is the degraded implementation, answering every message with the
+ * Conversation Design's out-of-scope line (§3) — an honest statement of what Hale does
+ * plus where the rest lives. C2 keeps that same line for genuinely out-of-scope asks,
+ * so the stub is the narrow case of the real thing rather than a dead alternative.
  */
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
