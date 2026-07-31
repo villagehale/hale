@@ -16,3 +16,15 @@ export const CATEGORY_CAPS: Record<LoopCategory, { max: number; windowHours: num
 
 /** The pg-boss queue the durable channel.send jobs ride (drained by lib/cron/drain). */
 export const CHANNEL_SEND_QUEUE = 'channel.send';
+
+/**
+ * VIL-214 · A3 — the inbound counterpart: one job per text from a parent whose family
+ * is already past intake, for C1 to answer. Deliberately NOT `events.ingested`: that
+ * queue carries SIGNALS to be classified, and a conversation turn is neither a signal
+ * nor classify-worthy — routing it there would run a parent's reply through the wrong
+ * pipeline (scout decision on VIL-214).
+ *
+ * A3 only PRODUCES. The consumer lands with C1; until then the durable record is the
+ * channel_messages row the producer writes, and an undrained job simply expires.
+ */
+export const CHANNEL_MESSAGE_RECEIVED_QUEUE = 'channel.message.received';
