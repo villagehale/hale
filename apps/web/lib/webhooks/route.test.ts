@@ -69,6 +69,54 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(sendMock).not.toHaveBeenCalled();
   });
 
+  // ── VIL-253 · forged requests reach nothing ────────────────────────────────
+  // The bug this locks: gmail/gcal/outlook accepted ANY non-empty signature once
+  // their OAuth client-id env var existed, and GOOGLE_OAUTH_CLIENT_ID IS set in
+  // production — so this exact request used to enqueue an events.ingested job,
+  // putting attacker text in front of the classifier and the family digest.
+  // The assertion that matters is `sendMock` never being called.
+  describe.each(['gmail', 'gcal', 'outlook'])('%s — credential present, forged request', (provider) => {
+    beforeEach(() => {
+      vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'provisioned-in-prod');
+      vi.stubEnv('MICROSOFT_OAUTH_CLIENT_ID', 'provisioned-in-prod');
+    });
+
+    it.each([
+      ['no signature header', {}],
+      ['an empty signature', { 'x-webhook-signature': '' }],
+      ['an arbitrary signature', { 'x-webhook-signature': 'anything-at-all' }],
+      ['a bearer-token-shaped signature', { 'x-webhook-signature': 'Bearer eyJhbGciOiJSUzI1NiJ9.e30.x' }],
+      ['a stripe-shaped signature', { 'x-webhook-signature': 'v1=deadbeef' }],
+      ['a stripe-signature header instead', { 'stripe-signature': 'v1=deadbeef' }],
+    ])('refuses %s with 501 and never enqueues', async (_name, headers) => {
+      const res = await callPost(
+        provider,
+        '{"emailAddress":"parent@example.com","channelId":"chan_1","subscriptionId":"sub_1"}',
+        headers as Record<string, string>,
+      );
+
+      expect(res.status).toBe(501);
+      expect((await res.json()) as { error: string }).toMatchObject({
+        error: 'provider_not_live',
+      });
+      expect(sendMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses a payload crafted to look like a real push notification', async () => {
+      const res = await callPost(
+        provider,
+        JSON.stringify({
+          message: { data: Buffer.from('{"emailAddress":"parent@example.com"}').toString('base64') },
+          subscription: 'projects/hale/subscriptions/gmail-push',
+        }),
+        { 'x-webhook-signature': 'sig', authorization: 'Bearer eyJhbGciOiJSUzI1NiJ9.e30.x' },
+      );
+
+      expect(res.status).toBe(501);
+      expect(sendMock).not.toHaveBeenCalled();
+    });
+  });
+
   it('returns 501 for stripe (billing contract) when STRIPE_WEBHOOK_SECRET is absent', async () => {
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', '');
     const res = await callPost('stripe', '{"type":"checkout.session.completed"}', {
