@@ -8,6 +8,7 @@ import { maskPhoneE164 } from './phone';
 import {
   SMS_CONSENT_SCOPE,
   requestPhoneOtp,
+  resolveSendablePhone,
   resolveVerifiedChannelByPhone,
   revokeSmsChannel,
   verifyPhoneOtp,
@@ -449,5 +450,59 @@ describe('resolveVerifiedChannelByPhone (A3 inbound lookup)', () => {
   it('returns null for a malformed inbound number (never hits the DB path with junk)', async () => {
     const { db } = makeFakeDb({ selectRows: () => [] });
     expect(await resolveVerifiedChannelByPhone(db, 'not-a-number')).toBeNull();
+  });
+});
+
+/**
+ * VIL-220 · C1 — the SEND side of the same row. `loadSmsChannelState` masks the number
+ * because a Settings screen only ever needs the masked form; the router has to answer a
+ * parent, so it needs the real one. The predicate is the CASL gate: a revoked or
+ * unverified row yields no number at all, which is what makes texting a stopped
+ * parent structurally impossible rather than merely unlikely.
+ */
+describe('resolveSendablePhone (C1 reply lookup)', () => {
+  beforeEach(() => {
+    process.env.APP_ENCRYPTION_KEY = KEY;
+  });
+  afterEach(() => {
+    process.env.APP_ENCRYPTION_KEY = '';
+  });
+
+  const sendableRow = (overrides: { verifiedAt: Date | null; revokedAt: Date | null }) => ({
+    phoneE164Encrypted: encryptString(PHONE),
+    verifiedAt: overrides.verifiedAt,
+    revokedAt: overrides.revokedAt,
+  });
+
+  it('returns the decrypted number for an active, verified channel', async () => {
+    const { db } = makeFakeDb({
+      selectRows: (t) =>
+        t === schema.parentChannels ? [sendableRow({ verifiedAt: NOW, revokedAt: null })] : [],
+    });
+
+    expect(await resolveSendablePhone(db, USER_ID)).toBe(PHONE);
+  });
+
+  it('returns NOTHING for a revoked channel — a parent who texted STOP cannot be replied to', async () => {
+    const { db } = makeFakeDb({
+      selectRows: (t) =>
+        t === schema.parentChannels ? [sendableRow({ verifiedAt: NOW, revokedAt: NOW })] : [],
+    });
+
+    expect(await resolveSendablePhone(db, USER_ID)).toBeNull();
+  });
+
+  it('returns nothing for an unverified (pending) channel', async () => {
+    const { db } = makeFakeDb({
+      selectRows: (t) =>
+        t === schema.parentChannels ? [sendableRow({ verifiedAt: null, revokedAt: null })] : [],
+    });
+
+    expect(await resolveSendablePhone(db, USER_ID)).toBeNull();
+  });
+
+  it('returns nothing when the parent has no channel at all', async () => {
+    const { db } = makeFakeDb({ selectRows: () => [] });
+    expect(await resolveSendablePhone(db, USER_ID)).toBeNull();
   });
 });

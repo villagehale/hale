@@ -16,6 +16,7 @@ const EVENTS = 'events.ingested';
 const ACTIONS = 'actions.approved';
 const RERANK = 'village.rerank';
 const CHANNEL = 'channel.send';
+const INBOUND = 'channel.message.received';
 const FAMILY = '11111111-1111-1111-1111-111111111111';
 const PARENT = '22222222-2222-2222-2222-222222222222';
 
@@ -63,20 +64,23 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [ACTIONS, [...(initial[ACTIONS] ?? [])]],
     [RERANK, [...(initial[RERANK] ?? [])]],
     [CHANNEL, [...(initial[CHANNEL] ?? [])]],
+    [INBOUND, [...(initial[INBOUND] ?? [])]],
   ]);
   const completed = new Map<string, string[]>([
     [EVENTS, []],
     [ACTIONS, []],
     [RERANK, []],
     [CHANNEL, []],
+    [INBOUND, []],
   ]);
   const failed = new Map<string, string[]>([
     [EVENTS, []],
     [ACTIONS, []],
     [RERANK, []],
     [CHANNEL, []],
+    [INBOUND, []],
   ]);
-  const created: Array<{ name: string; expireInSeconds?: number }> = [];
+  const created: Array<{ name: string; expireInSeconds?: number; policy?: string }> = [];
 
   const fetch = vi.fn(async (name: string, options: { batchSize: number }) => {
     const queue = pending.get(name) ?? [];
@@ -85,8 +89,15 @@ function makeFakeBoss(initial: Record<string, Pending>) {
 
   const boss = {
     createQueue: vi.fn(
-      async (name: string, options?: { name: string; expireInSeconds?: number }) => {
-        created.push({ name: options?.name ?? name, expireInSeconds: options?.expireInSeconds });
+      async (
+        name: string,
+        options?: { name: string; expireInSeconds?: number; policy?: string },
+      ) => {
+        created.push({
+          name: options?.name ?? name,
+          expireInSeconds: options?.expireInSeconds,
+          policy: options?.policy,
+        });
       },
     ),
     fetch,
@@ -114,6 +125,7 @@ function makeDeps(boss: DrainBoss, overrides: Partial<DrainDeps['handlers']> = {
       executeApprovedAction: vi.fn(async () => undefined),
       rerank: vi.fn(async () => undefined),
       channelSend: vi.fn(async () => undefined),
+      channelMessage: vi.fn(async () => undefined),
       ...overrides,
     },
     log: { info: vi.fn(), error: vi.fn() },
@@ -332,5 +344,113 @@ describe('drainHotQueues', () => {
     expect(stateful).toHaveBeenCalledTimes(2);
     expect(drafts.size).toBe(1);
     expect(summary.processed).toBe(2);
+  });
+});
+
+/**
+ * VIL-220 · C1 — the inbound-router queue. Two properties are asserted here and
+ * nowhere else: that this queue is created under the SINGLETON policy (without it
+ * pg-boss records the singleton key and enforces nothing, so per-conversation FIFO
+ * silently degrades to "whatever order the batch came back in"), and that the drain
+ * loop runs the jobs it fetched ONE AT A TIME in fetch order.
+ */
+describe('channel.message.received', () => {
+  function inbound(providerId: string) {
+    return {
+      family_id: FAMILY,
+      parent_user_id: PARENT,
+      channel_message_id: '33333333-3333-4333-8333-333333333333',
+      provider_message_id: providerId,
+      received_at: new Date().toISOString(),
+    };
+  }
+
+  it('creates the queue under the singleton policy that enforces the key', async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    expect(created).toContainEqual({
+      name: INBOUND,
+      expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+      policy: 'singleton',
+    });
+  });
+
+  it('routes a pending inbound job and completes it', async () => {
+    const { boss, completed } = makeFakeBoss({
+      [INBOUND]: [{ id: 'i1', data: inbound('SM1') }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.channelMessage).toHaveBeenCalledTimes(1);
+    expect(deps.handlers.channelMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider_message_id: 'SM1', parent_user_id: PARENT }),
+    );
+    expect(completed(INBOUND)).toEqual(['i1']);
+    expect(summary.processed).toBe(1);
+  });
+
+  /**
+   * Two texts a second apart. They must be ROUTED in the order they were sent and
+   * never concurrently: "move swim to Tuesday" then "actually Wednesday" produces the
+   * wrong week if the second is applied first, and two overlapping turns would each
+   * read a thread that is missing the other's message.
+   */
+  it('processes two texts from one parent strictly in order, one at a time', async () => {
+    const seen: string[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const { boss } = makeFakeBoss({
+      [INBOUND]: [
+        { id: 'i1', data: inbound('SM1') },
+        { id: 'i2', data: inbound('SM2') },
+      ],
+    });
+    const deps = makeDeps(boss, {
+      channelMessage: vi.fn(async (job: { provider_message_id: string }) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        seen.push(job.provider_message_id);
+        await new Promise((resolve) => setImmediate(resolve));
+        inFlight -= 1;
+      }),
+    });
+
+    await drainHotQueues(deps);
+
+    expect(seen).toEqual(['SM1', 'SM2']);
+    expect(maxInFlight).toBe(1);
+  });
+
+  it('DROPS a schema-invalid inbound payload (never reaches the router)', async () => {
+    const { boss, completed } = makeFakeBoss({
+      [INBOUND]: [{ id: 'bad', data: { ...inbound('SM1'), family_id: 'not-a-uuid' } }],
+    });
+    const deps = makeDeps(boss);
+
+    const summary = await drainHotQueues(deps);
+
+    expect(deps.handlers.channelMessage).not.toHaveBeenCalled();
+    expect(completed(INBOUND)).toEqual(['bad']);
+    expect(summary.dropped).toBe(1);
+  });
+
+  it('re-queues an inbound job whose routing throws — a parent is never dropped silently', async () => {
+    const { boss, completed, failed } = makeFakeBoss({
+      [INBOUND]: [{ id: 'i3', data: inbound('SM3') }],
+    });
+    const deps = makeDeps(boss, {
+      channelMessage: vi.fn(async () => {
+        throw new Error('transient db error');
+      }),
+    });
+
+    const summary = await drainHotQueues(deps);
+
+    expect(failed(INBOUND)).toEqual(['i3']);
+    expect(completed(INBOUND)).toEqual([]);
+    expect(summary.failed).toBe(1);
   });
 });

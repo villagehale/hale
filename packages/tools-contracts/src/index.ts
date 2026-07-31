@@ -70,6 +70,25 @@ export const channelSendJobPayloadSchema = z.object({
 export type ChannelSendJobPayload = z.infer<typeof channelSendJobPayloadSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// F14 · channel.message.received (VIL-214 · A3 produces, VIL-220 · C1 consumes):
+// one inbound text from a parent whose family is already past intake.
+//
+// It carries POINTERS ONLY — no body, no phone number. The text itself is already
+// on the `channel_messages` row named by `channel_message_id`, and the router
+// reads it from there, so a parent's words never sit in a queue table, a job
+// payload, or a drain log line (rule #1). `provider_message_id` rides along as
+// the idempotency key the ledger dedupes on.
+// ─────────────────────────────────────────────────────────────────────────────
+export const channelMessageReceivedPayloadSchema = z.object({
+  family_id: z.string().uuid(),
+  parent_user_id: z.string().uuid(),
+  channel_message_id: z.string().uuid(),
+  provider_message_id: z.string().min(1),
+  received_at: z.string().datetime(),
+});
+export type ChannelMessageReceivedPayload = z.infer<typeof channelMessageReceivedPayloadSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // check_calendar_conflict
 // ─────────────────────────────────────────────────────────────────────────────
 export const calendarConflictInput = z.object({

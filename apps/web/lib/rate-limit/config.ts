@@ -94,6 +94,14 @@ export const RATE_LIMITS = {
   // or family NAT could plausibly send a handful. 20/hour sits far above every honest
   // pattern yet leaves a stuffing script nowhere to go. Fail-closed.
   rsvp: { limit: 20, windowSec: 3600 },
+  // VIL-220 inbound-router AGENT turns, per PARENT. Narrower than sms-inbound above and
+  // stacked on top of it: that one bounds texts per number, this one bounds only the
+  // expensive half — a model call plus its tool work — so a parent whose hour is spent
+  // can still approve, decline, and file a "done" for free. An intense back-and-forth
+  // with Hale is a handful of turns; 20/hour sits far above that while stopping a
+  // runaway loop behind a legitimate number from running up spend. Over the limit the
+  // parent is answered gently and the turn is dropped, NOT silently swallowed.
+  'sms-agent-turn': { limit: 20, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

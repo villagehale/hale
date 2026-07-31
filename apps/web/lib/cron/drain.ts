@@ -1,12 +1,18 @@
 import {
   approvedActionPayloadSchema,
+  type ChannelMessageReceivedPayload,
+  channelMessageReceivedPayloadSchema,
   channelSendJobPayloadSchema,
   ingestedEventPayloadSchema,
   rerankJobPayloadSchema,
 } from '@hale/tools-contracts';
 import { executeApprovedAction, runOrchestrator } from '@hale/worker/orchestrator';
 import PgBoss from 'pg-boss';
-import { CHANNEL_SEND_QUEUE } from '~/lib/channel/config';
+import {
+  CHANNEL_MESSAGE_RECEIVED_POLICY,
+  CHANNEL_MESSAGE_RECEIVED_QUEUE,
+  CHANNEL_SEND_QUEUE,
+} from '~/lib/channel/config';
 import type { LoopMessage } from '~/lib/channel/types';
 
 /**
@@ -46,7 +52,10 @@ const WALL_CLOCK_BUDGET_MS = 700_000;
  * fetch/complete/fail/expiry control flow is unit-testable without a live
  * pg-boss (rule #8: this fakes the QUEUE, never the LLM). */
 export interface DrainBoss {
-  createQueue(name: string, options?: { name: string; expireInSeconds?: number }): Promise<void>;
+  createQueue(
+    name: string,
+    options?: { name: string; expireInSeconds?: number; policy?: string },
+  ): Promise<void>;
   fetch<T>(name: string, options: { batchSize: number }): Promise<Array<{ id: string; data: T }>>;
   complete(name: string, id: string): Promise<void>;
   fail(name: string, id: string, data: object): Promise<void>;
@@ -63,6 +72,11 @@ export interface DrainHandlers {
    * error throws so the job re-queues; a permanent one records a failed row and
    * completes. Injected so the drain loop is testable without a live provider. */
   channelSend: (message: LoopMessage) => Promise<void>;
+  /** Route one inbound text through C1 (VIL-220), bound to a db + the real ports by
+   * the caller. A throw re-queues the job; the parent's message is already durably on
+   * the ledger, so a retry re-reads it rather than losing it. Injected so the drain
+   * loop is testable without a transport, a model, or a db. */
+  channelMessage: (job: ChannelMessageReceivedPayload) => Promise<void>;
 }
 
 export interface DrainDeps {
@@ -168,6 +182,38 @@ async function processChannelSendJob(
 }
 
 /**
+ * Drive one inbound text through the router (VIL-220 · C1). Same drop-don't-throw
+ * policy for a schema-invalid payload.
+ *
+ * A handler throw propagates → boss.fail → redelivery. That is safe to retry because
+ * the payload carries only POINTERS: the parent's message is on the channel_messages
+ * row A3 wrote, so a re-run re-reads the same text rather than losing it.
+ *
+ * It is at-least-once, not exactly-once, and the two visible artifacts of a mid-turn
+ * crash are a duplicated `messages` row for the parent's turn and a re-sent reply.
+ * Neither is a wrong answer: the approvals spine refuses a second approval of an action
+ * that has left `drafted_for_approval`, so a retry produces the honest failure line
+ * rather than acting twice, and the singleton policy keeps a retry in order rather than
+ * interleaved with a newer text. De-duplicating the turn itself would need a key on
+ * `messages`, which is a schema change this ticket deliberately does not make.
+ */
+async function processChannelMessageJob(
+  deps: DrainDeps,
+  job: { id: string; data: unknown },
+): Promise<'processed' | 'dropped'> {
+  const parsed = channelMessageReceivedPayloadSchema.safeParse(job.data);
+  if (!parsed.success) {
+    deps.log.error(
+      { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, jobId: job.id, issues: parsed.error.issues },
+      'drain: channel.message.received payload failed contract validation — dropping',
+    );
+    return 'dropped';
+  }
+  await deps.handlers.channelMessage(parsed.data);
+  return 'processed';
+}
+
+/**
  * Fetch + process a single queue in bounded batches until it drains, the batch
  * cap is hit, or the wall-clock budget expires. Each job: complete() on a clean
  * run / drop, fail() on a handler throw — a failed job is NEVER silently
@@ -227,6 +273,15 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     name: CHANNEL_SEND_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
   });
+  // The one queue with a POLICY. Per-conversation FIFO is a property of the queue, not
+  // of this loop: pg-boss only enforces a singleton key where the policy says to, and
+  // it hands out at most one job per key per fetch. Created here as well as by the
+  // producer so a cold start in either order lands the same queue.
+  await deps.boss.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, {
+    name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
+  });
 
   const deadlineMs = deps.now() + WALL_CLOCK_BUDGET_MS;
   const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
@@ -235,6 +290,13 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
   await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
   await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
   await drainQueue(deps, CHANNEL_SEND_QUEUE, processChannelSendJob, deadlineMs, summary);
+  await drainQueue(
+    deps,
+    CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    processChannelMessageJob,
+    deadlineMs,
+    summary,
+  );
 
   deps.log.info({ ...summary }, 'drain: run complete');
   return summary;
@@ -263,6 +325,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
 
   // The channel seam pulls the loop dispatch + adapters (and the db-backed ports);
   // scoped to the runtime entrypoint so importing a drain constant stays test-light.
+  const { routeInboundChannelMessage } = await import('~/lib/channel/router/wiring');
   const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
@@ -305,6 +368,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
             message,
             buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
           ).then(() => undefined),
+        channelMessage: (job) => routeInboundChannelMessage(db(), job),
       },
       log: console,
       now: () => Date.now(),

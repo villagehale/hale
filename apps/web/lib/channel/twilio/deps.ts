@@ -1,10 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
-import { CHANNEL_MESSAGE_RECEIVED_QUEUE } from '~/lib/channel/config';
+import {
+  CHANNEL_MESSAGE_RECEIVED_POLICY,
+  CHANNEL_MESSAGE_RECEIVED_QUEUE,
+} from '~/lib/channel/config';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
+import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { db } from '~/lib/db';
 import { getQueue } from '~/lib/queue';
@@ -44,39 +48,79 @@ export function buildIntakeDeps(): IntakeDeps {
   };
 }
 
+/** The slice of pg-boss the producer uses, injected so the key and the policy are
+ * assertable without a live queue (the ApproveQueue pattern). */
+export interface QueueOptions {
+  name?: string;
+  expireInSeconds?: number;
+  policy?: string;
+}
+
+export interface MessageQueue {
+  createQueue(name: string, options?: QueueOptions): Promise<void>;
+  updateQueue(name: string, options?: QueueOptions): Promise<void>;
+  send(
+    name: string,
+    data: ChannelMessageReceivedJob,
+    options?: { expireInSeconds?: number; singletonKey?: string },
+  ): Promise<string | null>;
+}
+
 /**
- * Enqueue one conversation turn for C1.
+ * The send options, in one place because two call sites use them.
  *
- * `createQueue` first because pg-boss 10 refuses to send to a queue that does not exist,
- * and A3 ships the PRODUCER before C1 ships the consumer — so nothing else would have
- * created it. It is idempotent (ON CONFLICT DO NOTHING in pg-boss's own DDL), and
- * cached per process so it costs one statement per cold start rather than one per text.
+ * The key is the CONVERSATION anchor — the same string the router threads on — not the
+ * provider message id A3 shipped. A per-message key serializes nothing, because every
+ * message has a different one. Per-PARENT rather than per-family, so a co-parent's text
+ * never waits behind a turn that has nothing to do with them.
  *
- * `singletonKey` carries the provider message id as GROUNDWORK, and is deliberately
- * described as nothing more: pg-boss only enforces singleton-key uniqueness on queues
- * whose policy is 'short' / 'singleton' / 'stately' (the unique index is `WHERE policy =
- * …`), and this queue is 'standard', so the key is recorded and enforces nothing today.
- * The real duplicate guard is the ledger's provider_message_id lookup in inbound.ts,
- * which is what the retry test actually exercises. C1 owns the policy choice, because
- * the useful key there is probably per-CONVERSATION (serialize a family's turns), not
- * per-message — and picking 'short' now would also silently throttle any keyless job a
- * future producer sends to this queue.
+ * This is ordering, not deduplication: the duplicate guard remains the ledger's
+ * provider_message_id lookup in inbound.ts, which runs before this is ever reached.
  */
+function sendOptions(job: ChannelMessageReceivedJob) {
+  return {
+    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    singletonKey: channelSmsNoteKey(job.parent_user_id),
+  };
+}
+
+/**
+ * Enqueue one conversation turn for C1, ensuring the queue exists AND carries the
+ * policy the key needs.
+ *
+ * Both statements are required, and `updateQueue` is the one that is easy to miss.
+ * pg-boss's `create_queue` ends in ON CONFLICT DO NOTHING, so it cannot change the
+ * policy of a queue that already exists — and A3 already shipped this queue, which
+ * means production may well hold a `standard` row that would silently ignore every
+ * singleton key we send it. `updateQueue` converges it, and is a no-op UPDATE when the
+ * row is absent, so the pair is correct from either starting state.
+ */
+export async function sendChannelMessageReceived(
+  queue: MessageQueue,
+  job: ChannelMessageReceivedJob,
+): Promise<void> {
+  const options: QueueOptions = {
+    name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+    policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
+  };
+  await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
+  await queue.updateQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
+  await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, sendOptions(job));
+}
+
+/** Production entrypoint. The queue setup is cached per process (A3's discipline): one
+ * pair of statements per cold start rather than per text. */
 let queueEnsured = false;
 
 export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJob): Promise<void> {
-  const queue = await getQueue();
-  if (!queueEnsured) {
-    await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, {
-      name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
-      expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
-    });
-    queueEnsured = true;
+  const queue = (await getQueue()) as unknown as MessageQueue;
+  if (queueEnsured) {
+    await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, sendOptions(job));
+    return;
   }
-  await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, {
-    expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
-    singletonKey: job.provider_message_id,
-  });
+  await sendChannelMessageReceived(queue, job);
+  queueEnsured = true;
 }
 
 export function twilioInboundDeps(): TwilioInboundDeps {

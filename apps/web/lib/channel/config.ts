@@ -28,3 +28,21 @@ export const CHANNEL_SEND_QUEUE = 'channel.send';
  * channel_messages row the producer writes, and an undrained job simply expires.
  */
 export const CHANNEL_MESSAGE_RECEIVED_QUEUE = 'channel.message.received';
+
+/**
+ * VIL-220 · C1 — the queue POLICY, which is what makes the singleton key mean anything.
+ *
+ * pg-boss enforces a singleton key only where the policy says to (its unique index is
+ * declared `WHERE policy = …`), and 'singleton' is the one policy that means "one job
+ * per key active at a time, the rest wait their turn" — 'short' and 'stately' REJECT
+ * the extra jobs instead, which would drop a parent's second text. Together with a
+ * per-conversation key that is per-conversation FIFO.
+ *
+ * It lives here beside the queue name, in the module with no runtime imports, because
+ * the producer (channel/twilio/deps) and the consumer (cron/drain) both need it and
+ * neither should reach through the other to get it. cron/drain is imported for its
+ * expiry constant by every route that approves an action, and channel/twilio/deps pulls
+ * a db handle and a queue client — an import edge between them would put both on that
+ * path for the sake of one string.
+ */
+export const CHANNEL_MESSAGE_RECEIVED_POLICY = 'singleton';
