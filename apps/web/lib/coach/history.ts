@@ -7,6 +7,7 @@ import {
   loadTimeline,
   resolveConversationForFamily,
 } from './conversation';
+import { CHANNEL_SMS_THREAD_TITLE, isChannelSmsNoteKey } from './note-key';
 
 /**
  * Ask-session history reads: the family's conversation list (the Ask rail) and one
@@ -41,6 +42,13 @@ function toTitle(content: string): string {
   const trimmed = content.trim();
   if (trimmed.length <= TITLE_MAX_CHARS) return trimmed;
   return `${trimmed.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}…`;
+}
+
+/** The list title. A namespaced thread is named by its namespace; everything else is
+ * named by what the parent asked first (VIL-220: see CHANNEL_SMS_THREAD_TITLE). */
+function titleFor(noteKey: string | null, firstUserTurn: string | null): string {
+  if (isChannelSmsNoteKey(noteKey)) return CHANNEL_SMS_THREAD_TITLE;
+  return toTitle(firstUserTurn ?? '');
 }
 
 interface HistoryRow {
@@ -105,7 +113,7 @@ export async function listConversations(
   return [...byConversation.entries()]
     .map(([id, agg]) => ({
       id,
-      title: toTitle(agg.titleContent ?? ''),
+      title: titleFor(agg.noteKey, agg.titleContent),
       noteKey: agg.noteKey,
       lastMessageAt: agg.lastAt.toISOString(),
       messageCount: agg.count,

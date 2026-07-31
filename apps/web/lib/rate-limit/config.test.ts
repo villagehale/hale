@@ -67,9 +67,10 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
   it('uses a one-minute window for the silent bot-guard routes (not the per-hour cooldowns)', () => {
     // The per-hour routes are genuine cooldowns: a billable LLM run (village-search),
     // a per-message SMS spend (sms-otp-*, sms-inbound — each inbound can cost a model
-    // call AND an outbound text), a storage-abuse guard (avatar-upload), or a write
-    // whose damage a window reset does not undo (rsvp — a stuffed guest list is a real
-    // host looking at junk names, and there is no cost meter to notice it).
+    // call AND an outbound text, and sms-agent-turn the model call that answers it), a
+    // storage-abuse guard (avatar-upload), or a write whose damage a window reset does
+    // not undo (rsvp — a stuffed guest list is a real host looking at junk names, and
+    // there is no cost meter to notice it).
     // Every OTHER route is an invisible bot guard on a minute (the cheap AI-search
     // intent parse included).
     const hourWindow = new Set([
@@ -78,6 +79,7 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
       'sms-otp-send',
       'sms-otp-verify',
       'sms-inbound',
+      'sms-agent-turn',
       'mcp-register',
       'mcp-authorize',
       'rsvp',

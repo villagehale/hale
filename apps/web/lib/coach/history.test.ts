@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { getConversationTranscript, listConversations } from './history';
+import { CHANNEL_SMS_THREAD_TITLE, channelSmsNoteKey } from './note-key';
 
 // history.ts pulls in ~/lib/family (→ ~/auth → next-auth) for its session-scoped
 // wrappers; stub it so importing the module under test doesn't drag in the auth
@@ -272,6 +273,39 @@ describe('listConversations', () => {
 
   it('returns an empty list when the family has no conversations', async () => {
     expect(await listConversations(FAMILY_A, listFakeDb([]))).toEqual([]);
+  });
+});
+
+/**
+ * VIL-220 · C1 — the text thread's receipt surface. A parent's SMS conversation is a
+ * long-lived thread whose first user turn is whatever they happened to text months ago
+ * ("hi"), so the generic first-turn title would name the thread after an accident. It
+ * is titled from its NAMESPACE instead, which is stable for the life of the thread.
+ */
+describe('listConversations — the SMS thread', () => {
+  const t = (hhmm: string) => new Date(`2026-06-17T${hhmm}:00Z`);
+  const SMS_KEY = channelSmsNoteKey('77777777-7777-4777-8777-777777777777');
+
+  const smsRows = (): MessageRow[] => [
+    { conversationId: CONV4, noteKey: SMS_KEY, role: 'user', content: 'hi', createdAt: t('08:00'), deletedAt: null },
+    { conversationId: CONV4, noteKey: SMS_KEY, role: 'assistant', content: 'Hi, I am Hale.', createdAt: t('08:01'), deletedAt: null },
+    { conversationId: CONV1, noteKey: null, role: 'user', content: 'When do I start solids?', createdAt: t('10:00'), deletedAt: null },
+  ];
+
+  it('titles the text thread by its namespace, not by whatever was texted first', async () => {
+    const summaries = await listConversations(FAMILY_A, listFakeDb(smsRows()));
+    const byId = new Map(summaries.map((s) => [s.id, s]));
+
+    expect(byId.get(CONV4)?.title).toBe(CHANNEL_SMS_THREAD_TITLE);
+    expect(byId.get(CONV4)?.noteKey).toBe(SMS_KEY);
+    // Every other thread keeps the first-live-user-turn derivation.
+    expect(byId.get(CONV1)?.title).toBe('When do I start solids?');
+  });
+
+  it('lists the text thread alongside app threads — the receipt surface is the same list', async () => {
+    const summaries = await listConversations(FAMILY_A, listFakeDb(smsRows()));
+    expect(summaries.map((s) => s.id)).toEqual([CONV1, CONV4]);
+    expect(summaries.find((s) => s.id === CONV4)?.messageCount).toBe(2);
   });
 });
 

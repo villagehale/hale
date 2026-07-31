@@ -410,6 +410,47 @@ export async function loadSmsChannelState(
   };
 }
 
+/**
+ * The parent's number in a form we can actually TEXT — the reader
+ * `loadSmsChannelState` deliberately did not provide, because it exists for a Settings
+ * screen and a screen only ever needs the masked form.
+ *
+ * VIL-220 · C1 is the first caller that must answer an inbound, so this is the send
+ * side of the same row: the SAME active + verified + non-revoked predicate, decrypted.
+ * The predicate is the CASL gate, not a detail — a revoked row resolves to null, so a
+ * parent who texted STOP cannot be replied to by any caller of this function, and the
+ * check cannot be forgotten downstream because there is no number without it.
+ *
+ * The decrypted value must never be logged (rule #1); callers pass it straight to a
+ * transport.
+ */
+export async function resolveSendablePhone(
+  database: Database,
+  userId: string,
+): Promise<string | null> {
+  const [active] = await database
+    .select({
+      phoneE164Encrypted: schema.parentChannels.phoneE164Encrypted,
+      verifiedAt: schema.parentChannels.verifiedAt,
+      revokedAt: schema.parentChannels.revokedAt,
+    })
+    .from(schema.parentChannels)
+    .where(
+      and(
+        eq(schema.parentChannels.userId, userId),
+        eq(schema.parentChannels.kind, CHANNEL_KIND),
+        isNotNull(schema.parentChannels.verifiedAt),
+        isNull(schema.parentChannels.revokedAt),
+      ),
+    )
+    .limit(1);
+
+  // Defense in depth, the shape resolveVerifiedChannelByPhone already keeps: re-check
+  // the two columns that make the row sendable rather than trusting the predicate.
+  if (!active?.verifiedAt || active.revokedAt !== null) return null;
+  return decryptString(active.phoneE164Encrypted);
+}
+
 export interface ResolvedChannel {
   userId: string;
   familyId: string;
