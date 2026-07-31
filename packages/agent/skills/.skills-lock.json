@@ -7,6 +7,10 @@
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"
   },
+  "coach-channel-sms.md": {
+    "file": "coach-channel-sms.md",
+    "sha256": "13bbb1dd0221ccf46ca41c514f3724c3327942e7d90ff3bf181ec84fd8c16002"
+  },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",
     "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"

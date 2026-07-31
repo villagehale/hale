@@ -11,8 +11,8 @@ import { defaultHealthReplyDeps } from '~/lib/health/reply';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
+import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import type { ApprovalSpine, PendingAction } from './approval';
-import { capabilityStubRuntime } from './coach-runtime';
 import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import {
   type ChannelRouterDeps,
@@ -187,9 +187,9 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     loadContext: loadInboundContext,
     transport: createTwilioTransport(),
     handlers: defaultHandlers(),
-    // The C2 seam (VIL-221). Until it lands every non-deterministic message gets the
-    // Conversation Design's honest out-of-scope line rather than silence.
-    coach: capabilityStubRuntime(),
+    // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
+    // documented fallback shape rather than deleted — see coach-runtime.ts.
+    coach: productionChannelCoach(database),
     limiter: new PostgresRateLimiter(database),
     ackTimer: realAckTimer,
     now: () => new Date(),

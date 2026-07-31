@@ -72,6 +72,50 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
+/**
+ * The Village read, as ONE definition shared by every surface that offers it — Ask in
+ * the app and Hale over text (VIL-221 · C2). "Improvements compound across surfaces"
+ * is only true if they are the same tool; two copies of this handler would be two
+ * teen-redaction filters that can drift, which is the failure rule #1 cannot afford.
+ */
+export function searchVillageTool(database: Database): RegisteredTool {
+  return defineTool({
+    name: 'search_village',
+    description:
+      "Surface local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. Teen-attributed candidates are redacted to category only (rule #1).",
+    inputSchema: z.object({ query: z.string().optional() }),
+    handler: async (input, ctx) => {
+      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
+      const timeZone = await readFamilyTimezone(database, ctx.familyId);
+
+      const currentRunRows = await database
+        .select()
+        .from(schema.villageCandidates)
+        .where(
+          and(
+            eq(schema.villageCandidates.familyId, ctx.familyId),
+            isNull(schema.villageCandidates.supersededAt),
+          ),
+        )
+        .orderBy(desc(schema.villageCandidates.confidence), desc(schema.villageCandidates.discoveredAt))
+        .limit(MEMORY_RESULT_LIMIT);
+
+      const needle = input.query?.toLowerCase();
+      const candidates = visibleCandidates(currentRunRows, new Date(), timeZone)
+        .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
+        .filter(
+          (c) =>
+            !needle ||
+            c.title.toLowerCase().includes(needle) ||
+            c.summary.toLowerCase().includes(needle),
+        )
+        .map((c) => ({ title: c.title, kind: c.kind, summary: c.summary }));
+
+      return { candidates };
+    },
+  });
+}
+
 export function buildAskHaleTools(database: Database): RegisteredTool[] {
   const getChildProfile = defineTool({
     name: 'get_child_profile',
@@ -234,48 +278,12 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     },
   });
 
-  const searchVillage = defineTool({
-    name: 'search_village',
-    description:
-      "Surface local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. Teen-attributed candidates are redacted to category only (rule #1).",
-    inputSchema: z.object({ query: z.string().optional() }),
-    handler: async (input, ctx) => {
-      const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
-      const timeZone = await readFamilyTimezone(database, ctx.familyId);
-
-      const currentRunRows = await database
-        .select()
-        .from(schema.villageCandidates)
-        .where(
-          and(
-            eq(schema.villageCandidates.familyId, ctx.familyId),
-            isNull(schema.villageCandidates.supersededAt),
-          ),
-        )
-        .orderBy(desc(schema.villageCandidates.confidence), desc(schema.villageCandidates.discoveredAt))
-        .limit(MEMORY_RESULT_LIMIT);
-
-      const needle = input.query?.toLowerCase();
-      const candidates = visibleCandidates(currentRunRows, new Date(), timeZone)
-        .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
-        .filter(
-          (c) =>
-            !needle ||
-            c.title.toLowerCase().includes(needle) ||
-            c.summary.toLowerCase().includes(needle),
-        )
-        .map((c) => ({ title: c.title, kind: c.kind, summary: c.summary }));
-
-      return { candidates };
-    },
-  });
-
   return [
     getChildProfile,
     searchMemory,
     saveMemory,
     getFrameworkGuidance,
-    searchVillage,
+    searchVillageTool(database),
     ...buildConnectorTools(database),
   ];
 }
