@@ -100,6 +100,12 @@ describe('TextEntry (number not provisioned — today)', () => {
     expect(unsetHtml).toContain('aloha@villagehale.com');
   });
 
+  it('never leaves mailto as the only path — the address is copyable in place', () => {
+    // A bare mailto silently no-ops on devices without a mail handler (most
+    // desktops), so the CTA must ship a copy affordance alongside it.
+    expect(unsetHtml).toContain('Copy aloha@villagehale.com');
+  });
+
   it('says plainly that the number is not live and the page is unannounced', () => {
     expect(unsetHtml).toContain('The number’s coming — this page isn’t announced yet.');
   });
