@@ -78,6 +78,9 @@ jobs:
       - name: Proactive nudge composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:nudge
 
+      - name: Birthday-party extraction eval (cached-only)
+        run: pnpm --filter @hale/worker eval:rsvp
+
       - name: Build
         run: pnpm build
         env:

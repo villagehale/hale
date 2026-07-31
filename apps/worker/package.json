@@ -27,6 +27,7 @@
     "eval:intake": "node evals/run-intake-eval.mjs --cached-only",
     "eval:radar": "node evals/run-radar-eval.mjs --cached-only",
     "eval:nudge": "node evals/run-nudge-eval.mjs --cached-only",
+    "eval:rsvp": "node evals/run-rsvp-eval.mjs --cached-only",
     "eval:vil143": "node evals/run-vil143-eval.mjs",
     "clean": "rm -rf dist .turbo *.tsbuildinfo",
     "prompts:push": "node scripts/sync-prompts.mjs push",

@@ -1,0 +1,11 @@
+{
+  "value": {
+    "is_party": true,
+    "title": "Ana's birthday",
+    "starts_at": null,
+    "location": "the park",
+    "child_name": "Ana",
+    "confidence": 0.4
+  },
+  "latencyMs": 2072
+}

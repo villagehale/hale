@@ -16,6 +16,7 @@ import {
   handleCaregiverInviteReply,
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
+import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
   AMBIGUOUS_CLARIFY,
@@ -570,6 +571,12 @@ async function handleStop(
   // invite: a STOP from someone we asked but who never accepted closes the invitation
   // itself. Otherwise the only promise we made them would cover nothing.
   await declineOpenInviteOnStop(database, phoneE164, now);
+
+  // VIL-245 · the same promise, printed on every party-guest text. A guest is not a
+  // parent and has no channel to revoke — their consent lives on the RSVP row — so a
+  // STOP has to reach that row directly, and it erases the stored number along with the
+  // opt-in: the consent was the only basis for holding a non-user's number at all.
+  await optOutGuestRemindersOnStop(database, phoneE164, now);
 
   // A STOP after provisioning must revoke the real channel + append the consent
   // withdrawal + audit — the enrolment engine already owns that transaction, so this

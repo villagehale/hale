@@ -1,0 +1,11 @@
+{
+  "value": {
+    "is_party": true,
+    "title": "Leo's birthday party",
+    "starts_at": "2026-09-12T14:00:00-04:00",
+    "location": "the community pool",
+    "child_name": "Leo",
+    "confidence": 0.9
+  },
+  "latencyMs": 1931
+}

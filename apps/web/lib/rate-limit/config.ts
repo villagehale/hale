@@ -85,6 +85,15 @@ export const RATE_LIMITS = {
   // it while stopping a script from running up spend or pumping SMS traffic. Over the
   // limit the machine goes SILENT — replying would hand an attacker the amplification.
   'sms-inbound': { limit: 30, windowSec: 3600 },
+  // VIL-245 · rsvp (20/hour/IP): the PUBLIC, unauthenticated RSVP write — the one
+  // endpoint in Hale a stranger can POST to with no account. An HOUR window, not a
+  // minute, because this is a genuine cap rather than a bot guard: the damage is a real
+  // host opening their guest list to junk names, and unlike a cost meter nothing else
+  // in the system would notice. Per-IP, the only identifier a guest has. A household
+  // answering one invite submits once, maybe twice after a correction; a shared office
+  // or family NAT could plausibly send a handful. 20/hour sits far above every honest
+  // pattern yet leaves a stuffing script nowhere to go. Fail-closed.
+  rsvp: { limit: 20, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

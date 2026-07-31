@@ -210,6 +210,13 @@ export const familyEventSourceEnum = pgEnum('family_event_source', [
   // occasions but NOT placements (a placed item is a durable calendar entry, not a
   // fresh proposal), while the ICS feed renders both.
   'placement',
+  // VIL-245 · M10 — a party the family is HOSTING, declared over messaging. Its own
+  // source rather than 'channel' because the two mean different things to the host
+  // reply handler: a 'channel' row is any occasion a text mentioned, while a 'party'
+  // row is the one thing a "yes, make me a link" may attach a public page to. Sharing
+  // the value would let a plain "add Leo's party Sat 2pm" be turned into a shareable
+  // page by an unrelated "yes" arriving minutes later.
+  'party',
 ]);
 
 // F11 · The Sunday Loop — a parent's chosen EXCHANGE channel (the two-way
@@ -265,6 +272,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // registration legs eat the weekly nudge budget — and then the nudge cap would read
   // as spent by messages it was never meant to govern.
   'registration_sequence',
+  // VIL-245 · M10's birthday-party RSVP exchange — the host's share link and tally, and
+  // the day-before reminder to a GUEST who asked for one. Its own category for a reason
+  // the others do not have: a guest is not a parent and has no users row, so these rows
+  // are ledgered against the HOST parent (the M6 caregiver precedent). Folding them into
+  // any parent-facing category would make one family's guest volume read as messages
+  // Hale sent the PARENT — wrong in a PIPEDA right-to-access read, and wrong in every
+  // cap that counts a category.
+  'rsvp',
 ]);
 
 /**
@@ -277,6 +292,15 @@ export const registrationOutcomeEnum = pgEnum('registration_outcome', [
   'waitlisted',
   'missed',
 ]);
+
+/**
+ * VIL-245 · M10 — what a guest said about a birthday party, in the guest's own words
+ * reduced to the only three answers a headcount can use. 'maybe' is a real answer, not
+ * a missing one: a host planning a party needs the difference between "no" and "I don't
+ * know yet", and collapsing them would make Hale's tally lie in the direction that
+ * costs money (too little cake).
+ */
+export const rsvpResponseEnum = pgEnum('rsvp_response', ['yes', 'no', 'maybe']);
 
 // Every outcome the dispatch records — a delivered/failed send OR a suppression.
 // A ledger row is written for EACH, so the record is a complete accounting of what

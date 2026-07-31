@@ -498,6 +498,13 @@
       "when": 1781464020000,
       "tag": "0073_registration_sequences",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1781464080000,
+      "tag": "0074_party_rsvp",
+      "breakpoints": true
     }
   ]
 }

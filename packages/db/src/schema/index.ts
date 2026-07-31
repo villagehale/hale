@@ -30,6 +30,7 @@ export * from './email-sends.js';
 export * from './daily-digests.js';
 export * from './week-plans.js';
 export * from './family-events.js';
+export * from './party-invites.js';
 export * from './event-reminders.js';
 export * from './village.js';
 export * from './curated-resources.js';

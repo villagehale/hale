@@ -1,0 +1,11 @@
+{
+  "value": {
+    "is_party": true,
+    "title": "Max's 6th birthday",
+    "starts_at": "2026-08-15T15:00:00-04:00",
+    "location": null,
+    "child_name": "Max",
+    "confidence": 0.9
+  },
+  "latencyMs": 2123
+}
