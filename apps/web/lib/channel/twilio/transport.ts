@@ -1,0 +1,79 @@
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { requireTwilioConfig } from './config';
+
+/**
+ * VIL-214 · A3 — the real SMS leg behind M2's {@link ChannelTransport}: the ONE place
+ * a message actually leaves Hale for a phone.
+ *
+ * Raw REST over `fetch`, no SDK. The Twilio node SDK would add a large dependency and
+ * its own HTTP stack to send one form-encoded POST, and the repo has no Twilio
+ * dependency to reuse (scout note on VIL-214). `fetch` is injected so the request this
+ * builds is asserted directly in tests — no network, no credentials (rule: external
+ * calls behind a small injectable interface).
+ *
+ * Privacy (rule #1): the number and the body are arguments, never log lines. Twilio
+ * echoes both back inside its error `message` field, so failures surface the HTTP
+ * status and Twilio's numeric error code ONLY — enough to diagnose (21610 = the
+ * recipient opted out, 21408 = unpermitted region) without putting a parent's phone
+ * number in a stack trace.
+ */
+
+const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01';
+
+/** Twilio's webhook budget is 15s and this send sits inside that request, so it is
+ * bounded well under it: a hung provider must fail fast, not time the webhook out. */
+const SEND_TIMEOUT_MS = 10_000;
+
+export interface TwilioTransportDeps {
+  /** Injected for tests; defaults to the platform fetch. */
+  fetch?: typeof fetch;
+}
+
+function readErrorCode(payload: unknown): string {
+  if (typeof payload === 'object' && payload !== null && 'code' in payload) {
+    const code = (payload as { code: unknown }).code;
+    if (typeof code === 'number' || typeof code === 'string') return String(code);
+  }
+  return 'unknown';
+}
+
+export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTransport {
+  const doFetch = deps.fetch ?? globalThis.fetch;
+  return {
+    async send({ to, body }) {
+      const config = requireTwilioConfig();
+      const credentials = Buffer.from(`${config.apiKeySid}:${config.apiKeySecret}`).toString(
+        'base64',
+      );
+
+      const response = await doFetch(
+        `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Basic ${credentials}`,
+            'content-type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: to, From: config.fromNumber, Body: body }).toString(),
+          signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+        },
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          `twilio send failed: HTTP ${response.status}, twilio code ${readErrorCode(payload)}`,
+        );
+      }
+
+      const payload = (await response.json()) as { sid?: unknown };
+      const sid = payload.sid;
+      if (typeof sid !== 'string' || sid.length === 0) {
+        // The ledger's idempotency and every delivery callback key off this id, so a
+        // fabricated one would quietly break both (rule #8: fail, don't paper over).
+        throw new Error('twilio send succeeded but returned no message sid');
+      }
+      return { providerMessageId: sid };
+    },
+  };
+}
