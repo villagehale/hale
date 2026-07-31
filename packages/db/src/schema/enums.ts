@@ -259,6 +259,23 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // conversation the parent started — and so a caregiver's ledger is separable from
   // the parents' for a PIPEDA right-to-access read.
   'caregiver',
+  // VIL-242 · M7's registration ladder (heads-up, battle plan, go, check-in, waitlist
+  // guards). Its own category for the mirror of the reason 'nudge' has one: this class
+  // is deliberately UNCAPPED, so sharing 'nudge' would make a family's approved
+  // registration legs eat the weekly nudge budget — and then the nudge cap would read
+  // as spent by messages it was never meant to govern.
+  'registration_sequence',
+]);
+
+/**
+ * VIL-242 · M7 — what a family reported about a registration window they were prepared
+ * for. Recorded ONLY from the parent's own reply: Hale never sees the municipal portal,
+ * so there is no state here Hale could have observed by itself.
+ */
+export const registrationOutcomeEnum = pgEnum('registration_outcome', [
+  'registered',
+  'waitlisted',
+  'missed',
 ]);
 
 // Every outcome the dispatch records — a delivered/failed send OR a suppression.

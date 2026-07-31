@@ -40,9 +40,16 @@ import { isWithinQuietHours } from '~/lib/loop/prefs';
  * timezone read, because after STOP none of it is ours to look at.
  */
 
-/** Every class of message Hale may send UNPROMPTED. One today; the union is the
- * registry, so a new class cannot be added without picking it a budget below. */
-export type ProactiveSendKind = 'nudge';
+/**
+ * Every class of message Hale may send UNPROMPTED. The union is the registry, so a new
+ * class cannot be added without picking it a budget and an urgency stance below.
+ *
+ * `registration_sequence` (VIL-242 · M7) is the second class, and it is the first one
+ * the parent SUBSCRIBED to: approving the shortlist Hale drafted for a specific
+ * registration window is a request for a specific, finite ladder of messages about that
+ * window. That single fact is what earns it both exemptions below.
+ */
+export type ProactiveSendKind = 'nudge' | 'registration_sequence';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -55,12 +62,46 @@ export type ProactiveHoldReason =
 export type ProactiveSendVerdict = { allowed: true } | { allowed: false; reason: ProactiveHoldReason };
 
 /**
- * The volume budget per class, per FAMILY. A nudge is the "Hale noticed something"
- * message; one a week is the most a household can receive and still read it as a
- * signal rather than a feed.
+ * The volume budget per class, per FAMILY — or `null` where the class is bounded by
+ * something better than a counter.
+ *
+ * A nudge is the "Hale noticed something" message: discretionary, open-ended, and
+ * capable of becoming a feed, so one a week is the most a household can receive and
+ * still read it as a signal.
+ *
+ * A registration sequence is neither. Its length is fixed by the window it serves (a
+ * heads-up, a battle plan, a go, one check-in, at most two waitlist guards) and every
+ * leg exists because the parent approved a shortlist for that specific date. A counter
+ * over it would not be a safety rail, it would be a bug: a family who approved two
+ * windows in one week would silently lose the second window's 6:15 a.m. message — the
+ * single most valuable thing this product sends — to a budget designed for suggestions.
+ * The bound is the ladder; `null` says so explicitly rather than by omission (`Record`
+ * still forces every class to make a choice).
  */
-export const PROACTIVE_CAP: Record<ProactiveSendKind, { max: number; windowHours: number }> = {
+export const PROACTIVE_CAP: Record<
+  ProactiveSendKind,
+  { max: number; windowHours: number } | null
+> = {
   nudge: { max: 1, windowHours: 24 * 7 },
+  registration_sequence: null,
+};
+
+/**
+ * Which classes may claim `urgent` and cross quiet hours.
+ *
+ * The quiet-hours rule reads "a proactive message is never urgent by construction",
+ * and that holds for everything Hale decides to send on its own. A registration
+ * sequence is the exception the sentence anticipated: the parent asked for a message
+ * timed to a municipal clock they do not control, and the two legs that claim urgency
+ * are WORTHLESS late — a battle plan deferred to 08:00 arrives after a 06:30 open, and
+ * a 15-minute warning that waits never fires at all.
+ *
+ * Fail-closed and per CLASS, never per caller: a `nudge` that sets `urgent` is still
+ * held, so the exemption cannot be widened by a flag at a call site.
+ */
+const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
+  nudge: false,
+  registration_sequence: true,
 };
 
 /**
@@ -71,8 +112,12 @@ export const PROACTIVE_CAP: Record<ProactiveSendKind, { max: number; windowHours
  */
 export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
 
-/** The `channel_messages.category` each proactive class is counted under. */
-const PROACTIVE_CATEGORY: Record<ProactiveSendKind, 'nudge'> = { nudge: 'nudge' };
+/** The `channel_messages.category` each proactive class is counted under. A class of
+ * its own per kind, so one class's volume can never consume another's budget. */
+const PROACTIVE_CATEGORY: Record<ProactiveSendKind, 'nudge' | 'registration_sequence'> = {
+  nudge: 'nudge',
+  registration_sequence: 'registration_sequence',
+};
 
 export interface OutboundGatePorts {
   /** A live, verified, non-revoked channel for this parent. */
@@ -89,6 +134,9 @@ export interface ProactiveSendRequest {
   parentUserId: string;
   kind: ProactiveSendKind;
   now: Date;
+  /** This particular message is worthless if deferred, and its class is allowed to say
+   * so ({@link URGENCY_ALLOWED}). Honoured only for such a class; ignored otherwise. */
+  urgent?: boolean;
 }
 
 /**
@@ -112,10 +160,17 @@ export async function assertProactiveSendAllowed(
   }
 
   const cap = PROACTIVE_CAP[request.kind];
-  const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
-  if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
-    return { allowed: false, reason: 'frequency_cap' };
+  if (cap !== null) {
+    const since = new Date(request.now.getTime() - cap.windowHours * 3_600_000);
+    if ((await ports.countProactiveSends(request.familyId, request.kind, since)) >= cap.max) {
+      return { allowed: false, reason: 'frequency_cap' };
+    }
   }
+
+  // An uncapped class does not read the ledger at all, and an urgent leg does not read
+  // the clock: in both cases the answer could not change the verdict, and the gate's
+  // standing discipline is to look at nothing it is not entitled to act on.
+  if (request.urgent === true && URGENCY_ALLOWED[request.kind]) return { allowed: true };
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
   if (

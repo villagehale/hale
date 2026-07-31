@@ -118,6 +118,7 @@ function harness(
     transport?: FakeTransport | null;
     children?: NudgeChildRow[];
     doneCheckpoints?: Set<string>;
+    claimedWindowIds?: Set<string>;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -142,6 +143,7 @@ function harness(
         .map((key) => key.slice(prefix.length));
       return new Set([...told, ...(options.doneCheckpoints ?? [])]);
     },
+    loadClaimedWindowIds: async () => options.claimedWindowIds ?? new Set<string>(),
     weather: { getDailyOutlook: async () => options.weather ?? [] },
     buildGate: () => ({
       channelEnrolled: async () => options.enrolled ?? true,
@@ -298,6 +300,34 @@ describe('runNudgeCron — sending', () => {
     await runNudgeCron(db(), settled.deps, FRIDAY_10AM);
     const settledAudit = settled.writes.find((w) => w.table === schema.auditLog);
     expect(settledAudit?.payload.after).toMatchObject({ cohort: 'weekly_rhythm' });
+  });
+});
+
+/**
+ * VIL-242 · M7 — the sweep must ask whether a registration window has already been
+ * taken over by a sequence before it announces it. The unit test on decideNudge proves
+ * the decision; this one proves the sweep actually LOADS the claims, which is the half
+ * that silently regresses.
+ */
+describe('runNudgeCron — deferring to an M7 sequence', () => {
+  it('sends nothing about a window an M7 sequence has claimed', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()], claimedWindowIds: new Set(['w-1']) });
+    const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(result).toMatchObject({ sent: 0, quiet: 1 });
+    expect(h.transport.sent).toHaveLength(0);
+  });
+
+  it('still sends a weekend swap to a family whose registration date is claimed', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({
+      windows: [win()],
+      claimedWindowIds: new Set(['w-1']),
+      candidates: [candidate()],
+      weather: WET,
+    });
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+    expect(h.transport.bodies()[0]).toContain('Library story time');
   });
 });
 

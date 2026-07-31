@@ -112,6 +112,8 @@ function decide(overrides: Partial<Parameters<typeof decideNudge>[0]> = {}) {
     healthChildren: [],
     areaCoarse: null,
     suppressedCheckpointRefs: new Set<string>(),
+    // VIL-242 · no M7 sequence has claimed anything by default.
+    claimedWindowIds: new Set<string>(),
     now: FRIDAY,
     timeZone: TZ,
     ...overrides,
@@ -186,6 +188,47 @@ describe('decideNudge — priority 1: a registration window', () => {
     const nudge = decide({ children: [child({ name: null })], windows: [match()] });
     if (nudge?.kind !== 'registration') throw new Error('expected a registration nudge');
     expect(nudge.kidNames).toEqual([]);
+  });
+
+  /**
+   * VIL-242 · M7 takes this job over for the windows it has claimed. The sequence
+   * sends its own heads-up leg, so a nudge for a claimed window would be the SAME news
+   * twice from the same number on the same morning.
+   */
+  describe('a window an M7 sequence has claimed', () => {
+    it('is skipped rather than announced twice', () => {
+      const nudge = decide({
+        windows: [match()],
+        claimedWindowIds: new Set(['w-1']),
+      });
+      expect(nudge).toBeNull();
+    });
+
+    it('does not suppress an UNCLAIMED window behind it', () => {
+      // The claim is per window, not per family: a family prepared for Markham's Fall
+      // date is still owed Vaughan's camp date.
+      const claimed = match();
+      const other = match({
+        window: win({ id: 'w-2', municipality: 'vaughan', cycleLabel: 'Summer 2027 Camps' }),
+      });
+      const nudge = decide({
+        windows: [claimed, other],
+        claimedWindowIds: new Set(['w-1']),
+      });
+      if (nudge?.kind !== 'registration') throw new Error('expected a registration nudge');
+      expect(nudge.windowRef.id).toBe('w-2');
+    });
+
+    it('lets a lower-priority nudge through instead of going silent', () => {
+      // The M8 lesson: a claim must DEFER the class, never mute the family.
+      const nudge = decide({
+        windows: [match()],
+        claimedWindowIds: new Set(['w-1']),
+        candidates: [candidate({ indoorOutdoor: 'indoor' })],
+        weather: [outlook(SATURDAY, WET), outlook(SUNDAY, WET)],
+      });
+      expect(nudge?.kind).toBe('weather_swap');
+    });
   });
 });
 

@@ -123,7 +123,9 @@ describe('assertProactiveSendAllowed', () => {
     const { since, familyId } = seen as unknown as { since: Date; familyId: string };
     // Per FAMILY (not per parent) — a co-parent must not double the family's budget.
     expect(familyId).toBe(FAMILY);
-    expect(MIDDAY.getTime() - since.getTime()).toBe(PROACTIVE_CAP.nudge.windowHours * 3_600_000);
+    expect(MIDDAY.getTime() - since.getTime()).toBe(
+      (PROACTIVE_CAP.nudge?.windowHours ?? 0) * 3_600_000,
+    );
   });
 
   it('holds inside quiet hours in the parent’s own zone', async () => {
@@ -168,6 +170,100 @@ describe('assertProactiveSendAllowed', () => {
     await expect(callGate(evening, { timeZone: 'America/Toronto' }).verdict).resolves.toEqual({
       allowed: false,
       reason: 'quiet_hours',
+    });
+  });
+});
+
+/**
+ * VIL-242 · M7 — the registration-sequence class, and the two exemptions it carries.
+ *
+ * Both exemptions are scoped to this class BY CONSTRUCTION, and the tests below exist to
+ * prove the scoping rather than the exemption: a class that can opt out of the cap and
+ * the clock is exactly the kind of thing that leaks to its neighbours.
+ */
+describe('the registration-sequence class', () => {
+  function callSequenceGate(now: Date, state: Partial<FakeState> = {}, urgent = false) {
+    const fake = ports(state);
+    return {
+      calls: fake.calls,
+      verdict: assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'registration_sequence',
+          now,
+          urgent,
+        },
+        fake.ports,
+      ),
+    };
+  }
+
+  it('has no volume budget at all — the ladder is bounded by the window, not by a cap', () => {
+    // A sequence's legs are finite by construction (one window, one ladder) and every
+    // one of them is a date the parent asked to be walked through. Counting them
+    // against a discretionary weekly nudge budget would let a busy registration season
+    // silence the sequence a parent explicitly approved.
+    expect(PROACTIVE_CAP.registration_sequence).toBeNull();
+  });
+
+  it('never even counts the family’s recent sends', async () => {
+    const { calls, verdict } = callSequenceGate(MIDDAY, { recentSends: 99 });
+    await expect(verdict).resolves.toEqual({ allowed: true });
+    expect(calls).toEqual(['enrolled', 'consent', 'tz']);
+  });
+
+  it('still fails the checks that are about CONSENT, not volume', async () => {
+    await expect(callSequenceGate(MIDDAY, { enrolled: false }).verdict).resolves.toEqual({
+      allowed: false,
+      reason: 'not_enrolled',
+    });
+    await expect(callSequenceGate(MIDDAY, { consented: false }).verdict).resolves.toEqual({
+      allowed: false,
+      reason: 'no_watch_consent',
+    });
+  });
+
+  it('respects quiet hours for a leg that is not urgent', async () => {
+    // 22:00 in Toronto. A heads-up a week out has all night to wait.
+    const late = new Date('2026-07-16T02:00:00.000Z');
+    await expect(callSequenceGate(late).verdict).resolves.toEqual({
+      allowed: false,
+      reason: 'quiet_hours',
+    });
+  });
+
+  it('crosses quiet hours for an urgent leg', async () => {
+    // 06:15 in Toronto — inside quiet hours, and the only moment a "registration
+    // opens at 6:30" message is worth anything.
+    const dawn = new Date('2026-07-15T10:15:00.000Z');
+    await expect(callSequenceGate(dawn).verdict).resolves.toEqual({
+      allowed: false,
+      reason: 'quiet_hours',
+    });
+    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true });
+  });
+
+  it('does NOT let a nudge claim the same exemption', async () => {
+    // The scoping test. A nudge that asks for urgency is still held — fail-closed, so
+    // a future caller cannot widen the exemption by setting a flag.
+    const dawn = new Date('2026-07-15T10:15:00.000Z');
+    const fake = ports();
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now: dawn, urgent: true },
+        fake.ports,
+      ),
+    ).resolves.toEqual({ allowed: false, reason: 'quiet_hours' });
+  });
+
+  it('does NOT let a nudge escape its cap', async () => {
+    // The other half of the scoping test: the uncapped class must not have widened
+    // the budget check for everyone.
+    expect(PROACTIVE_CAP.nudge).toEqual({ max: 1, windowHours: 24 * 7 });
+    await expect(callGate(MIDDAY, { recentSends: 1 }).verdict).resolves.toEqual({
+      allowed: false,
+      reason: 'frequency_cap',
     });
   });
 });
