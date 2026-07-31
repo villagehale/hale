@@ -644,6 +644,90 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .btn-on-navy:hover { transform: none; }
 }
 
+/* ══ Legal long-form (2026-07, VIL-250 · M14 · B-legal) ══════════════════ *
+ * Terms + Privacy moved to the marketing domain, so the reading column the app
+ * built for them comes with: a comfortable measure and tightened heading sizes,
+ * since the global h1/h2 scale is built for hero headlines and is far too large
+ * for dense policy copy. Same token palette as every other subpage. */
+
+.legal-measure { max-width: 46rem; }
+
+.legal-title { font-size: clamp(2.2rem, 5vw, 3rem); }
+
+.legal-section h2 {
+  font-size: clamp(1.45rem, 3vw, 1.85rem);
+  margin-top: 3rem;
+  /* Clears the html-level scroll-padding for deep links into a policy section. */
+  scroll-margin-top: 1.5rem;
+}
+
+/* The first section opens level with the table of contents beside it — the
+ * inter-section rhythm above would otherwise read as a misalignment. */
+.legal-body > .legal-section:first-child h2 { margin-top: 0; }
+
+.legal-intro,
+.legal-body p,
+.legal-body li {
+  color: var(--color-slate-green);
+  line-height: 1.7;
+  font-size: 1.05rem;
+}
+
+.legal-body p { margin-top: 1rem; }
+
+.legal-body ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+  margin-top: 1rem;
+}
+
+.legal-body li { margin-top: 0.6rem; }
+
+.legal-body code { font-family: var(--font-mono); font-size: 0.9em; }
+
+.legal-disclaimer {
+  color: var(--color-faded-sage);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.legal-toc {
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--r-md);
+  background: var(--color-oat);
+}
+
+.legal-toc ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+  color: var(--color-slate-green);
+}
+
+.legal-toc li {
+  margin-top: 0.4rem;
+  line-height: 1.5;
+  font-size: 0.92rem;
+}
+
+/* Printed, a policy is the document itself: no navigation, no sidebar, ink on
+ * paper, and a heading never left stranded at the foot of a page. */
+@media print {
+  .legal-print-hide,
+  .legal-toc { display: none; }
+
+  .legal-measure { max-width: none; }
+
+  .legal-intro,
+  .legal-body p,
+  .legal-body li {
+    color: #000;
+    font-size: 10.5pt;
+  }
+
+  .legal-section h2 { break-after: avoid; }
+}
+
 /* Amber hero pill — the homepage's Ask Hale eyebrow (amber wash + amber ink),
  * used to warm the feature-page heros. Icon + label sit inline. */
 .pill-eyebrow {

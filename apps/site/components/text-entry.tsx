@@ -1,4 +1,4 @@
-import { encode } from 'uqr';
+import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
 import { APP_URL } from '~/lib/app-url';
 import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
@@ -79,35 +79,5 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
         .
       </p>
     </main>
-  );
-}
-
-/**
- * The sms: URI as a scannable code, drawn inline from the module grid — no
- * network, no third-party chart endpoint, nothing for a CSP to allow. The white
- * card around it supplies the rest of the quiet zone.
- */
-function QrCode({ value }: { value: string }) {
-  const { size, data } = encode(value, { ecc: 'M', border: 2 });
-
-  let modules = '';
-  for (const [y, row] of data.entries()) {
-    for (const [x, dark] of row.entries()) {
-      if (dark) modules += `M${x} ${y}h1v1h-1z`;
-    }
-  }
-
-  return (
-    <svg
-      role="img"
-      aria-label="QR code — scan to text Hale"
-      viewBox={`0 0 ${size} ${size}`}
-      width={168}
-      height={168}
-      shapeRendering="crispEdges"
-      className="shrink-0"
-    >
-      <path d={modules} fill="var(--color-spruce)" />
-    </svg>
   );
 }
