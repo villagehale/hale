@@ -69,9 +69,17 @@ export function deriveDateOfBirth(
   now: Date,
 ): string {
   const months = ageMonths + MIDPOINT_CORRECTION_MONTHS[precision];
-  const dob = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate()),
-  );
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth() - months;
+  // Day 0 of the month AFTER the target is the target's last day. Clamping to it is
+  // what keeps the round trip exact: `Date.UTC` rolls the 31st of a 30-day month
+  // FORWARD into the next one, which stores a later birthday than the parent stated
+  // and reads the child back a month YOUNGER than they are — for every signup on the
+  // 29th to the 31st. `ageInMonths` already clamps the anniversary the same way, so
+  // the two agree on what "the same day of a shorter month" means.
+  const lastDayOfTargetMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const day = Math.min(now.getUTCDate(), lastDayOfTargetMonth);
+  const dob = new Date(Date.UTC(year, month, day));
   return dob.toISOString().slice(0, 10);
 }
 
