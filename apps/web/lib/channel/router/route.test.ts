@@ -6,7 +6,8 @@ import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
-import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply } from './copy';
+import { ChannelTurnFailed } from './coach-runtime';
+import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
 import {
@@ -476,6 +477,44 @@ describe('failure honesty', () => {
 
     expect(h.transport.bodies().at(-1)).toBe(failureReply());
   });
+
+  /**
+   * VIL-260 · WS4 — the turn broke AFTER the drafts were committed. "Nothing was
+   * changed" is then a false statement about rows already sitting in the approvals
+   * queue, and it leaves them orphaned: the parent does not know they exist, so the
+   * next unrelated "yes" is what finds them.
+   */
+  describe('when the turn failed AFTER it drafted', () => {
+    function draftingThenFailingCoach(count: number): ChannelCoachRuntime {
+      return {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent hit maxSteps without an answer', {
+            cause: new Error('maxSteps'),
+            draftedActionIds: Array.from({ length: count }, (_, i) => `action-${i + 1}`),
+          });
+        },
+      };
+    }
+
+    it('names the drafts that are waiting instead of claiming nothing changed', async () => {
+      const h = harness({ coach: draftingThenFailingCoach(2) });
+
+      const result = await routeChannelMessage(h.deps, job());
+
+      expect(result.status).toBe('agent_failed');
+      expect(h.transport.bodies()).toEqual([partialFailureReply(2)]);
+      expect(partialFailureReply(2)).toMatch(/2 changes/);
+      expect(partialFailureReply(2)).not.toMatch(/nothing was changed/i);
+      expect(partialFailureReply(1)).toMatch(/1 change\b/);
+    });
+
+    it('keeps the plain honest line when the turn drafted nothing', async () => {
+      const h = harness({ coach: draftingThenFailingCoach(0) });
+      await routeChannelMessage(h.deps, job());
+
+      expect(h.transport.bodies()).toEqual([failureReply()]);
+    });
+  });
 });
 
 // ── refusals ─────────────────────────────────────────────────────────────────
@@ -564,10 +603,14 @@ describe('the shipped chain, end to end', () => {
   const CHILD = '44444444-4444-4444-8444-444444444444';
 
   function realChain(options: { pending?: Array<{ actionId: string; actionType: string }> } = {}) {
+    const approved: string[] = [];
     const spine = {
       listPending: async () => options.pending ?? [],
       latestUndoable: async () => null,
-      approve: async () => true,
+      approve: async (_db: unknown, args: { actionId: string }) => {
+        approved.push(args.actionId);
+        return true;
+      },
       decline: async () => true,
       undo: async () => true,
     };
@@ -615,6 +658,7 @@ describe('the shipped chain, end to end', () => {
     };
     return {
       recorded,
+      approved,
       // The production order (wiring.defaultHandlers): narrow claimers, then the broad one.
       handlers: [
         approvalHandler(spine as never),
@@ -659,6 +703,59 @@ describe('the shipped chain, end to end', () => {
 
     expect((await routeChannelMessage(h.deps, job())).handler).toBe('approval');
     expect(coach.calls).toBe(0);
+  });
+
+  /** VIL-260 · WS4 — the words a parent actually uses now reach the same place "yes"
+   * does, through the real chain rather than only through the grammar unit. */
+  for (const body of ['sounds good', 'do it', '👍']) {
+    it(`approves the drafted action from ${JSON.stringify(body)}`, async () => {
+      const chain = realChain({ pending: [{ actionId: 'a-1', actionType: 'calendar_add' }] });
+      const coach = fakeCoach();
+      const h = harness({ context: { body }, handlers: chain.handlers, coach });
+
+      expect((await routeChannelMessage(h.deps, job())).handler).toBe('approval');
+      expect(chain.approved).toEqual(['a-1']);
+      expect(coach.calls).toBe(0);
+    });
+  }
+
+  /**
+   * The checkmark is M8's "I filed the paperwork" AND, now, an approval. The ownership
+   * rule is what keeps that from stealing it: with nothing drafted the approval handler
+   * declines and the health handler gets its own answer — exactly as it already does for
+   * the bare "yes" both have always shared.
+   */
+  it('leaves ✅ to the health handler when there is nothing drafted to approve', async () => {
+    const chain = realChain();
+    const coach = fakeCoach();
+    const h = harness({ context: { body: '✅' }, handlers: chain.handlers, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.handler).toBe('health');
+    expect(chain.approved).toEqual([]);
+    expect(coach.calls).toBe(0);
+  });
+
+  /**
+   * The widening's own guardrail. An affirmative HEAD with a real tail is not a bare
+   * affirmative — the parent is still asking for something, and approving on the head
+   * would execute a calendar write while their actual question went unanswered.
+   */
+  it('sends an affirmative carrying a second instruction to the coach, approving nothing', async () => {
+    const chain = realChain({ pending: [{ actionId: 'a-1', actionType: 'calendar_add' }] });
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'sounds good but can we do Thursday instead' },
+      handlers: chain.handlers,
+      coach,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(chain.approved).toEqual([]);
+    expect(coach.calls).toBe(1);
   });
 
   /**

@@ -1,3 +1,4 @@
+import { matchPhrase, normalizeReply } from '~/lib/channel/affirmative';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 
 /**
@@ -9,6 +10,11 @@ import { matchKeyword } from '~/lib/channel/intake/keywords';
  * or it is conversation, and there is no middle verdict. Anything this declines falls
  * through to the coach, which is allowed to be wrong in a way an approval is not.
  *
+ * The vocabulary itself moved to `lib/channel/affirmative.ts` (VIL-260): M6's caregiver
+ * confirmation held a second, different copy of it, and every word on one list and not
+ * the other was an answer one of the two surfaces silently dropped. What stays HERE is
+ * everything specific to approvals — the ordinal, the undo verb, and the CASL refusal.
+ *
  * Two properties do the work:
  *
  *   WHOLE-STRING. Never a substring search — the discipline the CASL keywords and M8's
@@ -17,9 +23,9 @@ import { matchKeyword } from '~/lib/channel/intake/keywords';
  *   prefix would execute a calendar write the parent never confirmed.
  *
  *   NO OVERLAP WITH CASL. 'cancel' is a natural English refusal AND a carrier-
- *   recognised STOP synonym, so it is deliberately absent from the NO set; the guard
- *   below is structural rather than a comment, so a future edit to either vocabulary
- *   cannot quietly turn an unsubscribe into an approval decline.
+ *   recognised STOP synonym, so it is deliberately absent from the shared NO set; the
+ *   `matchKeyword` guard below is structural rather than a comment, so a future edit to
+ *   either vocabulary cannot quietly turn an unsubscribe into an approval decline.
  */
 
 export type FastPathVerb = 'yes' | 'no' | 'undo';
@@ -30,28 +36,7 @@ export interface FastPathCommand {
   index: number | null;
 }
 
-const YES_PHRASES = new Set([
-  'yes',
-  'y',
-  'yeah',
-  'yep',
-  'yup',
-  'ok',
-  'okay',
-  'k',
-  'sure',
-  'confirm',
-  'confirmed',
-]);
-
-/** 'cancel' is NOT here, and never may be — see the module note. */
-const NO_PHRASES = new Set(['no', 'n', 'nope', 'nah', 'skip']);
-
 const UNDO_PHRASES = new Set(['undo', 'undo that', 'undo it', 'revert']);
-
-/** Words that carry no instruction and are stripped from either end before matching,
- * so "yes please" and "no thanks" stay the commands they obviously are. */
-const FILLER = new Set(['please', 'pls', 'thanks', 'thank', 'you', 'thx']);
 
 /**
  * The largest ordinal a numbered SMS list can name, and therefore the cap on the list
@@ -61,25 +46,6 @@ const FILLER = new Set(['please', 'pls', 'thanks', 'thank', 'you', 'thx']);
  * by clamping would approve a different action than the parent meant.
  */
 export const MAX_LISTED_APPROVALS = 3;
-
-/** Case-fold, drop every non-alphanumeric character, collapse whitespace. Punctuation
- * is removed rather than trimmed so "Yes, please!" and "yes #2." normalize like the
- * plain forms a parent types on a phone keyboard. */
-function normalize(body: string): string {
-  return body
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-/** Remove leading and trailing filler words. */
-function stripFiller(words: string[]): string[] {
-  let start = 0;
-  let end = words.length;
-  while (start < end && FILLER.has(words[start] as string)) start += 1;
-  while (end > start && FILLER.has(words[end - 1] as string)) end -= 1;
-  return words.slice(start, end);
-}
 
 /**
  * The command this body IS, or null when it is conversation.
@@ -91,15 +57,16 @@ function stripFiller(words: string[]): string[] {
 export function matchFastPath(body: string): FastPathCommand | null {
   if (matchKeyword(body)) return null;
 
-  // Filler is stripped BEFORE the ordinal is read, so "yes 2 please" and "yes 2" are
-  // the same command — a trailing "please" is not part of the number.
-  const words = stripFiller(normalize(body).split(' ').filter(Boolean));
-  if (words.length === 0) return null;
+  // Filler is stripped BEFORE the ordinal is read (normalizeReply does it), so
+  // "yes 2 please" and "yes 2" are the same command — a trailing "please" is not part
+  // of the number.
+  const normalized = normalizeReply(body);
+  if (!normalized) return null;
 
   // A trailing run of digits is the ordinal, whether or not a space separates it
   // ("yes 2", "yes #2", "yes2" all normalize into one of these two shapes).
-  const split = /^(.*?)\s*(\d+)$/.exec(words.join(' '));
-  const phrase = split ? (split[1] as string) : words.join(' ');
+  const split = /^(.*?)\s*(\d+)$/.exec(normalized);
+  const phrase = split ? (split[1] as string) : normalized;
   const digits = split ? (split[2] as string) : null;
   if (!phrase) return null;
 
@@ -116,7 +83,7 @@ export function matchFastPath(body: string): FastPathCommand | null {
     // a sentence we cannot read — better answered by the coach than guessed at here.
     return index === null ? { verb: 'undo', index: null } : null;
   }
-  if (YES_PHRASES.has(phrase)) return { verb: 'yes', index };
-  if (NO_PHRASES.has(phrase)) return { verb: 'no', index };
-  return null;
+  const affirmation = matchPhrase(phrase);
+  if (affirmation === 'unclear') return null;
+  return { verb: affirmation, index };
 }

@@ -70,9 +70,34 @@ describe('caregiver · parsing the add command', () => {
   });
 
   it('knows when a parent was TRYING to add someone, so silence is never the answer', () => {
-    expect(looksLikeAddCommand('add grandma')).toBe(true);
-    expect(looksLikeAddCommand('  ADD my mum 647 555 0199')).toBe(true);
+    expect(looksLikeAddCommand('add grandma 647-555-0199 as grandparent')).toBe(true);
+    expect(looksLikeAddCommand('  ADD my mum 647 555 0199 As Nanny')).toBe(true);
+    // The shape is there but the role word is not — still a caregiver attempt, and it
+    // is owed the example rather than a conversation about story time.
+    expect(looksLikeAddCommand('add grandma 647-555-0199 as chauffeur')).toBe(true);
     expect(looksLikeAddCommand('added the swim class already')).toBe(false);
     expect(looksLikeAddCommand('can you add soccer on saturday')).toBe(false);
+  });
+
+  /**
+   * The headline VIL-260 defect: "add" is the most ordinary verb a parent uses about
+   * their calendar, and claiming the whole prefix meant every one of those messages was
+   * answered with a caregiver example and never reached the coach.
+   *
+   * A caregiver command has a SHAPE nothing else does — a real NANP number AND the
+   * literal " as " that separates the name from the role. Both, or it is conversation.
+   */
+  it.each([
+    ['the headline toddler ask', 'Add library story time Saturday 10am'],
+    ['a calendar ask with a time', 'add swim Thursday at 4:30'],
+    ['an "as" with no number', 'add gymnastics as a weekly thing'],
+    ['a number with no "as"', 'add my mum 647 555 0199'],
+    ['a date that is not a phone number', 'add the deadline 2026-08-01 as a reminder'],
+    ['a bare fragment', 'add grandma'],
+    // Deliberate: a number we could never text is not evidence of a caregiver command,
+    // and the coach answering conversationally beats an invite example nobody can use.
+    ['a number that is not a real CA/US line', 'add grandma 123-456-7890 as grandparent'],
+  ])('leaves %s to the coach', (_label, body) => {
+    expect(looksLikeAddCommand(body)).toBe(false);
   });
 });

@@ -6,8 +6,8 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import type { ChannelCoachRuntime, ChannelTurn } from './coach-runtime';
-import { ACK_REPLY, FLOOD_REPLY, failureReply } from './copy';
+import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
+import { ACK_REPLY, FLOOD_REPLY, failureReply, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 
 /**
@@ -280,16 +280,21 @@ async function runAgentTurn(
       conversationId: args.conversationId,
     });
   } catch (err) {
+    // A turn can break AFTER its drafts landed, and those are real rows the parent can
+    // approve. Saying "nothing was changed" would be false AND would orphan them — see
+    // coach-runtime.ts (VIL-260).
+    const drafted = draftsFromFailure(err);
     // The error object may carry a provider payload, so only its class and message are
     // kept — never the turn body (rule #1).
     deps.log.error(
       {
         channelMessageId: args.job.channel_message_id,
         err: err instanceof Error ? err.message : 'unknown',
+        draftedThisTurn: drafted.length,
       },
       'channel router: agent turn failed',
     );
-    await args.say(failureReply());
+    await args.say(drafted.length > 0 ? partialFailureReply(drafted.length) : failureReply());
     return done(deps, args.job, {
       status: 'agent_failed',
       handler: null,
