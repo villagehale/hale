@@ -30,6 +30,8 @@ vi.mock('~/lib/companion/queries', () => ({ loadCompanion: () => loadCompanionMo
 vi.mock('~/lib/plan/authored', () => ({ loadAuthoredPlans: () => loadAuthoredPlansMock() }));
 vi.mock('~/lib/dashboard/queries', () => ({
   loadFamilyTimezone: () => loadFamilyTimezoneMock(),
+  // VIL-147: no signed-in parent in this harness → nothing unlocked.
+  loadViewerTeenUnlocks: async () => ({ allows: () => false }),
 }));
 vi.mock('~/lib/settings/user-preferences', () => ({
   readUserPreferences: () => readUserPreferencesMock(),
@@ -157,7 +159,9 @@ describe('GET /api/mobile/plan', () => {
       childItems: CHILD_ITEMS,
       hasPlan: true,
     });
-    expect(planChildItemsMock).toHaveBeenCalledWith(CHILDREN);
+    // VIL-147: the route must hand the shared unlock set to the mapper, so a mobile
+    // read honours exactly the same grants as the web page and nothing more.
+    expect(planChildItemsMock).toHaveBeenCalledWith(CHILDREN, expect.anything());
   });
 
   it('reports hasPlan=true when the ONLY thing present is an authored plan', async () => {

@@ -71,6 +71,9 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
     // storage-abuse guard (avatar-upload), or a write whose damage a window reset does
     // not undo (rsvp — a stuffed guest list is a real host looking at junk names, and
     // there is no cost meter to notice it).
+    // teen-content-grant joins them for a different reason than cost: every request
+    // notifies a CHILD, so a minute window would let a parent pressure a teen with a
+    // burst of asks and call it rate-limited (VIL-147).
     // Every OTHER route is an invisible bot guard on a minute (the cheap AI-search
     // intent parse included).
     const hourWindow = new Set([
@@ -83,6 +86,7 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
       'mcp-register',
       'mcp-authorize',
       'rsvp',
+      'teen-content-grant',
     ]);
     for (const [route, opts] of Object.entries(RATE_LIMITS)) {
       if (hourWindow.has(route)) continue;

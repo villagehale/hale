@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { scopeChildren } from '~/components/hale/child-scope-core';
 import { auth } from '~/auth';
 import { loadCompanion } from '~/lib/companion/queries';
-import { loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadFamilyTimezone, loadViewerTeenUnlocks } from '~/lib/dashboard/queries';
 import { loadAuthoredPlans } from '~/lib/plan/authored';
 import { completePlan, createPlan, deletePlan } from '~/lib/plan/plan-actions';
 import { planChildItems } from '~/lib/plan/week';
@@ -36,7 +36,7 @@ export async function GET(): Promise<Response> {
     readUserPreferences(session.user.id),
   ]);
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
-  const childItems = planChildItems(children);
+  const childItems = planChildItems(children, await loadViewerTeenUnlocks());
   const hasRoutine = (village.routine?.items.length ?? 0) > 0;
   const hasPlan =
     hasRoutine ||

@@ -1,4 +1,4 @@
-import { PLAN_DISPLAY } from '@hale/types';
+import { PLAN_DISPLAY, deriveStage } from '@hale/types';
 import { AccountPreferencesCard } from '~/components/hale/account-preferences-card';
 import { AccountProfileCard } from '~/components/hale/account-profile-card';
 import { ConnectedAssistants } from '~/components/hale/connected-assistants';
@@ -15,6 +15,7 @@ import { PrivacyNote } from '~/components/hale/privacy-note';
 import { SettingsHub } from '~/components/hale/settings-hub';
 import type { SettingsSectionId } from '~/components/hale/settings-sections';
 import { SharedLinks } from '~/components/hale/shared-links';
+import { TeenAccessGrants } from '~/components/hale/teen-access-grants';
 import { TextNotifications } from '~/components/hale/text-notifications';
 import { APP_VERSION } from '~/lib/app-version';
 import { signOutAction } from '~/lib/auth-actions';
@@ -29,6 +30,7 @@ import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
 import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
+import { listTeenAccessGrants } from '~/lib/teen-access';
 import { isStripeCheckoutConfigured } from '~/lib/webhooks/stripe-billing';
 
 /** A section label in the app's quiet register (matches /family/members, /plan). */
@@ -72,6 +74,15 @@ export default async function SettingsPage() {
   ]);
   const assistantConnections =
     familyId && userId ? await listMcpConnectionsForUser(database, familyId, userId) : [];
+
+  // VIL-147: the teen raw-access section only exists once the family actually has a
+  // 13+ child — an affordance for a situation that cannot arise would be noise.
+  const hasTeen = basics.children.some(
+    (child) => deriveStage(child.dateOfBirth) === 'teenager',
+  );
+  const teenGrants =
+    hasTeen && familyId && userId ? await listTeenAccessGrants(database, familyId, userId) : [];
+  const childNames = Object.fromEntries(basics.children.map((child) => [child.id, child.name]));
 
   const planName = PLAN_DISPLAY[basics.planTier].name;
   const canSignOut = authConfigured();
@@ -153,6 +164,13 @@ export default async function SettingsPage() {
           <SectionLabel>children</SectionLabel>
           <FamilyChildren kids={basics.children} />
         </div>
+
+        {hasTeen ? (
+          <div>
+            <SectionLabel>teen privacy</SectionLabel>
+            <TeenAccessGrants grants={teenGrants} childNames={childNames} />
+          </div>
+        ) : null}
       </div>
     ),
 

@@ -167,6 +167,26 @@ export const consentTypeEnum = pgEnum('consent_type', [
   'caregiver_scoped_messages',
 ]);
 
+// VIL-147 · what a teen raw-access grant unlocks. Deliberately a CLOSED, SMALL
+// vocabulary of CONTENT CLASSES (F14 verdict #8: a grant authorizes a scope + a
+// duration, never a blanket read) — every value here has a real ENFORCEMENT site, so
+// no scope can be granted that nothing honours. Minting is narrower still: the only
+// request surface today is an approval row, which always asks for 'message_content'.
+// 'calendar_detail' and 'child_profile' are enforced but not yet requestable. The grant's CHANNEL is always
+// the authenticated in-app parent session: no outbound path (email, SMS, push,
+// ICS, a third-party MCP read, a public page) ever consults a grant, because a
+// grant is a disclosure to ONE parent, not a downgrade of the teen's redaction.
+export const teenAccessScopeEnum = pgEnum('teen_access_scope', [
+  // The verbatim text of a message or post Hale observed — the privacy page's exact
+  // promise. Enforced at the effectiveTeenContent seam (approvals, approvals
+  // history, the trail, the messages inbox).
+  'message_content',
+  // The teen's calendar item titles, times, and places, in-app only.
+  'calendar_detail',
+  // The teen's profile as read by Hale's assistant tools (the Ask Hale guard).
+  'child_profile',
+]);
+
 // B18: family-level billing tier. Gates autonomous EXECUTION only — observe/draft
 // is free for every stage and child. Values mirror @hale/types PlanTier.
 export const planTierEnum = pgEnum('plan_tier', ['free', 'plus', 'family']);

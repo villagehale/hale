@@ -13,7 +13,10 @@ const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const TEEN_DOB = '2011-01-01'; // ~15y → teenager
 const TODDLER_DOB = '2024-05-01'; // ~2y → toddler
 
-vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID }));
+vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID,
+  // VIL-147: no signed-in parent → no teen access grants can apply.
+  currentUserId: async () => null,
+}));
 
 interface DigestRow {
   id: string;

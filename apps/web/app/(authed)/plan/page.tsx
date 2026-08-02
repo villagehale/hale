@@ -15,7 +15,7 @@ import {
 import { Card } from '~/components/ui/card';
 import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
-import { loadFamilyTimezone } from '~/lib/dashboard/queries';
+import { loadFamilyTimezone, loadViewerTeenUnlocks } from '~/lib/dashboard/queries';
 import { db } from '~/lib/db';
 import { currentFamilyId, loadViewerProfile } from '~/lib/family';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
@@ -59,7 +59,7 @@ export default async function PlanPage() {
   const weekPlan = familyId ? await readWeekPlan(db(), familyId, weekStart) : null;
   const weekPlanNeedsOk = weekPlan ? weekPlan.items.filter(itemNeedsOk).length : 0;
   const addedActivities = village.candidates.filter((c) => c.accepted && !c.teenAttributed);
-  const childItems = planChildItems(children);
+  const childItems = planChildItems(children, await loadViewerTeenUnlocks());
   const hasRoutine = (routine?.items.length ?? 0) > 0;
 
   const spine = buildPlanSpine(authoredPlans, new Date(), timeZone, weekStartDay);

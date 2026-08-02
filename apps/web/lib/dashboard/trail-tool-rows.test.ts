@@ -15,7 +15,10 @@ const REAL_VERB = 'action.executed';
 const REAL_SENTENCE = 'carried out the action';
 
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
-vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID }));
+vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID,
+  // VIL-147: no signed-in parent → no teen access grants can apply.
+  currentUserId: async () => null,
+}));
 
 function auditEntry(overrides: Record<string, unknown>) {
   return {

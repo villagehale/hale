@@ -1,7 +1,8 @@
 import { type Database, type DigestPerChildBreakdown, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, currentUserId } from '~/lib/family';
+import { loadTeenAccessUnlocks, redactsTeenContent } from '~/lib/teen-access';
 import { effectiveTeenContent } from '~/lib/dashboard/mappers';
 import { familyHasTeenager, readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import {
@@ -45,9 +46,10 @@ async function loadMessagesForFamily(
   database: Database,
   familyId: string,
 ): Promise<MessageView[]> {
-  const [familyHasTeen, timeZone] = await Promise.all([
+  const [familyHasTeen, timeZone, unlocks] = await Promise.all([
     familyHasTeenager(database, familyId),
     readFamilyTimezone(database, familyId),
+    loadTeenAccessUnlocks(database, familyId, await currentUserId(database)),
   ]);
 
   const [digestRows, actionRows] = await Promise.all([
@@ -76,6 +78,7 @@ async function loadMessagesForFamily(
         revertedAt: schema.actions.revertedAt,
         revertedReason: schema.actions.revertedReason,
         teenContent: schema.events.teenContent,
+        childId: schema.events.childId,
         childDob: schema.children.dateOfBirth,
       })
       .from(schema.actions)
@@ -123,7 +126,12 @@ async function loadMessagesForFamily(
           state: row.state as MessageActionState,
           at,
           revertedReason: row.revertedReason,
-          teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+          teenContent: redactsTeenContent(
+            effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+            row.childId ?? null,
+            'message_content',
+            unlocks,
+          ),
         },
         timeZone,
       ),
