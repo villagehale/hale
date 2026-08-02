@@ -81,11 +81,13 @@ function win(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow {
 
 /** 6 months old on FRIDAY_10AM — squarely inside M8's 6-month checkpoint. */
 const SIX_MONTH_OLD: NudgeChildRow[] = [
-  { id: 'child-1', name: 'Maya', dateOfBirth: '2026-01-31' },
+  { id: 'child-1', name: 'Maya', dateOfBirth: '2026-01-31', dobPrecision: 'derived' },
 ];
 
 /** 15 years old — inside the 14-to-16 checkpoint, and never nameable (rule #1). */
-const TEEN_ONLY: NudgeChildRow[] = [{ id: 'teen-1', name: 'Ava', dateOfBirth: '2011-03-04' }];
+const TEEN_ONLY: NudgeChildRow[] = [
+  { id: 'teen-1', name: 'Ava', dateOfBirth: '2011-03-04', dobPrecision: 'derived' },
+];
 
 const WET: DailyOutlook[] = [
   { date: SATURDAY, precipitationChancePct: 95, highTempC: 18 },
@@ -130,7 +132,9 @@ function harness(
     // 36 months: deliberately inside the registration window under test and OUTSIDE
     // every M8 health checkpoint band, so these M4 cases keep testing M4.
     loadChildren: async () =>
-      options.children ?? [{ id: 'child-1', name: 'Maya', dateOfBirth: '2023-07-31' }],
+      options.children ?? [
+        { id: 'child-1', name: 'Maya', dateOfBirth: '2023-07-31', dobPrecision: 'derived' },
+      ],
     loadCandidates: async () => options.candidates ?? [],
     loadWindows: async () => options.windows ?? [],
     // Mirrors prod: the suppression set is the union of what the family was already
@@ -619,5 +623,26 @@ describe('runNudgeCron — health checkpoints (M8)', () => {
 
     expect(result).toMatchObject({ sent: 0, quiet: 1 });
     expect(h.transport.sent).toHaveLength(0);
+  });
+
+  /**
+   * VIL-260 · WS1 — the ±6-month early-edge slack is what a DERIVED date of birth
+   * earns. The sweep used to stamp every child 'derived' regardless of what the row
+   * says, which hands a parent who typed an exact birthday the same fuzziness as one
+   * who said "about three" — and admits their child to a window they are not in yet.
+   */
+  it('reads the slack off the stored dob_precision instead of assuming derived', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    // 44 months on FRIDAY_10AM: past every band that ends before 48, and inside the
+    // 48-month bands ONLY via the derived early-edge slack.
+    const child = { id: 'child-1', name: 'Nina', dateOfBirth: '2022-11-30' };
+
+    const derived = harness({ children: [{ ...child, dobPrecision: 'derived' }] });
+    expect(await runNudgeCron(db(), derived.deps, FRIDAY_10AM)).toMatchObject({ sent: 1 });
+    expect(derived.transport.bodies()[0]).toContain('Nina:');
+
+    const exact = harness({ children: [{ ...child, dobPrecision: 'exact' }] });
+    expect(await runNudgeCron(db(), exact.deps, FRIDAY_10AM)).toMatchObject({ sent: 0, quiet: 1 });
+    expect(exact.transport.sent).toHaveLength(0);
   });
 });

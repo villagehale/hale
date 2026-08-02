@@ -16,29 +16,35 @@ import {
   handleCaregiverInviteReply,
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
+import { projectCivicCandidates } from '~/lib/civic/project';
+import {
+  type DiscoveryTrigger,
+  defaultDiscoveryTrigger,
+} from '~/lib/onboarding/trigger-discovery';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
   AMBIGUOUS_CLARIFY,
-  AREA_BLOCKED_REPLY,
   ASSENT_ACK,
   DECLINE_ACK,
   HELP_REPLY,
+  type IntakeGap,
   REGION_UNAVAILABLE_REPLY,
   START_ACK,
   STOP_ACK,
   WATCH_OFFER,
   assistantDisclosure,
+  detailsBlocked,
   followUp,
   greeting,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
 import { parseCanadianPostal, summarizeChildren } from './derive';
-import type { IntakeCollected, IntakeExtractor } from './extract';
+import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { matchKeyword } from './keywords';
-import { type IntakeLocation, provisionFromIntake } from './provision';
+import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import type { RadarComposer } from './radar';
 import {
   type IntakeSession,
@@ -77,13 +83,28 @@ export interface IntakeDeps {
   intentReader: ReplyIntentReader;
   radar: RadarComposer;
   limiter: RateLimiter;
+  /** Places this family near the free civic sessions already on file, INLINE — pure DB
+   * work over rows the civic sweep wrote days ago, so it is fast enough to run before
+   * the first reply is composed and is the difference between a real first radar and
+   * "still learning your area". */
+  seedCivic?: (
+    database: Database,
+    familyId: string,
+    areaCoarse: string | null,
+    now: Date,
+  ) => Promise<number>;
+  /** Populates the village in the BACKGROUND (one model call + geocodes — far too slow
+   * for an inbound webhook). Its payoff is the 48h nudge, which otherwise sweeps a
+   * family whose candidate table is empty. Same trigger the web onboarding path uses. */
+  discoveryTrigger?: DiscoveryTrigger;
   now?: Date;
 }
 
 export type IntakeOutcome =
   | { status: 'greeted' }
   | { status: 'follow_up_asked' }
-  | { status: 'area_blocked' }
+  /** Something Hale will not invent is still missing after the one follow-up. */
+  | { status: 'details_blocked'; missing: IntakeGap[] }
   | { status: 'provisioned'; familyId: string }
   | { status: 'watch_recorded'; intent: ReplyIntent; granted: boolean }
   | { status: 'clarified' }
@@ -345,12 +366,22 @@ async function handleDetails(
     return { status: 'region_unavailable' };
   }
 
-  if (location === null) {
-    // Exactly ONE targeted follow-up. After that, Hale states the blocker once and
-    // goes quiet — a third ask is nagging, and the session stays open so a postal code
-    // sent later still completes the setup.
+  // The two things Hale refuses to make up. They share ONE ladder because they are the
+  // same kind of blocker: a family cannot be set up on a guess, and a guessed age is
+  // worse than a guessed postal code — the date it produces is what every stage,
+  // checkpoint and registration band is computed from ever after.
+  const children = withKnownAges(collected.children);
+  if (children === null || location === null) {
+    const missing: IntakeGap[] = [
+      ...(children === null ? (['ages'] as const) : []),
+      ...(location === null ? (['location'] as const) : []),
+    ];
+    // Exactly ONE targeted follow-up — asking for everything outstanding, because it is
+    // the only ask there will be. After that, Hale states the blocker once and goes
+    // quiet: a third ask is nagging, and the session stays open so an answer sent later
+    // still completes the setup.
     if (session.followUpCount === 0) {
-      const body = followUp(summarizeChildren(collected.children));
+      const body = followUp(summarizeChildren(collected.children), missing);
       transcript = await sendAndRecord(database, ctx, body, deps, transcript);
       await saveSession(
         database,
@@ -361,19 +392,35 @@ async function handleDetails(
       return { status: 'follow_up_asked' };
     }
     if (session.followUpCount === 1) {
-      transcript = await sendAndRecord(database, ctx, AREA_BLOCKED_REPLY, deps, transcript);
+      transcript = await sendAndRecord(database, ctx, detailsBlocked(missing), deps, transcript);
       await saveSession(database, session, { ...base, transcript, followUpCount: 2 }, now);
-      return { status: 'area_blocked' };
+      return { status: 'details_blocked', missing };
     }
     await saveSession(database, session, { ...base, transcript }, now);
-    return { status: 'area_blocked' };
+    return { status: 'details_blocked', missing };
   }
 
   return provision(database, { session, phoneE164: args.phoneE164, inbound, now }, deps, {
     collected,
+    children,
     location,
     transcript,
   });
+}
+
+/**
+ * The children, every one of whose age we were actually told — or null when any was
+ * left out. Null is the whole point: {@link ProvisionChild} has a non-null age, so a
+ * child we know only the name of cannot reach provisioning at all, and no branch
+ * downstream has to decide what date to invent for them.
+ */
+function withKnownAges(children: readonly ExtractedChild[]): ProvisionChild[] | null {
+  const known: ProvisionChild[] = [];
+  for (const child of children) {
+    if (child.ageMonths === null || child.agePrecision === null) return null;
+    known.push({ name: child.name, ageMonths: child.ageMonths, agePrecision: child.agePrecision });
+  }
+  return known;
 }
 
 /**
@@ -404,6 +451,7 @@ async function provision(
   deps: IntakeDeps,
   gathered: {
     collected: IntakeCollected;
+    children: ProvisionChild[];
     location: IntakeLocation;
     transcript: TranscriptEntry[];
   },
@@ -414,7 +462,7 @@ async function provision(
   const { familyId, userId } = await provisionFromIntake(database, {
     phoneE164,
     phoneHash: session.phoneHash,
-    children: gathered.collected.children,
+    children: gathered.children,
     location: gathered.location,
     sourceCode: session.sourceCode,
     firstMessage: firstInbound?.body ?? inbound.body,
@@ -426,6 +474,8 @@ async function provision(
   // the transcript it carried has just been replayed there.
   const provisioned: IntakeSession = { ...session, familyId, userId };
   const ctx: SendContext = { session: provisioned, phoneE164, now };
+
+  await seedFirstRadar(database, { familyId, areaCoarse: gathered.location.areaCoarse, now }, deps);
 
   const radar = await deps.radar.compose({
     familyId,
@@ -448,6 +498,42 @@ async function provision(
     now,
   );
   return { status: 'provisioned', familyId };
+}
+
+/**
+ * Give the first reply something true to say, and the 48h nudge something to find.
+ *
+ * A family that has existed for four milliseconds has no village candidates and no
+ * civic placements, so the radar could only ever answer "still learning your area" —
+ * the emptiest possible first impression, on the one message a stranger is guaranteed
+ * to read. The web onboarding path already solved half of this (complete-onboarding
+ * fires the same discovery trigger); intake never did either half.
+ *
+ * The split is by COST. The civic projection is pure DB work over rows the sweep wrote
+ * days ago, so it runs INLINE and its output is visible to the radar composed one line
+ * later. Discovery is a model call plus geocodes, far past a Twilio webhook's budget,
+ * so it runs in the background and pays off at the 48h nudge instead.
+ *
+ * Neither may fail the intake: a parent has already been provisioned by this point, and
+ * a missing weekend suggestion is not worth losing them over (rule #8 boundary catch).
+ */
+async function seedFirstRadar(
+  database: Database,
+  args: { familyId: string; areaCoarse: string | null; now: Date },
+  deps: IntakeDeps,
+): Promise<void> {
+  try {
+    const seedCivic = deps.seedCivic ?? projectCivicCandidates;
+    await seedCivic(database, args.familyId, args.areaCoarse, args.now);
+  } catch (err) {
+    console.error('intake civic projection failed (intake unaffected)', err);
+  }
+  try {
+    const trigger = deps.discoveryTrigger ?? defaultDiscoveryTrigger();
+    trigger(args.familyId, database);
+  } catch (err) {
+    console.error('intake first-village discovery trigger failed (intake unaffected)', err);
+  }
 }
 
 async function handleWatchReply(

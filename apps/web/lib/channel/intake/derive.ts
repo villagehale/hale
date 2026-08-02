@@ -1,4 +1,4 @@
-import type { ExtractedChild } from './extract';
+import type { AgePrecision, ExtractedChild } from './extract';
 
 /**
  * VIL-237 · M2 — the pure derivations between "what the parent texted" and "what gets
@@ -45,17 +45,32 @@ export function parseCanadianPostal(raw: string | null): PostalContext | null {
 export const INTAKE_COUNTRY = 'Canada';
 
 /**
- * The stored date_of_birth for a child whose parent gave only an AGE.
+ * Months to add to a stated age to reach the MIDPOINT of the band that statement
+ * actually covers. This is the entire reason {@link AgePrecision} exists.
  *
- * `today − ageMonths − 6 months`. The extra half-year is the point: "she's four"
- * means anywhere in the 12 months before her fifth birthday, so the midpoint of that
- * window is the estimate with the smallest worst-case error (±6 months instead of
- * −0/+12 if we took the birthday as today). The row is stamped
- * `dob_precision = 'derived'` so nothing downstream can mistake this for a birthday.
+ * "She's four" means anywhere in the 12 months before her fifth birthday, so the
+ * midpoint — six months on — is the estimate with the smallest worst-case error (±6
+ * instead of −0/+12 if we took the birthday as today). "18 months" is not that: the
+ * parent already did the narrowing, and 18 IS their estimate. Adding six to it stores
+ * a two-year-old, and no consumer can tell afterwards, because they all read the age
+ * back out of the date.
  */
-export function deriveDateOfBirth(ageMonths: number, now: Date): string {
+const MIDPOINT_CORRECTION_MONTHS: Record<AgePrecision, number> = { years: 6, months: 0 };
+
+/**
+ * The stored date_of_birth for a child whose parent gave only an AGE. The row is
+ * stamped `dob_precision = 'derived'` so nothing downstream can mistake this for a
+ * birthday — that stamp is what earns the ±6-month early-edge tolerance in the
+ * registration and health matchers.
+ */
+export function deriveDateOfBirth(
+  ageMonths: number,
+  precision: AgePrecision,
+  now: Date,
+): string {
+  const months = ageMonths + MIDPOINT_CORRECTION_MONTHS[precision];
   const dob = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - ageMonths - 6, now.getUTCDate()),
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, now.getUTCDate()),
   );
   return dob.toISOString().slice(0, 10);
 }

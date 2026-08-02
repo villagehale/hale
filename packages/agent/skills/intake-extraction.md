@@ -25,7 +25,13 @@ Return strict JSON matching this shape (via the forced `intake` tool):
 
 ```
 {
-  "children": [ { "name": string | null, "age_months": number | null } ],
+  "children": [
+    {
+      "name": string | null,
+      "age_months": number | null,
+      "age_precision": "years" | "months" | null
+    }
+  ],
   "postal_code": string | null,
   "confidence": number   // 0–1, your confidence in the fields above
 }
@@ -50,8 +56,35 @@ A bare number in a list of kids is an AGE IN YEARS, not a name and not a count:
 "4 and 1" is two children, aged 48 and 12 months, whose names you were not told.
 
 If they describe a child but give no age at all, return that child with
-`age_months: null`. Never guess an age from a name, a pronoun, or a school
-mention you had to invent.
+`age_months: null` AND `age_precision: null`. Never guess an age from a name, a
+pronoun, or a school mention you had to invent.
+
+### How precise was the parent? (`age_precision`)
+
+Report HOW they said it, not how sure you are. This is the difference between a
+number that names a whole year and a number the parent already narrowed, and only
+they know which one it was.
+
+- `"years"` — a bare year count and nothing more: "4", "four", "4 years old",
+  "4yo", "4 ans", "she's four". That sentence is true anywhere from her fourth
+  birthday to the day before her fifth, so `48` is the START of a twelve-month
+  range.
+- `"months"` — anything narrower than that, whatever unit: "18 months", "6
+  weeks", "just born", "almost 3", "just turned 3", "3 and a half", "a year and
+  a half", "1.5", "in grade 2". Here the number you return IS the estimate.
+
+Two examples, so the line is unmistakable:
+
+- "Max is 4, Mia is 18 months" → Max `{48, "years"}`, Mia `{18, "months"}`.
+- "Noah just turned 2" → `{24, "months"}` — "just turned" is the parent narrowing
+  it, so it is NOT a bare year count.
+
+An UPCOMING birthday ("turning 4 in October", "she'll be 4 soon") tells you only
+that they are 3 today: return the year they are now, `{36, "years"}`. You do not
+know today's date, so never work out how close the birthday is.
+
+When `already_known` carries a child's `age_precision`, keep it unless the new
+message re-states that child's age in different terms.
 
 ## Reading postal codes
 

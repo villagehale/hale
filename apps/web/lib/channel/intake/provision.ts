@@ -4,7 +4,7 @@ import { POLICY_VERSION } from '~/lib/consent';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
-import type { ExtractedChild } from './extract';
+import type { AgePrecision } from './extract';
 import type { TranscriptEntry } from './session';
 
 /**
@@ -43,10 +43,23 @@ export const INTAKE_CONSENT_SCOPE = 'sms_intake_origination';
  */
 export type IntakeLocation = PostalContext;
 
+/**
+ * A child provisioning is allowed to write. The age is NON-NULL, and that is the
+ * point: the caller has to have an age before it can build one of these, so there is
+ * no branch in here that could invent a date for a child we were never told the age
+ * of. The gate lives in the state machine (`withKnownAges`), and the type is what
+ * keeps it from being forgotten.
+ */
+export interface ProvisionChild {
+  name: string | null;
+  ageMonths: number;
+  agePrecision: AgePrecision;
+}
+
 export interface ProvisionInput {
   phoneE164: string;
   phoneHash: string;
-  children: readonly ExtractedChild[];
+  children: readonly ProvisionChild[];
   location: IntakeLocation;
   sourceCode: string | null;
   /** The parent's first message, stored as the consent's evidence. */
@@ -113,11 +126,20 @@ export async function provisionFromIntake(
 
     await tx.insert(schema.familyMembers).values({ familyId, userId, role: 'primary_parent' });
 
+    // The loop's exchange channel for a parent who arrived by TEXT is text. Without a
+    // row the loop falls back to its documented default of 'email', and this parent has
+    // no email address (see the module note) — so the default would address the loop to
+    // a column that is NULL by construction. Everything else stays on the table's own
+    // defaults, which are the same ones a web parent gets.
+    await tx
+      .insert(schema.loopPrefs)
+      .values({ userId, loopChannel: 'sms' })
+      .onConflictDoNothing({ target: schema.loopPrefs.userId });
+
     const childRows = input.children.map((child) => ({
       familyId,
       name: child.name?.trim() || 'your child',
-      dateOfBirth:
-        child.ageMonths === null ? deriveDateOfBirth(0, now) : deriveDateOfBirth(child.ageMonths, now),
+      dateOfBirth: deriveDateOfBirth(child.ageMonths, child.agePrecision, now),
       dobPrecision: 'derived',
     }));
     if (childRows.length > 0) {

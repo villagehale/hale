@@ -139,6 +139,7 @@ export async function editChildAction(
         name: schema.children.name,
         lastName: schema.children.lastName,
         dateOfBirth: schema.children.dateOfBirth,
+        dobPrecision: schema.children.dobPrecision,
         gender: schema.children.gender,
         biologicalSex: schema.children.biologicalSex,
         interests: schema.children.interests,
@@ -159,6 +160,7 @@ export async function editChildAction(
     const after: {
       name: string;
       dateOfBirth: string;
+      dobPrecision: 'exact';
       lastName?: string | null;
       gender?: (typeof validated.child)['gender'];
       biologicalSex?: string | null;
@@ -166,6 +168,11 @@ export async function editChildAction(
     } = {
       name: validated.child.name,
       dateOfBirth: validated.child.dateOfBirth,
+      // A date a parent typed into a date field is a BIRTHDAY, not an estimate — so
+      // this is also the one correction path for a row provisioned from a spoken age.
+      // Leaving it 'derived' would keep granting ±6 months of matcher tolerance to a
+      // date that no longer needs any.
+      dobPrecision: 'exact',
     };
     if (input.lastName !== undefined) after.lastName = validated.child.lastName;
     if (input.gender !== undefined) after.gender = validated.child.gender;

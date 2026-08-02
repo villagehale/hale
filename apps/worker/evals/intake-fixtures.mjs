@@ -16,8 +16,8 @@ export const EXTRACTION_FIXTURES = [
     alreadyKnown: { children: [], postal_code: null },
     expect: {
       children: [
-        { name: 'Maya', ageMonths: 48 },
-        { name: 'Leo', ageMonths: 12 },
+        { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
+        { name: 'Leo', ageMonths: 12, agePrecision: 'years' },
       ],
       postalCode: 'M5V 2T6',
     },
@@ -29,8 +29,8 @@ export const EXTRACTION_FIXTURES = [
     // "4 and 1" is two children whose names we were not told — NOT one child named "4".
     expect: {
       children: [
-        { name: null, ageMonths: 48 },
-        { name: null, ageMonths: 12 },
+        { name: null, ageMonths: 48, agePrecision: 'years' },
+        { name: null, ageMonths: 12, agePrecision: 'years' },
       ],
       postalCode: null,
     },
@@ -39,13 +39,13 @@ export const EXTRACTION_FIXTURES = [
     id: 'word-age-no-name',
     message: 'my son is four',
     alreadyKnown: { children: [], postal_code: null },
-    expect: { children: [{ name: null, ageMonths: 48 }], postalCode: null },
+    expect: { children: [{ name: null, ageMonths: 48, agePrecision: 'years' }], postalCode: null },
   },
   {
     id: 'months-and-typo',
     message: 'Sofi is 18 months, adress is m5v2t6',
     alreadyKnown: { children: [], postal_code: null },
-    expect: { children: [{ name: 'Sofi', ageMonths: 18 }], postalCode: 'M5V 2T6' },
+    expect: { children: [{ name: 'Sofi', ageMonths: 18, agePrecision: 'months' }], postalCode: 'M5V 2T6' },
   },
   {
     id: 'french',
@@ -53,8 +53,8 @@ export const EXTRACTION_FIXTURES = [
     alreadyKnown: { children: [], postal_code: null },
     expect: {
       children: [
-        { name: 'Amélie', ageMonths: 72 },
-        { name: 'Luc', ageMonths: 36 },
+        { name: 'Amélie', ageMonths: 72, agePrecision: 'years' },
+        { name: 'Luc', ageMonths: 36, agePrecision: 'years' },
       ],
       postalCode: 'H2X 1Y4',
     },
@@ -64,16 +64,17 @@ export const EXTRACTION_FIXTURES = [
     message: 'the older one is Maya, the little one is Leo',
     alreadyKnown: {
       children: [
-        { name: null, age_months: 48 },
-        { name: null, age_months: 12 },
+        { name: null, age_months: 48, age_precision: 'years' },
+        { name: null, age_months: 12, age_precision: 'years' },
       ],
       postal_code: null,
     },
-    // The whole point of accumulation: the earlier ages must survive this turn.
+    // The whole point of accumulation: the earlier ages AND their granularity must
+    // survive this turn — a precision dropped here is a six-month error at provisioning.
     expect: {
       children: [
-        { name: 'Maya', ageMonths: 48 },
-        { name: 'Leo', ageMonths: 12 },
+        { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
+        { name: 'Leo', ageMonths: 12, agePrecision: 'years' },
       ],
       postalCode: null,
     },
@@ -82,16 +83,23 @@ export const EXTRACTION_FIXTURES = [
     id: 'accumulate-postal-only',
     message: 'M4K 1N2',
     alreadyKnown: {
-      children: [{ name: 'Ravi', age_months: 60 }],
+      children: [{ name: 'Ravi', age_months: 60, age_precision: 'years' }],
       postal_code: null,
     },
-    expect: { children: [{ name: 'Ravi', ageMonths: 60 }], postalCode: 'M4K 1N2' },
+    expect: {
+      children: [{ name: 'Ravi', ageMonths: 60, agePrecision: 'years' }],
+      postalCode: 'M4K 1N2',
+    },
   },
   {
     id: 'newborn',
     message: 'just one, she was born 6 weeks ago. L7G 4S8',
     alreadyKnown: { children: [], postal_code: null },
-    expect: { children: [{ name: null, ageMonths: 1 }], postalCode: 'L7G 4S8', ageToleranceMonths: 2 },
+    expect: {
+      children: [{ name: null, ageMonths: 1, agePrecision: 'months' }],
+      postalCode: 'L7G 4S8',
+      ageToleranceMonths: 2,
+    },
   },
   {
     id: 'half-year',
@@ -99,8 +107,8 @@ export const EXTRACTION_FIXTURES = [
     alreadyKnown: { children: [], postal_code: null },
     expect: {
       children: [
-        { name: 'Theo', ageMonths: 42 },
-        { name: 'Nina', ageMonths: 72 },
+        { name: 'Theo', ageMonths: 42, agePrecision: 'months' },
+        { name: 'Nina', ageMonths: 72, agePrecision: 'months' },
       ],
       postalCode: 'K1A 0B1',
       ageToleranceMonths: 3,
@@ -117,8 +125,8 @@ export const EXTRACTION_FIXTURES = [
     alreadyKnown: { children: [], postal_code: null },
     expect: {
       children: [
-        { name: 'Max', ageMonths: 48 },
-        { name: 'Mia', ageMonths: 18 },
+        { name: 'Max', ageMonths: 48, agePrecision: 'years' },
+        { name: 'Mia', ageMonths: 18, agePrecision: 'months' },
       ],
       postalCode: 'L3R',
     },
@@ -127,13 +135,13 @@ export const EXTRACTION_FIXTURES = [
     id: 'fsa-lowercase',
     message: 'Ava is 6, l3r',
     alreadyKnown: { children: [], postal_code: null },
-    expect: { children: [{ name: 'Ava', ageMonths: 72 }], postalCode: 'L3R' },
+    expect: { children: [{ name: 'Ava', ageMonths: 72, agePrecision: 'years' }], postalCode: 'L3R' },
   },
   {
     id: 'fsa-in-prose',
     message: "Noah just turned 2 and we're over in the L6C area",
     alreadyKnown: { children: [], postal_code: null },
-    expect: { children: [{ name: 'Noah', ageMonths: 24 }], postalCode: 'L6C' },
+    expect: { children: [{ name: 'Noah', ageMonths: 24, agePrecision: 'months' }], postalCode: 'L6C' },
   },
   {
     id: 'neighbourhood-not-a-postal-code',
@@ -141,13 +149,67 @@ export const EXTRACTION_FIXTURES = [
     alreadyKnown: { children: [], postal_code: null },
     // A place name is NOT a postal code. Inventing one puts a family in the wrong
     // part of the city — the failure this fixture exists to catch.
-    expect: { children: [{ name: 'Ines', ageMonths: 84 }], postalCode: null },
+    expect: { children: [{ name: 'Ines', ageMonths: 84, agePrecision: 'years' }], postalCode: null },
   },
   {
     id: 'grade-reference',
     message: 'Omar is in grade 2. Postal M6K 3P6',
     alreadyKnown: { children: [], postal_code: null },
-    expect: { children: [{ name: 'Omar', ageMonths: 88 }], postalCode: 'M6K 3P6', ageToleranceMonths: 8 },
+    expect: {
+      children: [{ name: 'Omar', ageMonths: 88, agePrecision: 'months' }],
+      postalCode: 'M6K 3P6',
+      ageToleranceMonths: 8,
+    },
+  },
+  // ── age-granularity battery (VIL-260) — the field that decides whether the stored
+  // date of birth gets the year-band midpoint correction. Getting `age_precision`
+  // wrong is a silent six-month error the parent can never see and never correct, so
+  // each of these pins a phrasing that a bare `age_months` cannot distinguish.
+  {
+    id: 'almost-three',
+    message: "Zaid is almost 3, we're in M4K 1N2",
+    alreadyKnown: { children: [], postal_code: null },
+    // "almost 3" is the parent narrowing it themselves — the number IS the estimate,
+    // so nothing downstream may age him another half-year on top.
+    expect: {
+      children: [{ name: 'Zaid', ageMonths: 33, agePrecision: 'months' }],
+      postalCode: 'M4K 1N2',
+      ageToleranceMonths: 3,
+    },
+  },
+  {
+    id: 'two-and-a-half',
+    message: 'Priya is 2 and a half. L3R',
+    alreadyKnown: { children: [], postal_code: null },
+    expect: {
+      children: [{ name: 'Priya', ageMonths: 30, agePrecision: 'months' }],
+      postalCode: 'L3R',
+    },
+  },
+  {
+    id: 'upcoming-birthday',
+    message: 'Hugo is turning 4 in October. M6K 3P6',
+    alreadyKnown: { children: [], postal_code: null },
+    // He is 3 today, and the skill has no clock — so the honest read is the year he is
+    // NOW, at year granularity. Guessing how close October is would invent a month.
+    expect: {
+      children: [{ name: 'Hugo', ageMonths: 36, agePrecision: 'years' }],
+      postalCode: 'M6K 3P6',
+    },
+  },
+  {
+    id: 'named-but-ageless',
+    message: 'Nora and Ben, M5V 2T6',
+    alreadyKnown: { children: [], postal_code: null },
+    // Two children and not one age between them. A number invented here becomes a
+    // stored date of birth, so `null` has to survive the whole way out.
+    expect: {
+      children: [
+        { name: 'Nora', ageMonths: null, agePrecision: null },
+        { name: 'Ben', ageMonths: null, agePrecision: null },
+      ],
+      postalCode: 'M5V 2T6',
+    },
   },
   {
     id: 'unreadable',

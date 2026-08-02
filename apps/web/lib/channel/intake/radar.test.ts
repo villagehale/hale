@@ -70,7 +70,7 @@ function composer(db: ReturnType<typeof makeFakeDb>) {
   });
 }
 
-const MAYA = { name: 'Maya', ageMonths: 48 };
+const MAYA = { name: 'Maya', ageMonths: 48, agePrecision: 'years' } as const;
 
 describe('createRadarComposer', () => {
   it('names a real candidate and a real registration window it read for this family', async () => {
@@ -143,7 +143,7 @@ describe('createRadarComposer', () => {
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
-      children: [{ name: 'Ava', ageMonths: 180 }],
+      children: [{ name: 'Ava', ageMonths: 180, agePrecision: 'years' }],
       areaCoarse: 'M5V',
     });
 

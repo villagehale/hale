@@ -67,9 +67,13 @@ export interface RadarDeps {
   timeZone?: string;
 }
 
-/** The parent's own words about their kids. Every intake child carries a DERIVED date
- * of birth (provision.ts writes `dob_precision: 'derived'` unconditionally — the parent
- * gave an age, not a date), which is what earns the ±6-month age tolerance downstream. */
+/**
+ * The parent's own words about their kids, straight from the conversation that just
+ * happened — not a read of the rows, which is why 'derived' is a FACT here rather than
+ * an assumption: provisioning wrote these very children from a spoken age moments ago,
+ * in this same request, and that is exactly what `dob_precision = 'derived'` records.
+ * The sweeps that read STORED rows (lib/channel/nudge/run.ts) take the column instead.
+ */
 function toRadarChildren(children: readonly ExtractedChild[]): RadarChild[] {
   return children.map((child) => ({
     name: child.name,
