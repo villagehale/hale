@@ -32,7 +32,7 @@ import type {
   RoutineProposalView,
   UpcomingHealthItem,
 } from '@/lib/api-types';
-import { MILESTONE_TIMING_LABEL, STAGE_LABEL, agePhrase, duePhrase, whenPhrase } from '@/lib/format';
+import { STAGE_LABEL, agePhrase, duePhrase, milestoneStatusLabel, whenPhrase } from '@/lib/format';
 import { type LogDayGroup, groupLogsByDay } from '@/lib/logs-group';
 import { buildMeasureSeries, MEASURE_KINDS, type MeasureKind } from '@/lib/measurement-series';
 import { displayMeasurement, type UnitSystem } from '@/lib/measurement-units';
@@ -389,7 +389,7 @@ function OverviewSection({
                     {m.what}
                   </AppText>
                   <AppText variant="meta" className="text-ink-3">
-                    {m.done ? 'Achieved' : MILESTONE_TIMING_LABEL[m.timing]}
+                    {milestoneStatusLabel(m)}
                   </AppText>
                 </View>
                 <MilestoneCheck
@@ -1047,7 +1047,7 @@ function MilestonesSection({
                   {m.what}
                 </AppText>
                 <AppText variant="meta" className="text-ink-3">
-                  {m.done ? 'Achieved' : MILESTONE_TIMING_LABEL[m.timing]}
+                  {milestoneStatusLabel(m)}
                 </AppText>
               </View>
               <MilestoneCheck

@@ -74,19 +74,40 @@ describe('parseBiblioCommonsEvents — who it is for', () => {
   });
 
   it('maps each system’s own audience vocabulary to the same age band in months', () => {
-    // Three systems, three different words for the same under-6 audience.
+    // Three systems, two different words for the same under-6 audience — and
+    // neither event states an age of its own, so the umbrella is all there is.
     const tplPreschool = one(tpl(), 'Family Time'); // "Preschool Children (0-5)"
     expect([tplPreschool.ageMinMonths, tplPreschool.ageMaxMonths]).toEqual([0, 71]);
 
     const mkStorytime = one(markham(), 'Storytime'); // "Birth to Five"
     expect([mkStorytime.ageMinMonths, mkStorytime.ageMaxMonths]).toEqual([0, 71]);
-
-    const rhBaby = one(rhpl(), 'Babytime (0–12 months)'); // "Babies, Toddlers & Preschool"
-    expect([rhBaby.ageMinMonths, rhBaby.ageMaxMonths]).toEqual([0, 71]);
   });
 
-  it('unions the band when an event names several audiences', () => {
-    // TPL "Puppet Show" is Preschool (0-5) AND School Age (6-12) → 0..155 months.
+  it('NARROWS the audience umbrella to the age the event itself states', () => {
+    // The 0–5 umbrella is what put a 2-year-old in an infant lap-bounce. The
+    // event's own title says 0–12 months, and that is the source's real claim.
+    const rhBaby = one(rhpl(), 'Babytime (0–12 months)'); // "Babies, Toddlers & Preschool"
+    expect([rhBaby.ageMinMonths, rhBaby.ageMaxMonths]).toEqual([0, 12]);
+
+    // RHPL states the band in the title; the intersection keeps the umbrella's
+    // ceiling when the stated range runs past it (0–6 yrs ∩ 0–5 yrs).
+    const rhFamily = one(rhpl(), 'Stories and Crafts (2–5 yrs)');
+    expect([rhFamily.ageMinMonths, rhFamily.ageMaxMonths]).toEqual([24, 71]);
+  });
+
+  it('reads a band stated ONLY in the DESCRIPTION, which is where TPL puts it', () => {
+    // Markham files this under Children AND Youth — a 6-to-17 union — while its own
+    // description says "between the ages of 6 to 12". Nothing in the title says so.
+    const club = one(markham(), 'Newcomer Youth Love of Language Club');
+    expect([club.ageMinMonths, club.ageMaxMonths]).toEqual([72, 155]);
+    // The description is read, never republished: the summary a parent sees is
+    // still composed from facts, not from the library's marketing copy.
+    expect(club.summary).toBeNull();
+  });
+
+  it('unions the band when an event names several audiences and states none itself', () => {
+    // TPL "Puppet Show" is Preschool (0-5) AND School Age (6-12) → 0..155 months,
+    // and its description says only "children of all ages" — no number to read.
     const puppet = one(tpl(), 'Puppet Show: Goldilocks and the Three Bears');
     expect([puppet.ageMinMonths, puppet.ageMaxMonths]).toEqual([0, 155]);
   });

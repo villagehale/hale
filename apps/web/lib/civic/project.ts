@@ -4,6 +4,7 @@ import { ageInMonths } from '@hale/types';
 import { and, eq, gte, isNull, or } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import { resolveMunicipalities } from '~/lib/registration/match-registration-windows';
+import type { LatLng } from '~/lib/village/geocode';
 import { MIN_SURFACE_CONFIDENCE } from './parse-hours';
 
 /**
@@ -41,6 +42,41 @@ export const MAX_CIVIC_CANDIDATES_PER_FAMILY = 8;
 /** How far ahead a projected session may sit. Beyond this it is not this week's
  * news, and the row would age out of the feed's freshness window anyway. */
 const FORWARD_WINDOW_DAYS = 21;
+
+/**
+ * VIL-260 · WS5 — how far a civic pick may be from a family's coarse area.
+ *
+ * Municipality was the only locality gate, and "Toronto" is one bucket 45 km
+ * across: a Scarborough family's Saturday storytime could be in Etobicoke. The
+ * venue coordinates were already stored and simply never read.
+ *
+ * `PREFERRED` is a RANKING boundary, not a filter — inside it a session is
+ * genuinely local ("we could walk / it's ten minutes"), so those fill the
+ * shortlist first and a further one only appears when they run out. `MAX` is the
+ * filter, and it is deliberately generous: past it, a drop-in programme costs
+ * more in travel than it gives back, and offering it is worse than an empty feed.
+ */
+export const PREFERRED_RADIUS_KM = 8;
+export const MAX_RADIUS_KM = 15;
+
+/** Mean earth radius, the sphere the haversine below is measured on. */
+const EARTH_RADIUS_KM = 6371;
+
+/**
+ * Great-circle distance in kilometres. A flat-earth approximation is wrong by
+ * ~28% on an east-west leg at Toronto's latitude, which is the difference between
+ * "across the neighbourhood" and "across the city" — so the real formula, on a
+ * layer whose entire job is to know which of those two a venue is.
+ */
+export function haversineKm(from: LatLng, to: LatLng): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const deltaLat = toRadians(to.lat - from.lat);
+  const deltaLng = toRadians(to.lng - from.lng);
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(toRadians(from.lat)) * Math.cos(toRadians(to.lat)) * Math.sin(deltaLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
 
 /**
  * Which municipality a venue's city belongs to, so a family's FSA (already
@@ -110,6 +146,10 @@ export interface ProjectedCivicCandidate {
   lng: number | null;
   ageRange: string | null;
   confidence: number;
+  /** Kilometres from the family's coarse-area centroid, or null when either the
+   * area or the venue could not be placed. Carried so nothing downstream has to
+   * re-derive what this layer already computed to rank the shortlist. */
+  distanceKm: number | null;
 }
 
 /** `570` → `"9:30 a.m."`, in the municipal spelling these sources publish. */
@@ -157,12 +197,24 @@ export function nextOccurrenceDay(
  * database — so the whole selection rule is unit-testable.
  *
  * A session is eligible only when it is uncancelled, confident enough to state
- * out loud, and either open to all ages or overlapping a child in this household.
- * Soonest first; ties broken by title so a run is stable.
+ * out loud, close enough to actually go to, and either open to all ages or
+ * overlapping a child in this household.
+ *
+ * `center` is the family's COARSE-area centroid (rule #1 — an FSA's middle, never
+ * a home). With one, anything past MAX_RADIUS_KM is dropped and anything inside
+ * PREFERRED_RADIUS_KM fills the shortlist first; a venue with no coordinates is
+ * dropped, because "nearby" is then a claim nothing supports. With `center` null
+ * — the area could not be geocoded — the whole distance rule stands down and the
+ * municipality gate is again the only locality guarantee: a Places outage costs a
+ * family precision, never their feed.
+ *
+ * Soonest first within each proximity tier; ties broken by distance then title so
+ * a run is stable.
  */
 export function selectCivicSessions(
   sessions: readonly CivicSessionForFamily[],
   childAgesMonths: readonly number[],
+  center: LatLng | null,
   now: Date,
   timeZone: string = DEFAULT_TIMEZONE,
   limit: number = MAX_CIVIC_CANDIDATES_PER_FAMILY,
@@ -181,6 +233,9 @@ export function selectCivicSessions(
     if (session.confidence < MIN_SURFACE_CONFIDENCE) continue;
     if (!fitsAnyChild(session, childAgesMonths)) continue;
 
+    const distanceKm = distanceFor(session, center);
+    if (center !== null && (distanceKm === null || distanceKm > MAX_RADIUS_KM)) continue;
+
     const when = occurrenceFor(session, now, timeZone);
     if (when === null) continue;
     if (when.day < todayKey || when.day > horizonKey) continue;
@@ -197,11 +252,31 @@ export function selectCivicSessions(
       lng: session.lng,
       ageRange: ageRangeLabel(session),
       confidence: session.confidence,
+      distanceKm,
     });
   }
 
-  projected.sort((a, b) => a.eventDate.localeCompare(b.eventDate) || a.title.localeCompare(b.title));
+  projected.sort(
+    (a, b) =>
+      proximityTier(a) - proximityTier(b) ||
+      a.eventDate.localeCompare(b.eventDate) ||
+      (a.distanceKm ?? 0) - (b.distanceKm ?? 0) ||
+      a.title.localeCompare(b.title),
+  );
   return projected.slice(0, limit);
+}
+
+/** 0 for genuinely local, 1 for the rest — so a nearby session later in the week
+ * beats a further one tomorrow, and the cap is what carries that preference to
+ * every downstream reader of village_candidates. */
+function proximityTier(candidate: ProjectedCivicCandidate): number {
+  if (candidate.distanceKm === null) return 0;
+  return candidate.distanceKm <= PREFERRED_RADIUS_KM ? 0 : 1;
+}
+
+function distanceFor(session: CivicSessionForFamily, center: LatLng | null): number | null {
+  if (center === null || session.lat === null || session.lng === null) return null;
+  return haversineKm(center, { lat: session.lat, lng: session.lng });
 }
 
 function fitsAnyChild(
@@ -248,11 +323,24 @@ function summaryFor(session: CivicSessionForFamily, timeLabel: string): string {
   return `${access} at ${where} — ${timeLabel}.`;
 }
 
-/** A human age hint, only when the source actually stated a band. */
+/** Below this a band is only legible in months: rendering "birth to 12 months"
+ * as "0–1 years" describes a one-year-old's programme, not a lap-bounce. */
+const MONTHS_LABEL_CEILING = 24;
+
+/**
+ * A human age hint, only when the source actually stated a band.
+ *
+ * ASCII punctuation on purpose: this string is persisted and read back out over
+ * SMS, and an en dash is one more character that has to survive every transport
+ * intact (WS1's outbound normalizer is the backstop, not the licence).
+ */
 function ageRangeLabel(session: CivicSessionForFamily): string | null {
   if (session.ageMinMonths === null || session.ageMaxMonths === null) return null;
+  if (session.ageMaxMonths < MONTHS_LABEL_CEILING) {
+    return `${session.ageMinMonths}-${session.ageMaxMonths} months`;
+  }
   const toYears = (months: number) => Math.floor(months / 12);
-  return `${toYears(session.ageMinMonths)}–${toYears(session.ageMaxMonths)} years`;
+  return `${toYears(session.ageMinMonths)}-${toYears(session.ageMaxMonths)} years`;
 }
 
 /**
@@ -260,11 +348,16 @@ function ageRangeLabel(session: CivicSessionForFamily): string | null {
  * candidates. Supersede-then-insert scoped to run_type 'civic', so the LLM
  * standing feed is untouched — and one audit row for the whole projection
  * (rule #6).
+ *
+ * `center` is required rather than defaulted: a caller that forgets it would
+ * silently lose the proximity rule and start offering cross-town storytimes
+ * again, so "we could not place this family" has to be said out loud (null).
  */
 export async function projectCivicCandidates(
   database: Database,
   familyId: string,
   areaCoarse: string | null,
+  center: LatLng | null,
   now: Date = new Date(),
   timeZone: string = DEFAULT_TIMEZONE,
 ): Promise<number> {
@@ -326,7 +419,7 @@ export async function projectCivicCandidates(
     return municipality !== null && municipalities.has(municipality);
   });
 
-  const picks = selectCivicSessions(local, childAges, now, timeZone);
+  const picks = selectCivicSessions(local, childAges, center, now, timeZone);
 
   await database.transaction(async (tx) => {
     await tx
@@ -376,7 +469,10 @@ export async function projectCivicCandidates(
       actor: 'system',
       actionTaken: 'civic.candidates.projected',
       targetTable: 'village_candidates',
-      after: { areaCoarse, count: picks.length, source: CIVIC_SOURCE },
+      // `placed` records whether the proximity rule actually ran: a geocoding
+      // outage degrades to municipality-only silently by design, and this is the
+      // only place that degradation is visible afterwards.
+      after: { areaCoarse, count: picks.length, source: CIVIC_SOURCE, placed: center !== null },
     });
   });
 

@@ -108,6 +108,29 @@ const MILESTONES_BY_STAGE: Record<FamilyStage, readonly Milestone[]> = {
   ],
 };
 
+/**
+ * VIL-260 · WS5 — the preschool years, INSIDE the child stage.
+ *
+ * `deriveStage` runs 'child' from 48 months to twelve, which is one bucket over
+ * two different childhoods: the four-year-old whose milestone list began a year
+ * after their age, and the eight-year-old it was written for. The stage is not
+ * changed here — the four values are a persisted, teen-gating vocabulary — so
+ * these lists are selected by AGE within the stage instead.
+ *
+ * The 72-month boundary is not invented for this file: it is where the library
+ * systems put school-age (`SCHOOL_AGE` in library-systems.ts), and it is where
+ * our own published guidance says a four- or five-year-old is still covered by
+ * the under-five advice rather than the school-age advice.
+ */
+export const SCHOOL_AGE_START_MONTHS = 72;
+
+const PRESCHOOL_MILESTONES: readonly Milestone[] = [
+  { area: 'motor', what: 'Hops and balances on one foot', typicalWindowMonths: [36, 60], note: CONFIRM_WITH_PROVIDER },
+  { area: 'independence', what: 'Dresses with little help', typicalWindowMonths: [36, 60], note: CONFIRM_WITH_PROVIDER },
+  { area: 'language', what: 'Tells a short story about their day', typicalWindowMonths: [42, 66], note: CONFIRM_WITH_PROVIDER },
+  { area: 'social', what: 'Plays cooperatively and takes turns', typicalWindowMonths: [42, 66], note: CONFIRM_WITH_PROVIDER },
+  { area: 'cognitive', what: 'Draws a person with several body parts', typicalWindowMonths: [48, 72], note: CONFIRM_WITH_PROVIDER },
+];
 /** Curated "what matters now / what's next" guidance for a stage. */
 export interface StageGuidance {
   whatsNow: readonly string[];
@@ -128,11 +151,11 @@ const GUIDANCE_BY_STAGE: Record<FamilyStage, StageGuidance> = {
   toddler: {
     whatsNow: [
       'Language is taking off — narrate your day and read together daily.',
-      'Watch for readiness signs before starting potty training; there’s no fixed deadline.',
+      'Watch for readiness signs before starting potty training; there’s no fixed timetable.',
       'Consistent routines and gentle limits help big toddler feelings feel safe.',
     ],
     whatsNext:
-      'By around age four, your child enters the school-age stage — friendships and early learning come to the fore.',
+      'By around age four, your child moves into the preschool years — pretend play, first friendships, and getting ready for school.',
   },
   child: {
     whatsNow: [
@@ -154,10 +177,54 @@ const GUIDANCE_BY_STAGE: Record<FamilyStage, StageGuidance> = {
   },
 };
 
+/** The preschool half of the child stage (see SCHOOL_AGE_START_MONTHS). Play,
+ * self-help and getting ready for school — not homework and screen-time caps. */
+const PRESCHOOL_GUIDANCE: StageGuidance = {
+  whatsNow: [
+    'Pretend play is the work of these years — let it run, and join in when you’re invited.',
+    'Read together every day and talk about the pictures; this is where early literacy starts.',
+    'Small self-help jobs — coat, shoes, pouring, tidying — build the independence school asks for.',
+  ],
+  whatsNext:
+    'Around age six, your child becomes school-age — friendships, reading, and a longer day away from home.',
+};
+
+/**
+ * The milestone list for a child's actual age. Only the child stage splits: see
+ * SCHOOL_AGE_START_MONTHS for why the four-value stage is not the right grain for
+ * a four-year-old, and why it is nonetheless left alone.
+ */
+function milestonesFor(stage: FamilyStage, ageMonths: number): readonly Milestone[] {
+  if (stage === 'child' && ageMonths < SCHOOL_AGE_START_MONTHS) return PRESCHOOL_MILESTONES;
+  return MILESTONES_BY_STAGE[stage];
+}
+
+function guidanceFor(stage: FamilyStage, ageMonths: number): StageGuidance {
+  if (stage === 'child' && ageMonths < SCHOOL_AGE_START_MONTHS) return PRESCHOOL_GUIDANCE;
+  return GUIDANCE_BY_STAGE[stage];
+}
+
+/**
+ * What to CALL this child's phase in parent-facing copy. A label, deliberately
+ * not a stage: 'preschool' has no `FamilyStage` value, is never stored, and never
+ * gates anything — it exists so a four-year-old stops being badged "school-age"
+ * on a page that also shows them preschool guidance.
+ */
+export function stageDisplayLabel(stage: FamilyStage, ageMonths: number): string {
+  if (stage === 'child') {
+    return ageMonths < SCHOOL_AGE_START_MONTHS ? 'preschool' : 'school-age';
+  }
+  return stage;
+}
+
 /** A milestone annotated with where the child sits relative to its window. */
 export interface MilestoneStatus extends Milestone {
-  /** Before the window, inside it, or past the typical upper bound. */
-  timing: 'upcoming' | 'in_window' | 'watch';
+  /**
+   * Before the window ('upcoming'), inside it ('in_window'), just past its upper
+   * bound and still worth raising ('watch'), or long enough past it that raising
+   * it again says nothing ('passed').
+   */
+  timing: 'upcoming' | 'in_window' | 'watch' | 'passed';
   /** True when a matching milestone has been logged/marked done for this child. */
   done: boolean;
 }
@@ -228,11 +295,45 @@ export const HEALTH_HORIZON_MONTHS = 6;
  */
 export const RECENT_PASSED_MONTHS = 3;
 
+/**
+ * VIL-260 · WS5 — how long "if not, worth asking" stays worth asking.
+ *
+ * 'watch' used to be permanent, so a typically-developing 47-month-old had all
+ * five toddler milestones flagged at once and the page read as a list of
+ * developmental warnings — the exact register rule #1 forbids. Half a year past
+ * the typical upper bound is where the prompt earns its place: long enough that a
+ * parent who has not raised it still can, short enough that it has not become
+ * background noise about a child who is simply older now.
+ */
+export const WATCH_GRACE_MONTHS = 6;
+
 function classifyMilestone(milestone: Milestone, ageMonths: number): MilestoneStatus['timing'] {
   const [from, to] = milestone.typicalWindowMonths;
   if (ageMonths < from) return 'upcoming';
   if (ageMonths <= to) return 'in_window';
-  return 'watch';
+  if (ageMonths <= to + WATCH_GRACE_MONTHS) return 'watch';
+  return 'passed';
+}
+
+/** What a parent reads beside a milestone. Neutral by construction: nothing here
+ * names the child, and 'passed' describes the WINDOW, never the person. */
+const TIMING_LABEL: Record<MilestoneStatus['timing'], string> = {
+  upcoming: 'coming up',
+  in_window: 'around now',
+  watch: 'worth asking',
+  passed: 'earlier stage',
+};
+
+/**
+ * The one parent-facing label for a milestone row, shared by every surface.
+ *
+ * `done` is read HERE rather than at each render site: web and mobile each kept
+ * their own timing→label map, only mobile checked `done`, and so tapping Done on
+ * the web left the row still saying "worth asking" about something the parent had
+ * just told us had happened. One function, and that class of drift is gone.
+ */
+export function milestoneStatusLabel(status: Pick<MilestoneStatus, 'timing' | 'done'>): string {
+  return status.done ? 'done' : TIMING_LABEL[status.timing];
 }
 
 function toUpcoming(item: HealthItem, months: number, done: CompanionDone): UpcomingHealthItem {
@@ -284,13 +385,13 @@ export function companionForChild(
     nextHealth.find((item) => !item.done && item.ageMonths - months <= HEALTH_HORIZON_MONTHS) ??
     null;
 
-  const milestones = MILESTONES_BY_STAGE[stage].map((milestone) => ({
+  const milestones = milestonesFor(stage, months).map((milestone) => ({
     ...milestone,
     timing: classifyMilestone(milestone, months),
     done: done.milestones.has(milestone.what),
   }));
 
-  const guidance = GUIDANCE_BY_STAGE[stage];
+  const guidance = guidanceFor(stage, months);
 
   return {
     stage,

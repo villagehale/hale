@@ -274,6 +274,36 @@ describe('Ask Hale guard rails + family scoping', () => {
     expect(result.episodes.map((e) => e.summary)).toEqual(['bedtime story for toddler']);
   });
 
+  it('get_framework_guidance answers for the AGE it is given, not the stage midpoint', async () => {
+    // VIL-260 · WS5: 'child' spans four to twelve, so the midpoint reference DOB
+    // answered a four-year-old's parent with an eight-year-old's milestones and
+    // the Grade-7 immunization set. Asking about a 52-month-old must not.
+    const db = fakeDb(emptyState());
+    const ask = (input: Record<string, unknown>) =>
+      invokeTool(
+        toolByName(db, 'get_framework_guidance'),
+        input,
+        { familyId: FAMILY_ID, actor: 'user-1' },
+        buildGuardDeps(db),
+      ) as Promise<{
+        ageMonths: number;
+        whatsNow: readonly string[];
+        milestones: Array<{ what: string }>;
+        nextHealth: Array<{ what: string }>;
+      }>;
+
+    const preschooler = await ask({ stage: 'child', ageMonths: 52 });
+    expect(preschooler.ageMonths).toBe(52);
+    expect(preschooler.milestones.map((m) => m.what)).not.toContain(
+      'Manages homework with some support',
+    );
+    expect(preschooler.nextHealth[0]?.what).not.toMatch(/pre-teen/i);
+
+    // With no age the tool still answers, and the answer is the older child's.
+    const unspecified = await ask({ stage: 'child' });
+    expect(unspecified.whatsNow).not.toEqual(preschooler.whatsNow);
+  });
+
   it('save_memory persists a family-scoped fact through the guarded invoker (rule #6)', async () => {
     const state = emptyState();
     const db = fakeDb(state);

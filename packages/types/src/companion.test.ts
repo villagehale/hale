@@ -4,6 +4,8 @@ import {
   HEALTH_HORIZON_MONTHS,
   companionForChild,
   healthItemKey,
+  milestoneStatusLabel,
+  stageDisplayLabel,
 } from './index.js';
 
 /**
@@ -107,6 +109,41 @@ describe('companionForChild — milestones', () => {
     expect(older.milestones.find((m) => m.what === 'Rolls over')?.timing).toBe('watch');
   });
 
+  /**
+   * VIL-260 · WS5 — milestone honesty.
+   *
+   * The module's own framing is "most kids by X — IF NOT, worth asking". That
+   * sentence is a prompt with a shelf life: it is worth saying while the answer
+   * could still change something, and it stops being worth saying long after.
+   * Under a permanent 'watch' every one of the five toddler rows read as a
+   * developmental warning by 47 months, which is the alarmist register rule #1
+   * exists to forbid. The expectations below are read off that sentence, not off
+   * the code: still asking at 24 months, no longer shouting at 47.
+   */
+  it("keeps 'worth asking' live while asking could still change something", () => {
+    // Born 2024-06-15 → exactly 24mo. Walking typically arrives by 18 months, so a
+    // two-year-old who is not walking is a real, useful thing to raise.
+    const two = companionForChild({ dateOfBirth: '2024-06-15' }, NOW);
+    expect(two.ageMonths).toBe(24);
+    expect(two.milestones.find((m) => m.what === 'Walks independently')?.timing).toBe('watch');
+    expect(two.milestones.find((m) => m.what === 'Says first words')?.timing).toBe('watch');
+  });
+
+  it('stops flagging a long-past window — a 47-month-old is not five warnings', () => {
+    // Born 2022-07-15 → 47mo, the last month of the toddler stage. Four of the five
+    // toddler windows closed six months or more ago; only potty-training interest
+    // (through 42mo) is still a live question.
+    const nearlyFour = companionForChild({ dateOfBirth: '2022-07-15' }, NOW);
+    expect(nearlyFour.ageMonths).toBe(47);
+    expect(nearlyFour.stage).toBe('toddler');
+
+    const watching = nearlyFour.milestones.filter((m) => m.timing === 'watch');
+    expect(watching.map((m) => m.what)).toEqual(['Shows interest in potty training']);
+    expect(nearlyFour.milestones.find((m) => m.what === 'Walks independently')?.timing).toBe(
+      'passed',
+    );
+  });
+
   it('returns teenager milestones for a 13-year-old', () => {
     // Born 2013-05-15 → 157mo on 2026-06-15 → teenager (>=156mo).
     const view = companionForChild({ dateOfBirth: '2013-05-15' }, NOW);
@@ -174,6 +211,73 @@ describe('companionForChild — done marking', () => {
       (h) => h.key === healthItemKey({ ageMonths: 4, kind: 'immunization' }),
     );
     expect(shots?.done).toBe(false);
+  });
+});
+
+describe('milestoneStatusLabel — what a parent actually reads', () => {
+  it('a Done marker CLEARS the prompt instead of sitting beside it', () => {
+    // The defect: tapping Done set a flag nothing read, so the row kept saying
+    // "worth asking" about something the parent had just told us had happened.
+    expect(milestoneStatusLabel({ timing: 'watch', done: false })).toBe('worth asking');
+    expect(milestoneStatusLabel({ timing: 'watch', done: true })).not.toBe('worth asking');
+    expect(milestoneStatusLabel({ timing: 'watch', done: true })).toBe(
+      milestoneStatusLabel({ timing: 'upcoming', done: true }),
+    );
+  });
+
+  it('says nothing alarming about a window that simply closed', () => {
+    const label = milestoneStatusLabel({ timing: 'passed', done: false });
+    expect(label).not.toMatch(/late|behind|delay|overdue|missed|should/i);
+  });
+
+  it('gives every timing a label, so a new one can never render as undefined', () => {
+    for (const timing of ['upcoming', 'in_window', 'watch', 'passed'] as const) {
+      expect(milestoneStatusLabel({ timing, done: false })).toMatch(/\S/);
+    }
+  });
+});
+
+describe('companionForChild — the preschool years inside the child stage', () => {
+  /**
+   * VIL-260 · WS5. `deriveStage` puts every child from 48 months to 12 years in
+   * one 'child' bucket, so a four-year-old was being handed an eight-year-old's
+   * material: badged school-age, offered homework and screen-time boundaries, and
+   * shown a milestone list whose earliest window opens a year after their age.
+   * These assert the age-derived view, NOT a new stage value — the four-bucket
+   * stage is untouched and still the teen gate.
+   */
+  it('does not call a four-year-old school-age', () => {
+    // Born 2022-05-15 → 49mo. Same stage as a ten-year-old, not the same childhood.
+    const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
+    expect(four.ageMonths).toBe(49);
+    expect(four.stage).toBe('child');
+    expect(stageDisplayLabel(four.stage, four.ageMonths)).toBe('preschool');
+    expect(stageDisplayLabel('child', 96)).toBe('school-age');
+  });
+
+  it('gives a four-year-old milestones their own age can be in', () => {
+    const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
+    expect(four.milestones.some((m) => m.timing === 'in_window')).toBe(true);
+    // Not the eight-year-old's list.
+    expect(four.milestones.some((m) => m.what.toLowerCase().includes('homework'))).toBe(false);
+  });
+
+  it('does not hand a four-year-old school-age guidance', () => {
+    const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
+    const eight = companionForChild({ dateOfBirth: '2018-06-15' }, NOW);
+    expect(eight.ageMonths).toBe(96);
+    expect(four.whatsNow).not.toEqual(eight.whatsNow);
+    expect(four.whatsNow.join(' ')).not.toMatch(/homework|screen-time/i);
+    // A toddler is told what actually comes next, not that they turn school-age.
+    const toddler = companionForChild({ dateOfBirth: '2024-06-15' }, NOW);
+    expect(toddler.whatsNext).not.toMatch(/school-age/i);
+  });
+
+  it('still hands a school-age child their own guidance and list', () => {
+    const eight = companionForChild({ dateOfBirth: '2018-06-15' }, NOW);
+    expect(eight.stage).toBe('child');
+    expect(eight.whatsNow.join(' ')).toMatch(/school/i);
+    expect(eight.milestones.some((m) => m.what === 'Manages homework with some support')).toBe(true);
   });
 });
 

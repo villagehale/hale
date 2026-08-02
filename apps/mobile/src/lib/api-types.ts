@@ -32,7 +32,10 @@ export interface Milestone {
 }
 
 export interface MilestoneStatus extends Milestone {
-  timing: 'upcoming' | 'in_window' | 'watch';
+  /** 'passed' is a window that closed long enough ago that raising it again says
+   * nothing — see WATCH_GRACE_MONTHS in @hale/types. Mirrored; drift is caught by
+   * milestone-label-parity.test.ts. */
+  timing: 'upcoming' | 'in_window' | 'watch' | 'passed';
   /** True when a matching milestone has been logged/marked done (mirrors web). */
   done: boolean;
 }

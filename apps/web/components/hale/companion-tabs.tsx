@@ -32,7 +32,12 @@ import {
 } from '~/lib/companion/development-snapshot';
 import { buildMeasureSeries, type MeasureSeries } from '~/lib/companion/growth-series';
 import type { GrowthHeaderStat } from '~/lib/companion/growth-header';
-import { displayMeasurement, type UnitSystem } from '@hale/types';
+import {
+  displayMeasurement,
+  milestoneStatusLabel,
+  stageDisplayLabel,
+  type UnitSystem,
+} from '@hale/types';
 import {
   BOOKING_EPISODE,
   FEED_EPISODE,
@@ -49,19 +54,6 @@ import { formatCalendarDate, formatWhenPhrase } from '~/lib/format/datetime';
 import type { RoutineProposalView } from '~/lib/village/mappers';
 import { BookButton } from './book-button';
 import { DoneButton } from './done-button';
-
-const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
-  newborn: 'newborn',
-  toddler: 'toddler',
-  child: 'school-age',
-  teenager: 'teenager',
-};
-
-const TIMING_LABEL: Record<ChildCompanionView['milestones'][number]['timing'], string> = {
-  upcoming: 'coming up',
-  in_window: 'around now',
-  watch: 'worth asking',
-};
 
 const LOG_ICON: Record<string, LucideIcon> = {
   [FEED_EPISODE]: Utensils,
@@ -830,7 +822,7 @@ export function MilestonesSection({ child }: { child: ChildCompanionView }) {
                 />
               </span>
               <span className="meta mt-0.5 block text-faded-sage">
-                {windowPhrase(milestone.typicalWindowMonths)} · {TIMING_LABEL[milestone.timing]}
+                {windowPhrase(milestone.typicalWindowMonths)} · {milestoneStatusLabel(milestone)}
               </span>
             </span>
             <span className="shrink-0">
@@ -1227,7 +1219,9 @@ export function CompanionTabs({
               }`}
             >
               <span data-hale-pii>{child.name ?? 'your child'}</span>
-              <span className="meta font-normal">{STAGE_LABEL[child.stage]}</span>
+              <span className="meta font-normal">
+                {stageDisplayLabel(child.stage, child.ageMonths)}
+              </span>
             </button>
           );
         })}
