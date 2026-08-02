@@ -43,10 +43,15 @@ function ambiguous(reply: string): IntentReading {
   return { intent: 'ambiguous', verbatim: reply, interpretation: 'a question back' };
 }
 
+/** The M5V (downtown Toronto) FSA centroid the fake geocoder returns, so the
+ * seeding assertions can tell "placed here" from "could not be placed". */
+const M5V_CENTRE = { lat: 43.6426, lng: -79.3871 };
+
 function harness(options: {
   extractions?: IntakeCollected[];
   intents?: IntentReading[];
   limiter?: FakeRateLimiter;
+  resolveCenter?: IntakeDeps['resolveCenter'];
 }): {
   fake: FakeDb;
   transport: FakeTransport;
@@ -71,10 +76,12 @@ function harness(options: {
           return fakeRadar.compose(input);
         },
       },
-      seedCivic: async (_db, familyId, areaCoarse) => {
-        steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}`);
+      seedCivic: async (_db, familyId, areaCoarse, center) => {
+        const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
+        steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}:${placed}`);
         return 0;
       },
+      resolveCenter: options.resolveCenter ?? (async () => M5V_CENTRE),
       discoveryTrigger: (familyId) => {
         steps.push(`discovery:${familyId ? 'family' : 'none'}`);
       },
@@ -404,8 +411,36 @@ describe('intake · seeding the first radar', () => {
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
 
     // Order is the assertion: an inline projection composed AFTER the radar could not
-    // have reached it, which is exactly the bug.
-    expect(steps).toEqual(['civic:family:M5V', 'discovery:family', 'radar:M5V']);
+    // have reached it, which is exactly the bug. The centroid rides along, so the
+    // FIRST radar is distance-filtered like every later one (VIL-260 · WS5).
+    expect(steps).toEqual([
+      `civic:family:M5V:${M5V_CENTRE.lat},${M5V_CENTRE.lng}`,
+      'discovery:family',
+      'radar:M5V',
+    ]);
+  });
+
+  it('still seeds — unplaced — when the coarse area cannot be geocoded', async () => {
+    // A Places miss must cost this family PROXIMITY, not their first radar: an
+    // unplaced projection still has its municipality gate to fall back on.
+    const { fake, transport, deps, steps } = harness({ resolveCenter: async () => null });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(steps).toEqual(['civic:family:M5V:unplaced', 'discovery:family', 'radar:M5V']);
+  });
+
+  it('seeds unplaced rather than dying when the geocoder itself throws', async () => {
+    const { fake, transport, deps, steps } = harness({
+      resolveCenter: async () => {
+        throw new Error('places quota exhausted');
+      },
+    });
+    await text(fake, transport, deps, 'hi');
+    const result = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    expect(result.status).toBe('provisioned');
+    expect(steps).toEqual(['civic:family:M5V:unplaced', 'discovery:family', 'radar:M5V']);
   });
 
   it('never lets a seeding failure cost a family their intake', async () => {

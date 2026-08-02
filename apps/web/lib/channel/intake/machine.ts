@@ -17,6 +17,7 @@ import {
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
 import { projectCivicCandidates } from '~/lib/civic/project';
+import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import {
   type DiscoveryTrigger,
   defaultDiscoveryTrigger,
@@ -91,8 +92,14 @@ export interface IntakeDeps {
     database: Database,
     familyId: string,
     areaCoarse: string | null,
+    center: LatLng | null,
     now: Date,
   ) => Promise<number>;
+  /** The COARSE area's centroid (rule #1 — an FSA's middle, never a home), so the
+   * FIRST radar is filtered by distance like every later one. Null is a valid
+   * answer, not a failure: the projection then falls back to its municipality
+   * gate. Injected so no test reaches the network. */
+  resolveCenter?: (areaCoarse: string) => Promise<LatLng | null>;
   /** Populates the village in the BACKGROUND (one model call + geocodes — far too slow
    * for an inbound webhook). Its payoff is the 48h nudge, which otherwise sweeps a
    * family whose candidate table is empty. Same trigger the web onboarding path uses. */
@@ -514,6 +521,13 @@ async function provision(
  * later. Discovery is a model call plus geocodes, far past a Twilio webhook's budget,
  * so it runs in the background and pays off at the 48h nudge instead.
  *
+ * VIL-260 · WS5 adds ONE coarse-area geocode to the inline half, and it does not move
+ * that line: `radar.compose` on the very next statement already resolves the same FSA
+ * through its weather port, so this is the same lookup on the same input rather than a
+ * new class of cost. What it buys is that the FIRST radar a stranger ever reads is
+ * distance-filtered like every later one — without it, a Scarborough family's opening
+ * message could offer an Etobicoke storytime.
+ *
  * Neither may fail the intake: a parent has already been provisioned by this point, and
  * a missing weekend suggestion is not worth losing them over (rule #8 boundary catch).
  */
@@ -522,9 +536,13 @@ async function seedFirstRadar(
   args: { familyId: string; areaCoarse: string | null; now: Date },
   deps: IntakeDeps,
 ): Promise<void> {
+  // Resolved OUTSIDE the projection's try, and degrading to null rather than
+  // throwing: a geocoding miss must cost this family proximity, never the whole
+  // seeding — an unplaced projection still has its municipality gate.
+  const center = await resolveSeedCenter(args.areaCoarse, deps);
   try {
     const seedCivic = deps.seedCivic ?? projectCivicCandidates;
-    await seedCivic(database, args.familyId, args.areaCoarse, args.now);
+    await seedCivic(database, args.familyId, args.areaCoarse, center, args.now);
   } catch (err) {
     console.error('intake civic projection failed (intake unaffected)', err);
   }
@@ -533,6 +551,22 @@ async function seedFirstRadar(
     trigger(args.familyId, database);
   } catch (err) {
     console.error('intake first-village discovery trigger failed (intake unaffected)', err);
+  }
+}
+
+/** The family's coarse centroid, or null when there is no area or it cannot be
+ * placed. Never throws — "we could not place them" is an answer the projection
+ * knows how to act on. */
+async function resolveSeedCenter(
+  areaCoarse: string | null,
+  deps: IntakeDeps,
+): Promise<LatLng | null> {
+  if (areaCoarse === null) return null;
+  try {
+    return await (deps.resolveCenter ?? geocodeArea)(areaCoarse);
+  } catch (err) {
+    console.error('intake coarse-area geocode failed (projection falls back to area)', err);
+    return null;
   }
 }
 
