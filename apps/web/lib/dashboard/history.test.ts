@@ -96,3 +96,68 @@ describe('toHistoryView — rule #1 teen redaction', () => {
     expect(view.resolvedAt.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * VIL-260 · WS3b — the history row says whether it can still be taken back.
+ *
+ * UNDO existed as a primitive and as an SMS command, but no surface ever offered it,
+ * so a parent who approved a calendar placement in the app had to text to reverse it.
+ * The flag is derived from the SAME gate the server enforces (undo-window.ts), so the
+ * control can never be shown on a row the reversal would refuse — or hidden on one it
+ * would accept.
+ */
+describe('toHistoryView — undoable', () => {
+  const EXECUTED_AT = new Date('2026-06-20T14:00:00Z');
+  const ONE_HOUR_LATER = new Date('2026-06-20T15:00:00Z');
+  const TWO_DAYS_LATER = new Date('2026-06-22T14:00:00Z');
+
+  function placement(over: Partial<HistoryActionRow> = {}): HistoryActionRow {
+    return row({
+      actionType: 'calendar_add',
+      userVisibleState: 'autonomous',
+      executedAt: EXECUTED_AT,
+      payload: { title: 'Swim lesson', startsAt: '2026-07-01T14:00:00.000Z' },
+      ...over,
+    });
+  }
+
+  it('offers undo on a calendar placement executed inside the window', () => {
+    expect(toHistoryView(placement(), TZ, ONE_HOUR_LATER).undoable).toBe(true);
+  });
+
+  it('withdraws it once the 24h window has passed', () => {
+    expect(toHistoryView(placement(), TZ, TWO_DAYS_LATER).undoable).toBe(false);
+  });
+
+  it('never offers it on a type the reversal refuses', () => {
+    // A move/cancel undo would need the pre-mutation state, which is not persisted.
+    expect(toHistoryView(placement({ actionType: 'calendar_move' }), TZ, ONE_HOUR_LATER).undoable)
+      .toBe(false);
+    expect(toHistoryView(row({ actionType: 'send_email' }), TZ, ONE_HOUR_LATER).undoable).toBe(
+      false,
+    );
+  });
+
+  it('never offers it on a row that never executed, or on one already reverted', () => {
+    expect(
+      toHistoryView(
+        placement({ userVisibleState: 'needs_human', executedAt: null }),
+        TZ,
+        ONE_HOUR_LATER,
+      ).undoable,
+    ).toBe(false);
+    expect(
+      toHistoryView(
+        placement({ userVisibleState: 'reverted', revertedReason: 'undone_by_human' }),
+        TZ,
+        ONE_HOUR_LATER,
+      ).undoable,
+    ).toBe(false);
+  });
+
+  it('never offers it on a teen-redacted row — no acting on invisible content', () => {
+    expect(toHistoryView(placement({ teenContent: true }), TZ, ONE_HOUR_LATER).undoable).toBe(
+      false,
+    );
+  });
+});

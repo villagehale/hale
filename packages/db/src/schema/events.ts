@@ -24,6 +24,24 @@ type ClassifierSuggestion =
   | { kind: 'ignore' }
   | { kind: 'needs_human' };
 
+/**
+ * Where an event's CONTENT came from, which decides whether the rule-#1 teen fallback
+ * has anything to protect.
+ *
+ * `child_content` — the content came from outside Hale (an ingested email, a parent's
+ * message, a classified signal). An unattributed one of these genuinely might be a 13+
+ * child's, so it redacts in a family with a teenager. This is the DEFAULT, and every
+ * row that predates the column reads as this: the fallback fails closed.
+ *
+ * `hale_authored` — Hale composed it from public reference data (a municipal
+ * registration window, a civic session, a curated pick). There is no child-authored
+ * content in it, so there is nothing for the teen fallback to protect and gating it
+ * only made the draft undecidable — with no attributed child, no grant could ever
+ * unlock it either. Attribution confidence is a different question and is unchanged:
+ * a row that names a 13+ child still redacts on the age gate, whatever its provenance.
+ */
+export type ContentProvenance = 'child_content' | 'hale_authored';
+
 export const events = pgTable(
   'events',
   {
@@ -50,6 +68,13 @@ export const events = pgTable(
      * the same value the fresh pass saw — without it, a resume reads false and an
      * autonomous-eligible teen-content action could slip the cap. */
     teenContent: boolean('teen_content').notNull().default(false),
+    /** Where the content came from (see ContentProvenance). Read by the rule-#1 teen
+     * fallback; defaults to the private answer so an un-declaring mint site, and every
+     * row written before this column, keep the most restrictive behaviour. */
+    contentProvenance: text('content_provenance')
+      .$type<ContentProvenance>()
+      .notNull()
+      .default('child_content'),
     /** Pointer to raw signal in object storage; we don't persist heavy blobs in Postgres. */
     rawSignalRef: text('raw_signal_ref'),
     classifiedAt: timestamp('classified_at', { withTimezone: true }),

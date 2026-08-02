@@ -643,6 +643,11 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
           sourceAnswer: input.rationale,
           title: input.title,
           sourceUrl: input.sourceUrl,
+          // Composed entirely from municipal registration rows — no child's words are
+          // in it, and it is about the household rather than any one child. Declaring
+          // that is what keeps the rule-#1 family fallback from redacting a card no
+          // grant could ever unlock (VIL-260).
+          contentProvenance: 'hale_authored',
         },
         database,
         pipelineClient(),

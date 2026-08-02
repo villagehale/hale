@@ -78,6 +78,7 @@ async function loadMessagesForFamily(
         revertedAt: schema.actions.revertedAt,
         revertedReason: schema.actions.revertedReason,
         teenContent: schema.events.teenContent,
+        contentProvenance: schema.events.contentProvenance,
         childId: schema.events.childId,
         childDob: schema.children.dateOfBirth,
       })
@@ -127,7 +128,12 @@ async function loadMessagesForFamily(
           at,
           revertedReason: row.revertedReason,
           teenContent: redactsTeenContent(
-            effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+            effectiveTeenContent(
+              row.teenContent,
+              row.childDob ?? null,
+              familyHasTeen,
+              row.contentProvenance,
+            ),
             row.childId ?? null,
             'message_content',
             unlocks,

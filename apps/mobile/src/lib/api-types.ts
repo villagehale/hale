@@ -332,6 +332,9 @@ export interface ApprovalView {
   draftedAt: string;
   /** True when the draft's content is redacted for a 13+ teen (rule #1). */
   teenRedacted: boolean;
+  /** True when that redaction is one the parent can ASK to lift — assent is
+   * per-child, so a row naming no child has nobody to ask (mirrors web). */
+  teenUnlockable: boolean;
 }
 
 // ── the endpoint response envelopes (from apps/web/app/api/mobile/types.ts) ───
@@ -534,6 +537,10 @@ export type HistoryStatus = 'executed' | 'declined' | 'reverted' | 'held' | 'fai
 export interface HistoryView extends ApprovalView {
   status: HistoryStatus;
   resolvedAt: string;
+  /** True when this row can still be taken back — a calendar placement that ran and
+   * is inside the 24h undo window. Server-derived from the same gate the reversal
+   * enforces, so the control is never shown on a row it would refuse (mirrors web). */
+  undoable: boolean;
 }
 
 export interface MobileApprovalsHistoryResponse {
