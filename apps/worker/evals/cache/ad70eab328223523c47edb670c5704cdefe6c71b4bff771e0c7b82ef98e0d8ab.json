@@ -1,0 +1,14 @@
+{
+  "value": {
+    "found": false,
+    "reason": "no_year_stated",
+    "cycle_on_page": "Fall Programs & Winter Camps",
+    "year_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "evidence": "Fall Programs & Winter Camps Registration. View programs August 4 and register August 11.",
+    "confidence": 0.3
+  },
+  "latencyMs": 2532
+}

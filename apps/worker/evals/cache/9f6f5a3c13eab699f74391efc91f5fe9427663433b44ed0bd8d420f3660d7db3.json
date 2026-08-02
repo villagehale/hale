@@ -1,0 +1,20 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "2026 Spring Programs and Swim Lessons",
+    "year_evidence": "2026 Spring Programs and Swim Lessons",
+    "preview": {
+      "date": "2026-02-01",
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": {
+      "date": "2026-02-24",
+      "time": "06:30"
+    },
+    "evidence": "2026 Spring Programs and Swim Lessons Preview starting Feb. 1 Register starting Feb. 24 at 6:30 AM",
+    "confidence": 0.95
+  },
+  "latencyMs": 3828
+}

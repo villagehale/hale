@@ -1,0 +1,23 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "Fall swimming lessons",
+    "year_evidence": "Fall 2026 and Winter 2027 Registration Schedule",
+    "preview": {
+      "date": "2026-08-12",
+      "time": null
+    },
+    "resident_open": {
+      "date": "2026-08-22",
+      "time": "09:00"
+    },
+    "general_open": {
+      "date": "2026-08-28",
+      "time": "09:00"
+    },
+    "evidence": "Fall swimming lessons | Aug. 12 | Aug. 22 9 a.m. | Aug. 28 9 a.m.",
+    "confidence": 0.92
+  },
+  "latencyMs": 2790
+}

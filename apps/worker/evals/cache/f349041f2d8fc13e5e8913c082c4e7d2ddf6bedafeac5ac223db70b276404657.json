@@ -1,0 +1,20 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
+    "year_evidence": "2026 Fall Programs, Swim Lessons and Winter Break Camps",
+    "preview": {
+      "date": "2026-08-03",
+      "time": null
+    },
+    "resident_open": null,
+    "general_open": {
+      "date": "2026-08-11",
+      "time": "06:30"
+    },
+    "evidence": "2026 Fall Programs, Swim Lessons and Winter Break Camps Preview starting Aug, 3 Register starting Aug. 11 at 6:30 AM",
+    "confidence": 0.95
+  },
+  "latencyMs": 3178
+}

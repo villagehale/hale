@@ -1,0 +1,17 @@
+{
+  "value": {
+    "found": true,
+    "reason": null,
+    "cycle_on_page": "After-School Recreation Care (ARC)",
+    "year_evidence": "The program runs September 8, 2026 to June 18, 2027",
+    "preview": null,
+    "resident_open": {
+      "date": "2026-06-05",
+      "time": "07:00"
+    },
+    "general_open": null,
+    "evidence": "After-School Recreation Care (ARC) Registration starts on June 5, 2026, at 7 a.m.",
+    "confidence": 0.85
+  },
+  "latencyMs": 2687
+}

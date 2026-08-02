@@ -43,7 +43,12 @@ export type ProviderHealth =
   | { ok: false; failure: ProviderFailureClass; detail: string };
 
 /** The LLM cron windows this pre-flight guards. */
-export type SendWindow = 'daily_brief' | 'weekly_plan' | 'nudge_sweep' | 'memory_inference';
+export type SendWindow =
+  | 'daily_brief'
+  | 'weekly_plan'
+  | 'nudge_sweep'
+  | 'memory_inference'
+  | 'registration_verify';
 
 /** Substrings that make a 4xx a BILLING problem rather than a bad request. Matched
  * against the provider's own message — Anthropic reports an exhausted balance as a
@@ -216,6 +221,7 @@ const WINDOW_HEADLINE: Record<SendWindow, string> = {
   weekly_plan: "this hour's weekly-plan compose did not run.",
   nudge_sweep: "this hour's nudge sweep did not run.",
   memory_inference: "last night's memory inference did not run.",
+  registration_verify: "this week's registration re-verify sweep did not run.",
 };
 
 const WINDOW_LABEL: Record<SendWindow, string> = {
@@ -223,6 +229,7 @@ const WINDOW_LABEL: Record<SendWindow, string> = {
   weekly_plan: 'weekly plan',
   nudge_sweep: 'nudge sweep',
   memory_inference: 'memory inference',
+  registration_verify: 'registration re-verify',
 };
 
 const FAILURE_EXPLANATION: Record<ProviderFailureClass, string> = {
