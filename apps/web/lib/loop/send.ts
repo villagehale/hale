@@ -81,12 +81,20 @@ export interface SendParentRow {
  * with the weekly plan enabled. Co-parents send independently — each in their own
  * timezone + send time, their own copy. Cheap weekday pre-check before the per-parent
  * prefs read, then the in-window + `catWeeklyPlan` filter, then the cap.
+ *
+ * A parent on the email channel with no address is dropped HERE rather than sent and
+ * failed: a family provisioned from a text has `users.email = null` (M2's provision),
+ * and letting them through mints a `failed` channel_messages row every Sunday that is
+ * indistinguishable from a provider outage. The SMS channel needs no equivalent check —
+ * the dispatch's live-consent gate already suppresses a parent with no active verified
+ * channel, and an enrolled one always has a resolvable number.
  */
 export async function selectParentsToSend(db: Database, now: Date): Promise<SendParentRow[]> {
   const rows = await db
     .select({
       familyId: schema.familyMembers.familyId,
       userId: schema.users.id,
+      email: schema.users.email,
       timezone: schema.users.timezone,
       weekStartDay: schema.users.weekStartDay,
     })
@@ -100,6 +108,7 @@ export async function selectParentsToSend(db: Database, now: Date): Promise<Send
     if (localParts(now, row.timezone).weekday !== weeklyPlanWeekday(row.weekStartDay)) continue;
     const view = await loadLoopPrefsView(row.userId, db);
     if (!view.catWeeklyPlan) continue;
+    if (view.loopChannel === 'email' && row.email === null) continue;
     if (isSendMoment(view, now, row.timezone, row.weekStartDay)) {
       out.push({ familyId: row.familyId, userId: row.userId, timezone: row.timezone, weekStartDay: row.weekStartDay, view });
     }

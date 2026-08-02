@@ -9,6 +9,7 @@ import {
   type NudgeChildRow,
   type NudgeFamily,
   type NudgeRunDeps,
+  defaultNudgeRunDeps,
   f14EnabledFor,
   isNudgeSlot,
   runNudgeCron,
@@ -423,15 +424,35 @@ describe('runNudgeCron — silence', () => {
   });
 });
 
-describe('runNudgeCron — no transport yet (VIL-214)', () => {
-  it('composes but sends nothing, and does not consume the family’s weekly budget', async () => {
+describe('runNudgeCron — the prod send path (VIL-260)', () => {
+  it('wires the real Twilio transport into the default deps', async () => {
+    const { transport } = defaultNudgeRunDeps();
+    expect(transport).not.toBeNull();
+    // Not merely non-null: the REAL outbound leg, which refuses by naming its missing
+    // credentials rather than silently reporting a send nobody made.
+    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+    await expect(
+      transport?.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
+    ).rejects.toThrow(/twilio not configured/);
+  });
+
+  it('writes the ledger row and the audit row for the nudge it sent', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ windows: [win()], transport: null });
+    const h = harness({ windows: [win()] });
     const result = await runNudgeCron(db(), h.deps, FRIDAY_10AM);
 
-    expect(result).toMatchObject({ sent: 0, composed: 1 });
-    expect(h.writes.filter((w) => w.table === schema.channelMessages)).toHaveLength(0);
-    expect(h.dedupeKeys.size).toBe(0);
+    expect(result).toMatchObject({ sent: 1, composed: 0 });
+    expect(h.transport.sent).toHaveLength(1);
+    const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]?.payload).toMatchObject({
+      channel: 'sms',
+      category: 'nudge',
+      status: 'sent',
+      templateKey: 'proactive_nudge:registration',
+      dedupeKey: 'nudge:fam-1:registration:w-1',
+    });
+    expect(auditActions(h.writes)).toContain('proactive_nudge_sent');
   });
 });
 

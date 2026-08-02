@@ -1,4 +1,4 @@
-import type { schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LOOP_PREFS } from '~/lib/loop/prefs';
 import {
@@ -7,6 +7,7 @@ import {
   type SundaySendDeps,
   isSendMoment,
   runSundaySendCron,
+  selectParentsToSend,
 } from './send';
 
 /**
@@ -152,5 +153,60 @@ describe('runSundaySendCron', () => {
     // The UPCOMING Monday — the week the Sunday-evening send announces, and the
     // key the composer wrote the artifact under (cron.ts weekWindow offset 1).
     expect(weekStartOf()).toBe('2026-01-19');
+  });
+});
+
+/**
+ * VIL-260 · WS2 — the QR/text cohort. A family provisioned from a text has NO email
+ * address (provision.ts stores users.email = null), so an email-channel parent among
+ * them has nowhere for the plan to land. That has to be a SELECTION decision: letting
+ * them through produces a `failed` channel_messages row every single Sunday, which
+ * reads in the ledger and in X1 exactly like a provider outage.
+ */
+describe('selectParentsToSend — deliverability', () => {
+  const MEMBER = {
+    familyId: 'fam-1',
+    userId: 'u1',
+    timezone: 'America/Toronto',
+    weekStartDay: 1,
+  };
+
+  /** A Drizzle stand-in for the two reads this path makes: the member+user join, and
+   * loadLoopPrefsView's per-parent lookup. `where` clauses are not evaluated — the
+   * rows handed in ARE the answer. */
+  function fakeDb(
+    members: Array<typeof MEMBER & { email: string | null }>,
+    prefs: Array<Record<string, unknown>>,
+  ) {
+    return {
+      select: () => ({
+        from: (table: unknown) =>
+          table === schema.loopPrefs
+            ? { where: () => ({ limit: async () => prefs }) }
+            : { innerJoin: () => ({ where: async () => members }) },
+      }),
+    } as unknown as Database;
+  }
+
+  const NOW = new Date('2026-01-19T00:30:00Z'); // Sun 19:30 Toronto
+
+  it('skips an email-channel parent with no email address', async () => {
+    const db = fakeDb([{ ...MEMBER, email: null }], [{ ...DEFAULT_LOOP_PREFS }]);
+    expect(await selectParentsToSend(db, NOW)).toEqual([]);
+  });
+
+  it('still selects that parent once their channel is one they can be reached on', async () => {
+    const db = fakeDb(
+      [{ ...MEMBER, email: null }],
+      [{ ...DEFAULT_LOOP_PREFS, loopChannel: 'sms' }],
+    );
+    const selected = await selectParentsToSend(db, NOW);
+    expect(selected.map((row) => row.userId)).toEqual(['u1']);
+  });
+
+  it('selects an email-channel parent who has an address', async () => {
+    const db = fakeDb([{ ...MEMBER, email: 'parent@x.com' }], [{ ...DEFAULT_LOOP_PREFS }]);
+    const selected = await selectParentsToSend(db, NOW);
+    expect(selected.map((row) => row.userId)).toEqual(['u1']);
   });
 });
