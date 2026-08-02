@@ -1,10 +1,19 @@
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type FunnelScoreboard, formatFunnelScoreboard } from './funnel-scoreboard';
 import {
   createLoopHealthDigestSender,
   formatLoopHealthDigest,
   type LoopHealthSummary,
   runLoopHealthDigestCron,
 } from './health-digest';
+
+/** The pre-launch scoreboard — the state every fixture below is in. */
+const EMPTY_SCOREBOARD: FunnelScoreboard = {
+  intake: { sessionsStarted: 0, provisioned: 0, watchConsented: 0 },
+  ttfa: { p50Seconds: null, derivedFamilies: 0, notDerivableFamilies: 0 },
+  nudges: { sent: 0, matured: 0, replied: 0 },
+  cogs: { totalUsd: 0, families: 0 },
+};
 
 /**
  * X1 (VIL-227) · the weekly founder digest. The DB aggregation (aggregateLoopHealth)
@@ -25,6 +34,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       stopCount: 1,
       weekPlansComposed: 45,
       providerIncidents: [],
+      scoreboard: EMPTY_SCOREBOARD,
     };
 
     const body = formatLoopHealthDigest(summary);
@@ -46,6 +56,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       stopCount: 0,
       weekPlansComposed: 0,
       providerIncidents: [],
+      scoreboard: EMPTY_SCOREBOARD,
     };
 
     expect(formatLoopHealthDigest(summary)).toContain('(none)');
@@ -60,6 +71,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       stopCount: 0,
       weekPlansComposed: 0,
       providerIncidents: [],
+      scoreboard: EMPTY_SCOREBOARD,
     };
 
     expect(formatLoopHealthDigest(summary)).toContain('LLM provider: no incidents');
@@ -77,6 +89,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
         { kind: 'run_spike', at: new Date('2026-07-29T00:00:00Z') },
         { kind: 'run_spike', at: new Date('2026-07-30T00:00:00Z') },
       ],
+      scoreboard: EMPTY_SCOREBOARD,
     };
 
     const line = formatLoopHealthDigest(summary)
@@ -84,6 +97,25 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       .find((l) => l.includes('LLM provider'));
 
     expect(line).toBe('LLM provider: 3 incidents — billing ×1, run_spike ×2 (last 2026-08-01)');
+  });
+
+  // X1 · the F14 intake-funnel scoreboard rides on this digest. Its own lines are
+  // worked in funnel-scoreboard.test.ts; what matters here is that they are CARRIED.
+  it('carries every F14 scoreboard line, honest before the first cohort arrives', () => {
+    const body = formatLoopHealthDigest({
+      windowStart: new Date('2026-07-13T00:00:00Z'),
+      windowEnd: new Date('2026-07-20T00:00:00Z'),
+      messageCounts: [],
+      stopCount: 0,
+      weekPlansComposed: 0,
+      providerIncidents: [],
+      scoreboard: EMPTY_SCOREBOARD,
+    });
+
+    for (const line of formatFunnelScoreboard(EMPTY_SCOREBOARD)) {
+      expect(body).toContain(line);
+    }
+    expect(body).toContain('no sessions started yet');
   });
 });
 
@@ -144,6 +176,7 @@ describe('runLoopHealthDigestCron', () => {
     stopCount: 0,
     weekPlansComposed: 5,
     providerIncidents: [],
+    scoreboard: EMPTY_SCOREBOARD,
   };
 
   it('aggregates the trailing 7-day window and emails the founder the formatted digest', async () => {

@@ -1,17 +1,28 @@
 import { type Database, schema } from '@hale/db';
 
 /**
+ * The last-updated dates of the two policies, which the marketing site
+ * (apps/site/app/{terms,privacy}/page.tsx) dates INDEPENDENTLY — privacy moved to
+ * July 31 for the SMS-transit disclosure while terms stayed on June 25. Each
+ * constant is bound to its live page by the drift test in consent.test.ts, so a
+ * re-dated policy cannot silently leave its constant behind (VIL-257).
+ */
+export const TERMS_VERSION = 'June 25, 2026';
+export const PRIVACY_VERSION = 'July 31, 2026';
+
+/**
  * The policy version a consent is recorded against, so a consent row names the
  * policy text the user agreed to (the Privacy Policy promises we "record each
- * consent including the policy version and time"). It is the legal pages'
- * last-updated date, and it is PERSISTED into consent_records — changing this
- * string changes what every new consent claims, so it moves only when the policy
- * copy itself does.
+ * consent including the policy version and time"). PERSISTED into consent_records —
+ * changing this string changes what every new consent claims, so it moves only when
+ * the policy copy itself does.
  *
- * The policies now live on the marketing site (see lib/legal-links.ts), which
- * dates each page separately: keep this in step with them by hand.
+ * It names BOTH policies, each labelled: a consent is given under the terms and the
+ * privacy policy together, and a single bare date silently under-names whichever of
+ * the two moved last. Historical rows keep whatever they were written with — the
+ * ledger is append-only, and a row is a record of what was true when it was made.
  */
-export const POLICY_VERSION = 'June 25, 2026';
+export const POLICY_VERSION = `Terms ${TERMS_VERSION} · Privacy ${PRIVACY_VERSION}`;
 
 /** A query surface with `.insert` — satisfied by both Database and a Drizzle tx. */
 type Inserter = Pick<Database, 'insert'>;
