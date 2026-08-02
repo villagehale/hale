@@ -3,6 +3,11 @@ import { type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, desc, eq, notLike, sql } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import {
+  NO_TEEN_UNLOCKS,
+  type TeenAccessUnlocks,
+  redactsTeenContent,
+} from '~/lib/teen-access';
 import { type ActorResolver, type TrailView, effectiveTeenContent, toTrailView } from './mappers';
 
 /**
@@ -82,10 +87,16 @@ async function buildActorResolver(database: Database, familyId: string): Promise
  * The trail rows for an EXPLICIT family — the family-scoped body shared by the
  * session-bound loadTrail (which resolves the family from the session) and the
  * data export (which already holds the audited family id).
+ *
+ * VIL-147: `unlocks` defaults to NO_TEEN_UNLOCKS, and the PIPEDA export deliberately
+ * does not pass it. A grant authorizes ONE parent to read on the authenticated
+ * in-app surface; an export is a durable file that leaves the app, so it is a
+ * different channel and always renders at the most-private level.
  */
 export async function loadTrailForFamily(
   database: Database,
   familyId: string,
+  unlocks: TeenAccessUnlocks = NO_TEEN_UNLOCKS,
 ): Promise<TrailView[]> {
   // Rule #1: a trail row's teen_content lives two hops away — audit_log targets
   // an actions row (target_table='actions', target_id=action uuid), which points
@@ -117,6 +128,7 @@ export async function loadTrailForFamily(
     .select({
       entry: schema.auditLog,
       teenContent: schema.events.teenContent,
+      childId: schema.events.childId,
       childDob: schema.children.dateOfBirth,
       childName: schema.children.name,
     })
@@ -155,10 +167,15 @@ export async function loadTrailForFamily(
       const childLabel = row.childName ?? null;
       return toTrailView(
         row.entry,
-        effectiveTeenContent(
-          row.teenContent ?? false,
-          row.childDob ?? null,
-          resolvedToEvent && familyHasTeen,
+        redactsTeenContent(
+          effectiveTeenContent(
+            row.teenContent ?? false,
+            row.childDob ?? null,
+            resolvedToEvent && familyHasTeen,
+          ),
+          row.childId ?? null,
+          'message_content',
+          unlocks,
         ),
         timeZone,
         resolveActor,

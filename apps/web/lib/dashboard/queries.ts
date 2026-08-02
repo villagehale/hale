@@ -3,7 +3,13 @@ import { type Database, schema } from '@hale/db';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
 import { resolveChildAvatarUrl } from '~/lib/family/child-avatar';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, currentUserId } from '~/lib/family';
+import {
+  NO_TEEN_UNLOCKS,
+  type TeenAccessUnlocks,
+  loadTeenAccessUnlocks,
+  redactsTeenContent,
+} from '~/lib/teen-access';
 import { type FamilyBasicsView, toFamilyBasics } from './family-basics';
 import { type FamilyHeaderView, toFamilyHeader } from './family-header';
 import { type FamilyMembersView, toFamilyMembersView } from './family-members';
@@ -146,8 +152,30 @@ export function loadFamilyTimezone(): Promise<string> {
   return readForFamily(readFamilyTimezone, DEFAULT_TIMEZONE);
 }
 
+/**
+ * VIL-147 · the signed-in parent's active teen access grants, resolved once per
+ * request. Session-bound so every surface — the web page and the mobile route —
+ * consults the SAME unlock set without either building a query of its own (the
+ * mobile no-raw-db tripwire depends on that). No DB, no family, or no signed-in
+ * parent all degrade to NO_TEEN_UNLOCKS: today's redaction, never an opening.
+ */
+export function loadViewerTeenUnlocks(): Promise<TeenAccessUnlocks> {
+  return readForFamily(
+    async (database, familyId) =>
+      loadTeenAccessUnlocks(database, familyId, await currentUserId(database)),
+    NO_TEEN_UNLOCKS,
+  );
+}
+
 export function loadTrail(): Promise<TrailView[]> {
-  return readForFamily(loadTrailForFamily, []);
+  return readForFamily(async (database, familyId) => {
+    const unlocks = await loadTeenAccessUnlocks(
+      database,
+      familyId,
+      await currentUserId(database),
+    );
+    return loadTrailForFamily(database, familyId, unlocks);
+  }, []);
 }
 
 /**
@@ -165,9 +193,10 @@ export function loadTrail(): Promise<TrailView[]> {
  */
 export function loadPendingApprovals(): Promise<ApprovalView[]> {
   return readForFamily(async (database, familyId) => {
-    const [familyHasTeen, timeZone] = await Promise.all([
+    const [familyHasTeen, timeZone, unlocks] = await Promise.all([
       familyHasTeenager(database, familyId),
       readFamilyTimezone(database, familyId),
+      loadTeenAccessUnlocks(database, familyId, await currentUserId(database)),
     ]);
     const rows = await database
       .select({
@@ -197,7 +226,8 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
       // (policy 1: the parent entered it, and two teen rows must never both read
       // "your teen"). This is the LABEL only; the draft's CONTENT is redacted via
       // effectiveTeenContent (the payload/preview placeholder), so the name never
-      // implies the content is visible.
+      // implies the content is visible. VIL-147: an ACTIVE, in-scope grant for this
+      // child unredacts it — redactsTeenContent is the one seam that decides.
       return toApprovalView(
         {
           id: row.id,
@@ -205,7 +235,12 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
           payload: row.payload,
           reviewerVerdict: row.reviewerVerdict,
           draftedAt: row.draftedAt,
-          teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+          teenContent: redactsTeenContent(
+            effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+            row.childId ?? null,
+            'message_content',
+            unlocks,
+          ),
           childId: row.childId ?? null,
           childLabel: row.childName ?? null,
         },
@@ -228,9 +263,10 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
  */
 export function loadResolvedActions(): Promise<HistoryView[]> {
   return readForFamily(async (database, familyId) => {
-    const [familyHasTeen, timeZone] = await Promise.all([
+    const [familyHasTeen, timeZone, unlocks] = await Promise.all([
       familyHasTeenager(database, familyId),
       readFamilyTimezone(database, familyId),
+      loadTeenAccessUnlocks(database, familyId, await currentUserId(database)),
     ]);
     const rows = await database
       .select({
@@ -273,7 +309,12 @@ export function loadResolvedActions(): Promise<HistoryView[]> {
           payload: row.payload,
           reviewerVerdict: row.reviewerVerdict,
           draftedAt: row.draftedAt,
-          teenContent: effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+          teenContent: redactsTeenContent(
+            effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+            row.childId ?? null,
+            'message_content',
+            unlocks,
+          ),
           childId: row.childId ?? null,
           childLabel: row.childName ?? null,
           userVisibleState: row.userVisibleState as HistoryActionRow['userVisibleState'],

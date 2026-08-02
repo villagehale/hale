@@ -13,10 +13,14 @@ import { MCP_SCOPES, type McpScope, isMcpScope } from '~/lib/mcp/contracts';
  *
  * Rule #1 by CONSTRUCTION: the export composes the SAME parent-facing views the
  * app already renders — the family/children/parents facts a parent enters and
- * sees, and the ALREADY-REDACTED trail (loadTrailForFamily applies the identical
- * teen-content redaction the History page uses). It never reads a child's raw
- * subject/body, so a 13+ teen's content leaves as the placeholder, never raw text.
- * The requesting parent gets exactly what they can already see — nothing more.
+ * sees, and the ALREADY-REDACTED trail. It never reads a child's raw subject/body,
+ * so a 13+ teen's content leaves as the placeholder, never raw text.
+ *
+ * VIL-147: the export calls loadTrailForFamily WITHOUT an unlock set, so it renders
+ * at the MOST-PRIVATE level even for a parent holding an active teen access grant.
+ * That is deliberate and is asserted by teen-access-outbound.test.ts: a grant is a
+ * time-limited disclosure on the authenticated in-app surface, while an export is a
+ * durable file that outlives the window and leaves the app entirely.
  */
 
 export interface FamilyExportDocument {

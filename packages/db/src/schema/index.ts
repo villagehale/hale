@@ -18,6 +18,7 @@ export * from './plans.js';
 export * from './integrations.js';
 export * from './connector-connect-nonces.js';
 export * from './consent.js';
+export * from './teen-access-grants.js';
 export * from './memory.js';
 export * from './events.js';
 export * from './actions.js';

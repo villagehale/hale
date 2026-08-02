@@ -93,6 +93,31 @@ describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
     expect(privacyHtml).toContain('privacy@villagehale.com');
   });
 
+  /**
+   * VIL-147 · this page is a legal promise, so it may only describe teen controls
+   * that actually exist. Each assertion maps to shipped behaviour in apps/web:
+   * teen assent before anything opens and the bounded window (isTeenGrantActive,
+   * MAX_GRANT_WINDOW_MS = 7 days), the 24h escalation (SAFETY_ESCALATION_WINDOW_MS),
+   * and the two honest limits — in-app only (teen-access-outbound.test.ts) and the
+   * undelivered teen notification (undeliverableTeenNotifier). If a control is ever
+   * removed, this fails before the copy can keep claiming it.
+   */
+  it('describes only the teen access controls that are actually built', () => {
+    expect(privacyHtml).toContain('only if the teen agrees');
+    expect(privacyHtml).toContain('at most seven days');
+    expect(privacyHtml).toContain('credible risk of harm');
+    expect(privacyHtml).toContain('24 hours');
+    expect(privacyHtml).toContain('access is only ever in-app');
+    // The honest v1 state: a teen cannot be reached, so nothing can be granted yet.
+    // If a future change enables activation, this assertion must be removed on
+    // purpose — the copy can never quietly outrun the implementation again.
+    expect(privacyHtml).toContain('no way to contact a teen at all');
+    expect(privacyHtml).toContain('no request can be granted yet');
+    expect(privacyHtml).toContain('it is policy, not a button');
+    // And it must no longer use the old blanket "planned" hedge.
+    expect(privacyHtml).not.toContain('not yet available');
+  });
+
   it('discloses that SMS is not end-to-end encrypted and transits carriers and Twilio', () => {
     expect(privacyHtml).toContain('not end-to-end encrypted');
     expect(privacyHtml).toContain('Twilio');

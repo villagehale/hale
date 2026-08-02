@@ -15,7 +15,10 @@ const TODDLER_DOB = '2024-05-01'; // ~2y → toddler
 const TEEN_QUOTE = 'Maya said she is failing math, do not tell dad';
 
 vi.mock('~/auth', () => ({ auth: vi.fn() }));
-vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID }));
+vi.mock('~/lib/family', () => ({ currentFamilyId: async () => FAMILY_ID,
+  // VIL-147: no signed-in parent → no teen access grants can apply.
+  currentUserId: async () => null,
+}));
 
 // The unattributed, unflagged drafted action — the double-miss row.
 const APPROVAL_ROW = {

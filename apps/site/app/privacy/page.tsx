@@ -168,10 +168,37 @@ export default function PrivacyPage() {
           summary — enough to stay involved, without reading their teen&rsquo;s words verbatim.
         </p>
         <p>
-          Controls to grant a parent time-limited, explicitly logged access to a teen&rsquo;s raw
-          content — and a safety-escalation path for a credible risk of harm, in which relevant
-          content may be surfaced and the teen is notified — are planned and not yet available.
-          Until then, the default redaction above always applies.
+          A parent can ask to see it. Asking reveals nothing on its own: we record what was asked
+          for and the reason given, tell the teen, and open the content only if the teen agrees.
+          Access is limited to the kind of content that was asked for, lasts at most seven days,
+          and can be closed at any time by either of you. Every step — the request, the
+          teen&rsquo;s answer, the expiry, and any closure — is written to your family&rsquo;s
+          record.
+        </p>
+        <p>
+          There is one exception in this policy: a credible risk of harm, where relevant content
+          may be opened without waiting for the teen to agree. Because it skips their agreement it
+          is held to the strictest limits — at most 24 hours, a written reason on the record, and
+          the teen is always told.
+        </p>
+        <p>
+          Two limits worth stating plainly, because they describe Hale as it is today rather than
+          as we intend it.
+        </p>
+        <p>
+          First, access is only ever in-app. Even with an open grant, nothing widens what appears
+          in an email, a text message, a calendar feed, a data export, or anything Hale shares with
+          a connected assistant — those always stay redacted.
+        </p>
+        <p>
+          Second, and more importantly: Hale currently has no way to contact a teen at all. We hold
+          no account and no contact details for them. Since telling the teen is a condition of
+          opening anything, <strong>no request can be granted yet</strong> — a request is recorded,
+          the notification we owe the teen is recorded as still outstanding, and the default
+          redaction above continues to apply unchanged. The same is true of the safety exception:
+          it is policy, not a button, and it stays unavailable until a teen can actually be told.
+          You can see the pending state and the outstanding notification on any request in
+          Settings. We will not enable either path before a teen can be reached.
         </p>
       </LegalSectionBlock>
 

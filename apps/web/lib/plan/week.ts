@@ -1,4 +1,5 @@
 import type { CompanionView, MilestoneStatus } from '@hale/types';
+import { NO_TEEN_UNLOCKS, type TeenAccessUnlocks, redactsTeenContent } from '~/lib/teen-access';
 
 /**
  * Plan ("your week") pure core: fold each child's live companion view into the
@@ -54,7 +55,15 @@ function currentMilestone(milestones: readonly MilestoneStatus[]): MilestoneStat
   return milestones.find((m) => m.timing === 'in_window') ?? null;
 }
 
-export function planChildItems(children: ReadonlyArray<NamedChild>): PlanChildItem[] {
+/**
+ * VIL-147: `unlocks` defaults to NO_TEEN_UNLOCKS, so with no grant every 13+ child
+ * still collapses to the single locked line — byte-for-byte today's behaviour. An
+ * ACTIVE calendar_detail grant for that child expands their real items instead.
+ */
+export function planChildItems(
+  children: ReadonlyArray<NamedChild>,
+  unlocks: TeenAccessUnlocks = NO_TEEN_UNLOCKS,
+): PlanChildItem[] {
   const items: PlanChildItem[] = [];
 
   for (const child of children) {
@@ -62,7 +71,7 @@ export function planChildItems(children: ReadonlyArray<NamedChild>): PlanChildIt
     // content — collapse to ONE locked line that still COUNTS toward the week, so
     // the parent knows something is there without seeing it or the teen's name.
     // Age-derived (deriveStage), never the classifier flag.
-    if (child.stage === 'teenager') {
+    if (redactsTeenContent(child.stage === 'teenager', child.id, 'calendar_detail', unlocks)) {
       items.push({
         key: `${child.id}-teen`,
         childName: null,

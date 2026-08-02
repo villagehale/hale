@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import type { GuardDeps, GuardResult, MonetaryCost } from '@hale/agent';
 import { deriveStage, DEFAULT_SAFETY_POLICY } from '@hale/types';
+import { activeTeenGrant } from '~/lib/teen-access';
 
 /**
  * The REAL GuardDeps for the Ask Hale agent — the hard rules wired to Postgres.
@@ -25,7 +26,12 @@ function childIdFromInput(input: unknown): string | null {
   return null;
 }
 
-export function buildGuardDeps(database: Database): GuardDeps {
+/**
+ * `viewerUserId` is the signed-in parent this agent run is acting for. Only the
+ * interactive Ask Hale path has one; the cron / village-ranking callers pass none,
+ * so they can never consult a grant and keep failing closed (rule #1).
+ */
+export function buildGuardDeps(database: Database, viewerUserId: string | null = null): GuardDeps {
   return {
     writeAudit: async (entry) => {
       await database.insert(schema.auditLog).values({
@@ -97,9 +103,26 @@ export function buildGuardDeps(database: Database): GuardDeps {
       }
 
       if (deriveStage(child.dateOfBirth) === 'teenager') {
+        // VIL-147: the record this message used to say could not exist now can. An
+        // ACTIVE, assented (or safety-escalated), unexpired child_profile grant for
+        // THIS parent is the rule #1 named exception; anything else still refuses.
+        const granted = await activeTeenGrant(database, {
+          familyId: checkFamilyId,
+          childId,
+          scope: 'child_profile',
+          parentUserId: viewerUserId,
+        });
+        if (!granted) {
+          return {
+            ok: false,
+            reason:
+              'teen content is redacted from parents by default (rule #1) — no active, teen-assented grant on record',
+          };
+        }
         return {
-          ok: false,
-          reason: "teen content is redacted from parents by default (rule #1) — no time-limited grant on record",
+          ok: true,
+          reason:
+            'an active, teen-assented child_profile grant covers this child (rule #1 exception)',
         };
       }
 

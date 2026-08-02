@@ -9,11 +9,16 @@ import type { TrailView } from '~/lib/dashboard/mappers';
 import { AccountMenuView } from './account-menu-view';
 import { GrowthSection, OverviewSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
+import { TeenAccessGrants } from './teen-access-grants';
 import { TrailTimeline } from './trail-timeline';
 
 // companion-tabs pulls done-button → the 'use server' log module; stub it so a
 // static render doesn't drag the auth/db chain into the test.
 vi.mock('~/lib/companion/log', () => ({ markCompanionItemDone: vi.fn() }));
+// Same reason for the teen-access revoke form's 'use server' action module.
+vi.mock('~/app/(authed)/settings/teen-access-actions', () => ({
+  revokeTeenAccessAction: vi.fn(),
+}));
 
 /**
  * Replay-masking regression guard (hard rule #1). PostHog session replay records
@@ -339,5 +344,54 @@ describe('approvals page source tags the row body PII', () => {
       expect(at, `${expr} should be present`).toBeGreaterThan(-1);
       expect(at, `${expr} should be inside the data-hale-pii container`).toBeGreaterThan(marker);
     }
+  });
+});
+
+/**
+ * VIL-147 · the teen access section renders two things a replay must never
+ * capture: the teen's name, and the parent's own words about why they want to
+ * read their teen's messages. The second is the more sensitive of the pair — it
+ * is a parent's stated worry about a specific child, shown back to them on a
+ * settings page — so it has to sit inside a masked subtree like any other child
+ * PII.
+ */
+describe('teen access grants mask the teen name and the parent\u2019s stated reason', () => {
+  const TEEN_NAME = 'Maya';
+  const REASON = 'worried about the group chat after school';
+
+  const html = renderToStaticMarkup(
+    h(TeenAccessGrants, {
+      childNames: { 'child-1': TEEN_NAME },
+      grants: [
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          childId: 'child-1',
+          scope: 'message_content' as const,
+          reason: REASON,
+          safetyEscalation: false,
+          requestedAt: '2026-08-02T12:00:00.000Z',
+          expiresAt: null,
+          active: false,
+          assented: false,
+          revoked: false,
+          teenNotified: false,
+        },
+      ],
+    }),
+  );
+
+  it('renders both, and neither survives the mask strip', () => {
+    expect(html).toContain(TEEN_NAME);
+    expect(html).toContain(REASON);
+
+    const residual = stripMaskedSubtrees(html);
+    expect(residual).not.toContain(TEEN_NAME);
+    expect(residual).not.toContain(REASON);
+  });
+
+  it('states plainly that nothing can be opened yet, rather than implying it can', () => {
+    expect(html).toContain('Nothing can be opened yet');
+    expect(html).toContain('no way to reach a teen');
+    expect(html).toContain('waiting on your teen');
   });
 });

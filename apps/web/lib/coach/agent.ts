@@ -188,7 +188,7 @@ export async function askHale(
 
   const skill = await loadAskHaleSkill();
   const tools = buildAskHaleTools(database);
-  const guardDeps = buildGuardDeps(database);
+  const guardDeps = buildGuardDeps(database, input.actor);
   const modelUsed = pickModel(skill.meta.task);
 
   // Trace the multi-turn run: sessionId = conversationId groups the thread, the
