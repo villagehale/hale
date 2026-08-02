@@ -214,10 +214,16 @@ async function processChannelMessageJob(
 }
 
 /**
- * Fetch + process a single queue in bounded batches until it drains, the batch
- * cap is hit, or the wall-clock budget expires. Each job: complete() on a clean
- * run / drop, fail() on a handler throw — a failed job is NEVER silently
- * completed (recipe #1), so a transient crash re-queues rather than vanishing.
+ * Fetch + process a single queue until it drains or the wall-clock budget expires.
+ * Each job: complete() on a clean run / drop, fail() on a handler throw — a failed job
+ * is NEVER silently completed (recipe #1), so a transient crash re-queues rather than
+ * vanishing.
+ *
+ * EMPTINESS is the only stop condition. A short batch used to end the run as a
+ * "queue is nearly empty" heuristic, and that heuristic is FALSE for a singleton
+ * queue by construction: pg-boss hands back at most one job per singleton key per
+ * fetch, so `channel.message.received` returns a short batch on every fetch and a
+ * parent's second text waited for the next cron tick.
  */
 async function drainQueue(
   deps: DrainDeps,
@@ -247,8 +253,6 @@ async function drainQueue(
         });
       }
     }
-
-    if (jobs.length < BATCH_SIZE) return;
   }
 }
 
@@ -286,10 +290,9 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
   const deadlineMs = deps.now() + WALL_CLOCK_BUDGET_MS;
   const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
 
-  await drainQueue(deps, EVENTS_QUEUE, processIngestedJob, deadlineMs, summary);
-  await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
-  await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
-  await drainQueue(deps, CHANNEL_SEND_QUEUE, processChannelSendJob, deadlineMs, summary);
+  // Inbound turns FIRST. It is the only queue with a parent holding a phone waiting on
+  // it, and it must precede actions.approved: a texted "YES" enqueues its approval from
+  // inside the turn, so approvals drained first would always miss it by a full tick.
   await drainQueue(
     deps,
     CHANNEL_MESSAGE_RECEIVED_QUEUE,
@@ -297,6 +300,10 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     deadlineMs,
     summary,
   );
+  await drainQueue(deps, EVENTS_QUEUE, processIngestedJob, deadlineMs, summary);
+  await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
+  await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
+  await drainQueue(deps, CHANNEL_SEND_QUEUE, processChannelSendJob, deadlineMs, summary);
 
   deps.log.info({ ...summary }, 'drain: run complete');
   return summary;
@@ -332,6 +339,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const { createResendEmailChannel } = await import('~/lib/channel/adapters/resend-email');
   const { createExpoPushChannelAdapter } = await import('~/lib/channel/adapters/expo-push');
   const { createTwilioSmsChannel } = await import('~/lib/channel/adapters/twilio-sms');
+  const { resolveSendablePhone } = await import('~/lib/channels/sms-consent-core');
   const { createExpoPushChannel } = await import('~/lib/push/channel');
   const { createExpoPushClient } = await import('~/lib/push/expo-client');
   const { schema } = await import('@hale/db');
@@ -351,7 +359,12 @@ export async function runDrainCron(): Promise<DrainSummary> {
     push: createExpoPushChannelAdapter({
       push: createExpoPushChannel({ database: db(), client: createExpoPushClient() }),
     }),
-    sms: createTwilioSmsChannel(),
+    // resolveSendablePhone, not the gate's resolveSendTarget: it carries the verified +
+    // non-revoked predicate itself, so the SMS leg fails closed on its own rather than
+    // on the dispatch having run the consent check first.
+    sms: createTwilioSmsChannel({
+      resolveTarget: (userId: string) => resolveSendablePhone(db(), userId),
+    }),
   };
 
   const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });

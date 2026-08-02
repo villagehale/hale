@@ -3,6 +3,7 @@ import { ageInMonths } from '@hale/types';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
@@ -165,9 +166,9 @@ export interface SequenceRunDeps {
   resolveSendTarget(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: SequenceLedgerWrite): Promise<string>;
   audit(database: Database, row: SequenceAuditRow): Promise<void>;
-  /** The real CPaaS transport lands with VIL-214. Until then the sweep decides and
-   * composes without sending — and without writing a ledger row, so a leg that never
-   * went out is not permanently marked as delivered. */
+  /** The outbound SMS leg. Nullable only so a caller can decide + compose without
+   * sending; such a run writes no ledger row, so a leg that never went out is not
+   * permanently marked as delivered. Production wires the real Twilio transport. */
   transport: ChannelTransport | null;
 }
 
@@ -179,7 +180,7 @@ export interface SequenceRunResult {
   /** Live sequences examined in the leg phase. */
   evaluated: number;
   sent: number;
-  /** Decided + composed, but there is no transport yet (VIL-214). */
+  /** Decided + composed, but the caller supplied no transport, so nothing was sent. */
   composed: number;
   /** Live sequences with no leg due — the common outcome on most ticks. */
   quiet: number;
@@ -652,7 +653,6 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },
-    // VIL-214 brings the real CPaaS transport; until then nothing leaves the building.
-    transport: null,
+    transport: createTwilioTransport(),
   };
 }

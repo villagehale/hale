@@ -7,6 +7,7 @@ import {
   type LiveSequence,
   type SequenceFamily,
   type SequenceRunDeps,
+  defaultSequenceRunDeps,
   runRegistrationSequenceCron,
 } from './run.js';
 import type { SequenceChild } from './shortlist.js';
@@ -506,14 +507,38 @@ describe('the legs', () => {
     expect(h.writes).toEqual([]);
   });
 
-  it('composes without sending while there is no transport (VIL-214)', async () => {
+  it('wires the real Twilio transport into the default deps (VIL-260)', async () => {
+    const { transport } = defaultSequenceRunDeps();
+    expect(transport).not.toBeNull();
+    // Not merely non-null: the REAL outbound leg, which refuses by naming its missing
+    // credentials rather than silently reporting a leg nobody sent.
+    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+    await expect(
+      transport?.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
+    ).rejects.toThrow(/twilio not configured/);
+  });
+
+  it('writes the ledger row and the audit row for the leg it sent', async () => {
     vi.stubEnv('F14_ENABLED', 'true');
-    const h = harness({ sequences: [live()], transport: null });
+    const h = harness({ sequences: [live()] });
     const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
-    expect(result).toMatchObject({ sent: 0, composed: 1 });
-    // A message that never went out must not consume a dedupe key, or the leg would be
-    // permanently skipped once a transport arrives.
-    expect(h.dedupeKeys.size).toBe(0);
+
+    expect(result).toMatchObject({ sent: 1, composed: 0 });
+    expect(h.transport.sent).toHaveLength(1);
+    const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]?.payload).toMatchObject({
+      channel: 'sms',
+      category: 'registration_sequence',
+      status: 'sent',
+      templateKey: 'registration_sequence:heads_up',
+      dedupeKey: 'registration_sequence:fam-1:w-1:heads_up',
+    });
+    expect(
+      h.writes
+        .filter((w) => w.table === schema.auditLog)
+        .map((w) => String(w.payload.actionTaken)),
+    ).toContain('registration_sequence_leg_sent');
   });
 
   it('lets one family’s bad data fail without silencing the next family', async () => {

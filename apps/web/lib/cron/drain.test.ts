@@ -84,7 +84,23 @@ function makeFakeBoss(initial: Record<string, Pending>) {
 
   const fetch = vi.fn(async (name: string, options: { batchSize: number }) => {
     const queue = pending.get(name) ?? [];
-    return queue.splice(0, options.batchSize);
+    if (name !== INBOUND) return queue.splice(0, options.batchSize);
+    // The singleton queue, as pg-boss really behaves: fetchNextJob partitions by
+    // singleton_key and activates only the first row per key, so a burst from ONE
+    // parent comes back one job at a time however large the batch is. A fake that
+    // spliced the whole batch would be more permissive than production and would
+    // pass an ordering test the deployed drain fails.
+    const taken: Pending = [];
+    const keys = new Set<string>();
+    for (const job of queue) {
+      const key = String((job.data as { parent_user_id?: string }).parent_user_id ?? '');
+      if (keys.has(key)) continue;
+      keys.add(key);
+      taken.push(job);
+      if (taken.length >= options.batchSize) break;
+    }
+    for (const job of taken) queue.splice(queue.indexOf(job), 1);
+    return taken;
   });
 
   const boss = {
@@ -142,6 +158,20 @@ describe('drainHotQueues', () => {
     expect(created).toContainEqual({ name: ACTIONS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
     expect(created).toContainEqual({ name: RERANK, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
     expect(HOT_QUEUE_EXPIRE_SECONDS).toBe(180);
+  });
+
+  /**
+   * A parent waiting on a reply is the only consumer sitting in front of a phone, so
+   * their turn goes first. It also has to precede `actions.approved`: a texted "YES"
+   * enqueues the approval FROM inside the turn, and draining approvals first means the
+   * calendar write it authorises waits for the next tick.
+   */
+  it('drains the inbound turn queue FIRST, ahead of the ranker and the approvals', async () => {
+    const { boss } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    const order = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
+    expect(order).toEqual([INBOUND, EVENTS, ACTIONS, RERANK, CHANNEL]);
   });
 
   it('materializes the feed rank for a pending village.rerank job and completes it', async () => {
@@ -295,25 +325,26 @@ describe('drainHotQueues', () => {
       data: validIngested(),
     }));
     const { boss } = makeFakeBoss({ [EVENTS]: [...fullBatch] });
-    // Keep refilling so the queue never empties on its own.
-    (boss.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
-      fullBatch.map((j) => ({ ...j })),
+    // Keep refilling events so that queue never empties on its own.
+    (boss.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (name: string) =>
+      name === EVENTS ? fullBatch.map((j) => ({ ...j })) : [],
     );
 
-    // now() call 0 seeds the deadline (= 0 + budget); call 1 (first while check)
-    // is under it → one batch is fetched + processed; call 2 (next while check)
-    // jumps past the deadline → the loop stops. The actions queue's first while
-    // check is then also past the deadline → it fetches nothing.
+    // now() call 0 seeds the deadline (= 0 + budget); call 1 is the inbound queue's
+    // while check (it fetches nothing and returns); call 2 is the events queue's
+    // first check, under the deadline → one batch is fetched + processed; call 3
+    // jumps past the deadline → the loop stops, and every later queue's first check
+    // is past it too, so nothing else is fetched.
     let calls = 0;
     const deps: DrainDeps = {
       ...makeDeps(boss),
-      now: () => (calls++ < 2 ? 0 : 1_000_000_000),
+      now: () => (calls++ < 3 ? 0 : 1_000_000_000),
     };
 
     const summary = await drainHotQueues(deps);
 
-    expect(boss.fetch).toHaveBeenCalledTimes(1);
-    expect(boss.fetch).toHaveBeenCalledWith(EVENTS, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledTimes(2);
+    expect(boss.fetch).toHaveBeenNthCalledWith(2, EVENTS, { batchSize: 10 });
     expect(summary.processed).toBe(10);
   });
 

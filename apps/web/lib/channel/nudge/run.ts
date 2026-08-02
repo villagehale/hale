@@ -8,6 +8,7 @@ import {
   readWindows as readRegistrationWindows,
 } from '~/lib/channel/intake/radar';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
 import {
   type OutboundGatePorts,
@@ -164,9 +165,9 @@ export interface NudgeRunDeps {
   resolveSendTarget(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: NudgeLedgerWrite): Promise<string>;
   audit(database: Database, row: NudgeAuditRow): Promise<void>;
-  /** The real CPaaS transport lands with VIL-214. Until then this is null and the
-   * sweep decides and composes without sending — and, crucially, without writing a
-   * ledger row, so a message that never went out never consumes a family's budget. */
+  /** The outbound SMS leg. Nullable only so a caller can decide + compose without
+   * sending; such a run writes no ledger row, so a message that never went out never
+   * consumes a family's budget. Production wires the real Twilio transport. */
   transport: ChannelTransport | null;
   client: AgentClient | null;
 }
@@ -177,7 +178,7 @@ export interface NudgeRunResult {
   /** Families that reached the gate — armed, and inside their local send slot. */
   evaluated: number;
   sent: number;
-  /** Decided + composed, but there is no transport yet (VIL-214). */
+  /** Decided + composed, but the caller supplied no transport, so nothing was sent. */
   composed: number;
   /** Evaluated and had nothing worth a text. The metric that says whether the nudge
    * is a signal or a habit. */
@@ -527,8 +528,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     audit: async (database, row) => {
       await database.insert(schema.auditLog).values(row);
     },
-    // VIL-214 brings the real CPaaS transport; until then nothing leaves the building.
-    transport: null,
+    transport: createTwilioTransport(),
     client: voiceClient(),
   };
 }
