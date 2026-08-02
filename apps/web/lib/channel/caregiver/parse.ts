@@ -16,10 +16,16 @@ import type { CaregiverRole, FamilyRole } from '~/lib/channel/role-scope';
  * "Nana +1 647 555 0199" splits in exactly one place.
  */
 
+/** The number-shaped run inside a command. Shared with {@link ADD_COMMAND} so the two
+ * readings of "is there a phone number here" can never disagree. */
+const PHONE_RUN = '\\+?\\d[\\d\\s\\-().]*\\d';
+
 /** `add <name> <number> as <role>` — anchored at both ends, so a sentence that merely
  * contains the words is not a command. */
-const ADD_COMMAND =
-  /^add\s+(?<name>[\p{L}\p{M}'’.\-]+(?:\s+[\p{L}\p{M}'’.\-]+)*)\s+(?<phone>\+?\d[\d\s\-().]*\d)\s+as\s+(?<role>[\p{L}\- ]{2,20})$/iu;
+const ADD_COMMAND = new RegExp(
+  `^add\\s+(?<name>[\\p{L}\\p{M}'’.\\-]+(?:\\s+[\\p{L}\\p{M}'’.\\-]+)*)\\s+(?<phone>${PHONE_RUN})\\s+as\\s+(?<role>[\\p{L}\\- ]{2,20})$`,
+  'iu',
+);
 
 /** A name we will echo back to the parent and store as the invite's label. Bounded
  * because it is third-party PII arriving over an unauthenticated channel. */
@@ -59,10 +65,40 @@ export type ParsedAddCaregiver =
   | { ok: true; name: string; phoneE164: string; role: CaregiverRole }
   | { ok: false; reason: 'unparseable' | 'unsupported_role' };
 
-/** Whether the parent was TRYING to add someone. A failed parse on one of these owes
- * an example back; anything else is ordinary conversation and is left alone. */
+/**
+ * Whether the parent was TRYING to add someone. A failed parse on one of these owes an
+ * example back; anything else is ordinary conversation and is left alone.
+ *
+ * VIL-260 · the prefix alone is NOT the signal. "add" is the verb parents use about
+ * their own calendar far more often than about a caregiver ("add library story time
+ * Saturday 10am"), and claiming every message that starts with it meant those never
+ * reached the conversational layer at all — they were answered with an invite example.
+ *
+ * What only a caregiver command has is the SHAPE: a real NANP number AND the literal
+ * " as " that separates the name from the role. Both, or it is conversation. A message
+ * carrying both but not parsing (an unknown role word, a swapped order, a name with a
+ * digit in it) is still an attempt and still gets the example — that is the whole reason
+ * this predicate is separate from {@link parseAddCaregiver}.
+ *
+ * The number must NORMALIZE, not merely look numeric: "add the deadline 2026-08-01 as a
+ * reminder" satisfies the anchored command regex in every other respect, and a shape
+ * test that accepted any digit run would go on swallowing exactly the sentences this
+ * exists to release.
+ */
 export function looksLikeAddCommand(body: string): boolean {
-  return /^add\s/i.test(body.trim());
+  const trimmed = body.trim();
+  return (
+    /^add\s/i.test(trimmed) && /\sas\s/i.test(trimmed) && containsPhoneNumber(trimmed)
+  );
+}
+
+/** A run of digits the phone normalizer accepts as a CA/US line — never merely "some
+ * digits", so a date or a time in a calendar request is not read as a number. */
+function containsPhoneNumber(body: string): boolean {
+  for (const match of body.matchAll(new RegExp(PHONE_RUN, 'g'))) {
+    if (normalizePhoneE164(match[0])) return true;
+  }
+  return false;
 }
 
 export function parseAddCaregiver(body: string): ParsedAddCaregiver {

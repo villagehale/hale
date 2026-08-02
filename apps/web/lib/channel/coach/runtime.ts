@@ -13,7 +13,11 @@ import type { Database } from '@hale/db';
 import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { recordAgentRun } from '~/lib/agent-run';
-import type { ChannelCoachRuntime, ChannelTurn } from '~/lib/channel/router/coach-runtime';
+import {
+  type ChannelCoachRuntime,
+  type ChannelTurn,
+  ChannelTurnFailed,
+} from '~/lib/channel/router/coach-runtime';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
@@ -93,7 +97,9 @@ export interface ChannelCoachPorts {
   /** Every child of the family, un-redacted — the redactor needs the real names to
    * find them in the answer, and it is the only consumer. */
   loadChildren(familyId: string): Promise<ReplyChild[]>;
-  buildTools(turn: ChannelTurn): RegisteredTool[];
+  /** `onDraft` is called with every actionId the turn mints, so a failure can say what
+   * it already committed rather than claiming nothing happened (VIL-260). */
+  buildTools(turn: ChannelTurn, onDraft: (actionId: string) => void): RegisteredTool[];
   guardDeps: GuardDeps;
   /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
@@ -114,6 +120,13 @@ export interface ChannelCoachPorts {
 export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRuntime {
   return {
     async respond(turn: ChannelTurn): Promise<{ reply: string }> {
+      // This turn's own ledger of committed drafts. Every exit that is not an answer
+      // carries it out (see `failed` below) — a draft is a row the parent can approve,
+      // so a failure that hid it would leave them holding an action they never heard of.
+      const draftedActionIds: string[] = [];
+      const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
+        new ChannelTurnFailed(message, { cause, draftedActionIds });
+
       const [skill, transcript, children] = await Promise.all([
         ports.loadSkill(),
         ports.loadTranscript(turn.conversationId),
@@ -151,16 +164,27 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const startedAt = Date.now();
           // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
           // reused set would spend this text's budget on the last one's.
-          const result = await ports.runAgent({
-            skill,
-            context,
-            tools: ports.buildTools(turn),
-            client: ports.client(),
-            maxSteps: MAX_STEPS,
-            maxTokens: MAX_TOKENS,
-            toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
-            guardDeps: ports.guardDeps,
-          });
+          const tools = ports.buildTools(turn, (actionId) => draftedActionIds.push(actionId));
+          // A tool that throws, a provider that times out, a step that runs long: the
+          // loop can break anywhere, and by then the drafts it made are already rows.
+          // Re-thrown rather than handled — the router owns what a parent is told.
+          const result = await ports
+            .runAgent({
+              skill,
+              context,
+              tools,
+              client: ports.client(),
+              maxSteps: MAX_STEPS,
+              maxTokens: MAX_TOKENS,
+              toolContext: { familyId: turn.familyId, actor: turn.parentUserId },
+              guardDeps: ports.guardDeps,
+            })
+            .catch((err: unknown) => {
+              throw failed(
+                err instanceof Error ? err.message : 'channel coach: agent loop failed',
+                err,
+              );
+            });
 
           trace.recordGeneration(`${CHANNEL_AGENT_NAME}-loop`, {
             model: pickModel(skill.meta.task),
@@ -182,7 +206,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
 
           if (result.answer === null) {
             await ports.recordRun(record('failed'));
-            throw new Error(
+            throw failed(
               result.hitMaxSteps
                 ? 'channel coach: agent hit maxSteps without an answer'
                 : 'channel coach: agent returned no answer',
@@ -226,12 +250,13 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
-    buildTools: (turn) =>
+    buildTools: (turn, onDraft) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
         villageTool: searchVillageTool(database),
+        onDraft,
         now: turn.now,
       }),
     guardDeps: buildGuardDeps(database),

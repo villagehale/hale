@@ -15,8 +15,16 @@ import { capabilityReply } from './copy';
  * does, because C2 is only ever reached once they have all passed.
  *
  * A throw is a FAILED TURN, not a silent one: the router answers it with the honesty
- * template (nothing was changed + the app link). So C2 should throw rather than return
- * an apologetic string — an error the router can see is better than one it cannot.
+ * template. So C2 should throw rather than return an apologetic string — an error the
+ * router can see is better than one it cannot.
+ *
+ * WHAT A FAILED TURN OWES THE ROUTER (VIL-260). "Nothing was changed" was the template
+ * for every failure, and it was false whenever the turn had already drafted: the
+ * propose_* tools commit rows the moment they are called, so a turn that drafts two
+ * changes and THEN runs out of steps leaves two real actions in the approvals queue.
+ * Telling the parent nothing happened orphans them — they never learn the drafts exist,
+ * so the next unrelated "yes" is what finds them. A failure therefore carries what it
+ * already did, in {@link ChannelTurnFailed}.
  */
 
 export interface ChannelTurn {
@@ -30,6 +38,32 @@ export interface ChannelTurn {
 
 export interface ChannelCoachRuntime {
   respond(turn: ChannelTurn): Promise<{ reply: string }>;
+}
+
+/**
+ * A turn that broke, carrying the actions it had already drafted before it did.
+ *
+ * The ids are the turn's own — minted by the propose_* tools during THIS text, never a
+ * query of what happens to be pending — so the count in the reply cannot include a draft
+ * the parent has already been told about.
+ */
+export class ChannelTurnFailed extends Error {
+  readonly draftedActionIds: readonly string[];
+
+  constructor(
+    message: string,
+    options: { cause?: unknown; draftedActionIds: readonly string[] },
+  ) {
+    super(message, { cause: options.cause });
+    this.name = 'ChannelTurnFailed';
+    this.draftedActionIds = options.draftedActionIds;
+  }
+}
+
+/** What a failed turn committed, or nothing at all — the ordinary case, and the one
+ * where "nothing was changed" is the true sentence. */
+export function draftsFromFailure(err: unknown): readonly string[] {
+  return err instanceof ChannelTurnFailed ? err.draftedActionIds : [];
 }
 
 /**

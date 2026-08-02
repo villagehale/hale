@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
-import type { ChannelDraftPort } from './draft';
+import type { ChannelDraftInput, ChannelDraftPort } from './draft';
 
 /**
  * VIL-221 · C2 — the schedule verbs, over text.
@@ -82,6 +82,10 @@ export interface ChannelCoachToolArgs {
   /** The shared Village read (coach/tools.ts `searchVillageTool`), or null in a test
    * that is not exercising it. */
   villageTool: RegisteredTool | null;
+  /** Told about every action this turn actually minted. A draft is committed the moment
+   * the tool returns, so a turn that fails LATER has still changed the family's queue —
+   * and the router can only be honest about that if something counted (VIL-260). */
+  onDraft?: (actionId: string) => void;
   now: Date;
 }
 
@@ -128,8 +132,15 @@ function isPrivate(event: ScheduleEvent): boolean {
 }
 
 export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTool[] {
-  const { familyId, reader, draftPort, now } = args;
+  const { familyId, reader, draftPort, onDraft, now } = args;
   let draftsThisTurn = 0;
+
+  /** The one place a draft is minted, so the turn's ledger cannot miss one. */
+  async function mint(input: ChannelDraftInput): Promise<string> {
+    const { actionId } = await draftPort.draft(input);
+    onDraft?.(actionId);
+    return actionId;
+  }
 
   /** Spend one unit of the turn's budget, or refuse. Counted only where a draft is
    * actually about to be minted, so a refused or unresolvable change costs nothing. */
@@ -202,7 +213,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         privacySensitive: event.sensitive,
         reversalHandle: event.eventId,
       };
-      const { actionId } = await draftPort.draft({
+      const actionId = await mint({
         familyId,
         actor: ctx.actor,
         actionType: 'calendar_move',
@@ -233,7 +244,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         privacySensitive: event.sensitive,
         reversalHandle: event.eventId,
       };
-      const { actionId } = await draftPort.draft({
+      const actionId = await mint({
         familyId,
         actor: ctx.actor,
         actionType: 'calendar_cancel',
@@ -273,7 +284,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
         childId: input.childId ?? null,
         privacySensitive: false,
       };
-      const { actionId } = await draftPort.draft({
+      const actionId = await mint({
         familyId,
         actor: ctx.actor,
         actionType: 'calendar_add',

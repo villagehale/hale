@@ -1,6 +1,6 @@
 import type { RegisteredTool, Skill } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChannelTurn } from '~/lib/channel/router/coach-runtime';
+import { type ChannelTurn, draftsFromFailure } from '~/lib/channel/router/coach-runtime';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { MAX_REPLY_SEGMENTS } from './reply';
 import { type ChannelCoachPorts, channelCoachRuntime } from './runtime';
@@ -153,6 +153,49 @@ describe('channelCoachRuntime', () => {
     expect(p.recorded).toEqual([
       expect.objectContaining({ agentName: 'coach-channel-sms', status: 'failed' }),
     ]);
+  });
+
+  /**
+   * VIL-260 · WS4 — a turn can commit drafts and THEN break: the two propose_* calls
+   * land in the approvals queue, the model runs out of steps, and the router's honesty
+   * template said "nothing was changed". It was a false statement about a real write,
+   * and the orphaned drafts were left for an unrelated "yes" to approve.
+   *
+   * So a failed turn carries what it already did. The ids are minted by the tools, which
+   * is why the sink is handed to `buildTools` rather than counted here.
+   */
+  it('surfaces the drafts a failed turn already committed', async () => {
+    const sinks: Array<(actionId: string) => void> = [];
+    const p = ports({
+      buildTools: (_turn, onDraft) => {
+        sinks.push(onDraft);
+        return [] as RegisteredTool[];
+      },
+      runAgent: async () => {
+        sinks[0]?.('action-1');
+        sinks[0]?.('action-2');
+        throw new Error('anthropic timeout');
+      },
+    });
+
+    const err = await channelCoachRuntime(p)
+      .respond(turn())
+      .catch((e: unknown) => e);
+
+    expect(draftsFromFailure(err)).toEqual(['action-1', 'action-2']);
+    // The original failure is not swallowed by the enrichment.
+    expect((err as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it('surfaces nothing when a turn fails before it drafted anything', async () => {
+    const p = ports({ runAgent: answering(null, true) });
+
+    const err = await channelCoachRuntime(p)
+      .respond(turn())
+      .catch((e: unknown) => e);
+
+    expect(draftsFromFailure(err)).toEqual([]);
+    expect((err as Error).message).toMatch(/maxSteps/i);
   });
 
   it('records a completed run with its latency (the p50 the ticket gates on)', async () => {

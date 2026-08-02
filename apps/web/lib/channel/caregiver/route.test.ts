@@ -223,10 +223,39 @@ describe('caregiver invite · the ways it does not happen', () => {
     const { fake, transport, deps } = harness();
     await seedFamily(fake);
 
-    const outcome = await text(fake, transport, deps, PARENT_PHONE, 'add my mum to the schedule');
+    // The command's SHAPE is unmistakable (a real number, the "as" separator) — only
+    // the role word is one we do not grant.
+    const outcome = await text(
+      fake,
+      transport,
+      deps,
+      PARENT_PHONE,
+      'add my mum 647-555-0199 as chauffeur',
+    );
 
     expect(outcome).toEqual({ status: 'caregiver_add_refused', reason: 'unparseable' });
     expect(transport.sent.at(-1)).toEqual({ to: PARENT_PHONE, body: ADD_EXAMPLE });
+    expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
+  });
+
+  /**
+   * VIL-260 · WS4 — "add" is what a parent says about their calendar far more often than
+   * about a caregiver. Claiming the prefix meant the headline toddler ask was answered
+   * with a caregiver example and never reached the coach at all; the message now falls
+   * through untouched, which is what the webhook hands to C1.
+   */
+  it.each([
+    'Add library story time Saturday 10am',
+    'add swim Thursday at 4:30',
+    'add gymnastics as a weekly thing',
+  ])('lets the calendar ask %j fall through to the conversational layer', async (body) => {
+    const { fake, transport, deps } = harness();
+    await seedFamily(fake);
+
+    const outcome = await text(fake, transport, deps, PARENT_PHONE, body);
+
+    expect(outcome).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    expect(transport.sent).toHaveLength(0);
     expect(inserts(fake, schema.caregiverInvites)).toHaveLength(0);
   });
 
@@ -370,6 +399,25 @@ describe('caregiver invite · the ways it does not happen', () => {
     expect(outcome).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
     expect(transport.sent).toHaveLength(0);
   });
+
+  /**
+   * VIL-260 · WS4 — M6 held its own nine-word affirmative list, so a parent who answered
+   * the confirmation the way parents actually answer ("yes please", a thumbs-up) was
+   * read as unclear and the invite was left to lapse in silence. One vocabulary now.
+   */
+  it.each(['yes please', 'sounds good', '👍'])(
+    'reads %j as the parent authorising the invite',
+    async (answer) => {
+      const { fake, transport, deps } = harness();
+      await seedFamily(fake);
+      await text(fake, transport, deps, PARENT_PHONE, 'add grandma 647-555-0199 as grandparent');
+
+      const sent = await text(fake, transport, deps, PARENT_PHONE, answer);
+
+      expect(sent).toEqual({ status: 'caregiver_invite_sent' });
+      expect(transport.sent.some((s) => s.to === GRAN_PHONE)).toBe(true);
+    },
+  );
 
   it('drops the invite when the parent answers the confirmation with no', async () => {
     const { fake, transport, deps } = harness();

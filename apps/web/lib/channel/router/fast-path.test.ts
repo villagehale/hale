@@ -45,6 +45,59 @@ describe('matchFastPath — affirmatives', () => {
     expect(matchFastPath('ok thanks')).toEqual({ verb: 'yes', index: null });
     expect(matchFastPath('yes thank you')).toEqual({ verb: 'yes', index: null });
   });
+
+  /**
+   * VIL-260 · WS4 — the eleven words a parent was allowed to say. Every phrase below is
+   * one a real parent sent to a drafted change and had silently dropped: the fast-path
+   * declined it, the coach answered it conversationally, and the change never happened.
+   *
+   * The vocabulary widens; the AUTHORITY does not. Each of these still only resolves to
+   * an approval when an action is actually drafted (handlers.ts's ownership rule), and
+   * each is still matched against the WHOLE message.
+   */
+  const widened = [
+    'sounds good',
+    'Sounds good!',
+    'sounds great',
+    'looks good',
+    'do it',
+    'Do it.',
+    'do that',
+    'go ahead',
+    'Go ahead!',
+    'go for it',
+    "let's do it",
+    'lets do it',
+    'make it',
+    'that works',
+    'works for me',
+    'approve',
+    'Approved',
+    'yes do it',
+    'sounds good thanks',
+  ];
+
+  for (const body of widened) {
+    it(`reads ${JSON.stringify(body)} as a bare yes`, () => {
+      expect(matchFastPath(body)).toEqual({ verb: 'yes', index: null });
+    });
+  }
+
+  /** A phone keyboard's fastest reply is a reaction. The symbol-stripping normalizer
+   * used to erase these to an empty string, so the commonest confirmation on the whole
+   * channel matched nothing at all. */
+  const emoji = ['👍', '👍🏽', '👍🏻', '👌', '✅', '✔️', '☑️', '👍👍', 'yes 👍', '👍 please'];
+
+  for (const body of emoji) {
+    it(`reads ${JSON.stringify(body)} as a bare yes`, () => {
+      expect(matchFastPath(body)).toEqual({ verb: 'yes', index: null });
+    });
+  }
+
+  it('carries an ordinal through a widened phrase', () => {
+    expect(matchFastPath('do it 2')).toEqual({ verb: 'yes', index: 2 });
+    expect(matchFastPath('sounds good 1')).toEqual({ verb: 'yes', index: 1 });
+  });
 });
 
 describe('matchFastPath — negatives and undo', () => {
@@ -58,6 +111,15 @@ describe('matchFastPath — negatives and undo', () => {
     expect(matchFastPath('no thanks')).toEqual({ verb: 'no', index: null });
     expect(matchFastPath('No, thank you.')).toEqual({ verb: 'no', index: null });
   });
+
+  /** M6's refusals, which the shared vocabulary brings to approvals too (VIL-260). A
+   * parent who declines a draft in the words they already use to drop an invite should
+   * not have to learn a second one. */
+  for (const body of ['never mind', 'nevermind', "don't", 'Never mind!', '👎']) {
+    it(`reads ${JSON.stringify(body)} as a bare no`, () => {
+      expect(matchFastPath(body)).toEqual({ verb: 'no', index: null });
+    });
+  }
 
   for (const body of ['undo', 'UNDO', 'undo that', 'undo it', 'revert']) {
     it(`reads ${JSON.stringify(body)} as undo`, () => {
@@ -110,6 +172,18 @@ describe('matchFastPath — what it must NOT claim', () => {
     '',
     '   ',
     '2',
+    // The widened vocabulary carries a TAIL as often as it carries a yes, and a tail is
+    // a second instruction the parent is still waiting on. Every one of these is a
+    // conversation the coach must answer, not a calendar write.
+    'sounds good but can we do Thursday instead',
+    'do it tomorrow',
+    'do it after work',
+    "don't do it",
+    'go ahead and cancel swim too',
+    'that works for the first one',
+    'approve what?',
+    'looks good, what time does it start?',
+    'sounds good 👍 and can you also find something Saturday',
   ];
 
   for (const body of sentences) {

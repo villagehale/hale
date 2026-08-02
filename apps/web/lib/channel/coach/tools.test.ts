@@ -94,6 +94,8 @@ interface Harness {
   tools: ReturnType<typeof buildChannelCoachTools>;
   port: ChannelDraftPort & { drafts: ChannelDraftInput[] };
   audit: unknown[];
+  /** Every actionId the turn committed, in order — what a failed turn reports. */
+  minted: string[];
   call(name: string, input: unknown): Promise<unknown>;
 }
 
@@ -103,18 +105,21 @@ function harness(
 ): Harness {
   const port = fakePort();
   const audit: unknown[] = [];
+  const minted: string[] = [];
   const deps = guardDeps(audit, teenChildIds);
   const tools = buildChannelCoachTools({
     familyId: FAMILY,
     reader: fakeReader(events),
     draftPort: port,
     villageTool: null,
+    onDraft: (actionId) => minted.push(actionId),
     now: NOW,
   });
   return {
     tools,
     port,
     audit,
+    minted,
     call(name, input) {
       const tool = tools.find((t) => t.name === name);
       if (!tool) throw new Error(`no tool named ${name}`);
@@ -283,6 +288,29 @@ describe('the per-turn draft cap', () => {
     await expect(
       second.call('propose_calendar_cancel', { eventId: MON_SWIM }),
     ).resolves.toBeDefined();
+  });
+
+  /**
+   * VIL-260 · WS4 — the drafts are committed rows the moment a verb returns, so the turn
+   * that made them has to be able to say so when it later breaks. A refusal mints
+   * nothing and must report nothing, or a failed turn would claim changes that do not
+   * exist.
+   */
+  it('reports every actionId it committed, and only those', async () => {
+    const h = harness([scheduleEvent(), scheduleEvent({ eventId: THU_SWIM })]);
+
+    await h.call('propose_calendar_cancel', { eventId: MON_SWIM });
+    await expect(
+      h.call('propose_calendar_move', {
+        eventId: '99999999-9999-4999-8999-999999999999',
+        date: '2026-08-04',
+        time: '16:30',
+      }),
+    ).rejects.toThrow();
+    await h.call('propose_calendar_add', { title: 'Story time', date: '2026-08-05', time: '10:00' });
+
+    expect(h.minted).toEqual(['action-1', 'action-2']);
+    expect(h.minted).toEqual(h.port.drafts.map((_, i) => `action-${i + 1}`));
   });
 
   it('a refused draft does not consume the budget', async () => {

@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
-import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import type { ChannelTransport, InboundMessage } from '~/lib/channel/intake/transport';
 import {
   ADD_EXAMPLE,
@@ -46,6 +46,12 @@ import { looksLikeAddCommand, parseAddCaregiver } from './parse';
  * disclosing a family's week to someone outside the household, and a probabilistic
  * "that sounded like a yes" is not a basis for that (deliberate deviation from M2's
  * model-read intent, which decides only whether Hale may watch).
+ *
+ * WHICH keywords is no longer this module's own list (VIL-260). It held nine words while
+ * C1's approval grammar held eleven, and every word on one list and not the other was an
+ * answer one of the two surfaces silently dropped — "yes please" was unclear here, and
+ * an invite the parent had already agreed to was left to lapse. `readAffirmative` is the
+ * one table now; the reading it makes is the same exact, whole-string, keyword-only one.
  */
 
 export interface CaregiverDeps {
@@ -70,18 +76,6 @@ export type CaregiverOutcome =
   | { status: 'caregiver_declined' }
   | { status: 'caregiver_prompted' }
   | { status: 'caregiver_scoped_reply' };
-
-const AFFIRMATIVE = new Set(['yes', 'y', 'yeah', 'yep', 'yup', 'ok', 'okay', 'sure', 'confirm']);
-const NEGATIVE = new Set(['no', 'n', 'nope', 'nah', 'never mind', 'nevermind', "don't"]);
-
-/** A yes, a no, or neither — matched exactly on the normalized body, never as a
- * substring. "no rush, next week is fine" is a sentence, not a refusal. */
-export function readAnswer(body: string): 'yes' | 'no' | 'unclear' {
-  const word = normalizeKeyword(body);
-  if (AFFIRMATIVE.has(word)) return 'yes';
-  if (NEGATIVE.has(word)) return 'no';
-  return 'unclear';
-}
 
 /** One channel_messages row + its audit row (rule #6), on the caregiver category. */
 async function record(
@@ -204,7 +198,7 @@ export async function handleCaregiverInviteReply(
     now,
   });
 
-  const answer = readAnswer(inbound.body);
+  const answer = readAffirmative(inbound.body);
 
   if (answer === 'yes') {
     const { caregiverUserId } = await acceptInvite(database, {
@@ -288,7 +282,7 @@ export async function handleKnownNumberInbound(
   const parentPhoneE164 = args.phoneE164;
   const pending = await loadPendingAssent(database, owner.userId, now);
   if (pending) {
-    const answer = readAnswer(inbound.body);
+    const answer = readAffirmative(inbound.body);
     if (answer === 'yes') {
       return sendInvite(database, { pending, owner, inbound, parentPhoneE164, now }, deps);
     }

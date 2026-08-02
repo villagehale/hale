@@ -19,12 +19,30 @@ function appLink(): string {
 }
 
 /**
- * The failure-honesty template, and the only thing the router says when a turn breaks.
- * Two promises: that nothing changed, and where to go instead. Never silence, never a
- * fabricated success (F14 voice rule 5).
+ * The failure-honesty template for a turn that broke having done NOTHING. Two promises:
+ * that nothing changed, and where to go instead. Never silence, never a fabricated
+ * success (F14 voice rule 5).
  */
 export function failureReply(): string {
   return `Something went wrong on my end — nothing was changed. Try again or use the app: ${appLink()}`;
+}
+
+/**
+ * The same honesty for a turn that broke AFTER it drafted (VIL-260).
+ *
+ * The drafts are real rows in the approvals queue, so "nothing was changed" would be a
+ * false statement about a write the parent can see in the app — and a parent who has not
+ * been told they exist cannot answer them, which is how a later unrelated "yes" ends up
+ * approving one. It says the count and never what the drafts ARE: the type alone can
+ * name a teenager's action, and this line is not the place for either (rule #1).
+ *
+ * Plain ASCII, no typographic dash: this is the longest line the router sends, and one
+ * em dash flips the whole message to UCS-2 (70 characters a segment) and turns a
+ * one-segment reply into three. The coach skill states the same rule for the same reason.
+ */
+export function partialFailureReply(draftCount: number): string {
+  const noun = draftCount === 1 ? '1 change' : `${draftCount} changes`;
+  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or check the app: ${appLink()}`;
 }
 
 /**
