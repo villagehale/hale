@@ -72,6 +72,12 @@ export const RATE_LIMITS = {
   // One MCP assistant grant can make quick read bursts, but no human-approved
   // connection needs more than two tool calls per second sustained. Fail-closed.
   'mcp-tool': { limit: 120, windowSec: 60 },
+  // VIL-147 · a parent asking to read a 13+ teen's raw content. Every request
+  // notifies the TEEN, so an unbounded endpoint is a way to pester a child, not just
+  // a write-amplification problem. A parent with a real worry asks about a handful of
+  // rows; 10/hour is far above that and well below anything that reads as pressure.
+  // Fail-closed: a limiter outage must not remove the only guard on that.
+  'teen-content-grant': { limit: 10, windowSec: 3600 },
   // Dynamic client registration is public and cheap but persistent. Per-IP.
   'mcp-register': { limit: 20, windowSec: 3600 },
   // Authorization-code exchange is public and bearer-sensitive. Per-IP.

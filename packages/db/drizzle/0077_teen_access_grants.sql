@@ -35,10 +35,12 @@ CREATE TABLE IF NOT EXISTS "teen_access_grants" (
 	"consent_record_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	-- The time-limit guarantee lives HERE, not only in a code review: an ACTIVE window
-	-- is always a complete, forward-ordered pair. A half-set window would otherwise be
-	-- readable as "started, never expires" — an unbounded standing grant, which is the
-	-- one thing rule #1 forbids.
+	-- An ACTIVE window is always a complete, forward-ordered pair. A half-set window
+	-- would otherwise be readable as "started, never expires" — an unbounded standing
+	-- grant, which is the one thing rule #1 forbids. NOTE the exact scope: this
+	-- enforces PAIRING and ORDER only. The 7-day / 24h ceilings are not expressible
+	-- here (they differ by grant kind) and live in isTeenGrantActive, which re-checks
+	-- the span on every read and rejects an over-long window whatever the row says.
 	CONSTRAINT "teen_access_grants_window_check" CHECK (
 		("starts_at" IS NULL) = ("expires_at" IS NULL)
 		AND ("starts_at" IS NULL OR "expires_at" > "starts_at")

@@ -37,7 +37,8 @@ export function RequestTeenAccessButton({ actionId }: { actionId: string }) {
   if (state === 'requested') {
     return (
       <p className="meta text-slate-green" aria-live="polite">
-        requested — your teen was asked. nothing opens until they agree.
+        recorded — but Hale has no way to reach your teen yet, so it can&rsquo;t ask them, and
+        nothing opens. see Settings › family &amp; children.
       </p>
     );
   }
@@ -45,7 +46,7 @@ export function RequestTeenAccessButton({ actionId }: { actionId: string }) {
   if (state === 'idle') {
     return (
       <button type="button" className="btn-secondary" onClick={() => setState('asking')}>
-        request access
+        ask to see this
       </button>
     );
   }
@@ -53,7 +54,7 @@ export function RequestTeenAccessButton({ actionId }: { actionId: string }) {
   return (
     <form onSubmit={submit} className="flex w-full flex-col gap-2">
       <label htmlFor={`teen-reason-${actionId}`} className="meta text-slate-green">
-        why do you need to see this? your teen is shown what you write.
+        why do you need to see this? your teen is shown what you write, once Hale can reach them.
       </label>
       <textarea
         id={`teen-reason-${actionId}`}
@@ -83,7 +84,7 @@ export function RequestTeenAccessButton({ actionId }: { actionId: string }) {
           className="btn-primary"
           disabled={state === 'pending' || reason.trim().length < 3}
         >
-          {state === 'pending' ? 'requesting…' : 'ask my teen'}
+          {state === 'pending' ? 'recording…' : 'record my request'}
         </button>
       </div>
     </form>

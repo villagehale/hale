@@ -16,9 +16,13 @@ const resolveFamilyMock = vi.fn();
 const resolveUserIdMock = vi.fn();
 const resolveTeenChildMock = vi.fn();
 const requestAccessMock = vi.fn();
+const rateLimitMock = vi.fn();
 const DB_HANDLE = { __db: true };
 
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
+vi.mock('~/lib/rate-limit/apply', () => ({
+  enforceRateLimit: (...a: unknown[]) => rateLimitMock(...a),
+}));
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => DB_HANDLE }));
 vi.mock('~/lib/family', () => ({
@@ -58,6 +62,8 @@ describe('POST /api/teen-content-grant', () => {
     resolveUserIdMock.mockReset();
     resolveTeenChildMock.mockReset();
     requestAccessMock.mockReset();
+    rateLimitMock.mockReset();
+    rateLimitMock.mockResolvedValue(null);
     configureAuth(true);
     resolveFamilyMock.mockResolvedValue('fam-1');
     resolveUserIdMock.mockResolvedValue('user-1');
@@ -88,6 +94,17 @@ describe('POST /api/teen-content-grant', () => {
     const res = await callPost({ actionId: ACTION_ID, reason: REASON });
     expect(res.status).toBe(404);
     expect(requestAccessMock).not.toHaveBeenCalled();
+  });
+
+  it('rate-limits per parent, fail-closed — a request notifies a real child', async () => {
+    authMock.mockResolvedValue({ user: { id: 'ext-1' } });
+    rateLimitMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'rate_limited' }), { status: 429 }),
+    );
+    const res = await callPost({ actionId: ACTION_ID, reason: REASON });
+    expect(res.status).toBe(429);
+    expect(requestAccessMock).not.toHaveBeenCalled();
+    expect(rateLimitMock).toHaveBeenCalledWith('teen-content-grant', 'user-1', true);
   });
 
   it('refuses with 400 when no reason is given — "explicit" means the parent said why', async () => {

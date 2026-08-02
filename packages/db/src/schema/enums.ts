@@ -169,8 +169,10 @@ export const consentTypeEnum = pgEnum('consent_type', [
 
 // VIL-147 · what a teen raw-access grant unlocks. Deliberately a CLOSED, SMALL
 // vocabulary of CONTENT CLASSES (F14 verdict #8: a grant authorizes a scope + a
-// duration, never a blanket read) — every value here has a real enforcement site,
-// so no scope can be granted that nothing honours. The grant's CHANNEL is always
+// duration, never a blanket read) — every value here has a real ENFORCEMENT site, so
+// no scope can be granted that nothing honours. Minting is narrower still: the only
+// request surface today is an approval row, which always asks for 'message_content'.
+// 'calendar_detail' and 'child_profile' are enforced but not yet requestable. The grant's CHANNEL is always
 // the authenticated in-app parent session: no outbound path (email, SMS, push,
 // ICS, a third-party MCP read, a public page) ever consults a grant, because a
 // grant is a disclosure to ONE parent, not a downgrade of the teen's redaction.

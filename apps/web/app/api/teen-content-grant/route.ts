@@ -5,6 +5,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db } from '~/lib/db';
 import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
+import { enforceRateLimit } from '~/lib/rate-limit/apply';
 import { requestTeenAccessGrant, resolveActionTeenChild } from '~/lib/teen-access';
 
 // Node runtime: the grant writer uses the Drizzle client + a transaction.
@@ -62,6 +63,11 @@ export async function POST(req: Request): Promise<Response> {
   if (!familyId || !parentUserId) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
+
+  // Every request notifies the TEEN, so an unbounded endpoint is a way to pester a
+  // child. Fail-closed (rule #1): a limiter outage must not remove that guard.
+  const limited = await enforceRateLimit('teen-content-grant', parentUserId, true);
+  if (limited) return limited;
 
   const teenChildId = await resolveActionTeenChild(database, familyId, parsed.data.actionId);
   if (!teenChildId) {

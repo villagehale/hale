@@ -21,13 +21,19 @@ import {
 
 const NOW = new Date('2026-08-02T12:00:00.000Z');
 const CHILD = 'c1';
+const FAMILY = 'fam-1';
+const PARENT = 'parent-1';
+const VIEWER = { familyId: FAMILY, parentUserId: PARENT };
 
 /** An otherwise-perfect ACTIVE grant; each test breaks exactly one condition. */
 function activeGrant(overrides: Partial<TeenGrantState> = {}): TeenGrantState {
   return {
+    familyId: FAMILY,
+    grantedToUserId: PARENT,
     childId: CHILD,
     scope: 'message_content',
     teenAssentAt: new Date('2026-08-02T09:00:00.000Z'),
+    teenNotifiedAt: new Date('2026-08-02T09:00:00.000Z'),
     startsAt: new Date('2026-08-02T09:00:00.000Z'),
     expiresAt: new Date('2026-08-03T09:00:00.000Z'),
     revokedAt: null,
@@ -36,31 +42,37 @@ function activeGrant(overrides: Partial<TeenGrantState> = {}): TeenGrantState {
   };
 }
 
+/** Local wrapper: the cases below vary the GRANT, so the viewer is constant. The
+ * tenancy axes get their own dedicated cases at the end of this block. */
+function isTeenGrantActive_(grant: TeenGrantState, now: Date): boolean {
+  return isTeenGrantActive(grant, VIEWER, now);
+}
+
 describe('isTeenGrantActive', () => {
   it('accepts a grant that is assented, started, unexpired and unrevoked', () => {
-    expect(isTeenGrantActive(activeGrant(), NOW)).toBe(true);
+    expect(isTeenGrantActive_(activeGrant(), NOW)).toBe(true);
   });
 
   it('rejects a grant with no teen assent (rule #5) unless it is a safety escalation', () => {
-    expect(isTeenGrantActive(activeGrant({ teenAssentAt: null }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ teenAssentAt: null }), NOW)).toBe(false);
     expect(
-      isTeenGrantActive(activeGrant({ teenAssentAt: null, safetyEscalation: true }), NOW),
+      isTeenGrantActive_(activeGrant({ teenAssentAt: null, safetyEscalation: true }), NOW),
     ).toBe(true);
   });
 
   it('rejects a merely-requested grant — no activation window at all', () => {
-    expect(isTeenGrantActive(activeGrant({ startsAt: null, expiresAt: null }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ startsAt: null, expiresAt: null }), NOW)).toBe(false);
   });
 
   it('rejects a half-set window rather than reading it as open-ended', () => {
-    expect(isTeenGrantActive(activeGrant({ expiresAt: null }), NOW)).toBe(false);
-    expect(isTeenGrantActive(activeGrant({ startsAt: null }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ expiresAt: null }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ startsAt: null }), NOW)).toBe(false);
   });
 
   it('rejects a grant whose window has not opened yet', () => {
     const future = new Date(NOW.getTime() + 60_000);
     expect(
-      isTeenGrantActive(
+      isTeenGrantActive_(
         activeGrant({ startsAt: future, expiresAt: new Date(future.getTime() + 3_600_000) }),
         NOW,
       ),
@@ -68,36 +80,60 @@ describe('isTeenGrantActive', () => {
   });
 
   it('rejects an EXPIRED grant — content redacts again the instant the window closes', () => {
-    expect(isTeenGrantActive(activeGrant({ expiresAt: NOW }), NOW)).toBe(false);
-    expect(isTeenGrantActive(activeGrant({ expiresAt: new Date(NOW.getTime() - 1) }), NOW)).toBe(
+    expect(isTeenGrantActive_(activeGrant({ expiresAt: NOW }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ expiresAt: new Date(NOW.getTime() - 1) }), NOW)).toBe(
       false,
     );
     // Still active one millisecond before the boundary.
-    expect(isTeenGrantActive(activeGrant({ expiresAt: new Date(NOW.getTime() + 1) }), NOW)).toBe(
+    expect(isTeenGrantActive_(activeGrant({ expiresAt: new Date(NOW.getTime() + 1) }), NOW)).toBe(
       true,
     );
   });
 
   it('rejects a REVOKED grant even while its window is still open', () => {
-    expect(isTeenGrantActive(activeGrant({ revokedAt: NOW }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ revokedAt: NOW }), NOW)).toBe(false);
     expect(
-      isTeenGrantActive(activeGrant({ revokedAt: new Date(NOW.getTime() - 60_000) }), NOW),
+      isTeenGrantActive_(activeGrant({ revokedAt: new Date(NOW.getTime() - 60_000) }), NOW),
     ).toBe(false);
   });
 
   it('rejects a window longer than the hard maximum, however it was written', () => {
     const startsAt = new Date('2026-08-02T09:00:00.000Z');
     const tooLong = new Date(startsAt.getTime() + MAX_GRANT_WINDOW_MS + 1);
-    expect(isTeenGrantActive(activeGrant({ startsAt, expiresAt: tooLong }), NOW)).toBe(false);
+    expect(isTeenGrantActive_(activeGrant({ startsAt, expiresAt: tooLong }), NOW)).toBe(false);
+  });
+
+  it('rejects a grant whose teen was never actually notified (rule #1 makes notice a condition)', () => {
+    expect(isTeenGrantActive_(activeGrant({ teenNotifiedAt: null }), NOW)).toBe(false);
+    // Not even the safety exception, which rule #1 permits only "where the teen is
+    // notified" — an undelivered notice is exactly the case that must stay shut.
+    expect(
+      isTeenGrantActive_(
+        activeGrant({ teenNotifiedAt: null, teenAssentAt: null, safetyEscalation: true }),
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects another family’s grant even if every other field is perfect', () => {
+    // The confused-deputy axis. The SQL also filters this, but the predicate must
+    // re-check it — otherwise one dropped WHERE clause leaks family into family.
+    expect(isTeenGrantActive(activeGrant({ familyId: 'other-family' }), VIEWER, NOW)).toBe(false);
+  });
+
+  it('rejects a grant issued to a DIFFERENT parent', () => {
+    expect(isTeenGrantActive(activeGrant({ grantedToUserId: 'other-parent' }), VIEWER, NOW)).toBe(
+      false,
+    );
   });
 
   it('holds a safety escalation to the SHORTER window', () => {
     const startsAt = new Date('2026-08-02T09:00:00.000Z');
     // A span that is fine for an assented grant but too long for an escalation.
     const span = new Date(startsAt.getTime() + SAFETY_ESCALATION_WINDOW_MS + 1);
-    expect(isTeenGrantActive(activeGrant({ startsAt, expiresAt: span }), NOW)).toBe(true);
+    expect(isTeenGrantActive_(activeGrant({ startsAt, expiresAt: span }), NOW)).toBe(true);
     expect(
-      isTeenGrantActive(
+      isTeenGrantActive_(
         activeGrant({ startsAt, expiresAt: span, teenAssentAt: null, safetyEscalation: true }),
         NOW,
       ),
@@ -121,7 +157,7 @@ describe('boundGrantWindow', () => {
 });
 
 describe('redactsTeenContent — the seam every parent-facing read calls', () => {
-  const unlocks = teenAccessUnlocksFrom([activeGrant()], NOW);
+  const unlocks = teenAccessUnlocksFrom([activeGrant()], VIEWER, NOW);
 
   it('never redacts a row that does not concern a teen', () => {
     expect(redactsTeenContent(false, CHILD, 'message_content', unlocks)).toBe(false);
@@ -145,6 +181,7 @@ describe('redactsTeenContent — the seam every parent-facing read calls', () =>
   it('a calendar-scope grant never reveals message content', () => {
     const calendarOnly = teenAccessUnlocksFrom(
       [activeGrant({ scope: 'calendar_detail' })],
+      VIEWER,
       NOW,
     );
     expect(redactsTeenContent(true, CHILD, 'calendar_detail', calendarOnly)).toBe(false);
@@ -164,6 +201,7 @@ describe('redactsTeenContent — the seam every parent-facing read calls', () =>
         activeGrant({ scope: 'calendar_detail', expiresAt: new Date(NOW.getTime() - 1) }),
         activeGrant({ scope: 'child_profile', teenAssentAt: null }),
       ],
+      VIEWER,
       NOW,
     );
     expect(redactsTeenContent(true, CHILD, 'message_content', stale)).toBe(true);

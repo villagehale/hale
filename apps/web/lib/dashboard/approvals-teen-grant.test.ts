@@ -36,9 +36,13 @@ const APPROVAL_ROW = {
 /** An active, assented, in-window grant row as candidateGrantsQuery projects it. */
 function grantRow(overrides: Record<string, unknown> = {}) {
   return {
+    familyId: FAMILY_ID,
+    grantedToUserId: PARENT_ID,
     childId: TEEN_ID,
     scope: 'message_content',
     teenAssentAt: new Date('2026-08-02T09:00:00.000Z'),
+    // The teen was actually reached — without this the predicate keeps it shut.
+    teenNotifiedAt: new Date('2026-08-02T09:00:00.000Z'),
     startsAt: new Date('2026-08-02T09:00:00.000Z'),
     expiresAt: new Date('2026-08-05T09:00:00.000Z'),
     revokedAt: null,
@@ -142,6 +146,12 @@ describe('loadPendingApprovals × teen access grants', () => {
     ]);
     expect(approval?.teenRedacted).toBe(false);
     expect(approval?.payload).toEqual(APPROVAL_ROW.payload);
+  });
+
+  it('keeps redaction when the teen was never notified, even if they assented', async () => {
+    const [approval] = await loadApprovals([grantRow({ teenNotifiedAt: null })]);
+    expect(approval?.teenRedacted).toBe(true);
+    expect(JSON.stringify(approval)).not.toContain(TEEN_QUOTE);
   });
 
   it('grants belonging to a DIFFERENT child never unlock this row', async () => {

@@ -50,9 +50,9 @@ export function TeenAccessGrants({
     <div className="flex flex-col gap-y-5">
       <p className="max-w-md text-spruce leading-relaxed">
         For a child 13 or older, Hale keeps raw content — the actual words of a message or post —
-        private from you by default. You can ask to see it: your teen is told what you asked for
-        and why, and only they can open it. Access is limited to what you asked for, lasts at most
-        seven days, and every step is on your record.
+        private from you by default. You can ask to see it. By design, your teen is told what you
+        asked for and why, and only they can open it; access is limited to what you asked for,
+        lasts at most seven days, and every step is on your record.
       </p>
       <p className="max-w-md text-spruce leading-relaxed">
         <strong>Nothing can be opened yet.</strong> Hale has no way to reach a teen — they

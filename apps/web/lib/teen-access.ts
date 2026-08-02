@@ -63,26 +63,56 @@ export const SAFETY_ESCALATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** The fields the active-grant decision is made from. Nothing else is consulted. */
 export interface TeenGrantState {
+  /** Carried so the PREDICATE re-checks tenancy, not just the query's WHERE. */
+  familyId: string;
+  /** Likewise the viewer: a grant unlocks for the ONE parent it was issued to. */
+  grantedToUserId: string;
   childId: string;
   scope: TeenAccessScope;
   teenAssentAt: Date | null;
+  teenNotifiedAt: Date | null;
   startsAt: Date | null;
   expiresAt: Date | null;
   revokedAt: Date | null;
   safetyEscalation: boolean;
 }
 
+/** Who is asking. Passed explicitly so the predicate can verify it itself. */
+export interface TeenGrantViewer {
+  familyId: string;
+  parentUserId: string;
+}
+
 /**
  * THE predicate. Pure and total, so every condition is exhaustively testable and a
  * mistake in any SQL WHERE clause can only ever narrow the candidate set, never
- * widen access — the query filters, this function decides.
+ * widen access — the query filters, this function decides. That guarantee is only
+ * real because family and viewer are re-checked HERE too: a predicate that trusted
+ * the WHERE for tenancy would have no second line of defence against a confused
+ * deputy, which is the failure mode that actually leaks one family into another.
  *
- * Fails closed on every axis: no assent (unless the declared safety escalation), no
+ * Fails closed on every axis: wrong family, wrong parent, a teen who was never
+ * actually notified, no assent (unless the declared safety escalation), no
  * activation window, a half-set window, a window that has not opened, one that has
  * closed, a revoked grant, or a window longer than its kind is allowed to be.
  */
-export function isTeenGrantActive(grant: TeenGrantState, now: Date): boolean {
+export function isTeenGrantActive(
+  grant: TeenGrantState,
+  viewer: TeenGrantViewer,
+  now: Date,
+): boolean {
+  if (grant.familyId !== viewer.familyId) return false;
+  if (grant.grantedToUserId !== viewer.parentUserId) return false;
+
   if (grant.revokedAt !== null) return false;
+
+  // Rule #1 makes notice a CONDITION of access, for both paths: the teen's assent
+  // presupposes they were asked, and the safety exception is permitted only "where
+  // the teen is notified". Requiring the delivered stamp here is what makes that
+  // true by construction rather than by the current absence of an activation UI —
+  // and it means a grant that somehow activates before its notice lands still reads
+  // as closed.
+  if (grant.teenNotifiedAt === null) return false;
   if (grant.teenAssentAt === null && !grant.safetyEscalation) return false;
 
   const { startsAt, expiresAt } = grant;
@@ -119,11 +149,12 @@ export const NO_TEEN_UNLOCKS: TeenAccessUnlocks = { allows: () => false };
 
 export function teenAccessUnlocksFrom(
   grants: readonly TeenGrantState[],
+  viewer: TeenGrantViewer,
   now: Date,
 ): TeenAccessUnlocks {
   const active = new Set(
     grants
-      .filter((grant) => isTeenGrantActive(grant, now))
+      .filter((grant) => isTeenGrantActive(grant, viewer, now))
       .map((grant) => `${grant.childId} ${grant.scope}`),
   );
   return { allows: (childId, scope) => active.has(`${childId} ${scope}`) };
@@ -158,9 +189,12 @@ export function redactsTeenContent(
 function candidateGrantsQuery(database: Database, familyId: string, parentUserId: string) {
   return database
     .select({
+      familyId: schema.teenAccessGrants.familyId,
+      grantedToUserId: schema.teenAccessGrants.grantedToUserId,
       childId: schema.teenAccessGrants.childId,
       scope: schema.teenAccessGrants.scope,
       teenAssentAt: schema.teenAccessGrants.teenAssentAt,
+      teenNotifiedAt: schema.teenAccessGrants.teenNotifiedAt,
       startsAt: schema.teenAccessGrants.startsAt,
       expiresAt: schema.teenAccessGrants.expiresAt,
       revokedAt: schema.teenAccessGrants.revokedAt,
@@ -189,7 +223,7 @@ export async function loadTeenAccessUnlocks(
 ): Promise<TeenAccessUnlocks> {
   if (parentUserId === null) return NO_TEEN_UNLOCKS;
   const rows = await candidateGrantsQuery(database, familyId, parentUserId);
-  return teenAccessUnlocksFrom(rows, now);
+  return teenAccessUnlocksFrom(rows, { familyId, parentUserId }, now);
 }
 
 /**
@@ -303,6 +337,27 @@ export async function requestTeenAccessGrant(
   const reason = request.reason.trim();
   if (reason.length === 0) {
     throw new Error('requestTeenAccessGrant: a reason is required');
+  }
+
+  // Fail closed on the target itself rather than trusting the caller to have checked
+  // (rule #1). A grant is only meaningful for a 13+ child of THIS family; minting one
+  // for anybody else would create a row the read path is willing to honour.
+  const childRows = await database
+    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(
+      and(
+        eq(schema.children.id, request.teenChildId),
+        eq(schema.children.familyId, request.familyId),
+      ),
+    )
+    .limit(1);
+  const dateOfBirth = childRows[0]?.dateOfBirth;
+  if (!dateOfBirth) {
+    throw new Error('requestTeenAccessGrant: child not found in this family');
+  }
+  if (deriveStage(dateOfBirth, now) !== 'teenager') {
+    throw new Error('requestTeenAccessGrant: child is not 13+, so nothing is redacted');
   }
 
   const grantId = await database.transaction(async (tx) => {
@@ -578,14 +633,15 @@ export async function openTeenSafetyEscalation(
     now,
   });
 
-  // Rule #1 permits this exception only "where the teen is notified". An escalation
-  // whose notice did not land has not met that condition, so it must not stay open:
-  // close it immediately (audited) and fail loudly rather than leave a parent reading
-  // their teen's content on the strength of a notification nobody received.
+  // Rule #1 permits this exception only "where the teen is notified". The PREDICATE
+  // already enforces that — an un-notified grant reads as closed no matter what this
+  // row says — so a failed notice can never expose content even for an instant. This
+  // block is the tidy-up, not the guard: it stops a dead, permanently-unreadable row
+  // sitting in the parent's list looking like open access, and it fails loudly.
   //
-  // Today this ALWAYS fires, because Hale has no way to reach a teen at all — which
-  // is the point. The assent bypass is blocked by code, not merely by the absence of
-  // a button, so it cannot be switched on by adding a UI.
+  // Today it ALWAYS fires, because Hale has no way to reach a teen at all — which is
+  // the point. The assent bypass is closed by code, not merely by the absence of a
+  // button, so it cannot be switched on by adding a UI.
   if (channel === null) {
     await revokeTeenAccessGrant(
       database,
@@ -699,7 +755,7 @@ export async function listTeenAccessGrants(
     safetyEscalation: row.safetyEscalation,
     requestedAt: row.requestedAt.toISOString(),
     expiresAt: row.expiresAt?.toISOString() ?? null,
-    active: isTeenGrantActive(row, now),
+    active: isTeenGrantActive(row, { familyId, parentUserId }, now),
     assented: row.teenAssentAt !== null,
     revoked: row.revokedAt !== null,
     teenNotified: row.teenNotifiedAt !== null,

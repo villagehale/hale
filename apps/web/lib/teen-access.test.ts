@@ -33,8 +33,14 @@ interface Call {
   values: Record<string, unknown>;
 }
 
-function stubDb(updateReturns: Record<string, unknown>[] = [{}]) {
+function stubDb(updateReturns: Record<string, unknown>[] = [{}], childDob = '2011-01-01') {
   const calls: Call[] = [];
+
+  // requestTeenAccessGrant proves the target is a 13+ child of THIS family before it
+  // writes anything, so the stub has to answer that read.
+  const select = () => ({
+    from: () => ({ where: () => ({ limit: async () => (childDob ? [{ dateOfBirth: childDob }] : []) }) }),
+  });
 
   // The node is a real Promise with the builder methods hung off it, so a call the
   // store awaits directly (an insert with no .returning()) and a call it chains both
@@ -67,6 +73,7 @@ function stubDb(updateReturns: Record<string, unknown>[] = [{}]) {
 
   const database = {
     ...handle,
+    select: vi.fn(select),
     transaction: vi.fn(async (cb: (t: typeof handle) => Promise<unknown>) => cb(handle)),
   } as unknown as Database;
 
@@ -142,6 +149,42 @@ describe('requestTeenAccessGrant', () => {
       ),
     ).rejects.toThrow(/reason is required/);
     expect(s.calls).toHaveLength(0);
+  });
+
+  it('refuses a child outside the family, and a child who is not 13+', async () => {
+    // The route resolves the teen today, but the STORE must not depend on that: one
+    // new caller and a grant could otherwise be minted for any child id (rule #1).
+    const foreign = stubDb([{}], '');
+    await expect(
+      requestTeenAccessGrant(
+        foreign.database,
+        {
+          familyId: FAMILY_ID,
+          parentUserId: PARENT_ID,
+          teenChildId: TEEN_ID,
+          scope: 'message_content',
+          reason: 'worried',
+        },
+        { notifyTeen: vi.fn(), now: NOW },
+      ),
+    ).rejects.toThrow(/child not found in this family/);
+    expect(foreign.calls).toHaveLength(0);
+
+    const toddler = stubDb([{}], '2024-05-01');
+    await expect(
+      requestTeenAccessGrant(
+        toddler.database,
+        {
+          familyId: FAMILY_ID,
+          parentUserId: PARENT_ID,
+          teenChildId: TEEN_ID,
+          scope: 'message_content',
+          reason: 'worried',
+        },
+        { notifyTeen: vi.fn(), now: NOW },
+      ),
+    ).rejects.toThrow(/not 13\+/);
+    expect(toddler.calls).toHaveLength(0);
   });
 
   it('leaves the notification obligation OPEN when the teen has no channel', async () => {

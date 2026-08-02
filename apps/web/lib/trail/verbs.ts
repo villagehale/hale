@@ -128,6 +128,10 @@ export const AUDIT_VERBS = [
   'coach_conversation_erased',
   // ── web teen access ─────────────────────────────────────────────────────
   'teen_content_access.requested',
+  'teen_content_access.teen_notified',
+  'teen_content_access.assented',
+  'teen_content_access.safety_escalation',
+  'teen_content_access.revoked',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -254,6 +258,27 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you asked to see your teenager’s content',
     family: 'awaiting',
   },
+  'teen_content_access.teen_notified': {
+    sentence: 'Hale went to tell your teenager about that request',
+    family: 'awaiting',
+  },
+  'teen_content_access.assented': {
+    sentence: 'your teenager agreed to share that content with you',
+    family: 'done',
+  },
+  // Deliberately the plainest, least euphemistic sentence in this file: this is the
+  // one row that means a teen's content was opened WITHOUT their agreement.
+  'teen_content_access.safety_escalation': {
+    sentence: 'you opened your teenager’s content for safety, without their agreement',
+    // 'problem' rather than 'done': this row is not an accomplishment, and the trail
+    // should not colour it like one. It is the most consequential line Hale can write
+    // about a family, and it should read that way at a glance.
+    family: 'problem',
+  },
+  'teen_content_access.revoked': {
+    sentence: 'access to your teenager’s content was closed',
+    family: 'done',
+  },
 };
 
 const NEUTRAL: Verb = { sentence: 'recorded an update', family: 'neutral' };
@@ -301,6 +326,7 @@ const TARGET_NOUNS: Record<string, string> = {
   village_candidates: 'village suggestion',
   routine_proposals: 'routine',
   consent_records: 'consent',
+  teen_access_grants: 'teen privacy request',
   conversations: 'Hale',
   messages: 'Hale',
   users: 'your profile',
