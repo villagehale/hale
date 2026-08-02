@@ -8,6 +8,11 @@ import {
   PROVIDER_INCIDENT_ROUTE,
   providerIncidentKind,
 } from '~/lib/monitoring/provider-health';
+import {
+  aggregateFunnelScoreboard,
+  type FunnelScoreboard,
+  formatFunnelScoreboard,
+} from './funnel-scoreboard';
 
 /**
  * X1 (VIL-227) · the weekly loop-health digest to the founder. Reuses the
@@ -41,6 +46,8 @@ export interface LoopHealthSummary {
   stopCount: number;
   weekPlansComposed: number;
   providerIncidents: ProviderIncidentRow[];
+  /** X1 · the F14 intake-funnel scoreboard for the same window. */
+  scoreboard: FunnelScoreboard;
 }
 
 /** Sums channel_messages (outbound legs) by channel/category/status, the loop_stop
@@ -100,6 +107,8 @@ export async function aggregateLoopHealth(
       ),
     );
 
+  const scoreboard = await aggregateFunnelScoreboard(database, windowStart, windowEnd);
+
   return {
     windowStart,
     windowEnd,
@@ -110,6 +119,7 @@ export async function aggregateLoopHealth(
       kind: providerIncidentKind(row.identifier),
       at: row.at,
     })),
+    scoreboard,
   };
 }
 
@@ -150,6 +160,8 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     `Weekly plans composed: ${summary.weekPlansComposed}`,
     `STOPs (loop unsubscribes): ${summary.stopCount}`,
     providerHealthLine(summary.providerIncidents),
+    '',
+    ...formatFunnelScoreboard(summary.scoreboard),
     '',
     'Messages by channel / category / status:',
   ];
