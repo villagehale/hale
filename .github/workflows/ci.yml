@@ -84,6 +84,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Civic hours parser eval (cached-only)
+        run: pnpm --filter @hale/worker eval:civic-hours
+
       - name: Build
         run: pnpm build
         env:

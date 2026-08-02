@@ -1,0 +1,31 @@
+{
+  "value": {
+    "slots": [
+      {
+        "day": "monday",
+        "start": "09:00",
+        "end": "14:00",
+        "confidence": 0.6
+      },
+      {
+        "day": "tuesday",
+        "start": "09:00",
+        "end": "14:00",
+        "confidence": 0.6
+      },
+      {
+        "day": "wednesday",
+        "start": "09:00",
+        "end": "14:00",
+        "confidence": 0.6
+      },
+      {
+        "day": "thursday",
+        "start": "09:00",
+        "end": "14:00",
+        "confidence": 0.6
+      }
+    ]
+  },
+  "latencyMs": 2281
+}

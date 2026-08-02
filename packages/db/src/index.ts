@@ -16,3 +16,9 @@ export type {
   RegistrationWindow,
   NewRegistrationWindow,
 } from './schema/registration-windows.js';
+export type {
+  CivicExtraction,
+  CivicRecurrence,
+  CivicSystem,
+  CivicVenueKind,
+} from './schema/civic.js';

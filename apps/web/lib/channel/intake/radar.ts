@@ -116,6 +116,13 @@ export async function readCandidates(database: Database, familyId: string): Prom
         isNull(schema.villageCandidates.supersededAt),
         or(
           eq(schema.villageCandidates.runType, 'standing'),
+          // VIL-252 · M16 — free civic sessions (library storytimes, EarlyON
+          // drop-ins) are exactly what the free-first ordering below exists to
+          // float, and they are dated, so `placements` can only put them on their
+          // own day. Omitting them here would leave the radar claiming "still
+          // learning your area" for a family with a verified free session on
+          // Saturday morning.
+          eq(schema.villageCandidates.runType, 'civic'),
           isNull(schema.villageCandidates.runType),
         ),
       ),

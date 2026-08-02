@@ -1,0 +1,1375 @@
+{
+  "events": {
+    "items": [
+      "6a636dc9d23de82955c8ec2a",
+      "6a636dc9d23de82955c8ec2d",
+      "6a1de4b5490f176f7dd7191d",
+      "6a1de4b5490f176f7dd7191b",
+      "6a1de4b5490f176f7dd7191c",
+      "6a626d21898f0d2051146fc1",
+      "6a636574e1bf262b5115cbb4",
+      "6a60ced30ed7b4521ed6cafc",
+      "6a6369b9d23de82955c8ebf5",
+      "6a1f9f39e13d3b4603b6462a",
+      "6a1f97df8360de907d89400e",
+      "6a255dd52ea730c17ab4f944",
+      "6a637a479e0a050e3e541fdc"
+    ],
+    "pagination": {
+      "count": 13,
+      "pages": 1,
+      "page": 1,
+      "limit": 200
+    }
+  },
+  "entities": {
+    "events": {
+      "6a636dc9d23de82955c8ec2a": {
+        "id": "6a636dc9d23de82955c8ec2a",
+        "key": "2026-10-09T10:30:00",
+        "seriesId": "6a636dc79e0a050e3e541f39",
+        "definition": {
+          "start": "2026-10-09T10:30",
+          "end": "2026-10-09T11:00",
+          "title": "Stories and Crafts (2–5 yrs)",
+          "description": "<p><strong>Ages: 2–5 years with caregiver</strong></p>\n<p>It's an arts-centric storytime! Listen to a story or two and explore a hands-on craft with your 2–5 year old.<br></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6a1ddf6f490f176f7dd71897",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium.",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25b15f797a6fee574563d",
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": null,
+            "instructions": null,
+            "cap": null,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "rawValue": "communityengagement@rhpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "name": "Community Engagement Dept."
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-09T14:30:00Z",
+        "indexEnd": "2026-10-09T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a636dc9d23de82955c8ec2d": {
+        "id": "6a636dc9d23de82955c8ec2d",
+        "key": "2026-10-30T10:30:00",
+        "seriesId": "6a636dc79e0a050e3e541f39",
+        "definition": {
+          "start": "2026-10-30T10:30",
+          "end": "2026-10-30T11:00",
+          "title": "Stories and Crafts (2–5 yrs)",
+          "description": "<p><strong>Ages: 2–5 years with caregiver</strong></p>\n<p>It's an arts-centric storytime! Listen to a story or two and explore a hands-on craft with your 2–5 year old.<br></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6a1ddf6f490f176f7dd71897",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium.",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25b15f797a6fee574563d",
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": null,
+            "instructions": null,
+            "cap": null,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "rawValue": "communityengagement@rhpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "name": "Community Engagement Dept."
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-30T14:30:00Z",
+        "indexEnd": "2026-10-30T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a1de4b5490f176f7dd7191d": {
+        "id": "6a1de4b5490f176f7dd7191d",
+        "key": "2026-08-18T10:30:00",
+        "seriesId": "6a1de4b44dc267647dab5e9e",
+        "definition": {
+          "start": "2026-08-18T10:30",
+          "end": "2026-08-18T11:00",
+          "title": "Family Storytime (0–6 yrs)",
+          "description": "<p><strong>Ages: 0-6 years with caregiver</strong></p>\n<p>Talk, read, sing, write, and play with us as we share stories, games, rhymes, and songs! Designed for babies/toddlers and their caregiver.<br></p>\n",
+          "bibIds": [],
+          "featuredImageId": "6a1de479748daf857d5a8160",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": null,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "contact": {
+            "name": "Community Engagement Dept.",
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-18T14:30:00Z",
+        "indexEnd": "2026-08-18T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a1de4b5490f176f7dd7191b": {
+        "id": "6a1de4b5490f176f7dd7191b",
+        "key": "2026-08-04T10:30:00",
+        "seriesId": "6a1de4b44dc267647dab5e9e",
+        "definition": {
+          "start": "2026-08-04T10:30",
+          "end": "2026-08-04T11:00",
+          "title": "Family Storytime (0–6 yrs)",
+          "description": "<p><strong>Ages: 0-6 years with caregiver</strong></p>\n<p>Talk, read, sing, write, and play with us as we share stories, games, rhymes, and songs! Designed for babies/toddlers and their caregiver.<br></p>\n",
+          "bibIds": [],
+          "featuredImageId": "6a1de479748daf857d5a8160",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": null,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "contact": {
+            "name": "Community Engagement Dept.",
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-04T14:30:00Z",
+        "indexEnd": "2026-08-04T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a1de4b5490f176f7dd7191c": {
+        "id": "6a1de4b5490f176f7dd7191c",
+        "key": "2026-08-11T10:30:00",
+        "seriesId": "6a1de4b44dc267647dab5e9e",
+        "definition": {
+          "start": "2026-08-11T10:30",
+          "end": "2026-08-11T11:00",
+          "title": "Family Storytime (0–6 yrs)",
+          "description": "<p><strong>Ages: 0-6 years with caregiver</strong></p>\n<p>Talk, read, sing, write, and play with us as we share stories, games, rhymes, and songs! Designed for babies/toddlers and their caregiver.<br></p>\n",
+          "bibIds": [],
+          "featuredImageId": "6a1de479748daf857d5a8160",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": null,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "contact": {
+            "name": "Community Engagement Dept.",
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-11T14:30:00Z",
+        "indexEnd": "2026-08-11T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a626d21898f0d2051146fc1": {
+        "id": "6a626d21898f0d2051146fc1",
+        "key": "2026-09-02T13:00:00",
+        "seriesId": "6a626d1fd23de82955c8d7c0",
+        "definition": {
+          "start": "2026-09-02T13:00",
+          "end": "2026-09-02T13:30",
+          "title": "Babytime (0–12 months)",
+          "description": "<p><strong>Ages: 0–12 months with caregiver</strong></p>\n<p>Join us for songs, rhymes, tickles, and bounces. This program is designed for babies and their caregiver.&nbsp;<br></p>\n<p></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "693067ae8b29ea2800c245a8",
+          "branchLocationId": "RICHGREEN",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Kids' Corner.",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": null,
+            "instructions": null,
+            "cap": null,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "rawValue": "communityengagement@rhpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "name": "Community Engagement Dept."
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-09-02T17:00:00Z",
+        "indexEnd": "2026-09-02T17:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a636574e1bf262b5115cbb4": {
+        "id": "6a636574e1bf262b5115cbb4",
+        "key": "2026-10-31T14:00:00",
+        "seriesId": "6a6365727d824676437d0656",
+        "definition": {
+          "start": "2026-10-31T14:00",
+          "end": "2026-10-31T16:00",
+          "title": "Craftivities: Spooky Family Fun",
+          "description": "<p>Get ready for some spooky fun! Drop by our ghoulish crafts table and join in on frighteningly fun activities!</p><p><br></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6a636562cf8dd42855ad5535",
+          "branchLocationId": "CENTRAL",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Kids' Corner, 1st Floor.",
+          "audienceIds": [
+            "65a562b85e365348001ea07a"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": "65c25ae8f797a6fee574563b",
+          "typeIds": [
+            "654d102aeb28943d00770278",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": null,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false,
+            "waitlistAutoPromote": false
+          },
+          "contact": {
+            "name": " Community Engagement Dept.",
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-31T18:00:00Z",
+        "indexEnd": "2026-10-31T20:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a60ced30ed7b4521ed6cafc": {
+        "id": "6a60ced30ed7b4521ed6cafc",
+        "key": "2026-09-19T10:30:00",
+        "seriesId": "6a60ced20ed7b4521ed6caf8",
+        "definition": {
+          "start": "2026-09-19T10:30",
+          "end": "2026-09-19T11:00",
+          "title": "Family Storytime: Culture Days",
+          "description": "<p>Kick off our Culture Days event with a storytime! Talk, sing, read, write, and play with us as we share stories, games, rhymes, and songs! Designed for babies/toddlers and their caregiver.</p><p><br></p>",
+          "bibIds": [],
+          "featuredImageId": "6a1de479748daf857d5a8160",
+          "branchLocationId": "OAKRIDGES",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Kids' Corner, 1st Floor.",
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5",
+            "65a562b85e365348001ea07a"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": null,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false,
+            "waitlistAutoPromote": false
+          },
+          "contact": {
+            "name": "Community Engagement Dept.",
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "isCancelled": false,
+          "partnerId": null
+        },
+        "indexStart": "2026-09-19T14:30:00Z",
+        "indexEnd": "2026-09-19T15:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a6369b9d23de82955c8ebf5": {
+        "id": "6a6369b9d23de82955c8ebf5",
+        "key": "2026-10-17T10:30:00",
+        "seriesId": "6a6369b6898f0d2051148300",
+        "definition": {
+          "start": "2026-10-17T10:30",
+          "end": "2026-10-17T11:30",
+          "title": "Ready, Set, Rescue! Firefighter Storytime",
+          "description": "<p><strong></strong>Fire up your love of reading at our Firefighter Storytime! Enjoy stories read by a Richmond Hill Firefighter, create a fun craft and meet Sparky the Fire Dog. It’s sure to be a blazing good time for little readers and their families!<br><br></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6a6369af7d824676437d0779",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium.",
+          "audienceIds": [
+            "65a562b85e365348001ea07a"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": null,
+            "instructions": null,
+            "cap": null,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "rawValue": "communityengagement@rhpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "name": "Community Engagement Dept."
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-17T14:30:00Z",
+        "indexEnd": "2026-10-17T15:30:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a1f9f39e13d3b4603b6462a": {
+        "id": "6a1f9f39e13d3b4603b6462a",
+        "key": "2026-08-22T10:30:00",
+        "seriesId": "6a1f9f398360de907d8940c0",
+        "definition": {
+          "start": "2026-08-22T10:30",
+          "end": "2026-08-22T11:00",
+          "title": "Family Storytime - Buzzing Bees",
+          "description": "<p>Buzz into a sweet storytime filled with bee-themed stories, songs, and fun!</p><p><br><br></p>",
+          "bibIds": [],
+          "featuredImageId": "6a1f9f2f40f528ac04dfea39",
+          "branchLocationId": "RICHVALE",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Auditorium",
+          "audienceIds": [
+            "65a562b85e365348001ea07a"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": null,
+            "instructions": null,
+            "cap": null,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "rawValue": "communityengagement@rhpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Community Engagement Dept."
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-22T14:30:00Z",
+        "indexEnd": "2026-08-22T15:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a1f97df8360de907d89400e": {
+        "id": "6a1f97df8360de907d89400e",
+        "key": "2026-08-08T10:30:00",
+        "seriesId": "6a1f97de490f176f7dd74ac9",
+        "definition": {
+          "isCancelled": true,
+          "contact": {
+            "name": "Community Engagement Dept.",
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "registrationInfo": {
+            "provider": null,
+            "enabledMethods": [],
+            "cap": null,
+            "instructions": null,
+            "maxSeats": null,
+            "scope": null,
+            "waitlistEnabled": false,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "registrationStart": {
+              "windowType": null,
+              "date": null,
+              "time": null,
+              "unit": "days",
+              "ordinal": 0
+            },
+            "registrationEnd": {
+              "windowType": null,
+              "date": null,
+              "time": null,
+              "unit": "days",
+              "ordinal": 0
+            }
+          },
+          "typeIds": [
+            "65c25af5db82ef1325ea6d46",
+            "65afd9a2bf3fd82800da3a01"
+          ],
+          "programId": null,
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "audienceIds": [
+            "65afdb58d20c652a4a0adfa5"
+          ],
+          "locationDetails": "Location: Auditorium",
+          "nonBranchLocationId": null,
+          "branchLocationId": "RICHVALE",
+          "featuredImageId": "6a1de479748daf857d5a8160",
+          "bibIds": [],
+          "description": "<p><strong>Ages: 0-6 years with caregiver</strong></p>\n<p>Talk, read, sing, write, and play with us as we share stories, games, rhymes, and songs! Designed for babies/toddlers and their caregiver.<br></p>\n",
+          "title": "Family Storytime (0–6 yrs)",
+          "end": "2026-08-08T11:00",
+          "start": "2026-08-08T10:30"
+        },
+        "indexStart": "2026-08-08T14:30:00Z",
+        "indexEnd": "2026-08-08T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a255dd52ea730c17ab4f944": {
+        "id": "6a255dd52ea730c17ab4f944",
+        "key": "2026-08-12T16:30:00",
+        "seriesId": "6a255dd58ea300e2631bc6fa",
+        "definition": {
+          "partnerId": null,
+          "isCancelled": true,
+          "contact": {
+            "email": {
+              "globalValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "rawValue": "communityengagement@rhpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone"
+            },
+            "name": "Community Engagement Department"
+          },
+          "registrationInfo": {
+            "waitlistEnabled": false,
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "instructions": "<p>Register for the whole series&nbsp;through <a href=\"https://www.eventbrite.ca/e/wordplay-story-writing-workshop-9-12-yrs-tickets-1989914586094?aff=BiblioEvents\" target=\"_blank\">Eventbrite</a>. Registration opens on <strong>Friday, Jun. 12&nbsp;</strong>at 9:30 a.m.</p>",
+            "isFull": false,
+            "scope": null,
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": [],
+            "registrationEnd": {
+              "windowType": null,
+              "ordinal": 0,
+              "time": null,
+              "date": null,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "windowType": null,
+              "ordinal": 0,
+              "time": null,
+              "date": null,
+              "unit": "days"
+            },
+            "provider": "EXTERNAL"
+          },
+          "typeIds": [
+            "65a57ca05e365348001ea3f6"
+          ],
+          "programId": null,
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "audienceIds": [
+            "654d1043eb28943d007702a3"
+          ],
+          "locationDetails": "Location: Auditorium",
+          "nonBranchLocationId": null,
+          "branchLocationId": "RICHVALE",
+          "featuredImageId": "6a255d3290cc4e3a790c3895",
+          "bibIds": [],
+          "description": "<p><strong>Ages: 9</strong><strong>–12</strong><strong>&nbsp;years</strong></p>\n<p>Spark your imagination in this hands-on workshop with author Karen Krossing. You'll write your own mystery story, create fantastical worlds and the characters who live in them, and develop stories about real people--including you! With fresh and inspiring story-starters, you'll have fun with words and develop your creative writing skills.&nbsp;</p>\n<p><strong>Cost: $40</strong><br></p>",
+          "title": "WordPlay Story Writing Workshop (﻿9–12 yrs)",
+          "end": "2026-08-12T17:30",
+          "start": "2026-08-12T16:30"
+        },
+        "indexStart": "2026-08-12T20:30:00Z",
+        "indexEnd": "2026-08-12T21:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a637a479e0a050e3e541fdc": {
+        "id": "6a637a479e0a050e3e541fdc",
+        "key": "2026-10-05T16:00:00",
+        "seriesId": "6a637a439e0a050e3e541fd8",
+        "definition": {
+          "start": "2026-10-05T16:00",
+          "end": "2026-10-05T17:00",
+          "title": "Let's Explore Art! (6–8 yrs)",
+          "description": "<p><strong>Ages: 6–8 years</strong></p>\n<p><strong></strong>Young artists are invited to get messy, experiment, and create using a variety of materials. Each week, we’ll dive into a different technique—from pastels to mosaics, or something completely new. Try different techniques, learn new skills, and unleash their creativity in a fun, supportive environment.<br></p>\n",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6a637a06d23de82955c8eec9",
+          "branchLocationId": "CENTRAL",
+          "nonBranchLocationId": null,
+          "locationDetails": "Location: Room A, 2nd Floor.",
+          "audienceIds": [
+            "654d1043eb28943d007702a3"
+          ],
+          "languageIds": [
+            "654d107a61803d36006c4efc"
+          ],
+          "programId": null,
+          "typeIds": [
+            "65c25b15f797a6fee574563d"
+          ],
+          "registrationInfo": {
+            "provider": "BIBLIO_EVENTS",
+            "registrationStart": {
+              "unit": "days",
+              "date": "2026-08-14",
+              "time": "T09:30",
+              "ordinal": 0,
+              "windowType": "STATIC"
+            },
+            "registrationEnd": {
+              "unit": "hours",
+              "date": null,
+              "time": null,
+              "ordinal": 24,
+              "windowType": "RELATIVE"
+            },
+            "enabledMethods": [],
+            "cap": 12,
+            "maxSeats": 2,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": "<p>Thank you for registering for the upcoming event, Let's Explore Art!, at Richmond Hill Public Library. We're delighted to have you join us for this exciting program.</p>\n<p>This program is for <strong>ages 6-8 years</strong>.&nbsp;</p>\n<p>Please arrive early so you don't miss any part of the event.</p>\n<p>If you have any questions or need further information before the event, reach out to our team at <a href=\"mailto:communityengagement@rhpl.ca\" target=\"_blank\">communityengagement@rhpl.ca</a>.</p>\n<p>Share your RHPL experience by answering this two-question survey:<a href=\"https://www.surveymonkey.com/r/rhplfeedback\"> https://www.surveymonkey.com/r/rhplfeedback</a></p>\n<p><a href=\"https://confirmsubscription.com/h/j/35F6368CCEE98AE0\">Subscribe to our e-newsletter</a> for the latest library news and upcoming events.</p>",
+            "instructionsToAttend": "<p>Your event is coming up at Richmond Hill Public Library. We’re delighted to have you join us for this program. Below are the event details:</p>\n<p>Event Details:</p>\n<ul><li>Event Name: Let's Explore Art!</li><li>Ages: 6-8 yrs</li><li>Date: Monday, Oct. 5<br></li><li>Time: 4–5 PM.</li><li>Location: Room A, 2nd Floor, Central Branch</li></ul>\n<p>Participants are asked to arrive early to the event. If you arrive late, admission will be at the discretion of the presenter.&nbsp;</p>\n<p><strong>Please note:</strong> Kids and teen programs have specific age requirements and registrants may be turned away if their child is not in the desired age group.</p>\n<p>If you have any questions or need further information before the event, reach out to our team at <a href=\"mailto:communityengagement@rhpl.ca\" target=\"_blank\">communityengagement@rhpl.ca</a>.</p>\n<p>We look forward to sharing this experience with you and hope you enjoy the event.</p>",
+            "loginToRegister": false,
+            "waitlistEnabled": true,
+            "waitlistAutoPromote": true
+          },
+          "contact": {
+            "name": "Community Engagement Dept.",
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "communityengagement@rhpl.ca",
+              "value": "communityengagement@rhpl.ca",
+              "globalValue": "communityengagement@rhpl.ca"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-05T20:00:00Z",
+        "indexEnd": "2026-10-05T21:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": 0,
+        "numberWaitlistRegistered": 0,
+        "isFull": false,
+        "registrationClosed": false
+      }
+    },
+    "eventAudiences": {
+      "654d1040bf3fd82800cf23d1": {
+        "id": "654d1040bf3fd82800cf23d1",
+        "name": "Adults",
+        "imageId": null
+      },
+      "654d1043eb28943d007702a3": {
+        "id": "654d1043eb28943d007702a3",
+        "name": "Kids",
+        "imageId": null
+      },
+      "654d1046b036662f007f6f2d": {
+        "id": "654d1046b036662f007f6f2d",
+        "name": "Teens",
+        "imageId": null
+      },
+      "65a562b85e365348001ea07a": {
+        "id": "65a562b85e365348001ea07a",
+        "name": "Families",
+        "imageId": null
+      },
+      "65afdb58d20c652a4a0adfa5": {
+        "id": "65afdb58d20c652a4a0adfa5",
+        "name": "Babies, Toddlers & Preschool",
+        "imageId": null
+      }
+    },
+    "eventTypes": {
+      "654d102aeb28943d00770278": {
+        "id": "654d102aeb28943d00770278",
+        "name": "Crafts & DIY",
+        "imageId": null
+      },
+      "654d103ab036662f007f6f2a": {
+        "id": "654d103ab036662f007f6f2a",
+        "name": "P.A. Days",
+        "imageId": null
+      },
+      "654d1051b036662f007f6f2e": {
+        "id": "654d1051b036662f007f6f2e",
+        "name": "Games & Activities",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65a56235ff048841000942c7": {
+        "id": "65a56235ff048841000942c7",
+        "name": "Technology",
+        "imageId": null
+      },
+      "65a57902efc0293a006cc634": {
+        "id": "65a57902efc0293a006cc634",
+        "name": "Culture & Heritage",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65a579c546e59233004ef355": {
+        "id": "65a579c546e59233004ef355",
+        "name": "Health & Wellness",
+        "imageId": null
+      },
+      "65a57a8046e59233004ef38a": {
+        "id": "65a57a8046e59233004ef38a",
+        "name": "Performance",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65a57ad646e59233004ef390": {
+        "id": "65a57ad646e59233004ef390",
+        "name": "Language Skills",
+        "imageId": null
+      },
+      "65a57c2aefc0293a006cc688": {
+        "id": "65a57c2aefc0293a006cc688",
+        "name": "Nature & Outdoors",
+        "imageId": null
+      },
+      "65a57c8b5e365348001ea3f5": {
+        "id": "65a57c8b5e365348001ea3f5",
+        "name": "Home & Garden",
+        "imageId": null
+      },
+      "65a57ca05e365348001ea3f6": {
+        "id": "65a57ca05e365348001ea3f6",
+        "name": "Writing",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65a57d11efc0293a006cc6f6": {
+        "id": "65a57d11efc0293a006cc6f6",
+        "name": "Author Talks",
+        "imageId": null
+      },
+      "65afd9a2bf3fd82800da3a01": {
+        "id": "65afd9a2bf3fd82800da3a01",
+        "name": "Drop-In Program",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65c25af5db82ef1325ea6d46": {
+        "id": "65c25af5db82ef1325ea6d46",
+        "name": "Books & Reading",
+        "imageId": null
+      },
+      "65c25b0fdb82ef1325ea6da9": {
+        "id": "65c25b0fdb82ef1325ea6da9",
+        "name": "Music",
+        "imageId": null
+      },
+      "65c25b15f797a6fee574563d": {
+        "id": "65c25b15f797a6fee574563d",
+        "name": "Art",
+        "imageId": null
+      },
+      "65cd071d638eb02f00ee232b": {
+        "id": "65cd071d638eb02f00ee232b",
+        "name": "Careers & Job Skills",
+        "imageId": null
+      },
+      "65cd072e1e57af2800368e80": {
+        "id": "65cd072e1e57af2800368e80",
+        "name": "STEAM",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65cd0756bc24f23600056f4d": {
+        "id": "65cd0756bc24f23600056f4d",
+        "name": "Creative Studio",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65cd0777638eb02f00ee2331": {
+        "id": "65cd0777638eb02f00ee2331",
+        "name": "Food & Drink",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65cd0783b7ed963d008a833f": {
+        "id": "65cd0783b7ed963d008a833f",
+        "name": "Newcomer",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65cd07d4b7ed963d008a8346": {
+        "id": "65cd07d4b7ed963d008a8346",
+        "name": "Indigenous",
+        "isHidden": false,
+        "imageId": null
+      },
+      "65cd07e8bc24f23600056ff0": {
+        "id": "65cd07e8bc24f23600056ff0",
+        "name": "Post-Secondary",
+        "isHidden": false,
+        "imageId": null
+      },
+      "660eb8568b48e73a00d6a767": {
+        "id": "660eb8568b48e73a00d6a767",
+        "name": "Dance",
+        "imageId": null
+      }
+    },
+    "eventLanguages": {
+      "654d107a61803d36006c4efc": {
+        "id": "654d107a61803d36006c4efc",
+        "name": "English",
+        "description": "English",
+        "imageId": null
+      },
+      "65a57bf95e365348001ea3c5": {
+        "id": "65a57bf95e365348001ea3c5",
+        "name": "Farsi",
+        "description": "Farsi",
+        "imageId": null
+      }
+    },
+    "locations": {
+      "CENTRAL": {
+        "id": "CENTRAL",
+        "name": "Central Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "65a54e4346e59233004eee28",
+        "customUrl": "",
+        "transitUrl": "",
+        "address": {
+          "country": "CA",
+          "zip": "L4C 0H5",
+          "state": "ON",
+          "city": "Richmond Hill",
+          "street": "Atkinson Street",
+          "number": "1"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "905-884-9288",
+            "label": "Phone",
+            "value": "(905) 884-9288",
+            "globalValue": "+1-905-884-9288",
+            "id": "6a2854921e67cd9cb338b04d"
+          },
+          {
+            "contactType": "email",
+            "rawValue": "info@rhpl.ca",
+            "label": "Email",
+            "globalValue": "info@rhpl.ca",
+            "value": "info@rhpl.ca",
+            "id": "6a2854921e67cd9cb338b04c"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.4388304,
+            "lat": 43.8704216
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://rhpl.bibliocommons.com/locations/CENTRAL"
+      },
+      "OAKRIDGES": {
+        "id": "OAKRIDGES",
+        "name": "Oak Ridges Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "65a55526ff0488410009410d",
+        "customUrl": "",
+        "address": {
+          "country": "CA",
+          "zip": "L4E 4R1",
+          "state": "Ontario",
+          "city": "Richmond Hill",
+          "street": "Regatta Avenue",
+          "number": "34"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "905-773-5533",
+            "label": "Phone",
+            "value": "(905) 773-5533",
+            "globalValue": "+1-905-773-5533",
+            "id": "69444d3ec967cb41207d78fd"
+          },
+          {
+            "contactType": "email",
+            "rawValue": "info@rhpl.ca",
+            "label": "Email",
+            "globalValue": "info@rhpl.ca",
+            "value": "info@rhpl.ca",
+            "id": "69444d3ec967cb41207d78fc"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.457182,
+            "lat": 43.951703
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "webUrl": "https://rhpl.bibliocommons.com/locations/OAKRIDGES"
+      },
+      "RICHGREEN": {
+        "id": "RICHGREEN",
+        "name": "Richmond Green Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "65a5570546e59233004eef20",
+        "transitUrl": "",
+        "address": {
+          "country": "CA",
+          "zip": "L4S 2T9",
+          "state": "Ontario",
+          "city": "Richmond Hill",
+          "street": "William F. Bell Parkway",
+          "number": "1"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "905-780-0711",
+            "label": "Phone",
+            "value": "(905) 780-0711",
+            "globalValue": "+1-905-780-0711",
+            "id": "69444db0ddf5632800217ebd"
+          },
+          {
+            "contactType": "email",
+            "rawValue": "info@rhpl.ca",
+            "label": "Email",
+            "globalValue": "info@rhpl.ca",
+            "value": "info@rhpl.ca",
+            "id": "69444db0ddf5632800217ebc"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.397605,
+            "lat": 43.9019705
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "webUrl": "https://rhpl.bibliocommons.com/locations/RICHGREEN"
+      },
+      "RICHVALE": {
+        "id": "RICHVALE",
+        "name": "Richvale Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "65a557ab5e365348001e9f46",
+        "address": {
+          "country": "CA",
+          "zip": "L4C 6T7",
+          "state": "ON",
+          "city": "Richmond Hill",
+          "street": "Pearson Avenue",
+          "number": "40"
+        },
+        "branchContacts": [
+          {
+            "contactType": "email",
+            "rawValue": "info@rhpl.ca",
+            "label": "Email",
+            "globalValue": "info@rhpl.ca",
+            "value": "info@rhpl.ca",
+            "id": "69444e48c967cb41207d7931"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "905-889-2847",
+            "label": "Phone",
+            "value": "(905) 889-2847",
+            "globalValue": "+1-905-889-2847",
+            "id": "69444e48c967cb41207d7930"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.4386986,
+            "lat": 43.8448962
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "webUrl": "https://rhpl.bibliocommons.com/locations/RICHVALE"
+      }
+    }
+  }
+}

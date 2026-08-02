@@ -1,0 +1,1415 @@
+{
+  "events": {
+    "items": [
+      "69f7765bc1cf6f9a75897d65",
+      "6a3328dc7550c8bf9f5e22cf",
+      "69583000c719ac98c335c8cf",
+      "6a57d06f9943bdf31e9f0f15",
+      "6a57d06f9943bdf31e9f0f13",
+      "69b561548d5e2d093365338a",
+      "6a4e9d216f5e27920347be78",
+      "6a39b83dc7d3cd580062297b",
+      "6a39b935f56bd86e00b86f63",
+      "6a355672c026ff22477b9cf6",
+      "69655ea839996c13d3cfe738",
+      "6a29bfbf8ea300e2631cab13"
+    ],
+    "pagination": {
+      "count": 12,
+      "pages": 1,
+      "page": 1,
+      "limit": 200
+    }
+  },
+  "entities": {
+    "events": {
+      "69f7765bc1cf6f9a75897d65": {
+        "id": "69f7765bc1cf6f9a75897d65",
+        "key": "2026-08-16T14:00:00",
+        "seriesId": "69f7765bc1cf6f9a75897d52",
+        "definition": {
+          "start": "2026-08-16T14:00",
+          "end": "2026-08-16T14:30",
+          "title": "Family Time",
+          "description": "<p>Join us for stories, songs, rhymes and activities in this program for children ages 5 and under and their parents or caregivers.&nbsp;Family Time runs from <b>2pm</b>&nbsp;to<strong>&nbsp;2:30pm</strong>.<br></p>",
+          "bibIds": [],
+          "featuredImageId": "6941756894297d3600a02da3",
+          "branchLocationId": "BC",
+          "nonBranchLocationId": null,
+          "audienceIds": [
+            "67eab59f53f2873000a90aa9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": "688bab14faa427ea055e2d82",
+          "typeIds": [
+            "688ba9da7845026da0ebd5df"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "staffNotes": "<p><strong>Example entry for Stay and Play:</strong> Join us for stories, songs, rhymes and activities in this program for children ages 5 and under and their parents or caregivers.&nbsp;Family Time runs from 10:00 to 10:30. Children, parents and caregivers are invited to Stay and Play from 10:30 to 11:00. </p>\n<ul><li>Remove the second and third sentences from the program description if Stay and Play is not offered at your branch.</li></ul>\n<hr>\n<p><strong>Useful Links</strong>:<strong></strong></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/Childrens-Services/Programming_and_Outreach/Forms/AllItems.aspx?RootFolder=%2FPublic%2DService%2FChildrens%2DServices%2FProgramming%5Fand%5FOutreach%2FReady%20for%20Reading&FolderCTID=0x012000C28A1000DD836448822D7F68322F7A96&View=%7B69FC3BDE%2D9C77%2D4A25%2DB281%2D167446318D4A%7D\">Ready for Reading Program Support Documents</a><br></p>\n<hr>\n<p><br>If you are accepting registration for your program, please copy and paste the following registration instructions and Information Collection Notice into the program description field, following the program description:<br><br>Please select one ticket for each participant (child or caregiver). For example, two children and two caregivers require four tickets.<br><br><strong>Information Collection Notice: </strong>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<hr>\n<p></p>\n<p><strong>Template Owner</strong><strong>: </strong>Senior Services Specialist, Children's Services</p>\n<p><strong>Contact: </strong>Patty Domski (pdomski@tpl.ca)<br></p>",
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-395-5470",
+              "value": "(416) 395-5470",
+              "rawValue": "416-395-5470",
+              "contactType": "phone"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-16T18:00:00Z",
+        "indexEnd": "2026-08-16T18:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a3328dc7550c8bf9f5e22cf": {
+        "id": "6a3328dc7550c8bf9f5e22cf",
+        "key": "2026-08-09T13:00:00",
+        "seriesId": "6a3328db8d1b82ca9f7ac0f7",
+        "definition": {
+          "start": "2026-08-09T13:00",
+          "end": "2026-08-09T14:30",
+          "title": "Sew Cool Kids - Hand Sewing",
+          "description": "<p>Would you like to learn how to hand sew?&nbsp; Come learn the basics while making your own stuffed monster.&nbsp; This program requires the participants to have some manual dexterity and be able to understand and follow instructions.&nbsp; When registering for this program, you will be registering for all the dates in this session.&nbsp; July 26th, August 9th, 16th and 23rd.<br><br>For Ages 7-12.<br></p>\n<p>Please note: This session is a repeat of the hand sewing previously taught here at Elmbrook.</p>",
+          "bibIds": [],
+          "featuredImageId": "691336049b87934100952e82",
+          "branchLocationId": "EB",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program room",
+          "audienceIds": [
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": null,
+          "typeIds": [
+            "68b050bb101e8736007ad706"
+          ],
+          "registrationInfo": {
+            "provider": "BIBLIO_EVENTS",
+            "registrationStart": {
+              "unit": "days",
+              "date": "2026-06-20",
+              "time": "T09:00",
+              "ordinal": 0,
+              "windowType": "STATIC"
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": "EVENT_START"
+            },
+            "enabledMethods": [],
+            "cap": 8,
+            "maxSeats": 2,
+            "scope": "ALL_REMAINING",
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": true,
+            "waitlistAutoPromote": true
+          },
+          "contact": {
+            "email": {
+              "globalValue": "ebstaff@tpl.ca",
+              "value": "ebstaff@tpl.ca",
+              "rawValue": "ebstaff@tpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "globalValue": "+1-416-394-5290",
+              "value": "(416) 394-5290",
+              "rawValue": "416-394-5290",
+              "contactType": "phone"
+            },
+            "name": "Elmbrook Park"
+          },
+          "isCancelled": false,
+          "partnerId": null
+        },
+        "indexStart": "2026-08-09T17:00:00Z",
+        "indexEnd": "2026-08-09T18:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": 8,
+        "numberWaitlistRegistered": 9,
+        "isFull": true,
+        "registrationClosed": true
+      },
+      "69583000c719ac98c335c8cf": {
+        "id": "69583000c719ac98c335c8cf",
+        "key": "2026-09-08T12:30:00",
+        "seriesId": "69583000333f0937c9d26f63",
+        "definition": {
+          "start": "2026-09-08T12:30",
+          "end": "2026-09-08T16:30",
+          "title": "Housing Help",
+          "description": "<p>Drop in and work one-on-one with staff from The Housing Help Centre (THHC) to determine your housing needs, connect you to other government services, and to match you with landlords across the city. THHC works with both individuals and families in the City of Toronto to find and maintain affordable, safe housing.<br></p><p>THHC can be contacted at&nbsp;416-285-8070.<br></p>",
+          "bibIds": [],
+          "featuredImageId": "6931f823fd55fb29005737ad",
+          "branchLocationId": "MAL",
+          "nonBranchLocationId": null,
+          "locationDetails": "",
+          "audienceIds": [
+            "67bf594ebd7c6c2800fd3bda"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": "68b056fd101e8736007ad754",
+          "typeIds": [
+            "68b050ae101e8736007ad704",
+            "67dda298b5f2d83b248682f3"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 0,
+              "windowType": null
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": null,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "staffNotes": "<p><strong><u>Do not forget to remove all text in square brackets [ ] from the program description field.</u></strong></p>\n<p><strong>Remember to fill out the Contact field.</strong>&nbsp;Include branch name and phone number for branch led programs and service department name and email for centrally-coordinated programs.</p>\n<hr>\n<p></p>\n<p>If you are accepting registration for your class, please copy and paste the following Information Collection Notice into the program description field, following the program description:</p>\n<p><br><strong>Information Collection Notice:</strong></p>\n<p>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Key links:</strong></p>\n<p><a href=\"https://torontopubliclibrary.sharepoint.com/:w:/r/sites/DXPProgram/Shared%20Documents/4-Programming%20and%20Events%20Imprv.%20(BiblioEvents)/User%20Manual/BiblioEvents%20User%20Manual%20v.%201.docx?d=wc9e07dc9d829450c8d0338536e776868&csf=1&web=1&e=Z7cVFn\">BiblioEvents User Manual</a></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/SitePages/Programming.aspx\">Programming&nbsp;Landing Page</a></p>\n<p><a href=\"https://share.tpl.ca/Support-Services/Planning-Policy/Program%20Evaluation%20Framework/Forms/AllItems.aspx\">Evaluation Framework</a></p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Template Owner</strong><strong>:</strong> SSS, User Education<br><strong>Contact:&nbsp;</strong>Jenny Huntley (jhuntley@tpl.ca)<strong></strong></p>",
+          "contact": {
+            "name": "Malvern branch",
+            "phone": {
+              "contactType": "phone",
+              "rawValue": "416-396-8969",
+              "value": "(416) 396-8969",
+              "globalValue": "+1-416-396-8969"
+            },
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            }
+          },
+          "isCancelled": false,
+          "partnerId": null
+        },
+        "indexStart": "2026-09-08T16:30:00Z",
+        "indexEnd": "2026-09-08T20:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a57d06f9943bdf31e9f0f15": {
+        "id": "6a57d06f9943bdf31e9f0f15",
+        "key": "2026-08-30T14:00:00",
+        "seriesId": "6a2c482816554cd59fc86590",
+        "definition": {
+          "start": "2026-08-30T14:00",
+          "end": "2026-08-30T14:30",
+          "title": "Family Time",
+          "description": "<p>Join us for stories, songs, rhymes and activities in this program for children ages 5 and under and their parents or caregivers. Family Time runs from <strong>2:00PM</strong> to <strong>2:30PM</strong>. Children, parents and caregivers are invited to Stay and Play from<strong> 2:30PM </strong>to <strong>3:00PM.</strong><br><br>*no program&nbsp;August 2nd*<br><br>*Participants will be capped at the first 30 families<br><br></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6941756894297d3600a02da3",
+          "branchLocationId": "BR",
+          "nonBranchLocationId": null,
+          "locationDetails": "Community Room",
+          "audienceIds": [
+            "67eab59f53f2873000a90aa9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": "688bab14faa427ea055e2d82",
+          "typeIds": [
+            "688ba9da7845026da0ebd5df"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "staffNotes": "<p><strong>Example entry for Stay and Play:</strong> Join us for stories, songs, rhymes and activities in this program for children ages 5 and under and their parents or caregivers. Family&nbsp;Time runs from 10:00 to 10:30. Children, parents and caregivers are invited to Stay and Play from 10:30 to 11:00.</p>\n<ul><li>Remove the second and third sentences from the program description if Stay and Play is not offered at your branch.</li></ul>\n<p><strong></strong></p>\n<p><strong>Useful Links</strong>:</p>\n<p><a href=\"https://share.tpl.ca/Public-Service/Childrens-Services/Programming_and_Outreach/Forms/AllItems.aspx?RootFolder=%2FPublic%2DService%2FChildrens%2DServices%2FProgramming%5Fand%5FOutreach%2FReady%20for%20Reading&FolderCTID=0x012000C28A1000DD836448822D7F68322F7A96&View=%7B69FC3BDE%2D9C77%2D4A25%2DB281%2D167446318D4A%7D\">Ready for Reading Program Support Documents</a></p>\n<p><br>\nIf you are accepting registration for your program, please copy and paste the following registration instructions and Information Collection Notice into the program description field, following the program description:<br>\n<br>\nPlease select one ticket for each participant (child or caregiver). For example, two children and two caregivers require four tickets.<br>\n<br>\n<strong>Information Collection Notice: </strong>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<p><strong><br></strong></p>\n<p><strong>Template Owner: </strong>Senior Services Specialist, Children's Services</p>\n<p><strong>Contact: </strong>Patty Domski (pdomski@tpl.ca)</p>",
+          "contact": {
+            "email": {
+              "globalValue": "brstaff@tpl.ca",
+              "value": "brstaff@tpl.ca",
+              "rawValue": "brstaff@tpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "globalValue": "+1-416-394-5240",
+              "value": "(416) 394-5240",
+              "rawValue": "416-394-5240",
+              "contactType": "phone"
+            },
+            "name": "Brentwood Staff"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-30T18:00:00Z",
+        "indexEnd": "2026-08-30T18:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a57d06f9943bdf31e9f0f13": {
+        "id": "6a57d06f9943bdf31e9f0f13",
+        "key": "2026-08-16T14:00:00",
+        "seriesId": "6a2c482816554cd59fc86590",
+        "definition": {
+          "start": "2026-08-16T14:00",
+          "end": "2026-08-16T14:30",
+          "title": "Family Time",
+          "description": "<p>Join us for stories, songs, rhymes and activities in this program for children ages 5 and under and their parents or caregivers. Family Time runs from <strong>2:00PM</strong> to <strong>2:30PM</strong>. Children, parents and caregivers are invited to Stay and Play from<strong> 2:30PM </strong>to <strong>3:00PM.</strong><br><br>*no program&nbsp;August 2nd*<br><br>*Participants will be capped at the first 30 families<br><br></p>",
+          "partnerId": null,
+          "bibIds": [],
+          "featuredImageId": "6941756894297d3600a02da3",
+          "branchLocationId": "BR",
+          "nonBranchLocationId": null,
+          "locationDetails": "Community Room",
+          "audienceIds": [
+            "67eab59f53f2873000a90aa9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": "688bab14faa427ea055e2d82",
+          "typeIds": [
+            "688ba9da7845026da0ebd5df"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "staffNotes": "<p><strong>Example entry for Stay and Play:</strong> Join us for stories, songs, rhymes and activities in this program for children ages 5 and under and their parents or caregivers. Family&nbsp;Time runs from 10:00 to 10:30. Children, parents and caregivers are invited to Stay and Play from 10:30 to 11:00.</p>\n<ul><li>Remove the second and third sentences from the program description if Stay and Play is not offered at your branch.</li></ul>\n<p><strong></strong></p>\n<p><strong>Useful Links</strong>:</p>\n<p><a href=\"https://share.tpl.ca/Public-Service/Childrens-Services/Programming_and_Outreach/Forms/AllItems.aspx?RootFolder=%2FPublic%2DService%2FChildrens%2DServices%2FProgramming%5Fand%5FOutreach%2FReady%20for%20Reading&FolderCTID=0x012000C28A1000DD836448822D7F68322F7A96&View=%7B69FC3BDE%2D9C77%2D4A25%2DB281%2D167446318D4A%7D\">Ready for Reading Program Support Documents</a></p>\n<p><br>\nIf you are accepting registration for your program, please copy and paste the following registration instructions and Information Collection Notice into the program description field, following the program description:<br>\n<br>\nPlease select one ticket for each participant (child or caregiver). For example, two children and two caregivers require four tickets.<br>\n<br>\n<strong>Information Collection Notice: </strong>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<p><strong><br></strong></p>\n<p><strong>Template Owner: </strong>Senior Services Specialist, Children's Services</p>\n<p><strong>Contact: </strong>Patty Domski (pdomski@tpl.ca)</p>",
+          "contact": {
+            "email": {
+              "globalValue": "brstaff@tpl.ca",
+              "value": "brstaff@tpl.ca",
+              "rawValue": "brstaff@tpl.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "globalValue": "+1-416-394-5240",
+              "value": "(416) 394-5240",
+              "rawValue": "416-394-5240",
+              "contactType": "phone"
+            },
+            "name": "Brentwood Staff"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-16T18:00:00Z",
+        "indexEnd": "2026-08-16T18:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "69b561548d5e2d093365338a": {
+        "id": "69b561548d5e2d093365338a",
+        "key": "2026-08-09T14:00:00",
+        "seriesId": "69b561532866a5b48841ff15",
+        "definition": {
+          "start": "2026-08-09T14:00",
+          "end": "2026-08-09T15:00",
+          "title": "STEM Sundays",
+          "description": "<p>Explore different STEM-themed activities every Sunday. </p>\n<p>Drop-in, no registration required. Space is limited. </p>\n<p>Access and use of equipment will be on a first come, first serve basis.&nbsp;<u>Suitable for ages 6-12.</u></p>\n<p><u><br></u></p>\n<table>\n <tbody><tr>\n  <td width=\"195\" valign=\"top\">\n  <p><strong>                    Dash:</strong></p>\n  </td>\n  <td width=\"510\" valign=\"top\">\n  <p>May 3, June 7, July 5, August 9</p>\n  </td>\n </tr>\n <tr>\n  <td width=\"195\" valign=\"top\">\n  <p><strong>                   LEGO:</strong></p>\n  </td>\n  <td width=\"510\" valign=\"top\">\n  <p>May 10, June 14, July 12, August 16</p></td>\n </tr>\n <tr>\n  <td width=\"195\" valign=\"top\">\n  <p><strong>  Snap Circuits:</strong></p>\n  </td>\n  <td width=\"510\" valign=\"top\">\n  <p>May 24, June 21, July 19, August 23 </p>\n  </td>\n </tr>\n <tr>\n  <td width=\"195\" valign=\"top\">\n  <p><strong>              Sphero:</strong></p>\n  </td>\n  <td width=\"510\" valign=\"top\">\n  <p>May 31, June 28, July 26, August 30 </p>\n  </td>\n </tr>\n</tbody></table>\n<p><u><br></u></p>",
+          "bibIds": [],
+          "featuredImageId": "691336819b87934100952e93",
+          "branchLocationId": "MA",
+          "nonBranchLocationId": null,
+          "locationDetails": "Basement Program Room",
+          "audienceIds": [
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": null,
+          "typeIds": [
+            "67dda25753f2873000a78dba"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-393-7700",
+              "value": "(416) 393-7700",
+              "rawValue": "416-393-7700",
+              "contactType": "phone"
+            },
+            "name": "Main Street Branch"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-09T18:00:00Z",
+        "indexEnd": "2026-08-09T19:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a4e9d216f5e27920347be78": {
+        "id": "6a4e9d216f5e27920347be78",
+        "key": "2026-09-02T14:00:00",
+        "seriesId": "6a4e9d21ff7e9ae60175037d",
+        "definition": {
+          "start": "2026-09-02T14:00",
+          "end": "2026-09-02T15:00",
+          "title": "Puppet Show: Goldilocks and the Three Bears",
+          "description": "<p>Join us for a puppet show adaptation of the classic English fairy tale, <em><strong>Goldilocks and the Three Bears</strong></em> (additional songs and stories too!).</p><p>For children of all ages with their parents or caregivers. Drop-in, no registration required. Space is limited.</p><br><p> </p>",
+          "bibIds": [],
+          "featuredImageId": "69f8add9caf934360059a5da",
+          "branchLocationId": "HP",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room",
+          "audienceIds": [
+            "67eab59f53f2873000a90aa9",
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": "688bab2c9d224ba060fa21d8",
+          "typeIds": [
+            "688ba8c6faa427ea055e2d6e"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": null
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": null,
+            "instructions": null,
+            "cap": null,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-393-7671",
+              "value": "(416) 393-7671",
+              "rawValue": "416-393-7671",
+              "contactType": "phone"
+            },
+            "name": "High Park Staff"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-09-02T18:00:00Z",
+        "indexEnd": "2026-09-02T19:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a39b83dc7d3cd580062297b": {
+        "id": "6a39b83dc7d3cd580062297b",
+        "key": "2026-08-17T16:00:00",
+        "seriesId": "6a39b83d4407827f8aa6b12d",
+        "definition": {
+          "start": "2026-08-17T16:00",
+          "end": "2026-08-17T17:00",
+          "title": "Underwater flashlight craft",
+          "description": "<table>\n <tbody><tr>\n  <td valign=\"top\">\n  <p>Join us for a   fun-filled activity for kids to try. This underwater flashlight craft is not   only fun to make – but also fun to play with! </p>\n<p>Participants will   use the flashlight to reveal the sea creatures under the sea.</p>\n<p>All materials will   be provided.</p>\n  </td>\n </tr>\n</tbody></table>\n<p>Drop In. No Registration Required, space is limited.</p>",
+          "bibIds": [],
+          "featuredImageId": "691336049b87934100952e82",
+          "branchLocationId": "AH",
+          "nonBranchLocationId": null,
+          "locationDetails": "Room 1",
+          "audienceIds": [
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": null,
+          "typeIds": [
+            "68b050bb101e8736007ad706"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "staffNotes": "<p><strong><u>Do not forget to remove all text in square brackets [ ] from the program description field.</u></strong></p>\n<p><strong>Remember to fill out the Contact field.</strong>&nbsp;Include branch name and phone number for branch led programs and service department name and email for centrally-coordinated programs.</p>\n<hr>\n<p></p>\n<p>If you are accepting registration for your program, please copy and paste the following Information Collection Notice into the program description field, following the program description:</p>\n<p><br><strong>Information Collection Notice:&nbsp;</strong>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Key links:</strong></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/_layouts/15/DocIdRedir.aspx?ID=X55AQ52CK2HJ-634862394-4\">BiblioEvents User Manual</a></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/SitePages/Programming.aspx\">Programming&nbsp;Landing Page</a></p>\n<p><a href=\"https://share.tpl.ca/Support-Services/Planning-Policy/Program%20Evaluation%20Framework/Forms/AllItems.aspx\">Evaluation Framework</a></p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Template Owner</strong><strong>:</strong> SSS, User Education<br><strong>Contact:&nbsp;</strong>Jenny Huntley (jhuntley@tpl.ca)<strong></strong></p>",
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-395-5430",
+              "value": "(416) 395-5430",
+              "rawValue": "416-395-5430",
+              "contactType": "phone"
+            },
+            "name": "Armour Heights Library"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-17T20:00:00Z",
+        "indexEnd": "2026-08-17T21:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a39b935f56bd86e00b86f63": {
+        "id": "6a39b935f56bd86e00b86f63",
+        "key": "2026-08-24T16:00:00",
+        "seriesId": "6a39b935f56bd86e00b86f5f",
+        "definition": {
+          "start": "2026-08-24T16:00",
+          "end": "2026-08-24T17:00",
+          "title": "Make-do Project Craft",
+          "description": "<table>\n <tbody><tr>\n  <td valign=\"top\">\n  <p>Join us for a fun and creative activity   with a Cardboard box. Participants will use their imagination to build and   decorate their own Make-do Project Craft.</p>\n<p>All materials will be provided. <br>\n  <br>\n  </p>\n<p>Drop In. No Registration required</p>\n  </td>\n </tr>\n</tbody></table>",
+          "bibIds": [],
+          "featuredImageId": "691336049b87934100952e82",
+          "branchLocationId": "AH",
+          "nonBranchLocationId": null,
+          "locationDetails": "Room 1",
+          "audienceIds": [
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": null,
+          "typeIds": [
+            "68b050bb101e8736007ad706"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "staffNotes": "<p><strong><u>Do not forget to remove all text in square brackets [ ] from the program description field.</u></strong></p>\n<p><strong>Remember to fill out the Contact field.</strong>&nbsp;Include branch name and phone number for branch led programs and service department name and email for centrally-coordinated programs.</p>\n<hr>\n<p></p>\n<p>If you are accepting registration for your program, please copy and paste the following Information Collection Notice into the program description field, following the program description:</p>\n<p><br><strong>Information Collection Notice:&nbsp;</strong>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Key links:</strong></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/_layouts/15/DocIdRedir.aspx?ID=X55AQ52CK2HJ-634862394-4\">BiblioEvents User Manual</a></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/SitePages/Programming.aspx\">Programming&nbsp;Landing Page</a></p>\n<p><a href=\"https://share.tpl.ca/Support-Services/Planning-Policy/Program%20Evaluation%20Framework/Forms/AllItems.aspx\">Evaluation Framework</a></p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Template Owner</strong><strong>:</strong> SSS, User Education<br><strong>Contact:&nbsp;</strong>Jenny Huntley (jhuntley@tpl.ca)<strong></strong></p>",
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-395-5430",
+              "value": "(416) 395-5430",
+              "rawValue": "416-395-5430",
+              "contactType": "phone"
+            },
+            "name": "Armour Heights Library"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-24T20:00:00Z",
+        "indexEnd": "2026-08-24T21:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a355672c026ff22477b9cf6": {
+        "id": "6a355672c026ff22477b9cf6",
+        "key": "2026-08-28T13:30:00",
+        "seriesId": "6a355672414ef43d009769f4",
+        "definition": {
+          "start": "2026-08-28T13:30",
+          "end": "2026-08-28T14:30",
+          "title": "3D Design and Print Painting For Kids Part 2 (Print Painting)",
+          "description": "<p>Join us for Part 2 where kids can unleash their creativity painting 3D printed models that they had created during Part 1. This hands-on class will introduce children to the world of 3D printing in a playful and engaging way. Come ready to have a blast!<br><br>For more information about this program please contact dihonline@tpl.ca<br><br></p>",
+          "bibIds": [],
+          "featuredImageId": "69332e162bee0c37006450a1",
+          "branchLocationId": "DGH",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room",
+          "audienceIds": [
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": "68b0554e101e8736007ad739",
+          "typeIds": [
+            "68b050bb101e8736007ad706"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "EVENT_START"
+            },
+            "registrationStart": {
+              "ordinal": 14,
+              "unit": "days",
+              "time": "T12:00",
+              "date": "2026-08-14",
+              "windowType": "STATIC"
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": "<p>There will be a risk of getting paint on clothes. Dress accordingly.</p>",
+            "waitlistEnabled": true,
+            "scope": null,
+            "maxSeats": 3,
+            "instructions": "<p><strong>To Register please call&nbsp;&nbsp;(416) 394-1040&nbsp;or visit the branch</strong></p>",
+            "cap": 10,
+            "enabledMethods": [],
+            "provider": "BIBLIO_EVENTS"
+          },
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-394-1014",
+              "value": "(416) 394-1014",
+              "rawValue": "(416) 394-1014",
+              "contactType": "phone"
+            },
+            "name": "Daniel G. Hill Branch"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-28T17:30:00Z",
+        "indexEnd": "2026-08-28T18:30:00Z",
+        "isRecurring": false,
+        "numberRegistered": 0,
+        "numberWaitlistRegistered": 0,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "69655ea839996c13d3cfe738": {
+        "id": "69655ea839996c13d3cfe738",
+        "key": "2026-12-14T08:00:00",
+        "seriesId": "69655ea7a0dcc142c979aff4",
+        "definition": {
+          "isCancelled": true,
+          "contact": {
+            "name": "Toronto Reference Library- Business, Science and Technology Department",
+            "phone": {
+              "contactType": "phone",
+              "rawValue": "416-393-7245",
+              "value": "(416) 393-7245",
+              "globalValue": "+1-416-393-7245"
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "trlbus@tpl.ca",
+              "value": "trlbus@tpl.ca",
+              "globalValue": "trlbus@tpl.ca"
+            }
+          },
+          "registrationInfo": {
+            "waitlistEnabled": true,
+            "loginToRegister": true,
+            "instructionsToAttend": null,
+            "onlineInstructions": "<p>Reading the book prior to attendance is recommended.&nbsp;Links to the TPL copies of the books can be in the event listing.</p>",
+            "instructions": "<p><a href=\"https://www.eventbrite.ca/e/culture-technology-book-club-traffic-by-ben-smith-tickets-1979125721309?aff=ebdsoporgprofile\">Register on eventbrite</a></p>",
+            "isFull": false,
+            "scope": null,
+            "maxSeats": 2,
+            "cap": 30,
+            "enabledMethods": [],
+            "registrationEnd": {
+              "windowType": "EVENT_START",
+              "ordinal": 0,
+              "time": null,
+              "date": null,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "windowType": null,
+              "ordinal": 30,
+              "time": null,
+              "date": null,
+              "unit": "days"
+            },
+            "provider": "BIBLIO_EVENTS"
+          },
+          "typeIds": [
+            "67dda27a4225953e001581ca"
+          ],
+          "programId": null,
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "audienceIds": [
+            "67bf594ebd7c6c2800fd3bda"
+          ],
+          "locationDetails": "3rd floor Discussion Room",
+          "nonBranchLocationId": null,
+          "branchLocationId": "TRL",
+          "featuredImageId": "69125d7a0562322f002f912b",
+          "bibIds": [
+            "4380759234"
+          ],
+          "description": "<p>The Culture and Technology Book club brings readers together once a month to discuss new and classic texts that raise important questions about the way technology transforms our cultural and political lives.</p>\n<p>This month we read:</p>\n<p><a id=\"ember27520\" data-add-title-link=\"4380759234\" href=\"/item/show/4380759234\">End Times</a>:&nbsp;<a title=\"https://www.torontopubliclibrary.ca/detail.jsp?Entt=RDM4380759&R=4380759\" id=\"OWA2205d98e-4c7b-c453-31ff-5cb41fee653a\" data-auth=\"NotApplicable\" rel=\"noopener noreferrer\" target=\"_blank\" href=\"https://www.torontopubliclibrary.ca/detail.jsp?Entt=RDM4380759&R=4380759\" data-linkindex=\"20\" data-olk-copy-source=\"MessageBody\">elites, counter-elites, and the path of political disintegration</a>&nbsp;by Peter Turchin (2023)<br><br>Peter Turchin, co-founder of <a title=\"https://peterturchin.com/cliodynamics-history-as-science/\" id=\"OWAb247db23-47d0-3d3b-ec7f-549bab8e9e83\" data-auth=\"NotApplicable\" rel=\"noopener noreferrer\" target=\"_blank\" href=\"https://peterturchin.com/cliodynamics-history-as-science/\" data-linkindex=\"22\">cliodynamics</a>, a new interdisciplinary science of history, uses his novel method of analysis to provide a big-picture explanation for the global situation and predictions for what is to come.<br></p>\n",
+          "title": "Culture & Technology Book Club: End Times by Peter Turchin",
+          "end": "2026-12-14T09:00",
+          "start": "2026-12-14T08:00"
+        },
+        "indexStart": "2026-12-14T13:00:00Z",
+        "indexEnd": "2026-12-14T14:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": 0,
+        "numberWaitlistRegistered": 0,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a29bfbf8ea300e2631cab13": {
+        "id": "6a29bfbf8ea300e2631cab13",
+        "key": "2026-08-09T14:00:00",
+        "seriesId": "6a29bfbf90cc4e3a790d21da",
+        "definition": {
+          "start": "2026-08-09T14:00",
+          "end": "2026-08-09T15:00",
+          "title": "Creative Circle",
+          "description": "<table>\n <tbody><tr>\n  <td valign=\"top\">\n  <p>Drop by to make new   friends, colour, play with Lego, games, puzzles and more!&nbsp;</p><p>Drop In. No registration required</p>\n\n\n\n\n\n  </td>\n </tr>\n</tbody></table>",
+          "bibIds": [],
+          "featuredImageId": "691336049b87934100952e82",
+          "branchLocationId": "AH",
+          "nonBranchLocationId": null,
+          "locationDetails": "Room 1",
+          "audienceIds": [
+            "6894f7dab7a97e36001ab2b9"
+          ],
+          "languageIds": [
+            "67bf59641993693600dc70d4"
+          ],
+          "programId": null,
+          "typeIds": [
+            "68b050bb101e8736007ad706",
+            "67dda25753f2873000a78dba"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "ordinal": 0,
+              "unit": "days"
+            },
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": []
+          },
+          "staffNotes": "<p><strong><u>Do not forget to remove all text in square brackets [ ] from the program description field.</u></strong></p>\n<p><strong>Remember to fill out the Contact field.</strong>&nbsp;Include branch name and phone number for branch led programs and service department name and email for centrally-coordinated programs.</p>\n<hr>\n<p></p>\n<p>If you are accepting registration for your program, please copy and paste the following Information Collection Notice into the program description field, following the program description:</p>\n<p><br><strong>Information Collection Notice:&nbsp;</strong>The personal information on this form is collected by the Toronto Public Library under the Public Libraries Act, sections 20(a), 20(c), and 20(d). The information will only be used for event and program registration, delivery and evaluation. Questions about how the library handles your information can be directed to Answerline staff at <a href=\"mailto:answerline@tpl.ca\">answerline@tpl.ca</a>, 416-397-5981, 789 Yonge Street, Toronto ON M4W 2G8.</p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Key links:</strong></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/_layouts/15/DocIdRedir.aspx?ID=X55AQ52CK2HJ-634862394-4\">BiblioEvents User Manual</a></p>\n<p><a href=\"https://share.tpl.ca/Public-Service/System-Wide-Programs-and-Initiatives/SitePages/Programming.aspx\">Programming&nbsp;Landing Page</a></p>\n<p><a href=\"https://share.tpl.ca/Support-Services/Planning-Policy/Program%20Evaluation%20Framework/Forms/AllItems.aspx\">Evaluation Framework</a></p>\n<hr>\n<p><strong><br></strong></p>\n<p><strong>Template Owner</strong><strong>:</strong> SSS, User Education<br><strong>Contact:&nbsp;</strong>Jenny Huntley (jhuntley@tpl.ca)<strong></strong></p>",
+          "contact": {
+            "email": {
+              "contactType": "email",
+              "globalValue": null,
+              "value": null
+            },
+            "phone": {
+              "globalValue": "+1-416-395-5430",
+              "value": "(416) 395-5430",
+              "rawValue": "416-395-5430",
+              "contactType": "phone"
+            },
+            "name": "Armour Heights Library"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-09T18:00:00Z",
+        "indexEnd": "2026-08-09T19:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      }
+    },
+    "eventAudiences": {
+      "67bf594ebd7c6c2800fd3bda": {
+        "id": "67bf594ebd7c6c2800fd3bda",
+        "name": "Adults (18+)",
+        "imageId": null
+      },
+      "67eab59153f2873000a90aa8": {
+        "id": "67eab59153f2873000a90aa8",
+        "name": "Teens (13-17)",
+        "imageId": null
+      },
+      "67eab59f53f2873000a90aa9": {
+        "id": "67eab59f53f2873000a90aa9",
+        "name": "Preschool Children (0-5)",
+        "imageId": null
+      },
+      "6894f7dab7a97e36001ab2b9": {
+        "id": "6894f7dab7a97e36001ab2b9",
+        "name": "School Age Children (6-12)",
+        "imageId": null
+      },
+      "6894f7ed639e1e9694a55425": {
+        "id": "6894f7ed639e1e9694a55425",
+        "name": "Younger Adults (18-24)",
+        "imageId": null
+      },
+      "6894f7fb639e1e9694a5542a": {
+        "id": "6894f7fb639e1e9694a5542a",
+        "name": "Older Adults",
+        "imageId": null
+      }
+    },
+    "eventTypes": {
+      "67dda1bc53f2873000a78da3": {
+        "id": "67dda1bc53f2873000a78da3",
+        "name": "Language Learning",
+        "isHidden": false,
+        "imageId": "6931f84aea69de6e000f2e6f"
+      },
+      "67dda25753f2873000a78dba": {
+        "id": "67dda25753f2873000a78dba",
+        "name": "Science & Engineering",
+        "isHidden": false,
+        "imageId": "691336819b87934100952e93"
+      },
+      "67dda26bb5f2d83b248682f2": {
+        "id": "67dda26bb5f2d83b248682f2",
+        "name": "Author Talks & Lectures",
+        "imageId": "691335c69b87934100952e77"
+      },
+      "67dda27a4225953e001581ca": {
+        "id": "67dda27a4225953e001581ca",
+        "name": "Book Clubs",
+        "isHidden": false,
+        "imageId": "69125d7a0562322f002f912b"
+      },
+      "67dda298b5f2d83b248682f3": {
+        "id": "67dda298b5f2d83b248682f3",
+        "name": "Personal Finance",
+        "isHidden": false,
+        "imageId": "691336770562322f002fa63e"
+      },
+      "67eab96b5d951f3600108994": {
+        "id": "67eab96b5d951f3600108994",
+        "name": "Computer Basics & Office Software",
+        "isHidden": false,
+        "imageId": "691335e9fbf38a28002323aa"
+      },
+      "68669a98d234473d0023f947": {
+        "id": "68669a98d234473d0023f947",
+        "name": "Fabrication Studio​",
+        "isHidden": false,
+        "imageId": "691336310562322f002fa62a"
+      },
+      "688ba8c6faa427ea055e2d6e": {
+        "id": "688ba8c6faa427ea055e2d6e",
+        "name": "Culture, Arts & Entertainment",
+        "imageId": "69133610fbf38a28002323b0"
+      },
+      "688ba8edfaa427ea055e2d6f": {
+        "id": "688ba8edfaa427ea055e2d6f",
+        "name": "Health & Wellness",
+        "imageId": "691336460562322f002fa634"
+      },
+      "688ba9ccfaa427ea055e2d7a": {
+        "id": "688ba9ccfaa427ea055e2d7a",
+        "name": "Conversation Circles",
+        "imageId": "691335f79b87934100952e7c"
+      },
+      "688ba9da7845026da0ebd5df": {
+        "id": "688ba9da7845026da0ebd5df",
+        "name": "Reading Programs & Storytimes",
+        "isHidden": false,
+        "imageId": "6931f885ea69de6e000f2e77"
+      },
+      "688ba9ec9d224ba060fa21b6": {
+        "id": "688ba9ec9d224ba060fa21b6",
+        "name": "Library Visits & Tours",
+        "isHidden": false,
+        "imageId": "6913365e9b87934100952e87"
+      },
+      "68b050ae101e8736007ad704": {
+        "id": "68b050ae101e8736007ad704",
+        "name": "Civic & Community Engagement",
+        "imageId": "6931f823fd55fb29005737ad"
+      },
+      "68b050bb101e8736007ad706": {
+        "id": "68b050bb101e8736007ad706",
+        "name": "Crafts & Hobbies",
+        "imageId": "691336049b87934100952e82"
+      },
+      "68b050c5023ff32800756702": {
+        "id": "68b050c5023ff32800756702",
+        "name": "Games & Sports",
+        "imageId": "6913363b0562322f002fa62f"
+      },
+      "68b050db023ff32800756705": {
+        "id": "68b050db023ff32800756705",
+        "name": "Personal Development",
+        "imageId": "6931f86bd875af6300d0068e"
+      },
+      "68caafcb023ff32800799b52": {
+        "id": "68caafcb023ff32800799b52",
+        "name": "Artificial Intelligence",
+        "imageId": "6931fe74d875af6300d00703"
+      },
+      "68cab497c798579c2e9011ec": {
+        "id": "68cab497c798579c2e9011ec",
+        "name": "Coding & Robotics",
+        "imageId": "691335d6fbf38a28002323a5"
+      },
+      "68cab4a9c798579c2e9011ee": {
+        "id": "68cab4a9c798579c2e9011ee",
+        "name": "Audio & Visual",
+        "imageId": "691335b60562322f002fa61d"
+      },
+      "68cab4bc9b6a35582f71d88d": {
+        "id": "68cab4bc9b6a35582f71d88d",
+        "name": "Digital Safety",
+        "imageId": "6913361e886bb73600ba453b"
+      },
+      "68fa73719b87934100924364": {
+        "id": "68fa73719b87934100924364",
+        "name": "3D Printing",
+        "imageId": "6931f7d48d33cc4900c51183"
+      },
+      "688ba9bb9d224ba060fa21b3": {
+        "id": "688ba9bb9d224ba060fa21b3",
+        "name": "History & Genealogy",
+        "imageId": "691336520562322f002fa639"
+      },
+      "6a392ed516554cd59fca6ce8": {
+        "id": "6a392ed516554cd59fca6ce8",
+        "name": "Writing Groups",
+        "imageId": "6a611ce3a41369ab2c67ef93"
+      }
+    },
+    "eventLanguages": {
+      "67bf59641993693600dc70d4": {
+        "id": "67bf59641993693600dc70d4",
+        "name": "English",
+        "description": "English",
+        "imageId": null
+      },
+      "67eab5eb075f7728007381c3": {
+        "id": "67eab5eb075f7728007381c3",
+        "name": "French",
+        "description": "Français",
+        "imageId": null
+      }
+    },
+    "locations": {
+      "AH": {
+        "id": "AH",
+        "name": "Armour Heights",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "68113f144f2cd1c0cc828db2",
+        "address": {
+          "country": "CA",
+          "zip": "M5M 4M7",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Avenue Road",
+          "number": "2140"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-395-5430",
+            "label": "Phone",
+            "value": "(416) 395-5430",
+            "globalValue": "+1-416-395-5430",
+            "id": "6a4a7b9f86636e3d0052c0a8"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "6a4a7b9f86636e3d0052c0a7"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.4219493,
+            "lat": 43.7393349
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "webUrl": "https://tpl.ca/locations/AH"
+      },
+      "BC": {
+        "id": "BC",
+        "name": "Black Creek",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "6811453da92893579f394e59",
+        "address": {
+          "country": "CA",
+          "zip": "M3L 1B2",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Wilson Avenue",
+          "number": "1700 "
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-395-5470",
+            "label": "Phone",
+            "value": "(416) 395-5470",
+            "globalValue": "+1-416-395-5470",
+            "id": "696fa1d26c126d0e48956292"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "696fa1d26c126d0e48956291"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.5115958,
+            "lat": 43.7214385
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/BC"
+      },
+      "BR": {
+        "id": "BR",
+        "name": "Brentwood",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "6812897a043e708f294a2fd5",
+        "address": {
+          "country": "CA",
+          "zip": "M8X 2B5",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Brentwood Road North",
+          "number": "36"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-394-5240",
+            "label": "Phone",
+            "value": "(416) 394-5240",
+            "globalValue": "+1-416-394-5240",
+            "id": "6a184f19f6bd012f006aeb07"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "6a184f19f6bd012f006aeb06"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.5142792,
+            "lat": 43.6473973
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/BR"
+      },
+      "DGH": {
+        "id": "DGH",
+        "name": "Daniel G. Hill",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "681a44a6075f77280079776c",
+        "address": {
+          "country": "CA",
+          "zip": "M6S 4A6",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Jane Street",
+          "number": "620"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-394-1014",
+            "label": "Phone",
+            "value": "(416) 394-1014",
+            "globalValue": "+1-416-394-1014",
+            "id": "6a21f5d38ea300e2631b3f7d"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "6a21f5d38ea300e2631b3f7c"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.4914357,
+            "lat": 43.6654534
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/DGH"
+      },
+      "EB": {
+        "id": "EB",
+        "name": "Elmbrook Park",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "681a8cff075f7728007988e9",
+        "transitUrl": "",
+        "address": {
+          "country": "CA",
+          "zip": "M9C 5B4",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Elmbrook Crescent",
+          "number": "2"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-394-5290",
+            "label": "Phone",
+            "value": "(416) 394-5290",
+            "globalValue": "+1-416-394-5290",
+            "id": "6a46586b9bc7ad4320111f6f"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "6a46586b9bc7ad4320111f6e"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.5839345,
+            "lat": 43.6601116
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "webUrl": "https://tpl.ca/locations/EB"
+      },
+      "HP": {
+        "id": "HP",
+        "name": "High Park",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "681cc33a2b0fb15d9fb3cb10",
+        "address": {
+          "country": "CA",
+          "zip": "M6R 2L7",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Roncesvalles Avenue",
+          "number": "228"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-393-7671",
+            "label": "Phone",
+            "value": "(416) 393-7671",
+            "globalValue": "+1-416-393-7671",
+            "id": "696fa4c3cbf6405d3564a3e4"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "696fa4c3cbf6405d3564a3e3"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.44896399999999,
+            "lat": 43.6451162
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/HP"
+      },
+      "MA": {
+        "id": "MA",
+        "name": "Main Street",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "681d0d144f2cd1c0cc844055",
+        "address": {
+          "country": "CA",
+          "zip": "M4E 2V9",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Main Street",
+          "number": "137"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-393-7700",
+            "label": "Phone",
+            "value": "(416) 393-7700",
+            "globalValue": "+1-416-393-7700",
+            "id": "69e90dc2c1cf6f9a758708b8"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "69e90dc2c1cf6f9a758708b7"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.2995033,
+            "lat": 43.6834513
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/MA"
+      },
+      "MAL": {
+        "id": "MAL",
+        "name": "Malvern",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "681d10657374ee901ddeef4c",
+        "address": {
+          "country": "CA",
+          "zip": "M1B 3G5",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Sewells Road",
+          "number": "30"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-396-8969",
+            "label": "Phone",
+            "value": "(416) 396-8969",
+            "globalValue": "+1-416-396-8969",
+            "id": "6a5d3c70c44ff5b82cf614df"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "6a5d3c70c44ff5b82cf614de"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.2164074,
+            "lat": 43.8089406
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/MAL"
+      },
+      "TRL": {
+        "id": "TRL",
+        "name": "Toronto Reference Library",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "67fe8471520be7b640d910ef",
+        "address": {
+          "country": "CA",
+          "zip": "M4W 2G8",
+          "state": "ON",
+          "city": "Toronto",
+          "street": "Yonge Street",
+          "number": "789"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "416-395-5577",
+            "label": "Phone",
+            "value": "(416) 395-5577",
+            "globalValue": "+1-416-395-5577",
+            "id": "6a68f11ecca66c2f00a698a4"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "416-397-5981",
+            "label": "Answerline",
+            "value": "(416) 397-5981",
+            "globalValue": "+1-416-397-5981",
+            "id": "6a68f11ecca66c2f00a698a3"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.38674379999999,
+            "lat": 43.6718136
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://tpl.ca/locations/TRL"
+      }
+    }
+  }
+}

@@ -59,6 +59,12 @@ export interface VillageReadOptions {
  * null, which the migration backfilled to 'standing'). With `searchSeason` → the
  * latest SEARCH run for that season (run_type 'search' AND search_season = $).
  * Extracted so the coexistence predicate is unit-tested in one place.
+ *
+ * 'civic' (VIL-252 · M16) rides along with the STANDING feed rather than forming a
+ * third view: a free library storytime is one of this family's standing local
+ * options, not a separate mode a parent has to go looking for. It is its own run
+ * type only so the weekly civic sweep and the LLM discovery run supersede their
+ * own rows and never each other's.
  */
 export function villageActiveFilter(familyId: string, opts?: VillageReadOptions): SQL | undefined {
   const runScope = opts?.searchSeason
@@ -68,6 +74,7 @@ export function villageActiveFilter(familyId: string, opts?: VillageReadOptions)
       )
     : or(
         eq(schema.villageCandidates.runType, 'standing'),
+        eq(schema.villageCandidates.runType, 'civic'),
         isNull(schema.villageCandidates.runType),
       );
   return and(
