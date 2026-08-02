@@ -1,15 +1,17 @@
 import { schema } from '@hale/db';
+import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { matchHealthCheckpoints } from '~/lib/health/match';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   AMBIGUOUS_CLARIFY,
-  AREA_BLOCKED_REPLY,
   ASSENT_ACK,
   DECLINE_ACK,
   HELP_REPLY,
   REGION_UNAVAILABLE_REPLY,
   STOP_ACK,
   WATCH_OFFER,
+  detailsBlocked,
 } from './copy';
 import { FakeExtractor, FakeIntentReader, type FakeDb, fakeRadar, makeFakeDb } from './fakes';
 import type { IntakeCollected } from './extract';
@@ -23,8 +25,8 @@ const NOW = new Date('2026-07-30T12:00:00.000Z');
 
 const MAYA_AND_LEO: IntakeCollected = {
   children: [
-    { name: 'Maya', ageMonths: 48 },
-    { name: 'Leo', ageMonths: 12 },
+    { name: 'Maya', ageMonths: 48, agePrecision: 'years' },
+    { name: 'Leo', ageMonths: 12, agePrecision: 'years' },
   ],
   postalCode: 'M5V 2T6',
 };
@@ -45,17 +47,37 @@ function harness(options: {
   extractions?: IntakeCollected[];
   intents?: IntentReading[];
   limiter?: FakeRateLimiter;
-}): { fake: FakeDb; transport: FakeTransport; deps: IntakeDeps } {
+}): {
+  fake: FakeDb;
+  transport: FakeTransport;
+  deps: IntakeDeps;
+  /** Every seeding/compose step, in the order the machine ran them. */
+  steps: string[];
+} {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
+  const steps: string[] = [];
   return {
     fake,
     transport,
+    steps,
     deps: {
       transport,
       extractor: new FakeExtractor(options.extractions ?? [MAYA_AND_LEO]),
       intentReader: new FakeIntentReader(options.intents ?? [assent('yes')]),
-      radar: fakeRadar,
+      radar: {
+        async compose(input) {
+          steps.push(`radar:${input.areaCoarse}`);
+          return fakeRadar.compose(input);
+        },
+      },
+      seedCivic: async (_db, familyId, areaCoarse) => {
+        steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}`);
+        return 0;
+      },
+      discoveryTrigger: (familyId) => {
+        steps.push(`discovery:${familyId ? 'family' : 'none'}`);
+      },
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
     },
@@ -63,8 +85,14 @@ function harness(options: {
 }
 
 /** Drive one inbound text through the machine. */
-function text(fake: FakeDb, transport: FakeTransport, deps: IntakeDeps, body: string) {
-  return handleInboundSms(fake.db, transport.inbound(PHONE, body), deps);
+function text(
+  fake: FakeDb,
+  transport: FakeTransport,
+  deps: IntakeDeps,
+  body: string,
+  override?: IntakeDeps,
+) {
+  return handleInboundSms(fake.db, transport.inbound(PHONE, body), override ?? deps);
 }
 
 function inserts(fake: FakeDb, table: unknown) {
@@ -111,7 +139,8 @@ describe('intake · happy path', () => {
     // ── the children: DOB derived from the stated age, and stamped as derived ──
     const kids = inserts(fake, schema.children);
     expect(kids).toEqual([
-      // 2026-07-30 minus (48 + 6) months, and minus (12 + 6) months.
+      // Both ages were stated in bare YEARS ("Maya is 4, Leo is 1"), so each covers a
+      // 12-month band and the stored date is its midpoint: 48 + 6 and 12 + 6 back.
       { familyId: expect.any(String), name: 'Maya', dateOfBirth: '2022-01-30', dobPrecision: 'derived' },
       { familyId: expect.any(String), name: 'Leo', dateOfBirth: '2025-01-30', dobPrecision: 'derived' },
     ]);
@@ -176,6 +205,236 @@ describe('intake · happy path', () => {
   });
 });
 
+/**
+ * VIL-260 · WS1 — the age a parent SPOKE has to be the age Hale reads back.
+ *
+ * A stated age is a band, and only a bare year count ("she's four") is 12 months wide.
+ * "18 months" is a point the parent already narrowed for us, so aging it by another
+ * half-year is not a midpoint, it is an error — and an unrecoverable one, because every
+ * downstream consumer re-derives the age OUT of the stored date.
+ */
+describe('intake · the age the parent stated', () => {
+  /** Read a child row back the way production does: age out of the stored date. */
+  function storedAge(fake: FakeDb, index = 0): number {
+    const row = inserts(fake, schema.children)[index] as { dateOfBirth: string };
+    return ageInMonths(row.dateOfBirth, NOW);
+  }
+
+  it('stores "18 months" as eighteen months, and the 18-month checkpoints fire for her', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [
+        {
+          children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
+          postalCode: 'L3R',
+        },
+      ],
+    });
+    await text(fake, transport, deps, 'hi');
+    const result = await text(fake, transport, deps, 'Mia is 18 months, L3R');
+    expect(result.status).toBe('provisioned');
+
+    expect(storedAge(fake)).toBe(18);
+
+    // The reason it matters: both 18-month rows are minMonths 18 / maxMonths 23, and
+    // the matcher never widens the LATE edge. A child stored at 24 can never be shown
+    // Ontario's Enhanced 18-month well-baby visit, and only ages further past it.
+    const matches = matchHealthCheckpoints({
+      children: [
+        {
+          id: 'child-1',
+          name: 'Mia',
+          ageMonths: storedAge(fake),
+          dobPrecision: 'derived',
+          isTeen: false,
+        },
+      ],
+      areaCoarse: 'L3R',
+      suppressedRefs: new Set<string>(),
+      now: NOW,
+    });
+    expect(matches.map((m) => m.checkpoint.id).sort()).toEqual([
+      'immunization_18_months',
+      'well_baby_18_months',
+    ]);
+  });
+
+  it('leaves a bare year statement on its band midpoint, where the half-year IS the estimate', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [
+        { children: [{ name: 'Ines', ageMonths: 48, agePrecision: 'years' }], postalCode: 'L3R' },
+      ],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Ines is 4, L3R');
+    // "she's four" is anywhere in [48, 60): 54 is the read with the smallest worst case.
+    expect(storedAge(fake)).toBe(54);
+  });
+
+  it('does not age a six-week-old into a seven-month-old', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [
+        { children: [{ name: null, ageMonths: 1, agePrecision: 'months' }], postalCode: 'L7G' },
+      ],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'just one, she was born 6 weeks ago. L7G');
+    expect(storedAge(fake)).toBe(1);
+  });
+
+  it('keeps a preschooler a toddler: "3 and a half" does not cross the 48-month stage line', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [
+        { children: [{ name: 'Ben', ageMonths: 42, agePrecision: 'months' }], postalCode: 'L3R' },
+      ],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Ben is 3 and a half, L3R');
+    expect(storedAge(fake)).toBe(42);
+    expect(storedAge(fake)).toBeLessThan(48);
+  });
+});
+
+/**
+ * VIL-260 · WS1 — a child whose age we were never told.
+ *
+ * The old path invented one (`deriveDateOfBirth(0)` — a six-month-old), which is the
+ * one thing this module refuses to do everywhere else: it will not complete a postal
+ * code, will not guess a country, and will not invent a name. An age is no different,
+ * and it is worse in consequence, because the invented date is what every checkpoint,
+ * stage and registration band is computed from afterwards.
+ */
+describe('intake · a child with no age', () => {
+  const NAMES_ONLY: IntakeCollected = {
+    children: [
+      { name: 'Nora', ageMonths: null, agePrecision: null },
+      { name: 'Ben', ageMonths: null, agePrecision: null },
+    ],
+    postalCode: 'M5V 2T6',
+  };
+
+  it('provisions NOTHING and spends the one follow-up asking for the ages', async () => {
+    const { fake, transport, deps } = harness({ extractions: [NAMES_ONLY] });
+    await text(fake, transport, deps, 'hi');
+
+    const asked = await text(fake, transport, deps, 'Nora and Ben, M5V');
+    expect(asked).toEqual({ status: 'follow_up_asked' });
+    expect(transport.bodies().at(-1)).toBe('Got it — Nora and Ben. How old are they?');
+    expect(inserts(fake, schema.children)).toHaveLength(0);
+    expect(inserts(fake, schema.families)).toHaveLength(0);
+  });
+
+  it('provisions once the ages arrive, with the ages the parent actually gave', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [
+        NAMES_ONLY,
+        {
+          children: [
+            { name: 'Nora', ageMonths: 48, agePrecision: 'years' },
+            { name: 'Ben', ageMonths: 18, agePrecision: 'months' },
+          ],
+          postalCode: 'M5V 2T6',
+        },
+      ],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Nora and Ben, M5V');
+    const provisioned = await text(fake, transport, deps, '4 and 18 months');
+
+    expect(provisioned.status).toBe('provisioned');
+    expect(inserts(fake, schema.children)).toEqual([
+      { familyId: expect.any(String), name: 'Nora', dateOfBirth: '2022-01-30', dobPrecision: 'derived' },
+      { familyId: expect.any(String), name: 'Ben', dateOfBirth: '2025-01-30', dobPrecision: 'derived' },
+    ]);
+  });
+
+  it('states the blocker once and then goes quiet, exactly as a missing postal code does', async () => {
+    const { fake, transport, deps } = harness({ extractions: [NAMES_ONLY] });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Nora and Ben, M5V');
+    const before = transport.bodies().length;
+
+    const second = await text(fake, transport, deps, "they're little");
+    expect(second).toEqual({ status: 'details_blocked', missing: ['ages'] });
+    expect(transport.bodies()).toHaveLength(before + 1);
+    expect(transport.bodies().at(-1)).toBe(detailsBlocked(['ages']));
+
+    const third = await text(fake, transport, deps, 'still little');
+    expect(third).toEqual({ status: 'details_blocked', missing: ['ages'] });
+    expect(transport.bodies()).toHaveLength(before + 1);
+    expect(inserts(fake, schema.families)).toHaveLength(0);
+  });
+
+  it('holds the venue-QR single-message path too, where the area needs no asking', async () => {
+    // A QR first message carries the venue's own area, so the ONLY thing outstanding is
+    // the ages — and that path reached provisioning in one message before this gate.
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: NAMES_ONLY.children, postalCode: null }],
+    });
+    await text(fake, transport, deps, 'HALE LIBRARY');
+
+    const asked = await text(fake, transport, deps, 'Nora and Ben');
+    expect(asked).toEqual({ status: 'follow_up_asked' });
+    expect(transport.bodies().at(-1)).toBe('Got it — Nora and Ben. How old are they?');
+    expect(inserts(fake, schema.children)).toHaveLength(0);
+    expect(inserts(fake, schema.families)).toHaveLength(0);
+  });
+
+  it('asks for both in ONE message when the ages and the postal code are missing', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: NAMES_ONLY.children, postalCode: null }],
+    });
+    await text(fake, transport, deps, 'hi');
+
+    const asked = await text(fake, transport, deps, 'Nora and Ben');
+    expect(asked).toEqual({ status: 'follow_up_asked' });
+    expect(transport.bodies().at(-1)).toBe(
+      "Got it — Nora and Ben. How old are they, and what's your postal code?",
+    );
+  });
+});
+
+/**
+ * VIL-260 · WS1 — the first reply is the one message a stranger is guaranteed to read,
+ * and a family four milliseconds old has nothing on file for it to be built from.
+ */
+describe('intake · seeding the first radar', () => {
+  it('places the family near its civic sessions BEFORE composing, and kicks discovery', async () => {
+    const { fake, transport, deps, steps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+
+    // Order is the assertion: an inline projection composed AFTER the radar could not
+    // have reached it, which is exactly the bug.
+    expect(steps).toEqual(['civic:family:M5V', 'discovery:family', 'radar:M5V']);
+  });
+
+  it('never lets a seeding failure cost a family their intake', async () => {
+    const { fake, transport, deps } = harness({});
+    await text(fake, transport, deps, 'hi');
+    const result = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6', {
+      ...deps,
+      seedCivic: async () => {
+        throw new Error('civic sessions table is unreachable');
+      },
+      discoveryTrigger: () => {
+        throw new Error('no request scope');
+      },
+    });
+
+    expect(result.status).toBe('provisioned');
+    expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
+  });
+
+  it('does not seed anything for a conversation that never provisioned', async () => {
+    const { fake, transport, deps, steps } = harness({
+      extractions: [{ children: MAYA_AND_LEO.children, postalCode: '10001' }],
+    });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya 4, Leo 1, 10001');
+    expect(steps).toEqual([]);
+  });
+});
+
 describe('intake · the one follow-up', () => {
   it('asks exactly one targeted follow-up when only the postal code is missing', async () => {
     const { fake, transport, deps } = harness({ extractions: [NO_POSTAL, MAYA_AND_LEO] });
@@ -196,13 +455,14 @@ describe('intake · the one follow-up', () => {
     const before = transport.bodies().length;
 
     const second = await text(fake, transport, deps, "I'd rather not say");
-    expect(second).toEqual({ status: 'area_blocked' });
+    expect(second).toEqual({ status: 'details_blocked', missing: ['location'] });
     // One blocker line, and it is NOT the follow-up question again.
     expect(transport.bodies()).toHaveLength(before + 1);
+    expect(transport.bodies().at(-1)).toBe(detailsBlocked(['location']));
     expect(transport.bodies().at(-1)).not.toContain("What's your postal code?");
 
     const third = await text(fake, transport, deps, 'still not saying');
-    expect(third).toEqual({ status: 'area_blocked' });
+    expect(third).toEqual({ status: 'details_blocked', missing: ['location'] });
     expect(transport.bodies()).toHaveLength(before + 1); // silence, not a third ask
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
@@ -224,7 +484,7 @@ describe('intake · a bare FSA', () => {
     });
     // The two wrong answers this fixture exists to rule out: asking for the postal
     // code we were just given, and refusing a Markham family as out-of-region.
-    expect(transport.bodies()).not.toContain(AREA_BLOCKED_REPLY);
+    expect(transport.bodies()).not.toContain(detailsBlocked(['location']));
     expect(transport.bodies()).not.toContain(REGION_UNAVAILABLE_REPLY);
   });
 });

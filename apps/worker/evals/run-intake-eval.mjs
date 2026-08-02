@@ -50,6 +50,7 @@ const EXTRACT_TOOL_SCHEMA = {
         properties: {
           name: { type: ['string', 'null'] },
           age_months: { type: ['number', 'null'], minimum: 0, maximum: MAX_AGE_MONTHS },
+          age_precision: { type: ['string', 'null'], enum: ['years', 'months', null] },
         },
       },
     },
@@ -72,7 +73,7 @@ const INTENT_TOOL_SCHEMA = {
 };
 
 const BROKEN_EXTRACTION = {
-  children: [{ name: 'Charlie', age_months: 60 }],
+  children: [{ name: 'Charlie', age_months: 60, age_precision: 'years' }],
   postal_code: 'M5V 2T6',
   confidence: 0.99,
 };
@@ -146,6 +147,16 @@ function scoreExtraction(fixture, value) {
       Math.abs(got.age_months - want.ageMonths) > tolerance
     ) {
       failures.push(`child ${i} age ${got.age_months} != ${want.ageMonths} (±${tolerance})`);
+    }
+
+    // EXACT, never tolerant: `age_precision` is what decides whether the stored date of
+    // birth gets a six-month midpoint correction (VIL-260). There is no "close" — a
+    // 'years' read of "18 months" ships a two-year-old the parent never described.
+    const gotPrecision = got.age_precision ?? null;
+    if (gotPrecision !== (want.agePrecision ?? null)) {
+      failures.push(
+        `child ${i} age_precision ${JSON.stringify(gotPrecision)} != ${JSON.stringify(want.agePrecision ?? null)}`,
+      );
     }
   }
 

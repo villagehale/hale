@@ -1,0 +1,14 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Sofi",
+        "age_months": 18,
+        "age_precision": "months"
+      }
+    ],
+    "postal_code": "M5V 2T6",
+    "confidence": 0.95
+  },
+  "latencyMs": 1930
+}

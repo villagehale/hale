@@ -1,0 +1,14 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Omar",
+        "age_months": 88,
+        "age_precision": "months"
+      }
+    ],
+    "postal_code": "M6K 3P6",
+    "confidence": 0.85
+  },
+  "latencyMs": 1610
+}

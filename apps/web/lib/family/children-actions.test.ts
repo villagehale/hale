@@ -220,12 +220,14 @@ describe('editChildAction', () => {
     const result = await editChildAction(CHILD_ID, { name: 'Robyn', dateOfBirth: '2024-02-02' });
 
     expect(result).toEqual({ status: 'updated' });
-    // PARTIAL update: an edit that sends only name + DOB writes ONLY name + DOB.
-    // Absent optional keys must not become validated defaults — that would wipe
-    // gender/lastName/interests a parent set elsewhere (e.g. on mobile).
+    // PARTIAL update: an edit that sends only name + DOB writes ONLY name + DOB
+    // (plus the precision the DOB itself carries). Absent optional keys must not
+    // become validated defaults — that would wipe gender/lastName/interests a
+    // parent set elsewhere (e.g. on mobile).
     expect(valuesFor(updates, schema.children)).toEqual({
       name: 'Robyn',
       dateOfBirth: '2024-02-02',
+      dobPrecision: 'exact',
     });
     expect(valuesFor(inserts, schema.auditLog)).toMatchObject({
       familyId: FAMILY_ID,
@@ -298,7 +300,13 @@ describe('editChildAction', () => {
 
     expect(result).toEqual({ status: 'updated' });
     const written = valuesFor(updates, schema.children) as Record<string, unknown>;
-    expect(written).toEqual({ name: 'Robyn', dateOfBirth: '2024-01-01' });
+    // dob_precision rides along with the date: a parent typed this one into a date
+    // field, so it is a birthday, not the age-derived estimate an SMS intake stores.
+    expect(written).toEqual({
+      name: 'Robyn',
+      dateOfBirth: '2024-01-01',
+      dobPrecision: 'exact',
+    });
     // The wipe would show up as explicit defaults here:
     expect(written).not.toHaveProperty('gender');
     expect(written).not.toHaveProperty('lastName');
@@ -331,6 +339,7 @@ describe('editChildAction', () => {
       name: 'Robyn',
       lastName: 'Vega',
       dateOfBirth: '2024-02-02',
+      dobPrecision: 'exact',
       gender: 'girl',
       interests: ['swimming', 'music'],
     });

@@ -1,0 +1,14 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": null,
+        "age_months": 1,
+        "age_precision": "months"
+      }
+    ],
+    "postal_code": "L7G 4S8",
+    "confidence": 0.9
+  },
+  "latencyMs": 1665
+}

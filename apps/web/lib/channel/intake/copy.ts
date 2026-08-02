@@ -93,9 +93,25 @@ export function assistantDisclosure(): string {
   return `(I'm an assistant, not a person — details & privacy: ${TERMS_URL})`;
 }
 
-/** The single targeted follow-up, asked at most once per intake. */
-export function followUp(summary: string): string {
-  return `Got it — ${summary}. What's your postal code?`;
+/**
+ * What intake still needs before a family can be set up. Both are hard requirements
+ * and for the same reason: Hale will not invent either one. A postal code it cannot
+ * place is a compliance boundary (rule #1); an age it was never given would be a
+ * fabricated date of birth, which every stage, checkpoint and registration band is
+ * computed from afterwards.
+ */
+export type IntakeGap = 'ages' | 'location';
+
+const GAP_ASK: Record<IntakeGap, string> = {
+  ages: 'how old are they',
+  location: "what's your postal code",
+};
+
+/** The single targeted follow-up, asked at most once per intake — so when two things
+ * are outstanding it asks for both in the one message it gets. */
+export function followUp(summary: string, missing: readonly IntakeGap[]): string {
+  const question = missing.map((gap) => GAP_ASK[gap]).join(', and ');
+  return `Got it — ${summary}. ${question.charAt(0).toUpperCase()}${question.slice(1)}?`;
 }
 
 export const WATCH_OFFER = 'Want me to keep an eye on all of this for you?';
@@ -116,13 +132,19 @@ export const HELP_REPLY =
 export const START_ACK = "You're back — I'll text you when something needs doing.";
 
 /**
- * Said ONCE when the one follow-up went unanswered and there is still no way to know
- * where the family is. Hale cannot set them up without it (the region gate is a
- * compliance boundary, rule #1), so it states the blocker plainly and then goes quiet
- * rather than asking a third time.
+ * Said ONCE when the one follow-up went unanswered and something Hale cannot invent is
+ * still outstanding. It states the blocker plainly and then goes quiet rather than
+ * asking a third time — the session stays open, so an answer sent later still completes
+ * the setup.
  */
-export const AREA_BLOCKED_REPLY =
-  "I can't set your family up until I know your postal code — send it whenever you're ready.";
+export function detailsBlocked(missing: readonly IntakeGap[]): string {
+  if (missing.includes('ages')) {
+    return missing.includes('location')
+      ? "I can't set your family up until I know your kids' ages and your postal code — send them whenever you're ready."
+      : "I can't set your family up until I know how old your kids are — send their ages whenever you're ready.";
+  }
+  return "I can't set your family up until I know your postal code — send it whenever you're ready.";
+}
 
 /** The honest close when a postal code is outside the region Hale is cleared for
  * (rule #1). Nothing is provisioned; the reply says so rather than leaving a family

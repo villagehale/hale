@@ -1,0 +1,14 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Priya",
+        "age_months": 30,
+        "age_precision": "months"
+      }
+    ],
+    "confidence": 0.95,
+    "postal_code": "L3R"
+  },
+  "latencyMs": 2976
+}

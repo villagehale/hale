@@ -124,6 +124,10 @@ export interface NudgeChildRow {
   id: string;
   name: string;
   dateOfBirth: string;
+  /** As STORED. A date derived from an age a parent spoke earns the ±6-month early-edge
+   * tolerance in the registration and health matchers; a birthday a parent typed does
+   * not, and granting it anyway admits their child to windows they are not in yet. */
+  dobPrecision: 'exact' | 'derived';
 }
 
 export interface NudgeLedgerWrite {
@@ -256,7 +260,7 @@ function splitByStage(rows: readonly NudgeChildRow[], now: Date) {
       id: row.id,
       name: isTeen ? null : row.name,
       ageMonths: ageInMonths(row.dateOfBirth, now),
-      dobPrecision: 'derived',
+      dobPrecision: row.dobPrecision,
       isTeen,
     });
     if (isTeen) {
@@ -266,9 +270,7 @@ function splitByStage(rows: readonly NudgeChildRow[], now: Date) {
     children.push({
       name: row.name,
       ageMonths: ageInMonths(row.dateOfBirth, now),
-      // Stored DOBs from the SMS intake are derived from an age the parent spoke, which
-      // is what earns the ±6-month tolerance downstream.
-      dobPrecision: 'derived',
+      dobPrecision: row.dobPrecision,
     });
   }
   return { children, teenChildIds, healthChildren };
@@ -494,14 +496,21 @@ async function readNudgeChildren(
   database: Database,
   familyId: string,
 ): Promise<NudgeChildRow[]> {
-  return database
+  const rows = await database
     .select({
       id: schema.children.id,
       name: schema.children.name,
       dateOfBirth: schema.children.dateOfBirth,
+      dobPrecision: schema.children.dobPrecision,
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
+  // The column is free-form text with an 'exact' default, so only the literal 'derived'
+  // buys the tolerance — an unrecognised value must not silently earn six months of it.
+  return rows.map((row) => ({
+    ...row,
+    dobPrecision: row.dobPrecision === 'derived' ? ('derived' as const) : ('exact' as const),
+  }));
 }
 
 export function defaultNudgeRunDeps(): NudgeRunDeps {
