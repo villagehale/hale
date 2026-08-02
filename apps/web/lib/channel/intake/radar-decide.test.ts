@@ -81,6 +81,7 @@ function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
   const window = overrides.window ?? win();
   return {
     window,
+    cycleWindows: [window],
     matchedChildAgesMonths: [48],
     ageApproximate: false,
     isResidentWindow: false,

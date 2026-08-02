@@ -24,7 +24,7 @@ import { useApi } from '@/lib/use-api';
 
 /** The plain, honest text a Share hands off — the item, its timing, and the
  * standard-schedule caveat. No fabricated calendar link (expo-calendar isn't
- * installed; the create_calendar_event executor is not configured — task). */
+ * installed and there is no mobile calendar executor — task). */
 function shareText(item: UpcomingHealthItem, childName: string | null): string {
   const who = childName ? `${childName}: ` : '';
   return `${who}${item.what} — ${duePhrase(item.dueInWeeks)}.\nTiming is the standard Canadian schedule — confirm with your provider.`;
@@ -51,8 +51,8 @@ type Phase = 'idle' | 'booking' | 'booked';
  *
  * "Add to calendar" NEVER writes a calendar — there is no mobile calendar executor
  * (expo-calendar isn't installed). It routes the item through the SAME approval
- * engine the web BookButton uses (POST /api/coach/action → a create_calendar_event
- * action HELD at drafted_for_approval, rule #4), so the success state honestly reads
+ * engine the web BookButton uses (POST /api/coach/action → an action HELD at
+ * drafted_for_approval, rule #4), so the success state honestly reads
  * "Added to your approvals" — never "Added to Google Calendar" (no false integration
  * claim). "Reschedule" has no backend path yet, so it is present-but-disabled per the
  * brief. "Mark done" POSTs the audited /api/mobile/companion/done (rule #6), the same

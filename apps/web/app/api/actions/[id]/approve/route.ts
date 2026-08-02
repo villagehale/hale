@@ -4,7 +4,7 @@ import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { getQueue } from '~/lib/queue';
 import { authConfigured } from '~/lib/auth-config';
-import { resolveFamilyForUser } from '~/lib/family';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { kickDrain } from '~/lib/cron/kick-drain';
 import { approveDraftedAction } from '~/lib/actions/approve';
 
@@ -49,11 +49,21 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
 
+  // The AUDIT ACTOR must be the internal users.id, never the external Auth.js id:
+  // family_members.user_id holds the internal id, so an external one resolves to no
+  // family member and the trail (and the PIPEDA export it feeds) credits the
+  // parent's own approval to Hale. No internal row → refuse rather than record a
+  // consent decision nobody in the family can be shown to have made (rules #5, #6).
+  const approvedBy = await resolveUserIdForUser(externalAuthId, database);
+  if (!approvedBy) {
+    return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
+  }
+
   const queue = await getQueue();
   const result = await approveDraftedAction(database, queue, {
     actionId: idParse.data,
     familyId,
-    approvedBy: externalAuthId,
+    approvedBy,
   });
 
   if (result.status === 202) {

@@ -35,7 +35,7 @@ describe('detectActionIntents', () => {
     );
     const book = intents.find((i) => i.kind === 'book_checkup');
     expect(book).toBeDefined();
-    expect(book?.actionType).toBe('create_calendar_event');
+    expect(book?.actionType).toBe('add_to_routine');
   });
 
   it('returns no chips for an ordinary answer with no implied action', () => {
@@ -67,7 +67,7 @@ describe('detectInputIntents', () => {
     expect(rest).toEqual([]);
     expect(intent?.category).toBe('action');
     expect(intent?.kind).toBe('book_checkup');
-    if (intent?.category === 'action') expect(intent.actionType).toBe('create_calendar_event');
+    if (intent?.category === 'action') expect(intent.actionType).toBe('add_to_routine');
   });
 
   it('detects a set-reminder instruction', () => {

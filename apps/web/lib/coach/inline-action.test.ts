@@ -1,7 +1,10 @@
 import type { AgentClient } from '@hale/agent';
 import { schema } from '@hale/db';
+import { type ActionType, mintApprovedAction } from '@hale/types';
+import { type ExecutorDeps, runExecutor } from '@hale/worker/executor';
 import { describe, expect, it, vi } from 'vitest';
 import { type ApproveQueue, approveDraftedAction } from '~/lib/actions/approve';
+import { ACTION_INTENT_KINDS } from './action-intent';
 import { draftInlineAction } from './inline-action';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
@@ -324,6 +327,144 @@ describe('draftInlineAction', () => {
     expect(capture.audit).toContainEqual(
       expect.objectContaining({ actionTaken: 'mcp.action_drafted' }),
     );
+  });
+});
+
+/**
+ * THE KEYSTONE (VIL-260 · WS3). Every other test on this path stops at "a draft row
+ * was written"; none of them ever asked whether that row is EXECUTABLE. This one runs
+ * the payload draftInlineAction actually persists through the REAL executor — the same
+ * runExecutor the drain calls after a parent taps Approve — for every intent in the
+ * closed set, so a minted payload that its own ActionType's executor rejects can never
+ * ship again.
+ *
+ * RED (pre-fix): the minter wrote `{intentKind, childId}`, so every intent threw
+ * `payload missing required field (title)` (or, on create_calendar_event, `(title,
+ * starts_at, ends_at)`) — approving ANY inline draft failed at execution, every time.
+ *
+ * The executor deps are stubs (no DB, no network): the assertion under test is the
+ * payload CONTRACT between the minter and the executor's dispatch, not the write.
+ */
+function stubExecutorDeps(): ExecutorDeps {
+  return {
+    claimOutboundSend: vi.fn(async () => true),
+    confirmOutboundSend: vi.fn(async () => {}),
+    recordSkippedDuplicate: vi.fn(async () => {}),
+    sendEmail: vi.fn(async () => ({ messageId: 'stub' })),
+    addToRoutine: vi.fn(async () => 'written' as const),
+    addToDigest: vi.fn(async () => 'written' as const),
+    addToCalendar: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-1' })),
+    moveCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-1' })),
+    cancelCalendarEvent: vi.fn(async () => ({
+      outcome: 'written' as const,
+      familyEventId: 'fe-1',
+    })),
+    calendar: {
+      createEvent: vi.fn(async () => ({ providerEventId: 'stub' })),
+      updateEvent: vi.fn(async () => ({ providerEventId: 'stub' })),
+    },
+  };
+}
+
+/** The drafted row, re-minted as the ApprovedAction the drain hands the executor.
+ * Coverage is stubbed satisfied — rule #3 is enforced elsewhere and is not what this
+ * test is about; the payload shape is. */
+function asApproved(action: Record<string, unknown>) {
+  return mintApprovedAction(
+    {
+      id: ACTION_UUID,
+      eventId: '44444444-4444-4444-8444-444444444444',
+      familyId: FAMILY_ID,
+      actionType: action.actionType as ActionType,
+      payload: action.payload as Record<string, unknown>,
+      draftConfidence: 1,
+      rationale: 'inline draft',
+      recipientVisibility: 'internal_only',
+      draftedAt: NOW.toISOString(),
+    },
+    { kind: 'approve', rationale: 'ok', toolResults: [] },
+    () => true,
+  );
+}
+
+describe('draftInlineAction → REAL executor (every intent kind)', () => {
+  it.each(ACTION_INTENT_KINDS)('mints a payload the executor can execute: %s', async (kind) => {
+    const capture = freshCapture();
+    const db = fakeDb(capture);
+
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: kind,
+        childId: null,
+        sourceAnswer: 'Riverdale drop-in, Tuesdays 10am at the community centre.',
+      },
+      db,
+      approvingReviewer(),
+      NOW,
+    );
+
+    const action = capture.actions[0] as Record<string, unknown>;
+    const result = await runExecutor(
+      { familyId: FAMILY_ID, approved: asApproved(action) },
+      stubExecutorDeps(),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('carries the caller-supplied title, summary and link onto the ACTION payload', async () => {
+    // The registration sweep knows the municipality, the rationale and the link; all
+    // three have to reach actions.payload, because that is the only payload the
+    // approvals card reads (the event's copy is never selected there).
+    const capture = freshCapture();
+    const db = fakeDb(capture);
+
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'registration_shortlist',
+        childId: null,
+        sourceAnswer: 'Burlington registration opens Saturday.\nI never register for you.',
+        title: 'Burlington swim lessons',
+        sourceUrl: 'https://www.burlington.ca/registering',
+      },
+      db,
+      approvingReviewer(),
+      NOW,
+    );
+
+    expect((capture.actions[0] as Record<string, unknown>).payload).toMatchObject({
+      title: 'Burlington swim lessons',
+      summary: 'Burlington registration opens Saturday.\nI never register for you.',
+      source_url: 'https://www.burlington.ca/registering',
+    });
+  });
+
+  it('stamps the action_hash the reviewer idempotency check reads (mint-placements parity)', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture);
+
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'find_activities',
+        childId: null,
+        sourceAnswer: 'x',
+      },
+      db,
+      approvingReviewer(),
+      NOW,
+    );
+
+    const payload = (capture.actions[0] as Record<string, unknown>).payload as Record<
+      string,
+      unknown
+    >;
+    expect(payload.action_hash).toBe((capture.events[0] as Record<string, unknown>).dedupHash);
   });
 });
 

@@ -183,7 +183,7 @@ function sequenceDeps(
         programDomain: 'swim',
         cycleLabel: 'Fall 2026',
       },
-      programDomainLabel: 'swim lessons',
+      cyclePhrase: 'Fall 2026 swim lessons',
       opensForFamilyAt: new Date('2026-07-29T11:00:00.000Z'),
       sourceUrl: 'https://example.invalid/register',
       isResidentWindow: true,

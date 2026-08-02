@@ -143,3 +143,62 @@ describe('toApprovalView — which child the draft is about (rule #1)', () => {
     expect(JSON.stringify(view)).not.toContain('Maya');
   });
 });
+
+/**
+ * VIL-260 · WS3 — the card has to say WHAT it is, now that the draft carries it.
+ *
+ * Every internal-write draft previewed as its bare category — "Note in your daily
+ * digest" for a municipal registration shortlist, and three identical "Add to your
+ * calendar" lines for calendar_add / move / cancel, because those three fell through
+ * to the generic actionType label. A parent approving a quiet-hours-exempt SMS ladder
+ * off a line reading "Note in your daily digest" is approving something the card never
+ * described.
+ */
+describe('toApprovalView — the preview names the drafted item', () => {
+  it('names the registration shortlist instead of the generic digest category', () => {
+    const view = toApprovalView(
+      {
+        ...BASE,
+        actionType: 'add_to_digest_only',
+        payload: {
+          intentKind: 'registration_shortlist',
+          title: 'Burlington recreation programs and swim lessons',
+          summary: 'Registration opens Saturday. I never register for you.',
+          source_url: 'https://www.burlington.ca/registering',
+        },
+      },
+      TZ,
+    );
+    expect(view.preview).toBe(
+      'Note in your digest — Burlington recreation programs and swim lessons',
+    );
+  });
+
+  it('still degrades to the category when the draft has no title', () => {
+    const view = toApprovalView({ ...BASE, actionType: 'add_to_digest_only', payload: {} }, TZ);
+    expect(view.preview).toBe('Note in your daily digest');
+  });
+
+  it('names the pinned item on a routine draft', () => {
+    const view = toApprovalView(
+      { ...BASE, actionType: 'add_to_routine', payload: { title: 'Help me book: 18-month visit' } },
+      TZ,
+    );
+    expect(view.preview).toBe('Pin to your routine — Help me book: 18-month visit');
+  });
+
+  it('distinguishes the three calendar placements and reads the time in the family zone', () => {
+    const payload = { title: 'Swim lesson', startsAt: '2026-07-01T14:00:00.000Z' };
+    // 14:00 UTC is 10:00 in America/Toronto — a parent never reads a raw UTC stamp.
+    expect(toApprovalView({ ...BASE, actionType: 'calendar_add', payload }, TZ).preview).toBe(
+      'Add to your calendar — Swim lesson, Jul 1, 10:00',
+    );
+    expect(toApprovalView({ ...BASE, actionType: 'calendar_move', payload }, TZ).preview).toBe(
+      'Reschedule on your calendar — Swim lesson, Jul 1, 10:00',
+    );
+    expect(
+      toApprovalView({ ...BASE, actionType: 'calendar_cancel', payload: { title: 'Swim lesson' } }, TZ)
+        .preview,
+    ).toBe('Remove from your calendar — Swim lesson');
+  });
+});

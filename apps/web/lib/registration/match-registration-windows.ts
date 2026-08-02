@@ -27,6 +27,13 @@ export const AGE_TOLERANCE_MONTHS = 6;
 
 export interface RegistrationMatch {
   window: RegistrationWindow;
+  /**
+   * Every cycle this municipality opens at this same instant, on the same page, under
+   * the same published age band — one registration EVENT, however many table rows the
+   * source prints it as. Always contains `window` (the representative the claim and
+   * the audit row key on) and is length 1 for an ordinary window.
+   */
+  cycleWindows: readonly RegistrationWindow[];
   /** The children (ages in months) this window's band admits, in input order. */
   matchedChildAgesMonths: number[];
   /** True when NO child is squarely in band and the match rests on the ±6-month
@@ -117,6 +124,7 @@ export function matchRegistrationWindows(input: {
 
     matches.push({
       window,
+      cycleWindows: [window],
       matchedChildAgesMonths,
       ageApproximate: !anyExact,
       isResidentWindow,
@@ -127,10 +135,41 @@ export function matchRegistrationWindows(input: {
 
   // Ordered by when this family must act, which is the resident date where they have
   // one — a head start they can use outranks a later general date elsewhere.
-  return matches.sort(
+  matches.sort(
     (a, b) =>
       a.opensForFamilyAt.getTime() - b.opensForFamilyAt.getTime() ||
       a.window.municipality.localeCompare(b.window.municipality) ||
       a.window.cycleLabel.localeCompare(b.window.cycleLabel),
   );
+  return collapseCoOpeningCycles(matches);
+}
+
+/**
+ * One municipality often publishes several cycles that open at the SAME instant on the
+ * SAME page — Burlington's fall/winter youth, fall swim and fall/winter Aquatic
+ * Leadership rows are one registration morning printed as three table rows. Kept
+ * separate, the sort's alphabetical tie-break silently decided which of them a family
+ * was told about, and "Aquatic Leadership" sorts first: a household with a
+ * 30-month-old was proposed the teen lifeguard-certification cycle.
+ *
+ * They collapse into one match. The AGE BAND is part of the key, deliberately: two
+ * cycles that open together under different published bands produce different per-child
+ * fit notes, so merging them would attach one cycle's band to another's children.
+ */
+function collapseCoOpeningCycles(sorted: readonly RegistrationMatch[]): RegistrationMatch[] {
+  const byEvent = new Map<string, { match: RegistrationMatch; windows: RegistrationWindow[] }>();
+  for (const match of sorted) {
+    const { window } = match;
+    const key = [
+      window.municipality,
+      match.opensForFamilyAt.getTime(),
+      window.sourceUrl,
+      window.ageMinMonths,
+      window.ageMaxMonths,
+    ].join('|');
+    const group = byEvent.get(key);
+    if (group) group.windows.push(window);
+    else byEvent.set(key, { match, windows: [window] });
+  }
+  return [...byEvent.values()].map(({ match, windows }) => ({ ...match, cycleWindows: windows }));
 }

@@ -360,6 +360,8 @@ export async function loadAwaitingSequence(
   const shortlist = buildShortlist(
     {
       window: row.window,
+      // A reply re-renders the ONE cycle the sequence claimed.
+      cycleWindows: [row.window],
       matchedChildAgesMonths: [],
       ageApproximate: false,
       isResidentWindow: open.isResidentWindow,

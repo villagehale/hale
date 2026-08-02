@@ -5,7 +5,7 @@ describe('buildBookRequestBody', () => {
   it('routes a health item through the closed-set book_checkup intent', () => {
     const body = buildBookRequestBody('15-month well-baby visit', 'child-1');
     // The intent string is a server-validated data boundary — it must be the exact
-    // token the engine maps to create_calendar_event, never a paraphrase.
+    // token the engine maps to an action type, never a paraphrase.
     expect(body.intentKind).toBe('book_checkup');
     expect(BOOK_CHECKUP_INTENT).toBe('book_checkup');
     expect(body.sourceAnswer).toBe('Help me book: 15-month well-baby visit');

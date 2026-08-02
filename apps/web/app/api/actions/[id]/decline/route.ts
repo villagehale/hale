@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { auth } from '~/auth';
 import { db } from '~/lib/db';
 import { authConfigured } from '~/lib/auth-config';
-import { resolveFamilyForUser } from '~/lib/family';
+import { resolveFamilyForUser, resolveUserIdForUser } from '~/lib/family';
 import { declineDraftedAction } from '~/lib/actions/decline';
 
 interface RouteContext {
@@ -46,10 +46,18 @@ export async function POST(_req: Request, context: RouteContext) {
     return NextResponse.json({ error: 'no_family_for_user' }, { status: 403 });
   }
 
+  // The internal users.id, for the same reason approve resolves one: the trail's
+  // actor resolver matches family_members.user_id, so an external Auth.js id would
+  // record the parent's "no" as Hale's (rules #5, #6).
+  const declinedBy = await resolveUserIdForUser(externalAuthId, database);
+  if (!declinedBy) {
+    return NextResponse.json({ error: 'no_user_for_caller' }, { status: 403 });
+  }
+
   const result = await declineDraftedAction(database, {
     actionId: idParse.data,
     familyId,
-    declinedBy: externalAuthId,
+    declinedBy,
   });
 
   if (result.status === 200) {
