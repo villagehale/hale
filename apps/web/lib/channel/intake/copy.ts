@@ -1,4 +1,4 @@
-import { appBaseUrl } from '~/lib/cron/email-compliance';
+import { TERMS_URL } from '~/lib/legal-links';
 
 /**
  * VIL-237 · M2 — every word Hale texts during intake, in one file.
@@ -85,9 +85,12 @@ export function greeting(venue: string | null): string {
  * The one-time disclosure. Rides on the FIRST reply only — a stranger deserves to
  * know within one message that they are texting software and where the privacy terms
  * are, and repeating it every turn would be noise, not honesty.
+ *
+ * Points at the marketing site, where the policies now live (D20): a stranger's very
+ * first message should not spend its one link on a redirect.
  */
 export function assistantDisclosure(): string {
-  return `(I'm an assistant, not a person — details & privacy: ${appBaseUrl()}/terms)`;
+  return `(I'm an assistant, not a person — details & privacy: ${TERMS_URL})`;
 }
 
 /** The single targeted follow-up, asked at most once per intake. */

@@ -1,13 +1,17 @@
 import { type Database, schema } from '@hale/db';
-import { LEGAL_LAST_UPDATED } from '~/components/hale/legal-layout';
 
 /**
- * The policy version a consent is recorded against. Reuses the legal pages'
- * last-updated date as the single source of truth, so a consent row always names
- * the exact policy text the user agreed to (the Privacy Policy promises we
- * "record each consent including the policy version and time").
+ * The policy version a consent is recorded against, so a consent row names the
+ * policy text the user agreed to (the Privacy Policy promises we "record each
+ * consent including the policy version and time"). It is the legal pages'
+ * last-updated date, and it is PERSISTED into consent_records — changing this
+ * string changes what every new consent claims, so it moves only when the policy
+ * copy itself does.
+ *
+ * The policies now live on the marketing site (see lib/legal-links.ts), which
+ * dates each page separately: keep this in step with them by hand.
  */
-export const POLICY_VERSION = LEGAL_LAST_UPDATED;
+export const POLICY_VERSION = 'June 25, 2026';
 
 /** A query surface with `.insert` — satisfied by both Database and a Drizzle tx. */
 type Inserter = Pick<Database, 'insert'>;

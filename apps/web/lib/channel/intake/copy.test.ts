@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { assistantDisclosure, greeting, followUp, sourceCodeFromBody, venueForCode } from './copy';
 
 describe('greeting', () => {
@@ -63,18 +63,11 @@ describe('followUp', () => {
 });
 
 describe('assistantDisclosure', () => {
-  const original = process.env.APP_URL;
-  beforeEach(() => {
-    process.env.APP_URL = 'https://app.example.test';
-  });
-  afterEach(() => {
-    if (original === undefined) process.env.APP_URL = undefined;
-    else process.env.APP_URL = original;
-  });
-
-  it('names the terms URL on the app domain (never the marketing domain)', () => {
+  // D20 moved the policies to the marketing site; the app's /terms is a 308 to it.
+  // A stranger's first message must not spend its one link on a redirect hop.
+  it('names the terms URL on the marketing site, not the redirecting app path', () => {
     expect(assistantDisclosure()).toBe(
-      "(I'm an assistant, not a person — details & privacy: https://app.example.test/terms)",
+      "(I'm an assistant, not a person — details & privacy: https://www.villagehale.com/terms)",
     );
   });
 });

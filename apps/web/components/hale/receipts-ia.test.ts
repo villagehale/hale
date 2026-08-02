@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { WeekPlan } from '@hale/db';
 import type { TrailView } from '~/lib/dashboard/mappers';
+import { brandHref } from './nav';
 import { TrailTimeline } from './trail-timeline';
 import { WeekPlanCard, WeekPlanToday, type WeekPlanKid } from './week-plan-card';
 
@@ -233,6 +234,24 @@ describe('sign-in ordering', () => {
     expect(src).toContain("await signIn('google', { redirectTo })");
     expect(src).toContain('callbackUrl={redirectTo}');
     expect(src).not.toContain('type="password"');
+  });
+});
+
+describe('the brand mark follows the demotion (VIL-256)', () => {
+  it('lands on the week view under the reframe, so a logo click costs no 302 hop', () => {
+    expect(brandHref(true)).toBe('/plan');
+  });
+
+  it('still lands on the daily feed with the flag off', () => {
+    expect(brandHref(false)).toBe('/home');
+  });
+
+  it('is the SAME target the middleware forwards /home to, so the two can’t diverge', () => {
+    const middleware = readFileSync(
+      fileURLToPath(new URL('../../middleware.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(middleware).toContain(`NextResponse.redirect(new URL('${brandHref(true)}'`);
   });
 });
 

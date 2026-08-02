@@ -1,6 +1,5 @@
 import { QrCode } from '~/components/qr-code';
 import { TextEntryAnalytics } from '~/components/text-entry-analytics';
-import { APP_URL } from '~/lib/app-url';
 import { EmailCta } from '~/components/email-cta';
 import { CONTACT_EMAIL, buildSmsBody, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
 
@@ -71,7 +70,7 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
 
       <p className="meta mt-14 rise rise-3">
         Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada —{' '}
-        <a href={`${APP_URL}/privacy`} className="link">
+        <a href="/privacy" className="link">
           privacy policy
         </a>
         .

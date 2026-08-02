@@ -25,6 +25,7 @@ import { db } from '~/lib/db';
 import { loadViewerProfile } from '~/lib/family';
 import { currentFamilyId, currentUserId } from '~/lib/family';
 import { loadFamilyConnectors } from '~/lib/integrations/load';
+import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import { listMcpConnectionsForUser } from '~/lib/mcp/oauth-store';
 import { loadLoopNotificationPrefs } from '~/lib/settings/loop-prefs';
 import { loadPushNotificationPrefs } from '~/lib/settings/push-notification-prefs';
@@ -203,12 +204,12 @@ export default async function SettingsPage() {
               </a>
             </li>
             <li>
-              <a className="settings-link-row" href="/terms">
+              <a className="settings-link-row" href={TERMS_URL}>
                 Terms of Service
               </a>
             </li>
             <li>
-              <a className="settings-link-row" href="/privacy">
+              <a className="settings-link-row" href={PRIVACY_URL}>
                 Privacy Policy
               </a>
             </li>

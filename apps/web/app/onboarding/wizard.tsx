@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Ban, Check, MapPin, Plus, ShieldCheck, Sun, X } from 'lucide-react';
 import { type ChildGender, CHILD_GENDERS, type OnboardingIntent } from '@hale/types';
@@ -17,6 +16,7 @@ import { PrivacyNote } from '~/components/hale/privacy-note';
 import { VillageIllustration } from '~/components/hale/village-illustration';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import type { LocationInput } from '~/lib/family/location-input';
+import { PRIVACY_URL, TERMS_URL } from '~/lib/legal-links';
 import type { CityCentroid } from '~/lib/village/geocode';
 import { validateChild } from '~/lib/onboarding/children';
 import { completeOnboarding } from '~/lib/onboarding/complete-onboarding';
@@ -734,13 +734,13 @@ function StepAuth({
 
       <p className="meta max-w-sm">
         By continuing, you agree to our{' '}
-        <Link href="/terms" className="link">
+        <a href={TERMS_URL} className="link">
           Terms
-        </Link>{' '}
+        </a>{' '}
         and{' '}
-        <Link href="/privacy" className="link">
+        <a href={PRIVACY_URL} className="link">
           Privacy Policy
-        </Link>
+        </a>
         .
       </p>
     </section>
@@ -912,13 +912,13 @@ function StepDetails({
 
       <p className="meta">
         By continuing, you agree to our{' '}
-        <Link href="/terms" className="link">
+        <a href={TERMS_URL} className="link">
           Terms
-        </Link>{' '}
+        </a>{' '}
         and{' '}
-        <Link href="/privacy" className="link">
+        <a href={PRIVACY_URL} className="link">
           Privacy Policy
-        </Link>
+        </a>
         .
       </p>
 

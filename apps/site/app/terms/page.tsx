@@ -7,11 +7,10 @@ import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/
  * /terms page: a legal-copy change is its own change, never bundled with a
  * design move.
  *
- * Unlinked and noindexed until the landing flips. app.villagehale.com/terms is
- * still the live, linked copy — the mobile app, sent emails, CASL footers, and
- * consent records all point at it — and it becomes a 308 redirect here in a
- * separate app-side PR. Two indexable copies of one policy in the meantime
- * would be the worse failure.
+ * app.villagehale.com/terms is now a permanent 308 here (VIL-256) — kept forever,
+ * because the mobile app, sent emails and stored consent records all name the old
+ * URL and none of those can be rewritten. This is the only copy now; it stays
+ * noindexed while the marketing pivot is dark, and is reachable by direct link.
  */
 
 const TITLE = 'Terms of Service · Hale';

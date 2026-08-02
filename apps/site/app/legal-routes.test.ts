@@ -12,9 +12,11 @@ import TermsPage, { metadata as termsMetadata } from './terms/page.js';
  * planned addition: the SMS-transit disclosure from Technical Design §7, which
  * has to exist before the Twilio soft-launch.
  *
- * The routes ship unlinked and noindexed — nothing points at them until the
- * landing flips, so a crawler must not index a second copy of a policy while
- * app.villagehale.com still serves the canonical one.
+ * The routes ship noindexed. That first held back a second indexable copy of a
+ * live policy; since VIL-256 made app.villagehale.com/{terms,privacy} permanent
+ * 308s here these are the only copies, and the noindex now simply holds with the
+ * rest of the dark marketing pivot until the flip. The footer links them either
+ * way — noindex is not unreachable.
  */
 
 const termsHtml = renderToStaticMarkup(createElement(TermsPage));

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authConfig } from '~/auth.config';
 import { authConfigured } from '~/lib/auth-config';
 import { bridgeBearerToSessionCookie } from '~/lib/auth/bearer-bridge';
+import { isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
 import { inviteGateDecision } from '~/lib/onboarding/invite-gate';
 
@@ -15,23 +16,6 @@ const { auth } = NextAuth(authConfig);
 
 const INVITE_COOKIE = 'hale_invite';
 const MARKETING_FALLBACK = 'https://villagehale.com';
-
-// Paths rendered by the (authed) route group. The group name isn't part of the
-// URL, so the matcher can't target it directly — we gate these prefixes by hand.
-const PROTECTED_PREFIXES = [
-  '/coach',
-  '/companion',
-  '/family',
-  '/home',
-  '/plan',
-  '/settings',
-  '/trail',
-  '/village',
-];
-
-function isProtected(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
 
 // auth() wraps the middleware so req.auth carries the Auth.js session. An
 // unauthenticated request to a protected route is redirected to /sign-in.
@@ -96,7 +80,7 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  if (!isProtected(pathname)) {
+  if (!isProtectedPath(pathname)) {
     return NextResponse.next();
   }
 

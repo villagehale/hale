@@ -3,9 +3,11 @@ import { APP_URL } from '~/lib/app-url';
 
 /**
  * The marketing footer: a raised white card on the warm page. Real navigation,
- * not decoration. Legal links point at the product app's live Privacy and
- * Terms pages. No social icon row — the site has no social accounts to link, so
- * none are invented. No third-party credit line.
+ * not decoration. Legal links point at this site's own Privacy and Terms pages —
+ * D20 moved the policies here, and the app's old routes are permanent redirects
+ * back, so linking the app would send a reader on a needless hop. No social icon
+ * row — the site has no social accounts to link, so none are invented. No
+ * third-party credit line.
  */
 
 const PRODUCT = [
@@ -25,8 +27,8 @@ const RESOURCES = [
 
 /* Legal lives ONLY in the bottom bar — a Legal column would duplicate it. */
 const LEGAL = [
-  { label: 'Privacy policy', href: `${APP_URL}/privacy` },
-  { label: 'Terms of service', href: `${APP_URL}/terms` },
+  { label: 'Privacy policy', href: '/privacy' },
+  { label: 'Terms of service', href: '/terms' },
 ] as const;
 
 const COLUMNS = [
