@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { type StatedAgeBand, parseStatedAgeBand } from './age-band';
 import type { LibrarySystem } from './library-systems';
 import type {
   CivicAdapter,
@@ -191,6 +192,38 @@ function resolveAgeBand(
   return { ageMinMonths: min, ageMaxMonths: max };
 }
 
+/** The oldest a child can be and still be Hale's; the upper bound to intersect
+ * against when an audience states none. */
+const PRODUCT_AGE_CEILING_MONTHS = 18 * 12 - 1;
+
+/**
+ * VIL-260 · WS5 — narrow a calendar-wide audience band to the age THIS event
+ * states about itself (see age-band.ts for why the audience alone is not enough:
+ * a 0–5 umbrella was offering a 2-year-old an infant lap-bounce).
+ *
+ * Three cases, and the third is the interesting one:
+ *   - the event states nothing → the umbrella is all we know, unchanged.
+ *   - the audience states nothing ("all ages") → the event's own words are the
+ *     only claim there is, so they become the band.
+ *   - both → the intersection, EXCEPT when they do not overlap at all. A real
+ *     conflict exists in the live data (RHPL files "Kindergarten Party (3–5 yrs)"
+ *     under its school-age "Kids" audience), and there the event's own title is
+ *     the specific truth while the audience is a filing decision. Trusting the
+ *     narrower, self-described band is what keeps a three-year-old's party
+ *     reachable by three-year-olds.
+ */
+function narrowToStated(
+  audience: { ageMinMonths: number | null; ageMaxMonths: number | null },
+  stated: StatedAgeBand | null,
+): { ageMinMonths: number | null; ageMaxMonths: number | null } {
+  if (stated === null) return audience;
+  if (audience.ageMinMonths === null && audience.ageMaxMonths === null) return stated;
+
+  const min = Math.max(audience.ageMinMonths ?? 0, stated.ageMinMonths);
+  const max = Math.min(audience.ageMaxMonths ?? PRODUCT_AGE_CEILING_MONTHS, stated.ageMaxMonths);
+  return min > max ? stated : { ageMinMonths: min, ageMaxMonths: max };
+}
+
 /**
  * Turn one gateway page into venues + sessions. Pure: no clock, no network, no
  * database, so the real captured payloads in ./fixtures test it exactly as it
@@ -219,8 +252,15 @@ export function parseBiblioCommonsEvents(
     // where to go. (Virtual-only programming is a separate feature, not this one.)
     if (branchId === null || locations[branchId] === undefined) continue;
 
-    const band = resolveAgeBand(system, definition.audienceIds ?? [], audiences, unknown);
-    if (band === null) continue;
+    const audience = resolveAgeBand(system, definition.audienceIds ?? [], audiences, unknown);
+    if (audience === null) continue;
+    // The title is checked first because that is where two of the three systems
+    // put the age; TPL states it only in the description, which is the read that
+    // stops Baby Time ("birth to 18 months") looking like preschool programming.
+    const band = narrowToStated(
+      audience,
+      parseStatedAgeBand(definition.title) ?? parseStatedAgeBand(definition.description),
+    );
 
     const startsAt = new Date(event.indexStart);
     const endsAt = new Date(event.indexEnd);

@@ -8,6 +8,7 @@ import { projectCivicCandidates } from '~/lib/civic/project';
 import { type CivicSystemSummary, runCivicSweep } from '~/lib/civic/sweep';
 import { type CivicAdapter, type FetchJson, createFetchJson } from '~/lib/civic/types';
 import { pipelineClient } from '~/lib/pipeline/client';
+import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import { MAX_FAMILIES_PER_RUN } from './families';
 
 /**
@@ -35,6 +36,10 @@ export interface CivicSweepRunResult {
 export interface CivicSweepDeps {
   fetchJson: FetchJson;
   parseHours(text: string): Promise<ParsedHours>;
+  /** The COARSE area's centroid (rule #1 — an FSA's middle, never a home), used
+   * to keep a family's picks within reach of them. Null on a miss; the projection
+   * then degrades to the municipality gate rather than failing. */
+  resolveCenter(areaCoarse: string): Promise<LatLng | null>;
 }
 
 export function defaultCivicSweepDeps(): CivicSweepDeps {
@@ -42,6 +47,7 @@ export function defaultCivicSweepDeps(): CivicSweepDeps {
   return {
     fetchJson: createFetchJson(),
     parseHours: (text: string) => parseCivicHours(text, { client }),
+    resolveCenter: (areaCoarse: string) => geocodeArea(areaCoarse),
   };
 }
 
@@ -73,13 +79,21 @@ export async function runCivicSweepCron(
   let familiesProjected = 0;
   let candidatesWritten = 0;
   const errors: Array<{ familyId: string; error: string }> = [];
+  // One geocode per distinct AREA, not per family: a sweep covers thousands of
+  // households sharing a few hundred FSAs, and an FSA's centroid does not move.
+  const centers = new Map<string, LatLng | null>();
 
   for (const family of families) {
     try {
+      const areaCoarse = family.areaCoarse;
+      if (areaCoarse !== null && !centers.has(areaCoarse)) {
+        centers.set(areaCoarse, await deps.resolveCenter(areaCoarse));
+      }
       candidatesWritten += await projectCivicCandidates(
         database,
         family.id,
-        family.areaCoarse,
+        areaCoarse,
+        areaCoarse === null ? null : (centers.get(areaCoarse) ?? null),
         now,
       );
       familiesProjected += 1;

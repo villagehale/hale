@@ -39,12 +39,24 @@ export function indoorOutdoorLabel(value: string | null): string | null {
   return INDOOR_OUTDOOR_LABELS[value] ?? null;
 }
 
-/** Milestone timing → the parent-facing label (mirrors the web page). */
-export const MILESTONE_TIMING_LABEL: Record<MilestoneStatus['timing'], string> = {
+/** Milestone timing → the parent-facing label. Hand-mirrors @hale/types (Metro
+ * isolation — see family-stage-parity.test.ts); drift is caught by
+ * milestone-label-parity.test.ts. */
+const MILESTONE_TIMING_LABEL: Record<MilestoneStatus['timing'], string> = {
   upcoming: 'coming up',
   in_window: 'around now',
   watch: 'worth asking',
+  passed: 'earlier stage',
 };
+
+/**
+ * The one label a milestone row shows. `done` is read HERE, not at each render
+ * site: a marked-done milestone that still said "worth asking" was the web bug
+ * this mirrors the fix for, and two call sites is exactly how it happens.
+ */
+export function milestoneStatusLabel(status: Pick<MilestoneStatus, 'timing' | 'done'>): string {
+  return status.done ? 'done' : MILESTONE_TIMING_LABEL[status.timing];
+}
 
 /** Family stage → a capitalized, parent-facing label so headers read "Newborn"
  * rather than the raw lowercase enum "newborn"/"teenager". */

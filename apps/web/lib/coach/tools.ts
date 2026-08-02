@@ -258,13 +258,17 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
   const getFrameworkGuidance = defineTool({
     name: 'get_framework_guidance',
     description:
-      "The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance, milestone windows, and the Canadian health/immunization cadence. Every item is general guidance — surface the confirm-with-provider note for anything health-related (rule #1).",
-    inputSchema: z.object({ stage: z.enum(['newborn', 'toddler', 'child', 'teenager']) }),
+      "The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance, milestone windows, and the Canadian health/immunization cadence. ALWAYS pass ageMonths when you know the child's age (get_child_profile returns it) — the 'child' stage spans four years old to twelve, and without an age this answers for the middle of it. Every item is general guidance — surface the confirm-with-provider note for anything health-related (rule #1).",
+    inputSchema: z.object({
+      stage: z.enum(['newborn', 'toddler', 'child', 'teenager']),
+      ageMonths: z.number().int().min(0).max(215).optional(),
+    }),
     handler: async (input) => {
-      const reference = stageReferenceDob(input.stage);
+      const reference = stageReferenceDob(input.stage, input.ageMonths);
       const companion = companionForChild({ dateOfBirth: reference });
       return {
         stage: companion.stage,
+        ageMonths: companion.ageMonths,
         whatsNow: companion.whatsNow,
         whatsNext: companion.whatsNext,
         milestones: companion.milestones.map((m) => ({
@@ -289,12 +293,18 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
 }
 
 /**
- * A representative date-of-birth for a stage, so get_framework_guidance can reuse
- * the per-child companion (which keys on DOB) for stage-level guidance. The age
- * sits comfortably inside each stage's window; only the stage-derived guidance is
- * surfaced, never a real child's data.
+ * A representative date-of-birth, so get_framework_guidance can reuse the
+ * per-child companion (which keys on DOB) for stage-level guidance. No real
+ * child's data is involved either way — only the age-derived guidance is
+ * surfaced.
+ *
+ * VIL-260 · WS5: `ageMonths` is honoured when the caller has it. The stage
+ * midpoints below are a LAST RESORT, and the 'child' one is why: that stage runs
+ * from four years old to twelve, so its midpoint answered a four-year-old's
+ * parent with an eight-year-old's milestones and the pre-teen immunization set.
+ * An age is always the better question to answer.
  */
-function stageReferenceDob(stage: FamilyStage): Date {
+function stageReferenceDob(stage: FamilyStage, ageMonths?: number): Date {
   const monthsByStage: Record<FamilyStage, number> = {
     newborn: 6,
     toddler: 24,
@@ -302,6 +312,6 @@ function stageReferenceDob(stage: FamilyStage): Date {
     teenager: 168,
   };
   const d = new Date();
-  d.setMonth(d.getMonth() - monthsByStage[stage]);
+  d.setMonth(d.getMonth() - (ageMonths ?? monthsByStage[stage]));
   return d;
 }

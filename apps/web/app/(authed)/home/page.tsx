@@ -1,3 +1,4 @@
+import { stageDisplayLabel } from '@hale/types';
 import { Files, Route, Ruler, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Route as NextRoute } from 'next';
@@ -8,7 +9,7 @@ import { HomeChildPanels, type HomeChildSnapshot } from '~/components/hale/home-
 import { Mascot } from '~/components/hale/mascot';
 import { QuickLog } from '~/components/hale/quick-log';
 import { Icon } from '~/components/ui/icon';
-import { type ChildCompanionView, loadCompanion } from '~/lib/companion/queries';
+import { loadCompanion } from '~/lib/companion/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
 import { type HomeChildDays, loadHomeChildDays } from '~/lib/home/child-days';
@@ -16,13 +17,6 @@ import { homeStatCells } from '~/lib/home/greeting';
 import { loadVillageFeed } from '~/lib/village/feed';
 import type { VillageCandidateView } from '~/lib/village/mappers';
 import { endorsementLabel } from '~/lib/village/social-proof';
-
-const STAGE_LABEL: Record<ChildCompanionView['stage'], string> = {
-  newborn: 'newborn',
-  toddler: 'toddler',
-  child: 'school-age',
-  teenager: 'teenager',
-};
 
 /** Human cadence labels — the village store keeps raw tokens; the UI never shows
  * them raw (rule #1). Mirrors the /village CADENCE_PILL labels. */
@@ -149,7 +143,7 @@ export default async function HomePage() {
   const snapshots: HomeChildSnapshot[] = children.map((child) => ({
     id: child.id,
     name: child.name ?? 'your child',
-    stageLabel: STAGE_LABEL[child.stage],
+    stageLabel: stageDisplayLabel(child.stage, child.ageMonths),
     upNext: child.todayHealth
       ? { what: child.todayHealth.what, duePhrase: duePhrase(child.todayHealth.dueInWeeks) }
       : null,
