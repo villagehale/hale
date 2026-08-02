@@ -5,7 +5,7 @@ import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
-import { actionTypeForIntent } from './action-intent';
+import { actionTypeForIntent, labelForIntent } from './action-intent';
 
 /**
  * Routes an inline Ask Hale action intent through the EXISTING approval engine: it
@@ -46,6 +46,38 @@ export interface InlineActionInput {
   /** Which trusted interface requested the draft. Both reuse this same approval
    * spine; the origin only changes provenance/audit labels. */
   origin?: 'ask_hale' | 'mcp';
+  /** The drafted item's title, for a caller that knows a better one than the answer's
+   * own first line (the registration sweep names the municipality and the cycle). */
+  title?: string;
+  /** The one link behind the draft, rendered as the card's "view source". */
+  sourceUrl?: string;
+}
+
+/**
+ * How long a title lifted from an answer may run before it is cut. Long enough for a
+ * municipal cycle name or a health task; short enough to read as a plan-item heading.
+ */
+const MAX_DRAFT_TITLE = 120;
+
+/**
+ * The draft's title when the caller did not supply one: the answer's own first line,
+ * which is the sentence the parent acted on ("Help me book: 18-month visit"). Falls
+ * back to the intent's chip label, so the title is never empty — the executor rejects
+ * a titleless internal write, which is exactly the failure this builder exists to
+ * prevent.
+ *
+ * ASCII "..." rather than a typographic ellipsis: an approved title lands on the
+ * family's plan, and one non-GSM-7 character anywhere downstream of that flips a whole
+ * SMS to UCS-2 and halves its budget (see sms-segments.ts).
+ */
+const TITLE_ELLIPSIS = '...';
+
+function titleFrom(sourceAnswer: string, fallback: string): string {
+  const firstLine = sourceAnswer.split('\n')[0]?.replace(/\s+/g, ' ').trim() ?? '';
+  if (!firstLine) return fallback;
+  if (firstLine.length <= MAX_DRAFT_TITLE) return firstLine;
+  const cut = firstLine.slice(0, MAX_DRAFT_TITLE - TITLE_ELLIPSIS.length).trimEnd();
+  return `${cut}${TITLE_ELLIPSIS}`;
 }
 
 export interface InlineActionResult {
@@ -60,7 +92,8 @@ export async function draftInlineAction(
   now: Date = new Date(),
 ): Promise<InlineActionResult> {
   const actionType = actionTypeForIntent(input.intentKind);
-  if (!actionType) {
+  const label = labelForIntent(input.intentKind);
+  if (!actionType || !label) {
     throw new Error(`draftInlineAction: unknown intent '${input.intentKind}'`);
   }
 
@@ -100,13 +133,29 @@ export async function draftInlineAction(
     throw new Error('draftInlineAction: events insert returned no row');
   }
 
+  // The draft's payload is what the EXECUTOR is handed verbatim when the parent
+  // approves (memory-writer.loadActionForApproval → runExecutor), and it is also the
+  // only payload the approvals card reads — the event's copy is selected nowhere on
+  // that surface. So the fields the ActionType requires (`title`) and the fields the
+  // parent needs to decide (`summary`, `source_url`) belong HERE, not just on the
+  // event. `action_hash` is the same stamp mint-placements makes, so the reviewer's
+  // check_action_idempotency has a key to read.
+  const payload = {
+    intentKind: input.intentKind,
+    childId: input.childId,
+    title: input.title?.trim() || titleFrom(input.sourceAnswer, label),
+    summary: input.sourceAnswer,
+    ...(input.sourceUrl ? { source_url: input.sourceUrl } : {}),
+    action_hash: dedupHash,
+  };
+
   const insertedAction = await database
     .insert(schema.actions)
     .values({
       eventId,
       familyId: input.familyId,
       actionType,
-      payload: { intentKind: input.intentKind, childId: input.childId },
+      payload,
       userVisibleState: 'drafted_for_approval',
     })
     .onConflictDoNothing({ target: schema.actions.eventId })
@@ -140,7 +189,7 @@ export async function draftInlineAction(
         eventId,
         familyId: input.familyId,
         actionType,
-        payload: { intentKind: input.intentKind, childId: input.childId },
+        payload,
         draftConfidence: 1,
         rationale: input.sourceAnswer,
         recipientVisibility: 'internal_only',

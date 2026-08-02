@@ -7,7 +7,8 @@
   "exports": {
     "./orchestrator": "./src/orchestrator/index.ts",
     "./reviewer": "./src/agents/reviewer.ts",
-    "./redaction": "./src/redaction/redact.ts"
+    "./redaction": "./src/redaction/redact.ts",
+    "./executor": "./src/services/executor.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

@@ -9,7 +9,32 @@
  * guards that, and this component renders nothing if it slips through.
  */
 
-const HIDDEN_FIELDS = new Set(['candidate_id', 'kind', 'event_type']);
+/**
+ * Payload machinery a parent must never be shown. `action_hash` (the reviewer's
+ * idempotency key), `intentKind` (the engine's own routing token, which rendered as a
+ * line reading "intent kind: registration_shortlist"), `childId`/`sourceRef` and the
+ * placement plumbing are all internal — meaning, not machinery.
+ */
+const HIDDEN_FIELDS = new Set([
+  'candidate_id',
+  'kind',
+  'event_type',
+  'action_hash',
+  'intentKind',
+  'childId',
+  'sourceRef',
+  'reversalHandle',
+  'privacySensitive',
+]);
+
+/** The payload keys that still deserve a labeled line: string-valued, not already
+ * rendered by the body, and not internal machinery. Exported so the leak boundary is
+ * asserted directly rather than through a DOM render. */
+export function extraKeys(payload: Record<string, unknown>, shown: Set<string>): string[] {
+  return Object.keys(payload).filter(
+    (key) => !shown.has(key) && !HIDDEN_FIELDS.has(key) && str(payload, key) !== null,
+  );
+}
 
 function str(payload: Record<string, unknown>, key: string): string | null {
   const value = payload[key];
@@ -65,9 +90,7 @@ function ExtraLines({
   payload: Record<string, unknown>;
   shown: Set<string>;
 }) {
-  const extras = Object.keys(payload).filter(
-    (key) => !shown.has(key) && !HIDDEN_FIELDS.has(key) && str(payload, key) !== null,
-  );
+  const extras = extraKeys(payload, shown);
   if (extras.length === 0) return null;
   return (
     <>
@@ -99,11 +122,26 @@ function EmailBody({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
+/**
+ * A calendar draft. `startsAt`/`ends_at` are stored as UTC instants, so they are NOT
+ * rendered here — the card's own preview line above this disclosure already states the
+ * time in the family's clock, and printing the raw ISO would be both a duplicate and a
+ * stamp in the wrong timezone. They stay in `shown` so ExtraLines does not leak them.
+ */
 function CalendarBody({ payload }: { payload: Record<string, unknown> }) {
   const title = str(payload, 'title');
   const when = str(payload, 'when') ?? str(payload, 'date');
   const where = str(payload, 'location');
-  const shown = new Set(['title', 'when', 'date', 'location']);
+  const shown = new Set([
+    'title',
+    'when',
+    'date',
+    'location',
+    'startsAt',
+    'endsAt',
+    'starts_at',
+    'ends_at',
+  ]);
   return (
     <>
       {title ? (
@@ -162,6 +200,9 @@ function detailBody(actionType: string, payload: Record<string, unknown>): React
       return <EmailBody payload={payload} />;
     case 'create_calendar_event':
     case 'update_calendar_event':
+    case 'calendar_add':
+    case 'calendar_move':
+    case 'calendar_cancel':
       return <CalendarBody payload={payload} />;
     case 'place_supply_order':
     case 'cancel_supply_order':

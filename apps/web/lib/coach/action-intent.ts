@@ -49,16 +49,24 @@ const INTENT_RULES: readonly IntentRule[] = [
     actionType: 'add_to_routine',
     patterns: [/\b(?:add (?:this|it) to|pin to)\s+(?:your )?(?:week ?plan|routine)\b/i],
   },
+  // VIL-260 · WS3. Both of these drafted `create_calendar_event`, whose executor is a
+  // permanent HALE_NOT_CONFIGURED stub (no Google OAuth) — so approving one always
+  // failed. They land on `add_to_routine` instead: an internal write that runs today,
+  // is reversible, and needs no instant. `calendar_add` (the implemented placement
+  // type) is NOT the answer here, because it requires a real startsAt and NO caller on
+  // this path has one — a chip, an MCP proposal and a health checkpoint all carry a
+  // sentence and no time, and Hale does not invent an appointment time. When a caller
+  // that knows the instant appears, that is the type it should mint.
   {
     kind: 'book_checkup',
     label: 'Book a check-up',
-    actionType: 'create_calendar_event',
+    actionType: 'add_to_routine',
     patterns: [/\bbook(?:ing)?\s+a\s+(?:check[- ]?up|appointment|visit)\b/i],
   },
   {
     kind: 'set_reminder',
     label: 'Set a reminder',
-    actionType: 'create_calendar_event',
+    actionType: 'add_to_routine',
     patterns: [/\b(?:set|add)\s+a\s+reminder\b/i, /\bremind you\b/i],
   },
   {
@@ -79,6 +87,13 @@ const INTENT_RULES: readonly IntentRule[] = [
 ];
 
 /**
+ * Every intent the minter can be asked to draft. Derived from INTENT_RULES rather
+ * than written out, so a new intent is automatically covered by the executor
+ * round-trip test that proves each one's minted payload is executable.
+ */
+export const ACTION_INTENT_KINDS: readonly ActionIntentKind[] = INTENT_RULES.map((r) => r.kind);
+
+/**
  * Detect the action intents an answer implies, deduped by kind (each intent
  * surfaces at most one chip per answer). Returns [] when nothing matches — the
  * common case for an ordinary answer, where no action chip should appear.
@@ -97,6 +112,12 @@ const KIND_BY_VALUE = new Map<string, IntentRule>(INTENT_RULES.map((r) => [r.kin
  * client can't ask the approval engine to draft an arbitrary action type. */
 export function actionTypeForIntent(kind: string): ActionType | null {
   return KIND_BY_VALUE.get(kind)?.actionType ?? null;
+}
+
+/** The intent's chip label — the drafted item's title of last resort, when the answer
+ * that implied it has no readable first line to lift one from. */
+export function labelForIntent(kind: string): string | null {
+  return KIND_BY_VALUE.get(kind)?.label ?? null;
 }
 
 /**
@@ -148,13 +169,13 @@ const INPUT_ACTION_RULES: readonly IntentRule[] = [
   {
     kind: 'book_checkup',
     label: 'Book a check-up',
-    actionType: 'create_calendar_event',
+    actionType: 'add_to_routine',
     patterns: [/\bbook(?:ing)?\s+(?:a|an|the)?\s*(?:check[- ]?up|appointment|visit|doctor)\b/i],
   },
   {
     kind: 'set_reminder',
     label: 'Set a reminder',
-    actionType: 'create_calendar_event',
+    actionType: 'add_to_routine',
     patterns: [/\b(?:set|add)\s+a\s+reminder\b/i, /\bremind\s+me\b/i],
   },
   {

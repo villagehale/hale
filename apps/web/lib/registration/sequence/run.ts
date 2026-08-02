@@ -22,7 +22,7 @@ import {
   resolveFamilyOpen,
 } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from './claims.js';
-import { renderSequenceLeg, renderShortlistRationale } from './copy.js';
+import { renderSequenceLeg, renderShortlistRationale, windowPhrase } from './copy.js';
 import {
   HEADS_UP_MINUTE_LOCAL,
   type RegistrationOutcome,
@@ -155,7 +155,17 @@ export interface SequenceRunDeps {
   /** Draft the shortlist through the approval spine. Returns the action id. */
   draftShortlist(
     database: Database,
-    input: { familyId: string; actorUserId: string; childId: null; intentKind: string; rationale: string },
+    input: {
+      familyId: string;
+      actorUserId: string;
+      childId: null;
+      intentKind: string;
+      rationale: string;
+      /** The card's heading — what opens, where. */
+      title: string;
+      /** The municipal page. The one link the whole sequence points at. */
+      sourceUrl: string;
+    },
   ): Promise<string>;
   attachAction(database: Database, sequenceId: string, actionId: string): Promise<void>;
   /** Undo a claim whose shortlist could not be drafted. */
@@ -247,7 +257,9 @@ async function proposeForFamily(
     // an hour apart. A household preparing for a registration morning is preparing for
     // ONE; the next is proposed once this window has passed. (A declined shortlist also
     // holds the slot until its date passes — conservative, and it self-clears.)
-    if (claimed.has(match.window.id)) return false;
+    // Any cycle in this collapsed event counts as claimed: the group is one
+    // registration morning, and a claim on any of its rows already produced the card.
+    if (match.cycleWindows.some((cycle) => claimed.has(cycle.id))) return false;
     const shortlist = buildShortlist(match, children, now);
     if (!shortlist) continue;
 
@@ -270,6 +282,12 @@ async function proposeForFamily(
         childId: null,
         intentKind: 'registration_shortlist',
         rationale: renderShortlistRationale(shortlist, family.timeZone, now),
+        // The card's own copy. Without these the approvals surface showed the generic
+        // "Note in your daily digest" over the raw payload keys, so the municipality,
+        // the date, the link and the "I never register for you" line — the things the
+        // quiet-hours exemption is granted on the strength of — were invisible.
+        title: windowPhrase(shortlist),
+        sourceUrl: shortlist.sourceUrl,
       });
       await deps.attachAction(database, sequenceId, actionId);
       await deps.audit(database, {
@@ -430,6 +448,10 @@ function shortlistForSequence(
   return buildShortlist(
     {
       window: sequence.window,
+      // The sequence stores ONE window id, so a leg re-renders that cycle alone. The
+      // co-opening siblings only matter at proposal time, where the shortlist is built
+      // from the live match.
+      cycleWindows: [sequence.window],
       matchedChildAgesMonths: [],
       // The per-child hedge is rebuilt from the live band by buildShortlist itself, so
       // there is nothing for the match-level flag to carry here.
@@ -619,6 +641,8 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
           intentKind: input.intentKind,
           childId: input.childId,
           sourceAnswer: input.rationale,
+          title: input.title,
+          sourceUrl: input.sourceUrl,
         },
         database,
         pipelineClient(),

@@ -373,3 +373,99 @@ describe('matchRegistrationWindows — time', () => {
     expect(out.map((m) => m.window.id)).toEqual(['resident-earlier', 'general-first']);
   });
 });
+
+/**
+ * VIL-260 · WS3 — Burlington publishes ONE registration event in three table rows.
+ *
+ * "Fall and winter youth", "Fall swimming lessons" and "Fall and winter Aquatic
+ * Leadership programs" share an instant, a page and (an absent) age band; the Town
+ * opens them together. Proposed as three matches, the sort's alphabetical tie-break
+ * decided which one a family heard about — and "Aquatic Leadership" sorts first, so a
+ * Burlington family with a 30-month-old was proposed the teen lifeguard-certification
+ * cycle. They collapse into one match carrying every cycle.
+ */
+describe('matchRegistrationWindows — cycles that open together are ONE event', () => {
+  const BURLINGTON = {
+    municipality: 'burlington' as Municipality,
+    residentOpenAt: new Date('2026-08-22T13:00:00.000Z'),
+    openAt: new Date('2026-08-28T13:00:00.000Z'),
+    sourceUrl: 'https://www.burlington.ca/registering',
+  };
+
+  function burlingtonTriple(): RegistrationWindow[] {
+    return [
+      win({
+        ...BURLINGTON,
+        id: 'youth',
+        programDomain: 'rec_program' as ProgramDomain,
+        cycleLabel: 'Fall 2026 and Winter 2027 youth programs',
+      }),
+      win({
+        ...BURLINGTON,
+        id: 'swim',
+        programDomain: 'swim' as ProgramDomain,
+        cycleLabel: 'Fall 2026 swimming lessons',
+      }),
+      win({
+        ...BURLINGTON,
+        id: 'leadership',
+        programDomain: 'swim' as ProgramDomain,
+        cycleLabel: 'Fall 2026 and Winter 2027 Aquatic Leadership programs',
+      }),
+    ];
+  }
+
+  it('collapses same-municipality, same-instant, same-page cycles into one match', () => {
+    const out = matchRegistrationWindows({
+      windows: burlingtonTriple(),
+      postal: 'L7R 1A1',
+      childrenAgesMonths: [30],
+      now: BEFORE_EVERYTHING,
+    });
+
+    const match = onlyMatch(out);
+    // Every cycle the Town opens at that instant is carried, so the copy can name
+    // what actually opens instead of picking one alphabetically.
+    expect([...match.cycleWindows].map((w) => w.id).sort()).toEqual([
+      'leadership',
+      'swim',
+      'youth',
+    ]);
+  });
+
+  it('keeps cycles that open at DIFFERENT instants separate', () => {
+    const [youth, swim] = burlingtonTriple();
+    if (!youth || !swim) throw new Error('fixture');
+    const out = matchRegistrationWindows({
+      // A Burlington-only FSA registers on the RESIDENT date, so that is the instant
+      // that has to differ for the two to be separate registration mornings.
+      windows: [youth, { ...swim, residentOpenAt: new Date('2026-09-04T13:00:00.000Z') }],
+      postal: 'L7R 1A1',
+      childrenAgesMonths: [30],
+      now: BEFORE_EVERYTHING,
+    });
+    expect(out).toHaveLength(2);
+  });
+
+  it('keeps cycles with DIFFERENT published age bands separate — the fit note depends on the band', () => {
+    const [youth, swim] = burlingtonTriple();
+    if (!youth || !swim) throw new Error('fixture');
+    const out = matchRegistrationWindows({
+      windows: [youth, { ...swim, ageMinMonths: 24, ageMaxMonths: 60 }],
+      postal: 'L7R 1A1',
+      childrenAgesMonths: [30],
+      now: BEFORE_EVERYTHING,
+    });
+    expect(out).toHaveLength(2);
+  });
+
+  it('carries a lone window as a one-cycle event', () => {
+    const out = matchRegistrationWindows({
+      windows: [win()],
+      postal: 'L3R 0B4',
+      childrenAgesMonths: [30],
+      now: BEFORE_EVERYTHING,
+    });
+    expect(onlyMatch(out).cycleWindows).toHaveLength(1);
+  });
+});

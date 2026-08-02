@@ -37,7 +37,7 @@ function shortlist(overrides: Partial<Shortlist> = {}): Shortlist {
       programDomain: 'rec_program',
       cycleLabel: 'Fall 2026',
     },
-    programDomainLabel: 'recreation programs',
+    cyclePhrase: 'Fall 2026 recreation programs',
     opensForFamilyAt: new Date('2026-09-15T10:30:00.000Z'),
     sourceUrl: LONGEST_URL,
     isResidentWindow: false,
@@ -291,5 +291,45 @@ describe('renderShortlistRationale', () => {
       NOW,
     );
     expect(text).toContain('7 days');
+  });
+});
+
+/**
+ * VIL-260 · WS3 — the approval card is the thing being consented to, so it may not
+ * assert an age band the municipality never published. Burlington publishes none on
+ * any of its rows, and its own cycle labels already name the program.
+ */
+describe('renderShortlistRationale — an unpublished band is said to be unpublished', () => {
+  const BURLINGTON_REF = {
+    id: 'win-1',
+    municipality: 'burlington' as const,
+    programDomain: 'swim' as const,
+    cycleLabel: 'Fall 2026 swimming lessons',
+  };
+
+  it('says the band is not published instead of claiming the child is inside it', () => {
+    const text = renderShortlistRationale(
+      shortlist({
+        windowRef: BURLINGTON_REF,
+        cyclePhrase: 'recreation programs and swim lessons',
+        fitNotes: [{ childId: 'c1', name: 'Mira', fit: 'band_unknown' }],
+      }),
+      TZ,
+      NOW,
+    );
+
+    expect(text).not.toContain('inside the published age band');
+    expect(text.toLowerCase()).toContain('does not publish an age band');
+    expect(text).toContain('Mira');
+  });
+
+  it('does not repeat the program noun the cycle label already carries', () => {
+    const text = renderShortlistRationale(
+      shortlist({ windowRef: BURLINGTON_REF, cyclePhrase: 'Fall 2026 swimming lessons' }),
+      TZ,
+      NOW,
+    );
+    expect(text).toContain('Burlington Fall 2026 swimming lessons registration opens');
+    expect(text).not.toContain('lessons swim lessons');
   });
 });

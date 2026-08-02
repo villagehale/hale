@@ -35,14 +35,19 @@ export interface SequenceChild {
   dateOfBirth: string;
 }
 
-export type AgeFit = 'in_band' | 'near_band';
+export type AgeFit = 'in_band' | 'near_band' | 'band_unknown';
 
 export interface FitNote {
   childId: string;
   /** Null for a 13+ child — never named on this surface (rule #1). */
   name: string | null;
-  /** `near_band` means the child only fits on the ±6-month tolerance the matcher
-   * grants a DOB derived from a spoken age, so the copy must hedge. */
+  /**
+   * `near_band` means the child only fits on the ±6-month tolerance the matcher
+   * grants a DOB derived from a spoken age, so the copy must hedge. `band_unknown`
+   * means the municipality published NO band at all (Burlington publishes none on any
+   * row) — the child is admitted, and the copy says the band is unpublished rather
+   * than claiming a band admits them.
+   */
   fit: AgeFit;
 }
 
@@ -53,8 +58,14 @@ export interface Shortlist {
     programDomain: ProgramDomain;
     cycleLabel: string;
   };
-  /** How the municipality's own domain reads in a sentence to a parent. */
-  programDomainLabel: string;
+  /**
+   * WHAT opens, in one phrase a parent reads. The municipality's own cycle label when
+   * that label already names a program ("Fall 2026 swimming lessons"), the label plus
+   * the domain when it is a bare season ("Fall 2026 recreation programs"), and the
+   * domains that open together when one registration event covers several cycles —
+   * which has no single published name.
+   */
+  cyclePhrase: string;
   /** When THIS family can first register — the resident date where they have one. */
   opensForFamilyAt: Date;
   /** The municipal page itself. The one link the whole sequence points at, because
@@ -82,13 +93,51 @@ const PROGRAM_DOMAIN_LABEL: Record<ProgramDomain, string> = {
 
 /** How a child of `ageMonths` sits against a published band, or null when the band
  * excludes them even with the tolerance. Mirrors the matcher's own conservatism:
- * a near-edge child is INCLUDED and flagged, never silently dropped. */
+ * a near-edge child is INCLUDED and flagged, never silently dropped. A window with
+ * NO band admits everyone, and says so — 'in_band' there would have claimed a
+ * published band admits the child when the municipality published none. */
 function fitOf(ageMonths: number, min: number | null, max: number | null): AgeFit | null {
+  if (min === null && max === null) return 'band_unknown';
   if (min !== null && ageMonths < min - AGE_TOLERANCE_MONTHS) return null;
   if (max !== null && ageMonths > max + AGE_TOLERANCE_MONTHS) return null;
   if (min !== null && ageMonths < min) return 'near_band';
   if (max !== null && ageMonths > max) return 'near_band';
   return 'in_band';
+}
+
+/** The program noun each domain label ends in ("programs", "lessons", "camps",
+ * "care"). A cycle label containing one is already self-describing, so appending the
+ * domain label to it rendered "Fall 2026 swimming lessons swim lessons". */
+const PROGRAM_NOUNS = new Set(
+  Object.values(PROGRAM_DOMAIN_LABEL).map((label) => label.split(' ').at(-1) as string),
+);
+
+function namesAProgram(cycleLabel: string): boolean {
+  return cycleLabel
+    .toLowerCase()
+    .split(/[\s-]+/)
+    .some((word) => PROGRAM_NOUNS.has(word));
+}
+
+function joinLabels(labels: readonly string[]): string {
+  if (labels.length <= 1) return labels[0] ?? '';
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * What opens, as one phrase. A registration event covering several cycles has no
+ * single published cycle name — the source prints one row per cycle — so it names the
+ * DOMAINS that open together, deduped, and lets the date carry the season.
+ */
+function cyclePhraseOf(cycleWindows: readonly { programDomain: ProgramDomain; cycleLabel: string }[]): string {
+  const domainLabels = [
+    ...new Set(cycleWindows.map((w) => PROGRAM_DOMAIN_LABEL[w.programDomain])),
+  ];
+  const only = cycleWindows.length === 1 ? cycleWindows[0] : null;
+  if (!only) return joinLabels(domainLabels);
+  return namesAProgram(only.cycleLabel)
+    ? only.cycleLabel
+    : `${only.cycleLabel} ${PROGRAM_DOMAIN_LABEL[only.programDomain]}`;
 }
 
 /**
@@ -122,7 +171,7 @@ export function buildShortlist(
       programDomain: window.programDomain,
       cycleLabel: window.cycleLabel,
     },
-    programDomainLabel: PROGRAM_DOMAIN_LABEL[window.programDomain],
+    cyclePhrase: cyclePhraseOf(match.cycleWindows),
     opensForFamilyAt: match.opensForFamilyAt,
     sourceUrl: window.sourceUrl,
     isResidentWindow: match.isResidentWindow,

@@ -75,7 +75,11 @@ function field(payload: Record<string, unknown>, key: string): string | null {
  * isn't fully filled in — a valid boundary, not an error). NEVER called on the
  * teen-content branch, so no raw teen payload reaches a preview.
  */
-function derivePreview(actionType: string, payload: Record<string, unknown>): string {
+function derivePreview(
+  actionType: string,
+  payload: Record<string, unknown>,
+  timeZone: string,
+): string {
   switch (actionType) {
     case 'reply_to_email': {
       const to = field(payload, 'to');
@@ -105,13 +109,37 @@ function derivePreview(actionType: string, payload: Record<string, unknown>): st
     }
     case 'share_photos_with_family':
       return 'Share photos with family';
-    case 'add_to_digest_only':
-      return 'Note in your daily digest';
-    case 'add_to_routine':
-      return 'Pin to your routine';
+    case 'add_to_digest_only': {
+      const title = field(payload, 'title');
+      return title ? `${actionTypeLabel(actionType)} — ${title}` : 'Note in your daily digest';
+    }
+    case 'add_to_routine': {
+      const title = field(payload, 'title');
+      return title ? `${actionTypeLabel(actionType)} — ${title}` : 'Pin to your routine';
+    }
+    // The three placements previewed identically ("Add to your calendar") because they
+    // fell through to the bare actionType label, and their instant is stored UTC — a
+    // parent reads their own clock, so the family zone is applied here.
+    case 'calendar_add':
+    case 'calendar_move':
+    case 'calendar_cancel': {
+      const verb = actionTypeLabel(actionType);
+      const title = field(payload, 'title');
+      if (!title) return verb;
+      const startsAt = field(payload, 'startsAt');
+      const when = startsAt ? instantLabel(startsAt, timeZone) : null;
+      return when ? `${verb} — ${title}, ${when}` : `${verb} — ${title}`;
+    }
     default:
       return actionTypeLabel(actionType);
   }
+}
+
+/** A stored ISO instant in the family's own clock, or null when it isn't parseable
+ * (a malformed draft degrades to title-only rather than printing a raw UTC string). */
+function instantLabel(iso: string, timeZone: string): string | null {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? null : formatDateTime(at, timeZone);
 }
 
 /** The redacted row's summary — the DECIDABILITY path (policy 4), distinct from
@@ -128,7 +156,7 @@ export function toApprovalView(row: PendingApprovalRow, timeZone: string): Appro
     summary: row.teenContent ? TEEN_REQUEST_ACCESS_SUMMARY : summary,
     preview: row.teenContent
       ? TEEN_REDACTED_PLACEHOLDER
-      : derivePreview(row.actionType, row.payload),
+      : derivePreview(row.actionType, row.payload, timeZone),
     payload: row.teenContent ? null : row.payload,
     childId: row.childId,
     childLabel: row.childLabel,

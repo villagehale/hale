@@ -85,9 +85,14 @@ function whoPhrase(fitNotes: readonly FitNote[]): string {
   return parts.join(' and ');
 }
 
-/** "Richmond Hill Fall 2026 recreation programs" — the window, as a parent reads it. */
-function windowPhrase(shortlist: Shortlist): string {
-  return `${townLabel(shortlist.windowRef.municipality)} ${shortlist.windowRef.cycleLabel} ${shortlist.programDomainLabel}`;
+/**
+ * "Richmond Hill Fall 2026 recreation programs" — the window, as a parent reads it.
+ * The cycle phrase is built once, in shortlist.ts: this used to append the domain
+ * label to the cycle label unconditionally, which rendered Burlington's own
+ * "Fall 2026 swimming lessons" as "Fall 2026 swimming lessons swim lessons".
+ */
+export function windowPhrase(shortlist: Shortlist): string {
+  return `${townLabel(shortlist.windowRef.municipality)} ${shortlist.cyclePhrase}`;
 }
 
 function headsUp(input: LegCopyInput): string {
@@ -202,13 +207,23 @@ export function renderShortlistRationale(
       `Your postal code gets the residents-first date, ${shortlist.residentPriorityDays} days ahead of the general open.`,
     );
   }
-  for (const note of shortlist.fitNotes) {
-    const who = note.name ?? 'Your teen';
+  // An unpublished band is a fact about the WINDOW, not about each child, so it is
+  // one line naming everyone rather than the same sentence repeated per child. Saying
+  // "inside the published age band" here would assert a band the municipality never
+  // printed — Burlington publishes none on any of its rows.
+  if (shortlist.fitNotes.every((note) => note.fit === 'band_unknown')) {
     lines.push(
-      note.fit === 'in_band'
-        ? `${who} is inside the published age band.`
-        : `${who} is just outside the published age band, within the margin on an approximate birthday.`,
+      `${townLabel(shortlist.windowRef.municipality)} does not publish an age band for this one, so check it fits ${whoPhrase(shortlist.fitNotes)}.`,
     );
+  } else {
+    for (const note of shortlist.fitNotes) {
+      const who = note.name ?? 'Your teen';
+      lines.push(
+        note.fit === 'in_band'
+          ? `${who} is inside the published age band.`
+          : `${who} is just outside the published age band, within the margin on an approximate birthday.`,
+      );
+    }
   }
   lines.push(
     'Approving this asks me to text you a week ahead, the evening before, and 15 minutes before it opens. I never register for you.',

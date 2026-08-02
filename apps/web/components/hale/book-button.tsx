@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 
-/** The Ask-Hale intent kind for booking a health item — mapped server-side to the
- * create_calendar_event action type (action-intent.ts). Named so the request
+/** The Ask-Hale intent kind for booking a health item — mapped server-side to an
+ * action type with a working executor (action-intent.ts). Named so the request
  * builder and its test can't drift from the engine's trust boundary. */
 export const BOOK_CHECKUP_INTENT = 'book_checkup';
 

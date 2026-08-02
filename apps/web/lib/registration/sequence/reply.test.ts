@@ -36,7 +36,7 @@ function shortlist(overrides: Partial<Shortlist> = {}): Shortlist {
       programDomain: 'rec_program',
       cycleLabel: 'Fall 2026',
     },
-    programDomainLabel: 'recreation programs',
+    cyclePhrase: 'Fall 2026 recreation programs',
     opensForFamilyAt: OPEN_AT,
     sourceUrl: 'https://www.toronto.ca/explore-enjoy/parks-recreation/',
     isResidentWindow: false,

@@ -3,7 +3,7 @@
  * web BookButton (`apps/web/components/hale/book-button.tsx`). Tapping it does NOT
  * write a calendar — expo-calendar isn't installed and no mobile calendar executor
  * exists. Instead it routes the item through the SAME approval engine the web uses:
- * POST /api/coach/action drafts a create_calendar_event action HELD at
+ * POST /api/coach/action drafts an action HELD at
  * drafted_for_approval (rule #4), reviewed (rule #3) and audited (rule #6). The
  * parent then approves it on the Approvals surface. So the success copy is "added to
  * your approvals", never "added to Google Calendar" — no false integration claim.
@@ -14,7 +14,7 @@
  * without a native runtime.
  */
 
-/** The server-validated intent token that maps to create_calendar_event
+/** The server-validated intent token the engine maps to an action type
  * (action-intent.ts). A data boundary — the engine rejects anything outside its
  * closed set, so this must be the exact string, never a paraphrase. */
 export const BOOK_CHECKUP_INTENT = 'book_checkup';

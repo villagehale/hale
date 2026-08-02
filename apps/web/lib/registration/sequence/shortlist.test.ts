@@ -44,6 +44,7 @@ function window(overrides: Partial<RegistrationWindow> = {}): RegistrationWindow
 function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
   return {
     window: window(),
+    cycleWindows: [window()],
     matchedChildAgesMonths: [48],
     ageApproximate: false,
     isResidentWindow: false,
@@ -77,10 +78,10 @@ describe('buildShortlist', () => {
     // fails this test rather than reaching a parent.
     expect(Object.keys(shortlist ?? {}).sort()).toEqual([
       'ageApproximate',
+      'cyclePhrase',
       'fitNotes',
       'isResidentWindow',
       'opensForFamilyAt',
-      'programDomainLabel',
       'residentPriorityDays',
       'sourceUrl',
       'waitlistResponseHours',
@@ -134,9 +135,11 @@ describe('buildShortlist', () => {
       [child('c1', 'Max', 4), child('c2', 'Rae', 14)],
       NOW,
     );
+    // No band published, so the fit is 'band_unknown' for both — the teen is still
+    // counted and still nameless (rule #1).
     expect(shortlist?.fitNotes).toEqual([
-      { childId: 'c1', name: 'Max', fit: 'in_band' },
-      { childId: 'c2', name: null, fit: 'in_band' },
+      { childId: 'c1', name: 'Max', fit: 'band_unknown' },
+      { childId: 'c2', name: null, fit: 'band_unknown' },
     ]);
   });
 
@@ -183,16 +186,17 @@ describe('buildShortlist', () => {
   });
 
   it('labels the program domain in words a parent uses', () => {
-    expect(buildShortlist(match(), [child('c1', 'Max', 4)], NOW)?.programDomainLabel).toBe(
-      'recreation programs',
+    expect(buildShortlist(match(), [child('c1', 'Max', 4)], NOW)?.cyclePhrase).toBe(
+      'Fall 2026 recreation programs',
     );
+    const care = window({ programDomain: 'after_school_care' });
     expect(
       buildShortlist(
-        match({ window: window({ programDomain: 'after_school_care' }) }),
+        match({ window: care, cycleWindows: [care] }),
         [child('c1', 'Max', 4)],
         NOW,
-      )?.programDomainLabel,
-    ).toBe('before-and-after-school care');
+      )?.cyclePhrase,
+    ).toBe('Fall 2026 before-and-after-school care');
   });
 
   it('carries the municipality’s waitlist response window for the clock to use later', () => {
@@ -204,5 +208,73 @@ describe('buildShortlist', () => {
         NOW,
       )?.waitlistResponseHours,
     ).toBeNull();
+  });
+});
+
+/**
+ * VIL-260 · WS3 — two things the shortlist asserted that the source never published.
+ *
+ * 1. A window with NO age band read as "inside the published age band" for every
+ *    child, because fitOf's null-band path fell through to 'in_band'. Burlington
+ *    publishes no band on any of its rows, so a Burlington family was told a band
+ *    admitted their child when there was no band at all.
+ * 2. One registration event printed as several cycle rows has no single published
+ *    cycle name, so the phrase a parent reads names what actually opens.
+ */
+describe('buildShortlist — what the source did and did not publish', () => {
+  const NO_BAND = window({ ageMinMonths: null, ageMaxMonths: null });
+
+  it("marks a child's fit 'band_unknown' when the window publishes no band", () => {
+    const shortlist = buildShortlist(
+      match({ window: NO_BAND, cycleWindows: [NO_BAND] }),
+      [child('c1', 'Mira', 2, 6)],
+      NOW,
+    );
+    expect(shortlist?.fitNotes).toEqual([{ childId: 'c1', name: 'Mira', fit: 'band_unknown' }]);
+  });
+
+  it('still admits every child when no band is published — silence is not exclusion', () => {
+    const shortlist = buildShortlist(
+      match({ window: NO_BAND, cycleWindows: [NO_BAND] }),
+      [child('c1', 'Mira', 2, 6), child('c2', 'Sam', 14)],
+      NOW,
+    );
+    expect(shortlist?.fitNotes).toHaveLength(2);
+  });
+
+  it('keeps the municipality’s own cycle label when it already names the program', () => {
+    const swim = window({ programDomain: 'swim', cycleLabel: 'Fall 2026 swimming lessons' });
+    // "Fall 2026 swimming lessons swim lessons" was the old rendering.
+    expect(
+      buildShortlist(match({ window: swim, cycleWindows: [swim] }), [child('c1', 'Max', 4)], NOW)
+        ?.cyclePhrase,
+    ).toBe('Fall 2026 swimming lessons');
+  });
+
+  it('adds the domain in a parent’s words when the cycle label is a bare season', () => {
+    expect(
+      buildShortlist(match(), [child('c1', 'Max', 4)], NOW)?.cyclePhrase,
+    ).toBe('Fall 2026 recreation programs');
+  });
+
+  it('names every domain that opens together, deduped, for a collapsed event', () => {
+    const youth = window({
+      id: 'youth',
+      programDomain: 'rec_program',
+      cycleLabel: 'Fall 2026 and Winter 2027 youth programs',
+    });
+    const swim = window({ id: 'swim', programDomain: 'swim', cycleLabel: 'Fall 2026 swimming lessons' });
+    const leadership = window({
+      id: 'leadership',
+      programDomain: 'swim',
+      cycleLabel: 'Fall 2026 and Winter 2027 Aquatic Leadership programs',
+    });
+    expect(
+      buildShortlist(
+        match({ window: youth, cycleWindows: [youth, swim, leadership] }),
+        [child('c1', 'Mira', 2, 6)],
+        NOW,
+      )?.cyclePhrase,
+    ).toBe('recreation programs and swim lessons');
   });
 });

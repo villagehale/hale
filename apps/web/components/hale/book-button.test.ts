@@ -21,9 +21,10 @@ describe('buildBookRequest — routes through the real gate as book_checkup', ()
     expect(req.url).toBe('/api/coach/action');
     expect(req.body.intentKind).toBe(BOOK_CHECKUP_INTENT);
     expect(req.body.focusedChildId).toBe(CHILD_ID);
-    // The engine's server-side trust boundary must know this intent and map it to a
-    // real calendar-event action — otherwise the route rejects it as unknown.
-    expect(actionTypeForIntent(req.body.intentKind)).toBe('create_calendar_event');
+    // The engine's server-side trust boundary must know this intent and map it to an
+    // action type whose executor actually RUNS — otherwise the route rejects it as
+    // unknown, or the parent's approval fails at execution (VIL-260).
+    expect(actionTypeForIntent(req.body.intentKind)).toBe('add_to_routine');
   });
 
   it('carries the health item as the source answer (the draft rationale)', () => {
