@@ -1,9 +1,13 @@
 import { type Database, schema } from '@hale/db';
-import { and, count, gte, inArray, lt } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, lt } from 'drizzle-orm';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { createResendTransport } from '~/lib/channel/resend-transport';
 import { LOOP_EMAIL_TYPES } from '~/lib/cron/email-compliance';
+import {
+  PROVIDER_INCIDENT_ROUTE,
+  providerIncidentKind,
+} from '~/lib/monitoring/provider-health';
 
 /**
  * X1 (VIL-227) · the weekly loop-health digest to the founder. Reuses the
@@ -24,12 +28,19 @@ export interface MessageCountRow {
   count: number;
 }
 
+/** One founder alert raised in the window (VIL-255): the incident class, and when. */
+export interface ProviderIncidentRow {
+  kind: string;
+  at: Date;
+}
+
 export interface LoopHealthSummary {
   windowStart: Date;
   windowEnd: Date;
   messageCounts: MessageCountRow[];
   stopCount: number;
   weekPlansComposed: number;
+  providerIncidents: ProviderIncidentRow[];
 }
 
 /** Sums channel_messages (outbound legs) by channel/category/status, the loop_stop
@@ -72,17 +83,61 @@ export async function aggregateLoopHealth(
     .from(schema.weekPlans)
     .where(and(gte(schema.weekPlans.composedAt, windowStart), lt(schema.weekPlans.composedAt, windowEnd)));
 
+  // VIL-255: the provider incidents already claimed in this window. Read back from the
+  // dedupe claims themselves, so the weekly line costs no extra probe and can only ever
+  // report incidents the founder was actually paged about.
+  const incidentRows = await database
+    .select({
+      identifier: schema.rateLimits.identifier,
+      at: schema.rateLimits.windowStart,
+    })
+    .from(schema.rateLimits)
+    .where(
+      and(
+        eq(schema.rateLimits.route, PROVIDER_INCIDENT_ROUTE),
+        gte(schema.rateLimits.windowStart, windowStart),
+        lt(schema.rateLimits.windowStart, windowEnd),
+      ),
+    );
+
   return {
     windowStart,
     windowEnd,
     messageCounts,
     stopCount: stopRow?.count ?? 0,
     weekPlansComposed: plansRow?.count ?? 0,
+    providerIncidents: incidentRows.map((row) => ({
+      kind: providerIncidentKind(row.identifier),
+      at: row.at,
+    })),
   };
 }
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * VIL-255 · the one-line provider status. Counts the week's founder-paged incidents by
+ * class rather than probing live: a weekly report's honest subject is what happened
+ * over the week, and a green probe on Monday morning would say nothing about the
+ * Wednesday the briefs did not send.
+ */
+function providerHealthLine(incidents: ProviderIncidentRow[]): string {
+  const [first, ...rest] = incidents;
+  if (!first) {
+    return 'LLM provider: no incidents';
+  }
+  const byKind = new Map<string, number>();
+  for (const incident of incidents) {
+    byKind.set(incident.kind, (byKind.get(incident.kind) ?? 0) + 1);
+  }
+  const breakdown = [...byKind]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([kind, n]) => `${kind} ×${n}`)
+    .join(', ');
+  const last = rest.reduce((latest, i) => (i.at > latest ? i.at : latest), first.at);
+  return `LLM provider: ${incidents.length} incidents — ${breakdown} (last ${isoDate(last)})`;
 }
 
 /** Plain-text founder digest body. Pure — no DB, no network — so the format is
@@ -94,6 +149,7 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     '',
     `Weekly plans composed: ${summary.weekPlansComposed}`,
     `STOPs (loop unsubscribes): ${summary.stopCount}`,
+    providerHealthLine(summary.providerIncidents),
     '',
     'Messages by channel / category / status:',
   ];

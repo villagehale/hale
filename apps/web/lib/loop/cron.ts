@@ -3,6 +3,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import {
   DEFAULT_LOOP_PREFS,
   type LoopPrefsView,
@@ -126,6 +127,8 @@ export interface WeekPlanCronResult {
   results: Array<
     { familyId: string; result: WeekPlanFamilyResult } | { familyId: string; error: string }
   >;
+  /** Present when the provider pre-flight cancelled the window (VIL-255). */
+  aborted?: AbortedWindow;
 }
 
 /**
@@ -133,6 +136,11 @@ export interface WeekPlanCronResult {
  * then cap — a cap-then-filter would starve every family past the oldest N of their
  * weekly slot forever), then compose each. A per-family failure is recorded and the
  * loop continues — one bad family can't starve the batch.
+ *
+ * The provider pre-flight (VIL-255) sits between selection and the fan-out, so an hour
+ * with nobody due costs no probe. It is skipped entirely when the voice stage is off
+ * (null client): the deterministic plan is not the provider's business, and a missed
+ * weekly slot is a whole week lost.
  */
 export async function runWeekPlanCron(
   db: Database,
@@ -140,6 +148,18 @@ export async function runWeekPlanCron(
   now: Date = new Date(),
 ): Promise<WeekPlanCronResult> {
   const familyIds = await selectFamiliesToCompose(db, now);
+  if (familyIds.length === 0) {
+    return { processed: 0, results: [] };
+  }
+
+  const preflight = await providerPreflight(db, 'weekly_plan', deps.client, now);
+  if (!preflight.proceed) {
+    return {
+      processed: 0,
+      results: [],
+      aborted: { ...preflight.abort, skipped: familyIds.length },
+    };
+  }
 
   // Compose with BOUNDED concurrency: a strictly serial run of N × (gather + a ~2-4s LLM
   // summary) can exceed the route's maxDuration=300, and because the compose slot is a

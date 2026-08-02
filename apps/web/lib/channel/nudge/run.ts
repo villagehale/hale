@@ -20,6 +20,7 @@ import { healthNudgeDedupeKey } from '~/lib/health/checkpoints';
 import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import { localParts } from '~/lib/loop/prefs';
+import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { weekWindow } from '~/lib/plan/spine';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
@@ -184,6 +185,8 @@ export interface NudgeRunResult {
   deduped: number;
   failed: number;
   held: Record<ProactiveHoldReason, number>;
+  /** Present when the provider pre-flight cancelled the window (VIL-255). */
+  aborted?: AbortedWindow;
 }
 
 function emptyResult(enabled: boolean): NudgeRunResult {
@@ -425,6 +428,14 @@ export async function runNudgeCron(
     .filter((family) => allFamilies || allowlist.has(family.familyId))
     .filter((family) => isNudgeSlot(now, family.timeZone))
     .slice(0, MAX_NUDGE_FAMILIES_PER_RUN);
+  if (families.length === 0) return result;
+
+  // VIL-255: one provider pre-flight before the fan-out. Most hours select nobody, so
+  // this sits after the slot filter and costs nothing then.
+  const preflight = await providerPreflight(database, 'nudge_sweep', deps.client, now);
+  if (!preflight.proceed) {
+    return { ...result, aborted: { ...preflight.abort, skipped: families.length } };
+  }
 
   for (const family of families) {
     result.evaluated += 1;

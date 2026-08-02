@@ -3,6 +3,7 @@ import { type AgentClient, pickModel, runAgent } from '@hale/agent';
 import { type Database, type DigestPerChildBreakdown, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { type DigestEmailSender, createDigestEmailSender } from './email';
 import {
@@ -253,6 +254,8 @@ export interface DigestCronResult {
     | { familyId: string; result: DigestResult }
     | { familyId: string; error: string }
   >;
+  /** Present when the provider pre-flight cancelled the window (VIL-255). */
+  aborted?: AbortedWindow;
 }
 
 /**
@@ -260,6 +263,11 @@ export interface DigestCronResult {
  * by the per-run family cap (the budget blast-radius bound). A per-family failure
  * is recorded against that family and the loop continues — one bad family can't
  * starve the batch.
+ *
+ * One provider pre-flight (VIL-255) runs after selection and before the fan-out: on
+ * 2026-08-01 an exhausted credit balance turned this cron into eight identical
+ * per-family failures that nobody saw for hours. Probing after selection means an
+ * empty run still costs nothing.
  */
 export async function runDigestCron(
   database: Database,
@@ -267,6 +275,18 @@ export async function runDigestCron(
   now: Date = new Date(),
 ): Promise<DigestCronResult> {
   const familyIds = await selectFamiliesForRun(database, MAX_FAMILIES_PER_RUN.digest);
+  if (familyIds.length === 0) {
+    return { processed: 0, results: [] };
+  }
+
+  const preflight = await providerPreflight(database, 'daily_brief', deps.client, now);
+  if (!preflight.proceed) {
+    return {
+      processed: 0,
+      results: [],
+      aborted: { ...preflight.abort, skipped: familyIds.length },
+    };
+  }
 
   const results: DigestCronResult['results'] = [];
   for (const familyId of familyIds) {

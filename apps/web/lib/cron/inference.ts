@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { type AgentClient, pickModel, runAgent } from '@hale/agent';
 import type { Database } from '@hale/db';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
+import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { MAX_FAMILIES_PER_RUN, selectFamiliesForRun } from './families';
 import { buildCronGuardDeps } from './guards';
@@ -123,6 +124,8 @@ export interface InferenceCronResult {
     | { familyId: string; result: InferenceResult }
     | { familyId: string; error: string }
   >;
+  /** Present when the provider pre-flight cancelled the window (VIL-255). */
+  aborted?: AbortedWindow;
 }
 
 /**
@@ -130,6 +133,10 @@ export interface InferenceCronResult {
  * the per-run family cap (the budget blast-radius bound). A per-family failure is
  * recorded against that family and the loop continues — one bad family can't
  * starve the batch.
+ *
+ * The 06:00Z half of the 2026-08-01 incident: eight infer-memory runs failed against an
+ * exhausted credit balance. One provider pre-flight (VIL-255) now stops the window
+ * instead.
  */
 export async function runInferenceCron(
   database: Database,
@@ -137,6 +144,18 @@ export async function runInferenceCron(
   now: Date = new Date(),
 ): Promise<InferenceCronResult> {
   const familyIds = await selectFamiliesForRun(database, MAX_FAMILIES_PER_RUN.inference);
+  if (familyIds.length === 0) {
+    return { processed: 0, results: [] };
+  }
+
+  const preflight = await providerPreflight(database, 'memory_inference', deps.client, now);
+  if (!preflight.proceed) {
+    return {
+      processed: 0,
+      results: [],
+      aborted: { ...preflight.abort, skipped: familyIds.length },
+    };
+  }
 
   const results: InferenceCronResult['results'] = [];
   for (const familyId of familyIds) {

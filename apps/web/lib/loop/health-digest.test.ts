@@ -24,6 +24,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       ],
       stopCount: 1,
       weekPlansComposed: 45,
+      providerIncidents: [],
     };
 
     const body = formatLoopHealthDigest(summary);
@@ -44,9 +45,45 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       messageCounts: [],
       stopCount: 0,
       weekPlansComposed: 0,
+      providerIncidents: [],
     };
 
     expect(formatLoopHealthDigest(summary)).toContain('(none)');
+  });
+
+  // VIL-255 · the one-line provider-health status.
+  it('says the LLM provider was quiet when no incident was raised all week', () => {
+    const summary: LoopHealthSummary = {
+      windowStart: new Date('2026-07-13T00:00:00Z'),
+      windowEnd: new Date('2026-07-20T00:00:00Z'),
+      messageCounts: [],
+      stopCount: 0,
+      weekPlansComposed: 0,
+      providerIncidents: [],
+    };
+
+    expect(formatLoopHealthDigest(summary)).toContain('LLM provider: no incidents');
+  });
+
+  it('names each provider incident class and when it was last raised', () => {
+    const summary: LoopHealthSummary = {
+      windowStart: new Date('2026-07-27T00:00:00Z'),
+      windowEnd: new Date('2026-08-03T00:00:00Z'),
+      messageCounts: [],
+      stopCount: 0,
+      weekPlansComposed: 0,
+      providerIncidents: [
+        { kind: 'billing', at: new Date('2026-08-01T00:00:00Z') },
+        { kind: 'run_spike', at: new Date('2026-07-29T00:00:00Z') },
+        { kind: 'run_spike', at: new Date('2026-07-30T00:00:00Z') },
+      ],
+    };
+
+    const line = formatLoopHealthDigest(summary)
+      .split('\n')
+      .find((l) => l.includes('LLM provider'));
+
+    expect(line).toBe('LLM provider: 3 incidents — billing ×1, run_spike ×2 (last 2026-08-01)');
   });
 });
 
@@ -106,6 +143,7 @@ describe('runLoopHealthDigestCron', () => {
     messageCounts: [{ channel: 'email', category: 'weekly_plan', status: 'sent', count: 5 }],
     stopCount: 0,
     weekPlansComposed: 5,
+    providerIncidents: [],
   };
 
   it('aggregates the trailing 7-day window and emails the founder the formatted digest', async () => {
