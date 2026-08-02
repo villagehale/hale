@@ -3,6 +3,7 @@ import { schema } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -113,7 +114,7 @@ function harness(
     draftThrows?: boolean;
     enrolled?: boolean;
     consented?: boolean;
-    transport?: FakeTransport | null;
+    transport?: FakeTransport;
   } = {},
 ): Harness {
   const writes: Harness['writes'] = [];
@@ -121,7 +122,7 @@ function harness(
   const claims: Harness['claims'] = [];
   const drafts: Harness['drafts'] = [];
   const released: string[] = [];
-  const transport = options.transport === undefined ? new FakeTransport() : options.transport;
+  const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
     selectFamilies: async () => options.families ?? [family()],
@@ -150,7 +151,7 @@ function harness(
       parentTimeZone: async () => TZ,
     }),
     dedupeActive: async (_db, key) => dedupeKeys.has(key),
-    resolveSendTarget: async () => '+14165550100',
+    resolveSendablePhone: async () => '+14165550100',
     recordSend: async (_db, write) => {
       writes.push({
         table: schema.channelMessages,
@@ -167,7 +168,7 @@ function harness(
 
   return {
     deps,
-    transport: transport ?? new FakeTransport(),
+    transport,
     writes,
     dedupeKeys,
     claims,
@@ -508,13 +509,14 @@ describe('the legs', () => {
   });
 
   it('wires the real Twilio transport into the default deps (VIL-260)', async () => {
+    // VIL-262 made the dep non-nullable, so "a transport is wired" is now a type-level
+    // fact. What is still worth asserting is WHICH one: the REAL outbound leg, which
+    // refuses by naming its missing credentials rather than silently reporting a leg
+    // nobody sent.
     const { transport } = defaultSequenceRunDeps();
-    expect(transport).not.toBeNull();
-    // Not merely non-null: the REAL outbound leg, which refuses by naming its missing
-    // credentials rather than silently reporting a leg nobody sent.
     vi.stubEnv('TWILIO_ACCOUNT_SID', '');
     await expect(
-      transport?.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
+      transport.send({ to: '+14165550100', body: 'never leaves: no credentials' }),
     ).rejects.toThrow(/twilio not configured/);
   });
 
@@ -523,7 +525,7 @@ describe('the legs', () => {
     const h = harness({ sequences: [live()] });
     const result = await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
 
-    expect(result).toMatchObject({ sent: 1, composed: 0 });
+    expect(result.sent).toBe(1);
     expect(h.transport.sent).toHaveLength(1);
     const ledger = h.writes.filter((w) => w.table === schema.channelMessages);
     expect(ledger).toHaveLength(1);
@@ -551,7 +553,7 @@ describe('the legs', () => {
     });
     const boom: SequenceRunDeps = {
       ...h.deps,
-      resolveSendTarget: async (_db, parentUserId) => {
+      resolveSendablePhone: async (_db, parentUserId) => {
         if (parentUserId === 'user-1') throw new Error('bad row');
         return '+14165550101';
       },
@@ -559,5 +561,53 @@ describe('the legs', () => {
     const result = await runRegistrationSequenceCron(db(), boom, HEADS_UP_TICK);
     expect(result.failed).toBe(1);
     expect(result.sent).toBe(1);
+  });
+});
+
+/**
+ * VIL-262 — the reader this sweep sends through carries the whole predicate.
+ *
+ * There were two readers that resolved a parent's number, and the weaker one (no
+ * `verified_at IS NOT NULL`) was the one this sweep used. Nothing went wrong only
+ * because the gate's enrolment check happened to run BEFORE it — correctness that
+ * lives in the call order is correctness one refactor away from being gone.
+ *
+ * So these cases delete the ordering protection on purpose: the gate is told the
+ * parent is enrolled and consenting, which is the state a stale or reordered check
+ * would produce, and the reader must still refuse. This class is the one with the
+ * quiet-hours exemption, so a leg reaching a revoked number would arrive at 6am.
+ */
+describe('runRegistrationSequenceCron — the send-side reader (VIL-262)', () => {
+  const KEY = Buffer.alloc(32, 7).toString('base64');
+
+  /** Just enough of a Drizzle handle for the reader's one indexed read — and it hands
+   * the row back REGARDLESS of the predicate, so what refuses below is the reader's
+   * own check on the columns, not a WHERE clause a fake cannot execute. */
+  function channelDb(row: Record<string, unknown>) {
+    return {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }),
+    } as never;
+  }
+
+  it.each([
+    ['unverified', { verifiedAt: null, revokedAt: null }],
+    ['revoked — the parent texted STOP', { verifiedAt: HEADS_UP_TICK, revokedAt: HEADS_UP_TICK }],
+  ])('texts nothing to a %s channel, with the gate saying enrolled', async (_label, state) => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    const h = harness({ sequences: [live()], enrolled: true, consented: true });
+    const { resolveSendablePhone } = defaultSequenceRunDeps();
+
+    const result = await runRegistrationSequenceCron(
+      channelDb({ phoneE164Encrypted: encryptString('+14165550100'), ...state }),
+      { ...h.deps, resolveSendablePhone },
+      HEADS_UP_TICK,
+    );
+
+    expect(h.transport.sent).toEqual([]);
+    expect(result.sent).toBe(0);
+    // Loudly, not quietly: no number for a parent the gate cleared is a contradiction,
+    // and a swept-under skip would read as a sequence with no leg due.
+    expect(result.failed).toBe(1);
   });
 });

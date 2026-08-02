@@ -1,8 +1,7 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
-import { decryptString } from '~/lib/crypto/string-cipher';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 
 /**
@@ -259,28 +258,4 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
       return row.timezone;
     },
   };
-}
-
-/**
- * The E.164 to text, for a parent whose channel the gate has already cleared.
- * Decrypts ONLY at the moment of sending and hands the value straight to the
- * transport — it is never returned to a caller that would log or store it (rule #1).
- */
-export async function resolveSendTarget(
-  database: Database,
-  parentUserId: string,
-): Promise<string | null> {
-  const [active] = await database
-    .select({ phoneE164Encrypted: schema.parentChannels.phoneE164Encrypted })
-    .from(schema.parentChannels)
-    .where(
-      and(
-        eq(schema.parentChannels.userId, parentUserId),
-        eq(schema.parentChannels.kind, 'sms'),
-        isNull(schema.parentChannels.revokedAt),
-      ),
-    )
-    .limit(1);
-  if (!active) return null;
-  return decryptString(active.phoneE164Encrypted);
 }
