@@ -128,6 +128,7 @@ export async function loadTrailForFamily(
     .select({
       entry: schema.auditLog,
       teenContent: schema.events.teenContent,
+      contentProvenance: schema.events.contentProvenance,
       childId: schema.events.childId,
       childDob: schema.children.dateOfBirth,
       childName: schema.children.name,
@@ -172,6 +173,9 @@ export async function loadTrailForFamily(
             row.teenContent ?? false,
             row.childDob ?? null,
             resolvedToEvent && familyHasTeen,
+            // Null when the row resolves to no event at all; those keep the documented
+            // trail boundary above (familyHasTeen is already false for them).
+            row.contentProvenance ?? undefined,
           ),
           row.childId ?? null,
           'message_content',

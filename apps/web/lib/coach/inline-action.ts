@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type AgentClient, SONNET_MODEL } from '@hale/agent';
-import { type Database, schema } from '@hale/db';
+import { type ContentProvenance, type Database, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
@@ -51,6 +51,14 @@ export interface InlineActionInput {
   title?: string;
   /** The one link behind the draft, rendered as the card's "view source". */
   sourceUrl?: string;
+  /**
+   * Where this draft's content came from (rule #1). Declared by the CALLER, because
+   * only the caller knows: the registration sweep composes from municipal rows and no
+   * child's words are in it, while an Ask Hale answer or an MCP proposal is a reply to
+   * something a household said and may concern any child. Omitted means
+   * 'child_content' — the private answer — so a new caller fails closed.
+   */
+  contentProvenance?: ContentProvenance;
 }
 
 /**
@@ -119,6 +127,7 @@ export async function draftInlineAction(
       eventType,
       childId: input.childId,
       teenContent,
+      contentProvenance: input.contentProvenance ?? 'child_content',
       payload: { intentKind: input.intentKind, sourceAnswer: input.sourceAnswer, origin },
       classifierSuggestion: { kind: 'autonomous_action', actionType },
       classifiedAt: now,

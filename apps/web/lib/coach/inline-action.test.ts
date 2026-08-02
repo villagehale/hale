@@ -443,6 +443,46 @@ describe('draftInlineAction → REAL executor (every intent kind)', () => {
     });
   });
 
+  it('declares content provenance on the event, defaulting to the private answer', async () => {
+    // VIL-260 · WS3b. The registration sweep composes from municipal rows, so it says
+    // so; every other caller (an Ask Hale chip, an MCP proposal, a health checkpoint)
+    // is answering something a household said, and stays 'child_content'.
+    const authored = freshCapture();
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'registration_shortlist',
+        childId: null,
+        sourceAnswer: 'Burlington registration opens Saturday.',
+        contentProvenance: 'hale_authored',
+      },
+      fakeDb(authored),
+      approvingReviewer(),
+      NOW,
+    );
+    expect((authored.events[0] as Record<string, unknown>).contentProvenance).toBe(
+      'hale_authored',
+    );
+
+    const undeclared = freshCapture();
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'find_activities',
+        childId: null,
+        sourceAnswer: 'want me to find activities near you?',
+      },
+      fakeDb(undeclared),
+      approvingReviewer(),
+      NOW,
+    );
+    expect((undeclared.events[0] as Record<string, unknown>).contentProvenance).toBe(
+      'child_content',
+    );
+  });
+
   it('stamps the action_hash the reviewer idempotency check reads (mint-placements parity)', async () => {
     const capture = freshCapture();
     const db = fakeDb(capture);

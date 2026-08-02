@@ -206,6 +206,7 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
         reviewerVerdict: schema.actions.reviewerVerdict,
         draftedAt: schema.actions.draftedAt,
         teenContent: schema.events.teenContent,
+        contentProvenance: schema.events.contentProvenance,
         childId: schema.events.childId,
         childName: schema.children.name,
         childDob: schema.children.dateOfBirth,
@@ -236,7 +237,12 @@ export function loadPendingApprovals(): Promise<ApprovalView[]> {
           reviewerVerdict: row.reviewerVerdict,
           draftedAt: row.draftedAt,
           teenContent: redactsTeenContent(
-            effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+            effectiveTeenContent(
+              row.teenContent,
+              row.childDob ?? null,
+              familyHasTeen,
+              row.contentProvenance,
+            ),
             row.childId ?? null,
             'message_content',
             unlocks,
@@ -281,6 +287,7 @@ export function loadResolvedActions(): Promise<HistoryView[]> {
         revertedAt: schema.actions.revertedAt,
         revertedReason: schema.actions.revertedReason,
         teenContent: schema.events.teenContent,
+        contentProvenance: schema.events.contentProvenance,
         childId: schema.events.childId,
         childName: schema.children.name,
         childDob: schema.children.dateOfBirth,
@@ -310,7 +317,12 @@ export function loadResolvedActions(): Promise<HistoryView[]> {
           reviewerVerdict: row.reviewerVerdict,
           draftedAt: row.draftedAt,
           teenContent: redactsTeenContent(
-            effectiveTeenContent(row.teenContent, row.childDob ?? null, familyHasTeen),
+            effectiveTeenContent(
+              row.teenContent,
+              row.childDob ?? null,
+              familyHasTeen,
+              row.contentProvenance,
+            ),
             row.childId ?? null,
             'message_content',
             unlocks,

@@ -2,19 +2,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import type { ActionType } from '@hale/types';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { UNDOABLE_ACTION_TYPES, UNDO_WINDOW_HOURS, withinUndoWindow } from './undo-window';
 
-/**
- * How long after execution a calendar placement can be undone. The window derives
- * from actions.executed_at. C3's UNDO surface imports this constant so the button's
- * visibility and the server's gate agree on the same 24h — a single source of truth
- * rather than two drifting copies.
- */
-export const UNDO_WINDOW_HOURS = 24;
-
-/** Only a calendar_add is cleanly reversible: the reversal soft-deletes the row it
- * created. A move/cancel undo would need the pre-mutation state, which is not
- * persisted, so they are not reversible via this primitive. */
-const REVERSIBLE_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>(['calendar_add']);
+// The window and the reversible-type set live in undo-window.ts, so the surfaces that
+// OFFER undo and the server that performs it read one rule. Re-exported because this
+// module's existing importers reach for the constant here.
+export { UNDO_WINDOW_HOURS };
 
 export type ReverseResult =
   | { status: 200; familyEventId: string }
@@ -77,13 +70,13 @@ export async function reverseExecutedCalendarAction(
   if (action.familyId !== args.familyId) {
     return { status: 403, error: 'action_belongs_to_another_family' };
   }
-  if (!REVERSIBLE_ACTION_TYPES.has(action.actionType as ActionType)) {
+  if (!UNDOABLE_ACTION_TYPES.has(action.actionType as ActionType)) {
     return { status: 409, error: 'action_not_reversible' };
   }
   if (action.userVisibleState !== 'autonomous' || !action.executedAt) {
     return { status: 409, error: 'action_not_executed' };
   }
-  if (now.getTime() - action.executedAt.getTime() > UNDO_WINDOW_HOURS * 60 * 60 * 1000) {
+  if (!withinUndoWindow(action.executedAt, now)) {
     return { status: 409, error: 'undo_window_expired' };
   }
 

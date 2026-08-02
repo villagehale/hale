@@ -1,3 +1,4 @@
+import { isUndoable } from '~/lib/actions/undo-window';
 import { formatDateTime } from '~/lib/format/datetime';
 import { type ApprovalView, type PendingApprovalRow, toApprovalView } from './approvals';
 
@@ -33,6 +34,14 @@ export interface HistoryView extends ApprovalView {
   status: HistoryStatus;
   /** Family-zone stamp of when the action resolved. */
   resolvedAt: string;
+  /**
+   * Whether this row can still be taken back — a calendar placement that executed and
+   * is inside the 24h window. Derived from the SAME gate the reversal enforces
+   * (undo-window.ts), so the control is never offered on a row the server would refuse.
+   * Always false for a teen-redacted row: rule #1's no-decisions-on-invisible-content
+   * applies to undoing as much as to approving.
+   */
+  undoable: boolean;
 }
 
 /**
@@ -53,10 +62,15 @@ export function historyStatus(row: HistoryActionRow): HistoryStatus {
   return row.revertedReason === 'declined_by_human' ? 'declined' : 'reverted';
 }
 
-export function toHistoryView(row: HistoryActionRow, timeZone: string): HistoryView {
+export function toHistoryView(
+  row: HistoryActionRow,
+  timeZone: string,
+  now: Date = new Date(),
+): HistoryView {
   return {
     ...toApprovalView(row, timeZone),
     status: historyStatus(row),
     resolvedAt: formatDateTime(row.resolvedAt, timeZone),
+    undoable: !row.teenContent && isUndoable(row, now),
   };
 }

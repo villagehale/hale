@@ -52,6 +52,13 @@ export interface ApprovalView {
    * page's single locked line + the request-access affordance (never a decision on
    * invisible content), instead of the approve button. */
   teenRedacted: boolean;
+  /**
+   * Whether the redaction is one a parent can ASK to lift. Assent is per-child (rule
+   * #5) and POST /api/teen-content-grant resolves the row's teen child, so a row that
+   * names none has nobody to ask — offering the affordance there produced a permanent
+   * 404 the parent could never get past. False whenever nothing is redacted.
+   */
+  teenUnlockable: boolean;
 }
 
 const VERDICT_SUMMARY: Record<string, string> = {
@@ -163,5 +170,6 @@ export function toApprovalView(row: PendingApprovalRow, timeZone: string): Appro
     verdict: row.reviewerVerdict,
     draftedAt: formatDateTime(row.draftedAt, timeZone),
     teenRedacted: row.teenContent,
+    teenUnlockable: row.teenContent && row.childId !== null,
   };
 }

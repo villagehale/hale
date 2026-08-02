@@ -1,4 +1,4 @@
-import type { schema } from '@hale/db';
+import type { ContentProvenance, schema } from '@hale/db';
 import { deriveStage } from '@hale/types';
 import type { EntryTone } from '~/components/hale/tone';
 import { dayKeyOf, formatDayHeading, formatTime } from '~/lib/format/datetime';
@@ -67,16 +67,26 @@ export const TEEN_REDACTED_PLACEHOLDER = 'kept private — regarding your teenag
  * there is no DOB to derive from, we fall back to the FAMILY: redact if the family
  * has any teenager (`familyHasTeen`), the rule-#1 "most restrictive" default. A
  * family with no teen is never over-redacted. Pure, no I/O.
+ *
+ * PROVENANCE gates that last fallback, and only that one. The fallback exists because
+ * unattributed CONTENT FROM OUTSIDE might be the teen's; a draft Hale authored from
+ * public reference data has no child-authored content in it to protect, and gating it
+ * made the draft undecidable — with no attributed child, no grant can unlock it
+ * either (see redactsTeenContent). It defaults to 'child_content', so a caller that
+ * has not been threaded, or a row written before the column existed, keeps today's
+ * behaviour. The two checks ABOVE it are untouched: a row that names a 13+ child, or
+ * that the classifier flagged, still redacts whatever its provenance says.
  */
 export function effectiveTeenContent(
   storedFlag: boolean,
   dateOfBirth: string | null,
   familyHasTeen: boolean,
+  contentProvenance: ContentProvenance = 'child_content',
   now: Date = new Date(),
 ): boolean {
   if (storedFlag) return true;
   if (dateOfBirth !== null) return deriveStage(dateOfBirth, now) === 'teenager';
-  return familyHasTeen;
+  return contentProvenance === 'child_content' && familyHasTeen;
 }
 
 /**

@@ -145,6 +145,38 @@ describe('toApprovalView — which child the draft is about (rule #1)', () => {
 });
 
 /**
+ * VIL-260 · WS3b — a redacted row is only ASKABLE if there is a teen to ask.
+ *
+ * The approvals page offered "ask to see this" on every redacted row. POST
+ * /api/teen-content-grant resolves the action's teen child and 404s when the row names
+ * none, so on an unattributed row the button was a permanent dead end: the parent
+ * typed a reason, submitted, and got an error, forever, with no way to decide the
+ * card. Assent is per-child (rule #5) and the content was never attributed, so there
+ * is no honest way to ask — the surface has to say that instead of offering a door
+ * that does not open.
+ */
+describe('toApprovalView — whether a redacted row can be unlocked at all', () => {
+  const CHILD = '44444444-4444-4444-8444-444444444444';
+
+  it('is askable when the redacted row names the teen it concerns', () => {
+    const view = toApprovalView({ ...BASE, teenContent: true, childId: CHILD }, TZ);
+    expect(view.teenRedacted).toBe(true);
+    expect(view.teenUnlockable).toBe(true);
+  });
+
+  it('is NOT askable when the redaction came from the family fallback (no child named)', () => {
+    const view = toApprovalView({ ...BASE, teenContent: true, childId: null }, TZ);
+    expect(view.teenRedacted).toBe(true);
+    expect(view.teenUnlockable).toBe(false);
+  });
+
+  it('is not askable when nothing is redacted — there is nothing to ask about', () => {
+    const view = toApprovalView({ ...BASE, teenContent: false, childId: CHILD }, TZ);
+    expect(view.teenUnlockable).toBe(false);
+  });
+});
+
+/**
  * VIL-260 · WS3 — the card has to say WHAT it is, now that the draft carries it.
  *
  * Every internal-write draft previewed as its bare category — "Note in your daily

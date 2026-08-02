@@ -151,11 +151,27 @@ function ApprovalsBody({
   );
 }
 
-/** A read-only History row: a past, resolved action with its outcome chip, the same
- * teen-safe intent label the live card shows, and when it resolved. No decision
- * buttons — history is settled. */
+/** A History row: a past, resolved action with its outcome chip, the same teen-safe
+ * intent label the live card shows, and when it resolved. Settled — except for a
+ * calendar placement still inside its 24h window, which offers the same undo the web
+ * card and the SMS "undo" command run (VIL-260). `undoable` is decided by the server
+ * from the gate the reversal itself enforces, so the button is never offered on a row
+ * the request would refuse. */
 const HistoryCard = memo(function HistoryCard({ item }: { item: HistoryView }) {
   const tag = historyStatusTag(item.status);
+  const [undoState, setUndoState] = useState<'idle' | 'busy' | 'undone' | 'error'>('idle');
+
+  const undo = async () => {
+    setUndoState('busy');
+    try {
+      await api(`/api/actions/${item.id}/undo`, { method: 'POST' });
+      setUndoState('undone');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return;
+      setUndoState('error');
+    }
+  };
+
   return (
     <Card className="gap-2">
       <View className="flex-row items-start justify-between gap-3">
@@ -170,6 +186,22 @@ const HistoryCard = memo(function HistoryCard({ item }: { item: HistoryView }) {
       </AppText>
       <AppText variant="body">{item.preview}</AppText>
       <ApprovalPayloadBlock action={item} />
+      {item.undoable && undoState !== 'undone' ? (
+        <View className="mt-1 gap-2">
+          {undoState === 'error' ? (
+            <AppText variant="meta">
+              Couldn't undo — it may be outside the 24 hour window.
+            </AppText>
+          ) : null}
+          <Button
+            variant="secondary"
+            label={undoState === 'busy' ? 'Undoing...' : 'Undo this'}
+            onPress={undo}
+            disabled={undoState === 'busy'}
+          />
+        </View>
+      ) : null}
+      {undoState === 'undone' ? <AppText variant="meta">Undone.</AppText> : null}
     </Card>
   );
 });
