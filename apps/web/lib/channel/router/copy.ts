@@ -35,10 +35,14 @@ export function failureReply(): string {
  * been told they exist cannot answer them, which is how a later unrelated "yes" ends up
  * approving one. It says the count and never what the drafts ARE: the type alone can
  * name a teenager's action, and this line is not the place for either (rule #1).
+ *
+ * Plain ASCII, no typographic dash: this is the longest line the router sends, and one
+ * em dash flips the whole message to UCS-2 (70 characters a segment) and turns a
+ * one-segment reply into three. The coach skill states the same rule for the same reason.
  */
 export function partialFailureReply(draftCount: number): string {
   const noun = draftCount === 1 ? '1 change' : `${draftCount} changes`;
-  return `I couldn't finish that — but I drafted ${noun} waiting for your OK. Reply YES to confirm, or check the app: ${appLink()}`;
+  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or check the app: ${appLink()}`;
 }
 
 /**

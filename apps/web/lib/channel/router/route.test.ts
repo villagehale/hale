@@ -4,6 +4,7 @@ import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { ChannelTurnFailed } from './coach-runtime';
@@ -506,6 +507,14 @@ describe('failure honesty', () => {
       expect(partialFailureReply(2)).toMatch(/2 changes/);
       expect(partialFailureReply(2)).not.toMatch(/nothing was changed/i);
       expect(partialFailureReply(1)).toMatch(/1 change\b/);
+    });
+
+    /** The longest line the router sends. A typographic dash in it would flip the
+     * message to UCS-2 (70 chars a segment) and cost three segments instead of one —
+     * the same rule the coach skill states, and the reason this copy is plain ASCII. */
+    it('costs one GSM-7 segment', () => {
+      expect(smsEncoding(partialFailureReply(2))).toBe('gsm7');
+      expect(smsSegments(partialFailureReply(2))).toBe(1);
     });
 
     it('keeps the plain honest line when the turn drafted nothing', async () => {
