@@ -1,0 +1,118 @@
+{
+  "result": {
+    "records": [
+      {
+        "loc_id": 13650,
+        "program_name": "101 Spruce St EarlyON Child and Family Centre",
+        "agency": "Regent Park Community Health Centre",
+        "address": "101 Spruce St",
+        "full_address": "101 Spruce St, Toronto, ON M5A 2J3",
+        "lat": 43.664194018,
+        "lng": -79.362233991,
+        "website": "https://regentparkchc.org/program/earlyon-drop-in-centre/",
+        "dropinHours": "Wednesday: 9:00 a.m. - 11:30 a.m.  ",
+        "registeredHours": "Thursday: 9:00 a.m. - 11:30 a.m.  ",
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 12562,
+        "program_name": "2700 Dufferin EarlyON Child and Family Centre",
+        "agency": "Macaulay Centres for Children",
+        "address": "2700 Dufferin St",
+        "full_address": "2700 Dufferin St, York, ON M6B 4J3",
+        "lat": 43.701704914,
+        "lng": -79.453989688,
+        "website": null,
+        "dropinHours": "Monday: 10:00 a.m. - noon  ; 3:30 p.m. - 6:00 p.m.   | Tuesday: 2:00 p.m. - 4:00 p.m.   | Wednesday: 10:00 a.m. - noon  ; 2:00 p.m. - 4:00 p.m.   | Thursday: 2:00 p.m. - 4:00 p.m.   | Friday: 10:00 a.m. - noon   | Saturday: 10:00 a.m. - noon  ",
+        "registeredHours": "Tuesday: 10:00 a.m. - noon   | Thursday: 10:00 a.m. - noon  ",
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 13709,
+        "program_name": "30 College EarlyON Centre",
+        "agency": "Native Child and Family Services of Toronto",
+        "address": "30 College St",
+        "full_address": "30 College St, Toronto, ON M5G 1K2",
+        "lat": 43.6613419611,
+        "lng": -79.384557612,
+        "website": "https://www.nativechild.org/",
+        "dropinHours": "Monday: 4:30 p.m. - 7:30 p.m.   | Tuesday: 10:00 a.m. - noon  ; 2:00 p.m. - 4:00 p.m.   | Wednesday: 10:00 a.m. - noon  ; 2:00 p.m. - 4:00 p.m.   | Thursday: 10:00 a.m. - noon  ; 2:00 p.m. - 4:00 p.m.   | Friday: 10:00 a.m. - noon  ",
+        "registeredHours": "Tuesday: 1:00 p.m. - 4:00 p.m.   | Wednesday: 1:00 p.m. - 4:00 p.m.  ",
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 13958,
+        "program_name": "Agincourt Community Services EarlyON Child and Family Centre",
+        "agency": "Agincourt Community Services Association",
+        "address": "3223 Kennedy Rd",
+        "full_address": "3223 Kennedy Rd, Scarborough, ON M1V 4Y1",
+        "lat": 43.816001403,
+        "lng": -79.302348678,
+        "website": null,
+        "dropinHours": "Monday: noon - 3:00 p.m.  ; 4:00 p.m. - 8:00 p.m.   | Tuesday: noon - 3:00 p.m.  ; 4:00 p.m. - 8:00 p.m.   | Wednesday: 9:30 a.m. - 3:00 p.m.  ; 4:00 p.m. - 8:00 p.m.  ; 9:30 a.m. - 3:00 p.m.  ; 4:00 p.m. - 8:00 p.m.   | Thursday: 9:30 a.m. - 12:30 p.m.  ; 1:30 p.m. - 5:30 p.m.  ; 9:30 a.m. - 12:30 p.m.  ; 1:30 p.m. - 5:30 p.m.   | Friday: 9:30 a.m. - 12:30 p.m.  ; 1:30 p.m. - 5:30 p.m.  ; 9:30 a.m. - 12:30 p.m.  ; 1:30 p.m. - 5:30 p.m.   | Saturday: 12:30 p.m. - 3:30 p.m.  ",
+        "registeredHours": "Wednesday: 10:00 a.m. - 11:00 a.m.   | Friday: 10:00 a.m. - 11:30 a.m.  ",
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 12549,
+        "program_name": "Abiona EarlyON Child and Family Centre",
+        "agency": "Abiona Centre for Infant & Early Mental Health",
+        "address": "1102 Broadview Ave",
+        "full_address": "1102 Broadview Ave, East York, ON M4K 2S5",
+        "lat": 43.686573868,
+        "lng": -79.356320186,
+        "website": "https://www.abionacentre.ca/earlyon_child_and_family_centre/",
+        "dropinHours": "Monday: 7:30 a.m. - 9:00 a.m.  ; 9:30 a.m. - noon  ; 2:00 p.m. - 4:00 p.m.   | Tuesday: 7:30 a.m. - 9:00 a.m.  ; 9:30 a.m. - noon  ; 2:00 p.m. - 3:00 p.m.   | Wednesday: 7:30 a.m. - 9:00 a.m.  ; 9:30 a.m. - noon   | Thursday: 7:30 a.m. - 9:00 a.m.  ; 9:30 a.m. - noon   | Friday: 7:30 a.m. - 9:00 a.m.  ; 9:30 a.m. - noon  ; 2:00 p.m. - 4:00 p.m.   | Saturday: 9:00 a.m. - noon  ",
+        "registeredHours": "Tuesday: 1:30 p.m. - 3:30 p.m.   | Wednesday: 1:30 p.m. - 3:30 p.m.   | Thursday: 3:30 p.m. - 6:00 p.m.  ",
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 6202,
+        "program_name": "Birchmount Bluffs EarlyON Child and Family Centre",
+        "agency": "Birchmount Bluffs Neighbourhood Centre",
+        "address": "93 Birchmount Rd",
+        "full_address": "93 Birchmount Rd, Scarborough, ON M1N 3J7",
+        "lat": 43.695419466,
+        "lng": -79.26233166,
+        "website": "www.bbnc.ca",
+        "dropinHours": "Monday: 9:00 a.m. - 3:00 p.m.  ; 5:00 p.m. - 7:00 p.m.   | Tuesday: 1:00 p.m. - 4:00 p.m.   | Wednesday: 9:00 a.m. - 3:00 p.m.   | Thursday: 1:30 p.m. - 3:30 p.m.  ; 4:00 p.m. - 7:00 p.m.   | Friday: 9:00 a.m. - noon   | Saturday: 10:00 a.m. - 1:00 p.m.  ",
+        "registeredHours": "Tuesday: 9:30 a.m. - 10:30 a.m.  ; 10:30 a.m. - 11:30 a.m.   | Wednesday: 9:30 a.m. - 11:30 a.m.  ; 1:00 p.m. - 3:00 p.m.   | Thursday: 9:00 a.m. - 10:00 a.m.  ; 10:30 a.m. - 11:30 a.m.   | Friday: 1:00 p.m. - 3:00 p.m.  ",
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 12543,
+        "program_name": "Agnes Mac Phail P.S EarlyON Child and Family Centre",
+        "agency": "Malvern Family Resource Centre",
+        "address": "112 Goldhawk Trail",
+        "full_address": "112 Goldhawk Trail, Scarborough, ON M1V 1W5",
+        "lat": 43.819268977,
+        "lng": -79.27855339,
+        "website": "www.mfrc.org",
+        "dropinHours": "Tuesday: 3:30 p.m. - 5:00 p.m.   | Thursday: 9:30 a.m. - 11:00 a.m.  ",
+        "registeredHours": null,
+        "virtualHours": null,
+        "centre_type": "Centre"
+      },
+      {
+        "loc_id": 13423,
+        "program_name": "Bathurst-Finch Hub EarlyON Child and Family Centre",
+        "agency": "SickKids Centre for Community Mental Health",
+        "address": "540 Finch Ave W",
+        "full_address": "540 Finch Ave W, Toronto, ON M2R 1N7",
+        "lat": 43.774037919,
+        "lng": -79.445135769,
+        "website": "www.sickkidscmh.ca",
+        "dropinHours": "Monday: 9:30 a.m. - 11:30 a.m.  ; 1:30 p.m. - 3:30 p.m.  ",
+        "registeredHours": null,
+        "virtualHours": null,
+        "centre_type": "Centre"
+      }
+    ]
+  }
+}

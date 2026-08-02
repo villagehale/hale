@@ -1,0 +1,1217 @@
+{
+  "events": {
+    "items": [
+      "6a6434a8e9de6536001e1a9d",
+      "6a6434a8e9de6536001e1a9e",
+      "6a6434a9e9de6536001e1aa0",
+      "68fbd37875911f28001a2354",
+      "68fbdf2de59a13000d3e1dc3",
+      "6a6280a67b79214226aac98a",
+      "6980c4b16724c63d00effe3c",
+      "699780844a9fd98b7f7f254d",
+      "6997880bb0595799c09e0acc",
+      "699787d2b0595799c09e0ac3",
+      "6a3065b41e67cd9cb33a167c"
+    ],
+    "pagination": {
+      "count": 11,
+      "pages": 1,
+      "page": 1,
+      "limit": 200
+    }
+  },
+  "entities": {
+    "events": {
+      "6a6434a8e9de6536001e1a9d": {
+        "id": "6a6434a8e9de6536001e1a9d",
+        "key": "2026-10-03T11:00:00",
+        "seriesId": "6a6434a8f4e5db3d00c4211f",
+        "definition": {
+          "start": "2026-10-03T11:00",
+          "end": "2026-10-03T12:00",
+          "title": "STEM Learning  (Grades 4-6) - see details ",
+          "description": "<p>Is your child in Grades 4-6 and curious about how the world works?&nbsp;</p>\n<p>In this 4-week session, your child will&nbsp;dive into the world of Science, Technology, Engineering, and Math through exciting experiments, interactive challenges, and creative problem-solving tasks. </p><p><strong>Themes for each week are as follows:&nbsp;</strong></p><ul><li>Oct. 3 -&nbsp; Engineering and Technology&nbsp;</li><li>Oct. 10 - Science experiments -exploring chemical reactions (this session is to celebrate Science Literacy Week*)</li><li>Oct. 17 -&nbsp;&nbsp;Coding, Logic and Math&nbsp;</li><li>Oct. 24 - Data Collection and Hypothesizing&nbsp;</li></ul>\n<p>** Please note these are subject to change*&nbsp;</p>\n<p>Hosted by The Study Buddy, in partnership with Markham Public Library, these free STEM classes&nbsp;encourage kids to think critically, build collaboratively, and discover how everyday ideas spark real-world innovation.</p>\n<p>** <strong><u>Note:</u></strong> Please sign up for each week your child is able to attend the class.&nbsp;</p>\n<p></p>\n<ul></ul>",
+          "bibIds": [],
+          "featuredImageId": "685ac83ca394bf4e3c49a390",
+          "branchLocationId": "MV",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room ",
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "61859860b058d33d0087a50a"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "EVENT_START"
+            },
+            "registrationStart": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": "T09:00",
+              "date": "2026-08-24",
+              "windowType": "STATIC"
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": "<p>Hi Parent/Guardian,&nbsp;</p>\n<p>This is a friendly reminder that your child is registered for the program, <strong>\"STEM Learning (Grades 4-6) which will take place tomorrow at the Markham Village Library from 11am - 12 noon.&nbsp;</strong></p>\n<p>** Please note: A parent/guardian is to remain inside the library as your child is attending the program. We appreciate your cooperation.&nbsp;</p>\n<p>All the best,&nbsp;</p>\n<p>Markham Public Library&nbsp;<br></p>",
+            "onlineInstructions": null,
+            "waitlistAutoPromote": true,
+            "waitlistEnabled": true,
+            "scope": null,
+            "maxSeats": 1,
+            "instructions": null,
+            "cap": 18,
+            "enabledMethods": [],
+            "provider": "BIBLIO_EVENTS"
+          },
+          "contact": {
+            "email": {
+              "globalValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "value": "mplcommunitylibrarians@markhamlibrary.ca",
+              "rawValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Tiffany"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-03T15:00:00Z",
+        "indexEnd": "2026-10-03T16:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": 0,
+        "numberWaitlistRegistered": 0,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a6434a8e9de6536001e1a9e": {
+        "id": "6a6434a8e9de6536001e1a9e",
+        "key": "2026-10-10T11:00:00",
+        "seriesId": "6a6434a8f4e5db3d00c4211f",
+        "definition": {
+          "start": "2026-10-10T11:00",
+          "end": "2026-10-10T12:00",
+          "title": "STEM Learning  (Grades 4-6) - see details ",
+          "description": "<p>Is your child in Grades 4-6 and curious about how the world works?&nbsp;</p>\n<p>In this 4-week session, your child will&nbsp;dive into the world of Science, Technology, Engineering, and Math through exciting experiments, interactive challenges, and creative problem-solving tasks. </p><p><strong>Themes for each week are as follows:&nbsp;</strong></p><ul><li>Oct. 3 -&nbsp; Engineering and Technology&nbsp;</li><li>Oct. 10 - Science experiments -exploring chemical reactions (this session is to celebrate Science Literacy Week*)</li><li>Oct. 17 -&nbsp;&nbsp;Coding, Logic and Math&nbsp;</li><li>Oct. 24 - Data Collection and Hypothesizing&nbsp;</li></ul>\n<p>** Please note these are subject to change*&nbsp;</p>\n<p>Hosted by The Study Buddy, in partnership with Markham Public Library, these free STEM classes&nbsp;encourage kids to think critically, build collaboratively, and discover how everyday ideas spark real-world innovation.</p>\n<p>** <strong><u>Note:</u></strong> Please sign up for each week your child is able to attend the class.&nbsp;</p>\n<p></p>\n<ul></ul>",
+          "bibIds": [],
+          "featuredImageId": "685ac83ca394bf4e3c49a390",
+          "branchLocationId": "MV",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room ",
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "61859860b058d33d0087a50a"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "EVENT_START"
+            },
+            "registrationStart": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": "T09:00",
+              "date": "2026-08-24",
+              "windowType": "STATIC"
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": "<p>Hi Parent/Guardian,&nbsp;</p>\n<p>This is a friendly reminder that your child is registered for the program, <strong>\"STEM Learning (Grades 4-6) which will take place tomorrow at the Markham Village Library from 11am - 12 noon.&nbsp;</strong></p>\n<p>** Please note: A parent/guardian is to remain inside the library as your child is attending the program. We appreciate your cooperation.&nbsp;</p>\n<p>All the best,&nbsp;</p>\n<p>Markham Public Library&nbsp;<br></p>",
+            "onlineInstructions": null,
+            "waitlistAutoPromote": true,
+            "waitlistEnabled": true,
+            "scope": null,
+            "maxSeats": 1,
+            "instructions": null,
+            "cap": 18,
+            "enabledMethods": [],
+            "provider": "BIBLIO_EVENTS"
+          },
+          "contact": {
+            "email": {
+              "globalValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "value": "mplcommunitylibrarians@markhamlibrary.ca",
+              "rawValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Tiffany"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-10T15:00:00Z",
+        "indexEnd": "2026-10-10T16:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": 0,
+        "numberWaitlistRegistered": 0,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a6434a9e9de6536001e1aa0": {
+        "id": "6a6434a9e9de6536001e1aa0",
+        "key": "2026-10-24T11:00:00",
+        "seriesId": "6a6434a8f4e5db3d00c4211f",
+        "definition": {
+          "start": "2026-10-24T11:00",
+          "end": "2026-10-24T12:00",
+          "title": "STEM Learning  (Grades 4-6) - see details ",
+          "description": "<p>Is your child in Grades 4-6 and curious about how the world works?&nbsp;</p>\n<p>In this 4-week session, your child will&nbsp;dive into the world of Science, Technology, Engineering, and Math through exciting experiments, interactive challenges, and creative problem-solving tasks. </p><p><strong>Themes for each week are as follows:&nbsp;</strong></p><ul><li>Oct. 3 -&nbsp; Engineering and Technology&nbsp;</li><li>Oct. 10 - Science experiments -exploring chemical reactions (this session is to celebrate Science Literacy Week*)</li><li>Oct. 17 -&nbsp;&nbsp;Coding, Logic and Math&nbsp;</li><li>Oct. 24 - Data Collection and Hypothesizing&nbsp;</li></ul>\n<p>** Please note these are subject to change*&nbsp;</p>\n<p>Hosted by The Study Buddy, in partnership with Markham Public Library, these free STEM classes&nbsp;encourage kids to think critically, build collaboratively, and discover how everyday ideas spark real-world innovation.</p>\n<p>** <strong><u>Note:</u></strong> Please sign up for each week your child is able to attend the class.&nbsp;</p>\n<p></p>\n<ul></ul>",
+          "bibIds": [],
+          "featuredImageId": "685ac83ca394bf4e3c49a390",
+          "branchLocationId": "MV",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room ",
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "61859860b058d33d0087a50a"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "EVENT_START"
+            },
+            "registrationStart": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": "T09:00",
+              "date": "2026-08-24",
+              "windowType": "STATIC"
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": "<p>Hi Parent/Guardian,&nbsp;</p>\n<p>This is a friendly reminder that your child is registered for the program, <strong>\"STEM Learning (Grades 4-6) which will take place tomorrow at the Markham Village Library from 11am - 12 noon.&nbsp;</strong></p>\n<p>** Please note: A parent/guardian is to remain inside the library as your child is attending the program. We appreciate your cooperation.&nbsp;</p>\n<p>All the best,&nbsp;</p>\n<p>Markham Public Library&nbsp;<br></p>",
+            "onlineInstructions": null,
+            "waitlistAutoPromote": true,
+            "waitlistEnabled": true,
+            "scope": null,
+            "maxSeats": 1,
+            "instructions": null,
+            "cap": 18,
+            "enabledMethods": [],
+            "provider": "BIBLIO_EVENTS"
+          },
+          "contact": {
+            "email": {
+              "globalValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "value": "mplcommunitylibrarians@markhamlibrary.ca",
+              "rawValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Tiffany"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-10-24T15:00:00Z",
+        "indexEnd": "2026-10-24T16:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": 0,
+        "numberWaitlistRegistered": 0,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "68fbd37875911f28001a2354": {
+        "id": "68fbd37875911f28001a2354",
+        "key": "2026-09-22T10:30:00",
+        "seriesId": "68fba0c80176055300fe79cb",
+        "definition": {
+          "start": "2026-09-22T10:30",
+          "end": "2026-09-22T11:00",
+          "title": "Storytime",
+          "description": "<p>Join us on for an interactive&nbsp;storytime full of books, songs and activities for little ones and their caregivers. <br>Drop-in program.</p>",
+          "bibIds": [],
+          "featuredImageId": "685ac71916b0912800344d33",
+          "branchLocationId": "AG",
+          "nonBranchLocationId": null,
+          "audienceIds": [
+            "5d891b4383fca52300831e69"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "5ec690cb6ae8e7450013b856"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 1,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "EVENT_START"
+            },
+            "registrationStart": {
+              "ordinal": 5,
+              "unit": "weeks",
+              "time": null,
+              "date": null,
+              "windowType": "RELATIVE"
+            },
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "waitlistEnabled": false,
+            "scope": null,
+            "maxSeats": 1,
+            "instructions": null,
+            "cap": 12,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "mplchats@markham.library.on.ca",
+              "value": "mplchats@markham.library.on.ca",
+              "rawValue": "mplchats@markham.library.on.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "rawValue": "",
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Ask MPL"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-09-22T14:30:00Z",
+        "indexEnd": "2026-09-22T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "68fbdf2de59a13000d3e1dc3": {
+        "id": "68fbdf2de59a13000d3e1dc3",
+        "key": "2026-08-24T10:30:00",
+        "seriesId": "68fbdf2c75911f28001a24f2",
+        "definition": {
+          "start": "2026-08-24T10:30",
+          "end": "2026-08-24T11:00",
+          "title": "Storytime",
+          "description": "<p>Join us on for an interactive&nbsp;storytime full of books, songs and activities for little ones and their caregivers. <br>Drop-in program.</p>",
+          "bibIds": [],
+          "featuredImageId": "685ac71916b0912800344d33",
+          "branchLocationId": "AL",
+          "nonBranchLocationId": null,
+          "audienceIds": [
+            "5d891b4383fca52300831e69"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "5ec690cb6ae8e7450013b856"
+          ],
+          "registrationInfo": {
+            "provider": null,
+            "registrationStart": {
+              "unit": "weeks",
+              "date": null,
+              "time": null,
+              "ordinal": 5,
+              "windowType": "RELATIVE"
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 1,
+              "windowType": "EVENT_START"
+            },
+            "enabledMethods": [],
+            "cap": 12,
+            "maxSeats": 1,
+            "scope": null,
+            "isFull": false,
+            "instructions": null,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "contact": {
+            "name": "Ask MPL",
+            "phone": {
+              "value": null,
+              "globalValue": null,
+              "contactType": "phone",
+              "rawValue": ""
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "mplchats@markham.library.on.ca",
+              "value": "mplchats@markham.library.on.ca",
+              "globalValue": "mplchats@markham.library.on.ca"
+            }
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-08-24T14:30:00Z",
+        "indexEnd": "2026-08-24T15:00:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6a6280a67b79214226aac98a": {
+        "id": "6a6280a67b79214226aac98a",
+        "key": "2026-12-13T13:30:00",
+        "seriesId": "6a6280a57b79214226aac980",
+        "definition": {
+          "start": "2026-12-13T13:30",
+          "end": "2026-12-13T14:30",
+          "title": "Chess Meet Up for Children (drop-in)",
+          "description": "<p><strong>Is your child interested in learning how to play chess? </strong>CITL is a non-profit student-run organization that aims to promote chess across Canada to players of all skill levels. Through our bi-weekly chess program, CITL provides an environment where&nbsp;children can learn how to play chess.<br></p>\n<p><strong><u>Details of the program: </u></strong></p>\n<ul><li>Takes place in-person at the Milliken Mills Library during the <strong>&nbsp;4th Sunday of each month</strong> (except for December 2026, it will be the 2nd Sunday due to the Winter Break)</li><li>Times/dates that we will be running the sessions:&nbsp;<ul><li>Sept 27</li><li>Oct 25</li><li>Nov 22</li><li>Dec 13 (** 2nd Sunday)</li></ul></li><li><strong>Children ages 6 to 12 years</strong> are welcome to join</li></ul>\n<p><strong>** As per the library's policy, a parent or guardian is to remain <u>inside the library</u> as your child is in the program. We appreciate your understanding and cooperation.**</strong><strong></strong><strong><br></strong></p>",
+          "bibIds": [],
+          "featuredImageId": "685ac83ca394bf4e3c49a390",
+          "branchLocationId": "MM",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room",
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "61859860b058d33d0087a50a"
+          ],
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 4,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "RELATIVE"
+            },
+            "registrationStart": {
+              "ordinal": 20,
+              "unit": "days",
+              "time": null,
+              "date": null,
+              "windowType": "RELATIVE"
+            },
+            "loginToRegister": false,
+            "instructionsToAttend": "<p>Hello,</p>\n<p>You are receiving this email as a confirmation that your child has signed up for the<strong> Chess In The Library Program</strong> this <strong><u>Sunday March 26th from 3:00-4:00pm at the Unionville Library.&nbsp;</u></strong><br><br>As per the library's policy regarding children's in-person programs, please note that a parent/guardian is to be <strong><u>in</u></strong> the library when the program is taking place. Thank you for your cooperation and have a great weekend!</p>\n<p>All the best,</p>\n<p>Markham Public Library</p>",
+            "onlineInstructions": null,
+            "waitlistEnabled": true,
+            "scope": null,
+            "maxSeats": 1,
+            "instructions": null,
+            "cap": 18,
+            "enabledMethods": [],
+            "provider": null
+          },
+          "contact": {
+            "email": {
+              "globalValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "value": "mplcommunitylibrarians@markhamlibrary.ca",
+              "rawValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "rawValue": "",
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Tiffany "
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-12-13T18:30:00Z",
+        "indexEnd": "2026-12-13T19:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "6980c4b16724c63d00effe3c": {
+        "id": "6980c4b16724c63d00effe3c",
+        "key": "2026-08-31T09:00:00",
+        "seriesId": "69384d0d2c65973d0011d143",
+        "definition": {
+          "staffNotes": "<p>5</p>",
+          "isCancelled": false,
+          "contact": {
+            "name": "Contact center",
+            "phone": {
+              "contactType": "phone",
+              "rawValue": "905 475-4731",
+              "value": "(905) 475-4731",
+              "globalValue": "+1-905-475-4731"
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "registration@markham.ca",
+              "value": "registration@markham.ca",
+              "globalValue": "registration@markham.ca"
+            }
+          },
+          "registrationInfo": {
+            "waitlistEnabled": false,
+            "loginToRegister": false,
+            "instructionsToAttend": null,
+            "onlineInstructions": null,
+            "instructions": "<p>Registration opens on February 10 at 6:30 AM for residents. Click on course#&nbsp;<a href=\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=2e62a08c-62b0-458e-bf12-70c2bec45ecd\">270014</a><br>to register or join the waitlist. Need help? See instructions on how to create an account, register for programs and more <a href=\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\" target=\"_blank\" title=\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\">here</a>.</p><p><br></p><p><br></p><p><br></p>",
+            "isFull": true,
+            "scope": null,
+            "maxSeats": null,
+            "cap": null,
+            "enabledMethods": [],
+            "registrationEnd": {
+              "windowType": null,
+              "ordinal": 1,
+              "time": null,
+              "date": null,
+              "unit": "days"
+            },
+            "registrationStart": {
+              "windowType": null,
+              "ordinal": 1,
+              "time": null,
+              "date": null,
+              "unit": "days"
+            },
+            "provider": "EXTERNAL"
+          },
+          "typeIds": [
+            "5dec79c214c7bb3a00d7fb67"
+          ],
+          "programId": "67a23d1308738767c1283187",
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "locationDetails": "Program room",
+          "nonBranchLocationId": null,
+          "branchLocationId": "TC",
+          "featuredImageId": "685ac896f60a5c0141b530ba",
+          "bibIds": [],
+          "partnerId": null,
+          "description": "<p>Introducing the easiest animation camp, designed to have your drawings up and moving in minutes! This program is designed to encourage the artist in everyone by using simple to-use tools, engaging design with multiple levels, combined with the 12 principles of animation. You will create animations with confidence while enjoying a fun and rewarding experience. <br></p>\n<p>Age: 6-11</p>\n<p>Monday August 31 - Friday September 4, 2026</p>\n<p>Resident: $371.35<br></p>",
+          "title": "Computer Cartoon Animation Camp (Age 6-11)",
+          "end": "2026-08-31T16:00",
+          "start": "2026-08-31T09:00"
+        },
+        "indexStart": "2026-08-31T13:00:00Z",
+        "indexEnd": "2026-08-31T20:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": true,
+        "registrationClosed": true
+      },
+      "699780844a9fd98b7f7f254d": {
+        "id": "699780844a9fd98b7f7f254d",
+        "key": "2026-08-10T09:00:00",
+        "seriesId": "6997807a4a9fd98b7f7f2549",
+        "definition": {
+          "isCancelled": false,
+          "contact": {
+            "name": "Evelyn Pringle",
+            "phone": {
+              "contactType": "phone",
+              "rawValue": "",
+              "globalValue": null,
+              "value": null
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "epringle@markhamlibrary.ca",
+              "value": "epringle@markhamlibrary.ca",
+              "globalValue": "epringle@markhamlibrary.ca"
+            }
+          },
+          "staffNotes": "<p>5</p>",
+          "registrationInfo": {
+            "isFull": true,
+            "provider": "EXTERNAL",
+            "enabledMethods": [],
+            "cap": null,
+            "instructions": "<p>Registration opens on&nbsp;February 10 at 6:30 AM for residents.&nbsp;Click <a href=\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=ce39fb16-abe8-4aac-9d62-51869b38f69b\" target=\"_blank\">here</a> to register or join the waitlist. Need help?&nbsp;See instructions on&nbsp;how to create an account, register for programs and more <a href=\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\" target=\"_blank\">here</a>.</p>",
+            "maxSeats": null,
+            "scope": null,
+            "waitlistEnabled": false,
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "registrationStart": {
+              "windowType": null,
+              "date": null,
+              "time": null,
+              "unit": "days",
+              "ordinal": 1
+            },
+            "registrationEnd": {
+              "windowType": null,
+              "date": null,
+              "time": null,
+              "unit": "days",
+              "ordinal": 1
+            }
+          },
+          "typeIds": [
+            "5dec79c214c7bb3a00d7fb67"
+          ],
+          "programId": "67a23c1908738767c1283181",
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "nonBranchLocationId": null,
+          "branchLocationId": "TC",
+          "featuredImageId": "68659ff316b091280035edbc",
+          "bibIds": [],
+          "partnerId": null,
+          "description": "<p>Get ready with your lab coat, safety goggles and imagination! The week is filled with hands-on engineering challenges, exploring technology, science experiments, Lego, robots and adventure! Each day has a different theme and is full of fun hands-on activities for all.<br><br>5-day camp - $349.05 Resident Fee<br>Age: 7-9 year old (age is calculated by the age of the child on December 31, 2026)<br>Course ID: 275937<br><br>Click <a href=\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=ce39fb16-abe8-4aac-9d62-51869b38f69b\" target=\"_blank\">here</a> to register or join the waitlist. Need help? See instructions on how to create an account, register for programs and more <a href=\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\" target=\"_blank\">here</a>.<br></p>",
+          "title": "STEAM Camp (Age 7-9)",
+          "end": "2026-08-14T16:00",
+          "start": "2026-08-10T09:00"
+        },
+        "indexStart": "2026-08-10T13:00:00Z",
+        "indexEnd": "2026-08-14T20:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": true,
+        "registrationClosed": true
+      },
+      "6997880bb0595799c09e0acc": {
+        "id": "6997880bb0595799c09e0acc",
+        "key": "2026-08-24T09:00:00",
+        "seriesId": "6997880a4a9fd98b7f7f279e",
+        "definition": {
+          "start": "2026-08-24T09:00",
+          "end": "2026-08-28T16:00",
+          "title": "Maker (Cricut and 3D Printing) Camp (Age 7-9)",
+          "description": "<p>Calling all young artisans and makers! Join us for a hands-on journey where imagination takes center stage. Campers will explore the joy of crafting and making things—from DIY projects to imaginative creations, every day is a new opportunity to learn something new and express your creativity! Campers will learn the basics and create a small project on the Cricut die cutter and 3D printer.<br> <br><br>5-day camp&nbsp; - $349.05 Resident Fee<br>Age: 7-9 year old (age is calculated by the age of the child on December 31, 2026)<br>Course ID: 275939<br></p>",
+          "bibIds": [],
+          "featuredImageId": "68659ff316b091280035edbc",
+          "branchLocationId": "TC",
+          "nonBranchLocationId": null,
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": "5dec79e79ec3264500173ac9",
+          "typeIds": [
+            "5dec79c214c7bb3a00d7fb67"
+          ],
+          "registrationInfo": {
+            "provider": "EXTERNAL",
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 1,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 1,
+              "windowType": "EVENT_START"
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": 10,
+            "scope": null,
+            "isFull": false,
+            "instructions": "<p>Registration opens on&nbsp;February 10 at 6:30 AM for residents.&nbsp;Click <a href=\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=2570e5f4-4143-4d40-b667-3a7958985eea\" target=\"_blank\">here</a> to register or join the waitlist. Need help?&nbsp;See instructions on&nbsp;how to create an account, register for programs and more <a href=\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\" target=\"_blank\">here</a>.</p>",
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "staffNotes": "<p>5</p>",
+          "contact": {
+            "name": "Evelyn Pringle",
+            "phone": {
+              "contactType": "phone",
+              "rawValue": "",
+              "globalValue": null,
+              "value": null
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "epringle@markhamlibrary.ca",
+              "value": "epringle@markhamlibrary.ca",
+              "globalValue": "epringle@markhamlibrary.ca"
+            }
+          },
+          "isCancelled": false,
+          "partnerId": null
+        },
+        "indexStart": "2026-08-24T13:00:00Z",
+        "indexEnd": "2026-08-28T20:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      },
+      "699787d2b0595799c09e0ac3": {
+        "id": "699787d2b0595799c09e0ac3",
+        "key": "2026-08-10T09:00:00",
+        "seriesId": "699787d1b0595799c09e0abf",
+        "definition": {
+          "isCancelled": false,
+          "contact": {
+            "name": "Evelyn Pringle",
+            "phone": {
+              "contactType": "phone",
+              "rawValue": "",
+              "globalValue": null,
+              "value": null
+            },
+            "email": {
+              "contactType": "email",
+              "rawValue": "epringle@markhamlibrary.ca",
+              "value": "epringle@markhamlibrary.ca",
+              "globalValue": "epringle@markhamlibrary.ca"
+            }
+          },
+          "staffNotes": "<p>5</p>",
+          "registrationInfo": {
+            "provider": "EXTERNAL",
+            "registrationStart": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 1,
+              "windowType": null
+            },
+            "registrationEnd": {
+              "unit": "days",
+              "date": null,
+              "time": null,
+              "ordinal": 1,
+              "windowType": "EVENT_START"
+            },
+            "enabledMethods": [],
+            "cap": null,
+            "maxSeats": 10,
+            "scope": null,
+            "isFull": true,
+            "instructions": "<p>Registration opens on&nbsp;February 10 at 6:30 AM for residents.&nbsp;Click <a href=\"https://cityofmarkham.perfectmind.com/Clients/BookMe4LandingPages/CoursesLandingPage?widgetId=bfd08479-60d6-43d9-b586-5b4c8305a003&redirectedFromEmbededMode=False&courseId=27e514a0-877a-4954-87cb-f7654f5c34be\" target=\"_blank\">here</a> to register or join the waitlist. Need help?&nbsp;See instructions on&nbsp;how to create an account, register for programs and more <a href=\"https://www.markham.ca/sports-recreation-fitness/sports-recreation-programs/registration-and-general-information\" target=\"_blank\">here</a>.</p>",
+            "onlineInstructions": null,
+            "instructionsToAttend": null,
+            "loginToRegister": false,
+            "waitlistEnabled": false
+          },
+          "typeIds": [
+            "5dec79c214c7bb3a00d7fb67"
+          ],
+          "programId": "5dec79e79ec3264500173ac9",
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d"
+          ],
+          "nonBranchLocationId": null,
+          "branchLocationId": "AG",
+          "featuredImageId": "68659ff316b091280035edbc",
+          "bibIds": [],
+          "description": "<p>Calling all young artisans and makers! Join us for a hands-on journey where imagination takes center stage. Campers will explore the joy of crafting and making things—from DIY projects to imaginative creations, every day is a new opportunity to learn something new and express your creativity! Campers will learn the basics and create a small project on the Cricut die cutter and 3D printer.<br><br>5-day Camp - $349.05&nbsp;Resident Fee<br>Age: 7-9 year old (age is calculated by the age of the child on December 31, 2026)<br>Course ID: 277036<br></p>",
+          "title": "Maker (Cricut and 3D Printing) Camp (Age 7-9)",
+          "end": "2026-08-14T16:00",
+          "start": "2026-08-10T09:00",
+          "partnerId": null
+        },
+        "indexStart": "2026-08-10T13:00:00Z",
+        "indexEnd": "2026-08-14T20:00:00Z",
+        "isRecurring": false,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": true,
+        "registrationClosed": true
+      },
+      "6a3065b41e67cd9cb33a167c": {
+        "id": "6a3065b41e67cd9cb33a167c",
+        "key": "2026-11-18T16:30:00",
+        "seriesId": "6a3065b4f56bd86e00b6f54b",
+        "definition": {
+          "start": "2026-11-18T16:30",
+          "end": "2026-11-18T17:30",
+          "title": "Newcomer Youth Love of Language Club",
+          "description": "<p>Calling all newcomer youth between the ages of 6 to 12! Join the Love of Language Club to have fun while practicing your English communication, writing, and reading skills.</p>\n<p><strong>In this eight-week program, newcomer youth will improve their English vocabulary through engaging and fun activities, as well as gain confidence and foster friendships with their peers. Each session will explore a new topic, with activities including&nbsp;discussion, games and reading books!</strong></p>\n<p>This program is provided in partnership with <a href=\"https://youthassistingyouth.com/\">Youth Assisting Youth</a>. The program will take place in person at the Aaniin Library Program Room. Priority will be given to newcomer youth.</p><p>We look forward to seeing you there!</p>",
+          "bibIds": [],
+          "featuredImageId": "685ac755a394bf4e3c49a36e",
+          "branchLocationId": "AL",
+          "nonBranchLocationId": null,
+          "locationDetails": "Program Room",
+          "audienceIds": [
+            "5d891b3e08a2552e0002d44d",
+            "5d891b3383fca52300831e66"
+          ],
+          "languageIds": [
+            "5d2369b586eed80053d5317a"
+          ],
+          "programId": null,
+          "typeIds": [
+            "5d891a31967d233900276985",
+            "5dec2e8da40e1350009110a0"
+          ],
+          "isFeatured": true,
+          "isFeaturedAtLocation": true,
+          "registrationInfo": {
+            "registrationEnd": {
+              "ordinal": 1,
+              "unit": "days",
+              "windowType": "EVENT_START"
+            },
+            "registrationStart": {
+              "ordinal": 1,
+              "unit": "days"
+            },
+            "scope": null,
+            "maxSeats": 10,
+            "instructions": "<p>Please register for the program using our partner's registration link: <a href=\"https://docs.google.com/forms/d/e/1FAIpQLSdO8EvhXXY-ZnNSMgvIYlINHDE0SpAWDjwHZCo8I4WjrLCPcg/viewform\"><strong><u>HERE</u></strong>.</a> The form will request personal information. Your data will be collected and managed by the partner.</p>",
+            "cap": null,
+            "enabledMethods": [],
+            "provider": "EXTERNAL"
+          },
+          "contact": {
+            "email": {
+              "globalValue": "mplcommunitylibrarians@markhamlibrary.ca",
+              "value": "mplcommunitylibrarians@markhamlibrary.ca",
+              "rawValue": "MPLcommunitylibrarians@markhamlibrary.ca",
+              "contactType": "email"
+            },
+            "phone": {
+              "rawValue": "",
+              "contactType": "phone",
+              "globalValue": null,
+              "value": null
+            },
+            "name": "Faith Robinson"
+          },
+          "isCancelled": false
+        },
+        "indexStart": "2026-11-18T21:30:00Z",
+        "indexEnd": "2026-11-18T22:30:00Z",
+        "isRecurring": true,
+        "numberRegistered": null,
+        "numberWaitlistRegistered": null,
+        "isFull": false,
+        "registrationClosed": false
+      }
+    },
+    "eventAudiences": {
+      "5d891b2e08a2552e0002d44c": {
+        "id": "5d891b2e08a2552e0002d44c",
+        "name": "Adult",
+        "imageId": null
+      },
+      "5d891b3383fca52300831e66": {
+        "id": "5d891b3383fca52300831e66",
+        "name": "Youth",
+        "imageId": null
+      },
+      "5d891b3883fca52300831e67": {
+        "id": "5d891b3883fca52300831e67",
+        "name": "Older Adult",
+        "imageId": null
+      },
+      "5d891b3e08a2552e0002d44d": {
+        "id": "5d891b3e08a2552e0002d44d",
+        "name": "Children",
+        "imageId": null
+      },
+      "5d891b4383fca52300831e69": {
+        "id": "5d891b4383fca52300831e69",
+        "name": "Birth to Five",
+        "isHidden": false,
+        "imageId": null
+      },
+      "5dec0b2e08fcc45b00733f9c": {
+        "id": "5dec0b2e08fcc45b00733f9c",
+        "name": "All Ages",
+        "imageId": null
+      },
+      "6357f89a16f1cb3e33c5840b": {
+        "id": "6357f89a16f1cb3e33c5840b",
+        "name": "Infants (0 to 12 months)",
+        "imageId": null
+      }
+    },
+    "eventTypes": {
+      "5d891a31967d233900276985": {
+        "id": "5d891a31967d233900276985",
+        "name": "Books & Reading",
+        "imageId": "685ac755a394bf4e3c49a36e"
+      },
+      "5d891a6608a2552e0002d441": {
+        "id": "5d891a6608a2552e0002d441",
+        "name": "Creative Expression",
+        "imageId": "685ac78616b0912800344d40"
+      },
+      "5dea7730e1818724000db642": {
+        "id": "5dea7730e1818724000db642",
+        "name": "Jobs & Career",
+        "imageId": "685ac83016b0912800344d5a"
+      },
+      "5debac7f14c7bb3a00d7f159": {
+        "id": "5debac7f14c7bb3a00d7f159",
+        "name": "Health & Wellness",
+        "imageId": "685ac82316b0912800344d52"
+      },
+      "5dec2e8da40e1350009110a0": {
+        "id": "5dec2e8da40e1350009110a0",
+        "name": "Newcomer",
+        "imageId": "685ac888a394bf4e3c49a39c"
+      },
+      "5dec79c214c7bb3a00d7fb67": {
+        "id": "5dec79c214c7bb3a00d7fb67",
+        "name": "Summer Camp",
+        "isHidden": false,
+        "imageId": "685ac896f60a5c0141b530ba"
+      },
+      "5ec690cb6ae8e7450013b856": {
+        "id": "5ec690cb6ae8e7450013b856",
+        "name": "Storytime",
+        "imageId": "685ac71916b0912800344d33"
+      },
+      "5ec690e2171b7a24001540ee": {
+        "id": "5ec690e2171b7a24001540ee",
+        "name": "Digital Literacy",
+        "imageId": "685ac792204845694af863e2"
+      },
+      "5ec6915ffd0023f1014ed76f": {
+        "id": "5ec6915ffd0023f1014ed76f",
+        "name": "STEAM",
+        "imageId": "685ac85af60a5c0141b530b3"
+      },
+      "5ef4a969fac4442f00106bd9": {
+        "id": "5ef4a969fac4442f00106bd9",
+        "name": "Business & Finance",
+        "imageId": "685ac73616b0912800344d3a"
+      },
+      "60a2a1419c29642400145927": {
+        "id": "60a2a1419c29642400145927",
+        "name": "Summer Reading Club",
+        "imageId": "685ac8a5204845694af8641a"
+      },
+      "61859860b058d33d0087a50a": {
+        "id": "61859860b058d33d0087a50a",
+        "name": "Lifelong Learning",
+        "imageId": "685ac83ca394bf4e3c49a390"
+      },
+      "642c4593b351ae8336aae367": {
+        "id": "642c4593b351ae8336aae367",
+        "name": "Gathering",
+        "imageId": "685ac744a394bf4e3c49a367"
+      },
+      "6296529ad64425e24cca20d8": {
+        "id": "6296529ad64425e24cca20d8",
+        "name": "Makerspace",
+        "imageId": "685ac848f60a5c0141b530ae"
+      },
+      "65dd048a05ea9f2800631538": {
+        "id": "65dd048a05ea9f2800631538",
+        "name": "Sustainability",
+        "imageId": "685ac86716b0912800344d83"
+      },
+      "691b4105fbf38a28002416f4": {
+        "id": "691b4105fbf38a28002416f4",
+        "name": "Life Planning",
+        "imageId": "691b41020562322f003099fb"
+      }
+    },
+    "eventLanguages": {
+      "5d2369b586eed80053d5317a": {
+        "id": "5d2369b586eed80053d5317a",
+        "name": "English",
+        "description": "English",
+        "imageId": null
+      },
+      "5d891b6483fca52300831e6c": {
+        "id": "5d891b6483fca52300831e6c",
+        "name": "French",
+        "description": "Français",
+        "imageId": null
+      },
+      "5debb242a40e13500091068d": {
+        "id": "5debb242a40e13500091068d",
+        "name": "Mandarin",
+        "description": " 普通话",
+        "imageId": null
+      }
+    },
+    "locations": {
+      "AL": {
+        "id": "AL",
+        "name": "Aaniin Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "5df25ac94bedb43a009995cf",
+        "address": {
+          "country": "CA",
+          "zip": "L3S 3K5",
+          "state": "Ontario",
+          "city": "Markham",
+          "street": "14th Avenue",
+          "number": "5665"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 4470",
+            "label": "Main Desk",
+            "value": "(905) 513-7977 ext. 4470",
+            "globalValue": "+1-905-513-7977;ext=4470",
+            "id": "68093c678d0cb67dacdb3b37"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 4477",
+            "label": "Branch Manager",
+            "value": "(905) 513-7977 ext. 4477",
+            "globalValue": "+1-905-513-7977;ext=4477",
+            "id": "68093c678d0cb67dacdb3b36"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.26676309999999,
+            "lat": 43.8519849
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://markhampubliclibrary.ca/locations/AL"
+      },
+      "AG": {
+        "id": "AG",
+        "name": "Angus Glen Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "5d93577abfbf9a4400c517f5",
+        "address": {
+          "country": "CA",
+          "zip": "L6C 1P8",
+          "state": "Ontario",
+          "city": "Markham",
+          "street": "Major Mackenzie Drive East",
+          "number": "3990"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 7100",
+            "label": "Main Desk",
+            "value": "(905) 513-7977 ext. 7100",
+            "globalValue": "+1-905-513-7977;ext=7100",
+            "id": "69261c3bf8747e3e00241a47"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "905 513 7977 extension 7150",
+            "label": "Branch Manager",
+            "value": "(905) 513-7977 ext. 7150",
+            "globalValue": "+1-905-513-7977;ext=7150",
+            "id": "69261c3bf8747e3e00241a46"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.33652219999999,
+            "lat": 43.8947178
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://markhampubliclibrary.ca/locations/AG"
+      },
+      "MV": {
+        "id": "MV",
+        "name": "Markham Village Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "5d89196f08a2552e0002d422",
+        "transitUrl": "",
+        "address": {
+          "country": "CA",
+          "zip": "L3P 3A7",
+          "state": "Ontario",
+          "city": "Markham",
+          "street": "Highway 7",
+          "number": "6031"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "905-513-7977 extension 4271",
+            "label": "Main Desk",
+            "value": "(905) 513-7977 ext. 4271",
+            "globalValue": "+1-905-513-7977;ext=4271",
+            "id": "68093d698fd49158705f90ac"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "905-513-7977 extension 4277",
+            "label": "Branch Manager",
+            "value": "(905) 513-7977 ext. 4277",
+            "globalValue": "+1-905-513-7977;ext=4277",
+            "id": "68093d698fd49158705f90ab"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.25847479999999,
+            "lat": 43.8732112
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://markhampubliclibrary.ca/locations/MV"
+      },
+      "MM": {
+        "id": "MM",
+        "name": "Milliken Mills Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "5d9396cd21785a450056a458",
+        "address": {
+          "country": "CA",
+          "zip": "L3R 9S5",
+          "state": "Ontario",
+          "city": "Markham",
+          "street": " Kennedy Road, Unit 1",
+          "number": "7600"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 5337",
+            "label": "Main Desk",
+            "value": "(905) 513-7977 ext. 5337",
+            "globalValue": "+1-905-513-7977;ext=5337",
+            "id": "68093d870453817cac2b1718"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 5333",
+            "label": "Branch Manager",
+            "value": "(905) 513-7977 ext. 5333",
+            "globalValue": "+1-905-513-7977;ext=5333",
+            "id": "68093d870453817cac2b1717"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.30500649999999,
+            "lat": 43.8402283
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "webUrl": "https://markhampubliclibrary.ca/locations/MM"
+      },
+      "TC": {
+        "id": "TC",
+        "name": "Thornhill Comm. Ctr. Branch",
+        "coreAbsent": false,
+        "isHidden": false,
+        "imageId": "5d939a33aba77f3a006d1faa",
+        "address": {
+          "country": "CA",
+          "zip": "L3T 4P1",
+          "state": "Ontario",
+          "city": "Thornhill",
+          "street": " Bayview Avenue",
+          "number": "7755"
+        },
+        "branchContacts": [
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 3521",
+            "label": "Main Desk",
+            "value": "(905) 513-7977 ext. 3521",
+            "globalValue": "+1-905-513-7977;ext=3521",
+            "id": "68093e200453817cac2b175b"
+          },
+          {
+            "contactType": "phone",
+            "rawValue": "9055137977 extension 3524",
+            "label": "Branch Manager",
+            "value": "(905) 513-7977 ext. 3524",
+            "globalValue": "+1-905-513-7977;ext=3524",
+            "id": "68093e200453817cac2b175a"
+          }
+        ],
+        "mapLocation": {
+          "centrePoint": {
+            "lng": -79.39987339999999,
+            "lat": 43.8200327
+          },
+          "utcOffsetNow": "-0400",
+          "timeZone": "America/Toronto",
+          "isGeocoded": false
+        },
+        "meetingRooms": "",
+        "webUrl": "https://markhampubliclibrary.ca/locations/TC"
+      }
+    }
+  }
+}

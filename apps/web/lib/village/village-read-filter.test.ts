@@ -59,6 +59,9 @@ describe('villageActiveFilter', () => {
     // Standing feed: run_type standing OR legacy null (backfilled to standing).
     expect(sql).toContain('run_type = standing');
     expect(sql).toContain('run_type is null');
+    // VIL-252 · M16: civic rows ride along with the standing feed. Without this
+    // the weekly sweep would write library storytimes that no surface ever reads.
+    expect(sql).toContain('run_type = civic');
     // A standing read must NOT scope to a search season.
     expect(sql).not.toContain('search_season');
   });
@@ -71,5 +74,9 @@ describe('villageActiveFilter', () => {
     expect(sql).toContain('search_season = fall');
     // A search read must NOT also pull the standing feed.
     expect(sql).not.toContain('run_type = standing');
+    // ...nor the civic sweep's rows: a season search is a deliberate, scoped ask,
+    // and padding it with this week's storytimes would answer a question the
+    // parent did not put.
+    expect(sql).not.toContain('run_type = civic');
   });
 });

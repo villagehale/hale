@@ -16,6 +16,10 @@ export const MAX_FAMILIES_PER_RUN = {
   discovery: 50,
   inference: 100,
   pushReminders: 100,
+  /** The civic sweep's per-run projection bound. Its INGEST cost is fixed (one
+   * pass over the public calendars regardless of headcount); this caps only the
+   * per-family database work. */
+  civicSweep: 200,
 } as const;
 
 /** Discovery only runs for families whose candidate pool is stale or empty. */
@@ -65,7 +69,13 @@ export async function selectFamiliesNeedingDiscovery(
     .from(schema.families)
     .leftJoin(
       schema.villageCandidates,
-      sql`${schema.villageCandidates.familyId} = ${schema.families.id}`,
+      // Civic rows (VIL-252 · M16) are EXCLUDED from this freshness read on
+      // purpose. They are written by their own weekly sweep, so counting them
+      // would make every family in a covered municipality look freshly discovered
+      // and silently starve the LLM discovery run that this query exists to
+      // schedule — a feed that quietly stops refreshing, with no error anywhere.
+      sql`${schema.villageCandidates.familyId} = ${schema.families.id}
+        and ${schema.villageCandidates.runType} is distinct from 'civic'`,
     )
     .where(
       or(
