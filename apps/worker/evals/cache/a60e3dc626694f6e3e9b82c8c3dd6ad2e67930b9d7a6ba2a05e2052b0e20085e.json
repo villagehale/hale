@@ -1,0 +1,17 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Amélie",
+        "age_months": 72
+      },
+      {
+        "name": "Luc",
+        "age_months": 36
+      }
+    ],
+    "postal_code": "H2X 1Y4",
+    "confidence": 0.97
+  },
+  "latencyMs": 3257
+}

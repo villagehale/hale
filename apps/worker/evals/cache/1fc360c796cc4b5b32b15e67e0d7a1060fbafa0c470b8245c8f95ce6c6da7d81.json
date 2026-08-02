@@ -1,0 +1,17 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Theo",
+        "age_months": 42
+      },
+      {
+        "name": "Nina",
+        "age_months": 72
+      }
+    ],
+    "postal_code": "K1A 0B1",
+    "confidence": 0.95
+  },
+  "latencyMs": 1713
+}

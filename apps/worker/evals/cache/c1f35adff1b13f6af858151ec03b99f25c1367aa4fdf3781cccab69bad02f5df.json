@@ -1,0 +1,17 @@
+{
+  "value": {
+    "children": [
+      {
+        "name": "Max",
+        "age_months": 48
+      },
+      {
+        "name": "Mia",
+        "age_months": 18
+      }
+    ],
+    "postal_code": "L3R",
+    "confidence": 0.95
+  },
+  "latencyMs": 1908
+}

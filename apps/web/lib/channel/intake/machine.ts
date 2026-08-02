@@ -34,7 +34,7 @@ import {
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
-import { normalizeCanadianPostal, summarizeChildren } from './derive';
+import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { IntakeCollected, IntakeExtractor } from './extract';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { matchKeyword } from './keywords';
@@ -388,9 +388,7 @@ function resolveLocation(
   sourceCode: string | null,
 ): IntakeLocation | null | 'unsupported_region' {
   if (collected.postalCode) {
-    const postalCode = normalizeCanadianPostal(collected.postalCode);
-    if (!postalCode) return 'unsupported_region';
-    return { postalCode, areaCoarse: postalCode.slice(0, 3) };
+    return parseCanadianPostal(collected.postalCode) ?? 'unsupported_region';
   }
   const venue = venueForCode(sourceCode);
   if (venue) {
