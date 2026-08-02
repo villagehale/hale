@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { POLICY_VERSION } from '~/lib/consent';
 import { maskPhoneE164 } from '~/lib/channels/phone';
 import { encryptString } from '~/lib/crypto/string-cipher';
-import { INTAKE_COUNTRY, deriveDateOfBirth, intakeFamilyName } from './derive';
+import { INTAKE_COUNTRY, type PostalContext, deriveDateOfBirth, intakeFamilyName } from './derive';
 import type { ExtractedChild } from './extract';
 import type { TranscriptEntry } from './session';
 
@@ -35,16 +35,13 @@ const CHANNEL_KIND = 'sms';
 export const INTAKE_CONSENT_SCOPE = 'sms_intake_origination';
 
 /**
- * Where the family is, as established during intake. Either the parent gave a
- * Canadian postal code (region gate already run by the caller), or they arrived via a
- * QR venue whose OWN coarse area we know — in which case there is no postal code at
- * all and `areaCoarse` is the venue's. Both are Canadian by construction; provisioning
- * never guesses a country.
+ * Where the family is, as established during intake — the same shape whichever of the
+ * three routes established it: a full Canadian postal code, a bare FSA (D2), or a QR
+ * venue whose OWN coarse area we know. Only the first carries a `postalCode`; all
+ * three are Canadian by construction (the region gate runs in the caller), so
+ * provisioning never guesses a country.
  */
-export interface IntakeLocation {
-  postalCode: string | null;
-  areaCoarse: string;
-}
+export type IntakeLocation = PostalContext;
 
 export interface ProvisionInput {
   phoneE164: string;

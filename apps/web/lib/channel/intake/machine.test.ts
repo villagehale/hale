@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import {
   AMBIGUOUS_CLARIFY,
+  AREA_BLOCKED_REPLY,
   ASSENT_ACK,
   DECLINE_ACK,
   HELP_REPLY,
@@ -204,6 +205,27 @@ describe('intake · the one follow-up', () => {
     expect(third).toEqual({ status: 'area_blocked' });
     expect(transport.bodies()).toHaveLength(before + 1); // silence, not a third ask
     expect(inserts(fake, schema.families)).toHaveLength(0);
+  });
+});
+
+describe('intake · a bare FSA', () => {
+  it('provisions on an FSA alone, as the coarse area with no full postal code (D2)', async () => {
+    const { fake, transport, deps } = harness({
+      extractions: [{ children: MAYA_AND_LEO.children, postalCode: 'l3r' }],
+    });
+    await text(fake, transport, deps, 'hi');
+    const result = await text(fake, transport, deps, 'Maya is 4, Leo is 1, we are over in l3r');
+
+    expect(result.status).toBe('provisioned');
+    expect(inserts(fake, schema.families)[0]).toMatchObject({
+      country: 'Canada',
+      postalCode: null,
+      areaCoarse: 'L3R',
+    });
+    // The two wrong answers this fixture exists to rule out: asking for the postal
+    // code we were just given, and refusing a Markham family as out-of-region.
+    expect(transport.bodies()).not.toContain(AREA_BLOCKED_REPLY);
+    expect(transport.bodies()).not.toContain(REGION_UNAVAILABLE_REPLY);
   });
 });
 

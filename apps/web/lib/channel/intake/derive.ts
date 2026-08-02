@@ -5,22 +5,39 @@ import type { ExtractedChild } from './extract';
  * written". No I/O, no model, no DB: everything here is checkable against the spec.
  */
 
-/** Canadian postal code: A1A 1A1, space optional. The region gate's whole basis — a
- * text-first signup gives us a postal code and nothing else, so this IS the country
- * check (rule #1: Hale is compliance-cleared for Canada only). */
-const CANADIAN_POSTAL = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+/**
+ * Where a postal token places a family. The FSA is always known; the full code only
+ * when the parent volunteered one. Decision D2: the FSA is what discovery actually
+ * runs on (the M1 matcher keys on it), so the second half is a later just-in-time ask
+ * and never a precondition for setting a family up.
+ */
+export interface PostalContext {
+  postalCode: string | null;
+  areaCoarse: string;
+}
 
 /**
- * The canonical "M5V 2T6" form, or null when it isn't a Canadian postal code at all.
- * Null is the REGION GATE tripping, not a formatting nit: a US ZIP or a neighbourhood
- * name reaches here as null and provisioning refuses rather than guessing a country.
+ * Canadian postal code, with the LDU (the "1A1" half) optional: `L3R` and `M5V 2T6`
+ * are both complete answers to "where are you". The first letter is restricted to the
+ * 18 Canada Post assigns, which is what keeps the region gate honest at FSA length —
+ * `W1A` is a London outward code, and without the whitelist it is shaped exactly like
+ * an FSA (rule #1: Hale is compliance-cleared for Canada only).
  */
-export function normalizeCanadianPostal(raw: string | null): string | null {
+const CANADIAN_POSTAL = /^([ABCEGHJKLMNPRSTVXY]\d[A-Za-z])(?:[ -]?(\d[A-Za-z]\d))?$/i;
+
+/**
+ * The family's location as a postal token establishes it, or null when the token is
+ * not Canadian at all. Null is the REGION GATE tripping, not a formatting nit: a US
+ * ZIP or a neighbourhood name reaches here as null and provisioning refuses rather
+ * than guessing a country.
+ */
+export function parseCanadianPostal(raw: string | null): PostalContext | null {
   if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!CANADIAN_POSTAL.test(trimmed)) return null;
-  const compact = trimmed.replace(/[ -]/g, '').toUpperCase();
-  return `${compact.slice(0, 3)} ${compact.slice(3)}`;
+  const match = CANADIAN_POSTAL.exec(raw.trim());
+  if (!match) return null;
+  const areaCoarse = (match[1] as string).toUpperCase();
+  const ldu = match[2]?.toUpperCase();
+  return { postalCode: ldu ? `${areaCoarse} ${ldu}` : null, areaCoarse };
 }
 
 /** The country a Canadian postal code implies — matched against the onboarding region

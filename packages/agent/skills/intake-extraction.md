@@ -56,8 +56,15 @@ mention you had to invent.
 ## Reading postal codes
 
 A Canadian postal code is `A1A 1A1` (the space is optional and often missing).
-Return it upper-cased with a single space: `m5v2t6` → `"M5V 2T6"`. If they gave
-only a neighbourhood, a city, or an intersection, return `null` for
+Return it upper-cased with a single space: `m5v2t6` → `"M5V 2T6"`.
+
+The first three characters alone — `L3R`, letter-digit-letter — are a COMPLETE
+answer, not a partial one. That is the part that says which town a family is in,
+which is all this stage needs; return it exactly as far as they went, upper-cased
+(`l3r` → `"L3R"`). Never pad it out to six characters, and never ask yourself
+whether it is "enough".
+
+If they gave only a neighbourhood, a city, or an intersection, return `null` for
 `postal_code` — a place name is not a postal code, and inventing one would put a
 family in the wrong part of the city.
 

@@ -106,6 +106,35 @@ export const EXTRACTION_FIXTURES = [
       ageToleranceMonths: 3,
     },
   },
+  // ── FSA battery (VIL-254) — decision D2: the first three characters ARE the
+  // answer. The demo message below was refused in prod, which is what these three
+  // fixtures exist to keep from happening again. The `neighbourhood-not-a-postal-code`
+  // fixture below is the calibration in the other direction: widening acceptance to
+  // three characters must not make a place name acceptable.
+  {
+    id: 'fsa-only',
+    message: 'Max is 4, Mia is 18 months, L3R',
+    alreadyKnown: { children: [], postal_code: null },
+    expect: {
+      children: [
+        { name: 'Max', ageMonths: 48 },
+        { name: 'Mia', ageMonths: 18 },
+      ],
+      postalCode: 'L3R',
+    },
+  },
+  {
+    id: 'fsa-lowercase',
+    message: 'Ava is 6, l3r',
+    alreadyKnown: { children: [], postal_code: null },
+    expect: { children: [{ name: 'Ava', ageMonths: 72 }], postalCode: 'L3R' },
+  },
+  {
+    id: 'fsa-in-prose',
+    message: "Noah just turned 2 and we're over in the L6C area",
+    alreadyKnown: { children: [], postal_code: null },
+    expect: { children: [{ name: 'Noah', ageMonths: 24 }], postalCode: 'L6C' },
+  },
   {
     id: 'neighbourhood-not-a-postal-code',
     message: "Ines is 7, we're near the Danforth",
