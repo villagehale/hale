@@ -1,0 +1,14 @@
+{
+  "value": {
+    "found": false,
+    "reason": "different_cycle_only",
+    "cycle_on_page": "Fall swimming lessons",
+    "year_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "evidence": "Fall 2025 and Winter 2026 Registration Schedule",
+    "confidence": 0.9
+  },
+  "latencyMs": 3181
+}

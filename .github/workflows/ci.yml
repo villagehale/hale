@@ -87,6 +87,9 @@ jobs:
       - name: Civic hours parser eval (cached-only)
         run: pnpm --filter @hale/worker eval:civic-hours
 
+      - name: Registration re-verify eval (cached-only)
+        run: pnpm --filter @hale/worker eval:registration-verify
+
       - name: Build
         run: pnpm build
         env:

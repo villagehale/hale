@@ -1,0 +1,14 @@
+{
+  "value": {
+    "found": false,
+    "reason": "different_cycle_only",
+    "cycle_on_page": null,
+    "year_evidence": null,
+    "preview": null,
+    "resident_open": null,
+    "general_open": null,
+    "evidence": "Summer Registration On Now!",
+    "confidence": 0.9
+  },
+  "latencyMs": 2542
+}
