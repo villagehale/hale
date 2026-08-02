@@ -6,7 +6,7 @@ import { Menu } from 'lucide-react';
 import { Icon } from '~/components/ui/icon';
 import { useShell } from '~/components/hale/app-shell';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { allNav } from '~/components/hale/nav';
+import { allNav, brandHref } from '~/components/hale/nav';
 
 /**
  * The sticky header frame above the scrolling main stage. The brand and the
@@ -34,7 +34,7 @@ export function TopHeader({ receiptsIa = false }: { receiptsIa?: boolean }) {
         >
           <Icon as={Menu} size={22} />
         </button>
-        <Link href="/home" className="runninghead-brand">
+        <Link href={brandHref(receiptsIa)} className="runninghead-brand">
           <LogoMark size={28} />
           <span className="font-display text-2xl leading-none font-semibold">Hale</span>
         </Link>

@@ -17,7 +17,7 @@ import { useShell } from '~/components/hale/app-shell';
 import { ChildSwitcher } from '~/components/hale/child-switcher';
 import type { SwitcherChild } from '~/components/hale/child-switcher-view';
 import { LogoMark } from '~/components/hale/logo-mark';
-import { primaryNav } from '~/components/hale/nav';
+import { brandHref, primaryNav } from '~/components/hale/nav';
 
 function NavLink({
   href,
@@ -82,7 +82,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
-        <Link href="/home" className="sidebar-brand" onClick={closeDrawer}>
+        <Link href={brandHref(receiptsIa)} className="sidebar-brand" onClick={closeDrawer}>
           <LogoMark size={34} />
           <span className="sidebar-wordmark font-display font-semibold">Hale</span>
         </Link>

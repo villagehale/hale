@@ -76,10 +76,14 @@ describe('PostHog replay + exception config', () => {
  * stays off, identity is an opaque id. The old "session replay turned off" claim
  * is now false and must be gone. Asserted against the page source so the legal
  * copy can't silently drift from the config.
+ *
+ * The policy itself now lives on the marketing site (D20 — the app's /privacy is a
+ * 308 to it), but the config it describes lives HERE, so the guard stays beside the
+ * config assertions above and reaches across to the page it must agree with.
  */
 describe('privacy page PostHog disclosure', () => {
   const source = readFileSync(
-    fileURLToPath(new URL('../../app/privacy/page.tsx', import.meta.url)),
+    fileURLToPath(new URL('../../../site/app/privacy/page.tsx', import.meta.url)),
     'utf8',
   );
 

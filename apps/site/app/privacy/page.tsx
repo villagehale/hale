@@ -10,9 +10,10 @@ import { LegalLayout, type LegalSection, LegalSectionBlock } from '~/components/
  * soft-launch. Everything else is untouched — a legal-copy change is its own
  * change, never bundled with a design move.
  *
- * Unlinked and noindexed until the landing flips; app.villagehale.com/privacy
- * stays the live, linked copy until it becomes a 308 redirect here in a
- * separate app-side PR.
+ * app.villagehale.com/privacy is now a permanent 308 here (VIL-256), so this is
+ * the only copy. Still noindexed: the marketing pivot stays dark until the flip,
+ * and the policy is reachable by direct link either way — the footer, the app,
+ * the mobile listing and every consent surface point straight at it.
  */
 
 const TITLE = 'Privacy Policy · Hale';

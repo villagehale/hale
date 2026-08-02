@@ -110,8 +110,12 @@ describe('LandingPage (funnel — Get started → onboarding wizard)', () => {
 describe('LandingPage (footer + honesty)', () => {
   it('carries the plain Hale copyright and real legal links', () => {
     expect(html).toContain('© 2026 Hale. All rights reserved.');
-    expect(html).toContain(`href="${APP_URL}/privacy"`);
-    expect(html).toContain(`href="${APP_URL}/terms"`);
+    // The policies live on this site now (D20); the app's old routes 308 back here,
+    // so the footer must not send a reader out to a redirect.
+    expect(html).toContain('href="/privacy"');
+    expect(html).toContain('href="/terms"');
+    expect(html).not.toContain(`${APP_URL}/privacy`);
+    expect(html).not.toContain(`${APP_URL}/terms`);
   });
 
   it('never renders placeholder testimonials in the default (gated-off) build', () => {

@@ -77,6 +77,15 @@ export function primaryNav(receiptsIa: boolean): ReadonlyArray<NavItem> {
 }
 
 /**
+ * Where the brand mark goes. It has to follow the same demotion the nav does: with
+ * the reframe on, `/home` is a 302 to `/plan`, so pointing the brand there would
+ * make every logo click pay a redirect hop to reach the landing surface.
+ */
+export function brandHref(receiptsIa: boolean): Route {
+  return receiptsIa ? '/plan' : '/home';
+}
+
+/**
  * The label table the running-head eyebrow resolves the current route against. Under
  * the reframe the five stops lead (so a shared route reads its receipts label), then
  * the demoted-but-still-reachable routes follow so their pages keep an eyebrow.

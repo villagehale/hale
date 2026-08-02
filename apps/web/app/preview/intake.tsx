@@ -7,6 +7,7 @@ import { type FamilyStage, type OnboardingIntent, FAMILY_STAGES } from '@hale/ty
 import { IntentChips } from '~/components/hale/intent-chips';
 import { TurtleLoader } from '~/components/hale/turtle-loader';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
+import { PRIVACY_URL } from '~/lib/legal-links';
 import { writeIntakeDraft } from '~/lib/onboarding/intake-storage';
 
 /**
@@ -205,9 +206,9 @@ export function PreviewIntake() {
         </div>
         <p className="meta">
           Built to Canada&rsquo;s privacy laws · nothing saved until you create an account.{' '}
-          <Link href="/privacy" className="link">
+          <a href={PRIVACY_URL} className="link">
             How Hale protects your data
-          </Link>
+          </a>
         </p>
       </section>
 

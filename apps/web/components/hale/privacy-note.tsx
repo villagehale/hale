@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { PRIVACY_URL } from '~/lib/legal-links';
 
 /**
  * The one warm privacy line every colophon shares — plain language for a parent,
@@ -9,9 +9,9 @@ export function PrivacyNote() {
   return (
     <span className="meta">
       Built to Canada&rsquo;s privacy laws — your family&rsquo;s data stays yours.{' '}
-      <Link href="/privacy" className="link">
+      <a href={PRIVACY_URL} className="link">
         How Hale protects it
-      </Link>
+      </a>
     </span>
   );
 }
