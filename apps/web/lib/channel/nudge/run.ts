@@ -15,8 +15,8 @@ import {
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
-  resolveSendTarget,
 } from '~/lib/channel/outbound-gate';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { healthNudgeDedupeKey } from '~/lib/health/checkpoints';
 import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
@@ -166,13 +166,22 @@ export interface NudgeRunDeps {
    * is given, so a caller cannot accidentally gate one database against another. */
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
-  resolveSendTarget(database: Database, parentUserId: string): Promise<string | null>;
+  /** The ONE send-side reader (sms-consent-core). It carries the verified +
+   * non-revoked predicate itself, so a channel that may not be texted resolves to no
+   * number whatever ran before it — the gate's enrolment check is a second answer to
+   * the same question, never the thing that makes this one safe. */
+  resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: NudgeLedgerWrite): Promise<string>;
   audit(database: Database, row: NudgeAuditRow): Promise<void>;
-  /** The outbound SMS leg. Nullable only so a caller can decide + compose without
-   * sending; such a run writes no ledger row, so a message that never went out never
-   * consumes a family's budget. Production wires the real Twilio transport. */
-  transport: ChannelTransport | null;
+  /**
+   * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
+   * so a caller could decide + compose without sending, and the three P0s this sweep
+   * shipped with were all the same shape: a message composed perfectly and dropped on
+   * the floor because nothing was wired to send it. A sweep that cannot express "no
+   * transport" cannot silently do that. A caller that genuinely wants no send belongs
+   * behind an explicit, result-visible flag, never behind an absent dependency.
+   */
+  transport: ChannelTransport;
   client: AgentClient | null;
 }
 
@@ -182,8 +191,6 @@ export interface NudgeRunResult {
   /** Families that reached the gate — armed, and inside their local send slot. */
   evaluated: number;
   sent: number;
-  /** Decided + composed, but the caller supplied no transport, so nothing was sent. */
-  composed: number;
   /** Evaluated and had nothing worth a text. The metric that says whether the nudge
    * is a signal or a habit. */
   quiet: number;
@@ -199,7 +206,6 @@ function emptyResult(enabled: boolean): NudgeRunResult {
     enabled,
     evaluated: 0,
     sent: 0,
-    composed: 0,
     quiet: 0,
     deduped: 0,
     failed: 0,
@@ -334,7 +340,6 @@ type FamilyOutcome =
   | { kind: 'held'; reason: ProactiveHoldReason }
   | { kind: 'quiet' }
   | { kind: 'deduped' }
-  | { kind: 'composed' }
   | { kind: 'sent' };
 
 async function runForFamily(
@@ -374,9 +379,8 @@ async function runForFamily(
     database,
     client: deps.client,
   });
-  if (!deps.transport) return { kind: 'composed' };
 
-  const to = await deps.resolveSendTarget(database, family.parentUserId);
+  const to = await deps.resolveSendablePhone(database, family.parentUserId);
   if (!to) {
     // The gate just said this parent has a live channel, so there IS one — a missing
     // number here is a contradiction, not a state to paper over.
@@ -525,7 +529,7 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     weather: createOpenMeteoWeather(),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
-    resolveSendTarget,
+    resolveSendablePhone,
     recordSend: async (database, write) => {
       const [row] = await database
         .insert(schema.channelMessages)

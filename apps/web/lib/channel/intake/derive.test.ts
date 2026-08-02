@@ -64,6 +64,74 @@ describe('deriveDateOfBirth', () => {
   });
 });
 
+/**
+ * VIL-263 — the round-trip invariant over every shape that can overflow a
+ * day-of-month, rather than over the handful of dates the module was written against.
+ *
+ * Subtracting months from a date lands on a day the target month may not have (the
+ * 31st of February), and JS rolls such a date FORWARD into the next month. That moves
+ * the stored birthday later, so the child reads back a month off the age their parent
+ * actually stated — for the 28th-to-31st of every month, which is two to three days of
+ * signups in each one.
+ *
+ * The exhaustive sweep is the deliverable, not a February case: an assertion over
+ * every (signup date × stated age × precision) is what makes the class impossible to
+ * reintroduce, where a fixture for the one date that bit us would not.
+ */
+describe('deriveDateOfBirth — the day-of-month round trip', () => {
+  /** The days a subtraction can overflow from. Everything at or below the 28th exists
+   * in every month, including February, so it can never roll. */
+  const OVERFLOW_DAYS = [28, 29, 30, 31];
+  /** Both a common and a leap year, so the 29th of February is a signup date too. */
+  const YEARS = [2026, 2028];
+  const AGES = Array.from({ length: 60 }, (_, i) => i + 1);
+
+  /** Noon UTC: far enough from either midnight that the module's UTC date fields and
+   * `ageInMonths`'s local ones name the same calendar day in any Canadian zone. */
+  function signupAt(year: number, monthIndex: number, day: number): Date | null {
+    const at = new Date(Date.UTC(year, monthIndex, day, 12));
+    // The 30th of February is not a signup date, it is a rolled one — skip rather than
+    // assert about a day that never happens.
+    return at.getUTCDate() === day ? at : null;
+  }
+
+  it.each([
+    // A month statement is stored as spoken; a year statement is stored on the
+    // midpoint of the year it names, six months on (see MIDPOINT_CORRECTION_MONTHS).
+    ['months', 0],
+    ['years', 6],
+  ] as const)(
+    'stores an age stated in %s so it reads back unchanged, from every signup date',
+    (precision, midpointCorrection) => {
+      const wrong: string[] = [];
+      let checked = 0;
+
+      for (const year of YEARS) {
+        for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+          for (const day of OVERFLOW_DAYS) {
+            const now = signupAt(year, monthIndex, day);
+            if (!now) continue;
+            for (const stated of AGES) {
+              checked += 1;
+              const dob = deriveDateOfBirth(stated, precision, now);
+              const readBack = ageInMonths(dob, now);
+              const expected = stated + midpointCorrection;
+              if (readBack !== expected) {
+                wrong.push(
+                  `${now.toISOString().slice(0, 10)} + ${stated}mo → ${dob} reads ${readBack}, want ${expected}`,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      expect(wrong).toEqual([]);
+      expect(checked).toBe(4980);
+    },
+  );
+});
+
 describe('summarizeChildren', () => {
   it('names the children the way the parent did, in years', () => {
     expect(

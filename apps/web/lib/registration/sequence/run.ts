@@ -12,8 +12,8 @@ import {
   type ProactiveHoldReason,
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
-  resolveSendTarget,
 } from '~/lib/channel/outbound-gate';
+import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { localParts } from '~/lib/loop/prefs';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -173,13 +173,22 @@ export interface SequenceRunDeps {
   loadLiveSequences(database: Database, now: Date): Promise<LiveSequence[]>;
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
-  resolveSendTarget(database: Database, parentUserId: string): Promise<string | null>;
+  /** The ONE send-side reader (sms-consent-core). It carries the verified +
+   * non-revoked predicate itself, so a channel that may not be texted resolves to no
+   * number whatever ran before it — which matters most here, where the urgent legs
+   * are exempt from quiet hours. */
+  resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: SequenceLedgerWrite): Promise<string>;
   audit(database: Database, row: SequenceAuditRow): Promise<void>;
-  /** The outbound SMS leg. Nullable only so a caller can decide + compose without
-   * sending; such a run writes no ledger row, so a leg that never went out is not
-   * permanently marked as delivered. Production wires the real Twilio transport. */
-  transport: ChannelTransport | null;
+  /**
+   * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
+   * so a caller could decide + compose without sending, and the three P0s this ladder
+   * shipped with were all the same shape: a leg composed perfectly and dropped on the
+   * floor because nothing was wired to send it. A sweep that cannot express "no
+   * transport" cannot silently do that. A caller that genuinely wants no send belongs
+   * behind an explicit, result-visible flag, never behind an absent dependency.
+   */
+  transport: ChannelTransport;
 }
 
 export interface SequenceRunResult {
@@ -190,8 +199,6 @@ export interface SequenceRunResult {
   /** Live sequences examined in the leg phase. */
   evaluated: number;
   sent: number;
-  /** Decided + composed, but the caller supplied no transport, so nothing was sent. */
-  composed: number;
   /** Live sequences with no leg due — the common outcome on most ticks. */
   quiet: number;
   deduped: number;
@@ -205,7 +212,6 @@ function emptyResult(enabled: boolean): SequenceRunResult {
     proposed: 0,
     evaluated: 0,
     sent: 0,
-    composed: 0,
     quiet: 0,
     deduped: 0,
     failed: 0,
@@ -324,7 +330,6 @@ type LegOutcome =
   | { kind: 'held'; reason: ProactiveHoldReason }
   | { kind: 'quiet' }
   | { kind: 'deduped' }
-  | { kind: 'composed' }
   | { kind: 'sent' };
 
 async function runLegForSequence(
@@ -394,9 +399,8 @@ async function runLegForSequence(
           : waitlistDeadline(sequence.waitlistStartedAt, sequence.window.waitlistResponseHours),
     },
   });
-  if (!deps.transport) return { kind: 'composed' };
 
-  const to = await deps.resolveSendTarget(database, sequence.parentUserId);
+  const to = await deps.resolveSendablePhone(database, sequence.parentUserId);
   if (!to) {
     // The gate just said this parent has a live channel, so there IS one — a missing
     // number here is a contradiction, not a state to paper over.
@@ -668,7 +672,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
     loadLiveSequences: (database) => loadLiveSequences(database),
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
-    resolveSendTarget,
+    resolveSendablePhone,
     recordSend: async (database, write) => {
       const [row] = await database
         .insert(schema.channelMessages)

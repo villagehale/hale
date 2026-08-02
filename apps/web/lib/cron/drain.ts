@@ -359,9 +359,9 @@ export async function runDrainCron(): Promise<DrainSummary> {
     push: createExpoPushChannelAdapter({
       push: createExpoPushChannel({ database: db(), client: createExpoPushClient() }),
     }),
-    // resolveSendablePhone, not the gate's resolveSendTarget: it carries the verified +
-    // non-revoked predicate itself, so the SMS leg fails closed on its own rather than
-    // on the dispatch having run the consent check first.
+    // The ONE send-side reader (VIL-262): it carries the verified + non-revoked
+    // predicate itself, so the SMS leg fails closed on its own rather than on the
+    // dispatch having run the consent check first.
     sms: createTwilioSmsChannel({
       resolveTarget: (userId: string) => resolveSendablePhone(db(), userId),
     }),
