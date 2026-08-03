@@ -65,6 +65,8 @@ export interface RegistrationWindowSeed {
 }
 
 const VERIFIED_AT = '2026-07-30T00:00:00-04:00';
+/** The Mississauga rows were re-read against a better source on this day (VIL-261). */
+const MISSISSAUGA_VERIFIED_AT = '2026-08-02T00:00:00-04:00';
 
 const TORONTO_ARC =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/camps-after-school/after-school-recreation-care/';
@@ -74,7 +76,16 @@ const VAUGHAN_PROGRAMS =
   'https://www.vaughan.ca/residential/recreation-programs-and-fitness/recreation-programs';
 const RICHMOND_HILL_GUIDE =
   'https://www.richmondhill.ca/en/things-to-do/Community-Recreation-Guide.aspx';
-const MISSISSAUGA_RECREATION = 'https://www.mississauga.ca/recreation-and-sports/';
+/**
+ * The City's own media advisory for this cycle, NOT the recreation landing page
+ * (VIL-261). The landing banner reads "View programs August 4 and register August 11"
+ * and states no year, no time and no resident split anywhere on the page, so the
+ * re-verify sweep can only ever answer `no_year_stated` against it — and, as the live
+ * run proved, what it does publish is also incomplete. The advisory carries its own
+ * dateline, all three dates and the 7 a.m. time.
+ */
+const MISSISSAUGA_FALL_ADVISORY =
+  'https://www.mississauga.ca/city-of-mississauga-news/news/fall-into-fun-with-city-programs-and-activities/';
 const OAKVILLE_REGISTERED_PROGRAMS =
   'https://www.oakville.ca/parks-recreation-culture/programs-activities/registered-programs/';
 const BURLINGTON_REGISTERING =
@@ -290,24 +301,30 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
 
   // ── Mississauga ──────────────────────────────────────────────────────────────
   // One bundled event covers fall programs AND winter camps, recorded once per domain.
-  // The weakest rows in the set: the banner prints neither a year, a time, nor a
-  // resident/non-resident split, so nothing but the date itself is claimed.
+  // Re-read off the City's media advisory on 2026-08-02 (VIL-261), which publishes the
+  // resident/non-resident split and the 7 a.m. time the landing banner omits — the
+  // banner's bare "register August 11" is the RESIDENT date, and storing it as the
+  // general open told every non-resident family to act a week early.
   ...(['rec_program', 'camp'] as const).map((programDomain) => ({
     municipality: 'mississauga' as const,
     programDomain,
     cycleLabel: 'Fall 2026 Programs and Winter Camps',
     previewAt: '2026-08-04T00:00:00-04:00',
-    residentOpenAt: null,
-    openAt: '2026-08-11T00:00:00-04:00',
-    residentPriorityDays: null,
+    residentOpenAt: '2026-08-11T07:00:00-04:00',
+    openAt: '2026-08-18T07:00:00-04:00',
+    residentPriorityDays: 7,
     waitlistResponseHours: null,
     ageMinMonths: null,
     ageMaxMonths: null,
-    sourceUrl: MISSISSAUGA_RECREATION,
-    verifiedAt: VERIFIED_AT,
+    sourceUrl: MISSISSAUGA_FALL_ADVISORY,
+    verifiedAt: MISSISSAUGA_VERIFIED_AT,
     notes:
-      '"Registration starts soon. View programs August 4 and register August 11", under the heading "Fall Programs & Winter Camps Registration". CAVEATS: the banner prints no year, no time and no resident/non-resident split, and the 2025 cycle used these same calendar dates — currency rests on the same page advertising the Sauga Summer Pass as "June 26 to September 7, 2026". Both instants are the start of the published local day. The city\'s standing (undated) how-to page says registration starts at 7 a.m. and applies a $10 non-resident surcharge, but neither is tied to this event, so neither is stored. No waitlist response window is published.',
-    publishedWeekdays: {},
+      '"Program browsing opens Tuesday, August 4 | Resident registration begins Tuesday, August 11 at 7 a.m. | Non-resident registration begins Tuesday, August 18 at 7 a.m.", under "Fall registration at a glance" in the City media advisory datelined "City services | July 31, 2026" — which is also the page text that supplies the year. Browsing publishes no time, so the preview instant is the start of that local day. No waitlist response window is published. The recreation landing page carries only "View programs August 4 and register August 11": no year, no time, and the resident date presented as if it were the only one.',
+    publishedWeekdays: {
+      previewAt: 'Tuesday',
+      residentOpenAt: 'Tuesday',
+      openAt: 'Tuesday',
+    } as const,
   })),
 
   // ── Oakville ─────────────────────────────────────────────────────────────────
@@ -325,7 +342,7 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
     sourceUrl: OAKVILLE_REGISTERED_PROGRAMS,
     verifiedAt: VERIFIED_AT,
     notes:
-      '"Opens Tuesday, August 11 at 7 a.m." and "Program options will be available to browse online starting August 4." The non-resident date is NOT printed; it is derived from the published rule "Registered program registration for non-residents opens 14 days after Oakville resident registration begins", and no non-resident time is published, so it is the start of that day. Waitlist: "If you do not respond within 48 hours, your spot will be offered to the next person." Oakville runs Winter/Spring/Fall cycles only — there is no summer sessional cycle. Its published age math: ages 6+ are calculated as of December 31, preschool ages 0–5 from the course start date.',
+      '"Opens Tuesday, August 11 at 7 a.m." and "Program options will be available to browse online starting August 4." The non-resident date is NOT printed; it is derived from the published rule "Registered program registration for non-residents opens 14 days after Oakville resident registration begins", and no non-resident time is published, so it is the start of that day. Waitlist: "If you do not respond within 48 hours, your spot will be offered to the next person." Oakville runs Winter/Spring/Fall cycles only — there is no summer sessional cycle. Its published age math: ages 6+ are calculated as of December 31, preschool ages 0–5 from the course start date. NOT AUTO-VERIFIABLE (VIL-261): this is the Town\'s only page carrying these dates — its registration-help, program-guidelines, aquatics and news pages publish none — and it states no year beside them, only "Copyright © 2026" in the footer. The weekday it does print ("Tuesday, August 11") is what pins the year, and the sweep cannot read a weekday as a year, so this row stays human-verified by design rather than by oversight.',
     publishedWeekdays: { residentOpenAt: 'Tuesday' },
   },
 

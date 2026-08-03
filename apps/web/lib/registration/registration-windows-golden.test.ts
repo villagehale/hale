@@ -132,3 +132,53 @@ describe('golden — Markham 2026 Fall Programs, Swim Lessons and Winter Break C
     );
   });
 });
+
+/**
+ * Mississauga, verbatim, https://www.mississauga.ca/city-of-mississauga-news/news/fall-into-fun-with-city-programs-and-activities/
+ * (City media advisory, datelined "City services | July 31, 2026", read 2026-08-02)
+ *   "Program browsing opens Tuesday, August 4"
+ *   "Resident registration begins Tuesday, August 11 at 7 a.m."
+ *   "Non-resident registration begins Tuesday, August 18 at 7 a.m."
+ *
+ * VIL-261. These rows previously carried the recreation landing banner's
+ * "View programs August 4 and register August 11" — which is the RESIDENT date with
+ * no time, stored as the general open. A Mississauga family outside the city was
+ * therefore told to register a week before they are allowed to, and a resident was
+ * told midnight instead of 7 a.m.
+ */
+describe('golden — Mississauga Fall 2026 Programs and Winter Camps', () => {
+  const CYCLE = 'Fall 2026 Programs and Winter Camps';
+  const row = toRegistrationWindowRow(seed('mississauga', 'rec_program', CYCLE));
+
+  it('opens for residents at 7 a.m. on 11 August 2026 (11:00 UTC, EDT)', () => {
+    expect(row.residentOpenAt).toEqual(new Date('2026-08-11T11:00:00.000Z'));
+  });
+
+  it('opens for everyone else at 7 a.m. a full week later, as the advisory prints', () => {
+    expect(row.openAt).toEqual(new Date('2026-08-18T11:00:00.000Z'));
+    expect(row.residentPriorityDays).toBe(7);
+  });
+
+  it('previews from the start of 4 August 2026 — browsing publishes no time', () => {
+    expect(row.previewAt).toEqual(new Date('2026-08-04T04:00:00.000Z'));
+  });
+
+  it('claims no waitlist window, because Mississauga publishes none', () => {
+    expect(row.waitlistResponseHours).toBeNull();
+  });
+
+  it('cites the dated advisory, not the year-less recreation landing page', () => {
+    // The landing page states no year anywhere, so the re-verify sweep can only ever
+    // answer `no_year_stated` against it. A source it cannot read is a source that
+    // quietly stops being checked.
+    expect(row.sourceUrl).toBe(
+      'https://www.mississauga.ca/city-of-mississauga-news/news/fall-into-fun-with-city-programs-and-activities/',
+    );
+  });
+
+  it('carries the same dates on the winter-camps domain the one event also registers', () => {
+    const camp = toRegistrationWindowRow(seed('mississauga', 'camp', CYCLE));
+    expect(camp.openAt).toEqual(row.openAt);
+    expect(camp.residentOpenAt).toEqual(row.residentOpenAt);
+  });
+});

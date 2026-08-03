@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExtractedWindow, StoredWindow } from './verify-window';
 import {
   DISCOVERY_TARGETS,
+  MAX_PAGE_BYTES,
+  MAX_PAGE_TEXT_CHARS,
   MAX_WINDOWS_PER_RUN,
   type RegistrationVerifyDeps,
+  createFetchPage,
   formatRegistrationVerifyDigest,
   runRegistrationVerifySweep,
 } from './verify-sweep';
@@ -475,5 +478,90 @@ describe('formatRegistrationVerifyDigest', () => {
     expect(text).not.toContain('burlington');
     // The count still appears, so "we checked and they were fine" is legible.
     expect(text).toContain('2 confirmed');
+  });
+});
+
+// ── createFetchPage ──────────────────────────────────────────────────────────
+
+/**
+ * VIL-261. The first live sweep recorded Vaughan as `fetch_failed`, and behind that
+ * 403 sat a second failure that would have outlived it: vaughan.ca is ~890 KB of
+ * markup and its "Key Dates" block starts at raw offset ~837 K, so the old
+ * `stripHtml(body.slice(0, 500_000))` threw the dates away and handed the model a
+ * page that genuinely appears to publish nothing.
+ *
+ * That is the worst shape a failure can take here — a silent truncation does not
+ * look like an error, it looks like a municipality that has not announced its dates.
+ * So the cap moved to where it belongs (the text the model reads, which is 44 K even
+ * for Vaughan) and anything too large to be a page is REFUSED rather than trimmed.
+ */
+describe('createFetchPage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch(body: string, init: ResponseInit = {}) {
+    const spy = vi.fn(async () => new Response(body, { status: 200, ...init }));
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  /** Vaughan's real shape: the readable text is small, the markup around it is not. */
+  function pageWithDatesAtRawOffset(offset: number): string {
+    const filler = '<div class="menu-item"><span class="icon"></span></div>';
+    const dates =
+      '<p>Fall Session eGuide is viewable beginning Wednesday, August 5. Registration for ' +
+      'general programs begins Tuesday, August 18 at 7 a.m. for residents.</p>';
+    return `<html><body>${filler.repeat(Math.ceil(offset / filler.length))}${dates}</body></html>`;
+  }
+
+  it('keeps registration dates that sit past the old 500 KB raw-html cap', async () => {
+    const html = pageWithDatesAtRawOffset(837_000);
+    expect(html.length).toBeGreaterThan(500_000);
+    stubFetch(html);
+
+    const text = await createFetchPage()('https://www.vaughan.ca/recreation-programs');
+
+    expect(text).toContain('Registration for general programs begins Tuesday, August 18 at 7 a.m.');
+    expect(text).toContain('Fall Session eGuide is viewable beginning Wednesday, August 5');
+  });
+
+  it('bounds the text handed to the model, not the markup it was stripped from', async () => {
+    // Readable text well past the ceiling: this is the case the cap exists for, and
+    // the only one in which losing the tail is the right trade.
+    const sentence = 'Registration information for the fall session follows. ';
+    stubFetch(`<html><body><p>${sentence.repeat(6_000)}</p></body></html>`);
+
+    const text = await createFetchPage()('https://example.ca/huge');
+
+    expect(sentence.length * 6_000).toBeGreaterThan(MAX_PAGE_TEXT_CHARS);
+    expect(text.length).toBe(MAX_PAGE_TEXT_CHARS);
+  });
+
+  it('refuses a body too large to be a page instead of silently trimming it', async () => {
+    // A refusal becomes a visible `fetch_failed` line in the founder digest. A trim
+    // becomes "this town publishes no dates", which is a lie nobody would question.
+    stubFetch('x'.repeat(MAX_PAGE_BYTES + 1));
+
+    await expect(createFetchPage()('https://example.ca/video.mp4')).rejects.toThrow(
+      /exceeds the .* ceiling/,
+    );
+  });
+
+  it('sends no User-Agent of its own', async () => {
+    // MEASURED, NOT ASSUMED (VIL-261): vaughan.ca's Akamai bot manager 403s a request
+    // carrying `Mozilla/5.0 (compatible; HaleRegistrationVerifier/1.0; +https://…)`
+    // and 200s the same request under Node's default `user-agent: node`. Introducing
+    // a descriptive crawler UA — the obvious "be a polite citizen" change — silently
+    // costs us a municipality, and the sweep reports it as an ordinary fetch failure.
+    const spy = stubFetch('<p>ok</p>');
+
+    await createFetchPage()('https://www.vaughan.ca/recreation-programs');
+
+    const headers = (spy.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<
+      string,
+      string
+    >;
+    expect(Object.keys(headers).map((k) => k.toLowerCase())).not.toContain('user-agent');
   });
 });
