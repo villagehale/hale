@@ -11,7 +11,7 @@ import {
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null)).toBe(
-      "Hi, I'm Hale — I keep family weeks on track for GTA parents. What are your kids' names and ages — and what's your postal code?",
+      "Hi, I'm Hale - I keep family weeks on track for GTA parents. What are your kids' names and ages - and what's your postal code?",
     );
   });
 
@@ -19,7 +19,7 @@ describe('greeting', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library')).toBe(
-      "Hi, I'm Hale — I keep family weeks on track around here. You found me at the library, so I know the area. What are your kids' names and ages?",
+      "Hi, I'm Hale - I keep family weeks on track around here. You found me at the library, so I know the area. What are your kids' names and ages?",
     );
     expect(greeting('library')).not.toContain('postal');
   });
@@ -64,17 +64,17 @@ describe('sourceCodeFromBody / venueForCode', () => {
 describe('followUp', () => {
   it('echoes the summary back before asking the one missing field', () => {
     expect(followUp('Maya (4) and Leo (1)', ['location'])).toBe(
-      "Got it — Maya (4) and Leo (1). What's your postal code?",
+      "Got it - Maya (4) and Leo (1). What's your postal code?",
     );
   });
 
   it('asks for the ages when those are what is missing — never invents one', () => {
-    expect(followUp('Nora and Ben', ['ages'])).toBe('Got it — Nora and Ben. How old are they?');
+    expect(followUp('Nora and Ben', ['ages'])).toBe('Got it - Nora and Ben. How old are they?');
   });
 
   it('asks for both in ONE message, because there is only ever one follow-up', () => {
     expect(followUp('Nora and Ben', ['ages', 'location'])).toBe(
-      "Got it — Nora and Ben. How old are they, and what's your postal code?",
+      "Got it - Nora and Ben. How old are they, and what's your postal code?",
     );
   });
 });
@@ -82,13 +82,13 @@ describe('followUp', () => {
 describe('detailsBlocked', () => {
   it('names the missing piece plainly, once, and asks nothing again', () => {
     expect(detailsBlocked(['location'])).toBe(
-      "I can't set your family up until I know your postal code — send it whenever you're ready.",
+      "I can't set your family up until I know your postal code - send it whenever you're ready.",
     );
     expect(detailsBlocked(['ages'])).toBe(
-      "I can't set your family up until I know how old your kids are — send their ages whenever you're ready.",
+      "I can't set your family up until I know how old your kids are - send their ages whenever you're ready.",
     );
     expect(detailsBlocked(['ages', 'location'])).toBe(
-      "I can't set your family up until I know your kids' ages and your postal code — send them whenever you're ready.",
+      "I can't set your family up until I know your kids' ages and your postal code - send them whenever you're ready.",
     );
   });
 });
@@ -98,7 +98,7 @@ describe('assistantDisclosure', () => {
   // A stranger's first message must not spend its one link on a redirect hop.
   it('names the terms URL on the marketing site, not the redirecting app path', () => {
     expect(assistantDisclosure()).toBe(
-      "(I'm an assistant, not a person — details & privacy: https://www.villagehale.com/terms)",
+      "(I'm an assistant, not a person - details & privacy: https://www.villagehale.com/terms)",
     );
   });
 });

@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import type { createFamilyEvent } from '~/lib/loop/queries';
 import { partyWhen, redactTeenNames } from './card';
@@ -49,21 +50,6 @@ import { renderTally } from './tally';
  * on, short enough that a "yes" tomorrow means tomorrow's thing. */
 export const PARTY_OFFER_WINDOW_MS = 30 * 60 * 1000;
 
-const CONFIRM_WORDS = new Set([
-  'yes',
-  'y',
-  'yes please',
-  'yeah',
-  'yep',
-  'yup',
-  'ok',
-  'okay',
-  'sure',
-  'do it',
-  'make it',
-  'please',
-]);
-
 const TALLY_WORDS = new Set([
   "who's coming",
   'whos coming',
@@ -87,13 +73,22 @@ const CANCEL_WORDS = new Set([
   'call off the party',
 ]);
 
-/** A phone keyboard types a curly apostrophe; the sets above use a straight one. */
+/** A phone keyboard types a curly apostrophe; the two sets above use a straight one.
+ * (The affirmative vocabulary folds its own; this is for the party-specific phrases.) */
 function normalizeBody(body: string): string {
   return normalizeKeyword(body.replace(/[‘’ʼ`]/g, "'"));
 }
 
+/**
+ * A yes, read off the ONE shared vocabulary (VIL-265). M10 used to hold its own twelve
+ * words; the words it was missing were hosts whose link was never made, and nothing
+ * about a party makes "go ahead" less of a yes than it is to the approval grammar.
+ *
+ * Widening the words does not widen what a yes DOES here — {@link mintLink} still
+ * requires a fresh offer with no invite on it, which is the whole gate.
+ */
 export function matchPartyLinkConfirm(body: string): boolean {
-  return CONFIRM_WORDS.has(normalizeBody(body));
+  return readAffirmative(body) === 'yes';
 }
 
 export function matchPartyTallyAsk(body: string): boolean {

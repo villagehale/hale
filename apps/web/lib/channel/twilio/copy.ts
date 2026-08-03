@@ -13,5 +13,5 @@ import { appBaseUrl } from '~/lib/cron/email-compliance';
  * answer is that we cannot read it, and where to put it instead.
  */
 export function mediaUnsupportedReply(): string {
-  return `I can't read attachments over text yet — send it in the app and I'll pick it up there: ${appBaseUrl()}`;
+  return `I can't read attachments over text yet - send it in the app and I'll pick it up there: ${appBaseUrl()}`;
 }

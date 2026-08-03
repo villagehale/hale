@@ -1,11 +1,12 @@
 /**
  * VIL-260 · WS4 — what a parent's YES and NO look like on this channel, in ONE place.
  *
- * Two modules used to hold private copies of this: C1's approval grammar (eleven exact
- * words) and M6's caregiver confirmation (nine). They drifted, and every word missing
- * from either copy was a parent whose answer was silently dropped — a confirmed change
- * that never happened, an invite that lapsed because "yes please" was not on one list.
- * There is one table now, and widening it widens both readings at once.
+ * Four modules used to hold private copies of this: C1's approval grammar (eleven exact
+ * words), M6's caregiver confirmation (nine), M10's party-link confirm (twelve) and M8's
+ * booking ask (six). They drifted, and every word missing from a copy was a parent whose
+ * answer was silently dropped — a confirmed change that never happened, an invite that
+ * lapsed because "yes please" was not on one list, a party link never made. There is one
+ * table now, and widening it widens every reading at once (VIL-260 · WS4, VIL-265).
  *
  * The two properties that make a closed vocabulary safe are kept exactly as C1 wrote
  * them, because they are what stop consent being inferred (rule #4):

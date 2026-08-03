@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import {
+  type PartyReplyDeps,
+  handlePartyReply,
   looksLikePartyMessage,
   matchPartyCancel,
   matchPartyLinkConfirm,
@@ -37,6 +40,112 @@ describe('matchPartyLinkConfirm', () => {
   it('refuses a refusal', () => {
     for (const body of ['no', 'no thanks', 'nope', "don't"]) {
       expect(matchPartyLinkConfirm(body)).toBe(false);
+    }
+  });
+});
+
+/**
+ * VIL-265 — the confirm branch IS the shared reading, not a private list that agrees
+ * with it today.
+ *
+ * M10 held its own twelve words. WS4 had already shown what a second list costs: M6's
+ * narrower copy read "yes please" as unclear and let caregiver invites lapse, silently.
+ * The assertion is therefore an EQUIVALENCE over a mixed corpus rather than a list of
+ * accepted words — a phrase added to (or dropped from) `lib/channel/affirmative.ts`
+ * changes both readings at once, and a word re-privatised here fails immediately.
+ */
+describe('matchPartyLinkConfirm is the shared affirmative vocabulary', () => {
+  const CORPUS = [
+    // the shared vocabulary, including the words M10's private list never held
+    'yes',
+    'yeah',
+    'ok',
+    'k',
+    'sure',
+    'confirm',
+    'approve',
+    'do it',
+    'go ahead',
+    'go for it',
+    'sounds good',
+    'looks good',
+    'that works',
+    'works for me',
+    'yes please',
+    'ok thanks',
+    '👍',
+    '✅',
+    // refusals and ordinary conversation, which must read the same on both sides
+    'no',
+    'nope',
+    'no thanks',
+    'skip',
+    'never mind',
+    'yes to the swim class not the party',
+    'yesterday was better',
+    "who's coming",
+    'cancel the party',
+    '',
+  ];
+
+  it.each(CORPUS)('%s', (body) => {
+    expect({ body, confirms: matchPartyLinkConfirm(body) }).toEqual({
+      body,
+      confirms: readAffirmative(body) === 'yes',
+    });
+  });
+
+  it('no longer treats a bare courtesy as authorisation to publish', () => {
+    // "please" is FILLER in the shared grammar — it is stripped from either end so that
+    // "yes please" is a yes, which leaves a message that is only filler carrying no
+    // instruction at all. M10's private list accepted it, and it was the one word that
+    // could publish a family's address off a message that never said to. Declining it
+    // is not silence: the router hands an unmatched body to the conversational layer.
+    expect(matchPartyLinkConfirm('please')).toBe(false);
+    expect(matchPartyLinkConfirm('thanks')).toBe(false);
+  });
+});
+
+/**
+ * VIL-265 — the widened vocabulary does NOT widen what any one word authorises.
+ *
+ * Reading more phrases as "yes" is only safe because the gate is somewhere else: the
+ * fresh-offer lookup. These two cases are the same message answered in two different
+ * states, and the difference between them is the whole safety argument for sharing a
+ * vocabulary across handlers that mean different things by a yes.
+ */
+describe('handlePartyReply · an affirmative claims only a live offer', () => {
+  function deps(pending: { familyEventId: string } | null): PartyReplyDeps {
+    return {
+      loadPendingOffer: async () => pending,
+      mintInvite: async () => ({ inviteId: 'invite-1', publicToken: 'tok-1' }) as never,
+      loadLiveInvite: async () => null,
+      loadTally: async () => ({}) as never,
+      cancelInvite: async () => undefined as never,
+      loadTeenNames: async () => [],
+    };
+  }
+
+  const input = { familyId: 'fam-1', parentUserId: 'user-1', now: new Date() };
+
+  it('mints nothing when no offer is open, however clearly the parent said yes', async () => {
+    for (const body of ['yes', 'go ahead', 'sounds good', '👍']) {
+      const outcome = await handlePartyReply({} as never, { ...input, body }, deps(null));
+      expect({ body, outcome }).toEqual({
+        body,
+        outcome: { status: 'ignored', reason: 'no_pending_offer' },
+      });
+    }
+  });
+
+  it('mints on the same words once an offer is live', async () => {
+    for (const body of ['yes', 'go ahead', 'sounds good', '👍']) {
+      const outcome = await handlePartyReply(
+        {} as never,
+        { ...input, body },
+        deps({ familyEventId: 'event-1' }),
+      );
+      expect({ body, status: outcome.status }).toEqual({ body, status: 'link_minted' });
     }
   });
 });

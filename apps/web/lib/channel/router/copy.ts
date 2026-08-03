@@ -24,7 +24,7 @@ function appLink(): string {
  * success (F14 voice rule 5).
  */
 export function failureReply(): string {
-  return `Something went wrong on my end — nothing was changed. Try again or use the app: ${appLink()}`;
+  return `Something went wrong on my end - nothing was changed. Try again or use the app: ${appLink()}`;
 }
 
 /**
@@ -50,14 +50,14 @@ export function partialFailureReply(draftCount: number): string {
  * it promises only that Hale is working — a parent who hears "on it" and then nothing
  * has been lied to, which is why the failure template always follows a failed turn.
  */
-export const ACK_REPLY = 'On it — one sec.';
+export const ACK_REPLY = 'On it - one sec.';
 
 /**
  * Flood control's answer. It is deliberately warm and gives no number: a parent who is
  * texting fast is usually stressed, not abusing anything, and quoting a rate limit at
  * them would be the wrong register entirely.
  */
-export const FLOOD_REPLY = "Give me a moment — I'm still catching up on your last few texts.";
+export const FLOOD_REPLY = "Give me a moment - I'm still catching up on your last few texts.";
 
 /**
  * The two acknowledgements M8's reply handler owes a parent. They live here rather than
@@ -69,24 +69,24 @@ export const FLOOD_REPLY = "Give me a moment — I'm still catching up on your l
  * of quiet fabrication rule #5's failure-honesty exists to forbid.
  */
 export function healthDoneReply(): string {
-  return "Filed — I won't raise that one again.";
+  return "Filed - I won't raise that one again.";
 }
 
 /** Rule #4: a booking is DRAFTED and held. The copy names the hold explicitly so a
  * parent never believes an appointment exists because they texted "yes". */
 export function checkupDraftedReply(): string {
-  return `Drafted it for you to approve — nothing's booked until you say so: ${appLink()}`;
+  return `Drafted it for you to approve - nothing's booked until you say so: ${appLink()}`;
 }
 
 export function approvedReceipt(actionType: string): string {
-  return `Approved — ${actionTypeLabel(actionType).toLowerCase()}. I'll let you know once it's done.`;
+  return `Approved - ${actionTypeLabel(actionType).toLowerCase()}. I'll let you know once it's done.`;
 }
 
 export function declinedReceipt(actionType: string): string {
-  return `Dropped it — ${actionTypeLabel(actionType).toLowerCase()} won't happen.`;
+  return `Dropped it - ${actionTypeLabel(actionType).toLowerCase()} won't happen.`;
 }
 
-export const UNDONE_RECEIPT = "Undone — I've taken that back off your calendar.";
+export const UNDONE_RECEIPT = "Undone - I've taken that back off your calendar.";
 
 export function nothingPendingReply(): string {
   return `Nothing's waiting on your approval right now. Everything I've set up is here: ${appLink()}`;
@@ -100,7 +100,7 @@ export function nothingToUndoReply(): string {
  * row was meant — approving a neighbouring action is the failure this avoids. */
 export function outOfRangeReply(pendingCount: number): string {
   const noun = pendingCount === 1 ? 'one' : `${pendingCount}`;
-  return `I've only got ${noun} waiting on you — reply YES 1 for the first.`;
+  return `I've only got ${noun} waiting on you - reply YES 1 for the first.`;
 }
 
 /**
@@ -115,7 +115,7 @@ export function whichOneReply(actionTypes: string[]): string {
   const overflow = actionTypes.length - shown.length;
   const tail =
     overflow > 0 ? ` (+${overflow} more in the app: ${appLink()})` : '';
-  return `Which one? ${lines.join(' ')} — reply YES 1 or NO 1.${tail}`;
+  return `Which one? ${lines.join(' ')} - reply YES 1 or NO 1.${tail}`;
 }
 
 /**
@@ -124,5 +124,5 @@ export function whichOneReply(actionTypes: string[]): string {
  * (VIL-221) lands — an honest boundary rather than an invented answer.
  */
 export function capabilityReply(): string {
-  return `That one's past me for now — I'm best at your family's schedule, registrations, and what's on nearby. (For everything I've set up: ${appLink()})`;
+  return `That one's past me for now - I'm best at your family's schedule, registrations, and what's on nearby. (For everything I've set up: ${appLink()})`;
 }
