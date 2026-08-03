@@ -1102,20 +1102,27 @@ export function AttachmentChip({
   attachment: ComposerAttachment;
   onRemove: () => void;
 }) {
+  const chipId = useId();
   return (
     <li className={`attach-chip attach-chip-${attachment.tone}`}>
       <Paperclip aria-hidden size={12} className="shrink-0" />
-      <span data-hale-pii className="max-w-[12rem] truncate">
+      <span id={`${chipId}-name`} data-hale-pii className="max-w-[12rem] truncate">
         {attachment.name}
       </span>
       <span className="opacity-70">{formatAttachmentSize(attachment.sizeBytes)}</span>
       <button
         type="button"
+        id={`${chipId}-remove`}
         onClick={onRemove}
-        aria-label={`Remove ${attachment.name}`}
+        // Every staged chip carries the same X, so the file name joins the
+        // accessible name BY REFERENCE to the name node above — an `aria-label`
+        // copy would carry it into a session replay verbatim (VIL-276, rule #1).
+        // The control is icon-only, so it holds its own verb as sr-only text.
+        aria-labelledby={`${chipId}-remove ${chipId}-name`}
         className="ml-0.5 inline-flex cursor-pointer items-center"
       >
         <X aria-hidden size={13} />
+        <span className="sr-only">Remove</span>
       </button>
     </li>
   );

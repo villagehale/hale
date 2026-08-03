@@ -50,6 +50,12 @@ export function AuthoredPlanCard({
 }) {
   const when = plan.scheduledFor ? formatCalendarDate(plan.scheduledFor) : null;
   const done = plan.completedAt !== null;
+  // The done/remove controls read alike on every card, so the title joins their
+  // accessible name BY REFERENCE (VIL-276 — an `aria-label` copy of the title would
+  // reach a session replay verbatim). Derived from the plan id, so it is unique per
+  // card and stable across renders without a hook, which this server component
+  // could not call anyway.
+  const titleId = `plan-${plan.id}-title`;
   return (
     <Card>
       <div className={settled ? 'opacity-60' : undefined}>
@@ -62,9 +68,9 @@ export function AuthoredPlanCard({
             {settled ? <span className="pill pill-tint chip-gray">settled</span> : null}
             {when ? <span className="meta text-ink-2">{when}</span> : null}
           </div>
-          <DeletePlanButton planId={plan.id} label={plan.title} />
+          <DeletePlanButton planId={plan.id} labelledBy={titleId} />
         </div>
-        <p className="text-lg text-ink leading-relaxed mt-3" data-hale-pii>
+        <p id={titleId} className="text-lg text-ink leading-relaxed mt-3" data-hale-pii>
           {plan.title}
         </p>
         {plan.notes ? (
@@ -75,7 +81,7 @@ export function AuthoredPlanCard({
       </div>
       {!settled ? (
         <div className="mt-4">
-          <CompletePlanButton planId={plan.id} alreadyDone={done} label={plan.title} />
+          <CompletePlanButton planId={plan.id} alreadyDone={done} labelledBy={titleId} />
         </div>
       ) : null}
     </Card>

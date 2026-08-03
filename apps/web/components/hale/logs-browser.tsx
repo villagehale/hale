@@ -2,7 +2,7 @@
 
 import { CalendarCheck, Moon, Pencil, Sparkles, Stethoscope, Trash2, Utensils, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { ChildScope, type ScopeChild } from '~/components/hale/child-scope';
 import { Icon } from '~/components/ui/icon';
 import { deleteQuickEpisode, editQuickEpisode } from '~/lib/companion/log';
@@ -227,6 +227,12 @@ function LogRow({
   const [state, setState] = useState<RowState>({ kind: 'view' });
   const [summary, setSummary] = useState(log.summary);
   const [when, setWhen] = useState(() => toLocalInputValue(log.occurredAt));
+  // Every row's edit/remove controls are the same two icons, so the row's own text
+  // joins their accessible name — BY REFERENCE to the node already holding it. An
+  // `aria-label` copy would put the log line into a session replay verbatim, past
+  // the text mask (VIL-276, rule #1).
+  const rowId = useId();
+  const textId = `${rowId}-text`;
 
   async function save() {
     const nextSummary = summary.trim();
@@ -330,7 +336,7 @@ function LogRow({
       <span className="shrink-0 text-apricot-deep">
         <Icon as={ICON[log.episodeType] ?? CalendarCheck} size={18} />
       </span>
-      <span className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
+      <span id={textId} className="text-lg text-spruce leading-relaxed flex-1" data-hale-pii>
         {logRowText(log, units)}
       </span>
       <span className="eyebrow text-faded-sage shrink-0">{TIME_LABEL.format(new Date(log.occurredAt))}</span>
@@ -358,19 +364,23 @@ function LogRow({
         <span className="flex items-center gap-1 shrink-0">
           <button
             type="button"
+            id={`${rowId}-edit`}
             className="p-2 text-slate-green hover:text-spruce cursor-pointer"
             onClick={() => setState({ kind: 'editing' })}
-            aria-label={`edit log: ${logRowText(log, units)}`}
+            aria-labelledby={`${rowId}-edit ${textId}`}
           >
             <Icon as={Pencil} size={16} />
+            <span className="sr-only">edit log</span>
           </button>
           <button
             type="button"
+            id={`${rowId}-remove`}
             className="p-2 text-slate-green hover:text-apricot-deep cursor-pointer"
             onClick={() => setState({ kind: 'confirm-delete' })}
-            aria-label={`remove log: ${logRowText(log, units)}`}
+            aria-labelledby={`${rowId}-remove ${textId}`}
           >
             <Icon as={Trash2} size={16} />
+            <span className="sr-only">remove log</span>
           </button>
         </span>
       )}

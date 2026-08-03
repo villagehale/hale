@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 /**
  * The "links you have shared" list with a per-link Revoke (rules #1, #6). Fetches
@@ -92,6 +92,10 @@ export function SharedLinkRow({
   onRevoked: (id: string) => void;
 }) {
   const [state, setState] = useState<RowState>('view');
+  // Every row's control reads "revoke" alike, so the link's title joins the
+  // accessible name BY REFERENCE to the title node below — an `aria-label` copy
+  // would carry it into a session replay verbatim (VIL-276, rule #1).
+  const rowId = useId();
 
   async function revoke() {
     setState('revoking');
@@ -114,7 +118,7 @@ export function SharedLinkRow({
   return (
     <li className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-rule py-3 first:border-t-0 first:pt-0">
       <span className="eyebrow text-faded-sage shrink-0">{KIND_LABEL[link.kind]}</span>
-      <span className="text-spruce leading-relaxed flex-1" data-hale-pii>
+      <span id={`${rowId}-title`} className="text-spruce leading-relaxed flex-1" data-hale-pii>
         {link.title}
       </span>
 
@@ -141,9 +145,10 @@ export function SharedLinkRow({
       ) : (
         <button
           type="button"
+          id={`${rowId}-revoke`}
           className="link text-berry cursor-pointer shrink-0"
           onClick={() => setState('confirm')}
-          aria-label={`revoke shared link: ${link.title}`}
+          aria-labelledby={`${rowId}-revoke ${rowId}-title`}
         >
           revoke
         </button>

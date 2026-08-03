@@ -117,7 +117,12 @@ export function ChildSwitcherView({
         aria-controls={open ? menuId : undefined}
         aria-label="Switch child"
         onClick={onToggle}
-        title={active.name}
+        // The tooltip states the control, not the child: a `title` is an attribute,
+        // and rrweb records those verbatim past the text mask, so the name would ride
+        // into a session replay from the chip on EVERY authed page (VIL-276, rule #1).
+        // The name itself stays where it is readable and masked — the chip's identity
+        // line — and the account chip beside it names itself the same static way.
+        title="Switch child"
       >
         <Avatar
           tone="child"

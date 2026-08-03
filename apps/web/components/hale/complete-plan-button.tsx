@@ -1,7 +1,7 @@
 'use client';
 
 import { Check } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { completePlan } from '~/lib/plan/plan-actions';
 
 /**
@@ -32,13 +32,15 @@ function DonePill() {
 export function CompletePlanButton({
   planId,
   alreadyDone,
-  label,
+  labelledBy,
 }: {
   planId: string;
   alreadyDone: boolean;
-  label?: string;
+  /** The id of the card's plan-title node — see the aria-labelledby note below. */
+  labelledBy?: string;
 }) {
   const [state, setState] = useState<State>(alreadyDone ? 'done' : 'idle');
+  const selfId = useId();
 
   if (state === 'done') return <DonePill />;
 
@@ -52,13 +54,17 @@ export function CompletePlanButton({
   return (
     <button
       type="button"
+      id={selfId}
       className="pill pill-action pill-sage"
       onClick={onComplete}
       disabled={state === 'pending'}
       aria-live="polite"
-      // Per-row plans all carry an identical "mark done" control; naming the plan
-      // disambiguates which one a screen reader is about to complete.
-      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
+      // Per-row plans all carry an identical "mark done" control, so the plan's
+      // title has to join the accessible name. It joins by REFERENCE — this
+      // button's own text plus the id of the card's title node — never as an
+      // `aria-label` copy: rrweb records attribute values verbatim past the text
+      // mask, so that copy would put the plan into a session replay (VIL-276).
+      aria-labelledby={labelledBy ? `${selfId} ${labelledBy}` : undefined}
     >
       <Check size={14} strokeWidth={2.5} aria-hidden="true" />
       {LABEL[state]}
