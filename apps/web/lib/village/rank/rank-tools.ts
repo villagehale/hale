@@ -57,6 +57,8 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     description:
       "List THIS family's already-discovered village candidates to be ranked: each with its id, category (kind), title, and summary. A teen-attributed candidate is redacted to category only (rule #1).",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
       const timeZone = await readFamilyTimezone(database, ctx.familyId);
@@ -93,6 +95,8 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     description:
       "The FIT signal: THIS family's non-teen children's derived stages, the family's stated intents (what they came to Hale for), and their coarse area. Teen children are excluded (rule #1).",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const familyRows = await database
         .select({ intents: schema.families.intents })
@@ -131,6 +135,8 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     description:
       "The MEMORY signal: what THIS family has shown they like — currently-valid learned preference/routine facts. Teen-attributed facts are excluded (rule #1). Empty is a valid answer (a new family).",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
       const factRows = await database
@@ -162,6 +168,8 @@ export function buildRankTools(database: Database): RegisteredTool[] {
     description:
       "The TRUST signal: the distinct-family endorsement count per candidate id (how many families near them vouched for it). A COUNT only, never a family identity (rule #1). Absent ids have 0.",
     inputSchema: z.object({ candidateIds: z.array(z.string()) }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, _ctx) => {
       const counts = await countEndorsementsForCandidates(database, input.candidateIds);
       const endorsements = input.candidateIds.map((id) => ({

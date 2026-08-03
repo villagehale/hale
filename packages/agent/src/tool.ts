@@ -24,10 +24,21 @@ export interface ToolDefinition<TInput, TOutput> {
   name: string;
   description: string;
   inputSchema: z.ZodType<TInput>;
-  /** Spends money → the spending-cap hook gates it (rule #7). */
-  monetary?: boolean;
-  /** Reads/sends a child's raw content → the teen-redaction/consent hook gates it (rule #1/#5). */
-  touchesChildContent?: boolean;
+  /**
+   * Spends money → the spending-cap hook gates it (rule #7). REQUIRED, and `false`
+   * must be written out: an unstated flag would read as "safe" and route around the
+   * gate silently, so the classification that decides whether a rail runs is a
+   * declaration every tool author makes, not a default they can forget (VIL-269).
+   */
+  monetary: boolean;
+  /**
+   * The tool's input can NAME a child, so the teen-redaction/consent hook must
+   * resolve and gate it before the handler runs (rule #1/#5). REQUIRED for the same
+   * reason as `monetary`. A tool that reads child data WITHOUT taking a childId
+   * declares `false` and is teen-safe by construction instead — it redacts at the
+   * source, because the guard has no child to resolve from its input.
+   */
+  touchesChildContent: boolean;
   handler: (input: TInput, ctx: ToolHandlerContext) => Promise<TOutput>;
 }
 

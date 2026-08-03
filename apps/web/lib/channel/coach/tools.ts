@@ -168,6 +168,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     description:
       "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input) => {
       const timeZone = await reader.timeZone(familyId);
       const window = weekWindow(now, timeZone, 1, input.weekOffset ?? 0);
@@ -198,6 +200,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     description:
       "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. The event keeps its title, place and child.",
     inputSchema: z.object({ eventId: z.string().min(1), date: dayKey, time: wallClock }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx) => {
       const event = await requireEvent(input.eventId);
       const timeZone = await reader.timeZone(familyId);
@@ -230,6 +234,8 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     description:
       "DRAFT the removal of one existing event for the parent to approve — it does NOT cancel anything. `eventId` must come from lookup_week. Never call this on a reference that matched more than one event; ask which first.",
     inputSchema: z.object({ eventId: z.string().min(1) }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx) => {
       const event = await requireEvent(input.eventId);
       const timeZone = await reader.timeZone(familyId);
@@ -270,6 +276,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     // A child-scoped placement names a child, so the guarded invoker's teen check runs
     // BEFORE this handler — a 13+ child's item cannot be drafted from a text at all
     // (rule #1/#5), which is the same refusal get_child_profile gets in the app.
+    monetary: false,
     touchesChildContent: true,
     handler: async (input, ctx) => {
       const timeZone = await reader.timeZone(familyId);

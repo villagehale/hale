@@ -1,5 +1,7 @@
-import { schema } from '@hale/db';
+import { type Database, schema } from '@hale/db';
+import { GuardrailError, invokeTool } from '@hale/agent';
 import { describe, expect, it, vi } from 'vitest';
+import { buildCronGuardDeps } from './guards';
 import { buildDistillTools, _internal } from './inference-tools';
 
 /**
@@ -125,5 +127,104 @@ describe('save_child_fact tool', () => {
 
     expect(result).toMatchObject({ saved: false });
     expect(capture.factInserts).toEqual([]);
+  });
+});
+
+/**
+ * VIL-269: `save_child_fact` takes a `childId`, so it must be classified
+ * `touchesChildContent` — otherwise the guarded invoker skips the teen check
+ * entirely and a teen-scoped fact is written with no gate at all. These run the
+ * tool through the REAL invokeTool + REAL cron GuardDeps, so they fail if the
+ * flag is ever dropped again.
+ */
+describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () => {
+  const TEEN_DOB = '2010-06-01'; // 13+ at NOW regardless of exact run date
+  const TODDLER_DOB = '2024-06-01';
+
+  function guardedDb(childDob: string | null, capture: { facts: unknown[]; audits: unknown[] }) {
+    const childRows = childDob === null ? [] : [{ dateOfBirth: childDob }];
+    return {
+      select: () => ({
+        from: () => ({
+          where: () =>
+            Object.assign(Promise.resolve(childRows), { limit: async () => childRows }),
+        }),
+      }),
+      insert: (table: unknown) => ({
+        values: (row: unknown) => {
+          if (table === schema.auditLog) {
+            capture.audits.push(row);
+            return Promise.resolve(undefined);
+          }
+          capture.facts.push(row);
+          return { returning: async () => [{ id: 'fact-1' }] };
+        },
+      }),
+      update: () => ({ set: () => ({ where: async () => undefined }) }),
+    } as unknown as Database;
+  }
+
+  function saveTool(database: Database) {
+    const tool = buildDistillTools(database, NOW).find((t) => t.name === 'save_child_fact');
+    if (!tool) throw new Error('no save_child_fact tool');
+    return tool;
+  }
+
+  const fact = {
+    category: 'concerns' as const,
+    factKey: 'school-stress',
+    summary: 'Struggling with exam pressure',
+    confidence: 0.9,
+  };
+
+  it('REFUSES a fact scoped to a 13+ child — nothing written, nothing audited', async () => {
+    const capture = { facts: [] as unknown[], audits: [] as unknown[] };
+    const database = guardedDb(TEEN_DOB, capture);
+
+    await expect(
+      invokeTool(
+        saveTool(database),
+        { childId: TEEN, ...fact },
+        { familyId: FAMILY_ID, actor: 'system' },
+        buildCronGuardDeps(database),
+      ),
+    ).rejects.toBeInstanceOf(GuardrailError);
+
+    // The cron path has no viewer, so it can never hold a teen grant — fail closed.
+    expect(capture.facts).toEqual([]);
+    expect(capture.audits).toEqual([]);
+  });
+
+  it('REFUSES a childId outside the caller family — a hallucinated uuid cannot be persisted', async () => {
+    const capture = { facts: [] as unknown[], audits: [] as unknown[] };
+    const database = guardedDb(null, capture);
+
+    await expect(
+      invokeTool(
+        saveTool(database),
+        { childId: TEEN, ...fact },
+        { familyId: FAMILY_ID, actor: 'system' },
+        buildCronGuardDeps(database),
+      ),
+    ).rejects.toThrow(/not found in this family/);
+
+    expect(capture.facts).toEqual([]);
+  });
+
+  it('still writes a non-teen child fact — the gate refuses teens, not distillation', async () => {
+    const capture = { facts: [] as unknown[], audits: [] as unknown[] };
+    const database = guardedDb(TODDLER_DOB, capture);
+
+    const result = await invokeTool(
+      saveTool(database),
+      { childId: TOT, ...fact },
+      { familyId: FAMILY_ID, actor: 'system' },
+      buildCronGuardDeps(database),
+    );
+
+    expect(result).toMatchObject({ saved: true });
+    expect(capture.facts).toHaveLength(1);
+    expect((capture.facts[0] as { childId: string }).childId).toBe(TOT);
+    expect(capture.audits).toHaveLength(1);
   });
 });
