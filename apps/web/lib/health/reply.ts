@@ -338,6 +338,11 @@ export function defaultHealthReplyDeps(): HealthReplyDeps {
           intentKind: input.intentKind,
           childId: input.childId,
           sourceAnswer: input.sourceAnswer,
+          // A parent replying "book it" to a nudge IS a person asking in a
+          // conversation — the nudge only opened it. The cron composed the question,
+          // never this draft, so `registration_sweep`'s no-one-in-the-loop stamp
+          // would be the false claim here.
+          origin: 'ask_hale',
         },
         database,
         pipelineClient(),
