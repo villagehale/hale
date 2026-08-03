@@ -45,7 +45,11 @@ describe('ActionApprovalCard — inline approve/reject gate', () => {
         actionType: 'create_calendar_event',
       }),
     );
-    expect(html).toContain('aria-label="approve &amp; send: help me book this"');
+    // The name is built by reference, not by copying the label into an attribute
+    // (VIL-274): the proposal line carries this action's id, and approve points at it.
+    expect(html).toContain(`id="${ACTION_ID}-preview"`);
+    expect(html).toMatch(new RegExp(`aria-labelledby="[^"]* ${ACTION_ID}-preview"`));
+    expect(html).not.toContain('aria-label="');
   });
 
   it('offers a reject control (dismiss draft) alongside approve', () => {

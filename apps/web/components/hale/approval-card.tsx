@@ -36,6 +36,19 @@ const APPROVED_VERDICT = 'approved';
 const NEEDS_YOU_VERDICTS = new Set(['flagged', 'rejected']);
 
 /**
+ * The id of the row's preview node. Every row's controls read alike ("approve &
+ * send", "undo this"), so the preview has to join their accessible name — and it
+ * joins by REFERENCE, because rrweb records attribute values verbatim past the text
+ * mask, so an `aria-label` carrying the preview would put the draft into a session
+ * replay (VIL-274, rule #1). Derived from the action id, which already anchors the
+ * row, so it is unique per row and stable across renders without a hook — these
+ * cards render on the server, where `useId` is unavailable.
+ */
+export function previewIdFor(actionId: string): string {
+  return `${actionId}-preview`;
+}
+
+/**
  * The card's leading mark. A redacted row leads with the PRIVACY mark rather than
  * its action family: what the parent needs to read first is that this one is held
  * back, not what kind of thing it is.
@@ -72,11 +85,13 @@ function CardHead({
   actionType,
   teenRedacted,
   preview,
+  previewId,
   children,
 }: {
   actionType: string;
   teenRedacted: boolean;
   preview: string;
+  previewId: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -87,7 +102,10 @@ function CardHead({
           <span className="eyebrow">{actionTypeLabel(actionType)}</span>
           {children}
         </div>
-        <p className="font-display text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.02em] mt-1 text-ink break-words">
+        <p
+          id={previewId}
+          className="font-display text-[1.375rem] leading-[1.75rem] font-medium tracking-[-0.02em] mt-1 text-ink break-words"
+        >
           {preview}
         </p>
       </div>
@@ -102,6 +120,7 @@ function CardHead({
  * hierarchy of a consent queue IS part of what the consent means.
  */
 export function ApprovalCard({ approval }: { approval: ApprovalView }) {
+  const previewId = previewIdFor(approval.id);
   return (
     // VIL-244 · M9: the draft's action id is its anchor, so an outbound channel
     // message can deep-link the exact row it is asking about.
@@ -111,6 +130,7 @@ export function ApprovalCard({ approval }: { approval: ApprovalView }) {
           actionType={approval.actionType}
           teenRedacted={approval.teenRedacted}
           preview={approval.preview}
+          previewId={previewId}
         >
           <ChildTag childId={approval.childId} label={approval.childLabel} />
         </CardHead>
@@ -129,7 +149,7 @@ export function ApprovalCard({ approval }: { approval: ApprovalView }) {
        * not full-width, not left-hugging). */}
       <div className="rule mt-5" />
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-        <DismissButton actionId={approval.id} label={approval.preview} />
+        <DismissButton actionId={approval.id} label={approval.preview} labelledBy={previewId} />
         {approval.teenUnlockable ? (
           // Policy 4: never a decision on invisible content — the parent
           // requests time-limited access (audited, teen notified) instead
@@ -144,7 +164,7 @@ export function ApprovalCard({ approval }: { approval: ApprovalView }) {
             ask. dismiss it, or check Settings › family &amp; children.
           </p>
         ) : approval.verdict === APPROVED_VERDICT ? (
-          <ApproveButton actionId={approval.id} label={approval.preview} />
+          <ApproveButton actionId={approval.id} labelledBy={previewId} />
         ) : null}
       </div>
     </li>
@@ -154,6 +174,7 @@ export function ApprovalCard({ approval }: { approval: ApprovalView }) {
 /** Something Hale already did that can still be taken back — the other half of
  * consent. Offered only when the server would accept the reversal. */
 export function ReversibleCard({ done }: { done: HistoryView }) {
+  const previewId = previewIdFor(done.id);
   return (
     <li className="card">
       <div className="min-w-0" data-hale-pii>
@@ -161,12 +182,13 @@ export function ReversibleCard({ done }: { done: HistoryView }) {
           actionType={done.actionType}
           teenRedacted={done.teenRedacted}
           preview={done.preview}
+          previewId={previewId}
         />
         <p className="meta mt-3 text-ink-3">{done.resolvedAt}</p>
       </div>
       <div className="rule mt-4" />
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-        <UndoButton actionId={done.id} label={done.preview} />
+        <UndoButton actionId={done.id} labelledBy={previewId} />
       </div>
     </li>
   );

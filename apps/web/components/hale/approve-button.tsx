@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 type State = 'idle' | 'pending' | 'approved' | 'error';
 
@@ -18,8 +18,15 @@ const LABEL: Record<State, string> = {
  * does the actual send). Honest states: pending in flight, "approved" on 202, the
  * error surfaced — never a silent success.
  */
-export function ApproveButton({ actionId, label }: { actionId: string; label?: string }) {
+export function ApproveButton({
+  actionId,
+  labelledBy,
+}: {
+  actionId: string;
+  labelledBy?: string;
+}) {
   const [state, setState] = useState<State>('idle');
+  const selfId = useId();
 
   async function approve() {
     setState('pending');
@@ -34,13 +41,18 @@ export function ApproveButton({ actionId, label }: { actionId: string; label?: s
   return (
     <button
       type="button"
+      id={selfId}
       className="btn-primary"
       onClick={approve}
       disabled={state === 'pending' || state === 'approved'}
       aria-live="polite"
-      // In a list every row's button reads "approve & send" alike; the draft
-      // preview disambiguates which draft each button acts on for a screen reader.
-      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
+      // In a list every row's button reads "approve & send" alike, so the row's
+      // preview has to join the accessible name. It joins by REFERENCE — this
+      // button's own text plus the id of the row's preview node — never as an
+      // `aria-label` copy of the preview: rrweb records attribute values verbatim
+      // past the text mask, so that copy would put the draft (child name and all)
+      // into a session replay (VIL-274, rule #1).
+      aria-labelledby={labelledBy ? `${selfId} ${labelledBy}` : undefined}
     >
       {LABEL[state]}
     </button>

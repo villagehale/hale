@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 type State = 'idle' | 'pending' | 'undone' | 'error';
 
@@ -22,8 +22,9 @@ const LABEL: Record<State, string> = {
  * placement the parent can have re-made, and putting a confirm in front of the
  * take-back makes the take-back feel like the risky move.
  */
-export function UndoButton({ actionId, label }: { actionId: string; label?: string }) {
+export function UndoButton({ actionId, labelledBy }: { actionId: string; labelledBy?: string }) {
   const [state, setState] = useState<State>('idle');
+  const selfId = useId();
 
   async function undo() {
     setState('pending');
@@ -38,13 +39,16 @@ export function UndoButton({ actionId, label }: { actionId: string; label?: stri
   return (
     <button
       type="button"
+      id={selfId}
       className="btn-secondary"
       onClick={undo}
       disabled={state === 'pending' || state === 'undone'}
       aria-live="polite"
-      // Every row's button reads alike in a list; the row's preview disambiguates
-      // which placement this one takes back for a screen reader.
-      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
+      // Every row's button reads alike in a list, so the row's preview joins the
+      // accessible name by REFERENCE (this button's text + the preview node's id)
+      // rather than as an `aria-label` copy — a replay records attributes verbatim
+      // past the text mask (VIL-274, rule #1).
+      aria-labelledby={labelledBy ? `${selfId} ${labelledBy}` : undefined}
     >
       {LABEL[state]}
     </button>

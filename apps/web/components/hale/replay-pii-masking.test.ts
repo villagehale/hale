@@ -4,9 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolCard } from '@hale/agent';
 import type { ApprovalView } from '~/lib/dashboard/approvals';
+import type { HistoryView } from '~/lib/dashboard/history';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { AccountMenuView } from './account-menu-view';
-import { ApprovalCard } from './approval-card';
+import { ApprovalCard, ReversibleCard } from './approval-card';
 import { GrowthSection, OverviewSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
 import { TeenAccessGrants } from './teen-access-grants';
@@ -325,18 +326,24 @@ describe('connector cards mask the parent’s file names + event details', () =>
  * and assert nothing PII-bearing survives in what a replay would still read.
  */
 /**
- * What `maskTextSelector` actually protects is TEXT NODES. rrweb records element
- * ATTRIBUTES verbatim, so an attribute value is outside this guard's reach whatever
- * subtree it sits in. The approve / dismiss / undo buttons put the draft preview in
- * an `aria-label` (they disambiguate otherwise-identical buttons in a list for a
- * screen reader), so the preview reaches a recording through that attribute today —
- * a PRE-EXISTING exposure this file's source-offset predecessor could not see, and
- * one whose fix is an `aria-labelledby` pointing at the already-masked preview
- * node, not a class change. Named in the VIL-209 W3 PR. Until then this strips
- * attributes so the assertion states exactly what it can prove.
+ * The consent surface needs BOTH halves of the check, because `maskTextSelector`
+ * protects only TEXT NODES:
+ *
+ *  - `visibleText(stripMaskedSubtrees(html))` — what a replay still reads as text.
+ *  - `attributeValues(html)` — every attribute value, on the FULL markup, because
+ *    rrweb records attributes verbatim and a `[data-hale-pii]` ancestor does not
+ *    protect one. This is the half that caught VIL-274: the approve / dismiss /
+ *    undo buttons folded the draft preview into an `aria-label` to disambiguate
+ *    otherwise-identical buttons in a list, which put the draft (child name and
+ *    all) into a recording. They now carry an `aria-labelledby` REFERENCE to the
+ *    row's preview node instead — same screen-reader name, no copy of the text.
  */
 function visibleText(html: string): string {
   return html.replace(/<[^>]*>/g, ' ');
+}
+
+function attributeValues(html: string): string[] {
+  return [...html.matchAll(/\s[a-zA-Z-]+="([^"]*)"/g)].flatMap((m) => m.slice(1));
 }
 
 describe('the approvals row body is masked for replay', () => {
@@ -379,6 +386,68 @@ describe('the approvals row body is masked for replay', () => {
       renderToStaticMarkup(h(ApprovalCard, { approval: { ...approval, verdict: 'flagged' } })),
     );
     expect(residue).not.toContain(SUMMARY);
+  });
+
+  /**
+   * VIL-274. The text mask is only half the surface: the approve / dismiss controls
+   * need a per-row accessible name, and the obvious way to build one — folding the
+   * preview into `aria-label` — writes the draft (child name and all) into an
+   * attribute, which a replay keeps verbatim. The name must be assembled by
+   * reference instead.
+   */
+  it('puts no draft text in ANY attribute — a replay records those verbatim', () => {
+    const attrs = attributeValues(renderToStaticMarkup(h(ApprovalCard, { approval })));
+    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, 'Maya']) {
+      for (const attr of attrs) {
+        expect(attr, `no attribute may carry "${value}"`).not.toContain(value);
+      }
+    }
+  });
+});
+
+/**
+ * The undo card is the other half of the consent surface and carries the same
+ * preview through the same shape of control, so it gets the same two checks.
+ */
+describe('the still-reversible row is masked for replay', () => {
+  const PREVIEW = 'Added Maya’s swim lesson to your calendar';
+
+  const done: HistoryView = {
+    id: 'h1',
+    actionType: 'calendar_add',
+    summary: 'Hale placed it on the family calendar',
+    preview: PREVIEW,
+    payload: { title: PREVIEW, start: '2026-08-11T14:00:00Z' },
+    childId: 'c1',
+    childLabel: 'Maya',
+    verdict: 'approved',
+    draftedAt: 'today at 8:04 am',
+    teenRedacted: false,
+    teenUnlockable: false,
+    status: 'executed',
+    resolvedAt: 'today at 8:06 am',
+    undoable: true,
+  };
+
+  it('is a real check — the preview and child name ARE in the unmasked render', () => {
+    const html = renderToStaticMarkup(h(ReversibleCard, { done }));
+    expect(html).toContain(PREVIEW);
+    expect(html).toContain('Maya');
+  });
+
+  it('leaves no preview or child name in a text node outside a masked subtree', () => {
+    const residue = visibleText(stripMaskedSubtrees(renderToStaticMarkup(h(ReversibleCard, { done }))));
+    expect(residue).not.toContain(PREVIEW);
+    expect(residue).not.toContain('Maya');
+  });
+
+  it('puts no draft text in ANY attribute — the undo control names its row by id', () => {
+    const attrs = attributeValues(renderToStaticMarkup(h(ReversibleCard, { done })));
+    for (const value of [PREVIEW, 'Maya']) {
+      for (const attr of attrs) {
+        expect(attr, `no attribute may carry "${value}"`).not.toContain(value);
+      }
+    }
   });
 });
 
