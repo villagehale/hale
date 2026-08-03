@@ -29,6 +29,7 @@ const orderTool = defineTool({
   name: 'place_supply_order',
   description: 'Order supplies.',
   monetary: true,
+  touchesChildContent: false,
   inputSchema: z.object({ item: z.string(), priceUsd: z.number() }),
   handler: async (input: { item: string; priceUsd: number }) => ({ ordered: input.item }),
 });
@@ -40,6 +41,7 @@ describe('invokeTool — spending-cap rail (rule #7)', () => {
       name: 'place_supply_order',
       description: 'Order supplies.',
       monetary: true,
+      touchesChildContent: false,
       inputSchema: z.object({ item: z.string(), priceUsd: z.number() }),
       handler,
     });
@@ -76,10 +78,36 @@ describe('invokeTool — spending-cap rail (rule #7)', () => {
   });
 
   it('fails closed: a monetary tool with no cap hook wired throws (never silently skips)', async () => {
-    const { deps } = depsWith();
-    await expect(invokeTool(orderTool, { item: 'wipes', priceUsd: 12 }, ctx, deps)).rejects.toThrow(
+    const handler = vi.fn(async () => ({ ordered: 'wipes' }));
+    const tool = defineTool({
+      name: 'place_supply_order',
+      description: 'Order supplies.',
+      monetary: true,
+      touchesChildContent: false,
+      inputSchema: z.object({ item: z.string(), priceUsd: z.number() }),
+      handler,
+    });
+    const { deps, audits } = depsWith();
+
+    await expect(invokeTool(tool, { item: 'wipes', priceUsd: 12 }, ctx, deps)).rejects.toThrow(
       /requires checkSpendingCap/,
     );
+    // Fail-closed means nothing happened: no spend, and no audit row claiming one.
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toHaveLength(0);
+  });
+
+  it('fails closed on PARTIAL wiring: the cap hook without monetaryCostOf still throws', async () => {
+    const checkSpendingCap = vi.fn(async () => ({ ok: true, reason: 'within cap' }));
+    const { deps, audits } = depsWith({ checkSpendingCap });
+
+    await expect(
+      invokeTool(orderTool, { item: 'wipes', priceUsd: 12 }, ctx, deps),
+    ).rejects.toThrow(/requires checkSpendingCap \+ monetaryCostOf/);
+    // Half a cap check is no cap check: without a cost there is nothing to compare
+    // against the cap, so the hook must not be consulted at all (rule #7).
+    expect(checkSpendingCap).not.toHaveBeenCalled();
+    expect(audits).toHaveLength(0);
   });
 });
 
@@ -88,10 +116,14 @@ describe('invokeTool — audit rail (rule #6)', () => {
     const lookup = defineTool({
       name: 'get_child_profile',
       description: 'Read a child profile.',
+      monetary: false,
+      touchesChildContent: true,
       inputSchema: z.object({ childId: z.string() }),
       handler: async (input: { childId: string }) => ({ ageMonths: 5, childId: input.childId }),
     });
-    const { deps, audits } = depsWith();
+    const { deps, audits } = depsWith({
+      checkChildContentAccess: async () => ({ ok: true, reason: 'child is under 13' }),
+    });
 
     await invokeTool(lookup, { childId: 'kid-1' }, ctx, deps);
 
@@ -112,6 +144,7 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
     const tool = defineTool({
       name: 'read_teen_message',
       description: 'Read a teen message.',
+      monetary: false,
       touchesChildContent: true,
       inputSchema: z.object({ messageId: z.string() }),
       handler,
@@ -127,17 +160,23 @@ describe('invokeTool — child-content rail (rule #1/#5)', () => {
   });
 
   it('fails closed: a child-content tool with no consent hook wired throws', async () => {
+    const handler = vi.fn(async () => ({ raw: 'teen message text' }));
     const tool = defineTool({
       name: 'read_teen_message',
       description: 'Read a teen message.',
+      monetary: false,
       touchesChildContent: true,
       inputSchema: z.object({ messageId: z.string() }),
-      handler: async () => ({ raw: 'x' }),
+      handler,
     });
-    const { deps } = depsWith();
+    const { deps, audits } = depsWith();
+
     await expect(invokeTool(tool, { messageId: 'm-1' }, ctx, deps)).rejects.toThrow(
       /requires checkChildContentAccess/,
     );
+    // The raw teen content was never read, and no audit row implies it was.
+    expect(handler).not.toHaveBeenCalled();
+    expect(audits).toHaveLength(0);
   });
 });
 
@@ -147,6 +186,8 @@ describe('invokeTool — input validation', () => {
     const tool = defineTool({
       name: 'get_child_profile',
       description: 'Read a child profile.',
+      monetary: false,
+      touchesChildContent: false,
       inputSchema: z.object({ childId: z.string() }),
       handler,
     });

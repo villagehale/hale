@@ -84,6 +84,8 @@ export function searchVillageTool(database: Database): RegisteredTool {
     description:
       "Surface local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. Teen-attributed candidates are redacted to category only (rule #1).",
     inputSchema: z.object({ query: z.string().optional() }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
       const timeZone = await readFamilyTimezone(database, ctx.familyId);
@@ -122,6 +124,7 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     description:
       "Read one of THIS family's children by id: derived stage, age in months, and stage-appropriate developmental guidance. A teenager's profile is refused by the child-content guard (rule #1).",
     inputSchema: z.object({ childId: z.string() }),
+    monetary: false,
     touchesChildContent: true,
     handler: async (input, ctx) => {
       const rows = await database
@@ -162,6 +165,8 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       query: z.string().min(1),
       factType: memoryFactType.optional(),
     }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
 
@@ -222,6 +227,8 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       factKey: z.string().min(1),
       factValue: z.unknown(),
     }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx) => {
       await database
         .update(schema.familyMemoryFacts)
@@ -263,6 +270,8 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
       stage: z.enum(['newborn', 'toddler', 'child', 'teenager']),
       ageMonths: z.number().int().min(0).max(215).optional(),
     }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input) => {
       const reference = stageReferenceDob(input.stage, input.ageMonths);
       const companion = companionForChild({ dateOfBirth: reference });

@@ -113,6 +113,8 @@ export function buildInferenceTools(
     description:
       "Read THIS family's recent activity (events + episodes in the last week) and its currently-valid memory facts — the snapshot to diff against when inferring new facts.",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
@@ -199,6 +201,8 @@ export function buildInferenceTools(
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
     }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx) => {
       // The 0.7 floor is a code-level invariant, not just a prompt rule: a fact
       // below it is dropped here, never written (mirrors the worker inferencer).
@@ -335,6 +339,8 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
     description:
       "Read THIS family's recent Ask Hale conversation turns (the last two weeks). A 13+ child's turns are already reduced to category/summary — raw teen content is never shown (rule #1). Use these to distill durable, per-child facts.",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const since = new Date(now.getTime() - CONVERSATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
@@ -394,6 +400,14 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
       summary: z.string().min(1),
       confidence: z.number().min(0).max(1),
     }),
+    monetary: false,
+    // VIL-269: this input NAMES a child, so the guarded invoker's teen check resolves
+    // it before the handler runs — the same gate get_child_profile gets. The redaction
+    // above is what the model SEES; this is what it may WRITE, and the two need
+    // separate enforcement: a childId the distiller never read from a turn (a
+    // hallucinated uuid, another family's, or a teen's) is refused rather than
+    // persisted as a fact scoped to that child (rule #1/#5).
+    touchesChildContent: true,
     handler: async (input, ctx) => {
       if (input.confidence < CONFIDENCE_FLOOR) {
         return { saved: false as const, reason: 'below_confidence_floor' };

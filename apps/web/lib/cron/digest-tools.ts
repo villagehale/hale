@@ -37,6 +37,8 @@ export function buildDailyBriefTools(
     description:
       "Per non-teen child in THIS family: a soon-due routine health item and a milestone worth watching this stage, derived from date of birth. A teenager appears by name only — their developmental detail is excluded (rule #1).",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const children = await database
         .select({
@@ -89,6 +91,8 @@ export function buildDailyBriefTools(
     description:
       "Local classes, groups, and activities surfaced for THIS family's area within the last week. Teen-attributed items are redacted to a category only (rule #1).",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx) => {
       const children = await database
         .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })

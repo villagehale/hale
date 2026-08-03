@@ -196,6 +196,7 @@ describe('Ask Hale guard rails + family scoping', () => {
       description: 'Order supplies.',
       inputSchema: z.object({ amountUsd: z.number(), category: z.string() }),
       monetary: true,
+      touchesChildContent: false,
       handler: async () => ({ ordered: true }),
     });
 
@@ -219,6 +220,7 @@ describe('Ask Hale guard rails + family scoping', () => {
       description: 'Order supplies.',
       inputSchema: z.object({ amountUsd: z.number(), category: z.string() }),
       monetary: true,
+      touchesChildContent: false,
       handler: async () => ({ ordered: true }),
     });
 

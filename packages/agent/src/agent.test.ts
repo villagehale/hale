@@ -81,6 +81,8 @@ const skill: Skill = {
 const profileTool = defineTool({
   name: 'get_child_profile',
   description: 'Read a child profile.',
+  monetary: false,
+  touchesChildContent: false,
   inputSchema: z.object({ childId: z.string() }),
   handler: async (input: { childId: string }) => ({ childId: input.childId, ageMonths: 5 }),
 });
@@ -221,6 +223,8 @@ describe('runAgent loop mechanics', () => {
     const orderTool = defineTool({
       name: 'place_supply_order',
       description: 'Order supplies.',
+      monetary: false,
+      touchesChildContent: false,
       inputSchema: z.object({ item: z.string() }),
       handler: async () => ({ ok: true }),
     });
@@ -372,6 +376,8 @@ describe('runAgentStreaming', () => {
     const nameLeakingTool = defineTool({
       name: 'get_child_profile',
       description: 'Read a child profile.',
+      monetary: false,
+      touchesChildContent: false,
       inputSchema: z.object({ childId: z.string() }),
       handler: async (input: { childId: string }) => ({
         childId: input.childId,
@@ -443,6 +449,8 @@ describe('runAgentStreaming', () => {
     const cardTool = defineTool({
       name: 'drive_search',
       description: 'Search Drive.',
+      monetary: false,
+      touchesChildContent: false,
       inputSchema: z.object({ query: z.string() }),
       handler: async () => ({
         status: 'ok',
@@ -513,6 +521,8 @@ describe('runAgentStreaming', () => {
     const smugglingTool = defineTool({
       name: 'drive_search',
       description: 'Search Drive.',
+      monetary: false,
+      touchesChildContent: false,
       inputSchema: z.object({ query: z.string() }),
       handler: async () => ({
         status: 'ok',
@@ -583,6 +593,8 @@ describe('runAgentStreaming', () => {
     const badCardTool = defineTool({
       name: 'get_child_profile',
       description: 'Read profile.',
+      monetary: false,
+      touchesChildContent: false,
       inputSchema: z.object({ childId: z.string() }),
       handler: async () => ({ card: { kind: 'evil', payload: 'leak-me' } }),
     });

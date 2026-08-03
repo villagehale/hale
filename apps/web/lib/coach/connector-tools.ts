@@ -165,6 +165,8 @@ export function buildConnectorTools(
     description:
       "Search the SIGNED-IN PARENT's connected Google Drive by file name and return the top matches as name + type + last-modified + a link to open. Read-only, file NAMES and links only — never file contents. If Drive isn't connected, say so and point them to Settings.",
     inputSchema: z.object({ query: z.string().min(1).max(256) }),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (input, ctx): Promise<ConnectorToolResult> => {
       const tokens = await deps.getTokens(database, ctx.familyId, ctx.actor, 'gdrive');
       if (!tokens) {
@@ -203,6 +205,8 @@ export function buildConnectorTools(
     description:
       "Look at the SIGNED-IN PARENT's connected Google Calendar for the next 7 days and return upcoming events as day + time + title (+ location). Read-only, event titles/times only. Use it for questions like 'am I free Saturday morning?'. If Calendar isn't connected, say so and point them to Settings.",
     inputSchema: z.object({}),
+    monetary: false,
+    touchesChildContent: false,
     handler: async (_input, ctx): Promise<ConnectorToolResult> => {
       const tokens = await deps.getTokens(database, ctx.familyId, ctx.actor, 'gcal');
       if (!tokens) {
