@@ -41,7 +41,7 @@ export const viewport: Viewport = {
   // :root / .dark; a literal is unavoidable here (Next needs a static value).
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#FDFCFA' },
-    { media: '(prefers-color-scheme: dark)', color: '#12161F' },
+    { media: '(prefers-color-scheme: dark)', color: '#14120E' },
   ],
 };
 
