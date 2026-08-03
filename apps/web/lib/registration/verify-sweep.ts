@@ -70,9 +70,25 @@ export const MAX_WINDOWS_PER_RUN = 24;
  * read and short enough that a hung host cannot eat the function's 300s. */
 export const PAGE_FETCH_TIMEOUT_MS = 15_000;
 
-/** Enough for any of these pages, bounded so a misconfigured URL returning a
- * video cannot be read into memory or into a model's context. */
-export const MAX_PAGE_BYTES = 500_000;
+/**
+ * A response bigger than this is not a municipal page, and is REFUSED rather than
+ * trimmed. The distinction is the whole of VIL-261: the previous code sliced the raw
+ * html at 500 KB before stripping it, and vaughan.ca is ~890 KB of markup whose "Key
+ * Dates" block starts at offset ~837 K — so a successful fetch became a page that
+ * appears to publish nothing. A truncation that silently removes the answer is worse
+ * than a failure, because "this town has not announced its dates" is a plausible,
+ * unquestionable thing for the sweep to conclude. A refusal is a `fetch_failed` line
+ * a human reads.
+ */
+export const MAX_PAGE_BYTES = 4_000_000;
+
+/**
+ * How much READABLE text one page may contribute to a model call. Markup is most of
+ * a municipal page: the largest in the dataset (Vaughan) strips 890 KB of html down
+ * to 44 K of text, and the smallest (Oakville) to 2.5 K. This ceiling therefore
+ * bounds context and cost without being reachable by anything real.
+ */
+export const MAX_PAGE_TEXT_CHARS = 200_000;
 
 /** The network seam, injected so no test reaches a municipal site. */
 export type FetchPage = (url: string) => Promise<string>;
@@ -90,20 +106,37 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/**
+ * DO NOT ADD A DESCRIPTIVE User-Agent HERE. It is the obvious "identify yourself
+ * politely" change and it costs us a municipality. Measured against the live sites
+ * on 2026-08-02: vaughan.ca sits behind an Akamai bot manager that answers 403 to
+ * `Mozilla/5.0 (compatible; HaleRegistrationVerifier/1.0; +https://villagehale.com)`
+ * and 200 to the very same request under Node's default `user-agent: node`. It also
+ * 403s curl and its own /robots.txt, so there is no stated policy to read and no
+ * identified client it will accept. The failure that change causes is invisible —
+ * one more `fetch_failed` row that reads like a flaky network.
+ */
+const PAGE_FETCH_HEADERS = { Accept: 'text/html,application/xhtml+xml' } as const;
+
 export function createFetchPage(timeoutMs = PAGE_FETCH_TIMEOUT_MS): FetchPage {
   return async (url: string) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, {
-        headers: { Accept: 'text/html,application/xhtml+xml' },
-        signal: controller.signal,
-      });
+      const res = await fetch(url, { headers: PAGE_FETCH_HEADERS, signal: controller.signal });
       if (!res.ok) {
         throw new Error(`registration verify fetch ${url} → HTTP ${res.status}`);
       }
       const body = await res.text();
-      return stripHtml(body.slice(0, MAX_PAGE_BYTES));
+      if (body.length > MAX_PAGE_BYTES) {
+        throw new Error(
+          `registration verify fetch ${url} → ${body.length} chars exceeds the ${MAX_PAGE_BYTES} page ceiling`,
+        );
+      }
+      // Strip FIRST, then bound. Bounding the markup throws away the dates it was
+      // wrapped in; bounding the text bounds what the model actually reads.
+      const text = stripHtml(body);
+      return text.length > MAX_PAGE_TEXT_CHARS ? text.slice(0, MAX_PAGE_TEXT_CHARS) : text;
     } finally {
       clearTimeout(timer);
     }
