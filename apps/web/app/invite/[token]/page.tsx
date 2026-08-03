@@ -33,7 +33,7 @@ export default async function InvitePage({ params }: PageProps) {
         : null;
 
   return (
-    <main className="min-h-screen bg-linen flex flex-col items-center justify-center gap-8 px-6 py-16">
+    <main className="min-h-screen bg-canvas flex flex-col items-center justify-center gap-8 px-6 py-16">
       <Link href="/" className="font-display text-2xl">
         Hale
       </Link>
@@ -41,7 +41,7 @@ export default async function InvitePage({ params }: PageProps) {
       {invalidReason || !invite ? (
         <div className="panel max-w-md text-center space-y-4">
           <span className="eyebrow">invite</span>
-          <p className="text-lg text-slate-green leading-relaxed">{invalidReason}</p>
+          <p className="text-lg text-ink-2 leading-relaxed">{invalidReason}</p>
           <Link href="/" className="btn-ghost">
             go home →
           </Link>
