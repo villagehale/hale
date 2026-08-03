@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type ChildRow, stagePhrase, toFamilyHeader } from './family-header.js';
 
 /**
- * Expectations hand-derived from STAGE_BOUNDARIES_MONTHS = [12, 48, 156].
+ * Expectations hand-derived from STAGE_BOUNDARIES_MONTHS = [12, 48, 60, 156].
  * `now` pinned to 2026-06-15; day-15 births so each age lands on its boundary:
  *   2026-01-15 = 5mo → newborn, 2025-01-15 = 17mo → toddler,
  *   2020-06-15 = 72mo → child, 2010-06-15 = 192mo → teenager.

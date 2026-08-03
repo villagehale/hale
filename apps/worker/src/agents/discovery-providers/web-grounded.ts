@@ -101,9 +101,15 @@ export class WebGroundedDiscoveryProvider implements DiscoveryProvider {
 
   async discover(query: DiscoveryQuery): Promise<DiscoveredCandidate[]> {
     const instructions = await loadPrompt('discovery');
+    // `age_months` rides alongside `stage`, omitted when unknown. Additive on
+    // purpose (VIL-266): the current discovery prompt ignores the key, and the
+    // Langfuse authoring that consumes it is a separate, drift-gated change
+    // (hard rule #2 — never edit the prompt from disk).
+    const ageInput = query.ageMonths === null ? {} : { age_months: query.ageMonths };
     const userMessage = JSON.stringify({
       area_coarse: query.areaCoarse,
       stage: query.stage,
+      ...ageInput,
       interests: query.interests,
       limit: query.limit,
     });
@@ -125,6 +131,7 @@ export class WebGroundedDiscoveryProvider implements DiscoveryProvider {
       userMessage: JSON.stringify({
         area_coarse: query.areaCoarse,
         stage: query.stage,
+        ...ageInput,
         interests: query.interests,
         limit: query.limit,
         research_notes: researchText(research.content),

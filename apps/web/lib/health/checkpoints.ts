@@ -1,4 +1,4 @@
-import { STAGE_BOUNDARIES_MONTHS } from '@hale/types';
+import { TEENAGER_START_MONTHS } from '@hale/types';
 
 /**
  * VIL-243 · M8 — the Ontario health-ADMIN checkpoint table.
@@ -35,7 +35,7 @@ import { STAGE_BOUNDARIES_MONTHS } from '@hale/types';
  */
 
 /** 13+ in completed months, from the shared stage boundaries — never a literal. */
-export const TEEN_STAGE_MIN_MONTHS = STAGE_BOUNDARIES_MONTHS[2];
+export const TEEN_STAGE_MIN_MONTHS = TEENAGER_START_MONTHS;
 
 /**
  * The longest URL that may ride in a message. An SMS is billed per segment and a

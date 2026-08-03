@@ -237,20 +237,19 @@ describe('milestoneStatusLabel — what a parent actually reads', () => {
   });
 });
 
-describe('companionForChild — the preschool years inside the child stage', () => {
+describe('companionForChild — the preschool years', () => {
   /**
-   * VIL-260 · WS5. `deriveStage` puts every child from 48 months to 12 years in
-   * one 'child' bucket, so a four-year-old was being handed an eight-year-old's
-   * material: badged school-age, offered homework and screen-time boundaries, and
-   * shown a milestone list whose earliest window opens a year after their age.
-   * These assert the age-derived view, NOT a new stage value — the four-bucket
-   * stage is untouched and still the teen gate.
+   * VIL-260 · WS5 found that one 'child' bucket from 48 months to 12 years handed
+   * a four-year-old an eight-year-old's material, and fixed it by age INSIDE the
+   * stage. VIL-266 made preschool a real stage at 48–59 months, so a four-year-old
+   * now gets there by stage. The age-derived split survives only for 60–71 months
+   * — stage 'child', not yet in school — which is asserted separately below.
    */
-  it('does not call a four-year-old school-age', () => {
-    // Born 2022-05-15 → 49mo. Same stage as a ten-year-old, not the same childhood.
+  it('puts a four-year-old in the preschool stage, not school-age', () => {
+    // Born 2022-05-15 → 49mo.
     const four = companionForChild({ dateOfBirth: '2022-05-15' }, NOW);
     expect(four.ageMonths).toBe(49);
-    expect(four.stage).toBe('child');
+    expect(four.stage).toBe('preschool');
     expect(stageDisplayLabel(four.stage, four.ageMonths)).toBe('preschool');
     expect(stageDisplayLabel('child', 96)).toBe('school-age');
   });
@@ -278,6 +277,28 @@ describe('companionForChild — the preschool years inside the child stage', () 
     expect(eight.stage).toBe('child');
     expect(eight.whatsNow.join(' ')).toMatch(/school/i);
     expect(eight.milestones.some((m) => m.what === 'Manages homework with some support')).toBe(true);
+  });
+
+  /**
+   * VIL-266 — the one year the stage boundary does NOT cover. A five-year-old is
+   * stage 'child' (60mo+) but has not started school, so SCHOOL_AGE_START_MONTHS
+   * still routes them to preschool content. Deleting that sub-band would silently
+   * regress them to homework-and-screen-time advice, so it is pinned here.
+   */
+  it('keeps a five-year-old on preschool content though their stage is child', () => {
+    // Born 2021-05-15 → 61mo: past the preschool stage, short of school age.
+    const five = companionForChild({ dateOfBirth: '2021-05-15' }, NOW);
+    expect(five.ageMonths).toBe(61);
+    expect(five.stage).toBe('child');
+    expect(stageDisplayLabel(five.stage, five.ageMonths)).toBe('preschool');
+    expect(five.whatsNow.join(' ')).not.toMatch(/homework|screen-time/i);
+    expect(five.milestones.some((m) => m.what.toLowerCase().includes('homework'))).toBe(false);
+  });
+
+  it('switches to school-age content exactly at SCHOOL_AGE_START_MONTHS', () => {
+    // 71mo vs 72mo — the sub-band's own boundary, asserted from both sides.
+    expect(stageDisplayLabel('child', 71)).toBe('preschool');
+    expect(stageDisplayLabel('child', 72)).toBe('school-age');
   });
 });
 

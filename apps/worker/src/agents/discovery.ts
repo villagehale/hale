@@ -22,6 +22,8 @@ export interface DiscoveryRunInput {
   familyId: string;
   areaCoarse: string;
   stage: FamilyStage;
+  /** Completed months for the child this run is for; null when unknown. */
+  ageMonths: number | null;
   interests: string[];
   limit?: number;
 }
@@ -50,6 +52,7 @@ export async function runDiscovery(
   const query: DiscoveryQuery = {
     areaCoarse: input.areaCoarse,
     stage: input.stage,
+    ageMonths: input.ageMonths,
     interests: input.interests,
     limit: input.limit ?? DEFAULT_LIMIT,
   };

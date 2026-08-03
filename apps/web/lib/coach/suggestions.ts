@@ -49,6 +49,11 @@ const STAGE_PROMPTS: Record<FamilyStage, readonly string[]> = {
     'are we ready for potty training?',
     'how many words should they have?',
   ],
+  preschool: [
+    'how do I get them ready for school?',
+    'is this normal for sharing and taking turns?',
+    'what should we be reading together?',
+  ],
   child: [
     'how much screen time is okay?',
     'help with homework battles',

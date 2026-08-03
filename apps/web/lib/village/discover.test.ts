@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { ageInMonths } from '@hale/types';
 import { describe, expect, it, vi } from 'vitest';
 import {
   type DiscoverDeps,
@@ -14,6 +15,7 @@ const NOW = new Date('2026-06-17T00:00:00Z');
 
 // DOBs relative to NOW (2026-06): stage boundaries are [12, 48, 156] months.
 const TODDLER_DOB = '2024-06-01'; // ~24mo → toddler
+const PRESCHOOL_DOB = '2021-12-01'; // ~54mo → preschool
 const CHILD_DOB = '2018-06-01'; // ~96mo → child
 const TEEN_DOB = '2010-06-01'; // ~192mo → teenager
 
@@ -189,6 +191,39 @@ describe('selectDiscoveryInputs — teen exclusion (rule #1)', () => {
   it('returns no stages for a teen-only family', () => {
     const { stages } = selectDiscoveryInputs([{ dateOfBirth: TEEN_DOB, interests: ['x'] }], NOW);
     expect(stages).toEqual([]);
+  });
+
+  /**
+   * VIL-266 — a four-year-old is a preschooler, and the run carries their exact
+   * age alongside the band. `ageMonths` is the age of the child in the PRIMARY
+   * (youngest) stage, so it never describes a different child than `stages[0]`.
+   */
+  it('derives preschool for a four-year-old and reports their age in months', () => {
+    const { stages, ageMonths } = selectDiscoveryInputs(
+      [{ dateOfBirth: PRESCHOOL_DOB, interests: ['music'] }],
+      NOW,
+    );
+    expect(stages).toEqual(['preschool']);
+    expect(ageMonths).toBe(54);
+  });
+
+  it('reports the age of the youngest non-teen child, ignoring teens', () => {
+    const { stages, ageMonths } = selectDiscoveryInputs(
+      [
+        { dateOfBirth: CHILD_DOB, interests: [] },
+        { dateOfBirth: PRESCHOOL_DOB, interests: [] },
+        { dateOfBirth: TEEN_DOB, interests: [] },
+      ],
+      NOW,
+    );
+    expect(stages).toEqual(['preschool', 'child']);
+    // The age belongs to stages[0]'s child, not the teen and not the 8-year-old.
+    expect(ageMonths).toBe(54);
+  });
+
+  it('has no age to report for a teen-only family', () => {
+    const { ageMonths } = selectDiscoveryInputs([{ dateOfBirth: TEEN_DOB, interests: [] }], NOW);
+    expect(ageMonths).toBeNull();
   });
 });
 
@@ -512,16 +547,57 @@ describe('discoverForFamily', () => {
 
     const sentUser = c.create.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
     const sent = JSON.parse(sentUser);
-    // Only the coarse area + stage + interests + limit reach the model.
+    // Only the coarse area + stage + age + interests + limit reach the model.
+    // VIL-266 added `age_months`: an age in completed months is a derivative of the
+    // birthdate that is strictly coarser than `stage` is precise about identity —
+    // it pins no calendar day, and it is the whole point of the ticket (a stage is
+    // a band; a four-year-old should not be searched as a nine-year-old).
+    // discoverForFamily derives the age against the real clock (it takes no `now`),
+    // so the expected value is the toddler's age today rather than a literal that
+    // would silently rot into a failure next month.
     expect(sent).toEqual({
       area_coarse: 'L7G',
       stage: 'toddler',
+      age_months: ageInMonths(TODDLER_DOB),
       interests: ['water'],
       limit: 8,
     });
     // The full postal code / DOB must never be in the request payload.
     expect(sentUser).not.toContain(TODDLER_DOB);
     expect(sentUser).not.toContain(FAMILY_ID);
+  });
+
+  /**
+   * Rule #1: the new `age_months` input must not become a way for a teen's age to
+   * reach the model. Teens are excluded upstream in selectDiscoveryInputs, so a
+   * teen-only family makes no call at all, and a mixed family sends the non-teen
+   * age — never the teenager's.
+   */
+  it('never sends a teenager age with the new age_months input', async () => {
+    const capture: InsertCapture = {
+      villageCandidates: [],
+      auditLog: [],
+      agentRuns: [],
+      supersededUpdates: [],
+    };
+    const db = fakeDb({
+      areaCoarse: 'L7G',
+      children: [
+        { dateOfBirth: TEEN_DOB, interests: ['driving'] },
+        { dateOfBirth: TODDLER_DOB, interests: ['water'] },
+      ],
+      capture,
+    });
+    const c = fakeClient(SAMPLE_CANDIDATES);
+
+    await discoverForFamily(FAMILY_ID, db, deps(c.client));
+
+    const sentUser = c.create.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
+    const sent = JSON.parse(sentUser);
+    expect(sent.age_months).toBe(ageInMonths(TODDLER_DOB));
+    expect(sent.stage).toBe('toddler');
+    expect(sent.age_months).not.toBe(ageInMonths(TEEN_DOB));
+    expect(sentUser).not.toContain(TEEN_DOB);
   });
 
   it('never stores the family location: coords are PUBLIC venue only, no DOB/precise-home field', async () => {

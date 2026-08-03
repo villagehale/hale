@@ -26,13 +26,14 @@ import { writeIntakeDraft } from '~/lib/onboarding/intake-storage';
  * still entered and consented post-auth, behind the signup wall.
  */
 
-/** The four real stages, labelled as friendly age ranges for an anonymous
- * visitor. The picker maps 1:1 to FamilyStage — the exact value discovery
- * expects — so no DOB → stage conversion is ever needed (rule #1). */
+/** The real stages, labelled as friendly age ranges for an anonymous visitor.
+ * The picker maps 1:1 to FamilyStage — the exact value discovery expects — so no
+ * DOB → stage conversion is ever needed (rule #1). */
 const STAGE_LABELS: Record<FamilyStage, { label: string; age: string }> = {
   newborn: { label: 'Newborn', age: 'under 1' },
   toddler: { label: 'Toddler', age: '1 – 3' },
-  child: { label: 'Child', age: '4 – 12' },
+  preschool: { label: 'Preschooler', age: '4' },
+  child: { label: 'Child', age: '5 – 12' },
   teenager: { label: 'Teenager', age: '13 +' },
 };
 

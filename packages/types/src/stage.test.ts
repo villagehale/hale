@@ -5,18 +5,20 @@ import {
   isBeyondProductAge,
   STAGE_BOUNDARIES_MONTHS,
   stageFromAgeInMonths,
+  TEENAGER_START_MONTHS,
 } from './index.js';
 
 /**
  * Every expected value is hand-derived from the boundary spec:
- *   newborn <12mo, toddler 12-47mo, child 48-155mo, teenager 156mo+; 18y=216mo ceiling.
+ *   newborn <12mo, toddler 12-47mo, preschool 48-59mo, child 60-155mo, teenager 156mo+;
+ *   18y=216mo ceiling.
  * Boundary dates use a day-15 birth (present in every month) so anniversaries are exact;
  * the calendar-edge block deliberately uses a day-31 birth to exercise short-month rollover.
  */
 
 describe('STAGE_BOUNDARIES_MONTHS', () => {
-  it('pins the toddler/child/teenager starts', () => {
-    expect(STAGE_BOUNDARIES_MONTHS).toEqual([12, 48, 156]);
+  it('pins the toddler/preschool/child/teenager starts', () => {
+    expect(STAGE_BOUNDARIES_MONTHS).toEqual([12, 48, 60, 156]);
   });
 });
 
@@ -26,10 +28,28 @@ describe('stageFromAgeInMonths', () => {
     expect(stageFromAgeInMonths(11)).toBe('newborn');
     expect(stageFromAgeInMonths(12)).toBe('toddler');
     expect(stageFromAgeInMonths(47)).toBe('toddler');
-    expect(stageFromAgeInMonths(48)).toBe('child');
+    expect(stageFromAgeInMonths(48)).toBe('preschool');
+    expect(stageFromAgeInMonths(59)).toBe('preschool');
+    expect(stageFromAgeInMonths(60)).toBe('child');
     expect(stageFromAgeInMonths(155)).toBe('child');
     expect(stageFromAgeInMonths(156)).toBe('teenager');
     expect(stageFromAgeInMonths(216)).toBe('teenager');
+  });
+
+  /**
+   * VIL-266 — the preschool band, month by month across both its edges. Values
+   * come from the spec (preschool = [48, 60)), not from what the code returns.
+   */
+  it.each([
+    [46, 'toddler'],
+    [47, 'toddler'],
+    [48, 'preschool'],
+    [49, 'preschool'],
+    [59, 'preschool'],
+    [60, 'child'],
+    [61, 'child'],
+  ] as const)('%i completed months is %s', (months, expected) => {
+    expect(stageFromAgeInMonths(months)).toBe(expected);
   });
 });
 
@@ -42,14 +62,57 @@ describe('deriveStage boundaries', () => {
     expect(deriveStage(birth, new Date(2011, 5, 15))).toBe('toddler'); // 12mo
   });
 
-  it('toddler the day before 48mo, child on the 48mo anniversary', () => {
+  it('toddler the day before 48mo, preschool on the 48mo anniversary', () => {
     expect(deriveStage(birth, new Date(2014, 5, 14))).toBe('toddler'); // 47mo
-    expect(deriveStage(birth, new Date(2014, 5, 15))).toBe('child'); // 48mo
+    expect(deriveStage(birth, new Date(2014, 5, 15))).toBe('preschool'); // 48mo
+  });
+
+  it('preschool the day before 60mo, child on the 60mo anniversary', () => {
+    expect(deriveStage(birth, new Date(2015, 5, 14))).toBe('preschool'); // 59mo
+    expect(deriveStage(birth, new Date(2015, 5, 15))).toBe('child'); // 60mo
   });
 
   it('child the day before 156mo, teenager on the 156mo anniversary', () => {
     expect(deriveStage(birth, new Date(2023, 5, 14))).toBe('child'); // 155mo
     expect(deriveStage(birth, new Date(2023, 5, 15))).toBe('teenager'); // 156mo
+  });
+});
+
+/**
+ * VIL-266 — the teen floor is the one boundary this change must NOT move.
+ * Teen redaction (hard rule #1) keys off `deriveStage(...) === 'teenager'`, so
+ * 155mo staying non-teen and 156mo becoming teen is a privacy invariant, not a
+ * detail. Asserted against the boundary constant itself so a future edit to
+ * STAGE_BOUNDARIES_MONTHS cannot quietly slide the floor.
+ */
+describe('teen gate — the 156mo floor is unmoved', () => {
+  it('155mo is not a teenager and 157mo is', () => {
+    expect(stageFromAgeInMonths(155)).not.toBe('teenager');
+    expect(stageFromAgeInMonths(156)).toBe('teenager');
+    expect(stageFromAgeInMonths(157)).toBe('teenager');
+  });
+
+  it('the teen floor is the LAST boundary and is still 156', () => {
+    expect(TEENAGER_START_MONTHS).toBe(156);
+    expect(STAGE_BOUNDARIES_MONTHS.at(-1)).toBe(TEENAGER_START_MONTHS);
+  });
+
+  /**
+   * The regression that adding preschool actually caused: three modules read the
+   * teen floor as STAGE_BOUNDARIES_MONTHS[2], which became 60 the moment a stage
+   * was inserted. The named constant is the fix, so it must NOT be re-derivable
+   * by position — this pins that index 2 is now a non-teen boundary, which is
+   * what makes a positional read fail loudly instead of silently.
+   */
+  it('is not at the index positional readers used to use', () => {
+    expect(STAGE_BOUNDARIES_MONTHS[2]).not.toBe(TEENAGER_START_MONTHS);
+    expect(stageFromAgeInMonths(STAGE_BOUNDARIES_MONTHS[2])).not.toBe('teenager');
+  });
+
+  it('no age below 156 months derives teenager', () => {
+    for (let months = 0; months < 156; months += 1) {
+      expect(stageFromAgeInMonths(months)).not.toBe('teenager');
+    }
   });
 });
 

@@ -63,6 +63,7 @@ export function milestoneStatusLabel(status: Pick<MilestoneStatus, 'timing' | 'd
 export const STAGE_LABEL: Record<FamilyStage, string> = {
   newborn: 'Newborn',
   toddler: 'Toddler',
+  preschool: 'Preschooler',
   child: 'Child',
   teenager: 'Teen',
 };

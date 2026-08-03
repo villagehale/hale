@@ -5,7 +5,14 @@ import { FakeDiscoveryProvider } from './fake.js';
 const provider = new FakeDiscoveryProvider();
 
 function query(overrides: Partial<DiscoveryQuery> = {}): DiscoveryQuery {
-  return { areaCoarse: 'M5V', stage: 'toddler', interests: [], limit: 8, ...overrides };
+  return {
+    areaCoarse: 'M5V',
+    stage: 'toddler',
+    ageMonths: null,
+    interests: [],
+    limit: 8,
+    ...overrides,
+  };
 }
 
 describe('FakeDiscoveryProvider', () => {
@@ -45,6 +52,25 @@ describe('FakeDiscoveryProvider', () => {
     expect(hitIdx).toBeGreaterThanOrEqual(0);
     expect(genericIdx).toBeGreaterThanOrEqual(0);
     expect(hitIdx).toBeLessThan(genericIdx);
+  });
+
+  /**
+   * VIL-266: giving preschool its own stage silently emptied its floor — every
+   * seed was tagged toddler or child, so a four-year-old matched nothing. The
+   * floor must cover the new stage, and cover it with its OWN programming rather
+   * than the school-age listings a preschooler used to be handed.
+   */
+  it('offers a non-empty floor for a preschooler', async () => {
+    const results = await provider.discover(query({ stage: 'preschool' }));
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((c) => c.stage === 'preschool')).toBe(true);
+  });
+
+  it('never hands a preschooler a school-age-only listing', async () => {
+    const preschool = await provider.discover(query({ stage: 'preschool' }));
+    const titles = preschool.map((c) => c.title);
+    expect(titles).not.toContain('Library after-school reading club');
+    expect(titles).not.toContain('Community soccer or sports league');
   });
 
   it('honors the limit', async () => {

@@ -3,7 +3,7 @@
  * The product spans a childhood; each child sits in exactly one stage,
  * and stages coexist across siblings in the same family.
  */
-export type FamilyStage = 'newborn' | 'toddler' | 'child' | 'teenager';
+export type FamilyStage = 'newborn' | 'toddler' | 'preschool' | 'child' | 'teenager';
 
 /**
  * The stages as a runtime tuple, childhood-ordered. The `FamilyStage` union is
@@ -11,13 +11,28 @@ export type FamilyStage = 'newborn' | 'toddler' | 'child' | 'teenager';
  * must enumerate or validate a stage value — a server-side guard, a stage picker.
  * `satisfies` ties it to the union, so adding a stage to the type forces it here.
  */
-export const FAMILY_STAGES = ['newborn', 'toddler', 'child', 'teenager'] as const satisfies readonly FamilyStage[];
+export const FAMILY_STAGES = ['newborn', 'toddler', 'preschool', 'child', 'teenager'] as const satisfies readonly FamilyStage[];
+
+/**
+ * The teen floor — 13 years in completed months.
+ *
+ * Named, and exported, because raw-content redaction (hard rule #1) keys off it.
+ * Callers MUST read this rather than index into `STAGE_BOUNDARIES_MONTHS`: adding
+ * the preschool stage (VIL-266) shifted the teen floor from index 2 to index 3,
+ * which silently re-pointed three positional readers at 60 months — a five-year-old
+ * — and only one of them had a test that noticed.
+ */
+export const TEENAGER_START_MONTHS = 156;
 
 /**
  * Stage boundaries in completed months. Config, not magic numbers:
- * newborn <12mo, toddler 12-47mo, child 48-155mo, teenager 156mo+.
+ * newborn <12mo, toddler 12-47mo, preschool 48-59mo, child 60-155mo, teenager 156mo+.
+ *
+ * The preschool band (VIL-266) exists because 48-155mo was one bucket over two
+ * different childhoods — a four-year-old and a twelve-year-old are not searched,
+ * framed, or programmed for alike.
  */
-export const STAGE_BOUNDARIES_MONTHS = [12, 48, 156] as const;
+export const STAGE_BOUNDARIES_MONTHS = [12, 48, 60, TEENAGER_START_MONTHS] as const;
 
 /** 18 years in months — past this the family is out of product scope. */
 const PRODUCT_AGE_CEILING_MONTHS = 18 * 12;
@@ -72,9 +87,10 @@ function completedMonths(dateOfBirth: CalendarDate, now: CalendarDate): number {
  * here so the month arithmetic lives in one place.
  */
 export function stageFromAgeInMonths(months: number): FamilyStage {
-  const [toddlerStart, childStart, teenagerStart] = STAGE_BOUNDARIES_MONTHS;
+  const [toddlerStart, preschoolStart, childStart, teenagerStart] = STAGE_BOUNDARIES_MONTHS;
   if (months < toddlerStart) return 'newborn';
-  if (months < childStart) return 'toddler';
+  if (months < preschoolStart) return 'toddler';
+  if (months < childStart) return 'preschool';
   if (months < teenagerStart) return 'child';
   return 'teenager';
 }

@@ -15,7 +15,8 @@ export const dynamic = 'force-static';
 const STAGE_SECTIONS: { stage: FamilyStage; label: string }[] = [
   { stage: 'newborn', label: 'Newborn (0–11 months)' },
   { stage: 'toddler', label: 'Toddler (1–3 years)' },
-  { stage: 'child', label: 'School age (4–12 years)' },
+  { stage: 'preschool', label: 'Preschool (4 years)' },
+  { stage: 'child', label: 'School age (5–12 years)' },
   { stage: 'teenager', label: 'Teenager (13+ years)' },
 ];
 

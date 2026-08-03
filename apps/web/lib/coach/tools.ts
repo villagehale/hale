@@ -317,6 +317,7 @@ function stageReferenceDob(stage: FamilyStage, ageMonths?: number): Date {
   const monthsByStage: Record<FamilyStage, number> = {
     newborn: 6,
     toddler: 24,
+    preschool: 54,
     child: 96,
     teenager: 168,
   };

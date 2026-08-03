@@ -7,7 +7,7 @@
 
 // ── companion (from @hale/types CompanionView + apps/web ChildCompanionView) ──
 
-export type FamilyStage = 'newborn' | 'toddler' | 'child' | 'teenager';
+export type FamilyStage = 'newborn' | 'toddler' | 'preschool' | 'child' | 'teenager';
 
 export interface HealthItem {
   ageMonths: number;

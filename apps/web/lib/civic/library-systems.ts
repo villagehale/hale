@@ -1,5 +1,5 @@
 import type { CivicSystem } from '@hale/db';
-import { STAGE_BOUNDARIES_MONTHS } from '@hale/types';
+import { STAGE_BOUNDARIES_MONTHS, TEENAGER_START_MONTHS } from '@hale/types';
 
 /**
  * VIL-252 · M16 — the GTA library systems whose event calendars Hale reads, and
@@ -21,7 +21,8 @@ import { STAGE_BOUNDARIES_MONTHS } from '@hale/types';
  * 3-year-old's parent in an adult book club.
  */
 
-const [NEWBORN_END, , TEEN_START] = STAGE_BOUNDARIES_MONTHS;
+const [NEWBORN_END] = STAGE_BOUNDARIES_MONTHS;
+const TEEN_START = TEENAGER_START_MONTHS;
 
 /** The last month of a child's Nth year — age "5" runs to 5y11m. */
 const throughAge = (years: number): number => years * 12 + 11;

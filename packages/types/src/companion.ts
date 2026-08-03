@@ -94,6 +94,13 @@ const MILESTONES_BY_STAGE: Record<FamilyStage, readonly Milestone[]> = {
     { area: 'social', what: 'Plays alongside other children', typicalWindowMonths: [24, 36], note: CONFIRM_WITH_PROVIDER },
     { area: 'independence', what: 'Shows interest in potty training', typicalWindowMonths: [24, 42], note: CONFIRM_WITH_PROVIDER },
   ],
+  preschool: [
+    { area: 'motor', what: 'Hops and balances on one foot', typicalWindowMonths: [36, 60], note: CONFIRM_WITH_PROVIDER },
+    { area: 'independence', what: 'Dresses with little help', typicalWindowMonths: [36, 60], note: CONFIRM_WITH_PROVIDER },
+    { area: 'language', what: 'Tells a short story about their day', typicalWindowMonths: [42, 66], note: CONFIRM_WITH_PROVIDER },
+    { area: 'social', what: 'Plays cooperatively and takes turns', typicalWindowMonths: [42, 66], note: CONFIRM_WITH_PROVIDER },
+    { area: 'cognitive', what: 'Draws a person with several body parts', typicalWindowMonths: [48, 72], note: CONFIRM_WITH_PROVIDER },
+  ],
   child: [
     { area: 'cognitive', what: 'Begins reading simple words', typicalWindowMonths: [60, 84], note: CONFIRM_WITH_PROVIDER },
     { area: 'motor', what: 'Rides a bike without training wheels', typicalWindowMonths: [60, 96], note: CONFIRM_WITH_PROVIDER },
@@ -109,28 +116,17 @@ const MILESTONES_BY_STAGE: Record<FamilyStage, readonly Milestone[]> = {
 };
 
 /**
- * VIL-260 · WS5 — the preschool years, INSIDE the child stage.
+ * Where school-age content begins, which is NOT where the preschool stage ends.
  *
- * `deriveStage` runs 'child' from 48 months to twelve, which is one bucket over
- * two different childhoods: the four-year-old whose milestone list began a year
- * after their age, and the eight-year-old it was written for. The stage is not
- * changed here — the four values are a persisted, teen-gating vocabulary — so
- * these lists are selected by AGE within the stage instead.
- *
- * The 72-month boundary is not invented for this file: it is where the library
- * systems put school-age (`SCHOOL_AGE` in library-systems.ts), and it is where
- * our own published guidance says a four- or five-year-old is still covered by
- * the under-five advice rather than the school-age advice.
+ * VIL-266 gave preschool a real stage at 48–59 months, so the 48–59 half of WS5's
+ * old `child`-and-under-72mo special case is gone: those children now select their
+ * content by stage like everyone else. What the stage does NOT subsume is 60–71
+ * months. Those children are stage 'child', but the 72-month line is where the
+ * library systems put school-age (`SCHOOL_AGE` in library-systems.ts) and where our
+ * own published guidance stops covering a five-year-old with under-five advice.
+ * So the sub-band survives, narrowed to the one year it still explains.
  */
 export const SCHOOL_AGE_START_MONTHS = 72;
-
-const PRESCHOOL_MILESTONES: readonly Milestone[] = [
-  { area: 'motor', what: 'Hops and balances on one foot', typicalWindowMonths: [36, 60], note: CONFIRM_WITH_PROVIDER },
-  { area: 'independence', what: 'Dresses with little help', typicalWindowMonths: [36, 60], note: CONFIRM_WITH_PROVIDER },
-  { area: 'language', what: 'Tells a short story about their day', typicalWindowMonths: [42, 66], note: CONFIRM_WITH_PROVIDER },
-  { area: 'social', what: 'Plays cooperatively and takes turns', typicalWindowMonths: [42, 66], note: CONFIRM_WITH_PROVIDER },
-  { area: 'cognitive', what: 'Draws a person with several body parts', typicalWindowMonths: [48, 72], note: CONFIRM_WITH_PROVIDER },
-];
 /** Curated "what matters now / what's next" guidance for a stage. */
 export interface StageGuidance {
   whatsNow: readonly string[];
@@ -157,6 +153,15 @@ const GUIDANCE_BY_STAGE: Record<FamilyStage, StageGuidance> = {
     whatsNext:
       'By around age four, your child moves into the preschool years — pretend play, first friendships, and getting ready for school.',
   },
+  preschool: {
+    whatsNow: [
+      'Pretend play is the work of these years — let it run, and join in when you’re invited.',
+      'Read together every day and talk about the pictures; this is where early literacy starts.',
+      'Small self-help jobs — coat, shoes, pouring, tidying — build the independence school asks for.',
+    ],
+    whatsNext:
+      'Around age six, your child becomes school-age — friendships, reading, and a longer day away from home.',
+  },
   child: {
     whatsNow: [
       'School and friendships shape these years — stay curious about both.',
@@ -177,42 +182,32 @@ const GUIDANCE_BY_STAGE: Record<FamilyStage, StageGuidance> = {
   },
 };
 
-/** The preschool half of the child stage (see SCHOOL_AGE_START_MONTHS). Play,
- * self-help and getting ready for school — not homework and screen-time caps. */
-const PRESCHOOL_GUIDANCE: StageGuidance = {
-  whatsNow: [
-    'Pretend play is the work of these years — let it run, and join in when you’re invited.',
-    'Read together every day and talk about the pictures; this is where early literacy starts.',
-    'Small self-help jobs — coat, shoes, pouring, tidying — build the independence school asks for.',
-  ],
-  whatsNext:
-    'Around age six, your child becomes school-age — friendships, reading, and a longer day away from home.',
-};
-
 /**
- * The milestone list for a child's actual age. Only the child stage splits: see
- * SCHOOL_AGE_START_MONTHS for why the four-value stage is not the right grain for
- * a four-year-old, and why it is nonetheless left alone.
+ * A five-year-old is stage 'child' but has not started school. Both content
+ * tables already hold the right lists under 'preschool', so the residual
+ * 60–71-month band reads from there rather than keeping a second copy.
  */
+function readsAsPreschool(stage: FamilyStage, ageMonths: number): boolean {
+  return stage === 'child' && ageMonths < SCHOOL_AGE_START_MONTHS;
+}
+
 function milestonesFor(stage: FamilyStage, ageMonths: number): readonly Milestone[] {
-  if (stage === 'child' && ageMonths < SCHOOL_AGE_START_MONTHS) return PRESCHOOL_MILESTONES;
-  return MILESTONES_BY_STAGE[stage];
+  return MILESTONES_BY_STAGE[readsAsPreschool(stage, ageMonths) ? 'preschool' : stage];
 }
 
 function guidanceFor(stage: FamilyStage, ageMonths: number): StageGuidance {
-  if (stage === 'child' && ageMonths < SCHOOL_AGE_START_MONTHS) return PRESCHOOL_GUIDANCE;
-  return GUIDANCE_BY_STAGE[stage];
+  return GUIDANCE_BY_STAGE[readsAsPreschool(stage, ageMonths) ? 'preschool' : stage];
 }
 
 /**
- * What to CALL this child's phase in parent-facing copy. A label, deliberately
- * not a stage: 'preschool' has no `FamilyStage` value, is never stored, and never
- * gates anything — it exists so a four-year-old stops being badged "school-age"
- * on a page that also shows them preschool guidance.
+ * What to CALL this child's phase in parent-facing copy. Still a label rather
+ * than a straight stage echo: 'child' has to split, because a five-year-old
+ * should not be badged "school-age" on a page that also shows them preschool
+ * guidance (see SCHOOL_AGE_START_MONTHS).
  */
 export function stageDisplayLabel(stage: FamilyStage, ageMonths: number): string {
   if (stage === 'child') {
-    return ageMonths < SCHOOL_AGE_START_MONTHS ? 'preschool' : 'school-age';
+    return readsAsPreschool(stage, ageMonths) ? 'preschool' : 'school-age';
   }
   return stage;
 }

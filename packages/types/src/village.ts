@@ -22,6 +22,16 @@ export interface DiscoveryQuery {
   areaCoarse: string;
   /** The child's derived stage — drives stage-appropriateness of results. */
   stage: FamilyStage;
+  /**
+   * The child's age in completed months, when the caller knows it. A stage is a
+   * band; discovery reads better with the exact age inside it, so this is passed
+   * alongside `stage` rather than instead of it.
+   *
+   * Explicitly nullable rather than optional: the pre-auth preview has a stage
+   * the visitor picked and NO date of birth (rule #1 — no DOB before signup), so
+   * "no age" is a real state a caller must name, never one it can forget.
+   */
+  ageMonths: number | null;
   /** Free-form interest tags (e.g. "music", "swimming") to bias discovery. */
   interests: string[];
   /** Upper bound on results the caller wants back. */
