@@ -18,6 +18,7 @@ function dobForStage(stage: FamilyStage, now = new Date('2026-06-17T00:00:00.000
   const yearsAgo: Record<FamilyStage, number> = {
     newborn: 0,
     toddler: 2,
+    preschool: 4,
     child: 7,
     teenager: 15,
   };
@@ -53,6 +54,59 @@ describe('selectDiscoveryInputs (FIX 1, rule #1)', () => {
 
     expect(result.stages).toEqual([]);
     expect(result.interests).toEqual([]);
+  });
+
+  /**
+   * VIL-266 — discovery runs once per stage, so the age it carries must belong to
+   * a child IN that stage. A single family-wide age would hand the school-age run
+   * a preschooler's age, which is the bug this ticket exists to remove.
+   */
+  // Explicit day-1 birthdates rather than dobForStage: its whole-year arithmetic
+  // lands a "4-year-old" exactly ON the 48-month anniversary, where a one-day
+  // timezone shift flips preschool to toddler. Day-1 births clear every boundary.
+  const PRESCHOOL_DOB = '2022-06-01'; // 48mo at NOW
+  const SCHOOL_AGE_DOB = '2019-06-01'; // 84mo at NOW
+  const TODDLER_DOB = '2024-06-01'; // 24mo at NOW
+
+  it('pairs every stage with the age of its own youngest child', () => {
+    const result = selectDiscoveryInputs(
+      [
+        { dateOfBirth: SCHOOL_AGE_DOB, interests: [] },
+        { dateOfBirth: PRESCHOOL_DOB, interests: [] },
+      ],
+      NOW,
+    );
+
+    expect([...result.ageMonthsByStage.keys()].sort()).toEqual(['child', 'preschool']);
+    expect(result.ageMonthsByStage.get('preschool')).toBe(48);
+    expect(result.ageMonthsByStage.get('child')).toBe(84);
+  });
+
+  it('keeps the age map keyed 1:1 with stages so a per-stage run can never miss one', () => {
+    const result = selectDiscoveryInputs(
+      [
+        { dateOfBirth: TODDLER_DOB, interests: [] },
+        { dateOfBirth: PRESCHOOL_DOB, interests: [] },
+        { dateOfBirth: dobForStage('teenager', NOW), interests: [] },
+      ],
+      NOW,
+    );
+
+    expect([...result.ageMonthsByStage.keys()]).toEqual(result.stages);
+    expect(result.ageMonthsByStage.has('teenager')).toBe(false);
+  });
+
+  it('reports the YOUNGEST age when two children share a stage', () => {
+    const result = selectDiscoveryInputs(
+      [
+        { dateOfBirth: '2021-06-01', interests: [] }, // 60mo → child
+        { dateOfBirth: '2018-06-01', interests: [] }, // 96mo → child
+      ],
+      NOW,
+    );
+
+    expect(result.stages).toEqual(['child']);
+    expect(result.ageMonthsByStage.get('child')).toBe(60);
   });
 });
 

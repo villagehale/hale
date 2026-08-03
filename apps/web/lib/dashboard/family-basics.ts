@@ -15,6 +15,7 @@ export type ChildRow = typeof schema.children.$inferSelect;
 const STAGE_LABEL: Record<FamilyStage, string> = {
   newborn: 'newborn',
   toddler: 'toddler',
+  preschool: 'preschool',
   child: 'child',
   teenager: 'teenager',
 };

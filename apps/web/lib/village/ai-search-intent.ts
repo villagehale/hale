@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { STAGE_BOUNDARIES_MONTHS } from '@hale/types';
+import { TEENAGER_START_MONTHS } from '@hale/types';
 import { SEASONS, type Season } from './visibility';
 
 /**
@@ -24,10 +24,9 @@ import { SEASONS, type Season } from './visibility';
 export const SEARCH_CATEGORIES = ['activities', 'childcare', 'resources', 'playgrounds'] as const;
 export type SearchCategory = (typeof SEARCH_CATEGORIES)[number];
 
-/** The teen boundary in completed months (STAGE_BOUNDARIES_MONTHS = [12,48,156]);
- * an age at/above it is a teenager and must never surface as a concrete age in the
- * echo (rule #1). */
-const TEEN_MONTHS = STAGE_BOUNDARIES_MONTHS[2];
+/** The teen boundary in completed months; an age at/above it is a teenager and must
+ * never surface as a concrete age in the echo (rule #1). */
+const TEEN_MONTHS = TEENAGER_START_MONTHS;
 
 /** A hard ceiling on how many match terms we keep from one prompt — a search is a
  * short phrase, not a paragraph; this bounds both the model's output and the

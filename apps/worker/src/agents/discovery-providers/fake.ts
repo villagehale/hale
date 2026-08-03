@@ -63,10 +63,28 @@ const SEEDS: readonly Seed[] = [
     title: 'Neighbourhood park and playground',
     description:
       'Unstructured outdoor play at a local park — free, flexible, and good for gross-motor practice.',
-    stages: ['toddler', 'child'],
+    stages: ['toddler', 'preschool', 'child'],
     interests: ['outdoor', 'nature', 'movement'],
     confidence: 0.8,
     coverageNote: 'Public parks exist in essentially every area.',
+  },
+  {
+    title: 'Library preschool storytime',
+    description:
+      'A songs-and-stories circle pitched at preschoolers — sitting, listening, and joining in, the run-up to school reading.',
+    stages: ['preschool'],
+    interests: ['books', 'reading', 'language', 'music'],
+    confidence: 0.7,
+    coverageNote: 'Public libraries widely run preschool storytime; days and branches vary.',
+  },
+  {
+    title: 'Introductory recreational sports class',
+    description:
+      'A first, low-pressure sports or gymnastics class for four- and five-year-olds — skills and taking turns, no standings.',
+    stages: ['preschool'],
+    interests: ['soccer', 'sports', 'movement', 'outdoor', 'dance'],
+    confidence: 0.6,
+    coverageNote: 'Community centres commonly run intro classes at this age; seasons vary.',
   },
   {
     title: 'Library after-school reading club',

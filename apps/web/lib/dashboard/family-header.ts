@@ -1,5 +1,5 @@
 import type { schema } from '@hale/db';
-import { type FamilyStage, deriveFamilyStages } from '@hale/types';
+import { FAMILY_STAGES, type FamilyStage, deriveFamilyStages } from '@hale/types';
 
 export type ChildRow = typeof schema.children.$inferSelect;
 
@@ -13,11 +13,10 @@ export type ChildRow = typeof schema.children.$inferSelect;
 const STAGE_LABEL: Record<FamilyStage, string> = {
   newborn: 'newborn',
   toddler: 'toddler',
+  preschool: 'preschool',
   child: 'child',
   teenager: 'teenager',
 };
-
-const STAGE_ORDER: readonly FamilyStage[] = ['newborn', 'toddler', 'child', 'teenager'];
 
 export interface ChildHeaderView {
   id: string;
@@ -44,7 +43,7 @@ export function toFamilyHeader(
   });
 
   const present = new Set(views.map((v) => v.stage));
-  return { children: views, stages: STAGE_ORDER.filter((stage) => present.has(stage)) };
+  return { children: views, stages: FAMILY_STAGES.filter((stage) => present.has(stage)) };
 }
 
 /**

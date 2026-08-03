@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { type FamilyStage, deriveStage } from '@hale/types';
+import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { type DiscoveryDeps, runDiscovery } from '../agents/discovery.js';
 import { runRoutine } from '../agents/routine.js';
@@ -41,11 +41,27 @@ const CANDIDATE_KIND = 'activity';
 export function selectDiscoveryInputs(
   children: ReadonlyArray<{ dateOfBirth: string | Date; interests: string[] }>,
   now: Date = new Date(),
-): { stages: FamilyStage[]; interests: string[] } {
+): {
+  stages: FamilyStage[];
+  interests: string[];
+  /**
+   * The youngest non-teen child's age in each stage. Discovery runs once per
+   * stage, so the age it carries has to be an age IN that stage — a family-wide
+   * age would hand the school-age run a preschooler's. Keyed 1:1 with `stages`
+   * and in the same order, so iterating it needs no lookup that could miss.
+   */
+  ageMonthsByStage: ReadonlyMap<FamilyStage, number>;
+} {
   const nonTeen = children.filter((c) => deriveStage(c.dateOfBirth, now) !== 'teenager');
-  const stages = [...new Set<FamilyStage>(nonTeen.map((c) => deriveStage(c.dateOfBirth, now)))];
+  const ageMonthsByStage = new Map<FamilyStage, number>();
+  for (const child of nonTeen) {
+    const stage = deriveStage(child.dateOfBirth, now);
+    const age = ageInMonths(child.dateOfBirth, now);
+    const youngest = ageMonthsByStage.get(stage);
+    if (youngest === undefined || age < youngest) ageMonthsByStage.set(stage, age);
+  }
   const interests = [...new Set(nonTeen.flatMap((c) => c.interests))];
-  return { stages, interests };
+  return { stages: [...ageMonthsByStage.keys()], interests, ageMonthsByStage };
 }
 
 export async function runVillageDiscovery(
@@ -76,7 +92,7 @@ export async function runVillageDiscovery(
     .from(schema.children)
     .where(eq(schema.children.familyId, job.familyId));
 
-  const { stages: discoveryStages, interests } = selectDiscoveryInputs(childRows);
+  const { stages: discoveryStages, interests, ageMonthsByStage } = selectDiscoveryInputs(childRows);
   if (discoveryStages.length === 0) {
     logger.info(
       { familyId: job.familyId },
@@ -98,9 +114,9 @@ export async function runVillageDiscovery(
 
   const candidates: Awaited<ReturnType<typeof runDiscovery>>['candidates'] = [];
   let provider = 'fake';
-  for (const stage of discoveryStages) {
+  for (const [stage, ageMonths] of ageMonthsByStage) {
     const result = await runDiscovery(
-      { familyId: job.familyId, areaCoarse, stage, interests },
+      { familyId: job.familyId, areaCoarse, stage, ageMonths, interests },
       discoveryDeps,
     );
     provider = result.provider;

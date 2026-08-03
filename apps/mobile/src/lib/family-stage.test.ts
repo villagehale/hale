@@ -5,9 +5,9 @@ import { deriveStage, stageFromAgeInMonths } from './family-stage';
 /**
  * The mobile replica of @hale/types deriveStage (the bundle can't import package
  * code — same hand-mirror rule as INTENTS). Expected stages are derived from the
- * spec boundaries [12, 48, 156] (newborn <12mo, toddler 12–47mo, child 48–155mo,
- * teenager 156mo+), never from the function's output — so this replica can't
- * silently drift from the canonical one.
+ * spec boundaries [12, 48, 60, 156] (newborn <12mo, toddler 12–47mo, preschool
+ * 48–59mo, child 60–155mo, teenager 156mo+), never from the function's output —
+ * so this replica can't silently drift from the canonical one.
  */
 
 describe('stageFromAgeInMonths', () => {
@@ -16,7 +16,9 @@ describe('stageFromAgeInMonths', () => {
     expect(stageFromAgeInMonths(11)).toBe('newborn');
     expect(stageFromAgeInMonths(12)).toBe('toddler');
     expect(stageFromAgeInMonths(47)).toBe('toddler');
-    expect(stageFromAgeInMonths(48)).toBe('child');
+    expect(stageFromAgeInMonths(48)).toBe('preschool');
+    expect(stageFromAgeInMonths(59)).toBe('preschool');
+    expect(stageFromAgeInMonths(60)).toBe('child');
     expect(stageFromAgeInMonths(155)).toBe('child');
     expect(stageFromAgeInMonths(156)).toBe('teenager');
     expect(stageFromAgeInMonths(216)).toBe('teenager');
@@ -34,8 +36,9 @@ describe('deriveStage', () => {
     expect(deriveStage('2025-06-16', now)).toBe('newborn');
   });
 
-  it('places a 4-year-old in child and a 13-year-old in teenager', () => {
-    expect(deriveStage('2022-06-15', now)).toBe('child'); // 48mo
+  it('places a 4-year-old in preschool, a 5-year-old in child, a 13-year-old in teenager', () => {
+    expect(deriveStage('2022-06-15', now)).toBe('preschool'); // 48mo
+    expect(deriveStage('2021-06-15', now)).toBe('child'); // 60mo
     expect(deriveStage('2013-05-15', now)).toBe('teenager'); // 157mo
   });
 });

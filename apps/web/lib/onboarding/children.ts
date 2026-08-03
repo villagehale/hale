@@ -1,5 +1,6 @@
 import {
   type ChildGender,
+  FAMILY_STAGES,
   type FamilyStage,
   deriveStage,
   isBeyondProductAge,
@@ -122,11 +123,9 @@ function toDateOnly(date: Date): string {
  * family with a newborn and a teenager spans both. Deduped and ordered so the
  * preview reads "newborn + teenager", never "teenager + newborn" or dupes.
  */
-const STAGE_ORDER: readonly FamilyStage[] = ['newborn', 'toddler', 'child', 'teenager'];
-
 export function unionStages(children: ReadonlyArray<{ stage: FamilyStage }>): FamilyStage[] {
   const present = new Set(children.map((c) => c.stage));
-  return STAGE_ORDER.filter((stage) => present.has(stage));
+  return FAMILY_STAGES.filter((stage) => present.has(stage));
 }
 
 /**

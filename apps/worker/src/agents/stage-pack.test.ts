@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { FamilyStage } from '@hale/types';
 import { stagePackFor, type StagePackText } from './stage-pack.js';
 
-// Distinct sentinel text per stage so ordering/dedup is observable without
+// Distinct sentinel text per pack so ordering/dedup is observable without
 // depending on the real pack copy.
 const PACKS: StagePackText = {
   newborn: 'NEWBORN-PACK',
@@ -30,6 +30,21 @@ describe('stagePackFor', () => {
     expect(stagePackFor(stages, PACKS)).toBe(
       '## Stage-aware context\n\nNEWBORN-PACK\n\n---\n\nTODDLER-PACK',
     );
+  });
+
+  /**
+   * VIL-266: `packs/preschool` is Langfuse-authored and not synced yet, so the
+   * preschool stage borrows the child pack — the same text a 48–59-month-old got
+   * when they still derived `child`. Asserted so the borrow is deliberate and the
+   * follow-up that repoints it has to change this expectation.
+   */
+  it('renders the child pack for a preschooler, unchanged from before the stage existed', () => {
+    expect(stagePackFor(['preschool'], PACKS)).toBe('## Stage-aware context\n\nCHILD-PACK');
+  });
+
+  it('contributes a borrowed pack once when preschool and child coexist', () => {
+    const out = stagePackFor(['child', 'preschool'], PACKS);
+    expect(out).toBe('## Stage-aware context\n\nCHILD-PACK');
   });
 
   it('throws when packs are neither injected nor loaded', () => {

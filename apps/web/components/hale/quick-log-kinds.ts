@@ -38,6 +38,7 @@ export type Kind =
 export const STAGE_KINDS: Record<FamilyStage, Kind[]> = {
   newborn: [FEED_EPISODE, NAP_EPISODE, DIAPER_EPISODE, MILESTONE_EPISODE],
   toddler: [FEED_EPISODE, NAP_EPISODE, DIAPER_EPISODE, MILESTONE_EPISODE],
+  preschool: [MILESTONE_EPISODE],
   child: [MILESTONE_EPISODE],
   teenager: [MILESTONE_EPISODE],
 };

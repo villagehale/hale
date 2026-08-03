@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { buildChildInserts, normalizeBiologicalSex, unionStages, validateChild } from './children.js';
 
 /**
- * Expectations are hand-derived from STAGE_BOUNDARIES_MONTHS = [12, 48, 156]:
- *   newborn <12mo, toddler 12–47mo, child 48–155mo, teenager 156mo+;
- *   18y = 216mo ceiling. `now` is pinned to 2026-06-15 so every age is exact.
+ * Expectations are hand-derived from STAGE_BOUNDARIES_MONTHS = [12, 48, 60, 156]:
+ *   newborn <12mo, toddler 12–47mo, preschool 48–59mo, child 60–155mo,
+ *   teenager 156mo+; 18y = 216mo ceiling. `now` is pinned to 2026-06-15 so every
+ *   age is exact.
  * Birthdates use a day-15 birth so anniversaries land cleanly.
  */
 const NOW = new Date(2026, 5, 15); // 2026-06-15
@@ -89,10 +90,12 @@ describe('validateChild', () => {
   });
 
   it('derives each stage at its lower boundary', () => {
-    // 2025-06-15 = 12mo → toddler; 2022-06-15 = 48mo → child; 2013-06-15 = 156mo → teenager.
+    // 2025-06-15 = 12mo → toddler; 2022-06-15 = 48mo → preschool;
+    // 2021-06-15 = 60mo → child; 2013-06-15 = 156mo → teenager.
     expect((validateChild({ name: 'a', dateOfBirth: '2025-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('toddler');
-    expect((validateChild({ name: 'b', dateOfBirth: '2022-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('child');
-    expect((validateChild({ name: 'c', dateOfBirth: '2013-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('teenager');
+    expect((validateChild({ name: 'b', dateOfBirth: '2022-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('preschool');
+    expect((validateChild({ name: 'c', dateOfBirth: '2021-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('child');
+    expect((validateChild({ name: 'd', dateOfBirth: '2013-06-15' }, NOW) as { child: { stage: string } }).child.stage).toBe('teenager');
   });
 
   it('trims the name', () => {

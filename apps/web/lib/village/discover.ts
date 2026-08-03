@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type Database, schema } from '@hale/db';
-import { type FamilyStage, deriveStage } from '@hale/types';
+import { FAMILY_STAGES, type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { recordAgentRun, sonnetCostUsd } from '~/lib/agent-run';
@@ -176,17 +176,20 @@ export type DiscoverResult =
  * skips the model call entirely. Replicates the worker's selectDiscoveryInputs;
  * stages are childhood-ordered so the "primary" stage is the youngest.
  */
-const STAGE_ORDER: readonly FamilyStage[] = ['newborn', 'toddler', 'child', 'teenager'];
-
 export function selectDiscoveryInputs(
   children: ReadonlyArray<{ dateOfBirth: string | Date; interests: string[] }>,
   now: Date = new Date(),
-): { stages: FamilyStage[]; interests: string[] } {
+): { stages: FamilyStage[]; interests: string[]; ageMonths: number | null } {
   const nonTeen = children.filter((c) => deriveStage(c.dateOfBirth, now) !== 'teenager');
   const present = new Set<FamilyStage>(nonTeen.map((c) => deriveStage(c.dateOfBirth, now)));
-  const stages = STAGE_ORDER.filter((stage) => present.has(stage));
+  const stages = FAMILY_STAGES.filter((stage) => present.has(stage));
   const interests = [...new Set(nonTeen.flatMap((c) => c.interests))];
-  return { stages, interests };
+  // The age that belongs to the PRIMARY stage. Stages are childhood-ordered, so
+  // the youngest non-teen child is by construction the one in stages[0] — the
+  // stage the run is composed for.
+  const ages = nonTeen.map((c) => ageInMonths(c.dateOfBirth, now));
+  const ageMonths = ages.length === 0 ? null : Math.min(...ages);
+  return { stages, interests, ageMonths };
 }
 
 function defaultLoadModel(): Promise<string> {
@@ -236,7 +239,7 @@ export async function discoverForFamily(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
 
-  const { stages, interests } = selectDiscoveryInputs(childRows);
+  const { stages, interests, ageMonths } = selectDiscoveryInputs(childRows);
   const primaryStage = stages[0];
   if (!primaryStage) {
     return { status: 'no_non_teen_children' };
@@ -248,6 +251,10 @@ export async function discoverForFamily(
   const userMessage = JSON.stringify({
     area_coarse: areaCoarse,
     stage: primaryStage,
+    // The exact age inside the stage band, omitted when unknown. Additive
+    // (VIL-266): today's prompt ignores the key; the Langfuse authoring that
+    // consumes it is a separate, drift-gated change (rule #2).
+    ...(ageMonths === null ? {} : { age_months: ageMonths }),
     interests,
     limit: DISCOVERY_LIMIT,
     // The discovery prompt documents season_hint as an optional input used only to

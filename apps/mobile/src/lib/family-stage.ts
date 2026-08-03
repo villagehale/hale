@@ -11,11 +11,11 @@
  * carries a coarse stage and never a date of birth (rule #1).
  */
 
-export type FamilyStage = 'newborn' | 'toddler' | 'child' | 'teenager';
+export type FamilyStage = 'newborn' | 'toddler' | 'preschool' | 'child' | 'teenager';
 
 /** Stage boundaries in completed months — mirrors STAGE_BOUNDARIES_MONTHS:
- * newborn <12mo, toddler 12–47mo, child 48–155mo, teenager 156mo+. */
-const STAGE_BOUNDARIES_MONTHS = [12, 48, 156] as const;
+ * newborn <12mo, toddler 12–47mo, preschool 48–59mo, child 60–155mo, teenager 156mo+. */
+const STAGE_BOUNDARIES_MONTHS = [12, 48, 60, 156] as const;
 
 interface CalendarDate {
   year: number;
@@ -53,9 +53,10 @@ function completedMonths(dateOfBirth: CalendarDate, now: CalendarDate): number {
 
 /** Map a completed-month age onto a stage. */
 export function stageFromAgeInMonths(months: number): FamilyStage {
-  const [toddlerStart, childStart, teenagerStart] = STAGE_BOUNDARIES_MONTHS;
+  const [toddlerStart, preschoolStart, childStart, teenagerStart] = STAGE_BOUNDARIES_MONTHS;
   if (months < toddlerStart) return 'newborn';
-  if (months < childStart) return 'toddler';
+  if (months < preschoolStart) return 'toddler';
+  if (months < childStart) return 'preschool';
   if (months < teenagerStart) return 'child';
   return 'teenager';
 }

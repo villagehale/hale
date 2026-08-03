@@ -1,4 +1,4 @@
-import { ageInMonths } from '@hale/types';
+import { ageInMonths, deriveStage } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import {
   deriveDateOfBirth,
@@ -61,6 +61,29 @@ describe('deriveDateOfBirth', () => {
     }
     // A year statement round-trips to its midpoint, by design.
     expect(ageInMonths(deriveDateOfBirth(48, 'years', now), now)).toBe(54);
+  });
+
+  /**
+   * VIL-266, end to end: a parent texting "she's four" is the exact case the
+   * preschool stage was added for. The stated age becomes a stored date_of_birth,
+   * and every downstream surface re-derives the stage from THAT — so this asserts
+   * the intake→storage→derivation chain lands on preschool rather than the
+   * school-age band a four-year-old used to be searched in.
+   */
+  it('lands a spoken "four years old" in the preschool stage, not school-age', () => {
+    const dob = deriveDateOfBirth(48, 'years', now);
+    expect(ageInMonths(dob, now)).toBe(54);
+    expect(deriveStage(dob, now)).toBe('preschool');
+  });
+
+  it('walks the stated-age band across the preschool boundaries', () => {
+    // Stated in MONTHS, so the date is exact and the stage is the spec's, not a midpoint's.
+    const stageForStatedMonths = (months: number) =>
+      deriveStage(deriveDateOfBirth(months, 'months', now), now);
+    expect(stageForStatedMonths(47)).toBe('toddler');
+    expect(stageForStatedMonths(48)).toBe('preschool');
+    expect(stageForStatedMonths(59)).toBe('preschool');
+    expect(stageForStatedMonths(60)).toBe('child');
   });
 });
 

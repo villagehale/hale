@@ -5,6 +5,7 @@ import {
   type CompanionView,
   companionForChild,
   deriveStage,
+  FAMILY_STAGES,
   type FamilyStage,
 } from '@hale/types';
 import type { TranscriptMessage } from './conversation';
@@ -168,8 +169,6 @@ export interface AgentContext {
   sourceNote: SourceNoteContext | null;
 }
 
-const STAGE_ORDER: readonly FamilyStage[] = ['newborn', 'toddler', 'child', 'teenager'];
-
 function toChildContext(row: { id: string; name: string; dateOfBirth: string }): ChildContext {
   const stage = deriveStage(row.dateOfBirth);
   if (stage === 'teenager') {
@@ -271,7 +270,7 @@ export async function loadAgentContext(
 
   const children = childRows.map(toChildContext);
   const presentStages = new Set(children.map((c) => c.stage));
-  const stages = STAGE_ORDER.filter((s) => presentStages.has(s));
+  const stages = FAMILY_STAGES.filter((s) => presentStages.has(s));
 
   const focusedChild = input.focusedChildId
     ? toFocusedChild(input.focusedChildId, childRows, now)

@@ -113,6 +113,7 @@ export function placePhrase(area: string | null, city: string | null): string | 
 const STAGE_WORDS: Record<FamilyStage, string> = {
   newborn: 'those first months with your little one',
   toddler: 'the toddler years',
+  preschool: 'the preschool years',
   child: 'these growing years',
   teenager: 'the teenage years',
 };
