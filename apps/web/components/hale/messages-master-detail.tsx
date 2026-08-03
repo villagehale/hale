@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { messageChip } from '~/components/hale/message-chip';
+import { TintChip } from '~/components/ui/tint-chip';
 import type { MessageView } from '~/lib/messages/mappers';
 
 const MSG_PARAM = 'msg';
@@ -11,6 +13,17 @@ const MSG_PARAM = 'msg';
  * a 1fr detail pane. This repo's Messages are Hale's notes to the family (digests +
  * the action lifecycle), not a two-way provider chat, so the honest adaptation is
  * list → note detail rather than fabricated conversation bubbles.
+ *
+ * VIL-209 W3 — the list is Shore's conversation-row grammar (apps/mobile's Messages
+ * screen): ONE flush-row surface whose rows are divided by the hairline token, each
+ * row a tint-chip mark beside the note's label over a clamped preview, with the
+ * stamp in a right column. The mark comes from the SAME semantic map the mobile
+ * screen uses (`messageChip`), so a note reads identically on both.
+ *
+ * Every note on this surface is FROM Hale — there is no inbound lane here to
+ * distinguish (the SMS conversation of record lives in `channel_messages`, which no
+ * web surface reads yet), so the row leads with what the note IS rather than with a
+ * sender, and nothing here pretends to be a two-way thread.
  *
  * The rule-#1/#4 contract from the old card grid is preserved: only a drafted row's
  * DETAIL leads anywhere — to /approvals, where the parent decides — and a redacted
@@ -44,7 +57,7 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
   return (
     <div className="messages-md rise rise-2">
       <nav className="messages-list" aria-label="your notes from Hale">
-        <ul className="flex flex-col gap-1">
+        <ul className="thread-list">
           {messages.map((message) => (
             <li key={message.id}>
               <button
@@ -54,12 +67,15 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
                 aria-controls="message-detail"
                 className="thread-item"
               >
-                <span className="flex items-baseline justify-between gap-3">
-                  <span className="eyebrow text-spruce">{message.eyebrow}</span>
-                  <span className="meta tabular shrink-0">{message.when}</span>
-                </span>
-                <span className="thread-item-snippet" data-hale-pii>
-                  {message.body}
+                <TintChip {...messageChip(message)} />
+                <span className="thread-item-body">
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="eyebrow text-ink">{message.eyebrow}</span>
+                    <span className="meta tabular shrink-0 text-ink-3">{message.when}</span>
+                  </span>
+                  <span className="thread-item-snippet mt-0.5" data-hale-pii>
+                    {message.body}
+                  </span>
                 </span>
               </button>
             </li>
@@ -68,11 +84,14 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
       </nav>
 
       <article id="message-detail" className="messages-detail card" aria-live="polite">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="eyebrow text-spruce">{active.eyebrow}</span>
-          <span className="meta tabular shrink-0">{active.when}</span>
+        <div className="flex items-start gap-3">
+          <TintChip {...messageChip(active)} />
+          <div className="min-w-0 flex-1 flex items-baseline justify-between gap-3">
+            <span className="eyebrow text-ink">{active.eyebrow}</span>
+            <span className="meta tabular shrink-0 text-ink-3">{active.when}</span>
+          </div>
         </div>
-        <p className="text-lg text-spruce leading-relaxed mt-3" data-hale-pii>
+        <p className="text-lg text-ink leading-relaxed mt-4" data-hale-pii>
           {active.body}
         </p>
         {active.actionState === 'drafted_for_approval' ? (

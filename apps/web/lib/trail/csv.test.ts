@@ -14,6 +14,7 @@ function entry(overrides: Partial<TrailView> = {}): TrailView {
     noun: 'draft',
     link: '/approvals',
     childLabel: null,
+    teenRedacted: false,
     ...overrides,
   };
 }

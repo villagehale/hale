@@ -21,10 +21,10 @@ export default async function MessagesPage() {
         <MessagesMasterDetail messages={messages} />
       ) : (
         <section className="rise rise-2 panel-oat px-6 py-12 lg:py-16 text-center">
-          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
+          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-ink">
             Nothing new from Hale yet.
           </p>
-          <p className="meta mt-4 text-slate-green">
+          <p className="meta mt-4 text-ink-2">
             your daily brief and anything Hale drafts or handles will land here.
           </p>
         </section>
