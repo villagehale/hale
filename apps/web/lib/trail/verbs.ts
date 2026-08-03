@@ -124,6 +124,11 @@ export const AUDIT_VERBS = [
   'account_deletion_scheduled',
   // ── web coach (Ask Hale) ────────────────────────────────────────────────
   'ask_hale.action_drafted',
+  // The same inline-action spine under its other two origins (inline-action.ts
+  // ORIGIN_STAMPS). Both were written but uncurated, so an MCP proposal and a
+  // cron-minted registration shortlist both degraded to "recorded an update".
+  'mcp.action_drafted',
+  'registration_sweep.action_drafted',
   'coach_turn_deleted',
   'coach_conversation_erased',
   // ── web teen access ─────────────────────────────────────────────────────
@@ -229,6 +234,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   coach_turn_deleted: { sentence: 'you removed a message from Hale', family: 'done' },
   coach_conversation_erased: { sentence: 'you erased your Hale conversation', family: 'done' },
   'ask_hale.action_drafted': { sentence: 'Hale drafted an action for you', family: 'note' },
+  'mcp.action_drafted': {
+    sentence: 'your assistant proposed an action and Hale held it for you',
+    family: 'awaiting',
+  },
+  'registration_sweep.action_drafted': {
+    sentence: 'Hale found a registration window and drafted a shortlist for you',
+    family: 'note',
+  },
   // ── household / onboarding ──────────────────────────────────────────────
   family_created: { sentence: 'you set up your family', family: 'done' },
   tos_accepted: { sentence: 'you accepted the terms', family: 'done' },

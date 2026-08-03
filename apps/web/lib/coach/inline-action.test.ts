@@ -328,6 +328,40 @@ describe('draftInlineAction', () => {
       expect.objectContaining({ actionTaken: 'mcp.action_drafted' }),
     );
   });
+
+  // VIL-264: the sweep mints shortlists from municipal rows on a cron. Stamping them
+  // `ask_hale` made the trail — the PIPEDA right-to-access artifact — claim a parent
+  // asked for something no parent said. Provenance only, but the trail's whole value
+  // is that it is true.
+  it('stamps the registration sweep origin so a cron-minted draft never claims a parent conversation', async () => {
+    const capture = freshCapture();
+    const db = fakeDb(capture);
+
+    await draftInlineAction(
+      {
+        familyId: FAMILY_ID,
+        actor: ACTOR,
+        intentKind: 'registration_shortlist',
+        childId: null,
+        sourceAnswer: 'Kingston opens fall registration on Sept 3.',
+        origin: 'registration_sweep',
+      },
+      db,
+      approvingReviewer(),
+      NOW,
+    );
+
+    expect(capture.events[0]).toMatchObject({
+      source: 'registration_sweep',
+      eventType: 'registration_sweep.shortlist_minted',
+      status: 'drafted',
+    });
+    // Rule #4 is unchanged by the origin: a cron-minted draft is still held.
+    expect(capture.actions[0]).toMatchObject({ userVisibleState: 'drafted_for_approval' });
+    expect(capture.audit).toContainEqual(
+      expect.objectContaining({ actionTaken: 'registration_sweep.action_drafted' }),
+    );
+  });
 });
 
 /**

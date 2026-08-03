@@ -24,14 +24,40 @@ import { actionTypeForIntent, labelForIntent } from './action-intent';
  * own) rather than reimplementing it.
  *
  * Why a synthetic event: an `actions` row requires an `event_id` (the pipeline's
- * one-action-per-event invariant). A chat-originated action has no inbound signal,
- * so we record one whose source is `ask_hale` — the trail shows the action came
- * from a conversation, not an email/calendar signal.
+ * one-action-per-event invariant). An action minted here has no inbound signal, so we
+ * record one whose source is the ORIGIN that asked for it (see ORIGIN_STAMPS) — the
+ * trail shows whether a parent asked in a conversation or a cron composed it, never an
+ * email/calendar signal.
  *
  * The intent kind is mapped to a known ActionType server-side (actionTypeForIntent)
  * so a client can never ask the engine to draft an arbitrary action type — an
  * unknown kind throws rather than drafting anything.
  */
+
+/**
+ * Which trusted interface asked for the draft. `ask_hale` and `mcp` are a person or
+ * their assistant asking in a conversation; `registration_sweep` is a cron composing
+ * from municipal rows with no one in the loop.
+ */
+export type InlineActionOrigin = 'ask_hale' | 'mcp' | 'registration_sweep';
+
+/**
+ * The provenance an origin stamps on the trail: the synthetic event's type and the
+ * audit verb. A Record rather than a chain of ternaries, because the ternaries this
+ * replaced defaulted every unlisted origin to `ask_hale` — so adding an origin and
+ * forgetting to branch on it silently claimed a parent conversation (VIL-264, the
+ * registration sweep). Typed against the union, a new origin without its stamps is a
+ * COMPILE error instead. Every verb here must also be registered in the trail's
+ * AUDIT_VERBS, or the row degrades to the neutral "recorded an update" sentence.
+ */
+const ORIGIN_STAMPS: Record<InlineActionOrigin, { eventType: string; auditVerb: string }> = {
+  ask_hale: { eventType: 'ask_hale.action_intent', auditVerb: 'ask_hale.action_drafted' },
+  mcp: { eventType: 'mcp.action_proposal', auditVerb: 'mcp.action_drafted' },
+  registration_sweep: {
+    eventType: 'registration_sweep.shortlist_minted',
+    auditVerb: 'registration_sweep.action_drafted',
+  },
+};
 
 export interface InlineActionInput {
   familyId: string;
@@ -43,9 +69,9 @@ export interface InlineActionInput {
   childId: string | null;
   /** The answer text that implied the action — carried as the draft's rationale. */
   sourceAnswer: string;
-  /** Which trusted interface requested the draft. Both reuse this same approval
-   * spine; the origin only changes provenance/audit labels. */
-  origin?: 'ask_hale' | 'mcp';
+  /** Which trusted interface requested the draft. All of them reuse this same
+   * approval spine; the origin only changes provenance/audit labels. */
+  origin?: InlineActionOrigin;
   /** The drafted item's title, for a caller that knows a better one than the answer's
    * own first line (the registration sweep names the municipality and the cycle). */
   title?: string;
@@ -108,8 +134,7 @@ export async function draftInlineAction(
   // A unique synthetic id keeps the dedup hash distinct per draft so re-tapping a
   // chip mints a fresh draft rather than colliding on the one-action-per-event index.
   const origin = input.origin ?? 'ask_hale';
-  const eventType = origin === 'mcp' ? 'mcp.action_proposal' : 'ask_hale.action_intent';
-  const auditAction = origin === 'mcp' ? 'mcp.action_drafted' : 'ask_hale.action_drafted';
+  const { eventType, auditVerb: auditAction } = ORIGIN_STAMPS[origin];
   const dedupHash = dedupHashFor(input.familyId, origin, `${input.intentKind}|${randomUUID()}`);
 
   // teen_content = age-derived at the write site: a synthetic event scoped to a 13+

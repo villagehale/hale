@@ -650,6 +650,7 @@ async function runToddlerJourney(): Promise<Journey> {
           sourceAnswer: input.rationale,
           title: input.title,
           sourceUrl: input.sourceUrl,
+          origin: 'registration_sweep',
           contentProvenance: 'hale_authored',
         },
         // SEAM: the reviewer's check_action_idempotency asks "has this family done
