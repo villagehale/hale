@@ -123,6 +123,27 @@ describe('runRegistrationVerifySweep — a discrepancy NEVER writes', () => {
     expect(h.send).toHaveBeenCalledTimes(1);
     expect(String(h.send.mock.calls[0]?.[1])).toContain('2026-08-18');
   });
+
+  it('says so when the digest was refused before it left (VIL-267)', async () => {
+    // `false` is the sender's "no founder address / no Resend key" answer — it does not
+    // throw, so without this the sweep finds discrepancies, tells nobody, and returns a
+    // summary indistinguishable from one that was delivered.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const h = harness({
+      sender: { send: vi.fn(async () => false) },
+      extract: vi.fn(async () =>
+        reading({
+          generalOpen: { date: '2026-08-18', time: '06:30' },
+          evidence: 'Register starting Aug. 11 at 6:30 AM',
+        }),
+      ),
+    });
+
+    const summary = await runRegistrationVerifySweep({} as never, h.deps, NOW);
+
+    expect(summary.discrepancies).toBe(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('digest not delivered'));
+  });
 });
 
 describe('runRegistrationVerifySweep — per-row isolation (rule #8)', () => {

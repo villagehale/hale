@@ -33,7 +33,10 @@ export interface DiscoveryRunResult {
 }
 
 /** Minimal producer surface: enqueue a background feed-rank job for a family
- * whose candidate set just changed. Injected so the cron is unit-testable. */
+ * whose candidate set just changed. Injected so the cron is unit-testable, and
+ * REQUIRED (VIL-267): it was optional, and a run without it discovered candidates,
+ * reported them in the summary, and left the feed to re-materialize never — the
+ * whole point of the run, skipped with nothing to see. */
 export interface RerankQueue {
   send(name: string, data: RerankJobPayload): Promise<string | null>;
 }
@@ -49,9 +52,9 @@ type NewPicksNotifier = (
 
 export async function runDiscoveryCron(
   database: Database,
+  rerankQueue: RerankQueue,
   deps: DiscoverDeps = defaultDiscoverDeps(),
   now: Date = new Date(),
-  rerankQueue?: RerankQueue,
   notifyNewPicks: NewPicksNotifier = notifyFamilyNewPicks,
 ): Promise<DiscoveryRunResult> {
   const familyIds = await selectFamiliesNeedingDiscovery(
@@ -69,9 +72,7 @@ export async function runDiscoveryCron(
       // rerank so the home feed re-materializes OUT of the request path. The
       // upsert short-circuits an unchanged set (rule #7), so an enqueue is cheap.
       if (result.status === 'discovered' && result.insertedCount > 0) {
-        if (rerankQueue) {
-          await rerankQueue.send('village.rerank', { family_id: familyId });
-        }
+        await rerankQueue.send('village.rerank', { family_id: familyId });
         // Tell the family's opted-in parents (coarse count + area only — rule #1),
         // at most once per family per day; a push failure must not abort the run,
         // so it's isolated from the discovery result.
