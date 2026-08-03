@@ -3051,180 +3051,200 @@ html, body, .sidebar, .panel, .card, .field {
  * column is wide enough (≥1280px),
  * a results+centre pair with the rail below at 1024–1279, and a list-first stack
  * with a collapsible map below 1024 — nothing overflows.
+ *
+ * VIL-209 W4 — MIGRATED into `@layer components` (globals-layer.test.ts ratchet)
+ * with the surface's own visual QA. Audited before the move: the only Tailwind
+ * utility that now outranks a rule here is one that already agreed with it
+ * (`flex`/`items-center`/`gap-2` on .village-rail-row), and the one rule that
+ * genuinely needed to beat the UNLAYERED .card — the selected-row highlight —
+ * was rewritten to an outline, a property .card does not set at all.
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-.village-3col {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-  align-items: start;
-}
-/* 1024–1279: results + centre; the rail drops to a full-width row below them. */
-@media (min-width: 1024px) {
+@layer components {
   .village-3col {
-    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-    column-gap: 1.5rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
   }
-  .village-rail { grid-column: 1 / -1; }
-}
-/* ≥1280: the full 330 | 1fr | 300 three-column layout (§4.5). */
-@media (min-width: 1280px) {
-  .village-3col {
-    grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 300px);
+  /* 1024–1279: results + centre; the rail drops to a full-width row below them. */
+  @media (min-width: 1024px) {
+    .village-3col {
+      grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+      column-gap: 1.5rem;
+    }
+    .village-rail { grid-column: 1 / -1; }
   }
-  .village-rail { grid-column: auto; }
-}
+  /* ≥1280: the full 330 | 1fr | 300 three-column layout (§4.5). */
+  @media (min-width: 1280px) {
+    .village-3col {
+      grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 300px);
+    }
+    .village-rail { grid-column: auto; }
+  }
 
-/* ── Right rail ─────────────────────────────────────────────────────────── */
-.village-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-/* At the 2-column stage the rail sits full-width below, so its sections read as a
- * row rather than a tall stack. */
-@media (min-width: 1024px) and (max-width: 1279.98px) {
-  .village-rail { flex-direction: row; flex-wrap: wrap; }
-  .village-rail > * { flex: 1 1 220px; min-width: 0; }
-}
-.village-rail-section { min-width: 0; }
+  /* ── Right rail ─────────────────────────────────────────────────────────── */
+  .village-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  /* At the 2-column stage the rail sits full-width below, so its sections read as a
+   * row rather than a tall stack. */
+  @media (min-width: 1024px) and (max-width: 1279.98px) {
+    .village-rail { flex-direction: row; flex-wrap: wrap; }
+    .village-rail > * { flex: 1 1 220px; min-width: 0; }
+  }
+  .village-rail-section { min-width: 0; }
 
-.village-rail-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.5rem 0.3rem;
-  border-radius: var(--r-sm);
-}
-.village-rail-row-button {
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition: background 220ms var(--ease-breathe);
-}
-.village-rail-row-button:hover { background: var(--color-chrome); }
-.village-rail-row-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-apricot-deep);
-}
-.village-rail-row-title {
-  display: block;
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-spruce);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+  .village-rail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.3rem;
+    border-radius: var(--r-sm);
+  }
+  .village-rail-row-button {
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background 220ms var(--ease-breathe);
+  }
+  .village-rail-row-button:hover { background: var(--color-chrome); }
+  .village-rail-row-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-apricot-deep);
+  }
+  .village-rail-row-title {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--color-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
-/* ── One ranked recommendation — the amber "tip" family (§4.5) ───────────── */
-.village-rec {
-  padding: 1.1rem 1.15rem 1.2rem;
-  border-radius: var(--r-xl);
-  /* Design is light-only: a warm cream gradient. Dark mode uses the amber-tint
-   * role token so the card stays legible instead of glaring (cream ink 13.1:1 on
-   * #33260F). */
-  background: linear-gradient(180deg, #FFF9F1, #FBEDDC);
-}
-.dark .village-rec { background: var(--color-amber-tint); }
-/* amber INK (not the base amber): base amber #B26B1F is only 3.6–4.0:1 on the cream
- * gradient (sub-AA); the ink #8A5214 is 5.5:1 — matching the .hale-tip-eyebrow family. */
-.village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber-ink); }
-.village-rec-title { font-size: 1.1rem; line-height: 1.25; }
-.village-rec-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  margin-top: 0.75rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  /* Brand ink on the warm card: navy in light (12.7:1 on the cream gradient), cream
-   * in dark (13.1:1) — AA in both modes, unlike the sub-4.5 amber-on-cream a body
-   * link would be. */
-  color: var(--color-brand);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.village-rec-link:hover { text-decoration: underline; }
-.village-rec-link:focus-visible {
-  outline: none;
-  border-radius: var(--r-sm);
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
-}
+  /* ── One ranked recommendation — Shore's CREAM highlight card (§4.5) ───────
+   * W1 named `cream` / `cream-border` (DESIGN.md's "great news" tile) and shipped
+   * no consumer. This is it: the one warm card in the app, and the surface that
+   * used to carry the village block's ONLY colour literal — a hardcoded cream
+   * gradient plus a `.dark` override to keep it from glaring. Both are gone; the
+   * card now derives in each mode from the role token, like everything else.
+   * ink on cream 14.07 light / 14.07 dark, ink-2 8.05 / 10.49, border 1.16 / 1.23. */
+  .village-rec {
+    padding: 1.1rem 1.15rem 1.2rem;
+    border-radius: var(--r-xl);
+    background: var(--color-cream);
+    border: 1px solid var(--color-cream-border);
+  }
+  /* The tip INK, not the base accent: `cream-accent` (#B26B1F) is only 3.6–4.0:1
+   * on cream, so the eyebrow keeps the darker ink at 5.89:1 light / 7.23:1 dark —
+   * the same pair `.hale-tip-eyebrow` uses. */
+  .village-rec-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--color-amber-ink); }
+  /* Shore's title role (22/28, 500) — a recommendation is a card confirmation, the
+   * one place besides a page h1 where the serif carries. */
+  .village-rec-title { font-size: 1.375rem; font-weight: 500; line-height: 1.75rem; }
+  .village-rec-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-top: 0.75rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    /* Brand on the warm card: navy in light (13.55:1 on cream), periwinkle in dark
+     * (6.75:1) — AA in both modes, unlike the sub-4.5 accent-on-cream a body link
+     * would be. */
+    color: var(--color-brand);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .village-rec-link:hover { text-decoration: underline; }
+  .village-rec-link:focus-visible {
+    outline: none;
+    border-radius: var(--r-sm);
+    box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
+  }
 
-/* ── Results-list row: a selectable title inside the card, and the selected
- * card's highlight (mirrored by the map marker). ──────────────────────────── */
-.village-row-title {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-}
-.village-row-title:hover > span:first-child { color: var(--color-apricot-deep); }
-.village-row-title:focus-visible {
-  outline: none;
-  border-radius: var(--r-sm);
-  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
-}
-.village-row-selected {
-  border-color: var(--color-brand);
-  box-shadow: 0 0 0 1px var(--color-brand);
-}
+  /* ── Results-list row: a selectable title inside the card, and the selected
+   * card's highlight (mirrored by the map marker). ──────────────────────────── */
+  .village-row-title {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+  }
+  .village-row-title:hover > span:first-child { color: var(--color-apricot-deep); }
+  .village-row-title:focus-visible {
+    outline: none;
+    border-radius: var(--r-sm);
+    box-shadow: 0 0 0 2px var(--color-card), 0 0 0 4px var(--color-apricot-deep);
+  }
+  /* The selected result, mirrored by the map marker. An OUTLINE rather than the
+   * border-colour + ring pair it used to be: `.card` is still unlayered and its
+   * `border` shorthand carries a border-colour, so inside a layer this rule could
+   * no longer win that property — and outline is a property .card never sets. It
+   * is also simply the better ring: one declaration, drawn outside the border box
+   * so it can't be clipped, and it takes no layout space. */
+  .village-row-selected {
+    outline: 2px solid var(--color-brand);
+    outline-offset: -1px;
+  }
 
-/* ── Map panel (collapsible below 1024px) ───────────────────────────────── */
-.village-map-panel { min-width: 0; }
+  /* ── Map panel (collapsible below 1024px) ───────────────────────────────── */
+  .village-map-panel { min-width: 0; }
 
-/* The brand cast over the raster map. Light: a warm-linen multiply so it reads as part
- * of the product. Dark: a dark ink cast (the map itself also switches to the dark style
- * array) so it's not a bright block against the dark canvas (WEB-14). */
-.village-map-tint { background: #f1eadb; mix-blend-mode: multiply; opacity: 0.5; }
-.dark .village-map-tint { background: var(--color-canvas); mix-blend-mode: normal; opacity: 0.3; }
-.village-map-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  min-height: 44px;
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--color-rule);
-  border-radius: var(--r-md);
-  background: var(--color-oat);
-  color: var(--color-slate-green);
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
-}
-.village-map-toggle:hover { background: var(--color-chrome); color: var(--color-spruce); }
-.village-map-toggle:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
-}
-.village-map-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  padding: 1.5rem;
-  text-align: center;
-}
-@media (min-width: 640px) {
-  .village-map-placeholder { aspect-ratio: 16 / 9; }
-}
-/* Desktop board: the map is a fixed 560px (§4.5), so the pre-mount placeholder
- * matches that height — no layout jump when the real map replaces it. */
-@media (min-width: 1024px) {
-  .village-map-placeholder { aspect-ratio: auto; height: 35rem; }
+  /* The brand cast over the raster map. Light: a warm-linen multiply so it reads as part
+   * of the product. Dark: a dark ink cast (the map itself also switches to the dark style
+   * array) so it's not a bright block against the dark canvas (WEB-14). */
+  .village-map-tint { background: #f1eadb; mix-blend-mode: multiply; opacity: 0.5; }
+  .dark .village-map-tint { background: var(--color-canvas); mix-blend-mode: normal; opacity: 0.3; }
+  .village-map-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--color-rule);
+    border-radius: var(--r-md);
+    background: var(--color-card);
+    color: var(--color-ink-2);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 220ms var(--ease-breathe), color 220ms var(--ease-breathe);
+  }
+  .village-map-toggle:hover { background: var(--color-chrome); color: var(--color-ink); }
+  .village-map-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
+  }
+  .village-map-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    padding: 1.5rem;
+    text-align: center;
+  }
+  @media (min-width: 640px) {
+    .village-map-placeholder { aspect-ratio: 16 / 9; }
+  }
+  /* Desktop board: the map is a fixed 560px (§4.5), so the pre-mount placeholder
+   * matches that height — no layout jump when the real map replaces it. */
+  @media (min-width: 1024px) {
+    .village-map-placeholder { aspect-ratio: auto; height: 35rem; }
+  }
 }
 
 
@@ -3551,70 +3571,81 @@ html, body, .sidebar, .panel, .card, .field {
   color: var(--color-faded-sage);
 }
 
-/* ── Care team & contacts: repeat(3,1fr) chips → 1 col below md ────────────── */
-.care-team {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-}
-@media (min-width: 768px) {
-  .care-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-.care-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--color-rule);
-  border-radius: var(--r-md);
-  background: var(--color-tile);
-}
-.care-chip-avatar {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: var(--r-full);
-  background: var(--color-apricot-tint);
-  color: var(--color-apricot-deep);
-}
-.care-chip-name {
-  display: block;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--color-spruce);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The "You" self-marker badge. apricot-deep on apricot-tint is the established
- * accent-on-tint pair (already used at body sizes by .care-chip-avatar icons and
- * link text); at this 0.7rem/700 weight it holds AA in both themes because both
- * tokens re-point in .dark. */
-.care-chip-you {
-  margin-left: 0.4rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: var(--r-full);
-  background: var(--color-apricot-tint);
-  color: var(--color-apricot-deep);
-  font-size: 0.7rem;
-  font-weight: 700;
-  vertical-align: middle;
-}
-.care-chip-add {
-  border-style: dashed;
-  border-color: var(--color-rule-strong);
-  background: transparent;
-  color: var(--color-apricot-deep);
-  text-decoration: none;
-  transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
-}
-.care-chip-add:hover { background: var(--color-tile); border-color: var(--color-apricot-deep); }
-.care-chip-add:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+/* ── Care team & contacts: repeat(3,1fr) chips → 1 col below md ──────────────
+ * VIL-209 W4 — MIGRATED into `@layer components`. Every call site is the bare
+ * class (or `care-chip care-chip-add`, whose pair keeps its source order inside
+ * the layer), so nothing here competed with a utility.
+ *
+ * These are the family's REAL caregivers — the only member cards in the app — so
+ * this is where the village's people half lands on Shore: the bespoke round
+ * avatar becomes the shared `.tint-chip` (one geometry for every mark in the
+ * product), and the caregiving scope moves out of a caption-gray line into a
+ * `.pill-tint` badge, because "what this person can see" is not decorative
+ * subtext. */
+@layer components {
+  .care-team {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+  @media (min-width: 768px) {
+    .care-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  .care-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--color-rule);
+    border-radius: var(--r-md);
+    background: var(--color-tile);
+  }
+  .care-chip-name {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The "You" self-marker badge. apricot-deep on apricot-tint is the established
+   * accent-on-tint pair (also carried by link text); at this 0.7rem/700 weight it
+   * holds AA in both themes because both tokens re-point in .dark. */
+  .care-chip-you {
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--r-full);
+    background: var(--color-apricot-tint);
+    color: var(--color-apricot-deep);
+    font-size: 0.7rem;
+    font-weight: 700;
+    vertical-align: middle;
+  }
+  /* The scoped-role badge — what this caregiver's access IS, in the same pill
+   * vocabulary the receipts path uses for a scope tag (`.pill-tint`, ink on a
+   * chip ground, 12.90:1 light / 12.80:1 dark). Small-caps because it is a role,
+   * not a name. */
+  .care-chip-role {
+    margin-top: 0.3rem;
+    font-size: 0.6875rem;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+  }
+  .care-chip-add {
+    border-style: dashed;
+    border-color: var(--color-rule-strong);
+    background: transparent;
+    color: var(--color-apricot-deep);
+    text-decoration: none;
+    transition: background 220ms var(--ease-breathe), border-color 220ms var(--ease-breathe);
+  }
+  .care-chip-add:hover { background: var(--color-tile); border-color: var(--color-apricot-deep); }
+  .care-chip-add:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
+  }
 }
 
 
@@ -4134,5 +4165,91 @@ html, body, .sidebar, .panel, .card, .field {
     border: 1px solid var(--color-rule);
     border-radius: var(--r-sm);
     padding: 0.75rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WEB PHASE W4 — the note thread + village on Hale Shore.
+ * Inside `@layer components` (the rule for new CSS in this file). Every value is
+ * a role token; no new colour. The village blocks earlier in this file were
+ * MIGRATED into a layer by this phase rather than rewritten.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* ── The note thread (Messages detail) ────────────────────────────────────
+   * A Hale note read as the two-way exchange it already is on the backend. Shore's
+   * bubble grammar, ported from apps/mobile's thread screen: Hale on the left in
+   * the neutral chip ground with the top-left corner tightened, the parent on the
+   * right in brand with the bottom-right tightened — the tightened corner is what
+   * points a bubble at its sender. No iMessage blue anywhere. */
+  .note-thread {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-hairline);
+  }
+
+  .note-turns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  /* 16 with one corner tightened to 10 — the literal geometry of the native
+   * bubble (`rounded-[16px] rounded-tl-sm` on DESIGN.md's sm=10 ladder), carried
+   * as literals for the same reason `.tint-chip` carries 34/11: this app's radius
+   * handles are its own ladder and none of them is Shore's 10. */
+  .note-bubble {
+    max-width: 82%;
+    padding: 0.7rem 1rem;
+    border-radius: 16px;
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
+  /* Hale — ink on the neutral chip ground (12.90:1 light / 12.80:1 dark). */
+  .note-bubble-in {
+    align-self: flex-start;
+    border-top-left-radius: 10px;
+    background: var(--color-chip-gray);
+    color: var(--color-ink);
+  }
+
+  /* The parent — the brand fill with its own inverted label, the same pair
+   * `.btn-primary` uses (14.29:1 light / 6.18:1 dark). */
+  .note-bubble-out {
+    align-self: flex-end;
+    border-bottom-right-radius: 10px;
+    background: var(--color-brand);
+    color: var(--color-on-ink);
+  }
+
+  /* The honest-failure affordance sits INSIDE the failed answer bubble, so a
+   * retry is never mistaken for the next turn. */
+  .note-retry { display: block; margin-top: 0.35rem; font-size: 0.8125rem; }
+
+  /* The reply row. Deliberately borderless itself — the input is the app's own
+   * `.field`, so the field treatment (and the border-contrast gap VIL-273 tracks)
+   * stays ONE decision in one place rather than being re-toned per surface. */
+  .note-composer { display: flex; align-items: center; gap: 0.5rem; }
+
+  .note-composer-send {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 0;
+    border-radius: var(--r-md);
+    background: var(--color-brand);
+    color: var(--color-on-ink);
+    cursor: pointer;
+    transition: background 320ms var(--ease-breathe);
+  }
+  .note-composer-send:hover { background: var(--color-brand-hover); }
+  .note-composer-send:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
   }
 }

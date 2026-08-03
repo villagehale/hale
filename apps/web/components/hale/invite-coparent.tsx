@@ -52,7 +52,7 @@ export function InviteCoParent() {
   if (state.kind === 'ready') {
     return (
       <div className="space-y-4">
-        <p className="meta text-slate-green">
+        <p className="meta text-ink-2">
           share this one-time link with your co-parent. it expires in 14 days.
         </p>
         <div className="flex flex-wrap items-center gap-4">
@@ -69,17 +69,17 @@ export function InviteCoParent() {
 
   return (
     <div className="space-y-4">
-      <p className="text-spruce leading-relaxed max-w-md">
+      <p className="text-ink leading-relaxed max-w-md">
         Invite your co-parent so you can share the load. Until they join, anything that touches
         their data waits for your tap.
       </p>
       {state.kind === 'unavailable' ? (
-        <output className="meta text-slate-green block">
+        <output className="meta text-ink-2 block">
           your invite link will be ready once your family is set up.
         </output>
       ) : null}
       {state.kind === 'error' ? (
-        <p className="meta text-berry" role="alert">
+        <p className="meta text-destructive" role="alert">
           couldn&rsquo;t generate a link just now — please try again.
         </p>
       ) : null}

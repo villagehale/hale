@@ -22,7 +22,7 @@ export const maxDuration = 300;
 /** A clean, minimal section label (Notion/Linear register) — small, muted, spaced
  * above its content. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <p className="eyebrow mb-3 text-faded-sage">{children}</p>;
+  return <p className="eyebrow mb-3 text-ink-3">{children}</p>;
 }
 
 export default async function VillagePage({
@@ -55,7 +55,8 @@ export default async function VillagePage({
       {/* ── The board (search + filter pills + activities/resources columns), or a
            season search RUN. The run streams behind Suspense. ─────────────────── */}
       {activeSeason ? (
-        <div className="rise rise-2">
+        <div className="rise rise-2 space-y-6">
+          <VillageSeasonSelector active={activeSeason} />
           <Suspense fallback={<VillageFeedSkeleton />}>
             <VillageSearchRun season={activeSeason} />
           </Suspense>
@@ -67,8 +68,17 @@ export default async function VillagePage({
               (its literal-filter box hidden) is the idle view. It resets on a region
               switch via areaKey. The board is ALSO keyed on the active coarse area so a
               switch remounts it — clearing any stale filter / selected activity carried
-              from the previous area. Both key on feed.areaCoarse, in lockstep. */}
-          <VillageAiSearch areaKey={feed.areaCoarse ?? ''} area={feed.areaCoarse}>
+              from the previous area. Both key on feed.areaCoarse, in lockstep.
+
+              W4 — the season chips are the search's own filter row, mounted directly
+              under the bar, not a separate "look ahead to a season" section further
+              down the page. ONE search is the entry to this surface; everything else on
+              it is a filter beneath that. */}
+          <VillageAiSearch
+            areaKey={feed.areaCoarse ?? ''}
+            area={feed.areaCoarse}
+            filters={<VillageSeasonSelector active={activeSeason} />}
+          >
             <VillageBoard
               key={feed.areaCoarse ?? 'no-area'}
               candidates={feed.candidates}
@@ -82,12 +92,6 @@ export default async function VillagePage({
           </VillageAiSearch>
         </div>
       )}
-
-      {/* ── Season search — pick a future season, or clear back to your feed. ── */}
-      <section className="rise rise-3 mt-16 lg:mt-20">
-        <SectionLabel>look ahead to a season</SectionLabel>
-        <VillageSeasonSelector active={activeSeason} />
-      </section>
 
       {/* ── Below the board: the calmer, preserved sections. A season search stays
            focused on its results, so these are the standing view only. ─────────── */}
@@ -107,12 +111,12 @@ export default async function VillagePage({
                       className="flex items-baseline gap-4 border-t border-rule pt-5 first:border-t-0 first:pt-0"
                     >
                       {kindLabel ? (
-                        <span className="eyebrow text-spruce shrink-0">{kindLabel}</span>
+                        <span className="eyebrow text-ink shrink-0">{kindLabel}</span>
                       ) : null}
                       <div data-hale-pii>
-                        <p className="text-lg text-spruce leading-relaxed">{item.title}</p>
+                        <p className="text-lg text-ink leading-relaxed">{item.title}</p>
                         {item.stageNote ? (
-                          <p className="meta mt-1 text-slate-green">{item.stageNote}</p>
+                          <p className="meta mt-1 text-ink-2">{item.stageNote}</p>
                         ) : null}
                       </div>
                     </div>
@@ -137,7 +141,7 @@ export default async function VillagePage({
           <PrivacyNote />
         </div>
 
-        <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-faded-sage">
+        <div className="flex flex-wrap items-baseline justify-between gap-y-3 text-ink-3">
           <p className="meta">this week&rsquo;s village</p>
           <p className="meta">gathered by Hale</p>
         </div>

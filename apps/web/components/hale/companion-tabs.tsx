@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
 import { Avatar } from '~/components/ui/avatar';
 import { Icon } from '~/components/ui/icon';
+import { TintChip } from '~/components/ui/tint-chip';
 import { childInitials } from '~/lib/family/child-initials';
 import {
   COMPANION_TABS,
@@ -446,26 +447,26 @@ export function OverviewSection({
 
 function CareChip({
   name,
-  caption,
+  scopeLabel,
   isYou,
   icon,
 }: {
   name: string;
-  caption: string;
+  /** The caregiving SCOPE this person holds — what they can see and do, which is
+   * the point of the card. Rendered as a badge, not caption-gray subtext. */
+  scopeLabel: string;
   isYou: boolean;
   icon: LucideIcon;
 }) {
   return (
     <div className="care-chip">
-      <span className="care-chip-avatar">
-        <Icon as={icon} size={18} />
-      </span>
+      <TintChip as={icon} tone="blue" />
       <div className="min-w-0">
         <span className="care-chip-name" data-hale-pii>
           {name}
           {isYou ? <span className="care-chip-you">You</span> : null}
         </span>
-        <span className="meta text-faded-sage block">{caption}</span>
+        <span className="pill pill-tint chip-gray care-chip-role">{scopeLabel}</span>
       </div>
     </div>
   );
@@ -482,38 +483,36 @@ export function CareTeam({
   return (
     <div className="card">
       <div className="flex items-baseline justify-between gap-4 mb-4">
-        <span className="eyebrow text-faded-sage">care team & contacts</span>
+        <span className="eyebrow text-ink-3">care team & contacts</span>
         <Link href="/family" className="link text-sm">
           manage
         </Link>
       </div>
       {primary === null ? (
-        <p className="meta text-slate-green">
+        <p className="meta text-ink-2">
           your caregivers appear here once your family is set up.
         </p>
       ) : (
         <div className="care-team">
           <CareChip
             name={primary.name ?? 'Primary parent'}
-            caption="Primary caregiver"
+            scopeLabel="Primary caregiver"
             isYou={viewerEmail !== null && primary.email === viewerEmail}
             icon={Users}
           />
           {coParent ? (
             <CareChip
               name={coParent.name ?? 'Co-parent'}
-              caption="Co-caregiver"
+              scopeLabel="Co-caregiver"
               isYou={viewerEmail !== null && coParent.email === viewerEmail}
               icon={Users}
             />
           ) : (
             <Link href="/family" className="care-chip care-chip-add">
-              <span className="care-chip-avatar">
-                <Icon as={UserPlus} size={18} />
-              </span>
+              <TintChip as={UserPlus} tone="gray" />
               <div className="min-w-0">
                 <span className="care-chip-name">Invite a co-parent</span>
-                <span className="meta text-faded-sage block">add their caregiving access</span>
+                <span className="meta text-ink-3 block">add their caregiving access</span>
               </div>
             </Link>
           )}

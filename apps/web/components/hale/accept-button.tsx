@@ -53,7 +53,7 @@ export function AcceptButton({
 
   if (state === 'sent') {
     return (
-      <p className="meta text-slate-green" aria-live="polite">
+      <p className="meta text-ink-2" aria-live="polite">
         sent for your approval —{' '}
         <Link href="/approvals" className="link">
           waiting for you

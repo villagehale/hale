@@ -23,10 +23,10 @@ export function BuildYourVillage({ nothingToShare }: { nothingToShare: boolean }
             <Sprout className="w-12 shrink-0" />
             <div>
               <span className="eyebrow text-apricot-deep">build your village</span>
-              <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight mt-2 text-spruce">
+              <h2 className="font-display text-[1.5rem] lg:text-[1.875rem] leading-tight mt-2 text-ink">
                 the village grows by invitation.
               </h2>
-              <p className="text-spruce leading-relaxed mt-3 max-w-md">
+              <p className="text-ink leading-relaxed mt-3 max-w-md">
                 Invite your co-parent and the parents you trust. The more families near you join,
                 the more the picks are worth.
               </p>

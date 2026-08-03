@@ -12,11 +12,17 @@ import { VillageSeasonSelector } from './village-season-selector';
 
 /**
  * The season selector renders one chip per season plus a "your feed" chip. The
- * active-view highlight (spruce fill) is the only thing a static render can pin,
- * so we assert which chip carries it: standing feed by default, the searched
- * season when `?season=` is active. The action result → UI decision is covered
- * as a pure unit in season-selector-ui.test.ts.
+ * active-view highlight is the only thing a static render can pin, so we assert
+ * which chip carries it: standing feed by default, the searched season when
+ * `?season=` is active. The action result → UI decision is covered as a pure unit
+ * in season-selector-ui.test.ts.
+ *
+ * VIL-209 W4: the fill is Shore's `brand` (DESIGN.md — brand is the selected-chip
+ * tint), which unlike the previous `spruce` re-points on dark, so a selected chip
+ * is periwinkle-on-navy there rather than cream.
  */
+const ACTIVE_FILL = 'bg-brand text-on-ink';
+
 describe('VillageSeasonSelector — chips + active-view highlight', () => {
   it('offers a chip for each season and the standing feed', () => {
     const html = renderToStaticMarkup(createElement(VillageSeasonSelector));
@@ -28,19 +34,19 @@ describe('VillageSeasonSelector — chips + active-view highlight', () => {
 
   it('highlights the standing feed when no season is active', () => {
     const html = renderToStaticMarkup(createElement(VillageSeasonSelector));
-    // The "your feed" link carries the active (spruce) fill; the season chips do not.
+    // The "your feed" link carries the active fill; the season chips do not.
     expect(html).toMatch(/your feed<\/a>/);
-    expect(html).toContain('bg-spruce text-on-spruce');
+    expect(html).toContain(ACTIVE_FILL);
     // Exactly one chip is active — the standing feed. No season button is filled.
-    expect(html).not.toMatch(/bg-spruce text-on-spruce[^>]*>spring/);
+    expect(html).not.toMatch(new RegExp(`${ACTIVE_FILL}[^>]*>spring`));
   });
 
   it('highlights the searched season chip when a season is active', () => {
     const html = renderToStaticMarkup(
       createElement(VillageSeasonSelector, { active: 'fall' as const }),
     );
-    expect(html).toMatch(/class="pill pill-action bg-spruce text-on-spruce"[^>]*>fall<\/button>/);
+    expect(html).toMatch(new RegExp(`class="pill pill-action shrink-0 ${ACTIVE_FILL}"[^>]*>fall<`));
     // The standing-feed chip is no longer the active one.
-    expect(html).toMatch(/bg-transparent text-slate-green"[^>]*>your feed<\/a>/);
+    expect(html).toMatch(/pill-action shrink-0 text-ink-2"[^>]*>your feed<\/a>/);
   });
 });
