@@ -647,6 +647,10 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
           sourceAnswer: input.rationale,
           title: input.title,
           sourceUrl: input.sourceUrl,
+          // Minted by this cron, not asked for by anyone. Without it the draft's event
+          // and audit row would read `ask_hale` — the trail claiming a parent asked for
+          // a shortlist Hale composed on its own (VIL-264).
+          origin: 'registration_sweep',
           // Composed entirely from municipal registration rows — no child's words are
           // in it, and it is about the household rather than any one child. Declaring
           // that is what keeps the rule-#1 family fallback from redacting a card no
