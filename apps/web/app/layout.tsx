@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Instrument_Sans, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
+import { Instrument_Sans, Source_Serif_4 } from 'next/font/google';
 import { AppPromo } from '~/components/hale/app-promo';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
@@ -23,12 +23,10 @@ const sourceSerif = Source_Serif_4({
   weight: ['500', '600'],
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-  weight: ['400', '500', '600'],
-});
+// Hale Shore is a two-family system: numbers, dates and payloads render in
+// Instrument Sans, so the old JetBrains Mono face is not loaded. globals.css points
+// --font-mono at --font-sans, and `.tabular` keeps `font-variant-numeric` for the
+// column alignment that role actually needed (apps/mobile/DESIGN.md § Type).
 
 export const metadata: Metadata = {
   title: 'Hale · the village your family lost',
@@ -37,11 +35,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Match the mobile browser chrome to the real page canvas in each scheme — cream
-  // in light (--color-linen), deep charcoal-navy in dark — instead of a single navy
-  // that clashes over the light cream page (globals.css :root / .dark canvases).
+  // Match the mobile browser chrome to the real page canvas in each scheme — Shore
+  // warm white in light, deep charcoal-navy in dark — instead of a single navy that
+  // clashes over the light page. These MUST track globals.css --color-canvas in
+  // :root / .dark; a literal is unavoidable here (Next needs a static value).
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#F2F0EA' },
+    { media: '(prefers-color-scheme: light)', color: '#FDFCFA' },
     { media: '(prefers-color-scheme: dark)', color: '#12161F' },
   ],
 };
@@ -58,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${instrumentSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
+      className={`${instrumentSans.variable} ${sourceSerif.variable}`}
       suppressHydrationWarning
     >
       <head>

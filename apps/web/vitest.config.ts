@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['lib/**/*.test.ts', 'components/**/*.test.ts'],
+    include: ['lib/**/*.test.ts', 'components/**/*.test.ts', 'app/**/*.test.ts'],
     setupFiles: ['./vitest.setup.ts'],
   },
 });

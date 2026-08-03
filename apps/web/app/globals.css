@@ -6,21 +6,48 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Hale — desktop design system (product app), per the 2026-07-19 design handoff.
+ * Hale — product-app design system, on "Hale Shore" (apps/mobile/DESIGN.md is the
+ * authoritative doc; apps/mobile/src/global.css is the reference token file).
  *
- * A warm, calm, paper-cream world: a warm canvas (#F2F0EA) behind pure-white
- * cards, a warm sidebar (#F7F5F0), brand navy (#1B2160) for anything active or
- * primary, and slate-navy ink (#17294A) for text. Display type is Source Serif 4
- * (hero H1s, page titles, the "Hale" wordmark ONLY); everything else is
- * Instrument Sans; JetBrains Mono stays for dates/data/numeric chips.
+ * A warm, calm world: the Shore warm-white canvas (#FDFCFA) behind pure-white
+ * cards, a warm sidebar (#F7F5F0) as the desktop frame, brand navy (#1B2160) for
+ * anything active or primary, and Shore ink (#17294A) for text. Display type is
+ * Source Serif 4 (hero H1s, page titles, the "Hale" wordmark ONLY); everything
+ * else is Instrument Sans — including numbers and dates, since Shore retires the
+ * old JetBrains Mono role (the `mono` slot now maps to Instrument Sans).
  *
- * The token indirection is the point: components consume ROLES (--color-linen =
- * canvas, --color-spruce = ink, --color-brand = navy, --color-oat = card, …),
- * never raw hex, so re-pointing the roles in .dark flips the whole app. Several
- * legacy accent NAMES are kept as role handles and re-pointed to the handoff's
- * palette so existing page utilities (bg-apricot-tint, text-sage, …) keep
- * resolving while pages are migrated in later phases — the name is the role slot,
- * the comment names the real value:
+ * ── Shore ↔ legacy token names (VIL-209 W1) ──────────────────────────────────
+ * apps/web predates the shared vocabulary, so every Shore role that already
+ * existed here under a legacy name now has BOTH names carrying the SAME value.
+ * The Shore name is the one to write in new code; the legacy name is deleted
+ * surface-by-surface in the later phases of this arc. `globals-tokens.test.ts`
+ * asserts each pair stays equal in every scope that declares either half, so the
+ * two can never drift apart mid-migration.
+ *
+ *   canvas ← linen · card ← oat · ink ← spruce · ink-2 ← slate-green ·
+ *   ink-3 ← faded-sage · caption ← muted · on-ink ← on-spruce ·
+ *   destructive ← berry · cream-accent ← amber
+ *
+ * Shore roles that apps/web had NO name for are added outright: `accent` /
+ * `accent-fill` / `accent-tint` (the scarce apricot), `badge`, the cream
+ * highlight card (`cream`, `cream-border`), and the six tint-chip pairs
+ * (`chip-*` + `chip-*-icon`). In light mode every chip pair is value-identical to
+ * a legacy accent already in this file (chip-green = sage-tint/sage, chip-red =
+ * berry-tint/berry, chip-teal = sky-tint/sky-deep, chip-yellow = amber-tint/amber,
+ * chip-blue = illustration-tint/illustration, chip-gray = hairline/faded-sage), so
+ * naming them costs no new colour; in dark they take Shore's own hand-tuned pairs.
+ *
+ * Shore's four secondary TONE hues (sea / sage / berry / sky) are NOT ported: those
+ * token names are already occupied here by the tint-chip icon hues that live
+ * across every feature surface, and re-pointing them would restyle those surfaces.
+ * Reconciling the tone role belongs with the surfaces that consume it.
+ *
+ * The token indirection is the point: components consume ROLES (--color-canvas,
+ * --color-ink, --color-brand, --color-card, …), never raw hex, so re-pointing the
+ * roles in .dark flips the whole app. Several legacy accent NAMES are kept as role
+ * handles and re-pointed to the handoff's palette so existing page utilities
+ * (bg-apricot-tint, text-sage, …) keep resolving while pages are migrated in later
+ * phases — the name is the role slot, the comment names the real value:
  *   apricot* = ink-navy content accent (#17294A / #ECE8DE warm wash) — icons, numbers,
  *              links, "You" pill, focus rings (re-pointed FROM #3B5BDB blue per the
  *              founder palette law: navy / warm-white / orange). --color-illustration
@@ -47,32 +74,39 @@
  */
 
 @theme {
-  /* ── Surfaces (light) — warm cream canvas behind white cards ─────────── */
-  --color-linen: #F2F0EA;       /* CANVAS — warm paper cream (behind cards in the main stage) */
-  --color-oat: #FFFFFF;         /* CARD surface — pure white, separated by a #E4E7EE border + faint shadow */
+  /* ── Surfaces (light) — Hale Shore warm white behind white cards ─────── */
+  --color-canvas: #FDFCFA;      /* CANVAS — Hale Shore warm white (page ground) */
+  --color-card: #FFFFFF;        /* CARD surface — pure white, separated by a #E4E7EE border + faint shadow */
+  --color-linen: #FDFCFA;       /* legacy name for `canvas` — see the mapping table above */
+  --color-oat: #FFFFFF;         /* legacy name for `card` */
   --color-raised: #FFFFFF;      /* RAISED — lifted card / popover ground */
   --color-tile: #FBFAF7;        /* inner stat tile / warm chip */
-  --color-chrome: #F7F5F0;      /* warm sidebar / chrome surface (light) */
+  --color-chrome: #F7F5F0;      /* warm sidebar / chrome surface (light) — web-only frame */
   --color-alt-surface: #F5F7FB; /* selected list-row / info-callout ground */
 
-  /* ── Ink + text ladder (WCAG ratio on the warm canvas) ───────────────── */
-  --color-spruce: #17294A;      /* PRIMARY INK — text default — 12.69:1 on canvas */
-  --color-slate-green: #3D4C68; /* secondary body text — 7.58:1 on canvas */
-  --color-faded-sage: #5C6B87;  /* tertiary / meta / nav-inactive — 4.72:1 on canvas (AA) */
-  --color-muted: #8B95A9;       /* micro-label / decorative only — 2.64:1, NOT for body text */
-  --color-faint: #98A2B3;       /* Skip / placeholders / chevrons — 2.26:1, decorative only */
-  --color-mist: #B0B8C7;        /* dropdown labels / timestamps — 1.75:1, decorative only */
+  /* ── Ink + text ladder (WCAG ratio on the Shore canvas #FDFCFA) ──────── */
+  --color-ink: #17294A;         /* PRIMARY INK — text default — 14.1:1 on canvas */
+  --color-ink-2: #3D4C68;       /* secondary body text — 8.4:1 on canvas */
+  --color-ink-3: #5C6B87;       /* tertiary / meta / nav-inactive — 5.2:1 on canvas (AA floor for small text) */
+  --color-caption: #8B95A9;     /* CAPTION GRAY — 2.9:1; redundant/decorative subtext ONLY (contrast policy) */
+  --color-on-ink: #FFFFFF;      /* the label ON an ink / brand fill */
+  --color-spruce: #17294A;      /* legacy name for `ink` */
+  --color-slate-green: #3D4C68; /* legacy name for `ink-2` */
+  --color-faded-sage: #5C6B87;  /* legacy name for `ink-3` */
+  --color-muted: #8B95A9;       /* legacy name for `caption` */
+  --color-faint: #98A2B3;       /* Skip / placeholders / chevrons — 2.51:1, decorative only */
+  --color-mist: #B0B8C7;        /* dropdown labels / timestamps — 1.95:1, decorative only */
 
   /* ── Brand navy ──────────────────────────────────────────────────────── */
-  --color-brand: #1B2160;       /* NAVY — primary buttons, wordmark, links, active nav — 12.86:1 on canvas; white text on it 14.65:1 */
+  --color-brand: #1B2160;       /* NAVY — primary buttons, wordmark, links, active nav — 14.29:1 on canvas; white text on it 14.65:1 */
   --color-brand-hover: #2A327D; /* primary-button hover (a touch lighter navy) */
 
   /* Accent (legacy Tailwind name: apricot*) — RE-POINTED to ink navy for small-scale
    * content accents (icons, numbers, links, "You" pill, selected borders, focus rings).
    * Founder palette law: navy / warm-white / orange — no blue-reading small accents.
    * Large brand FILLS stay --color-brand navy; decorative art keeps --color-illustration. */
-  --color-apricot: #17294A;       /* ink-navy accent (was #3B5BDB blue) — 12.69:1 on canvas */
-  --color-apricot-deep: #17294A;  /* text-safe ink navy — 12.69:1 on canvas */
+  --color-apricot: #17294A;       /* ink-navy accent (was #3B5BDB blue) — 14.10:1 on canvas */
+  --color-apricot-deep: #17294A;  /* text-safe ink navy — 14.10:1 on canvas */
   --color-apricot-tint: #ECE8DE;  /* warm-neutral wash — avatars, chips, "You" pill (was #EDF0FA blue); navy on it 12:1 */
 
   /* Decorative illustration blue — the Meadow illo kit's own periwinkle, kept out of
@@ -116,6 +150,50 @@
    * data mark, not text. */
   --color-sleep-bar: #C0C4E8;
 
+  /* ── Hale Shore roles apps/web had no name for ───────────────────────────── *
+   * Added by VIL-209 W1 so the later phases of this arc can build the cream
+   * highlight card and the tint chips in the shared vocabulary. NOT applied at
+   * the shell in this phase — the shell's identity stays navy, per the palette
+   * law this file already records (`--color-apricot*` is ink navy, not apricot). */
+
+  /* Apricot — Shore's scarce second emphasis. `accent` is the text-safe tone;
+   * `accent-fill` is FILL / large-graphic only, never text or thin strokes. */
+  --color-accent: #C2410C;      /* text-safe apricot — 5.0:1 on canvas */
+  --color-accent-fill: #F28C45; /* FILL / large-graphic only */
+  --color-accent-tint: #FDEEDE;
+
+  /* Status roles Shore names separately from the tone palette. */
+  --color-badge: #E8853D;       /* orange count badge (fill; the count on it is large + bold) */
+  --color-destructive: #C2543F; /* Shore name for `berry` */
+
+  /* Cream highlight card — Shore's "great news" tile. */
+  --color-cream: #FFF6E9;
+  --color-cream-border: #F5E5C9;
+  /* Shore name for `amber`. It measures 3.91:1 on the cream — an AA pass for large
+   * text (≥18.66px bold / 24px) and non-text marks, NOT for body copy, which takes
+   * `--color-amber-ink` (5.5:1 on the tip gradient) as this file already does. */
+  --color-cream-accent: #B26B1F;
+
+  /* Tint chips — six {background, icon} pairs for Shore's 34×34 rounded icon
+   * chips. Meaning is the icon + label beside it, never the tone. Measured icon-on-
+   * chip contrast, light mode: blue 4.98:1 · green 3.92:1 · yellow 3.69:1 ·
+   * red 3.93:1 · teal 4.73:1 · gray 4.79:1. These carry an ICON, which is a
+   * large-scale graphic (WCAG non-text floor 3:1), so every pair clears its bar —
+   * but NONE of them clears 4.5:1 across the board, so a chip tone is never the
+   * colour for small text. Label text beside a chip takes ink-2 / ink-3. */
+  --color-chip-blue: #EDF0FA;
+  --color-chip-blue-icon: #3B5BDB;
+  --color-chip-green: #E7F6EC;
+  --color-chip-green-icon: #1F8A4C;
+  --color-chip-yellow: #FEF0C7;
+  --color-chip-yellow-icon: #B26B1F;
+  --color-chip-red: #FDEBE8;
+  --color-chip-red-icon: #C2543F;
+  --color-chip-teal: #E0F2F1;
+  --color-chip-teal-icon: #0F766E;
+  --color-chip-gray: #F0F2F6;
+  --color-chip-gray-icon: #5C6B87;
+
   /* ── Borders / hairlines ─────────────────────────────────────────────── */
   --color-rule: #E4E7EE;        /* primary card border */
   --color-rule-strong: #D9DEE8; /* input / composer border */
@@ -131,26 +209,38 @@
   /* Hale tip gradient (design handoff) */
   --tip-gradient: linear-gradient(180deg, #FFF9F1, #FBEDDC);
 
-  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display), Mono ── *
-   * --font-sans / --font-serif / --font-mono are injected by next/font. */
+  /* ── Type — Instrument Sans (body/UI) + Source Serif 4 (display) ──────── *
+   * Shore is a TWO-family system: Source Serif 4 for display/title only, and
+   * Instrument Sans for everything else — numbers, dates and payloads included.
+   * The old JetBrains Mono "mono" role is retired, so `--font-mono` (and the
+   * `.tabular` / `font-mono` handles that read it) now resolve to Instrument
+   * Sans; `font-variant-numeric: tabular-nums` still does the column-aligning
+   * that role actually needed. The next/font load was dropped with it. */
   --font-sans: "Instrument Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
   --font-serif: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: var(--font-sans);
   --font-display: var(--font-serif);
   --font-body: var(--font-sans);
 
-  --tracking-display: -0.01em;
-  --tracking-eyebrow: 0.08em;
+  --tracking-display: -0.02em;       /* Shore display tracking */
+  --tracking-eyebrow: 0.08em;        /* tag / chip / timing small-caps */
+  --tracking-eyebrow-tight: 0.07em;  /* Shore's section-label eyebrow */
 
   /* ── Spacing & rhythm ────────────────────────────────────────────────── */
   --shell-pad-x: clamp(1.5rem, 5vw, 6rem);
   --shell-max: 1440px;
 
-  /* ── Radius — pill 20 / card 16-20 / tile-input 12-14 / chip 11-12 ───── */
+  /* ── Radius — Shore's in-use ladder: cards 20 · primary button 16 ─────── *
+   * Shore's named ladder is sm 10 / md 16 / lg 24 / xl 28, but what it actually
+   * SHIPS is "cards 20px, primary button 16 (md), inputs / small tiles 12–16,
+   * chips fully rounded". These `--r-*` handles are this app's own (no Tailwind
+   * `--radius-*` collision), so they carry the shipped numbers: `--r-md` is the
+   * button/field 16, and both card handles (`--r-lg`, `--r-xl`) are 20 so a
+   * `.card` and a `.panel` can no longer disagree about the card radius. */
   --r-sm: 12px;
-  --r-md: 14px;
+  --r-md: 16px;
   --r-lg: 20px;
-  --r-xl: 16px;
+  --r-xl: 20px;
   --r-full: 9999px;
 
   /* ── Shadows (design handoff §2.4; ink-based rgba 23,41,74) ──────────── */
@@ -183,18 +273,25 @@
 .dark {
   /* Surfaces — desaturated deep warm charcoal-navy, elevation ladder canvas →
    * card → raised, each a clear notch lighter. */
-  --color-linen: #12161F;        /* CANVAS — deep warm charcoal-navy */
-  --color-oat: #1B2130;          /* CARD surface — one clear notch above canvas */
+  --color-canvas: #12161F;       /* CANVAS — deep warm charcoal-navy */
+  --color-card: #1B2130;         /* CARD surface — one clear notch above canvas */
+  --color-linen: #12161F;        /* legacy name for `canvas` */
+  --color-oat: #1B2130;          /* legacy name for `card` */
   --color-raised: #242C3D;       /* RAISED — two notches up (interactive-card lift) */
   --color-tile: #222A38;         /* inner tile — subtle lift on card */
   --color-chrome: #151A44;       /* CHROME ANCHOR — brand-navy, sidebar frame only */
   --color-alt-surface: #1E2740;  /* selected row — subtle lift on the dark canvas */
 
   /* Ink + text ladder — cream, each pair ≥ its light counterpart's WCAG bar. */
-  --color-spruce: #F6F1E7;       /* PRIMARY INK — cream — 16.08:1 on canvas */
-  --color-slate-green: #C7D3E6;  /* secondary text — 11.97:1 on canvas */
-  --color-faded-sage: #9BB0D0;   /* tertiary / meta / nav-inactive — 8.20:1 on canvas */
-  --color-muted: #8391A8;        /* micro-label — 5.67:1 on canvas (AA) */
+  --color-ink: #F6F1E7;          /* PRIMARY INK — cream — 16.08:1 on canvas */
+  --color-ink-2: #C7D3E6;        /* secondary text — 11.97:1 on canvas */
+  --color-ink-3: #9BB0D0;        /* tertiary / meta / nav-inactive — 8.20:1 on canvas */
+  --color-caption: #8391A8;      /* caption gray — 5.67:1 on canvas */
+  --color-on-ink: #12161F;       /* the label ON an ink / brand fill inverts to the canvas navy */
+  --color-spruce: #F6F1E7;       /* legacy name for `ink` */
+  --color-slate-green: #C7D3E6;  /* legacy name for `ink-2` */
+  --color-faded-sage: #9BB0D0;   /* legacy name for `ink-3` */
+  --color-muted: #8391A8;        /* legacy name for `caption` */
   --color-faint: #79879E;        /* Skip / placeholders / chevrons — 4.97:1 on canvas, decorative */
   --color-mist: #6C7A92;         /* dropdown labels / timestamps — 4.17:1 on canvas, decorative */
 
@@ -246,6 +343,34 @@
   /* Sleep mini-chart bar — periwinkle, lightened to read on the dark card. */
   --color-sleep-bar: #7981C9;
 
+  /* ── Hale Shore roles apps/web had no name for — dark ────────────────────── *
+   * The mirrors above follow this app's own dark derivation (values unchanged).
+   * The roles below are new, so they take Shore's own hand-tuned dark pairs from
+   * apps/mobile/src/global.css verbatim. */
+  --color-accent: #FB923C;       /* text-safe apricot on dark */
+  --color-accent-fill: #F97316;
+  --color-accent-tint: #2F2318;
+
+  --color-badge: #EF9350;
+  --color-destructive: #E58C78;  /* Shore name for `berry` */
+
+  --color-cream: #2A2114;
+  --color-cream-border: #3C3020;
+  --color-cream-accent: #E0A44E; /* Shore name for `amber` */
+
+  --color-chip-blue: #1B2440;
+  --color-chip-blue-icon: #A3B6F0;
+  --color-chip-green: #16301F;
+  --color-chip-green-icon: #78C795;
+  --color-chip-yellow: #2E2614;
+  --color-chip-yellow-icon: #DBA64F;
+  --color-chip-red: #3A211D;
+  --color-chip-red-icon: #E79F8E;
+  --color-chip-teal: #12302D;
+  --color-chip-teal-icon: #57BAB1;
+  --color-chip-gray: #262A31;
+  --color-chip-gray-icon: #A6AEBD;
+
   --color-rule: rgb(246 241 231 / 0.12);
   --color-rule-strong: rgb(246 241 231 / 0.20);
   --color-warm-border: rgb(246 241 231 / 0.12);
@@ -263,22 +388,26 @@
  * The app frame — sidebar + sticky mobile header + the off-canvas drawer — wears
  * brand navy so the identity is unmistakable while the content canvas stays calm.
  * We paint the frame with --color-chrome and locally re-point the "surface" tokens
- * nested controls lift onto (--color-linen / --color-oat), so a nav hover or
- * theme-toggle thumb steps UP from the navy frame instead of dropping back to the
- * calm canvas — keeping the frame's elevation self-consistent. Light mode needs no
- * override: --color-chrome is the warm #F7F5F0 the light sidebar already paints. */
+ * nested controls lift onto (canvas / card), so a nav hover or theme-toggle thumb
+ * steps UP from the navy frame instead of dropping back to the calm canvas —
+ * keeping the frame's elevation self-consistent. Both names of each mirrored pair
+ * are re-pointed together, so a descendant reads the same value whichever it asks
+ * for. Light mode needs no override: --color-chrome is the warm #F7F5F0 the light
+ * sidebar already paints. */
 .dark .sidebar,
 .dark .runninghead {
   background: var(--color-chrome);
   /* Lift surfaces, relative to the navy frame, for nested hover/active states */
-  --color-linen: #232A63;        /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
-  --color-oat: #202657;          /* theme-toggle track / menu hover — subtle on-chrome panel */
+  --color-canvas: #232A63;       /* nav-item hover / theme-toggle thumb — +1 notch on chrome */
+  --color-card: #202657;         /* theme-toggle track / menu hover — subtle on-chrome panel */
+  --color-linen: #232A63;
+  --color-oat: #202657;
   --color-alt-surface: #2A3168;  /* active-nav pill — a subtle navy lift on the chrome */
 }
 
 html {
-  background: var(--color-linen);
-  color: var(--color-spruce);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-body);
   font-feature-settings: "kern", "liga", "calt";
   -webkit-font-smoothing: antialiased;
@@ -288,8 +417,8 @@ html {
 }
 
 body {
-  background: var(--color-linen);
-  color: var(--color-spruce);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font-size: 16px;
   line-height: 1.65;
   font-weight: 400;
@@ -321,7 +450,7 @@ body {
     letter-spacing: var(--tracking-display);
     font-weight: 600;
     line-height: 1.04;
-    color: var(--color-spruce);
+    color: var(--color-ink);
     font-style: normal;
     text-wrap: balance;
   }
@@ -330,47 +459,73 @@ body {
   h2 { font-size: clamp(2rem, 4vw, 3.1rem); }
   h3 { font-size: clamp(1.3rem, 2.2vw, 1.85rem); line-height: 1.12; }
 
-  /* Inside the authed main-stage the column is narrower (sidebar eats ~22vw),
-   * so the page H1/H2 need a tighter ceiling or the headline overflows. */
-  .main-stage h1 { font-size: clamp(1.9rem, 3.1vw, 2.85rem); }
-  .main-stage h2 { font-size: clamp(1.4rem, 2.2vw, 1.95rem); }
+  /* Inside the authed main-stage the headings are the design system's, not the
+   * marketing hero's: Shore sizes `display` at 34/40 (600, -0.02em) and `title`
+   * at 22/28 (500), so the stage H1 tops out at 34px and the H2 at 22px. They
+   * still scale down on a narrow column — a fixed 34px is fine on a phone (it is
+   * what the mobile app ships) but the clamp keeps long titles from crowding. */
+  .main-stage h1 { font-size: clamp(1.75rem, 2.4vw, 2.125rem); line-height: 1.18; }
+  .main-stage h2 { font-size: clamp(1.25rem, 1.8vw, 1.375rem); line-height: 1.28; font-weight: 500; }
 
   em { font-style: italic; }
   strong { font-weight: 700; }
 }
 
-/* ── Type utilities ────────────────────────────────────────────────────── */
+/* ── Type roles ────────────────────────────────────────────────────────── *
+ * These sit in `@layer components` for the same reason the h1-h4 ladder sits in
+ * `@layer base`: an UNLAYERED class rule outranks every Tailwind utility on layer
+ * order alone, so `.eyebrow { color: … }` silently beat the `text-spruce` /
+ * `text-berry` / `text-faded-sage` its call sites were writing, and `.meta`'s
+ * font-weight beat `font-normal`. Layered, the utility wins — which is what every
+ * one of those call sites already meant. See globals-layer.test.ts. */
+@layer components {
+  .font-display { font-family: var(--font-display); }
+  .font-body { font-family: var(--font-body); }
+  .font-mono { font-family: var(--font-mono); }
+  .tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.font-display { font-family: var(--font-display); }
-.font-body { font-family: var(--font-body); }
-.font-mono { font-family: var(--font-mono); }
-.tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* Shore's section-label eyebrow: 11.5px / 700 / uppercase / 0.07em.
+   *
+   * Shore renders its eyebrow in CAPTION GRAY (2.9:1), which its contrast policy
+   * permits because a mobile `variant="eyebrow"` is always non-essential wayfinding
+   * — deleting it would cost the reader nothing. This app's `.eyebrow` is not that
+   * narrow: the same class carries a sticky date header in the trail, the date in
+   * <LongDate>, and the error page's state line — text the policy explicitly calls
+   * essential ("a due date, a status, an error message… never in caption gray").
+   * So the DEFAULT ink here is ink-3 (5.2:1), the floor that policy mandates for
+   * essential small text, and the phases that read each surface can drop a
+   * genuinely decorative eyebrow to `text-muted` one call site at a time. The
+   * policy's own first line is the tiebreak: verbatim fidelity is the default only
+   * when it costs the reader nothing. */
+  .eyebrow {
+    font-family: var(--font-body);
+    font-size: 0.71875rem;
+    line-height: 1.3;
+    letter-spacing: var(--tracking-eyebrow-tight);
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+  }
 
-/* Gentle Title-case eyebrow label — Nunito 600, tracked, NOT uppercase mono */
-.eyebrow {
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  letter-spacing: var(--tracking-eyebrow);
-  font-weight: 600;
-  color: var(--color-slate-green);
-}
+  /* Shore `meta` — 13/18, 500. */
+  .meta {
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    line-height: 1.38;
+    font-weight: 500;
+    color: var(--color-ink-3);
+  }
 
-.meta {
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--color-faded-sage);
-}
-
-/* Folio — soft roman numeral in the gutter; warm, not typewriter. */
-.folio {
-  font-family: var(--font-body);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--color-apricot-deep);
-  display: inline-block;
+  /* Folio — soft roman numeral in the gutter; warm, not typewriter. */
+  .folio {
+    font-family: var(--font-body);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-apricot-deep);
+    display: inline-block;
+  }
 }
 
 /* ── Shell + authed layout ─────────────────────────────────────────────── */
@@ -391,8 +546,8 @@ body {
   z-index: 40;
   padding: 0.6rem 1rem;
   border-radius: var(--r-full);
-  background: var(--color-spruce);
-  color: var(--color-on-spruce);
+  background: var(--color-ink);
+  color: var(--color-on-ink);
   font-family: var(--font-body);
   font-weight: 600;
   text-decoration: none;
@@ -402,7 +557,7 @@ body {
 .skip-link:focus-visible {
   top: 0.75rem;
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 /* Loud, unmissable Berry-tint notice that the route group is unprotected.
@@ -415,7 +570,7 @@ body {
   border-radius: var(--r-md);
   background: var(--color-berry-tint);
   border: 1.5px solid var(--color-berry);
-  color: var(--color-spruce);
+  color: var(--color-ink);
   font-weight: 600;
 }
 
@@ -461,7 +616,7 @@ body {
   grid-template-columns: 1fr;
   height: 100dvh;
   overflow: hidden;
-  background: var(--color-linen);
+  background: var(--color-canvas);
 }
 
 @media (min-width: 1024px) {
@@ -515,7 +670,7 @@ body {
   /* As the off-canvas drawer (mobile), stop an over-scroll from chaining to the
    * page locked behind it. */
   overscroll-behavior: contain;
-  color: var(--color-spruce);
+  color: var(--color-ink);
 }
 
 .sidebar-top {
@@ -530,7 +685,7 @@ body {
   align-items: center;
   gap: 0.75rem;
   text-decoration: none;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   min-width: 0;
 }
 
@@ -557,20 +712,20 @@ body {
   border: 0;
   border-radius: var(--r-full);
   background: transparent;
-  color: var(--color-faded-sage);
+  color: var(--color-ink-3);
   cursor: pointer;
   touch-action: manipulation;
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
 
 .sidebar-collapse:hover,
-.sidebar-drawer-close:hover { color: var(--color-spruce); background: var(--color-linen); }
+.sidebar-drawer-close:hover { color: var(--color-ink); background: var(--color-canvas); }
 
 .sidebar-collapse:focus-visible,
 .sidebar-drawer-close:focus-visible {
   outline: none;
-  color: var(--color-spruce);
-  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+  color: var(--color-ink);
+  box-shadow: 0 0 0 2px var(--color-card), 0 0 0 4px var(--color-apricot-deep);
 }
 
 /* Dismiss (X) for an in-context upgrade invitation — a quiet, 44px tap target. */
@@ -589,11 +744,11 @@ body {
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
 
-.upgrade-prompt-dismiss:hover { background: var(--color-oat); }
+.upgrade-prompt-dismiss:hover { background: var(--color-card); }
 
 .upgrade-prompt-dismiss:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 /* The collapse toggle is desktop-only; the close (X) is drawer-only. */
@@ -642,14 +797,14 @@ body {
   border: 0;
   border-radius: var(--r-md);
   background: transparent;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   cursor: pointer;
   text-align: left;
   touch-action: manipulation;
   transition: background 220ms var(--ease-breathe);
 }
 
-.account-chip:hover { background: var(--color-linen); }
+.account-chip:hover { background: var(--color-canvas); }
 
 .account-chip:focus-visible {
   outline: none;
@@ -669,7 +824,7 @@ body {
   font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.15;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -682,7 +837,7 @@ body {
   text-overflow: ellipsis;
 }
 
-.account-chip-caret { color: var(--color-faded-sage); flex-shrink: 0; }
+.account-chip-caret { color: var(--color-ink-3); flex-shrink: 0; }
 
 .account-pop {
   position: absolute;
@@ -709,7 +864,7 @@ body {
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--color-slate-green);
+  color: var(--color-ink-2);
   font-family: var(--font-body);
   font-size: 0.95rem;
   font-weight: 500;
@@ -720,11 +875,11 @@ body {
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
 
-.account-pop-item:hover { color: var(--color-spruce); background: var(--color-oat); }
+.account-pop-item:hover { color: var(--color-ink); background: var(--color-card); }
 
 .account-pop-item:focus-visible {
   outline: none;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   box-shadow: 0 0 0 3px var(--color-apricot-deep);
 }
 
@@ -743,7 +898,7 @@ body {
   font-family: var(--font-body);
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--color-slate-green);
+  color: var(--color-ink-2);
 }
 
 .account-pop-divider {
@@ -788,7 +943,7 @@ body {
   line-height: 1;
 }
 .avatar-image { object-fit: cover; }
-.avatar-account { background: var(--color-brand); color: var(--color-on-spruce); }
+.avatar-account { background: var(--color-brand); color: var(--color-on-ink); }
 .avatar-child { background: var(--color-apricot-tint); color: var(--color-brand); }
 /* Dark: --color-brand inverts to CREAM, so a navy account disc would become a
  * cream-on-cream blank AND vanish against the navy sidebar chrome. Lift it to a cream
@@ -799,7 +954,7 @@ body {
 /* Selected child row inside the switcher popover. */
 .account-pop-item[aria-current="true"] {
   background: var(--color-alt-surface);
-  color: var(--color-spruce);
+  color: var(--color-ink);
 }
 
 /* "Add child" — a blue text action set off from the child rows. */
@@ -906,7 +1061,7 @@ body {
   gap: 1rem;
   flex-shrink: 0;
   padding: 0.85rem var(--shell-pad-x);
-  background: var(--color-linen);
+  background: var(--color-canvas);
   border-bottom: 1px solid var(--color-rule);
   position: sticky;
   top: 0;
@@ -925,7 +1080,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   text-decoration: none;
-  color: var(--color-spruce);
+  color: var(--color-ink);
 }
 
 .runninghead-menu {
@@ -937,17 +1092,17 @@ body {
   border: 0;
   border-radius: var(--r-full);
   background: transparent;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   cursor: pointer;
   touch-action: manipulation;
   transition: background 220ms var(--ease-breathe);
 }
 
-.runninghead-menu:hover { background: var(--color-oat); }
+.runninghead-menu:hover { background: var(--color-card); }
 
 .runninghead-menu:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+  box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-apricot-deep);
 }
 
 /* On desktop the always-visible sidebar carries the brand, nav, and current
@@ -995,14 +1150,14 @@ body {
   padding: 0.5rem 0.85rem;
   border: 1px solid var(--color-rule);
   border-radius: var(--r-full);
-  background: var(--color-oat);
-  color: var(--color-slate-green);
+  background: var(--color-card);
+  color: var(--color-ink-2);
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 600;
 }
 
-.location-pill svg { color: var(--color-faded-sage); }
+.location-pill svg { color: var(--color-ink-3); }
 
 .topbar-bell {
   display: inline-flex;
@@ -1012,17 +1167,17 @@ body {
   height: 2.5rem;
   border: 1px solid var(--color-rule);
   border-radius: var(--r-full);
-  background: var(--color-oat);
-  color: var(--color-slate-green);
+  background: var(--color-card);
+  color: var(--color-ink-2);
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
 }
 
-.topbar-bell:hover { color: var(--color-spruce); background: var(--color-tile); }
+.topbar-bell:hover { color: var(--color-ink); background: var(--color-tile); }
 
 .topbar-bell:focus-visible {
   outline: none;
-  color: var(--color-spruce);
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  color: var(--color-ink);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 .main-stage {
@@ -1030,7 +1185,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding: clamp(1.5rem, 3vw, 3rem) var(--shell-pad-x) clamp(3rem, 6vw, 6rem);
-  background: var(--color-linen);
+  background: var(--color-canvas);
 }
 
 /* Contained content column (Notion/Linear-style) — content never stretches to the
@@ -1084,7 +1239,7 @@ body {
     gap: 1.5rem;
     padding-bottom: 0.75rem;
     margin-bottom: clamp(1rem, 2vw, 1.75rem);
-    color: var(--color-faded-sage);
+    color: var(--color-ink-3);
   }
 }
 
@@ -1110,13 +1265,13 @@ body {
 /* ── Soft panels — read by tone, not by border (radius ≥ 8px) ──────────── */
 
 .panel {
-  background: var(--color-oat);
+  background: var(--color-card);
   border: 1px solid var(--color-rule);
   box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04);
   border-radius: var(--r-xl);
   padding: clamp(1.5rem, 2.4vw, 2.25rem) clamp(1.5rem, 3vw, 2.5rem);
 }
-.panel-oat { background: var(--color-oat); border: 1px solid var(--color-rule); box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04); border-radius: var(--r-xl); }
+.panel-oat { background: var(--color-card); border: 1px solid var(--color-rule); box-shadow: 0 1px 2px rgba(13, 27, 61, 0.04); border-radius: var(--r-xl); }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
 .panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
 
@@ -1129,7 +1284,7 @@ body {
   gap: 0.5rem;
   padding: 0.85rem 1.5rem;
   background: var(--color-brand);
-  color: var(--color-on-spruce);
+  color: var(--color-on-ink);
   border: 0;
   border-radius: var(--r-md);
   font-family: var(--font-body);
@@ -1146,7 +1301,7 @@ body {
 
 .btn-primary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 .btn-secondary {
@@ -1155,7 +1310,7 @@ body {
   gap: 0.5rem;
   padding: 0.85rem 1.5rem;
   background: transparent;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   border: 1.5px solid var(--color-rule-strong);
   border-radius: var(--r-md);
   font-family: var(--font-body);
@@ -1167,11 +1322,11 @@ body {
   transition: border-color 280ms var(--ease-breathe), background 280ms var(--ease-breathe);
 }
 
-.btn-secondary:hover { border-color: var(--color-spruce); background: var(--color-oat); }
+.btn-secondary:hover { border-color: var(--color-ink); background: var(--color-card); }
 
 .btn-secondary:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 /* Ghost — text action with an Apricot-deep underline that draws on hover. */
@@ -1207,12 +1362,12 @@ body {
 
 .btn-ghost:hover::after { transform: scaleX(1); }
 
-.btn-ghost[aria-pressed="true"] { color: var(--color-spruce); }
+.btn-ghost[aria-pressed="true"] { color: var(--color-ink); }
 .btn-ghost[aria-pressed="true"]::after { transform: scaleX(1); }
 
 .btn-ghost:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
   border-radius: var(--r-sm);
 }
 
@@ -1233,7 +1388,7 @@ body {
 /* ── Link underline — draws left-to-right in Apricot-deep ──────────────── */
 
 .link {
-  color: var(--color-spruce);
+  color: var(--color-ink);
   text-decoration: none;
   position: relative;
   font-weight: 700;
@@ -1245,7 +1400,7 @@ body {
   left: 0; right: 0; bottom: -2px;
   height: 2px;
   border-radius: 2px;
-  background: var(--color-spruce);
+  background: var(--color-ink);
   transform-origin: left;
   transform: scaleX(0);
   transition: transform 360ms var(--ease-breathe);
@@ -1255,7 +1410,7 @@ body {
 
 .link:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
   border-radius: var(--r-sm);
 }
 
@@ -1272,8 +1427,8 @@ body {
   align-items: center;
   gap: 0.4rem;
   padding: 0.3rem 0.8rem;
-  background: var(--color-oat);
-  color: var(--color-spruce);
+  background: var(--color-card);
+  color: var(--color-ink);
   border-radius: var(--r-full);
   font-family: var(--font-body);
   font-size: 0.76rem;
@@ -1281,14 +1436,14 @@ body {
   letter-spacing: 0.04em;
 }
 
-.pill-apricot { background: var(--color-apricot-tint); color: var(--color-spruce); }
-.pill-sky { background: var(--color-sky-tint); color: var(--color-spruce); }
-.pill-sage { background: var(--color-sage-tint); color: var(--color-spruce); }
-.pill-berry { background: var(--color-berry-tint); color: var(--color-spruce); }
+.pill-apricot { background: var(--color-apricot-tint); color: var(--color-ink); }
+.pill-sky { background: var(--color-sky-tint); color: var(--color-ink); }
+.pill-sage { background: var(--color-sage-tint); color: var(--color-ink); }
+.pill-berry { background: var(--color-berry-tint); color: var(--color-ink); }
 
 .pill:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
   border-radius: var(--r-sm);
 }
 
@@ -1324,7 +1479,7 @@ body {
 /* Choice card — focus ring for a styled <label> wrapping an sr-only radio/checkbox. */
 .choice-card:focus-within {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 /* Stamp — a soft status label for "trial mode", "draft only", etc. */
@@ -1334,7 +1489,7 @@ body {
   gap: 0.4rem;
   padding: 0.3rem 0.8rem;
   background: var(--color-apricot-tint);
-  color: var(--color-spruce);
+  color: var(--color-ink);
   font-family: var(--font-body);
   font-size: 0.74rem;
   font-weight: 600;
@@ -1363,18 +1518,18 @@ input[type="checkbox"] {
 
 .field {
   width: 100%;
-  background: var(--color-linen);
+  background: var(--color-canvas);
   border: 1.5px solid var(--color-rule-strong);
   border-radius: var(--r-md);
   padding: 0.85rem 1.15rem;
   font-family: var(--font-body);
   font-size: 16px;
   font-weight: 500;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   transition: border-color 280ms var(--ease-breathe), box-shadow 280ms var(--ease-breathe);
 }
 
-.field::placeholder { color: var(--color-faded-sage); }
+.field::placeholder { color: var(--color-ink-3); }
 
 /* Search variant: clear the leading icon. .field is unlayered, so it overrides the
    Tailwind pl-* utility; set the larger padding-left here so it actually applies. */
@@ -1384,7 +1539,7 @@ input[type="checkbox"] {
 .field:focus-visible {
   outline: none;
   border-color: var(--color-apricot-deep);
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-radius: var(--r-md); }
@@ -1593,18 +1748,18 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.7rem;
-  color: var(--color-faded-sage);
+  color: var(--color-ink-3);
   text-decoration: none;
   border-radius: var(--r-md);
   transition: color 220ms var(--ease-breathe), background 220ms var(--ease-breathe);
   position: relative;
 }
 
-.nav-item:hover { color: var(--color-spruce); background: var(--color-warm-hover); }
+.nav-item:hover { color: var(--color-ink); background: var(--color-warm-hover); }
 
 .nav-item:focus-visible {
   outline: none;
-  color: var(--color-spruce);
+  color: var(--color-ink);
   box-shadow: 0 0 0 3px var(--color-apricot-deep);
 }
 
@@ -1612,7 +1767,7 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-faded-sage);
+  color: var(--color-ink-3);
   width: 1.6rem;
   flex-shrink: 0;
 }
@@ -1625,12 +1780,12 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   white-space: nowrap;
 }
 
-.nav-item:hover .nav-folio { color: var(--color-spruce); }
+.nav-item:hover .nav-folio { color: var(--color-ink); }
 
 /* Active nav = a white pill + brand-navy label (design handoff §3.1). */
 .nav-item[aria-current="page"] {
   color: var(--color-brand);
-  background: var(--color-oat);
+  background: var(--color-card);
   box-shadow: var(--shadow-card);
 }
 .nav-item[aria-current="page"] .nav-label { font-weight: 700; }
@@ -1647,8 +1802,8 @@ textarea.field { resize: vertical; min-height: 6rem; line-height: 1.55; border-r
   z-index: 50;
   padding: 0.3rem 0.6rem;
   border-radius: var(--r-sm);
-  background: var(--color-spruce);
-  color: var(--color-on-spruce);
+  background: var(--color-ink);
+  color: var(--color-on-ink);
   font-family: var(--font-body);
   font-size: 0.8rem;
   font-weight: 600;
@@ -1840,7 +1995,7 @@ html, body, .sidebar, .panel, .card, .field {
 
 .card {
   display: block;
-  background: var(--color-oat);
+  background: var(--color-card);
   border: 1px solid var(--color-rule);
   box-shadow: var(--shadow-card);
   border-radius: var(--r-lg);
@@ -1869,7 +2024,7 @@ html, body, .sidebar, .panel, .card, .field {
 
 .card-interactive:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--color-linen), 0 0 0 5px var(--color-apricot-deep);
+  box-shadow: 0 0 0 3px var(--color-canvas), 0 0 0 5px var(--color-apricot-deep);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1883,9 +2038,9 @@ html, body, .sidebar, .panel, .card, .field {
 .hale-places gmp-place-autocomplete {
   display: block;
   width: 100%;
-  --gmp-mat-color-surface: var(--color-linen);
-  --gmp-mat-color-on-surface: var(--color-spruce);
-  --gmp-mat-color-on-surface-variant: var(--color-faded-sage);
+  --gmp-mat-color-surface: var(--color-canvas);
+  --gmp-mat-color-on-surface: var(--color-ink);
+  --gmp-mat-color-on-surface-variant: var(--color-ink-3);
   --gmp-mat-color-outline: var(--color-rule-strong);
   --gmp-mat-color-primary: var(--color-apricot-deep);
 }
@@ -2192,25 +2347,33 @@ html, body, .sidebar, .panel, .card, .field {
 /* ── Page hero (top-bar hero slot + narrow-viewport stage), §3.2 ─────────── */
 .page-hero { min-width: 0; }
 
+/* The page title treatment, on Shore's type scale: a tab root is `display`
+ * (34/40, 600, -0.02em) and a drilled-in page is `title` (22/28, 500) — the same
+ * two roles the mobile app renders, so a parent moving between the two surfaces
+ * sees one hierarchy. The subtitle is Shore `meta` (13/18, 500) in ink-3, not
+ * caption gray: it carries the child's age and what needs the parent this week,
+ * which is information, not decoration. */
 .page-hero-title {
   font-family: var(--font-display);
-  font-size: clamp(1.55rem, 2.4vw, 1.875rem); /* ~30px serif hero */
-  font-weight: 500;
-  line-height: 1.15;
+  font-size: clamp(1.75rem, 2.4vw, 2.125rem); /* → 34px Shore display */
+  font-weight: 600;
+  line-height: 1.18;
   letter-spacing: var(--tracking-display);
-  color: var(--color-spruce);
+  color: var(--color-ink);
 }
 
 .page-hero-sub {
   margin-top: 0.35rem;
   font-family: var(--font-body);
-  font-size: 0.85rem; /* 13.5px */
-  color: var(--color-faded-sage);
+  font-size: 0.8125rem; /* 13px Shore meta */
+  font-weight: 500;
+  color: var(--color-ink-3);
 }
 
 .page-hero-title-drill {
-  font-size: 1.5rem; /* 24px drill title */
-  font-weight: 600;
+  font-size: 1.375rem; /* 22px Shore title */
+  font-weight: 500;
+  line-height: 1.28;
 }
 
 .page-hero-back {
