@@ -103,8 +103,9 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
         ) : null}
         {/* W4: the note becomes a two-way thread — the SAME (family, note) coach
             conversation the phone replies into. A teen-redacted note gets neither
-            thread nor composer (rule #1), so it keeps the read-only detail above. */}
-        {canReplyToNote(active) ? <NoteThread key={active.id} note={active} /> : null}
+            thread nor composer (rule #1), so it keeps the read-only detail above.
+            No `key` needed: NoteThread clears its own lanes when the note changes. */}
+        {canReplyToNote(active) ? <NoteThread note={active} /> : null}
       </article>
     </div>
   );

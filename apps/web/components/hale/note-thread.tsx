@@ -54,8 +54,13 @@ export function NoteThread({ note }: { note: MessageView }) {
   );
   const [turns, setTurns] = useState<SessionTurn[]>([]);
 
-  // Replay the note's prior exchange when it opens, and drop both lanes when the
-  // parent selects a different note so one note's thread never shows under another.
+  // Replay the note's prior exchange when it opens, and clear BOTH lanes first.
+  //
+  // The clear is the load-bearing part: without it, selecting a second note shows the
+  // first note's replies under it — verified, and not hypothetical. This component owns
+  // that invariant rather than leaning on the caller to key it on the note id, so it is
+  // correct wherever it is mounted and the guarantee lives with the state it guards.
+  // `live` drops an in-flight load whose note the parent has already navigated away from.
   useEffect(() => {
     let live = true;
     setServerTurns([]);
