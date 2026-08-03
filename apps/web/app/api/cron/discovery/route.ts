@@ -29,7 +29,7 @@ export async function GET(req: Request) {
 
   try {
     const queue = await getQueue();
-    const summary = await runDiscoveryCron(db(), undefined, new Date(), queue);
+    const summary = await runDiscoveryCron(db(), queue);
     // Kick the drain so any rerank jobs enqueued for newly-discovered families
     // materialize now rather than waiting up to 60s for the next cron tick.
     const origin = process.env.APP_URL ?? new URL(req.url).origin;

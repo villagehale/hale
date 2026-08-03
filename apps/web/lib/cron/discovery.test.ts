@@ -63,7 +63,13 @@ describe('runDiscoveryCron', () => {
 
     const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    const summary = await runDiscoveryCron({} as never, DEPS, new Date(), queue, notifyNewPicksMock);
+    const summary = await runDiscoveryCron(
+      {} as never,
+      queue,
+      DEPS,
+      new Date(),
+      notifyNewPicksMock,
+    );
 
     // Bounded by the discovery cap.
     expect(selectFamiliesNeedingDiscoveryMock).toHaveBeenCalledWith({}, 50, expect.any(Date));
@@ -94,7 +100,13 @@ describe('runDiscoveryCron', () => {
 
     const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    const summary = await runDiscoveryCron({} as never, DEPS, new Date(), queue, notifyNewPicksMock);
+    const summary = await runDiscoveryCron(
+      {} as never,
+      queue,
+      DEPS,
+      new Date(),
+      notifyNewPicksMock,
+    );
 
     expect(discoverForFamilyMock).toHaveBeenCalledTimes(2);
     expect(summary.results).toEqual([
@@ -115,7 +127,7 @@ describe('runDiscoveryCron', () => {
 
     const { queue, send } = makeQueue();
     const { runDiscoveryCron } = await import('./discovery');
-    await runDiscoveryCron({} as never, DEPS, new Date(), queue, notifyNewPicksMock);
+    await runDiscoveryCron({} as never, queue, DEPS, new Date(), notifyNewPicksMock);
 
     expect(send).not.toHaveBeenCalled();
     // Zero new candidates → nothing worth pushing about.

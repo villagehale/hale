@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { encryptString } from '~/lib/crypto/string-cipher';
 import {
   GUEST_SOFT_CTA,
   GUEST_SOFT_LINE,
@@ -7,11 +9,15 @@ import {
 } from './guest-copy';
 import {
   GUEST_SEND_HOUR_LOCAL,
+  type PartyReminderDeps,
+  defaultPartyReminderDeps,
   guestCancelDedupeKey,
   guestReminderDedupeKey,
   guestsEligibleForSend,
   isGuestSendSlot,
   isTomorrowLocal,
+  notifyGuestsOfCancellation,
+  runPartyReminderCron,
 } from './reminders';
 
 /**
@@ -142,6 +148,141 @@ describe('send timing', () => {
     expect(isTomorrowLocal(new Date('2026-08-23T18:00:00Z'), now, TORONTO)).toBe(false);
     // Today is not.
     expect(isTomorrowLocal(new Date('2026-08-21T22:00:00Z'), now, TORONTO)).toBe(false);
+  });
+});
+
+/**
+ * VIL-267 — a guest message that could not leave is a FAILURE, not a dedupe and not
+ * a clean run.
+ *
+ * `deduped` means "another tick already claimed this guest": a real, expected,
+ * self-healing outcome. Counting an un-sendable message there hides the one thing an
+ * operator needs to see, and on the cancellation path — which reports only sent/failed
+ * — it disappeared entirely, so a party cancelled with nobody told read as a success.
+ */
+describe('a guest message that cannot leave (VIL-267)', () => {
+  const KEY = Buffer.alloc(32, 7).toString('base64');
+  // 14:10Z is 10:10 in Toronto — inside the guest send hour.
+  const NOW = new Date('2026-08-05T14:10:00Z');
+  // 22:00Z is 18:00 Toronto the NEXT local day.
+  const STARTS_AT = new Date('2026-08-06T22:00:00Z');
+
+  type Chain = Promise<unknown[]> & {
+    from(): Chain;
+    innerJoin(): Chain;
+    where(): Chain;
+    limit(): Promise<unknown[]>;
+  };
+
+  /** Just enough of a Drizzle handle for the two reads each path makes, in order. Each
+   * link is a REAL promise of the queued rows with the builder's methods hung off it,
+   * so awaiting the chain anywhere resolves the same way Drizzle's does. It hands the
+   * rows back REGARDLESS of the predicate — what is under test is the sweep's
+   * accounting, not a WHERE clause a fake cannot execute. */
+  function partyDb(...results: unknown[][]) {
+    let next = 0;
+    return {
+      select: () => {
+        const rows = results[next++] ?? [];
+        const chain: Chain = Object.assign(Promise.resolve(rows), {
+          from: () => chain,
+          innerJoin: () => chain,
+          where: () => chain,
+          limit: async () => rows,
+        });
+        return chain;
+      },
+    } as never;
+  }
+
+  const party = {
+    inviteId: 'inv-1',
+    familyId: 'fam-1',
+    hostUserId: 'user-1',
+    title: 'Nora’s birthday',
+    location: 'Trinity Bellwoods',
+    startsAt: STARTS_AT,
+    timeZone: TORONTO,
+  };
+
+  function guest() {
+    return {
+      rsvpId: 'rsvp-1',
+      phoneE164Encrypted: encryptString('+14165550123'),
+      reminderOptInAt: new Date('2026-08-01T00:00:00Z'),
+      reminderSentAt: null,
+      response: 'yes' as const,
+    };
+  }
+
+  /** The provider is unreachable — the shape an unconfigured deploy takes, because
+   * `requireTwilioConfig` throws by NAME rather than handing back a dead client. */
+  const unreachable: ChannelTransport = {
+    async send() {
+      throw new Error('twilio not configured: missing TWILIO_ACCOUNT_SID');
+    },
+  };
+
+  function deps(released: string[]): PartyReminderDeps {
+    return {
+      transport: unreachable,
+      claim: async () => true,
+      release: async (_db, rsvpId) => {
+        released.push(rsvpId);
+      },
+      loadTeenNames: async () => [],
+      recordSend: async () => {
+        throw new Error('recordSend must not run for a message that never left');
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it('counts the guest as failed — never as deduped — and releases the claim', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const released: string[] = [];
+
+    const result = await runPartyReminderCron(partyDb([party], [guest()]), deps(released), NOW);
+
+    expect(result).toEqual({ evaluated: 1, sent: 0, deduped: 0, failed: 1 });
+    // The claim comes back, so the guest's ONE reminder is not burned by an outage.
+    expect(released).toEqual(['rsvp-1']);
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('reports a cancellation nobody received as a failure, not a clean run', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await notifyGuestsOfCancellation(
+      partyDb([party], [guest()]),
+      { inviteId: 'inv-1' },
+      deps([]),
+      NOW,
+    );
+
+    // The path reports only sent/failed, so an invisible skip here would read as
+    // "everybody was told" for a party that is off.
+    expect(result).toEqual({ sent: 0, failed: 1 });
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('wires the REAL outbound leg into the default deps', async () => {
+    // The dep is non-nullable, so "a transport is wired" is a type-level fact. What is
+    // still worth asserting is WHICH one: the leg that refuses by naming its missing
+    // credentials rather than reporting a send nobody made.
+    const { transport } = defaultPartyReminderDeps();
+    vi.stubEnv('TWILIO_ACCOUNT_SID', '');
+
+    await expect(transport.send({ to: '+14165550123', body: 'never leaves' })).rejects.toThrow(
+      /twilio not configured/,
+    );
   });
 });
 

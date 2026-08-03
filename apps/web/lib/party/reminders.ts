@@ -62,7 +62,15 @@ export interface GuestSendLedger {
 }
 
 export interface PartyReminderDeps {
-  transport: ChannelTransport | null;
+  /**
+   * The outbound SMS leg — REQUIRED (VIL-267). It was nullable, and an absent transport
+   * returned `deduped`: the one bucket that means "another tick has this guest", so an
+   * unconfigured deploy read as a healthy sweep, and a CANCELLATION — which reports only
+   * sent/failed — vanished entirely. The real leg refuses by naming its missing
+   * credentials, which is a failure the sweep counts and logs. A no-send mode belongs in
+   * the result, never in an absent dependency.
+   */
+  transport: ChannelTransport;
   claim: typeof claimGuestReminder;
   release: typeof releaseGuestReminder;
   loadTeenNames: typeof loadTeenFirstNames;
@@ -216,12 +224,6 @@ async function sendToGuest(
 ): Promise<'sent' | 'deduped' | 'failed'> {
   const claimReminder = args.claimReminder !== false;
   if (claimReminder && !(await deps.claim(database, args.guest.rsvpId, args.now))) {
-    return 'deduped';
-  }
-  // Nothing leaves the building without a transport. The claim is released so an
-  // unconfigured environment does not silently burn every guest's one reminder.
-  if (!deps.transport) {
-    if (claimReminder) await deps.release(database, args.guest.rsvpId);
     return 'deduped';
   }
 

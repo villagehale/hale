@@ -71,6 +71,14 @@ export async function dispatchLoopStopSideEffects(
   await Promise.all([
     deps.founder
       .notifyStop(input.category)
+      .then((delivered) => {
+        if (!delivered) {
+          // Refused before it left (no founder address / no Resend key) rather than
+          // thrown, so nothing here would otherwise mark a STOP nobody was paged about
+          // (VIL-267). The category is an enum — no parent detail (rule #1).
+          console.warn('loop stop founder alert not delivered', { category: input.category });
+        }
+      })
       .catch((err) => logFailure('loop stop founder alert failed', err)),
     deps
       .captureServerEvent('loop_stop', input.userId, { category: input.category })

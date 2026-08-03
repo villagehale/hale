@@ -623,7 +623,16 @@ export async function runRegistrationVerifySweep(
         ? `Hale · registration re-verify: ${summary.discrepancies} discrepancies`
         : 'Hale · registration re-verify: needs a look';
     try {
-      await deps.sender.send(subject, formatRegistrationVerifyDigest(summary, now));
+      const delivered = await deps.sender.send(
+        subject,
+        formatRegistrationVerifyDigest(summary, now),
+      );
+      if (!delivered) {
+        // Refused before it left (no founder address / no Resend key) rather than
+        // thrown. Silent here would mean a sweep that found discrepancies and told
+        // nobody, reported as a clean run (VIL-267).
+        console.warn('registration verify: digest not delivered (alert sender unconfigured)');
+      }
     } catch (err) {
       // Best-effort by contract, exactly like the provider alert: a failed email
       // must not turn a completed sweep into a failed run.

@@ -77,6 +77,23 @@ describe('dispatchLoopStopSideEffects', () => {
     expect(capture).toHaveBeenCalledWith('loop_stop', USER_ID, { category: 'weekly_plan' });
   });
 
+  it('says so when the alert was refused before it left (VIL-267)', async () => {
+    // `false` is the notifier's "no founder address / no Resend key" answer — it does
+    // not throw, so without this a CASL STOP nobody was paged about looks identical to
+    // one that reached the founder.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const notifyStop = vi.fn(async () => false);
+
+    await dispatchLoopStopSideEffects(
+      { userId: USER_ID, category: 'weekly_plan' },
+      { founder: { notifyStop }, captureServerEvent: vi.fn(async () => {}) },
+    );
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('not delivered'), {
+      category: 'weekly_plan',
+    });
+  });
+
   it('does NOT throw when the founder alert fails — the other effect still runs', async () => {
     const notifyStop = vi.fn(async () => {
       throw new Error('resend down');

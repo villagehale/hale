@@ -28,6 +28,8 @@ Hale is a **messaging-first family chief of staff** — an event-driven, multi-a
 
 10. **Never push to `main` or `production`.** Feature branches always. Hard-enforced via PreToolUse hook.
 
+11. **An injected effect is required, or its absence is a first-class outcome.** Any dependency that sends, writes, enqueues, notifies or executes must be non-nullable — or, if it may genuinely be absent, its absence must be LOGGED and named in the return value (the channel adapters' `skipped: 'not_configured'`, the push channel's `disabled`, the dispatch's `channel_unavailable`). Never a silent no-op, and never folded into a bucket that means something else. Three of the eight P0s in the toddler audit were one shape — `transport: ChannelTransport | null` plus a result variant meaning "did the work, sent nothing" — so a caller that wants to compose without sending models that explicitly and visibly, not by withholding a dependency (VIL-262/267).
+
 ## Stack reminder
 
 - Language: TypeScript 5.x strict
