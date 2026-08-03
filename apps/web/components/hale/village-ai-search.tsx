@@ -31,12 +31,18 @@ type SearchState =
 export function VillageAiSearch({
   areaKey,
   area = null,
+  filters,
   children,
 }: {
   /** The active area's identity — a change resets the search (reset-on-switch). */
   areaKey: string;
   /** Coarse area label for the result copy (never precise — rule #1). */
   area?: string | null;
+  /** The season chips, mounted directly BENEATH the bar (the confirmed single-search
+   * direction): the search is the entry, and everything else on this surface is a
+   * filter under it rather than its own browsable section. They stay visible in every
+   * state so a season run can always be cleared from where it was started. */
+  filters?: React.ReactNode;
   /** The standing Village board, shown when no search is active. */
   children: React.ReactNode;
 }) {
@@ -79,7 +85,7 @@ export function VillageAiSearch({
   return (
     <div className="space-y-6">
       <form onSubmit={onSubmit} className="relative" aria-label="ask Hale to find something in your village">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-3">
           <Icon as={Search} size={18} />
         </span>
         <label htmlFor={searchId} className="sr-only">
@@ -97,11 +103,13 @@ export function VillageAiSearch({
         />
       </form>
 
+      {filters}
+
       {state.status === 'idle' ? children : null}
       {state.status === 'loading' ? <SearchLoading /> : null}
       {state.status === 'error' ? (
         <div className="panel-oat px-6 py-5 space-y-3" role="alert">
-          <p className="meta text-berry">
+          <p className="meta text-destructive">
             Something went wrong reaching Hale. Check your connection and try again.
           </p>
           <div className="flex flex-wrap items-center gap-4">
@@ -125,8 +133,8 @@ export function VillageAiSearch({
 function SearchLoading() {
   return (
     <output className="rise rise-2 flex items-center gap-3 panel-oat px-6 py-5" aria-live="polite">
-      <Icon as={Sparkles} size={18} className="shrink-0 text-spruce animate-pulse" />
-      <span className="meta text-slate-green">Hale is reading your ask and looking near you…</span>
+      <Icon as={Sparkles} size={18} className="shrink-0 text-ink animate-pulse" />
+      <span className="meta text-ink-2">Hale is reading your ask and looking near you…</span>
     </output>
   );
 }
@@ -156,7 +164,7 @@ function SearchResults({
   return (
     <ResultShell interpretation={view.interpretation} onClear={onClear}>
       {view.degraded ? (
-        <p className="meta text-faded-sage mb-4">
+        <p className="meta text-ink-3 mb-4">
           Hale couldn’t fully parse that, so it searched on your words.
         </p>
       ) : null}
@@ -165,7 +173,7 @@ function SearchResults({
         <div className="space-y-6" aria-live="polite">
           <VillageFeed candidates={view.results} area={area} />
           {view.stillLooking ? (
-            <p className="meta text-slate-green italic">
+            <p className="meta text-ink-2 italic">
               Hale is out looking for more near you — check back soon.
             </p>
           ) : null}
@@ -198,8 +206,8 @@ function ResultShell({
   return (
     <div className="rise rise-2 space-y-6">
       <div className="panel-oat px-6 py-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <span className="meta text-spruce">
-          Hale understood: <span className="font-semibold text-spruce" data-hale-pii>{interpretation}</span>
+        <span className="meta text-ink">
+          Hale understood: <span className="font-semibold text-ink" data-hale-pii>{interpretation}</span>
         </span>
         <button type="button" onClick={onClear} className="link">
           back to your village
@@ -214,8 +222,8 @@ function ResultShell({
 function EmptyPanel({ title, body }: { title: string; body: string }) {
   return (
     <section className="panel-oat px-6 py-12 lg:py-16 text-center">
-      <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">{title}</p>
-      <p className="meta mt-4 text-slate-green max-w-xl mx-auto">{body}</p>
+      <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-ink">{title}</p>
+      <p className="meta mt-4 text-ink-2 max-w-xl mx-auto">{body}</p>
     </section>
   );
 }

@@ -12,13 +12,18 @@ import { SEASONS, type Season } from '~/lib/village/visibility';
 type Message = { text: string; link?: { href: string; label: string } };
 
 /**
- * The season picker at the top of the feed. A chip per season triggers a fresh,
- * paid discovery scoped to it (the discovery runs synchronously — seconds — so
- * the chosen chip shows a pending state); on a real discovery the page navigates
- * to `?season=<season>` so the RSC renders that search run. A "your feed" chip
- * clears back to the standing feed instantly (no discovery cost). Every
- * non-success surfaces an honest message in place (rule #8), never a swallowed
- * null. The season swap is non-urgent, so it runs in a transition.
+ * The season filter. A chip per season triggers a fresh, paid discovery scoped to
+ * it (the discovery runs synchronously — seconds — so the chosen chip shows a
+ * pending state); on a real discovery the page navigates to `?season=<season>` so
+ * the RSC renders that search run. A "your feed" chip clears back to the standing
+ * feed instantly (no discovery cost). Every non-success surfaces an honest message
+ * in place (rule #8), never a swallowed null. The season swap is non-urgent, so it
+ * runs in a transition.
+ *
+ * VIL-209 W4: this now sits directly UNDER the search bar rather than in its own
+ * "look ahead to a season" section further down the page. That was the last thing
+ * on this surface that read as a directory to browse; as a chip row under the bar
+ * it reads as what it is — a filter on the one search.
  */
 export function VillageSeasonSelector({ active = null }: { active?: Season | null }) {
   const router = useRouter();
@@ -47,14 +52,17 @@ export function VillageSeasonSelector({ active = null }: { active?: Season | nul
 
   return (
     <div className="flex flex-col gap-3">
+      {/* A flat chip row, matching the board's type chips right above it — the
+          segmented pill-in-a-track it used to wear made it read as its own control
+          rather than as one more filter under the search. */}
       <fieldset
-        className="flex flex-wrap gap-1 rounded-3xl border border-rule-strong p-1"
+        className="flex flex-wrap gap-2 overflow-x-auto"
         aria-label="search a future season, or return to your weekly feed"
       >
         <Link
           href="/village"
           aria-current={active === null ? 'true' : undefined}
-          className={`pill pill-action ${active === null ? 'bg-spruce text-on-spruce' : 'bg-transparent text-slate-green'}`}
+          className={`pill pill-action shrink-0 ${active === null ? 'bg-brand text-on-ink' : 'text-ink-2'}`}
           style={{ touchAction: 'manipulation' }}
         >
           your feed
@@ -69,7 +77,7 @@ export function VillageSeasonSelector({ active = null }: { active?: Season | nul
               aria-pressed={isActive}
               onClick={() => search(season)}
               disabled={pending}
-              className={`pill pill-action ${isActive ? 'bg-spruce text-on-spruce' : 'bg-transparent text-slate-green'}`}
+              className={`pill pill-action shrink-0 ${isActive ? 'bg-brand text-on-ink' : 'text-ink-2'}`}
               style={{ touchAction: 'manipulation' }}
             >
               {isPending ? `searching ${season}…` : season}
@@ -78,7 +86,7 @@ export function VillageSeasonSelector({ active = null }: { active?: Season | nul
         })}
       </fieldset>
       {message !== null ? (
-        <output className="meta text-slate-green block" aria-live="polite">
+        <output className="meta text-ink-2 block" aria-live="polite">
           {message.text}
           {message.link !== undefined ? (
             <>

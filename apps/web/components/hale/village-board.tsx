@@ -1,20 +1,6 @@
 'use client';
 
-import {
-  BookOpen,
-  CalendarDays,
-  ChevronRight,
-  ExternalLink,
-  Heart,
-  Lock,
-  Map as MapIcon,
-  Search,
-  Shield,
-  Sparkles,
-  Trees,
-  Users,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { ChevronRight, ExternalLink, Lock, Map as MapIcon, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { ActivityCard } from '~/components/hale/activity-card';
@@ -23,8 +9,10 @@ import { EndorseButton } from '~/components/hale/endorse-button';
 import { SocialProofBadge } from '~/components/hale/public-surface';
 import { SaveButton } from '~/components/hale/save-button';
 import { ShareButton } from '~/components/hale/share-button';
+import { resourceChip, villageChip } from '~/components/hale/village-chip';
 import { VillageMap } from '~/components/hale/village-map';
 import { Icon } from '~/components/ui/icon';
+import { TintChip } from '~/components/ui/tint-chip';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { villageKindLabel } from '~/lib/format/labels';
 import { type BoardFilter, filterActivities, filterResources } from '~/lib/village/board-filter';
@@ -59,27 +47,6 @@ const FILTERS: ReadonlyArray<{ value: BoardFilter; label: string }> = [
   { value: 'resources', label: 'Resources' },
   { value: 'playgrounds', label: 'Playgrounds' },
 ];
-
-/** Category → glyph for the curated resource rows. Unknown categories fall back to
- * a neutral shield (a verified-directory glyph), never a fabricated one. */
-const RESOURCE_ICON: Record<string, LucideIcon> = {
-  'EarlyON child & family centres': Users,
-  "Public library children's programs": BookOpen,
-  'Parks & splash pads': Trees,
-  'Public health': Shield,
-  'Community/recreation centres': Users,
-};
-
-/** Village kind → glyph for the compact activity rows. Unknown/other kinds fall
- * back to the generic sparkles used across the app for a village pick. */
-const KIND_ICON: Record<string, LucideIcon> = {
-  class: Sparkles,
-  program: CalendarDays,
-  drop_in: Users,
-  outdoor: Trees,
-  library: BookOpen,
-  community_event: CalendarDays,
-};
 
 const CADENCE_WHEN: Record<string, string> = {
   seasonal: 'seasonal',
@@ -147,7 +114,7 @@ export function VillageBoard({
            type chips still browse the loaded feed. ─────────────────────────────── */}
       {showInlineSearch ? (
         <div className="relative">
-          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faded-sage">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-3">
             <Icon as={Search} size={18} />
           </span>
           <label htmlFor={searchId} className="sr-only">
@@ -178,7 +145,7 @@ export function VillageBoard({
               aria-pressed={active}
               onClick={() => setFilter(option.value)}
               className={`pill pill-action shrink-0 ${
-                active ? 'bg-spruce text-on-spruce' : 'text-slate-green'
+                active ? 'bg-brand text-on-ink' : 'text-ink-2'
               }`}
               style={{ touchAction: 'manipulation' }}
             >
@@ -193,21 +160,21 @@ export function VillageBoard({
         {/* Left — results list */}
         <section className="min-w-0">
           <div className="flex items-baseline justify-between gap-3 mb-4">
-            <span className="eyebrow text-faded-sage">
+            <span className="eyebrow text-ink-3">
               near you{area ? ' · ' : ''}
               {area ? (
-                <span className="text-slate-green" data-hale-pii>
+                <span className="text-ink-2" data-hale-pii>
                   {area}
                 </span>
               ) : null}
             </span>
-            <span className="meta text-faded-sage shrink-0">
+            <span className="meta text-ink-3 shrink-0">
               {resultCount} {resultCount === 1 ? 'place' : 'places'}
             </span>
           </div>
 
           {resultCount === 0 ? (
-            <output className="meta italic text-slate-green block">
+            <output className="meta italic text-ink-2 block">
               {query.trim()
                 ? `nothing matches “${query.trim()}” near you.`
                 : 'nothing to show here yet.'}
@@ -256,7 +223,7 @@ export function VillageBoard({
         <aside className="village-rail min-w-0">
           <RailSection label="upcoming">
             {upcoming.length === 0 ? (
-              <p className="meta italic text-slate-green">no dated events coming up.</p>
+              <p className="meta italic text-ink-2">no dated events coming up.</p>
             ) : (
               <ul className="space-y-1">
                 {upcoming.slice(0, 4).map((candidate) => (
@@ -284,7 +251,7 @@ export function VillageBoard({
             }
           >
             {saved.length === 0 ? (
-              <p className="meta italic text-slate-green">nothing saved yet.</p>
+              <p className="meta italic text-ink-2">nothing saved yet.</p>
             ) : (
               <ul className="space-y-1">
                 {saved.slice(0, 5).map((candidate) => (
@@ -367,7 +334,7 @@ function MapPanel({
         />
       ) : !mounted ? (
         <div className="village-map-placeholder panel-oat">
-          <p className="meta text-slate-green">loading the map…</p>
+          <p className="meta text-ink-2">loading the map…</p>
         </div>
       ) : null}
     </div>
@@ -387,7 +354,7 @@ function RailSection({
   return (
     <section className="village-rail-section">
       <div className="flex items-baseline justify-between gap-3 mb-2">
-        <span className="eyebrow text-faded-sage">{label}</span>
+        <span className="eyebrow text-ink-3">{label}</span>
         {action}
       </div>
       {children}
@@ -411,7 +378,7 @@ function RailRow({
 }) {
   if (teen) {
     return (
-      <div className="village-rail-row flex items-center gap-2 text-slate-green">
+      <div className="village-rail-row flex items-center gap-2 text-ink-2">
         <Icon as={Lock} size={14} className="shrink-0" />
         <span className="meta">{title}</span>
       </div>
@@ -423,9 +390,9 @@ function RailRow({
         <span className="village-rail-row-title" data-hale-pii>
           {title}
         </span>
-        <span className="meta text-faded-sage block">{meta}</span>
+        <span className="meta text-ink-3 block">{meta}</span>
       </span>
-      <Icon as={ChevronRight} size={15} className="shrink-0 text-faded-sage" />
+      <Icon as={ChevronRight} size={15} className="shrink-0 text-ink-3" />
     </button>
   );
 }
@@ -443,10 +410,10 @@ function RecommendationCard({
   return (
     <section className="village-rec">
       <span className="village-rec-eyebrow eyebrow">hale recommends</span>
-      <p className="village-rec-title font-display text-spruce" data-hale-pii>
+      <p className="village-rec-title font-display text-ink" data-hale-pii>
         {candidate.title}
       </p>
-      <p className="meta text-slate-green mt-1">
+      <p className="meta text-ink-2 mt-1">
         {kindLabel ? `${kindLabel} · ` : ''}ranked first for your family this week
       </p>
       <button type="button" className="village-rec-link" onClick={onSelect}>
@@ -476,36 +443,40 @@ function ActivityRow({
   if (candidate.teenAttributed) {
     return (
       <div className="card flex items-center gap-3">
-        <Icon as={Lock} size={18} className="shrink-0 text-slate-green" />
-        <p className="meta text-slate-green">{candidate.title}</p>
+        <TintChip {...villageChip(candidate.kind, true)} />
+        <p className="meta text-ink-2">{candidate.title}</p>
       </div>
     );
   }
 
-  const glyph = KIND_ICON[candidate.kind] ?? Sparkles;
   const when = whenLine(candidate);
 
   return (
     <div className={`card flex flex-col gap-3 ${selected ? 'village-row-selected' : ''}`}>
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-[var(--r-md)] bg-linen text-spruce">
-          <Icon as={glyph} size={18} />
-        </span>
-        <button
-          type="button"
-          className="village-row-title min-w-0 flex-1 text-left"
-          onClick={() => onSelect(candidate.id)}
-          aria-pressed={selected}
-        >
-          <span className="font-display text-[1.05rem] leading-snug text-spruce block" data-hale-pii>
-            {candidate.title}
-          </span>
-          <span className="meta mt-1 text-slate-green block">
-            {kindLabel ? `${kindLabel} · Activity` : 'Activity'}
-            {when ? ` · ${when}` : ''}
-          </span>
-        </button>
-        <SocialProofBadge count={candidate.endorsementCount} />
+        <TintChip {...villageChip(candidate.kind)} />
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="village-row-title w-full text-left"
+            onClick={() => onSelect(candidate.id)}
+            aria-pressed={selected}
+          >
+            <span className="font-display text-[1.05rem] leading-snug text-ink block" data-hale-pii>
+              {candidate.title}
+            </span>
+            <span className="meta mt-1 text-ink-2 block">
+              {kindLabel ? `${kindLabel} · Activity` : 'Activity'}
+              {when ? ` · ${when}` : ''}
+            </span>
+          </button>
+          {/* The endorsement badge sits UNDER the title, not beside it. As a peer of
+              the title in a 330px rail column it took ~200px of a ~250px text box and
+              broke every endorsed title onto three lines with its own words wrapping
+              mid-phrase — it describes the activity, so it belongs on the activity's
+              own lines. */}
+          <SocialProofBadge count={candidate.endorsementCount} />
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-12">
         <AcceptButton href={candidate.acceptHref} initiallyAccepted={candidate.accepted} />
@@ -535,7 +506,6 @@ function whenLine(candidate: VillageCandidateView): string | null {
 }
 
 function ResourceRow({ resource }: { resource: CuratedResourceView }) {
-  const glyph = RESOURCE_ICON[resource.category] ?? Heart;
   return (
     <a
       href={resource.url}
@@ -543,20 +513,18 @@ function ResourceRow({ resource }: { resource: CuratedResourceView }) {
       rel="noreferrer"
       className="card card-interactive group flex items-start gap-3"
     >
-      <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-[var(--r-md)] bg-linen text-spruce">
-        <Icon as={glyph} size={18} />
-      </span>
+      <TintChip {...resourceChip(resource.category)} />
       <div className="min-w-0 flex-1">
-        <p className="font-display text-[1.05rem] leading-snug text-spruce group-hover:text-apricot-deep">
+        <p className="font-display text-[1.05rem] leading-snug text-ink group-hover:text-apricot-deep">
           {resource.name}
         </p>
-        <p className="meta mt-1 text-slate-green">{resource.category}</p>
-        <p className="meta text-faded-sage">{resource.description}</p>
+        <p className="meta mt-1 text-ink-2">{resource.category}</p>
+        <p className="meta text-ink-3">{resource.description}</p>
       </div>
       <Icon
         as={ExternalLink}
         size={16}
-        className="mt-1 shrink-0 text-slate-green group-hover:text-apricot-deep"
+        className="mt-1 shrink-0 text-ink-2 group-hover:text-apricot-deep"
       />
     </a>
   );

@@ -14,6 +14,13 @@ import type { MessageView } from './mappers';
 
 const loadMessagesMock = vi.fn<() => Promise<MessageView[]>>();
 vi.mock('~/lib/messages/queries', () => ({ loadMessages: () => loadMessagesMock() }));
+// W4: the detail pane's thread imports the note-thread server action, whose module
+// graph reaches Auth.js (and so `next/server`, unresolvable in this SSR test env).
+// It is a server edge like the loader above — stub it; the thread's own render
+// contract is asserted in components/hale/note-thread.test.ts.
+vi.mock('~/lib/messages/note-thread-action', () => ({
+  loadNoteThreadAction: async () => ({ conversationId: null, turns: [] }),
+}));
 
 async function renderPage(): Promise<string> {
   const { default: MessagesPage } = await import('~/app/(authed)/messages/page');

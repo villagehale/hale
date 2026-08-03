@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { messageChip } from '~/components/hale/message-chip';
+import { NoteThread } from '~/components/hale/note-thread';
 import { TintChip } from '~/components/ui/tint-chip';
 import type { MessageView } from '~/lib/messages/mappers';
+import { canReplyToNote } from '~/lib/messages/note-reply';
 
 const MSG_PARAM = 'msg';
 
@@ -99,6 +101,10 @@ export function MessagesMasterDetail({ messages }: { messages: MessageView[] }) 
             decide on activity &rarr;
           </Link>
         ) : null}
+        {/* W4: the note becomes a two-way thread — the SAME (family, note) coach
+            conversation the phone replies into. A teen-redacted note gets neither
+            thread nor composer (rule #1), so it keeps the read-only detail above. */}
+        {canReplyToNote(active) ? <NoteThread key={active.id} note={active} /> : null}
       </article>
     </div>
   );

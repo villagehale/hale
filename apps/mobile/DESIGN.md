@@ -110,6 +110,30 @@ the handoff's 34×34 rounded icon chips. Meaning is the icon + label, never the 
   `#b26b1f` · red `#fdebe8` / `#c2543f` · teal `#e0f2f1` / `#0f766e` · gray
   `#f0f2f6` / `#5c6b87`. Dark variants deepen the background and lighten the icon.
 
+**Per-child tint** — a rule *on top of* the tint chips, decided on VIL-209 and
+shipped in `apps/web` (`components/hale/child-tone.ts`). Mobile does not implement
+it yet; when it does, it implements **this**, so the same kid reads the same on both.
+
+A child's scope tag takes a **stable tone derived from the child's id** — FNV-1a over
+the id's code units, modulo the rotation — so the tone survives across surfaces and
+sessions without anyone storing a colour. It exists for one reason: a two- or
+three-kid family should be able to scan "whose is this" down a week of plan lanes
+without reading every name.
+
+Three constraints make it a rule rather than a palette choice:
+
+- **The rotation is `blue · green · yellow · teal`.** `red` is excluded — the system
+  already spends red on privacy and redaction (`shield` + red is the teen-redaction
+  mark), and a child whose tag read in the privacy tone would actively mislead.
+- **`gray` is excluded from the rotation because gray is a meaning**: "not one
+  particular kid" — the whole family, "Both", a two-of-three outing, a group whose
+  members disagree. So a tint always means *exactly one child*, and the absence of a
+  tint is information too. Derive it from the child ids the group actually carries,
+  never by sniffing a composite key.
+- **The tone is never the carrier.** The tag always shows the (teen-safe) name, so a
+  collision between two children in a 5+ kid family costs a reader nothing — which is
+  what lets a four-tone rotation be enough.
+
 ### Type
 
 Two families, paired:
