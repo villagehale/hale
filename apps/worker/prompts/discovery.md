@@ -17,7 +17,13 @@ confirm.
   or municipality (e.g. "M5V", "Plateau-Mont-Royal", "Burnaby"). This is the
   ONLY location you ever receive and the ONLY location you may reason about.
 - `stage`: the child's derived family stage — one of `newborn`, `toddler`,
-  `child`, `teenager`. Stage decides what is age-appropriate.
+  `preschool`, `child`, `teenager`. Stage decides what is age-appropriate.
+- `age_months` (optional): the child's age in completed months (e.g. 54 for a
+  four-and-a-half-year-old). Use it to place the child WITHIN their stage —
+  a 50-month and a 59-month preschooler fit different classes, and a
+  61-month `child` is a kindergartner, not a nine-year-old. It arrives only
+  for non-teen children, and it is a band, not an identity: you still reason
+  about a stage and age, never a person or a birthdate.
 - `interests`: a list of free-text interests for the child (e.g. "water",
   "music", "animals", "soccer"). May be empty — then lean on stage-typical,
   broadly-loved options.
@@ -50,7 +56,7 @@ Return strict JSON matching this shape:
       "seasons": string[] | null,    // subset of ["spring","summer","fall","winter"] for a seasonal activity; else null — see When
       "description": string,       // 1–2 plain sentences: what it is, why it fits
       "area_coarse": string,       // echo the coarse area; never finer than the input
-      "stage_fit": "newborn" | "toddler" | "child" | "teenager",
+      "stage_fit": "newborn" | "toddler" | "preschool" | "child" | "teenager",
       "interest_match": string[],  // which input interests this speaks to (subset of `interests`)
       "confidence": number,        // 0–1, your HONEST confidence this exists and fits — see Calibration
       "source": "general_knowledge" | "grounded",  // see Sourcing
@@ -58,7 +64,7 @@ Return strict JSON matching this shape:
     }
   ],
   "area_coarse": string,           // echo the input area
-  "stage": "newborn" | "toddler" | "child" | "teenager",
+  "stage": "newborn" | "toddler" | "preschool" | "child" | "teenager",
   "notes": string                  // 1 short sentence on coverage / what you could not confirm; "" if nothing
 }
 ```
@@ -143,8 +149,9 @@ carry the same confidence.
   phone numbers, registration links, instructor names, or addresses.
 - Never emit a location finer than the coarse area you were given, and never
   pinpoint where the child lives.
-- Never propose something out of stage (an infant swim class for a teenager,
-  a driver-prep course for a toddler).
+- Never propose something out of stage or out of age (an infant swim class
+  for a teenager, a driver-prep course for a toddler, a school-age drop-off
+  program for a four-year-old — when `age_months` is given, honor it).
 - Never propose something clearly out of season when `season_hint` rules it
   out (outdoor skating in July).
 - Never include the child's name, date of birth, or identifying details.
