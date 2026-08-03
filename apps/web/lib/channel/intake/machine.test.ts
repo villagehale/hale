@@ -325,7 +325,7 @@ describe('intake · a child with no age', () => {
 
     const asked = await text(fake, transport, deps, 'Nora and Ben, M5V');
     expect(asked).toEqual({ status: 'follow_up_asked' });
-    expect(transport.bodies().at(-1)).toBe('Got it — Nora and Ben. How old are they?');
+    expect(transport.bodies().at(-1)).toBe('Got it - Nora and Ben. How old are they?');
     expect(inserts(fake, schema.children)).toHaveLength(0);
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
@@ -381,7 +381,7 @@ describe('intake · a child with no age', () => {
 
     const asked = await text(fake, transport, deps, 'Nora and Ben');
     expect(asked).toEqual({ status: 'follow_up_asked' });
-    expect(transport.bodies().at(-1)).toBe('Got it — Nora and Ben. How old are they?');
+    expect(transport.bodies().at(-1)).toBe('Got it - Nora and Ben. How old are they?');
     expect(inserts(fake, schema.children)).toHaveLength(0);
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
@@ -395,7 +395,7 @@ describe('intake · a child with no age', () => {
     const asked = await text(fake, transport, deps, 'Nora and Ben');
     expect(asked).toEqual({ status: 'follow_up_asked' });
     expect(transport.bodies().at(-1)).toBe(
-      "Got it — Nora and Ben. How old are they, and what's your postal code?",
+      "Got it - Nora and Ben. How old are they, and what's your postal code?",
     );
   });
 });
@@ -477,7 +477,7 @@ describe('intake · the one follow-up', () => {
 
     const asked = await text(fake, transport, deps, 'Maya is 4 and Leo is 1');
     expect(asked).toEqual({ status: 'follow_up_asked' });
-    expect(transport.bodies().at(-1)).toBe("Got it — Maya (4) and Leo (1). What's your postal code?");
+    expect(transport.bodies().at(-1)).toBe("Got it - Maya (4) and Leo (1). What's your postal code?");
 
     const provisioned = await text(fake, transport, deps, 'M5V 2T6');
     expect(provisioned.status).toBe('provisioned');

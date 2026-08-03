@@ -86,7 +86,7 @@ export function renderTally(tally: RsvpTally): string {
   const roster =
     shown.length === 0
       ? ''
-      : ` — ${shown.join(', ')}${overflow > 0 ? ` +${overflow} more` : ''}`;
+      : ` - ${shown.join(', ')}${overflow > 0 ? ` +${overflow} more` : ''}`;
 
   return `${parts.join(', ')}.${roster}`;
 }

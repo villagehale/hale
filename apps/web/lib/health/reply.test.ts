@@ -76,6 +76,62 @@ describe('matchHealthReply', () => {
   });
 });
 
+/**
+ * VIL-265 — the booking branch IS the shared reading (lib/channel/affirmative), not a
+ * six-word private list that happened to overlap it.
+ *
+ * M8's list held 'yes', 'yes please', 'yep' and stopped there, so a parent who answered
+ * "sure" or "go ahead" to an offer of help booking got nothing back — the same silent
+ * drop WS4 found in M6's caregiver confirmation, on a nudge a family gets once every
+ * few months. The two verbs that are NOT affirmations stay local on purpose: "book it"
+ * is an instruction about a clinic visit, and it must not become a word that approves
+ * an arbitrary drafted action wherever else a yes is read.
+ */
+describe('matchHealthReply · the booking branch is the shared vocabulary', () => {
+  const AFFIRMATIVES = [
+    'yes',
+    'yeah',
+    'ok',
+    'sure',
+    'go ahead',
+    'sounds good',
+    'that works',
+    'yes please',
+    'ok thanks',
+    '👍',
+  ];
+
+  it.each(AFFIRMATIVES)('%s asks for the booking', (body) => {
+    expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: 'booking' });
+  });
+
+  it('keeps its own two booking verbs, which are not affirmations anywhere else', () => {
+    expect(matchHealthReply('book it')).toBe('booking');
+    expect(matchHealthReply('draft it')).toBe('booking');
+  });
+
+  it('reads a tick as DONE, never as a request to book', () => {
+    // The shared vocabulary translates ✅/✔/✓ to "yes", and M8 reads them as the
+    // paperwork being handled. The done family is matched FIRST for exactly this
+    // overlap: a parent ticking off a form must never book them an appointment.
+    for (const body of ['✓', '✔', '✅']) {
+      expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: 'done' });
+    }
+  });
+
+  it('no longer reads a bare courtesy as a request', () => {
+    // Filler in the shared grammar, so a message that is only filler carries no
+    // instruction. An unmatched body falls through to the conversational layer.
+    expect(matchHealthReply('please')).toBeNull();
+  });
+
+  it('still refuses a refusal and a sentence that merely contains a yes', () => {
+    for (const body of ['no', 'no thanks', 'not right now', 'yes but next month']) {
+      expect({ body, intent: matchHealthReply(body) }).toEqual({ body, intent: null });
+    }
+  });
+});
+
 describe('handleHealthCheckpointReply', () => {
   it('records a done against the checkpoint the family was last nudged about', async () => {
     const h = harness();

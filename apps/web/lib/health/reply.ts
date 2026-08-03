@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, inArray, isNull, like } from 'drizzle-orm';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { pipelineClient } from '~/lib/pipeline/client';
@@ -46,14 +47,29 @@ const DONE_WORDS = new Set([
   '✅',
 ]);
 
-/** The yes-please-draft-it family. Only ever acted on for a booking checkpoint. */
-const BOOKING_WORDS = new Set(['yes', 'yes please', 'yep', 'book it', 'draft it', 'please']);
+/**
+ * The two ways of asking for help booking that are NOT affirmations — an instruction
+ * about a clinic visit rather than a yes (VIL-265). They stay local for that reason:
+ * folding them into the shared vocabulary would make "book it" a word that approves
+ * whatever else happens to be drafted, on every surface that reads a yes.
+ */
+const BOOKING_VERBS = new Set(['book it', 'draft it']);
 
-/** What this reply IS, or null when it is ordinary conversation. */
+/**
+ * What this reply IS, or null when it is ordinary conversation.
+ *
+ * DONE is matched first, and the order is load-bearing: the shared vocabulary reads a
+ * tick (✓ ✔ ✅) as a yes, while on a health nudge it means the paperwork is filed. A
+ * parent ticking a form off must never be booked an appointment for it.
+ *
+ * The yes itself is the shared reading (VIL-265). M8's own six-word list dropped "sure"
+ * and "go ahead" on the floor — the same silent lapse WS4 found in M6, on a message a
+ * family gets once every few months.
+ */
 export function matchHealthReply(body: string): HealthReplyIntent | null {
   const word = normalizeKeyword(body);
   if (DONE_WORDS.has(word)) return 'done';
-  if (BOOKING_WORDS.has(word)) return 'booking';
+  if (BOOKING_VERBS.has(word) || readAffirmative(body) === 'yes') return 'booking';
   return null;
 }
 

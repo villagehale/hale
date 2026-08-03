@@ -476,7 +476,7 @@ describe('caregiver · after they are in', () => {
     expect(outcome).toEqual({ status: 'caregiver_scoped_reply' });
     expect(transport.sent.at(-1)).toEqual({
       to: GRAN_PHONE,
-      body: "That's one for Ana — I only share the schedule here.",
+      body: "That's one for Ana - I only share the schedule here.",
     });
   });
 

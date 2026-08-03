@@ -76,9 +76,9 @@ export function venueForCode(code: string | null): SourceVenue | null {
 
 export function greeting(venue: string | null): string {
   if (venue) {
-    return `Hi, I'm Hale — I keep family weeks on track around here. You found me at the ${venue}, so I know the area. What are your kids' names and ages?`;
+    return `Hi, I'm Hale - I keep family weeks on track around here. You found me at the ${venue}, so I know the area. What are your kids' names and ages?`;
   }
-  return "Hi, I'm Hale — I keep family weeks on track for GTA parents. What are your kids' names and ages — and what's your postal code?";
+  return "Hi, I'm Hale - I keep family weeks on track for GTA parents. What are your kids' names and ages - and what's your postal code?";
 }
 
 /**
@@ -90,7 +90,7 @@ export function greeting(venue: string | null): string {
  * first message should not spend its one link on a redirect.
  */
 export function assistantDisclosure(): string {
-  return `(I'm an assistant, not a person — details & privacy: ${TERMS_URL})`;
+  return `(I'm an assistant, not a person - details & privacy: ${TERMS_URL})`;
 }
 
 /**
@@ -111,14 +111,14 @@ const GAP_ASK: Record<IntakeGap, string> = {
  * are outstanding it asks for both in the one message it gets. */
 export function followUp(summary: string, missing: readonly IntakeGap[]): string {
   const question = missing.map((gap) => GAP_ASK[gap]).join(', and ');
-  return `Got it — ${summary}. ${question.charAt(0).toUpperCase()}${question.slice(1)}?`;
+  return `Got it - ${summary}. ${question.charAt(0).toUpperCase()}${question.slice(1)}?`;
 }
 
 export const WATCH_OFFER = 'Want me to keep an eye on all of this for you?';
-export const ASSENT_ACK = "Done — you're covered. I'll only text when something actually matters.";
-export const DECLINE_ACK = 'No problem — text me whenever you like.';
+export const ASSENT_ACK = "Done - you're covered. I'll only text when something actually matters.";
+export const DECLINE_ACK = 'No problem - text me whenever you like.';
 export const AMBIGUOUS_CLARIFY =
-  "Happy either way — should I watch the registration dates at least? That one's easy to miss.";
+  "Happy either way - should I watch the registration dates at least? That one's easy to miss.";
 
 /**
  * The CASL keyword replies. STOP gets one final confirmation and then silence; HELP
@@ -126,10 +126,10 @@ export const AMBIGUOUS_CLARIFY =
  * who typed something we couldn't read needs to know what we CAN do, not an error.
  */
 export const STOP_ACK =
-  "You're unsubscribed — I won't text you again. Reply START if you ever want me back.";
+  "You're unsubscribed - I won't text you again. Reply START if you ever want me back.";
 export const HELP_REPLY =
-  "I'm Hale — I keep track of your family's week and text you when something needs doing. Tell me your kids' names and ages and I'll take it from there. Reply STOP to unsubscribe.";
-export const START_ACK = "You're back — I'll text you when something needs doing.";
+  "I'm Hale - I keep track of your family's week and text you when something needs doing. Tell me your kids' names and ages and I'll take it from there. Reply STOP to unsubscribe.";
+export const START_ACK = "You're back - I'll text you when something needs doing.";
 
 /**
  * Said ONCE when the one follow-up went unanswered and something Hale cannot invent is
@@ -140,14 +140,14 @@ export const START_ACK = "You're back — I'll text you when something needs doi
 export function detailsBlocked(missing: readonly IntakeGap[]): string {
   if (missing.includes('ages')) {
     return missing.includes('location')
-      ? "I can't set your family up until I know your kids' ages and your postal code — send them whenever you're ready."
-      : "I can't set your family up until I know how old your kids are — send their ages whenever you're ready.";
+      ? "I can't set your family up until I know your kids' ages and your postal code - send them whenever you're ready."
+      : "I can't set your family up until I know how old your kids are - send their ages whenever you're ready.";
   }
-  return "I can't set your family up until I know your postal code — send it whenever you're ready.";
+  return "I can't set your family up until I know your postal code - send it whenever you're ready.";
 }
 
 /** The honest close when a postal code is outside the region Hale is cleared for
  * (rule #1). Nothing is provisioned; the reply says so rather than leaving a family
  * believing they are signed up. */
 export const REGION_UNAVAILABLE_REPLY =
-  "I'm only set up for families in Canada right now, so I can't help yet — I haven't set anything up.";
+  "I'm only set up for families in Canada right now, so I can't help yet - I haven't set anything up.";

@@ -35,7 +35,7 @@ export function rsvpUrl(publicToken: string): string {
  */
 export function partyRecorded(when: string, title: string, location: string | null): string {
   const where = location === null ? '' : ` at ${location}`;
-  return `Got it — ${title}, ${when}${where}. Want a link guests can RSVP to? Reply YES and I'll make one.`;
+  return `Got it - ${title}, ${when}${where}. Want a link guests can RSVP to? Reply YES and I'll make one.`;
 }
 
 /**
@@ -45,11 +45,11 @@ export function partyRecorded(when: string, title: string, location: string | nu
  * is a new question, not a nag.
  */
 export const PARTY_DATE_CLARIFY =
-  "I've got the party but not the day — what date and time? Send it however you like.";
+  "I've got the party but not the day - what date and time? Send it however you like.";
 
 /** The link itself. Short, because it is going to be forwarded. */
 export function partyLinkReady(url: string): string {
-  return `Here's your invite — share this with guests: ${url}\nText me "who's coming?" any time for the headcount.`;
+  return `Here's your invite - share this with guests: ${url}\nText me "who's coming?" any time for the headcount.`;
 }
 
 /**

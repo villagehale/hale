@@ -24,7 +24,7 @@ export const GUEST_OPT_OUT = 'Reply STOP to opt out.';
  */
 export function guestReminder(title: string, when: string, location: string | null): string {
   const where = location === null ? '' : ` at ${location}`;
-  return `Reminder from Hale: ${title} is tomorrow — ${when}${where}. You asked me to remind you. ${GUEST_OPT_OUT}`;
+  return `Reminder from Hale: ${title} is tomorrow - ${when}${where}. You asked me to remind you. ${GUEST_OPT_OUT}`;
 }
 
 /** Sent when a host cancels. A guest who asked to be reminded about a party has asked,
