@@ -1,4 +1,5 @@
 import { actionGlyph } from '~/components/hale/action-glyph';
+import { previewIdFor } from '~/components/hale/approval-card';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { actionTypeLabel } from '~/lib/format/labels';
@@ -27,6 +28,7 @@ export function ActionApprovalCard({
   actionType: string;
 }) {
   const Icon = actionGlyph(actionType).icon;
+  const previewId = previewIdFor(actionId);
   return (
     <div className="card mt-3 flex flex-col gap-4 p-5">
       <div className="min-w-0">
@@ -34,7 +36,10 @@ export function ActionApprovalCard({
           <Icon aria-hidden size={14} />
           {actionTypeLabel(actionType)}
         </span>
-        <p className="font-display text-[1.15rem] mt-2 font-semibold text-spruce break-words">
+        <p
+          id={previewId}
+          className="font-display text-[1.15rem] mt-2 font-semibold text-spruce break-words"
+        >
           {label}
         </p>
       </div>
@@ -44,8 +49,8 @@ export function ActionApprovalCard({
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <DismissButton actionId={actionId} label={label} />
-        <ApproveButton actionId={actionId} label={label} />
+        <DismissButton actionId={actionId} label={label} labelledBy={previewId} />
+        <ApproveButton actionId={actionId} labelledBy={previewId} />
       </div>
     </div>
   );

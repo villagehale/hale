@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 type State = 'idle' | 'confirming' | 'pending' | 'dismissed' | 'error';
 
@@ -22,9 +22,23 @@ const LABEL: Record<Exclude<State, 'confirming'>, string> = {
  * writes an audit row) with no undo, so it is confirm-gated with a lightweight
  * inline two-step — matching the remove-child / delete-account affordances — rather
  * than firing on a single click.
+ *
+ * `label` is the draft preview, rendered ONLY as a text node inside the confirm
+ * step's `[data-hale-pii]` span. The accessible name takes the same preview by
+ * REFERENCE instead (`labelledBy` — the id of the row's preview node), because a
+ * replay records attribute values verbatim past the text mask (VIL-274, rule #1).
  */
-export function DismissButton({ actionId, label }: { actionId: string; label?: string }) {
+export function DismissButton({
+  actionId,
+  label,
+  labelledBy,
+}: {
+  actionId: string;
+  label?: string;
+  labelledBy?: string;
+}) {
   const [state, setState] = useState<State>('idle');
+  const selfId = useId();
 
   async function dismiss() {
     setState('pending');
@@ -60,13 +74,14 @@ export function DismissButton({ actionId, label }: { actionId: string; label?: s
   return (
     <button
       type="button"
+      id={selfId}
       className="btn-secondary"
       onClick={() => setState('confirming')}
       disabled={state === 'pending' || state === 'dismissed'}
       aria-live="polite"
-      // In a list every row's button reads "dismiss draft" alike; the draft
-      // preview disambiguates which draft each button acts on for a screen reader.
-      aria-label={label ? `${LABEL.idle}: ${label}` : undefined}
+      // In a list every row's button reads "dismiss draft" alike; the row's preview
+      // node joins the accessible name by reference (see the component note).
+      aria-labelledby={labelledBy ? `${selfId} ${labelledBy}` : undefined}
     >
       {LABEL[state]}
     </button>
