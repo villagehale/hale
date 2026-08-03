@@ -54,10 +54,16 @@ describe('LogsBrowser', () => {
     expect(html).toContain('Rolled over');
   });
 
-  it('offers an edit and a remove control per row, each with an accessible name', () => {
+  it('offers an edit and a remove control per row, each naming its own row', () => {
     const html = render();
-    expect(html).toContain('aria-label="edit log: Fed 120 ml"');
-    expect(html).toContain('aria-label="remove log: Fed 120 ml"');
+    // The row text joins each control's name BY REFERENCE, never as an aria-label
+    // copy (VIL-276) — so what this asserts is that both controls point at the node
+    // holding THIS row's text. The resolved sentence is asserted in
+    // replay-safe-names.test.ts, the way a screen reader computes it.
+    const textIds = [...html.matchAll(/<span id="([^"]+)"[^>]*>Fed 120 ml</g)].map((m) => m[1]);
+    expect(textIds).toHaveLength(1);
+    const referenced = [...html.matchAll(/aria-labelledby="\S+ (\S+)"/g)].map((m) => m[1]);
+    expect(referenced.filter((id) => id === textIds[0])).toHaveLength(2);
   });
 
   it('shows a whole-family-first per-child filter and never leaks a teen name (rule #1)', () => {

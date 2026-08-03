@@ -262,8 +262,15 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
  * two-step — matching the dismiss-draft / delete-account affordances — rather than
  * firing on a single click. On success the parent refreshes so the list + pill follow;
  * an error surfaces as the tooltip, never a silent no-op (honesty lane).
+ *
+ * The control is icon-only and every saved row carries one, so the area has to be in
+ * its accessible name — and it gets there as MASKED TEXT the control owns, never as an
+ * `aria-label`/`title` copy, which rrweb records verbatim past the text mask (VIL-276,
+ * rule #1). The visible label lives in the row above, outside this component; carrying
+ * its own sr-only line keeps the control self-contained instead of threading an id
+ * through the popover for the same sentence.
  */
-function AreaRemoveControl({
+export function AreaRemoveControl({
   areaId,
   label,
   onRemoved,
@@ -319,10 +326,12 @@ function AreaRemoveControl({
         setError(false);
         setConfirming(true);
       }}
-      aria-label={`Remove ${label}`}
-      title={error ? 'could not remove — try again' : `Remove ${label}`}
+      title={error ? 'could not remove — try again' : undefined}
     >
       <Icon as={X} size={14} />
+      <span className="sr-only" data-hale-pii>
+        Remove {label}
+      </span>
     </button>
   );
 }

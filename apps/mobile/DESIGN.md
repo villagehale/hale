@@ -195,6 +195,27 @@ Also binding: color and emoji are never the sole carrier of meaning (pair with a
 label + shape); every input has a real label and the correct keyboard; tap targets
 stay large; reduced-motion is respected.
 
+### Before adding session replay: `accessibilityLabel` is an attribute
+
+Mobile runs **no session replay today**, which is the only reason the labels below
+are safe. On web, PostHog replay masks rendered TEXT (`[data-hale-pii]`) but records
+element ATTRIBUTES verbatim — so every "name the row so a screen reader can tell two
+identical buttons apart" label became a PII leak past the mask (VIL-274, VIL-276:
+ten instances, including a child's first name in a `title=` on every authed page).
+
+This app takes the same shape 55 times: `accessibilityLabel` props built by
+interpolation, many of them family content — `Edit ${child.name}'s profile`
+(family.tsx), `Delete plan: ${plan.title}` (plan.tsx), `${name}. ${preview}.`
+(messages.tsx). **The day PostHog replay (or any DOM/UI recorder) is added to
+mobile, those are day-one leaks — before a single new line is written.**
+
+So if replay is ever proposed here: port the guard first, not the fix. Web's lives in
+`apps/web/components/hale/replay-pii-masking.test.ts` — render each surface from a
+fixture seeded with family strings, assert no recorded attribute carries one, and let
+the accessible name be assembled by reference to the masked node instead
+(`aria-labelledby` there; `accessibilityLabelledBy` is the RN equivalent). Rule #1
+does not soften because the recorder is native.
+
 ## Bans (refuse-and-rewrite)
 
 - **No essential small text in caption gray** (`#8B95A9`) — see the contrast policy.
