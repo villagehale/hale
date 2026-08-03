@@ -1090,6 +1090,38 @@ interface UploadedAttachment {
 }
 
 /**
+ * One staged attachment above the composer — name, size, and the control that
+ * takes it back off the send. Its own component so the file name (family PII) has
+ * a node the remove control can NAME BY REFERENCE, and so the chip renders on its
+ * own in the replay-attribute guard (VIL-276).
+ */
+export function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: ComposerAttachment;
+  onRemove: () => void;
+}) {
+  return (
+    <li className={`attach-chip attach-chip-${attachment.tone}`}>
+      <Paperclip aria-hidden size={12} className="shrink-0" />
+      <span data-hale-pii className="max-w-[12rem] truncate">
+        {attachment.name}
+      </span>
+      <span className="opacity-70">{formatAttachmentSize(attachment.sizeBytes)}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${attachment.name}`}
+        className="ml-0.5 inline-flex cursor-pointer items-center"
+      >
+        <X aria-hidden size={13} />
+      </button>
+    </li>
+  );
+}
+
+/**
  * The composer field + send affordance — a rounded input row with the paperclip at
  * the leading edge and the mic + navy send tucked at the trailing edge (desktop
  * handoff §4.4). Enter sends; Shift+Enter (and ⌘/Ctrl+Enter) inserts a newline. The
@@ -1166,21 +1198,11 @@ function Composer({
       {ATTACHMENTS_ENABLED && attachments.length > 0 ? (
         <ul className="flex flex-wrap gap-2">
           {attachments.map((a) => (
-            <li key={a.id} className={`attach-chip attach-chip-${a.tone}`}>
-              <Paperclip aria-hidden size={12} className="shrink-0" />
-              <span data-hale-pii className="max-w-[12rem] truncate">
-                {a.name}
-              </span>
-              <span className="opacity-70">{formatAttachmentSize(a.sizeBytes)}</span>
-              <button
-                type="button"
-                onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                aria-label={`Remove ${a.name}`}
-                className="ml-0.5 inline-flex cursor-pointer items-center"
-              >
-                <X aria-hidden size={13} />
-              </button>
-            </li>
+            <AttachmentChip
+              key={a.id}
+              attachment={a}
+              onRemove={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+            />
           ))}
         </ul>
       ) : null}

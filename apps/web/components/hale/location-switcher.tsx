@@ -263,7 +263,7 @@ export function LocationSwitcher({ data }: { data: AreaSwitcherData }) {
  * firing on a single click. On success the parent refreshes so the list + pill follow;
  * an error surfaces as the tooltip, never a silent no-op (honesty lane).
  */
-function AreaRemoveControl({
+export function AreaRemoveControl({
   areaId,
   label,
   onRemoved,

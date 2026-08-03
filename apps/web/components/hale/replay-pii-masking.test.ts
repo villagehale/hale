@@ -3,22 +3,48 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolCard } from '@hale/agent';
+import type { LogsPage } from '~/lib/companion/logs-view';
 import type { ApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
 import type { TrailView } from '~/lib/dashboard/mappers';
+import type { AuthoredPlanView } from '~/lib/plan/authored';
 import { AccountMenuView } from './account-menu-view';
 import { ApprovalCard, ReversibleCard } from './approval-card';
+import { AttachmentChip } from './ask-hale-thread';
+import { ChildSwitcherView } from './child-switcher-view';
 import { GrowthSection, OverviewSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
+import { AreaRemoveControl } from './location-switcher';
+import { LogsBrowser } from './logs-browser';
+import { AuthoredPlanCard } from './plan-cards';
+import { SharedLinkRow } from './shared-links';
 import { TeenAccessGrants } from './teen-access-grants';
 import { TrailTimeline } from './trail-timeline';
 
 // companion-tabs pulls done-button → the 'use server' log module; stub it so a
-// static render doesn't drag the auth/db chain into the test.
-vi.mock('~/lib/companion/log', () => ({ markCompanionItemDone: vi.fn() }));
+// static render doesn't drag the auth/db chain into the test. The logs browser and
+// the Ask composer reach the same module for their own writes.
+vi.mock('~/lib/companion/log', () => ({
+  markCompanionItemDone: vi.fn(),
+  editQuickEpisode: vi.fn(),
+  deleteQuickEpisode: vi.fn(),
+  logQuickEpisode: vi.fn(),
+}));
 // Same reason for the teen-access revoke form's 'use server' action module.
 vi.mock('~/app/(authed)/settings/teen-access-actions', () => ({
   revokeTeenAccessAction: vi.fn(),
+}));
+// Same reason for the plan cards' done/remove actions and the area switcher's.
+vi.mock('~/lib/plan/plan-actions', () => ({
+  completePlan: vi.fn(),
+  deletePlan: vi.fn(),
+  createPlan: vi.fn(),
+}));
+vi.mock('~/lib/village/areas-action', () => ({
+  activateAreaAction: vi.fn(),
+  deleteAreaAction: vi.fn(),
+  relocateToCityAction: vi.fn(),
+  searchCitiesAction: vi.fn(),
 }));
 
 /**
@@ -497,5 +523,176 @@ describe('teen access grants mask the teen name and the parent\u2019s stated rea
     expect(html).toContain('Nothing can be opened yet');
     expect(html).toContain('no way to reach a teen');
     expect(html).toContain('waiting on your teen');
+  });
+});
+
+/**
+ * VIL-276 — the INVARIANT, after three tickets of instances. Everything above
+ * guards one surface at a time; this sweep states the rule once: seed a surface
+ * with family strings, render it, and let NO attribute value carry one. rrweb
+ * records attributes verbatim, so `[data-hale-pii]` (a TEXT mask) cannot protect
+ * them — which is why "put the row's content in an aria-label to disambiguate an
+ * identical-looking control" keeps re-appearing as a leak. The fix is always the
+ * same: the accessible name is assembled by REFERENCE (`aria-labelledby` at the
+ * node that already holds the masked text), or the attribute is dropped because
+ * visible text beside it already says the thing.
+ *
+ * Adding a surface here is the cheap way to keep a new page inside the rule. A
+ * surface qualifies when it renders from plain fixtures — state-gated leaves are
+ * exported so they can (SharedLinkRow, AreaRemoveControl, AttachmentChip).
+ *
+ * `maskAllInputs` covers <input>/<textarea> VALUES separately (posthog-provider),
+ * so a form field holding what a parent typed is not this rule's business; every
+ * other attribute is.
+ */
+const CHILD = 'Marisol';
+const PLAN_TITLE = 'Sign Marisol up for Saturday swim';
+const LOG_ROW = 'Fed 140 ml before the nap';
+const SHARE_TITLE = 'the Marisol week plan';
+const FILE_NAME = 'Marisol-immunization-record.pdf';
+const AREA = 'Riverdale, Ontario';
+const PARENT = 'Priya Raman';
+const DRIVE_FILE = 'Custody-agreement-2026.pdf';
+
+const PLAN: AuthoredPlanView = {
+  id: 'p1',
+  title: PLAN_TITLE,
+  notes: null,
+  scheduledFor: '2026-08-08',
+  completedAt: null,
+  childId: 'c1',
+  childName: CHILD,
+};
+
+const LOGS: LogsPage = {
+  logs: [
+    {
+      id: 'l1',
+      childId: 'c1',
+      episodeType: 'feed',
+      summary: LOG_ROW,
+      occurredAt: '2026-08-01T18:00:00.000Z',
+    },
+  ],
+  nextCursor: null,
+};
+
+interface AttributeSurface {
+  /** Reads as the failing test's name, so a red run says WHICH surface leaks. */
+  name: string;
+  /** The family strings this fixture is seeded with. */
+  sentinels: string[];
+  render: () => string;
+}
+
+const SENTINEL_SURFACES: AttributeSurface[] = [
+  {
+    name: 'the child switcher (sidebar, every authed page)',
+    sentinels: [CHILD],
+    render: () =>
+      renderToStaticMarkup(
+        h(ChildSwitcherView, {
+          open: true,
+          kids: [{ id: 'c1', name: CHILD, lastName: null, ageLabel: 'toddler', avatarUrl: null }],
+          activeId: 'c1',
+          menuId: 'kids',
+          addHref: '/family',
+          onToggle: () => {},
+          onSelect: () => {},
+        }),
+      ),
+  },
+  {
+    name: 'a parent-authored plan card (done + remove controls)',
+    sentinels: [PLAN_TITLE, CHILD],
+    render: () => renderToStaticMarkup(h(AuthoredPlanCard, { plan: PLAN })),
+  },
+  {
+    name: 'a logs browser row (edit + remove controls)',
+    sentinels: [LOG_ROW],
+    render: () =>
+      renderToStaticMarkup(h(LogsBrowser, { initial: LOGS, kids: [], units: 'metric' })),
+  },
+  {
+    name: 'a shared-link row (revoke control)',
+    sentinels: [SHARE_TITLE],
+    render: () =>
+      renderToStaticMarkup(
+        h(SharedLinkRow, {
+          link: { kind: 'week_plan', id: 's1', token: 'tok', title: SHARE_TITLE },
+          onRevoked: () => {},
+        }),
+      ),
+  },
+  {
+    name: 'a staged chat attachment (remove control)',
+    sentinels: [FILE_NAME],
+    render: () =>
+      renderToStaticMarkup(
+        h(AttachmentChip, {
+          attachment: { id: 'f1', name: FILE_NAME, sizeBytes: 120_000, tone: 'sage' },
+          onRemove: () => {},
+        }),
+      ),
+  },
+  {
+    name: 'a saved family area (remove control)',
+    sentinels: [AREA],
+    render: () =>
+      renderToStaticMarkup(h(AreaRemoveControl, { areaId: 'ar1', label: AREA, onRemoved: () => {} })),
+  },
+  {
+    name: 'the account chip (sidebar, every authed page)',
+    sentinels: [PARENT],
+    render: () =>
+      renderToStaticMarkup(
+        h(AccountMenuView, {
+          open: false,
+          parentName: PARENT,
+          planTier: 'free',
+          canSignOut: true,
+          menuId: 'm',
+          onToggle: () => {},
+          onSelect: () => {},
+          onSignOut: () => {},
+        }),
+      ),
+  },
+  {
+    name: 'a Drive connector card',
+    sentinels: [DRIVE_FILE],
+    render: () =>
+      renderToStaticMarkup(
+        h(ConnectorCard, {
+          card: {
+            kind: 'drive',
+            files: [
+              {
+                name: DRIVE_FILE,
+                mimeType: 'application/pdf',
+                modifiedTime: '2026-07-01T09:00:00Z',
+                webViewLink: 'https://drive.google.com/file/d/abc/view',
+              },
+            ],
+          },
+        }),
+      ),
+  },
+];
+
+describe('no family string reaches a DOM attribute (rrweb records those verbatim)', () => {
+  it.each(SENTINEL_SURFACES)('$name', ({ name, sentinels, render }) => {
+    const html = render();
+    // Non-vacuous: the fixture's family strings ARE on this surface, so an empty
+    // attribute sweep means "masked properly", not "nothing rendered".
+    for (const sentinel of sentinels) {
+      expect(html, `${name}: the fixture must actually render "${sentinel}"`).toContain(sentinel);
+    }
+    const leaks = attributeValues(html).filter((value) =>
+      sentinels.some((sentinel) => value.includes(sentinel)),
+    );
+    // The surface is named in the message so a multi-surface red run prints each
+    // leak separately rather than collapsing identical-shaped failures into one.
+    expect(leaks, `${name}: these attribute values would be recorded verbatim`).toEqual([]);
   });
 });

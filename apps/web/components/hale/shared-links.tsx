@@ -84,7 +84,7 @@ export function SharedLinks() {
 
 type RowState = 'view' | 'confirm' | 'revoking' | 'error';
 
-function SharedLinkRow({
+export function SharedLinkRow({
   link,
   onRevoked,
 }: {
