@@ -14,8 +14,8 @@ export function ApprovalsHeader({ pendingCount }: { pendingCount: number }) {
     return (
       <section className="rise rise-1 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
         <Mascot pose="swim" size={104} className="mx-auto" />
-        <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">All caught up</p>
-        <p className="meta text-slate-green max-w-xl mx-auto">
+        <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-ink">All caught up</p>
+        <p className="meta text-ink-2 max-w-xl mx-auto">
           Nothing waiting for your approval. When Hale drafts something, it parks it here for your
           yes. It never acts on its own.
         </p>
@@ -29,7 +29,7 @@ export function ApprovalsHeader({ pendingCount }: { pendingCount: number }) {
   }
 
   return (
-    <p className="rise rise-1 meta mb-6 text-slate-green">
+    <p className="rise rise-1 meta mb-6 text-ink-2">
       Hale drafts the response &mdash; you decide. It never acts on its own.
     </p>
   );

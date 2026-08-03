@@ -4,7 +4,9 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { WeekPlan } from '@hale/db';
+import type { ApprovalView } from '~/lib/dashboard/approvals';
 import type { TrailView } from '~/lib/dashboard/mappers';
+import { ApprovalCard } from './approval-card';
 import { brandHref } from './nav';
 import { TrailTimeline } from './trail-timeline';
 import { WeekPlanCard, WeekPlanToday, type WeekPlanKid } from './week-plan-card';
@@ -38,6 +40,7 @@ function trailRow(overrides: Partial<TrailView> = {}): TrailView {
     noun: 'draft',
     link: '/approvals',
     childLabel: 'Maya',
+    teenRedacted: false,
     ...overrides,
   };
 }
@@ -69,15 +72,31 @@ describe('trail rows are deep-linkable receipts', () => {
 });
 
 describe('approvals rows are deep-linkable receipts', () => {
-  const src = app('(authed)/approvals/page.tsx');
+  // VIL-209 W3 extracted the row into ApprovalCard, so these assert the RENDERED
+  // row rather than the page's source text: the anchor an outbound message links
+  // to, and the two facts a parent needs before deciding.
+  const approval: ApprovalView = {
+    id: 'act-42',
+    actionType: 'reply_to_email',
+    summary: 'verified by the reviewer — ready for your approval',
+    preview: 'Reply to the clinic — confirm Tuesday 3pm',
+    payload: null,
+    childId: null,
+    childLabel: null,
+    verdict: 'approved',
+    draftedAt: 'today at 8:04 am',
+    teenRedacted: false,
+    teenUnlockable: false,
+  };
+  const html = renderToStaticMarkup(h(ApprovalCard, { approval }));
 
   it('anchors each row on the draft action id', () => {
-    expect(src).toContain('id={approval.id}');
+    expect(html).toContain('id="act-42"');
   });
 
   it('still shows WHAT was proposed and WHEN it was drafted', () => {
-    expect(src).toContain('{approval.preview}');
-    expect(src).toContain('drafted {approval.draftedAt}');
+    expect(html).toContain('Reply to the clinic — confirm Tuesday 3pm');
+    expect(html).toContain('drafted today at 8:04 am');
   });
 });
 

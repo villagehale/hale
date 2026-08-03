@@ -1,12 +1,12 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { companionForChild } from '@hale/types';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolCard } from '@hale/agent';
+import type { ApprovalView } from '~/lib/dashboard/approvals';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import { AccountMenuView } from './account-menu-view';
+import { ApprovalCard } from './approval-card';
 import { GrowthSection, OverviewSection, RoutinesSection } from './companion-tabs';
 import { ConnectorCard } from './connector-card';
 import { TeenAccessGrants } from './teen-access-grants';
@@ -140,6 +140,7 @@ describe('history timeline masks each entry summary + child name', () => {
       noun: 'draft',
       link: '/approvals',
       childLabel: 'Maya',
+      teenRedacted: false,
     },
   ];
 
@@ -316,34 +317,68 @@ describe('connector cards mask the parent’s file names + event details', () =>
 });
 
 /**
- * The approvals row is inline JSX on the server page (it loads its drafts from the
- * DB, so it can't be rendered with a fixture without standing up the query layer).
- * Guard it at the source instead: the row's PII-bearing expressions — the human
- * preview, the verdict summary, and the drafted-payload detail — must each sit
- * after a `data-hale-pii` marker so the replay masks the row body. This fails if a
- * future edit moves any of these fields out of the tagged container.
+ * The approvals row used to be inline JSX on the server page, so this guard could
+ * only compare SOURCE offsets ("does `{approval.preview}` appear after the first
+ * `data-hale-pii`?"). VIL-209 W3 extracted the row into `ApprovalCard`, which takes
+ * a plain `ApprovalView` — so the guard is now the same STRUCTURAL check every
+ * other block in this file uses: render the real card, excise the masked subtrees,
+ * and assert nothing PII-bearing survives in what a replay would still read.
  */
-describe('approvals page source tags the row body PII', () => {
-  const source = readFileSync(
-    fileURLToPath(new URL('../../app/(authed)/approvals/page.tsx', import.meta.url)),
-    'utf8',
-  );
+/**
+ * What `maskTextSelector` actually protects is TEXT NODES. rrweb records element
+ * ATTRIBUTES verbatim, so an attribute value is outside this guard's reach whatever
+ * subtree it sits in. The approve / dismiss / undo buttons put the draft preview in
+ * an `aria-label` (they disambiguate otherwise-identical buttons in a list for a
+ * screen reader), so the preview reaches a recording through that attribute today —
+ * a PRE-EXISTING exposure this file's source-offset predecessor could not see, and
+ * one whose fix is an `aria-labelledby` pointing at the already-masked preview
+ * node, not a class change. Named in the VIL-209 W3 PR. Until then this strips
+ * attributes so the assertion states exactly what it can prove.
+ */
+function visibleText(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ');
+}
 
-  const piiExpressions = [
-    '{approval.preview}',
-    'detail={approval.summary}',
-    '{approval.summary}',
-    'payload={approval.payload}',
-  ];
+describe('the approvals row body is masked for replay', () => {
+  const PREVIEW = 'Reply to Dr. Chen — confirm Maya’s Tuesday 3pm';
+  const SUMMARY = 'Hale matched this to Maya’s 18-month checkup';
+  const PAYLOAD_BODY = 'Hi Dr. Chen — Tuesday at 3 works for Maya. Thank you!';
 
-  it('each row-body PII field appears after the data-hale-pii marker', () => {
-    const marker = source.indexOf('data-hale-pii');
-    expect(marker).toBeGreaterThan(-1);
-    for (const expr of piiExpressions) {
-      const at = source.indexOf(expr);
-      expect(at, `${expr} should be present`).toBeGreaterThan(-1);
-      expect(at, `${expr} should be inside the data-hale-pii container`).toBeGreaterThan(marker);
+  const approval: ApprovalView = {
+    id: 'a1',
+    actionType: 'reply_to_email',
+    summary: SUMMARY,
+    preview: PREVIEW,
+    payload: { to: 'clinic@example.com', subject: 'Tuesday', body: PAYLOAD_BODY },
+    childId: 'c1',
+    childLabel: 'Maya',
+    verdict: 'approved',
+    draftedAt: 'today at 8:04 am',
+    teenRedacted: false,
+    teenUnlockable: false,
+  };
+
+  it('leaves no preview, verdict summary, child name or drafted payload outside a masked subtree', () => {
+    const residue = visibleText(
+      stripMaskedSubtrees(renderToStaticMarkup(h(ApprovalCard, { approval }))),
+    );
+    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, 'Maya']) {
+      expect(residue, `${value} must not survive the mask`).not.toContain(value);
     }
+  });
+
+  it('is a real check — the same values ARE in the unmasked render', () => {
+    const html = renderToStaticMarkup(h(ApprovalCard, { approval }));
+    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, 'Maya']) {
+      expect(html).toContain(value);
+    }
+  });
+
+  it('masks the needs-you branch too, where the summary rides the tone label', () => {
+    const residue = stripMaskedSubtrees(
+      renderToStaticMarkup(h(ApprovalCard, { approval: { ...approval, verdict: 'flagged' } })),
+    );
+    expect(residue).not.toContain(SUMMARY);
   });
 });
 

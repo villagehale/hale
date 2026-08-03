@@ -1,23 +1,7 @@
-import { Calendar, FileText, Mail, ShoppingBag, Sparkles } from 'lucide-react';
-import type { ComponentType } from 'react';
+import { actionGlyph } from '~/components/hale/action-glyph';
 import { ApproveButton } from '~/components/hale/approve-button';
 import { DismissButton } from '~/components/hale/dismiss-button';
 import { actionTypeLabel } from '~/lib/format/labels';
-
-/**
- * A small icon for the eyebrow, chosen from the action's family so the proposal
- * reads at a glance (a calendar for a schedule change, an envelope for an email).
- * An unknown type falls back to the neutral Hale spark — it never guesses a wrong
- * glyph. This reads ONLY the action-type token (rule #1: no payload).
- */
-function eyebrowIcon(actionType: string): ComponentType<{ size?: number; className?: string }> {
-  if (actionType.includes('calendar') || actionType.includes('clinic')) return Calendar;
-  if (actionType.includes('email')) return Mail;
-  if (actionType.includes('order')) return ShoppingBag;
-  if (actionType.includes('form') || actionType.includes('digest') || actionType.includes('routine'))
-    return FileText;
-  return Sparkles;
-}
 
 /**
  * The inline approval gate (Slice 2). Once a chip drafts an action, this card lets
@@ -42,7 +26,7 @@ export function ActionApprovalCard({
   label: string;
   actionType: string;
 }) {
-  const Icon = eyebrowIcon(actionType);
+  const Icon = actionGlyph(actionType).icon;
   return (
     <div className="card mt-3 flex flex-col gap-4 p-5">
       <div className="min-w-0">

@@ -42,6 +42,11 @@ export interface TrailView {
   link: string | null;
   /** The teen-safe child label, or null for a whole-family / unattributed row. */
   childLabel: string | null;
+  /** True when `summary` is the redaction placeholder rather than Hale's own
+   * sentence (rule #1). Surfaced so the row can SAY it is holding something back
+   * — the redaction is already structural in `summary`; this only names it, and
+   * carries no content of its own. */
+  teenRedacted: boolean;
 }
 
 /**
@@ -122,5 +127,6 @@ export function toTrailView(
     noun: targetNoun(entry.targetTable),
     link: targetLink(entry.targetTable, entry.targetId),
     childLabel,
+    teenRedacted: teenContent,
   };
 }

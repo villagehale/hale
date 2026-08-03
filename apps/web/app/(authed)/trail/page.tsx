@@ -19,16 +19,16 @@ export default async function TrailPage() {
       {/* Title + back-to-Family breadcrumb live in the shell top bar (§3.2). */}
       {/* ── Tally — a compact, dense stat strip ────────────────────────────── */}
       <section className="rise rise-2 mb-8">
-        <div className="grid grid-cols-3 divide-x divide-rule overflow-hidden rounded-2xl border border-rule bg-oat">
+        <div className="grid grid-cols-3 divide-x divide-rule overflow-hidden rounded-[var(--r-lg)] border border-rule bg-card shadow-[var(--shadow-card)]">
           {stats.map((stat) => (
             <div
               key={stat.label}
               className="flex min-h-[5.5rem] flex-col justify-center gap-0.5 px-4 py-4 lg:px-5"
             >
-              <p className="font-display text-[1.6rem] lg:text-[1.9rem] leading-none text-spruce tabular">
+              <p className="font-display text-[1.6rem] lg:text-[1.9rem] leading-none text-ink tabular">
                 {stat.value}
               </p>
-              <p className="meta text-faded-sage leading-snug">{stat.label}</p>
+              <p className="meta text-ink-3 leading-snug">{stat.label}</p>
             </div>
           ))}
         </div>
@@ -37,10 +37,10 @@ export default async function TrailPage() {
       {/* ── Filters + timeline ─────────────────────────────────────────── */}
       {entries.length === 0 ? (
         <section className="rise rise-4 panel-oat px-6 py-12 lg:py-16 text-center space-y-4">
-          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-spruce">
+          <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-ink">
             nothing on the record yet.
           </p>
-          <p className="meta text-slate-green max-w-xl mx-auto">
+          <p className="meta text-ink-2 max-w-xl mx-auto">
             connect a calendar or inbox and every action, by Hale or by you, lands here in an
             unbroken, exportable line.
           </p>
@@ -55,7 +55,7 @@ export default async function TrailPage() {
       )}
 
       <section className="rise rise-7 mt-10 pt-8 border-t border-rule flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
-        <p className="meta text-faded-sage">end of trail</p>
+        <p className="meta text-ink-3">end of trail</p>
         <ExportDataButton />
       </section>
     </div>

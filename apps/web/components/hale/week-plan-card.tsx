@@ -1,6 +1,7 @@
 import type { WeekPlan, WeekPlanItem } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
 import { ChildTag } from '~/components/hale/child-tag';
+import { childTone } from '~/components/hale/child-tone';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { WEEKDAYS, weekdayIndexIn } from '~/lib/plan/spine';
 
@@ -105,6 +106,11 @@ export interface WeekPlanKidGroup {
   key: string;
   /** The "who" for these lines, or null for family-wide / unattributed items. */
   who: string | null;
+  /** The kids these lines name, in the group's own order. Empty for a family-wide
+   * grouping. Carried so the lane's tint can be derived from the ONE child it is
+   * about (and neutralised when it is about more than one) without a caller having
+   * to sniff the composite `key`. */
+  childIds: string[];
   items: WeekPlanItem[];
 }
 
@@ -191,10 +197,11 @@ export function groupWeekByKid(
           : named.length === 1
             ? (rank.get((named[0] as WeekPlanKid).id) as number)
             : ordered.length;
-      const key = named.length === 0 ? 'family' : named.map((kid) => kid.id).join('+');
+      const childIds = named.map((kid) => kid.id);
+      const key = named.length === 0 ? 'family' : childIds.join('+');
       const existing = buckets.get(key);
       if (existing) existing.group.items.push(item);
-      else buckets.set(key, { sort, group: { key, who, items: [item] } });
+      else buckets.set(key, { sort, group: { key, who, childIds, items: [item] } });
     }
     const groups = [...buckets.values()].sort((a, b) => a.sort - b.sort).map((b) => b.group);
     return { dayKey, groups };
@@ -226,12 +233,12 @@ function ItemRow({ item, withDay }: { item: WeekPlanItem; withDay?: boolean }) {
   const caption = [provenanceLabel(item.kind), day].filter(Boolean).join(' · ');
   return (
     <div>
-      <p className="text-base text-spruce leading-relaxed" data-hale-pii>
+      <p className="text-base text-ink leading-relaxed" data-hale-pii>
         {item.title}
       </p>
-      <p className="meta mt-0.5 text-slate-green">{caption}</p>
+      <p className="meta mt-0.5 text-ink-2">{caption}</p>
       {item.location ? (
-        <p className="meta mt-0.5 text-slate-green" data-hale-pii>
+        <p className="meta mt-0.5 text-ink-2" data-hale-pii>
           {item.location}
         </p>
       ) : null}
@@ -240,9 +247,19 @@ function ItemRow({ item, withDay }: { item: WeekPlanItem; withDay?: boolean }) {
 }
 
 /** The who-heading for a kid grouping, as the same static child pill every other
- * surface uses — an unattributed grouping reads "whole family". */
+ * surface uses — an unattributed grouping reads "whole family". The lane wears the
+ * child's stable tint when it is about exactly ONE kid; a "Both" / "Everyone" /
+ * two-of-three outing takes the neutral gray, so a tint never claims a kid the row
+ * is not solely about. */
 function KidHeading({ group }: { group: WeekPlanKidGroup }) {
-  return <ChildTag childId={group.who === null ? null : group.key} label={group.who} />;
+  const soleChild = group.childIds.length === 1 ? (group.childIds[0] as string) : null;
+  return (
+    <ChildTag
+      childId={group.who === null ? null : group.key}
+      label={group.who}
+      tone={childTone(soleChild)}
+    />
+  );
 }
 
 /** The day-first, kid-grouped rows for one region of the receipts week view. */
@@ -251,7 +268,7 @@ function KidGroupedDays({ items, kids }: { items: WeekPlanItem[]; kids: readonly
     <div className="mt-3 space-y-5">
       {groupWeekByKid(items, kids).map((section) => (
         <div key={section.dayKey ?? 'sometime'}>
-          <p className="meta text-faded-sage">
+          <p className="meta text-ink-3">
             {section.dayKey ? dayHeading(section.dayKey) : 'sometime this week'}
           </p>
           <div className="mt-2 space-y-4">
@@ -290,9 +307,9 @@ export function WeekPlanToday({
   const items = todayItems(plan.items, todayKey);
   return (
     <div className="panel-oat px-5 py-4">
-      <span className="eyebrow text-spruce">today</span>
+      <span className="eyebrow text-ink">today</span>
       {items.length === 0 ? (
-        <p className="meta mt-2 text-slate-green">nothing on today.</p>
+        <p className="meta mt-2 text-ink-2">nothing on today.</p>
       ) : (
         <div className="mt-3 space-y-4">
           {groupWeekByKid(items, kids).flatMap((section) =>
@@ -324,14 +341,14 @@ export function WeekPlanCard({ plan, kids }: { plan: WeekPlan; kids?: readonly W
   return (
     <div className="space-y-6">
       {plan.summary ? (
-        <p className="font-display text-[1.375rem] leading-snug text-spruce" data-hale-pii>
+        <p className="font-display text-[1.375rem] leading-snug text-ink" data-hale-pii>
           {plan.summary}
         </p>
       ) : null}
 
       {pending.length > 0 ? (
         <div>
-          <span className="eyebrow text-spruce">needs your OK</span>
+          <span className="eyebrow text-ink">needs your OK</span>
           {kids ? (
             <div className="panel-apricot-tint px-5 py-4 mt-3">
               <KidGroupedDays items={pending} kids={kids} />
@@ -348,14 +365,14 @@ export function WeekPlanCard({ plan, kids }: { plan: WeekPlan; kids?: readonly W
 
       {handled.length > 0 ? (
         <div>
-          <span className="eyebrow text-slate-green">on your calendar</span>
+          <span className="eyebrow text-ink-2">on your calendar</span>
           {kids ? (
             <KidGroupedDays items={handled} kids={kids} />
           ) : (
             <div className="mt-3 space-y-5">
               {groupItemsByDay(handled).map((group) => (
                 <div key={group.dayKey ?? 'sometime'}>
-                  <p className="meta text-faded-sage">
+                  <p className="meta text-ink-3">
                     {group.dayKey ? dayHeading(group.dayKey) : 'sometime this week'}
                   </p>
                   <div className="mt-2 space-y-3">
