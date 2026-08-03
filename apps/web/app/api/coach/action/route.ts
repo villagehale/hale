@@ -83,6 +83,7 @@ export async function POST(req: Request) {
       intentKind: parsed.data.intentKind,
       childId,
       sourceAnswer: parsed.data.sourceAnswer,
+      origin: 'ask_hale',
     },
     database,
     pipelineClient(),

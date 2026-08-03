@@ -70,8 +70,12 @@ export interface InlineActionInput {
   /** The answer text that implied the action — carried as the draft's rationale. */
   sourceAnswer: string;
   /** Which trusted interface requested the draft. All of them reuse this same
-   * approval spine; the origin only changes provenance/audit labels. */
-  origin?: InlineActionOrigin;
+   * approval spine; the origin only changes provenance/audit labels. REQUIRED, and
+   * deliberately without a default: there is no neutral answer to "who asked", so the
+   * fallback this replaced had to pick one — it picked `ask_hale`, and every caller
+   * that forgot to pass an origin then claimed a parent conversation it never had
+   * (VIL-264, the registration sweep). Every caller knows its own answer. */
+  origin: InlineActionOrigin;
   /** The drafted item's title, for a caller that knows a better one than the answer's
    * own first line (the registration sweep names the municipality and the cycle). */
   title?: string;
@@ -133,7 +137,7 @@ export async function draftInlineAction(
 
   // A unique synthetic id keeps the dedup hash distinct per draft so re-tapping a
   // chip mints a fresh draft rather than colliding on the one-action-per-event index.
-  const origin = input.origin ?? 'ask_hale';
+  const origin = input.origin;
   const { eventType, auditVerb: auditAction } = ORIGIN_STAMPS[origin];
   const dedupHash = dedupHashFor(input.familyId, origin, `${input.intentKind}|${randomUUID()}`);
 
