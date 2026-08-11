@@ -193,8 +193,11 @@ const NO_WINDOW = 'Nothing has a registration date coming up just yet.';
 const MAPPING_NOW =
   "I'm mapping what's near you now - nothing to point you to yet, and no registration date coming up.";
 
-/** How many blocks the render may spend. Two segments is the whole payload budget, the
- * watch offer takes a slice of it, and this message is read on a phone. */
+/** How many blocks the render may spend, and the same ceiling the skill is written to.
+ * Not a segment budget — {@link MAX_PAYLOAD_SEGMENTS} is the arithmetic one — but the
+ * copy contract: three sentences, read on a phone, one hand holding a toddler. When all
+ * three rungs are filled the checkpoint is the one that yields, because a registration
+ * date closes and a weekend passes while an administrative window stays open for months. */
 const MAX_BLOCKS = 2;
 
 function joinNames(names: readonly string[]): string {
