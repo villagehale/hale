@@ -312,4 +312,19 @@ describe('extractReply · nothing but history', () => {
     expect(result.text).toBe('');
     expect(result.stripped).toEqual([]);
   });
+
+  /**
+   * The input is a stranger's email, so it is hostile by default. Degenerate shapes that
+   * feed the line scanners and the attribution back-scan must terminate and return a
+   * string — a throw here would 500 the webhook and make the provider retry it forever.
+   */
+  it.each([
+    ['deep quote nesting', '>'.repeat(2000)],
+    ['nothing but newlines', '\n'.repeat(2000)],
+    ['repeated attribution openers', 'On 1 '.repeat(2000)],
+    ['repeated signature delimiters', '-- \n'.repeat(1000)],
+    ['one enormous line', 'a'.repeat(100_000)],
+  ])('survives adversarial input: %s', (_label, input) => {
+    expect(typeof extractReply(input).text).toBe('string');
+  });
 });

@@ -41,14 +41,30 @@
 /** An RFC 8601 method result. `none` means "nothing to check", which is not a pass. */
 export type AuthVerdict = 'pass' | 'fail' | 'none' | 'neutral' | 'softfail' | 'temperror' | 'permerror';
 
+/**
+ * One evaluated DKIM signature: its verdict and the domain that signed it, kept
+ * TOGETHER.
+ *
+ * They are a pair, and separating them is a vulnerability rather than a simplification.
+ * A message may carry several signatures, and RFC 8601 has the MTA report one result per
+ * signature, failures included. Reduce that to a single headline verdict plus a flat list
+ * of domains and the two can be read from different signatures — so a valid signature by
+ * a domain the attacker owns lends its `pass` to the victim's domain named in a FAILED
+ * one. The type makes that unsayable.
+ */
+export interface DkimSignatureResult {
+  verdict: AuthVerdict;
+  /** The `header.d=` signing domain, lowercased, or null when the clause named none. */
+  domain: string | null;
+}
+
 export interface AuthenticationResults {
   /** Which MTA stamped this verdict. The only thing that makes it worth reading. */
   authservId: string;
   spf: AuthVerdict | null;
-  dkim: AuthVerdict | null;
   dmarc: AuthVerdict | null;
-  /** Every `header.d=` signing domain, lowercased, in header order. */
-  dkimDomains: readonly string[];
+  /** One entry per evaluated signature, in header order. */
+  dkim: readonly DkimSignatureResult[];
 }
 
 export type SenderTrust =
@@ -95,9 +111,8 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
   const authservId = (authservRaw ?? '').trim().split(/\s+/)[0] ?? '';
   if (!authservId) return null;
 
-  const dkimDomains: string[] = [];
+  const dkim: DkimSignatureResult[] = [];
   let spf: AuthVerdict | null = null;
-  let dkim: AuthVerdict | null = null;
   let dmarc: AuthVerdict | null = null;
 
   for (const clause of rest) {
@@ -107,17 +122,18 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
     if (!method) continue;
 
     const verdict = asVerdict(method[2]);
-    // The FIRST verdict per method wins. A message can carry several DKIM results (one
-    // per signature); the domains are all collected below, but the headline verdict is
-    // not overwritten by a later clause.
     switch (method[1]?.toLowerCase()) {
+      // SPF and DMARC are evaluated once per message, so the FIRST verdict wins and a
+      // later clause cannot overwrite it.
       case 'spf':
         spf ??= verdict;
         break;
+      // DKIM is evaluated once per SIGNATURE, so every clause is its own result and each
+      // keeps the domain it belongs to.
       case 'dkim': {
-        dkim ??= verdict;
+        if (verdict === null) break;
         const domain = /header\.d\s*=\s*([^\s;]+)/i.exec(trimmed);
-        if (domain?.[1]) dkimDomains.push(domain[1].toLowerCase());
+        dkim.push({ verdict, domain: domain?.[1]?.toLowerCase() ?? null });
         break;
       }
       case 'dmarc':
@@ -126,7 +142,7 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
     }
   }
 
-  return { authservId, spf, dkim, dmarc, dkimDomains };
+  return { authservId, spf, dmarc, dkim };
 }
 
 /**
@@ -205,12 +221,18 @@ export function assessSenderTrust(input: {
   if (!results) {
     return { trusted: false, reason: 'no_trusted_verdict' };
   }
-  if (results.dkim !== 'pass') {
+
+  // Only signatures that actually verified may vouch for anything. Filtering FIRST is
+  // what keeps a pass and an alignment from being read off two different signatures.
+  const passing = results.dkim.filter((signature) => signature.verdict === 'pass');
+  if (passing.length === 0) {
     return { trusted: false, reason: 'dkim_failed' };
   }
 
   const fromDomain = input.fromDomain.toLowerCase();
-  const aligned = results.dkimDomains.some((signing) => domainsAlign(signing, fromDomain));
+  const aligned = passing.some(
+    (signature) => signature.domain !== null && domainsAlign(signature.domain, fromDomain),
+  );
   return aligned
     ? { trusted: true, basis: 'dkim_aligned' }
     : { trusted: false, reason: 'dkim_not_aligned' };
