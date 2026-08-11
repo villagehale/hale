@@ -5,6 +5,7 @@ import {
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
 } from '~/lib/channel/config';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
+import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { createRadarComposer } from '~/lib/channel/intake/radar';
@@ -44,6 +45,7 @@ export function buildIntakeDeps(): IntakeDeps {
     extractor: createIntakeExtractor(client),
     intentReader: createReplyIntentReader(client),
     radar: createRadarComposer({ database, weather: createOpenMeteoWeather(), client }),
+    ackComposer: createIntakeAckComposer(client),
     limiter: new PostgresRateLimiter(database),
   };
 }

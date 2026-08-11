@@ -1,4 +1,4 @@
-import { TERMS_URL } from '~/lib/legal-links';
+import { PRIVACY_URL } from '~/lib/legal-links';
 
 /**
  * VIL-237 · M2 — every word Hale texts during intake, in one file.
@@ -6,8 +6,17 @@ import { TERMS_URL } from '~/lib/legal-links';
  * This is the SPEC, not a template layer: the eval suites and the state-machine
  * tests assert against these exact strings, so a copy change is a deliberate,
  * reviewable diff rather than a silent drift in what a stranger's first contact with
- * Hale sounds like. Nothing here is model-composed — intake copy is deterministic by
- * construction (the model reads the parent's words; it never writes Hale's).
+ * Hale sounds like.
+ *
+ * The split is DECISIONS vs RENDERING (the charisma/intelligence split). What Hale
+ * DECIDES — which turn comes next, what it will not invent, what a consent record says —
+ * is deterministic here, and so is every compliance string (the keyword replies, the
+ * blocked and region lines, the consent ask): those are promises, and a promise a model
+ * paraphrased is a promise nobody made. What Hale SOUNDS like on the ACKNOWLEDGMENT
+ * turns — the "Got it - …" that echoes a parent's own words back — is model-composed
+ * through the `intake-voice` skill, gated on grounding and length, and falling back to
+ * the template below whenever the model is unreachable, wrong, or over budget. Every
+ * string here is therefore either the message itself or the floor under a composed one.
  *
  * Rule #1: no message ever carries a child's health detail, a precise location, or
  * anything the parent did not just tell us in this conversation.
@@ -74,23 +83,20 @@ export function venueForCode(code: string | null): SourceVenue | null {
   return SOURCE_VENUES[code] ?? null;
 }
 
+/**
+ * The first thing a stranger ever reads from Hale.
+ *
+ * The AI disclosure is IN the introduction rather than trailing it: "an AI that quietly
+ * runs the family week" is both what Hale is and what it does, so honesty costs no extra
+ * sentence and cannot be skimmed past the way a closing parenthetical can. The privacy
+ * link is deliberately NOT here — it rides on {@link WATCH_OFFER}, the one turn where a
+ * parent is actually asked to agree to something.
+ */
 export function greeting(venue: string | null): string {
   if (venue) {
-    return `Hi, I'm Hale - I keep family weeks on track around here. You found me at the ${venue}, so I know the area. What are your kids' names and ages?`;
+    return `Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll get to work.`;
   }
-  return "Hi, I'm Hale - I keep family weeks on track for GTA parents. What are your kids' names and ages - and what's your postal code?";
-}
-
-/**
- * The one-time disclosure. Rides on the FIRST reply only — a stranger deserves to
- * know within one message that they are texting software and where the privacy terms
- * are, and repeating it every turn would be noise, not honesty.
- *
- * Points at the marketing site, where the policies now live (D20): a stranger's very
- * first message should not spend its one link on a redirect.
- */
-export function assistantDisclosure(): string {
-  return `(I'm an assistant, not a person - details & privacy: ${TERMS_URL})`;
+  return "Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
 }
 
 /**
@@ -107,16 +113,45 @@ const GAP_ASK: Record<IntakeGap, string> = {
   location: "what's your postal code",
 };
 
-/** The single targeted follow-up, asked at most once per intake — so when two things
- * are outstanding it asks for both in the one message it gets. */
-export function followUp(summary: string, missing: readonly IntakeGap[]): string {
-  const question = missing.map((gap) => GAP_ASK[gap]).join(', and ');
-  return `Got it - ${summary}. ${question.charAt(0).toUpperCase()}${question.slice(1)}?`;
+/**
+ * The single targeted ASK, at most once per intake — so when two things are outstanding
+ * it asks for both in the one message it gets.
+ *
+ * Split out from {@link followUp} because the composed acknowledgment reuses it verbatim:
+ * `intake-voice` writes the "Got it - …" half and is forbidden from writing a question,
+ * so this exact sentence is what the shell appends after it. One question, authored once,
+ * whichever half of the turn the model wrote.
+ */
+export function followUpQuestion(missing: readonly IntakeGap[]): string {
+  return `Last thing: ${missing.map((gap) => GAP_ASK[gap]).join(', and ')}?`;
 }
 
-export const WATCH_OFFER = 'Want me to keep an eye on all of this for you?';
-export const ASSENT_ACK = "Done - you're covered. I'll only text when something actually matters.";
-export const DECLINE_ACK = 'No problem - text me whenever you like.';
+/** The deterministic follow-up: the plain echo plus the ask. This is what goes out when
+ * the composed acknowledgment is unavailable or unusable — so an outage costs a parent
+ * warmth, never the question Hale actually needs answered. */
+export function followUp(summary: string, missing: readonly IntakeGap[]): string {
+  return `Got it - ${summary}. ${followUpQuestion(missing)}`;
+}
+
+/**
+ * The consent moment, and the one message in intake that carries a link.
+ *
+ * The privacy URL lives HERE rather than in the greeting because this is the turn where
+ * a parent is asked to agree to ongoing watching — "where does my family's data go" is a
+ * question about the thing being consented to, and a link in the greeting would be asked
+ * to answer it three messages too early. Built from the {@link PRIVACY_URL} constant so a
+ * policy move cannot leave a stale URL inside a consent record's own question.
+ */
+export const WATCH_OFFER = `Want me to keep an eye on all of this for you? (how I handle your family's info: ${PRIVACY_URL})`;
+
+/** The yes. Names the restraint (only when it matters), keeps the CASL escape hatch
+ * visible, and spends its last clause opening the conversation that outlives intake —
+ * the answer arrives after the session closes and is handed to the coach (see the
+ * `no_open_conversation` seam in machine.ts / twilio/inbound.ts). */
+export const ASSENT_ACK =
+  "Done - you're covered. I only text when something actually matters, and STOP always works. While I dig in: what part of the week wears you out the most?";
+export const DECLINE_ACK =
+  'No problem - text me whenever you like. The dates and finds are here when you want them.';
 export const AMBIGUOUS_CLARIFY =
   "Happy either way - should I watch the registration dates at least? That one's easy to miss.";
 

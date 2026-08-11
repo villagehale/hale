@@ -3,6 +3,20 @@ import { fileURLToPath } from 'node:url';
 import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { approvedReceipt, declinedReceipt } from '~/lib/channel/router/copy';
+import {
+  AMBIGUOUS_CLARIFY,
+  ASSENT_ACK,
+  DECLINE_ACK,
+  HELP_REPLY,
+  REGION_UNAVAILABLE_REPLY,
+  START_ACK,
+  STOP_ACK,
+  WATCH_OFFER,
+  detailsBlocked,
+  followUp,
+  greeting,
+} from '~/lib/channel/intake/copy';
+import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
 /**
@@ -46,6 +60,10 @@ const SMS_COPY_SOURCES = [
   'lib/party/guest-copy.ts',
   'lib/party/tally.ts',
   'lib/format/labels.ts',
+  // Not copy itself, but SPLICED into copy: the intake consent ask now carries the
+  // privacy URL from here, so a typographic character in a policy path would ride out
+  // on every consent question Hale asks.
+  'lib/legal-links.ts',
 ] as const;
 
 /**
@@ -97,6 +115,45 @@ describe('outbound SMS copy stays in the GSM-7 alphabet', () => {
     // The offences are the assertion subject, so a failure names the character, the
     // line, and the copy it is in — "expected 1 to be 0" would send nobody anywhere.
     expect(nonGsm7(relativePath)).toEqual([]);
+  });
+});
+
+/**
+ * The other composition the file scan cannot see: intake's strings are built from a
+ * constant (the privacy URL) and from runtime arguments (the venue name, the child
+ * summary), so a clean copy.ts does not by itself prove a clean SENT message. Every
+ * intake turn is rendered and judged by the same encoder the segment counter bills on.
+ *
+ * The whole onboarding script v2 is exercised, because the v2 revision rewrote all of
+ * it at once and a re-keyed string is exactly when a curly quote gets pasted in.
+ */
+describe('the intake script stays GSM-7 once rendered', () => {
+  const RENDERED: Record<string, string> = {
+    'greeting (no venue)': greeting(null),
+    'greeting (venue)': greeting('EarlyON centre'),
+    WATCH_OFFER,
+    ASSENT_ACK,
+    DECLINE_ACK,
+    AMBIGUOUS_CLARIFY,
+    STOP_ACK,
+    HELP_REPLY,
+    START_ACK,
+    REGION_UNAVAILABLE_REPLY,
+    'followUp (ages)': followUp('Maya (4) and Leo', ['ages']),
+    'followUp (both)': followUp('Nora and Ben', ['ages', 'location']),
+    'detailsBlocked (both)': detailsBlocked(['ages', 'location']),
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
+    expect(smsEncoding(body)).toBe('gsm7');
+  });
+
+  // The consent ask is the one intake string carrying a link, and a link is the easiest
+  // thing to paste a curly character into. It must also stay ONE segment: it is appended
+  // to the radar payload, where every septet is charged against the same budget.
+  it('keeps the consent ask, privacy link and all, inside one GSM-7 segment', () => {
+    expect(WATCH_OFFER).toContain(PRIVACY_URL);
+    expect(smsSegments(WATCH_OFFER)).toBe(1);
   });
 });
 

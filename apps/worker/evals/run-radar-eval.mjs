@@ -43,8 +43,10 @@ const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const RADAR_SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'radar-voice.md');
 
 const MAX_TOKENS = 300;
-/** Mirrors MAX_PAYLOAD_SEGMENTS in apps/web/lib/channel/intake/radar-voice.ts. */
-const MAX_PAYLOAD_SEGMENTS = 2;
+/** Mirrors MAX_PAYLOAD_SEGMENTS in apps/web/lib/channel/intake/radar-voice.ts, raised to
+ * three by the v2 WATCH_OFFER: the richest deterministic render plus the now-longer
+ * appended offer is 324 septets, so two would make the grounded fallback unsendable. */
+const MAX_PAYLOAD_SEGMENTS = 3;
 /** The copy contract's hard ceiling: this is a text message, not a newsletter. */
 const MAX_SENTENCES = 3;
 

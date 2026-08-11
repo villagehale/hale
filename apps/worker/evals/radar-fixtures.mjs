@@ -17,8 +17,11 @@
 // nice it reads.
 
 /** The exact question the state machine appends after the composed message. Mirrors
- * WATCH_OFFER in apps/web/lib/channel/intake/copy.ts — the composer must never write it. */
-export const WATCH_OFFER = 'Want me to keep an eye on all of this for you?';
+ * WATCH_OFFER in apps/web/lib/channel/intake/copy.ts — the composer must never write it.
+ * Onboarding script v2 moved the privacy link here from the greeting's disclosure, which
+ * is why the appended tail is now 119 septets rather than 46. */
+export const WATCH_OFFER =
+  "Want me to keep an eye on all of this for you? (how I handle your family's info: https://www.villagehale.com/privacy)";
 
 function pick(over = {}) {
   return {

@@ -47,3 +47,7 @@ export function loadRadarVoiceSkill(): Promise<Skill> {
 export function loadNudgeVoiceSkill(): Promise<Skill> {
   return loadCronSkill('nudge-voice');
 }
+
+export function loadIntakeVoiceSkill(): Promise<Skill> {
+  return loadCronSkill('intake-voice');
+}

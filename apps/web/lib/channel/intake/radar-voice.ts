@@ -31,10 +31,21 @@ import type { RadarDecision } from './radar-decide';
 
 const VOICE_MAX_TOKENS = 300;
 
-/** The whole payload — this message plus the appended watch offer — must fit two SMS
- * segments. Two is the budget the copy contract is written to; the deterministic render
- * always fits, so the fallback is never itself over budget. */
-export const MAX_PAYLOAD_SEGMENTS = 2;
+/**
+ * The whole payload — this message plus the appended watch offer — must fit this many
+ * SMS segments. The invariant that matters is that the DETERMINISTIC render always fits,
+ * so the fallback is never itself over budget.
+ *
+ * Three, not two, since the onboarding script v2: {@link WATCH_OFFER} now carries the
+ * privacy URL (the disclosure moved from the greeting to the consent moment), which took
+ * the appended tail from 46 septets to 119 — and the richest deterministic render, a
+ * weekend pick PLUS a registration line with a resident note, is 205 septets on its own.
+ * That payload is 324 septets, so two segments would make the grounded fallback itself
+ * unsendable. Raising the cap is arithmetic forced by the approved copy, not a licence to
+ * ramble: the composed message's real discipline is the radar-voice skill's own
+ * three-sentence / 250-character ceiling, which the eval gates independently.
+ */
+export const MAX_PAYLOAD_SEGMENTS = 3;
 
 export interface RadarVoice {
   message: string;

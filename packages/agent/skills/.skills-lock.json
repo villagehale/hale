@@ -39,6 +39,10 @@
     "file": "intake-extraction.md",
     "sha256": "720f3851d0d2e369beb3fdfea82f191c3e8aa5369fe9f1daee20effe2a554f5d"
   },
+  "intake-voice.md": {
+    "file": "intake-voice.md",
+    "sha256": "8614211ced33c27f861c816b3a4bd060d908e58cba5ed529b60419d577dccc99"
+  },
   "log-care.md": {
     "file": "log-care.md",
     "sha256": "7e026f111a88cd15b0a6c06ad3692fff9f27cfa907a837cb46976c0d9a55f5db"
