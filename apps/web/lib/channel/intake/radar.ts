@@ -1,8 +1,10 @@
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { deriveStage } from '@hale/types';
+import { ageInMonths, deriveStage } from '@hale/types';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { DEFAULT_TIMEZONE } from '~/lib/format/datetime';
+import type { HealthChild } from '~/lib/health/match';
+import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
 import {
   matchRegistrationWindows,
   resolveMunicipalities,
@@ -82,14 +84,53 @@ function toRadarChildren(children: readonly ExtractedChild[]): RadarChild[] {
   }));
 }
 
-/** The family's 13+ children, whose candidates never ride an SMS to a parent (rule #1).
- * Derived LIVE from date_of_birth, never stored — the same rule the village read applies. */
-async function readTeenChildIds(database: Database, familyId: string): Promise<string[]> {
+/**
+ * The family as the two age-sensitive rules need to see them, off the rows provisioning
+ * wrote a moment ago — the ONE read that can supply an id, which a checkpoint's identity
+ * is built from.
+ *
+ * `teenChildIds` gates the weekend pick: a 13+ child's activity never rides an SMS to a
+ * parent (rule #1). `healthChildren` is the opposite list on purpose — it INCLUDES those
+ * children, because a school records check is the parent's obligation for a teenager
+ * exactly as it is for a seven-year-old, and only the wording changes. The teen's name
+ * is stripped HERE, at the source, so it cannot reach a template even if a later change
+ * dropped a downstream check (the same discipline as M4's splitByStage).
+ *
+ * The stage is derived LIVE from date_of_birth, never stored, and at `now` rather than
+ * the wall clock so a child on their thirteenth birthday cannot be teen-gated at one age
+ * and band-matched at another.
+ */
+async function readHealthRoster(
+  database: Database,
+  familyId: string,
+  now: Date,
+): Promise<{ teenChildIds: string[]; healthChildren: HealthChild[] }> {
   const rows = await database
-    .select({ id: schema.children.id, dateOfBirth: schema.children.dateOfBirth })
+    .select({
+      id: schema.children.id,
+      name: schema.children.name,
+      dateOfBirth: schema.children.dateOfBirth,
+      dobPrecision: schema.children.dobPrecision,
+    })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.filter((row) => deriveStage(row.dateOfBirth) === 'teenager').map((row) => row.id);
+
+  const teenChildIds: string[] = [];
+  const healthChildren: HealthChild[] = [];
+  for (const row of rows) {
+    const isTeen = deriveStage(row.dateOfBirth, now) === 'teenager';
+    if (isTeen) teenChildIds.push(row.id);
+    healthChildren.push({
+      id: row.id,
+      name: isTeen ? null : row.name,
+      ageMonths: ageInMonths(row.dateOfBirth, now),
+      // Free-form text with an 'exact' default, so only the literal 'derived' buys the
+      // tolerance — an unrecognised value must not silently earn six months of it.
+      dobPrecision: row.dobPrecision === 'derived' ? 'derived' : 'exact',
+      isTeen,
+    });
+  }
+  return { teenChildIds, healthChildren };
 }
 
 /**
@@ -154,13 +195,18 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
       const children = toRadarChildren(input.children);
       const area = input.areaCoarse;
 
-      const [teenChildIds, candidates, windowRows, weather] = await Promise.all([
-        readTeenChildIds(deps.database, input.familyId),
+      const [roster, candidates, windowRows, weather, suppressedCheckpointRefs] = await Promise.all([
+        readHealthRoster(deps.database, input.familyId, now),
         readCandidates(deps.database, input.familyId),
         area ? readWindows(deps.database, area) : Promise.resolve([]),
         // Weather is an input, never a blocker: the port swallows its own failures, and
         // an area we cannot place has no forecast to ask for.
         area ? deps.weather.getDailyOutlook(area, WEATHER_DAYS).catch(() => []) : Promise.resolve([]),
+        // Empty for every family this composer actually serves — they were provisioned
+        // seconds ago. Read anyway rather than assumed: the assumption is the kind that
+        // survives the code that made it true, and a checkpoint raised twice is exactly
+        // the nagging M8 exists to remove.
+        loadSuppressedCheckpointRefs(deps.database, input.familyId),
       ]);
 
       const windows = area
@@ -179,7 +225,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         candidates,
         windows,
         weather,
-        teenChildIds,
+        teenChildIds: roster.teenChildIds,
+        healthChildren: roster.healthChildren,
+        areaCoarse: area,
+        suppressedCheckpointRefs,
         now,
         timeZone,
       });
@@ -192,7 +241,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
 
       return {
         message,
-        itemCount: (decision.weekendPick ? 1 : 0) + (decision.registrationLine ? 1 : 0),
+        itemCount:
+          (decision.weekendPick ? 1 : 0) +
+          (decision.registrationLine ? 1 : 0) +
+          (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
       };
     },

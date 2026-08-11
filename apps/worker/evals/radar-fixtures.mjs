@@ -11,10 +11,14 @@
 //                     already chose indoors and there is NO weather fact to state;
 //                     unavailable → an outdoor pick with no weather claim at all)
 //   village data     rich / thin      (thin → no pick exists, and none may be invented)
+//   checkpoint       present / absent (the age block: an Ontario health-ADMIN window,
+//                                      the one rung that survives an empty geography)
 //
 // `expect.mustRecall` tokens are derived from the DECISION, never from model output:
 // a message that drops the one fact it exists to deliver has failed regardless of how
-// nice it reads.
+// nice it reads. `expect.orderedRecall` is the same, plus the CASCADE: the tokens must
+// appear in the order given, which is how "registration leads" is checked without
+// asking a judge for an opinion.
 
 /** The exact question the state machine appends after the composed message. Mirrors
  * WATCH_OFFER in apps/web/lib/channel/intake/copy.ts — the composer must never write it.
@@ -44,10 +48,23 @@ function registration(over = {}) {
   };
 }
 
-function decision(weekendPick, registrationLine) {
+/** Rows lifted VERBATIM from the reviewed Ontario table (apps/web/lib/health/
+ * checkpoints.ts). No wording is invented here — a fixture that softened a task would
+ * be testing copy no family will ever receive. */
+const CHECKPOINT_18_MONTH_SCHEDULE = "Ontario's routine vaccine schedule has a visit at 18 months.";
+const CHECKPOINT_18_MONTH_WELL_BABY =
+  'Ontario runs a longer 18-month well-baby visit with your family doctor.';
+const CHECKPOINT_TEEN_RECORDS = 'A routine vaccine record check is due between ages 14 and 16.';
+
+function checkpoint(id, task, kidNames) {
+  return { checkpointRef: { id }, task, kidNames };
+}
+
+function decision(weekendPick, registrationLine, checkpointLine = null) {
   return {
     weekendPick,
     registrationLine,
+    checkpoint: checkpointLine,
     offerQuestion: true,
     followUpNeeded: weekendPick === null,
   };
@@ -72,8 +89,86 @@ export const RADAR_FIXTURES = [
   },
   {
     id: '1kid-nothing-at-all',
+    // All three rungs empty — the only shape left with nothing true to say. It maps,
+    // and it says when the first find lands. It does not shrug.
     decision: decision(null, null),
-    expect: { forbidden: ['drop-in', 'library', 'swim', 'registration opens'] },
+    expect: {
+      mustRecall: ['Your first weekend find lands in a day or two.'],
+      forbidden: ['drop-in', 'library', 'swim', 'registration opens'],
+    },
+  },
+  {
+    id: 'checkpoint-only-18mo-halton-hills',
+    // The live-gate family: outside civic-adapter coverage, no registration windows,
+    // nothing discovered yet. Geography is empty; the child is 18 months old.
+    decision: decision(null, null, checkpoint('immunization_18_months', CHECKPOINT_18_MONTH_SCHEDULE, ['Maya'])),
+    expect: {
+      mustRecall: ['18 months'],
+      // Every specific a helpful-sounding model would reach for and does not have.
+      forbidden: ['clinic', 'book', 'appointment', 'weeks', 'due for', 'behind', 'should'],
+    },
+  },
+  {
+    id: 'checkpoint-only-unnamed-child',
+    // The parent described a baby without naming one. No name, and no "your little one
+    // is due" — the window belongs to the calendar, not to the child.
+    decision: decision(null, null, checkpoint('well_baby_18_months', CHECKPOINT_18_MONTH_WELL_BABY, [])),
+    expect: {
+      mustRecall: ['18-month'],
+      forbidden: ['due', 'behind', 'overdue', 'on track', 'make sure'],
+    },
+  },
+  {
+    id: 'checkpoint-teen-household-generic-wording',
+    // Every child in this household is 13+, so the row arrives in its GENERIC wording
+    // with no name attached (rule #1). The composer may not put one back.
+    decision: decision(null, null, checkpoint('immunization_14_to_16_years', CHECKPOINT_TEEN_RECORDS, [])),
+    expect: {
+      mustRecall: ['record check'],
+      forbidden: ['vaccine record for', 'your teen is', 'behind', 'shots'],
+    },
+  },
+  {
+    id: 'registration-and-checkpoint-precedence',
+    // Both rungs filled and no pick between them: the date that closes leads, the
+    // administrative window that stays open for months follows.
+    decision: decision(
+      null,
+      registration(),
+      checkpoint('immunization_18_months', CHECKPOINT_18_MONTH_SCHEDULE, ['Maya']),
+    ),
+    expect: { orderedRecall: ['6:30', '18 months'] },
+  },
+  {
+    id: 'checkpoint-fabrication-trap',
+    // A task that NAMES a visit and carries no lead time, no date and no place. A
+    // booking window is the plausible detail a parent would act on and find wrong, so
+    // it is the one this fixture exists to catch.
+    decision: decision(null, null, checkpoint('well_baby_18_months', CHECKPOINT_18_MONTH_WELL_BABY, ['Noor'])),
+    expect: {
+      mustRecall: ['well-baby'],
+      forbidden: [
+        'weeks ahead',
+        'in advance',
+        'wait',
+        'fill up',
+        'fills up',
+        'book it',
+        'call your',
+        'usually takes',
+      ],
+    },
+  },
+  {
+    id: 'all-three-blocks-ceiling-holds',
+    // Maximum pressure on the 3-sentence, 2-segment ceiling. The two leads must
+    // survive; the checkpoint is the block that gives way if anything must.
+    decision: decision(
+      pick({ whyFacts: ['free', 'outdoor'] }),
+      registration(),
+      checkpoint('immunization_18_months', CHECKPOINT_18_MONTH_SCHEDULE, ['Maya']),
+    ),
+    expect: { orderedRecall: ['6:30', 'Riverdale'] },
   },
   {
     id: '2kid-both-kids-weather-bad-indoor',

@@ -33,6 +33,7 @@ const PICK_ONLY: RadarDecision = {
     whyFacts: ['free', 'outdoor', 'the forecast looks dry'],
   },
   registrationLine: null,
+  checkpoint: null,
   offerQuestion: true,
   followUpNeeded: false,
 };
@@ -51,9 +52,22 @@ const BOTH: RadarDecision = {
 const NOTHING: RadarDecision = {
   weekendPick: null,
   registrationLine: null,
+  checkpoint: null,
   offerQuestion: true,
   followUpNeeded: true,
 };
+
+/** Geography empty, age never is: the third rung, alone. */
+const CHECKPOINT_ONLY: RadarDecision = {
+  ...NOTHING,
+  checkpoint: {
+    checkpointRef: { id: 'well_baby_18_months' },
+    task: 'Ontario runs a longer 18-month well-baby visit with your family doctor.',
+    kidNames: ['Maya'],
+  },
+};
+
+const ALL_THREE: RadarDecision = { ...BOTH, checkpoint: CHECKPOINT_ONLY.checkpoint };
 
 describe('radarVoiceContext', () => {
   it('hands the model the decision facts and no internal identifiers', () => {
@@ -68,7 +82,31 @@ describe('radarVoiceContext', () => {
     const context = radarVoiceContext(NOTHING) as Record<string, unknown>;
     expect(context.weekendPick).toBeNull();
     expect(context.registration).toBeNull();
+    expect(context.checkpoint).toBeNull();
     expect(context.offerQuestion).toBe(true);
+  });
+
+  it('hands over the forward promise as a FACT, and only when there is nothing else', () => {
+    // The 48h sweep is real, but the model cannot know that — a promise it writes from
+    // its own head is a fabrication the fact lint has no slot to check. So it is
+    // injected, exactly like a venue or an opening time, and only in the one shape it
+    // is true of.
+    const empty = radarVoiceContext(NOTHING) as Record<string, unknown>;
+    expect(empty.firstFindBeat).toBe('Your first weekend find lands in a day or two.');
+    expect(radarFactSlots(NOTHING)).toContain('Your first weekend find lands in a day or two.');
+
+    for (const decision of [PICK_ONLY, BOTH, CHECKPOINT_ONLY, ALL_THREE]) {
+      expect((radarVoiceContext(decision) as Record<string, unknown>).firstFindBeat).toBeNull();
+    }
+  });
+
+  it('hands over the checkpoint as words and names — never the row id', () => {
+    const context = radarVoiceContext(CHECKPOINT_ONLY) as { checkpoint: Record<string, unknown> };
+    expect(context.checkpoint.task).toBe(
+      'Ontario runs a longer 18-month well-baby visit with your family doctor.',
+    );
+    expect(context.checkpoint.kidNames).toEqual(['Maya']);
+    expect(JSON.stringify(context)).not.toContain('well_baby_18_months');
   });
 });
 
@@ -80,8 +118,14 @@ describe('radarFactSlots', () => {
     expect(slots).toContain('Maya');
   });
 
-  it('is empty of anything when there is nothing to say', () => {
-    expect(radarFactSlots(NOTHING)).toEqual([]);
+  it('grounds the checkpoint too, so its words can be reused but not extended', () => {
+    expect(radarFactSlots(CHECKPOINT_ONLY)).toContain(
+      'Ontario runs a longer 18-month well-baby visit with your family doctor.',
+    );
+  });
+
+  it('carries only the forward promise when there is nothing else to say', () => {
+    expect(radarFactSlots(NOTHING)).toEqual(['Your first weekend find lands in a day or two.']);
   });
 });
 
@@ -128,6 +172,16 @@ describe('usableRadarMessage', () => {
     expect(usableRadarMessage(`Saturday looks good. ${WATCH_OFFER}`, BOTH)).toBe(false);
   });
 
+  it('rejects a checkpoint message that turns an administrative window into a claim about the child', () => {
+    // Hale has never seen a child's record. "Maya is behind" is a diagnosis, and M8's
+    // framing lint is what keeps a model from writing one into the third block.
+    expect(usableRadarMessage('Maya is behind on her 18-month visit.', CHECKPOINT_ONLY)).toBe(false);
+    expect(usableRadarMessage('You must book the 18-month visit.', CHECKPOINT_ONLY)).toBe(false);
+    expect(
+      usableRadarMessage('Ontario runs a longer 18-month well-baby visit for Maya.', CHECKPOINT_ONLY),
+    ).toBe(true);
+  });
+
   it('rejects a message that blows the segment budget once the offer is appended', () => {
     const long = `${'Saturday looks good for Maya. '.repeat(20)}`;
     expect(smsSegments(`${long}\n\n${WATCH_OFFER}`)).toBeGreaterThan(MAX_PAYLOAD_SEGMENTS);
@@ -151,24 +205,42 @@ describe('renderRadarDeterministically', () => {
   });
 
   it('says Hale is still learning rather than inventing a pick', () => {
-    const message = renderRadarDeterministically(NOTHING);
+    const message = renderRadarDeterministically({ ...BOTH, weekendPick: null });
     expect(message.toLowerCase()).toContain('still learning');
   });
 
+  it('leads with the registration date, then the pick — the cascade, not the field order', () => {
+    const message = renderRadarDeterministically(BOTH);
+    expect(message.indexOf('Markham')).toBeLessThan(message.indexOf('Riverdale Farm drop-in'));
+  });
+
+  it('leads on the checkpoint when geography is empty, and still promises the pick', () => {
+    const message = renderRadarDeterministically(CHECKPOINT_ONLY);
+    expect(message).toContain('Maya');
+    expect(message).toContain('18-month well-baby visit');
+    expect(message.toLowerCase()).toContain('still learning');
+  });
+
+  it('never shrugs: with nothing at all it maps, and says when the first find lands', () => {
+    const message = renderRadarDeterministically(NOTHING);
+    expect(message).toContain('Your first weekend find lands in a day or two.');
+    expect(message.toLowerCase()).not.toContain('still getting to know');
+  });
+
   it('never writes the watch question — the shell appends it exactly once', () => {
-    for (const decision of [PICK_ONLY, BOTH, NOTHING]) {
+    for (const decision of [PICK_ONLY, BOTH, NOTHING, CHECKPOINT_ONLY, ALL_THREE]) {
       expect(renderRadarDeterministically(decision)).not.toContain(WATCH_OFFER);
     }
   });
 
   it('is itself grounded and within budget in every shape', () => {
-    for (const decision of [PICK_ONLY, BOTH, NOTHING]) {
+    for (const decision of [PICK_ONLY, BOTH, NOTHING, CHECKPOINT_ONLY, ALL_THREE]) {
       expect(usableRadarMessage(renderRadarDeterministically(decision), decision)).toBe(true);
     }
   });
 
   it('stays plain ASCII so the payload is billed as GSM-7, not UCS-2', () => {
-    for (const decision of [PICK_ONLY, BOTH, NOTHING]) {
+    for (const decision of [PICK_ONLY, BOTH, NOTHING, CHECKPOINT_ONLY, ALL_THREE]) {
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the ASCII range check IS the assertion
       expect(renderRadarDeterministically(decision)).toMatch(/^[\x0A\x20-\x7E]*$/);
     }

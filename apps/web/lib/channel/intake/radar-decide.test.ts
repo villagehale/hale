@@ -1,5 +1,6 @@
 import type { Municipality, ProgramDomain, RegistrationWindow } from '@hale/db';
 import { describe, expect, it } from 'vitest';
+import type { HealthChild } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import type { DailyOutlook } from '~/lib/weather/open-meteo';
 import {
@@ -91,12 +92,19 @@ function match(overrides: Partial<RegistrationMatch> = {}): RegistrationMatch {
   };
 }
 
+function healthChild(overrides: Partial<HealthChild> = {}): HealthChild {
+  return { id: 'kid-1', name: 'Maya', ageMonths: 18, dobPrecision: 'exact', isTeen: false, ...overrides };
+}
+
 function decide(input: {
   children?: RadarChild[];
   candidates?: RadarCandidate[];
   windows?: RegistrationMatch[];
   weather?: DailyOutlook[];
   teenChildIds?: string[];
+  healthChildren?: HealthChild[];
+  areaCoarse?: string | null;
+  suppressedCheckpointRefs?: Set<string>;
   now?: Date;
 }) {
   return decideRadar({
@@ -105,6 +113,9 @@ function decide(input: {
     windows: input.windows ?? [],
     weather: input.weather ?? [],
     teenChildIds: input.teenChildIds ?? [],
+    healthChildren: input.healthChildren ?? [],
+    areaCoarse: input.areaCoarse ?? null,
+    suppressedCheckpointRefs: input.suppressedCheckpointRefs ?? new Set(),
     now: input.now ?? FRIDAY,
     timeZone: TZ,
   });
@@ -464,8 +475,100 @@ describe('decideRadar — honest degradation', () => {
     expect(decision).toEqual({
       weekendPick: null,
       registrationLine: null,
+      checkpoint: null,
       offerQuestion: true,
       followUpNeeded: true,
     });
+  });
+});
+
+/**
+ * The third rung. Geography can be empty — an FSA no civic adapter covers, a town with
+ * no published registration windows, a family four milliseconds old with no discovered
+ * candidates — but an age never is, and Ontario publishes an administrative calendar
+ * against it. What is proved here is that the block is SELECTED, never composed: the
+ * rows, the region gate, the teen wording and the suppression set all come from the M8
+ * matcher (lib/health/match.ts), so this stage cannot hold a different opinion than the
+ * 48h nudge about what applies to a child.
+ */
+describe('decideRadar — the age checkpoint', () => {
+  it('names an Ontario checkpoint for a family with no window and no candidate at all', () => {
+    // Halton Hills: outside every civic adapter, no registration windows. The live-gate
+    // family whose first message was a shrug.
+    const decision = decide({
+      candidates: [],
+      windows: [],
+      healthChildren: [healthChild({ ageMonths: 18 })],
+      areaCoarse: 'L7G',
+    });
+
+    expect(decision.weekendPick).toBeNull();
+    expect(decision.registrationLine).toBeNull();
+    expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
+    expect(decision.checkpoint?.task).toContain('18 months');
+    expect(decision.checkpoint?.kidNames).toEqual(['Maya']);
+  });
+
+  it('holds the band edges the reviewed table draws, and says nothing between them', () => {
+    const at23 = decide({ healthChildren: [healthChild({ ageMonths: 23 })], areaCoarse: 'L7G' });
+    expect(at23.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
+
+    // 24 months is past the last infant band and years short of the first school one.
+    // The verified table has no row there, and a checkpoint is never invented to fill it.
+    const at24 = decide({ healthChildren: [healthChild({ ageMonths: 24 })], areaCoarse: 'L7G' });
+    expect(at24.checkpoint).toBeNull();
+  });
+
+  it('speaks about the YOUNGEST child — one message, one thing', () => {
+    const decision = decide({
+      healthChildren: [
+        healthChild({ id: 'kid-1', name: 'Leo', ageMonths: 60 }),
+        healthChild({ id: 'kid-2', name: 'Maya', ageMonths: 18 }),
+      ],
+      areaCoarse: 'M5V',
+    });
+
+    expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_18_months');
+    expect(decision.checkpoint?.kidNames).toEqual(['Maya']);
+  });
+
+  it('says nothing when the area is unknown or outside Ontario', () => {
+    const children = [healthChild({ ageMonths: 18 })];
+    expect(decide({ healthChildren: children, areaCoarse: null }).checkpoint).toBeNull();
+    // H2X is Montreal: the provincial rows are not this family's rules.
+    expect(decide({ healthChildren: children, areaCoarse: 'H2X' }).checkpoint).toBeNull();
+  });
+
+  it('honours the suppression set, so the radar cannot re-raise what was already told', () => {
+    const children = [healthChild({ id: 'kid-1', ageMonths: 18 })];
+    const suppressed = new Set(['immunization_18_months:kid-1:0']);
+
+    const decision = decide({ healthChildren: children, areaCoarse: 'L7G', suppressedCheckpointRefs: suppressed });
+    // The next row in the same band, not silence and not the suppressed one.
+    expect(decision.checkpoint?.checkpointRef.id).toBe('well_baby_18_months');
+  });
+
+  it('uses the generic wording, and no name, for a 13+ child (rule #1)', () => {
+    const decision = decide({
+      healthChildren: [healthChild({ id: 'kid-1', name: null, ageMonths: 156, isTeen: true })],
+      areaCoarse: 'M5V',
+    });
+
+    expect(decision.checkpoint?.checkpointRef.id).toBe('immunization_grade_7');
+    expect(decision.checkpoint?.task).toBe('A school immunization consent form is due.');
+    expect(decision.checkpoint?.kidNames).toEqual([]);
+  });
+
+  it('carries all three blocks when a family has all three — the lead order is the voice stage', () => {
+    const decision = decide({
+      candidates: [candidate()],
+      windows: [match()],
+      healthChildren: [healthChild({ ageMonths: 18 })],
+      areaCoarse: 'L7G',
+    });
+
+    expect(decision.registrationLine).not.toBeNull();
+    expect(decision.weekendPick).not.toBeNull();
+    expect(decision.checkpoint).not.toBeNull();
   });
 });

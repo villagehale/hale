@@ -62,10 +62,17 @@ function townLabel(municipality) {
     .join(' ');
 }
 
+/** Mirrors FIRST_FIND_BEAT in apps/web/lib/channel/intake/radar-voice.ts. The promise is
+ * INJECTED rather than left to the model: "a day or two" is a specific, and a specific
+ * the model writes from its own head is the fabrication this stage exists to stop. */
+const FIRST_FIND_BEAT = 'Your first weekend find lands in a day or two.';
+
 function radarVoiceContext(decision) {
   const pick = decision.weekendPick;
   const reg = decision.registrationLine;
+  const emptyHanded = pick === null && reg === null && decision.checkpoint === null;
   return {
+    firstFindBeat: emptyHanded ? FIRST_FIND_BEAT : null,
     weekendPick: pick
       ? {
           what: pick.candidateRef.title,
@@ -84,6 +91,10 @@ function radarVoiceContext(decision) {
           residentNote: reg.residentNote,
           ageApproximate: reg.ageApproximate,
         }
+      : null,
+    // The reviewed row's own words and the names it may carry — never the row id.
+    checkpoint: decision.checkpoint
+      ? { task: decision.checkpoint.task, kidNames: decision.checkpoint.kidNames }
       : null,
     offerQuestion: decision.offerQuestion,
   };
@@ -193,8 +204,15 @@ function fabrications(message, context) {
   return [...new Set(offenders)];
 }
 
+/** "6:30 a.m." is ONE injected fact, not two sentence endings. The ceiling counts
+ * sentences a parent reads, so the abbreviation's own periods are neutralised before
+ * the split — otherwise a message that puts the opening time mid-sentence is failed for
+ * a punctuation mark it was handed. */
+const CLOCK_ABBREVIATION = /\b([ap])\.m\./gi;
+
 function countSentences(message) {
   return message
+    .replace(CLOCK_ABBREVIATION, '$1m')
     .split(/(?<=[.!?])\s+|\n+/)
     .map((part) => part.trim())
     .filter((part) => part.length > 0).length;
@@ -230,6 +248,21 @@ function checkMessage(fixture, message, judgeScore) {
       failures.push(`never delivers the fact it exists for: ${JSON.stringify(token)}`);
     }
   }
+  // The cascade, checked as ORDER rather than as an opinion: each token must be
+  // present and must not appear before the one that outranks it.
+  let cursor = -1;
+  for (const token of fixture.expect.orderedRecall ?? []) {
+    const at = lower.indexOf(token.toLowerCase());
+    if (at === -1) {
+      failures.push(`never delivers the fact it exists for: ${JSON.stringify(token)}`);
+      break;
+    }
+    if (at < cursor) {
+      failures.push(`leads with the wrong block: ${JSON.stringify(token)} comes too early`);
+      break;
+    }
+    cursor = at;
+  }
   for (const token of fixture.expect.forbidden ?? []) {
     if (lower.includes(token.toLowerCase())) {
       failures.push(`says ${JSON.stringify(token)}, which no fact supports`);
@@ -261,6 +294,12 @@ const JUDGE_SYSTEM = [
 const BROKEN_MESSAGE = [
   "Great news! I found Sunnyside Splash Pad for you on Friday, and it's only $14 per child, starting at 9:15 sharp.",
   'You should also know about the Beaches Rec Centre program which opens on September 3 at 8:00 for everyone in Etobicoke.',
+  // The checkpoint failure mode, added with the third rung: a booking lead time and a
+  // wait, neither of which any payload carries, wrapped around a claim about the child.
+  'Maya is behind on her routine visit at 18 months, so book it a few weeks ahead because clinics fill up.',
+  // …and the registration date trailing the checkpoint rather than leading it, so the
+  // CASCADE gate is calibrated on order and not only on a missing token.
+  'Registration for all of that opens at 6:30 anyway.',
   'There is honestly so much going on around you this week that I could barely fit it all in.',
   WATCH_OFFER,
 ].join(' ');
