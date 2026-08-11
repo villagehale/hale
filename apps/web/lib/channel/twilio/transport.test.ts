@@ -50,6 +50,18 @@ describe('createTwilioTransport', () => {
     expect(sent.get('Body')).toBe(BODY);
   });
 
+  it('asks Twilio for delivery receipts at the status webhook (live-gate finding: the number-level StatusCallback is ignored for API-created messages, so omitting it here means no receipt ever fires)', async () => {
+    vi.stubEnv('APP_URL', 'https://app.example.test');
+    const fetchMock = vi.fn(async () => okResponse());
+    const transport = createTwilioTransport({ fetch: fetchMock as unknown as typeof fetch });
+
+    await transport.send({ to: TO, body: BODY });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const sent = new URLSearchParams(init.body as string);
+    expect(sent.get('StatusCallback')).toBe('https://app.example.test/api/channels/twilio/status');
+  });
+
   it('authenticates with the API KEY pair (not the auth token) over HTTP Basic', async () => {
     const fetchMock = vi.fn(async () => okResponse());
     const transport = createTwilioTransport({ fetch: fetchMock as unknown as typeof fetch });
