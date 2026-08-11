@@ -23,9 +23,16 @@
 // not for which of two reasonable buckets the model picked — it is a demand signal, and
 // a demand signal has no ground truth.
 
-/** Every value the closed vocabulary allows, plus the in-domain sentinel. Mirrors
- * UnmetIntentCategory in packages/db/src/schema/channel-messages.ts and the table in
- * the skill — duplicated on purpose, so a divergence between the three surfaces here. */
+/**
+ * Every value the closed vocabulary allows, plus the in-domain sentinel.
+ *
+ * Mirrors `UNMET_INTENT_CATEGORIES` in packages/db/src/schema/channel-messages.ts, which
+ * is the source — the derived type, the screen's runtime allowlist and migration 0080's
+ * CHECK all come from it, and packages/db/scripts/unmet-vocabulary-consistency.test.mjs
+ * holds the SQL copy to it. This is a REPLICATE, per the eval convention (a `~/` alias
+ * is not resolvable from here); a value on this list that the CHECK would reject is a
+ * gate that passes while prod refuses the write, so keep them in step.
+ */
 export const ALLOWED_CATEGORIES = [
   'none',
   'weather',

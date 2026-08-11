@@ -37,7 +37,13 @@ import { users } from './users.js';
  * an in-domain message leaves both columns null, because a question Hale answered is
  * not an unmet intent.
  */
-export type UnmetIntentLane = 'off_domain_general' | 'safety_critical' | 'provider_access';
+export const UNMET_INTENT_LANES = [
+  'off_domain_general',
+  'safety_critical',
+  'provider_access',
+] as const;
+
+export type UnmetIntentLane = (typeof UNMET_INTENT_LANES)[number];
 
 /**
  * WHAT the parent wanted, as a bucket — never as words they typed.
@@ -47,21 +53,29 @@ export type UnmetIntentLane = 'off_domain_general' | 'safety_critical' | 'provid
  * never reach a founder's weekly email is for the column to be incapable of holding
  * one. `other` is the escape hatch, and its own count is the signal that the list needs
  * a new entry.
+ *
+ * THIS ARRAY IS THE SOURCE. The type is derived from it, the screen's runtime allowlist
+ * imports it, and migration 0080's CHECK constraint restates it in SQL — which is the
+ * one copy TypeScript cannot own, so `unmet-vocabulary-consistency.test.mjs` holds the
+ * two together mechanically. Adding a bucket is deliberately a migration.
  */
-export type UnmetIntentCategory =
-  | 'weather'
-  | 'news-or-politics'
-  | 'general-knowledge'
-  | 'nearby-places'
-  | 'traffic-or-transit'
-  | 'shopping-or-deals'
-  | 'other'
-  | 'medical-symptom'
-  | 'mental-health'
-  | 'child-safety'
-  | 'emergency'
-  | 'doctor-access'
-  | 'specialist-access';
+export const UNMET_INTENT_CATEGORIES = [
+  'weather',
+  'news-or-politics',
+  'general-knowledge',
+  'nearby-places',
+  'traffic-or-transit',
+  'shopping-or-deals',
+  'other',
+  'medical-symptom',
+  'mental-health',
+  'child-safety',
+  'emergency',
+  'doctor-access',
+  'specialist-access',
+] as const;
+
+export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
 export const channelMessages = pgTable(
   'channel_messages',
   {

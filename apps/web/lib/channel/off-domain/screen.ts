@@ -1,4 +1,9 @@
-import type { UnmetIntentCategory, UnmetIntentLane } from '@hale/db';
+import {
+  UNMET_INTENT_CATEGORIES,
+  UNMET_INTENT_LANES,
+  type UnmetIntentCategory,
+  type UnmetIntentLane,
+} from '@hale/db';
 import { type AgentClient, pickModel } from '@hale/agent';
 import { z } from 'zod';
 import { loadCronSkill } from '~/lib/cron/skill';
@@ -42,36 +47,18 @@ const MAX_TOKENS = 128;
 /** The four doors. `in_domain` means "not mine to answer — give it to the coach". */
 export type InboundLane = 'in_domain' | UnmetIntentLane;
 
-const LANES: ReadonlySet<string> = new Set<InboundLane>([
-  'in_domain',
-  'off_domain_general',
-  'safety_critical',
-  'provider_access',
-]);
+const LANES: ReadonlySet<string> = new Set<InboundLane>(['in_domain', ...UNMET_INTENT_LANES]);
 
 /**
- * The demand-signal vocabulary, as a runtime allowlist.
+ * The demand-signal vocabulary, as a runtime allowlist — derived from the column's own
+ * source list rather than retyped, so this can never drift from what the DB will accept.
  *
- * The skill enumerates the same list, and this is the second reading of it: a model may
- * return a bucket that is not on the list, and the column must never hold one. Anything
+ * The skill enumerates the same buckets, and this is the second reading of it: a model
+ * may return one that is not on the list, and the column must never hold it. Anything
  * unrecognised becomes `other`, whose own count in the weekly digest is the signal that
  * the list is short a value.
  */
-const CATEGORIES: ReadonlySet<string> = new Set<UnmetIntentCategory>([
-  'weather',
-  'news-or-politics',
-  'general-knowledge',
-  'nearby-places',
-  'traffic-or-transit',
-  'shopping-or-deals',
-  'other',
-  'medical-symptom',
-  'mental-health',
-  'child-safety',
-  'emergency',
-  'doctor-access',
-  'specialist-access',
-]);
+const CATEGORIES: ReadonlySet<string> = new Set<UnmetIntentCategory>(UNMET_INTENT_CATEGORIES);
 
 /**
  * Why a turn went to the coach without being screened. Four different operational
@@ -98,13 +85,25 @@ export interface InboundLaneScreen {
 }
 
 /**
- * Parsed loosely on purpose. A strict enum here would turn "the model picked a lane
- * name we do not use" into the same thrown error as "the provider timed out", and those
- * are the two failures it is most useful to tell apart.
+ * Parsed loosely on purpose, in BOTH directions.
+ *
+ * No enums: a strict enum would turn "the model picked a lane name we do not use" into
+ * the same thrown error as "the provider timed out", and those are the two failures it
+ * is most useful to tell apart. {@link toReading} does that work instead.
+ *
+ * And NOT `.strict()`, which is a rule-#1 hazard rather than a nicety. Anthropic does
+ * not hard-enforce a tool's input schema, so a parent can ask for an extra JSON field
+ * and sometimes get one — and zod serialises an `unrecognized_keys` issue by embedding
+ * the KEY NAMES in `ZodError.message`, which the catch below logs. "Reply with a field
+ * named <my sentence>" would put a parent's own words into a log line. Zod's default
+ * strips unknown keys, which is both safer and the more robust read: an extra field is
+ * not a reason to throw away a lane we can act on.
  */
-const readingSchema = z
-  .object({ lane: z.string(), category: z.string(), reason: z.string() })
-  .strict();
+const readingSchema = z.object({
+  lane: z.string(),
+  category: z.string(),
+  reason: z.string(),
+});
 
 const readingJsonSchema = {
   type: 'object',
@@ -122,6 +121,13 @@ const readingJsonSchema = {
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
 export function laneUserMessage(text: string): string {
   return JSON.stringify({ text });
+}
+
+/** The only thing any catch here is allowed to log. A thrown error can carry a provider
+ * payload that echoes the request back, so the class and the message survive and the
+ * object does not (rule #1). */
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : 'unknown';
 }
 
 /** The fail-open reading, logged and named. Never carries the message (rule #1). */
@@ -164,7 +170,11 @@ export function createInboundLaneScreen(client: () => AgentClient): InboundLaneS
       try {
         resolved = client();
       } catch (err) {
-        console.error({ err }, 'off-domain screen: no client');
+        // Only ever the message string, here and below. Neither of these can hold the
+        // parent's words today (the text is passed to neither call), but the third catch
+        // genuinely can, and one narrowing rule across all three is what stops the next
+        // edit from being the exception (rule #1).
+        console.error({ err: message(err) }, 'off-domain screen: no client');
         return openTheGate('client_unavailable');
       }
 
@@ -172,7 +182,7 @@ export function createInboundLaneScreen(client: () => AgentClient): InboundLaneS
       try {
         skill = await loadCronSkill('inbound-lane');
       } catch (err) {
-        console.error({ err }, 'off-domain screen: skill load failed');
+        console.error({ err: message(err) }, 'off-domain screen: skill load failed');
         return openTheGate('skill_unavailable');
       }
 
@@ -190,12 +200,7 @@ export function createInboundLaneScreen(client: () => AgentClient): InboundLaneS
         });
         return toReading(value);
       } catch (err) {
-        // The error may carry a provider payload echoing the request, so only its
-        // message survives — never the parent's words (rule #1).
-        console.error(
-          { err: err instanceof Error ? err.message : 'unknown' },
-          'off-domain screen: read failed',
-        );
+        console.error({ err: message(err) }, 'off-domain screen: read failed');
         return openTheGate('model_failed');
       }
     },

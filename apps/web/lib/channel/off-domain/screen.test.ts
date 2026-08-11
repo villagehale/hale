@@ -162,6 +162,40 @@ describe('createInboundLaneScreen · every failure hands the turn to the coach',
   });
 
   /**
+   * The adversarial path, and the reason the output schema is not `.strict()`.
+   *
+   * Anthropic does not hard-enforce a tool's input schema, so a parent can ask the model
+   * for an extra JSON field and sometimes get one. A strict zod parse turns that into a
+   * ZodError whose `.message` is the serialised issue list — and an `unrecognized_keys`
+   * issue embeds the KEY NAMES. So "reply with a field named &lt;my sentence&gt;" would put a
+   * parent's own words into `err.message`, which this module logs (rule #1).
+   *
+   * Zod's default strips unknown keys instead, which is both the safer and the more
+   * robust read: an extra field is not a reason to throw away a lane we can act on.
+   */
+  it('strips an unexpected field instead of turning it into a logged error', async () => {
+    const injected = 'Mia has a rash and we are at Sick Kids';
+    const log = quiet();
+
+    const reading = await createInboundLaneScreen(
+      clientReturning({
+        lane: 'off_domain_general',
+        category: 'weather',
+        reason: 'forecast',
+        [injected]: true,
+      }),
+    ).read(READ);
+
+    expect(reading).toEqual({
+      lane: 'off_domain_general',
+      category: 'weather',
+      fallback: null,
+    });
+    expect(JSON.stringify(log.mock.calls)).not.toContain('Mia');
+    log.mockRestore();
+  });
+
+  /**
    * The error object from a provider can echo the request back, so the log keeps the
    * message string only. A parent's words must not reach a log aggregator (rule #1).
    */

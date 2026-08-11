@@ -15,6 +15,10 @@ export type {
   UnmetIntentCategory,
   UnmetIntentLane,
 } from './schema/channel-messages.js';
+export {
+  UNMET_INTENT_CATEGORIES,
+  UNMET_INTENT_LANES,
+} from './schema/channel-messages.js';
 export type {
   Municipality,
   ProgramDomain,
