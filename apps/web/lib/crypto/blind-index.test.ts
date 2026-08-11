@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { encryptString } from './string-cipher';
-import { phoneBlindIndex } from './blind-index';
+import { emailBlindIndex, phoneBlindIndex } from './blind-index';
 
 const KEY_A = Buffer.alloc(32, 1).toString('base64');
 const KEY_B = Buffer.alloc(32, 2).toString('base64');
@@ -55,5 +55,44 @@ describe('phoneBlindIndex (keyed HMAC blind index)', () => {
   it('throws a clear error when APP_ENCRYPTION_KEY is missing', () => {
     process.env.APP_ENCRYPTION_KEY = '';
     expect(() => phoneBlindIndex(PHONE)).toThrow(/APP_ENCRYPTION_KEY/);
+  });
+});
+
+describe('emailBlindIndex', () => {
+  const prev = process.env.APP_ENCRYPTION_KEY;
+  const EMAIL = 'sam@example.com';
+  beforeEach(() => {
+    process.env.APP_ENCRYPTION_KEY = KEY_A;
+  });
+  afterEach(() => {
+    process.env.APP_ENCRYPTION_KEY = prev;
+  });
+
+  it('is deterministic and never carries the plaintext address', () => {
+    expect(emailBlindIndex(EMAIL)).toBe(emailBlindIndex(EMAIL));
+    expect(emailBlindIndex(EMAIL)).toMatch(/^[0-9a-f]{64}$/);
+    expect(emailBlindIndex(EMAIL)).not.toContain('sam');
+    expect(emailBlindIndex(EMAIL)).not.toContain('example.com');
+  });
+
+  it('maps different addresses to different indexes', () => {
+    expect(emailBlindIndex(EMAIL)).not.toBe(emailBlindIndex('sam2@example.com'));
+  });
+
+  /** KEY SEPARATION: the two indexes derive from different HKDF labels, so a hash
+   * harvested from one identifier space cannot be probed against the other. */
+  it('derives a different subkey from the phone index for the same input', () => {
+    expect(emailBlindIndex(EMAIL)).not.toBe(phoneBlindIndex(EMAIL));
+  });
+
+  it('is keyed — a different APP_ENCRYPTION_KEY yields a different index', () => {
+    const withA = emailBlindIndex(EMAIL);
+    process.env.APP_ENCRYPTION_KEY = KEY_B;
+    expect(emailBlindIndex(EMAIL)).not.toBe(withA);
+  });
+
+  it('throws a clear error when APP_ENCRYPTION_KEY is missing', () => {
+    process.env.APP_ENCRYPTION_KEY = '';
+    expect(() => emailBlindIndex(EMAIL)).toThrow(/APP_ENCRYPTION_KEY/);
   });
 });

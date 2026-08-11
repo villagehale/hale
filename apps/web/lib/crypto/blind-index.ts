@@ -20,6 +20,10 @@ const KEY_BYTES = 32;
 /** Context label separating the blind-index subkey from the encryption key. Bumping
  * the version means a full re-index (every stored hash changes), so it is pinned. */
 const BLIND_INDEX_INFO = 'hale-phone-blind-index-v1';
+/** The EMAIL subkey's own label. Separate from the phone one on purpose: the two index
+ * different identifier spaces, and deriving both from one label would let a hash
+ * collected from one surface be probed against the other. */
+const EMAIL_BLIND_INDEX_INFO = 'hale-email-blind-index-v1';
 
 function loadKeyMaterial(): Buffer {
   const raw = process.env.APP_ENCRYPTION_KEY;
@@ -36,10 +40,8 @@ function loadKeyMaterial(): Buffer {
 }
 
 /** HKDF-derived HMAC key, distinct from the AES encryption key (key separation). */
-function blindIndexKey(): Buffer {
-  return Buffer.from(
-    hkdfSync('sha256', loadKeyMaterial(), Buffer.alloc(0), BLIND_INDEX_INFO, KEY_BYTES),
-  );
+function blindIndexKey(info: string = BLIND_INDEX_INFO): Buffer {
+  return Buffer.from(hkdfSync('sha256', loadKeyMaterial(), Buffer.alloc(0), info, KEY_BYTES));
 }
 
 /**
@@ -49,4 +51,20 @@ function blindIndexKey(): Buffer {
  */
 export function phoneBlindIndex(e164Canonical: string): string {
   return createHmac('sha256', blindIndexKey()).update(e164Canonical).digest('hex');
+}
+
+/**
+ * The blind-index value for a LOWERCASED email address (as returned by
+ * parseEmailAddress). The inbound-email leg keys its rate limiter on this rather than on
+ * the address itself: `rate_limits.identifier` is an ordinary queryable column, and a
+ * parent's address is PII that has no business sitting in it in plaintext (rule #1) —
+ * the same reasoning that keeps raw phone numbers out of the same table.
+ *
+ * Callers must lowercase first. Two spellings of one address would otherwise hash to two
+ * different keys and each get its own budget.
+ */
+export function emailBlindIndex(addressLowercased: string): string {
+  return createHmac('sha256', blindIndexKey(EMAIL_BLIND_INDEX_INFO))
+    .update(addressLowercased)
+    .digest('hex');
 }

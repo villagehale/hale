@@ -67,7 +67,9 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
   it('uses a one-minute window for the silent bot-guard routes (not the per-hour cooldowns)', () => {
     // The per-hour routes are genuine cooldowns: a billable LLM run (village-search),
     // a per-message SMS spend (sms-otp-*, sms-inbound — each inbound can cost a model
-    // call AND an outbound text, and sms-agent-turn the model call that answers it), a
+    // call AND an outbound text, and sms-agent-turn the model call that answers it;
+    // email-inbound is the same cooldown for the same reason on the other channel, plus
+    // a provider fetch per message because the webhook carries no body), a
     // storage-abuse guard (avatar-upload), or a write whose damage a window reset does
     // not undo (rsvp — a stuffed guest list is a real host looking at junk names, and
     // there is no cost meter to notice it).
@@ -82,6 +84,7 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
       'sms-otp-send',
       'sms-otp-verify',
       'sms-inbound',
+      'email-inbound',
       'sms-agent-turn',
       'mcp-register',
       'mcp-authorize',
