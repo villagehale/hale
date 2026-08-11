@@ -44,7 +44,7 @@ import { approvedReceipt } from '~/lib/channel/router/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { draftInlineAction } from '~/lib/coach/inline-action';
 import { findBannedPhrases } from '~/lib/health/framing';
-import { healthNudgeDedupeKeyPrefix } from '~/lib/health/checkpoints';
+import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { matchHealthCheckpoints } from '~/lib/health/match';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
@@ -570,10 +570,11 @@ async function runToddlerJourney(): Promise<Journey> {
       })),
     loadCandidates: (database, id) => readCandidates(database, id),
     loadWindows: (database, area) => readWindows(database, area),
-    // SEAM: the real reader unions "already told" (a LIKE over the ledger's dedupe
-    // keys) with "said done" (health/reply.ts). The LIKE is what is restated.
+    // SEAM: the real reader unions "already told" (a LIKE over the ledger's
+    // told-markers, whatever surface wrote them — health/told.ts) with "said done"
+    // (health/reply.ts). The LIKE is what is restated.
     loadSuppressedCheckpoints: async () => {
-      const prefix = healthNudgeDedupeKeyPrefix(familyId);
+      const prefix = checkpointToldKeyPrefix(familyId);
       return new Set(
         fake
           .rows(schema.channelMessages)

@@ -17,6 +17,7 @@ import {
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
 import { projectCivicCandidates } from '~/lib/civic/project';
+import { recordCheckpointTold } from '~/lib/health/told';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import {
   type DiscoveryTrigger,
@@ -225,6 +226,10 @@ interface SendContext {
  * pre-provisioning message has no row it could legally occupy. Those live encrypted on
  * the intake session and are replayed into channel_messages at provisioning — so the
  * ledger ends up complete either way, it just cannot be written in real time.
+ *
+ * The row id comes back (null before provisioning, exactly as {@link recordInbound}
+ * does it) because a message that told a family something durable has to be able to say
+ * WHICH row carried it — see the checkpoint marker in {@link provision}.
  */
 async function sendAndRecord(
   database: Database,
@@ -232,7 +237,7 @@ async function sendAndRecord(
   body: string,
   deps: IntakeDeps,
   transcript: TranscriptEntry[],
-): Promise<TranscriptEntry[]> {
+): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
   const { providerMessageId } = await deps.transport.send({ to: ctx.phoneE164, body });
   const entry: TranscriptEntry = {
     direction: 'out',
@@ -241,10 +246,10 @@ async function sendAndRecord(
     at: ctx.now.toISOString(),
   };
   if (ctx.session.familyId && ctx.session.userId) {
-    await writeChannelMessage(database, ctx.session, entry, ctx.now);
-    return transcript;
+    const id = await writeChannelMessage(database, ctx.session, entry, ctx.now);
+    return { transcript, channelMessageId: id };
   }
-  return [...transcript, entry];
+  return { transcript: [...transcript, entry], channelMessageId: null };
 }
 
 /** Record an inbound. Same pre/post-provisioning split as {@link sendAndRecord};
@@ -329,7 +334,7 @@ async function greet(
   // first sentence, so there is no second paragraph to append (and no second segment to
   // pay for). The privacy link rides on the consent ask instead — see WATCH_OFFER.
   const body = greeting(venue?.name ?? null);
-  const transcript = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
+  const { transcript } = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
 
   await saveSession(
     database,
@@ -360,14 +365,14 @@ async function handleDetails(
   // Nothing readable came back. The honest response is to say what Hale is for, not to
   // ask the same question again in different words.
   if (collected.children.length === 0) {
-    transcript = await sendAndRecord(database, ctx, HELP_REPLY, deps, transcript);
+    ({ transcript } = await sendAndRecord(database, ctx, HELP_REPLY, deps, transcript));
     await saveSession(database, session, { ...base, transcript }, now);
     return { status: 'helped' };
   }
 
   const location = resolveLocation(collected, session.sourceCode);
   if (location === 'unsupported_region') {
-    transcript = await sendAndRecord(database, ctx, REGION_UNAVAILABLE_REPLY, deps, transcript);
+    ({ transcript } = await sendAndRecord(database, ctx, REGION_UNAVAILABLE_REPLY, deps, transcript));
     await saveSession(
       database,
       session,
@@ -402,7 +407,7 @@ async function handleDetails(
         venue: venueForCode(session.sourceCode)?.name ?? null,
         missing,
       });
-      transcript = await sendAndRecord(database, ctx, ack.body, deps, transcript);
+      ({ transcript } = await sendAndRecord(database, ctx, ack.body, deps, transcript));
       await saveSession(
         database,
         session,
@@ -412,7 +417,7 @@ async function handleDetails(
       return { status: 'follow_up_asked' };
     }
     if (session.followUpCount === 1) {
-      transcript = await sendAndRecord(database, ctx, detailsBlocked(missing), deps, transcript);
+      ({ transcript } = await sendAndRecord(database, ctx, detailsBlocked(missing), deps, transcript));
       await saveSession(database, session, { ...base, transcript, followUpCount: 2 }, now);
       return { status: 'details_blocked', missing };
     }
@@ -502,7 +507,24 @@ async function provision(
     children: gathered.collected.children,
     areaCoarse: gathered.location.areaCoarse,
   });
-  await sendAndRecord(database, ctx, `${radar.message}\n\n${WATCH_OFFER}`, deps, []);
+  const sent = await sendAndRecord(database, ctx, `${radar.message}\n\n${WATCH_OFFER}`, deps, []);
+
+  // The radar can be the first surface ever to tell this family about a health
+  // checkpoint (VIL-238's third rung), and the 48h nudge is two days behind it. Marked
+  // AFTER the send, against the row that carried it, so a compose that never left the
+  // building suppresses nothing.
+  //
+  // The outcome is not branched on because there is nothing this turn can do with it —
+  // the message is already with the parent — but it is never silent: a marker that did
+  // not land is logged as "this checkpoint may be raised again", which is exactly what
+  // a lost one costs (lib/health/told.ts).
+  if (radar.checkpointTold) {
+    await recordCheckpointTold(database, {
+      familyId,
+      ref: radar.checkpointTold,
+      channelMessageId: sent.channelMessageId,
+    });
+  }
 
   await saveSession(
     database,
@@ -663,7 +685,7 @@ async function handleKeyword(
     }
     const ctx: SendContext = { session, phoneE164, now };
     const recorded = await recordInbound(database, ctx, inbound, session.transcript);
-    const transcript = await sendAndRecord(database, ctx, HELP_REPLY, deps, recorded.transcript);
+    const { transcript } = await sendAndRecord(database, ctx, HELP_REPLY, deps, recorded.transcript);
     await saveSession(database, session, { transcript, lastProviderId: inbound.providerId }, now);
     return { status: 'helped' };
   }

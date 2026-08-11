@@ -98,6 +98,9 @@ export interface RegistrationLine {
 export interface CheckpointLine {
   /** Which reviewed row this is. For us and for tests; never for the parent. */
   checkpointRef: { id: string };
+  /** This checkpoint's identity for this family — the matcher's own ref, carried so the
+   * SEND can mark it told for every surface at once (lib/health/told.ts). */
+  ref: string;
   /** The administrative fact in the table's own words, already resolved to the generic
    * wording when the child it belongs to is 13+ (rule #1). */
   task: string;
@@ -526,15 +529,31 @@ function decideCheckpoint(input: DecideRadarInput): CheckpointLine | null {
   // its invariant restated for the type. Silence is the fail-closed answer either way.
   if (task === null) return null;
 
-  return { checkpointRef: { id: match.checkpoint.id }, task, kidNames: match.kidNames };
+  return {
+    checkpointRef: { id: match.checkpoint.id },
+    ref: match.ref,
+    task,
+    kidNames: match.kidNames,
+  };
 }
 
 export function decideRadar(input: DecideRadarInput): RadarDecision {
   const weekendPick = decideWeekendPick(input);
+  const registrationLine = decideRegistration(input);
+  // THE CEILING IS DECIDED HERE, and only here. Two blocks reach a parent, never three
+  // (radar-voice.ts MAX_BLOCKS, and the same rule in the skill), and the checkpoint is
+  // the rung that yields — a registration date closes and a weekend passes, while an
+  // administrative window stays open for months.
+  //
+  // It yields at DECIDE rather than at render because the decision is what marks the
+  // checkpoint told (lib/health/told.ts): a checkpoint that survives into the decision
+  // is one the message says out loud, so a family can never be silenced about a
+  // checkpoint the render dropped on its way out of the door.
+  const checkpoint = weekendPick && registrationLine ? null : decideCheckpoint(input);
   return {
     weekendPick,
-    registrationLine: decideRegistration(input),
-    checkpoint: decideCheckpoint(input),
+    registrationLine,
+    checkpoint,
     offerQuestion: true,
     // Nothing to point at this weekend: discovery may still be running, so Hale owes
     // this family a pick later. Flag only — this stage sends nothing.

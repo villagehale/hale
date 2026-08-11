@@ -122,9 +122,10 @@ describe('createRadarComposer', () => {
 
   it('reaches for the age checkpoint when this family has no window and no candidate', async () => {
     const db = makeFakeDb();
-    db.db
+    const [mia] = (await db.db
       .insert(schema.children)
-      .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never);
+      .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never)
+      .returning()) as Array<{ id: string }>;
 
     const payload = await composer(db).compose({
       familyId: FAMILY_ID,
@@ -137,6 +138,30 @@ describe('createRadarComposer', () => {
     expect(payload.message).toContain('Mia');
     expect(payload.message).toContain('18 months');
     expect(payload.itemCount).toBe(1);
+    // And the message SAYS it, so the caller can mark it told for every other surface
+    // (lib/health/told.ts) — the 48h nudge is two days behind this one.
+    expect(payload.checkpointTold).toBe(`immunization_18_months:${mia?.id}:0`);
+  });
+
+  it('tells no checkpoint when the two leads already fill the message', async () => {
+    const db = makeFakeDb();
+    seedCandidate(db);
+    seedWindow(db);
+    // Four years old in Toronto: three Ontario rows admit her, and none of them fits.
+    db.db
+      .insert(schema.children)
+      .values({ familyId: FAMILY_ID, name: 'Maya', dateOfBirth: '2022-07-31' } as never);
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [MAYA],
+      areaCoarse: 'M5V',
+    });
+
+    expect(payload.itemCount).toBe(2);
+    // Nothing was told, so nothing may be marked told: a checkpoint suppressed off the
+    // back of a message that never carried it is a reminder this family never gets.
+    expect(payload.checkpointTold).toBeNull();
   });
 
   it('sends only the COARSE area to the weather port — never a postal code (rule #1)', async () => {

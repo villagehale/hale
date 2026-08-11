@@ -50,6 +50,12 @@ export interface RadarPayload {
   /** True when nothing could be picked yet — discovery may still be running, and the
    * caller may follow up once it lands. Flag only; this stage sends nothing. */
   followUpNeeded: boolean;
+  /**
+   * The health checkpoint this message TELLS, or null. The caller marks it told once the
+   * message has actually been sent (lib/health/told.ts) — composing is not telling, so
+   * nothing here writes it.
+   */
+  checkpointTold: string | null;
 }
 
 export interface RadarComposer {
@@ -246,6 +252,10 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           (decision.registrationLine ? 1 : 0) +
           (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
+        // A checkpoint in the decision is a checkpoint in the message — the rung yields
+        // at DECIDE when it cannot fit (radar-decide.ts), so there is no third opinion
+        // to form here about what the parent is about to read.
+        checkpointTold: decision.checkpoint?.ref ?? null,
       };
     },
   };
