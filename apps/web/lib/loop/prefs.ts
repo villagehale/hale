@@ -50,7 +50,7 @@ export const DEFAULT_LOOP_PREFS: LoopPrefsView = Object.freeze({
   quietHoursStart: '21:30:00',
   quietHoursEnd: '07:30:00',
   urgentBypassQuietHours: true,
-  weeklyPlanSendTime: '19:30:00',
+  weeklyPlanSendTime: '07:00:00',
   childNameLevel: 'generic',
 });
 
@@ -267,12 +267,13 @@ export function deliverableNow(
 }
 
 /**
- * The local weekday the weekly plan is sent on: the evening BEFORE the parent's
- * week starts (users.weekStartDay, 0=Sun/1=Mon). A Monday-start week → Sunday,
- * the "Sunday Loop" default.
+ * The local weekday the weekly brief is sent on: the MORNING the parent's week
+ * starts (users.weekStartDay, 0=Sun/1=Mon). A Monday-start week → Monday, the
+ * founder-decided default (2026-08-11: brief opens the week, action-adjacent,
+ * rather than closing the weekend).
  */
 export function weeklyPlanWeekday(weekStartDay: number): number {
-  return (weekStartDay + 6) % 7;
+  return weekStartDay % 7;
 }
 
 /**

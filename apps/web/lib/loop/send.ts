@@ -184,11 +184,19 @@ export async function runSundaySendCron(
   let skippedNoPlan = 0;
 
   for (const parent of parents) {
-    // Offset 1 = the UPCOMING Monday — symmetric with the composer (cron.ts
-    // weekWindow(now, tz, 1, 1)). The send fires the evening BEFORE the week
-    // starts, so offset 0 would key the OUTGOING week and never find the
-    // artifact (caught by the first full-loop prod probe).
-    const weekStart = weekWindow(now, parent.timezone, 1, 1).startKey;
+    // The brief fires the MORNING the week starts (2026-08-11 retime), and the
+    // artifact is ALWAYS keyed on a Monday. For a Monday-start parent the send
+    // morning IS that Monday (offset 0). For a Sunday-start parent the send
+    // morning is Sunday — still the OUTGOING week in the Monday frame — so their
+    // week's Monday key is tomorrow (offset 1). Both must land on the composer's
+    // key (cron.ts weekWindow(now, tz, 1, 1), run the day before); the first
+    // full-loop prod probe caught the mismatched-week variant of this.
+    const weekStart = weekWindow(
+      now,
+      parent.timezone,
+      1,
+      parent.weekStartDay === 0 ? 1 : 0,
+    ).startKey;
     const plan = await deps.readPlan(db, parent.familyId, weekStart);
     if (!plan) {
       skippedNoPlan += 1;

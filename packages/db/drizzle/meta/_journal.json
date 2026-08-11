@@ -533,6 +533,13 @@
       "when": 1781464320000,
       "tag": "0078_event_content_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1781464920000,
+      "tag": "0079_monday_weekly_brief",
+      "breakpoints": true
     }
   ]
 }

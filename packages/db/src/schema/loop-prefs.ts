@@ -44,9 +44,9 @@ export const loopPrefs = pgTable('loop_prefs', {
   /** Whether time-sensitive messages (T-1h reminder, safety alert) may cross the
    * quiet window. Default ON, copy honest — normal messages always defer. */
   urgentBypassQuietHours: boolean('urgent_bypass_quiet_hours').notNull().default(true),
-  /** Local time-of-day for the weekly plan; the DAY composes with the parent's
-   * users.weekStartDay (the evening before the week starts → Sun for a Mon week). */
-  weeklyPlanSendTime: time('weekly_plan_send_time').notNull().default('19:30:00'),
+  /** Local time-of-day for the weekly brief; the DAY composes with the parent's
+   * users.weekStartDay (the morning the week starts → Mon for a Mon week). */
+  weeklyPlanSendTime: time('weekly_plan_send_time').notNull().default('07:00:00'),
   /** How much of a child's identity a body may carry. Default 'generic' (most
    * private, rule #1); the teen age gate can only force it more private. */
   childNameLevel: childNameLevelEnum('child_name_level').notNull().default('generic'),

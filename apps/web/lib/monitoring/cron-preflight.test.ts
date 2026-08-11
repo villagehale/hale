@@ -33,8 +33,9 @@ import { runWeekPlanCron } from '~/lib/loop/cron';
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '99999999-9999-4999-8999-999999999999';
 const NOW = new Date('2026-08-01T12:00:00Z');
-/** Saturday 19:45 America/Toronto — inside the default weekly compose slot. */
-const COMPOSE_SLOT = new Date('2026-08-01T23:45:00Z');
+/** Sunday 07:15 America/Toronto — inside the default weekly compose slot (the
+ * day before the Monday-morning brief, 2026-08-11 retime). */
+const COMPOSE_SLOT = new Date('2026-08-02T11:15:00Z');
 /** 10:00 America/Toronto — the nudge send hour. */
 const NUDGE_SLOT = new Date('2026-08-01T14:00:00Z');
 
