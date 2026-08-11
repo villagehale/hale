@@ -300,10 +300,11 @@ export function checkpointOccurrence(checkpoint: HealthCheckpoint, now: Date): n
 export const HOUSEHOLD_CHILD_TOKEN = '*';
 
 /**
- * A checkpoint's natural identity: the thing the nudge dedupes on, and the thing a
- * "done" reply suppresses. One primitive, two consumers — a dedupe key and a memory
- * fact key built from different strings would drift the first time either side changed,
- * and a family would be nudged about paperwork they told us was filed.
+ * A checkpoint's natural identity: the thing every surface's told-marker keys on
+ * (lib/health/told.ts), and the thing a "done" reply suppresses. One primitive, two
+ * consumers — a marker key and a memory fact key built from different strings would
+ * drift the first time either side changed, and a family would be nudged about
+ * paperwork they told us was filed.
  *
  * The SCOPE differs by recurrence, and that difference is the whole point:
  *
@@ -321,20 +322,6 @@ export function checkpointRef(
 ): string {
   const scope = checkpoint.annual ? HOUSEHOLD_CHILD_TOKEN : childId;
   return `${checkpoint.id}:${scope}:${occurrence}`;
-}
-
-/**
- * The ledger identity of a health nudge. Built here rather than in the sweep so that
- * the side which WRITES the key and the side which reads it back (the "done" reply,
- * which has only a channel_messages row to work from) cannot drift apart — a prefix
- * that disagreed by one character would silently stop suppressing.
- */
-export function healthNudgeDedupeKeyPrefix(familyId: string): string {
-  return `nudge:${familyId}:health:`;
-}
-
-export function healthNudgeDedupeKey(familyId: string, ref: string): string {
-  return `${healthNudgeDedupeKeyPrefix(familyId)}${ref}`;
 }
 
 /**

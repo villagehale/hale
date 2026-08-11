@@ -559,7 +559,7 @@ describe('decideRadar — the age checkpoint', () => {
     expect(decision.checkpoint?.kidNames).toEqual([]);
   });
 
-  it('carries all three blocks when a family has all three — the lead order is the voice stage', () => {
+  it('yields to the two leads when a family has all three — two blocks reach a parent, never three', () => {
     const decision = decide({
       candidates: [candidate()],
       windows: [match()],
@@ -569,6 +569,22 @@ describe('decideRadar — the age checkpoint', () => {
 
     expect(decision.registrationLine).not.toBeNull();
     expect(decision.weekendPick).not.toBeNull();
-    expect(decision.checkpoint).not.toBeNull();
+    // A date that closes and a weekend that passes beat a window open for months, so the
+    // ceiling drops this one — and it drops it HERE rather than in the render, because a
+    // checkpoint that survives into the decision is one the SEND marks told for every
+    // other surface (lib/health/told.ts). A block the message never carried must never
+    // silence the 48h nudge.
+    expect(decision.checkpoint).toBeNull();
+  });
+
+  it('carries the identity the told-marker keys on, not just the row id', () => {
+    const decision = decide({
+      healthChildren: [healthChild({ id: 'kid-1', ageMonths: 18 })],
+      areaCoarse: 'L7G',
+    });
+
+    // The matcher's own ref: per child for a one-time visit. Rebuilding it downstream is
+    // how the scope goes wrong (checkpoints.ts checkpointRef).
+    expect(decision.checkpoint?.ref).toBe('immunization_18_months:kid-1:0');
   });
 });

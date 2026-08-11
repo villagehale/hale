@@ -17,9 +17,9 @@ import {
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { healthNudgeDedupeKey } from '~/lib/health/checkpoints';
 import type { HealthChild } from '~/lib/health/match';
 import { loadSuppressedCheckpointRefs } from '~/lib/health/reply';
+import { checkpointToldKey } from '~/lib/health/told';
 import { localParts } from '~/lib/loop/prefs';
 import { type AbortedWindow, providerPreflight } from '~/lib/monitoring/provider-health';
 import { voiceClient } from '~/lib/loop/voice/compose';
@@ -229,10 +229,11 @@ export function dedupeKeyFor(nudge: Nudge, familyId: string, now: Date, timeZone
     return `nudge:${familyId}:registration:${nudge.windowRef.id}`;
   }
   if (nudge.kind === 'health_checkpoint') {
-    // The ref the MATCHER minted, carried through untouched: per child for a one-time
-    // visit, per household per school year for the annual records check. Rebuilding it
-    // here would be a second place to get that scope wrong.
-    return healthNudgeDedupeKey(familyId, nudge.ref);
+    // A health nudge's send-idempotency key IS its told-marker (lib/health/told.ts), so
+    // this row tells every other surface what this family has heard. The ref the MATCHER
+    // minted is carried through untouched: per child for a one-time visit, per household
+    // per school year for the annual records check.
+    return checkpointToldKey(familyId, nudge.ref);
   }
   return `nudge:${familyId}:weather_swap:${weekWindow(now, timeZone).startKey}`;
 }

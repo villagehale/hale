@@ -62,6 +62,7 @@ const CHECKPOINT_ONLY: RadarDecision = {
   ...NOTHING,
   checkpoint: {
     checkpointRef: { id: 'well_baby_18_months' },
+    ref: 'well_baby_18_months:kid-1:0',
     task: 'Ontario runs a longer 18-month well-baby visit with your family doctor.',
     kidNames: ['Maya'],
   },
