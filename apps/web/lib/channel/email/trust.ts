@@ -36,6 +36,19 @@
  * resolved to an existing family (see identity.ts). It is not necessarily discarded —
  * treating an unverifiable stranger as a stranger is a legitimate choice — but it can
  * never BE somebody.
+ *
+ * THE ONE ASSUMPTION THIS RESTS ON, WRITTEN DOWN BECAUSE IT IS NOT OURS TO ENFORCE. The
+ * parser treats `;` as a real clause boundary, which means it trusts the receiving MTA to
+ * SANITIZE the attacker-controlled parts of a DKIM signature before quoting them into the
+ * header it writes. The `i=` AUID's local part, a selector, and CFWS comments all
+ * originate with the sender; if any were reflected with a raw `;` intact, a sender could
+ * smuggle `…; dkim=pass header.d=<victim>` INTO our own MTA's verdict, and after the
+ * split that fragment is indistinguishable from a genuine passing signature. No
+ * parser-side rule can tell the two apart — the injected fragment is well-formed — so
+ * this is the MTA's job, and RFC 8601 §7.1 requires exactly that sanitization of it. A
+ * compliant provider is safe; ours must be CONFIRMED by probing a hostile `i=` against a
+ * real delivered message before this leg is enabled, alongside the authserv-id check
+ * config.ts already calls for.
  */
 
 /** An RFC 8601 method result. `none` means "nothing to check", which is not a pass. */
