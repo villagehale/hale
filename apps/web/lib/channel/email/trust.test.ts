@@ -1,0 +1,339 @@
+import { describe, expect, it } from 'vitest';
+import { assessSenderTrust, parseAuthenticationResults } from './trust';
+
+const MX = 'mx.resend.com';
+
+describe('parseAuthenticationResults', () => {
+  it('reads spf, dkim and dmarc verdicts out of an RFC 8601 header', () => {
+    const header = `${MX}; spf=pass smtp.mailfrom=example.com; dkim=pass header.d=example.com header.s=sel; dmarc=pass header.from=example.com`;
+    expect(parseAuthenticationResults(header)).toEqual({
+      authservId: MX,
+      spf: 'pass',
+      dmarc: 'pass',
+      dkim: [{ verdict: 'pass', domain: 'example.com' }],
+    });
+  });
+
+  it('reads a fail verdict as a fail, not as an absence', () => {
+    const header = `${MX}; spf=fail smtp.mailfrom=evil.test; dkim=fail header.d=evil.test; dmarc=fail header.from=bank.test`;
+    const parsed = parseAuthenticationResults(header);
+    expect(parsed?.spf).toBe('fail');
+    expect(parsed?.dkim).toEqual([{ verdict: 'fail', domain: 'evil.test' }]);
+    expect(parsed?.dmarc).toBe('fail');
+  });
+
+  it('reports a method that is absent as null rather than inventing a pass', () => {
+    const parsed = parseAuthenticationResults(`${MX}; spf=pass smtp.mailfrom=example.com`);
+    expect(parsed?.spf).toBe('pass');
+    expect(parsed?.dkim).toEqual([]);
+    expect(parsed?.dmarc).toBeNull();
+  });
+
+  /**
+   * Each signature keeps its OWN verdict. A flat list of domains beside one headline
+   * verdict is the shape that lets a pass be credited to a domain that failed.
+   */
+  it('keeps every signature paired with its own verdict when a message is multi-signed', () => {
+    const header = `${MX}; dkim=pass header.d=example.com; dkim=fail header.d=mailer.example.net`;
+    expect(parseAuthenticationResults(header)?.dkim).toEqual([
+      { verdict: 'pass', domain: 'example.com' },
+      { verdict: 'fail', domain: 'mailer.example.net' },
+    ]);
+  });
+
+  it('records a signature clause that names no domain rather than dropping it', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass`)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+    ]);
+  });
+
+  /**
+   * The `header.d=` capture is the whole gate now, so the ways it could pick up the wrong
+   * token are pinned. Every one of these must fail CLOSED — a domain we misread simply
+   * will not align.
+   */
+  it('reads header.d and not its neighbours', () => {
+    const header = `${MX}; dkim=pass header.i=@decoy.test header.s=sel header.d=real.test`;
+    expect(parseAuthenticationResults(header)?.dkim).toEqual([
+      { verdict: 'pass', domain: 'real.test' },
+    ]);
+  });
+
+  it('does not read header.d out of a longer parameter name', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass header.dkim=nope.test`)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+    ]);
+  });
+
+  it('cannot capture a domain across a clause boundary', () => {
+    const header = `${MX}; dkim=pass; dkim=fail header.d=victim.test`;
+    expect(parseAuthenticationResults(header)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+      { verdict: 'fail', domain: 'victim.test' },
+    ]);
+  });
+
+  it('does not treat a method name embedded in a longer token as that method', () => {
+    expect(parseAuthenticationResults(`${MX}; x-dkim=pass header.d=evil.test`)?.dkim).toEqual([]);
+  });
+
+  it('lowercases the domains so alignment is not case-sensitive', () => {
+    const header = `${MX}; dkim=pass header.d=EXAMPLE.COM`;
+    expect(parseAuthenticationResults(header)?.dkim).toEqual([
+      { verdict: 'pass', domain: 'example.com' },
+    ]);
+  });
+
+  it('tolerates folded whitespace and newlines', () => {
+    const header = `${MX};\r\n  spf=pass smtp.mailfrom=example.com;\r\n  dkim=pass header.d=example.com`;
+    const parsed = parseAuthenticationResults(header);
+    expect(parsed?.authservId).toBe(MX);
+    expect(parsed?.dkim).toEqual([{ verdict: 'pass', domain: 'example.com' }]);
+  });
+
+  it('returns null for a header with no authserv-id to attribute it to', () => {
+    expect(parseAuthenticationResults('')).toBeNull();
+    expect(parseAuthenticationResults('   ')).toBeNull();
+  });
+
+  /** `none` is a real RFC 8601 verdict meaning "no signature to check" — it is not a
+   * pass, and folding it into one would trust every unsigned message. */
+  it('keeps `none` distinct from `pass`', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=none`)?.dkim).toEqual([
+      { verdict: 'none', domain: null },
+    ]);
+  });
+});
+
+describe('assessSenderTrust', () => {
+  const trusted = { authservId: MX, fromDomain: 'example.com' };
+
+  function header(value: string | undefined): Readonly<Record<string, string>> {
+    return value === undefined ? {} : { 'authentication-results': value };
+  }
+
+  it('trusts a message whose DKIM passes and whose signing domain is the From domain', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; spf=pass smtp.mailfrom=example.com; dkim=pass header.d=example.com`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * THE FORWARDING CASE, and the reason DKIM rather than SPF is the anchor. Hale's
+   * public address is forwarded by a third party, which rewrites the envelope sender —
+   * so SPF legitimately fails for ordinary mail from real parents. Rejecting on SPF
+   * would reject essentially all production traffic.
+   */
+  it('trusts an aligned DKIM pass even when SPF failed, because forwarding breaks SPF', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; spf=fail smtp.mailfrom=forwarder.test; dkim=pass header.d=example.com`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  it('accepts a signature from a subdomain of the From domain', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=mail.example.com`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * The public-suffix hole, closed by construction. Relaxed DMARC would let an ANCESTOR
+   * domain sign for a subdomain, but computing "organizational domain" correctly needs
+   * the Public Suffix List — and without one, a signature from any shared-hosting parent
+   * becomes a signature for every tenant beneath it.
+   */
+  it.each([
+    ['com', 'example.com'],
+    ['co.uk', 'victim.co.uk'],
+    ['appspot.com', 'victim.appspot.com'],
+  ])('refuses an ancestor domain (d=%s) vouching for a subdomain sender', (signing, from) => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=${signing}`),
+      authservId: MX,
+      fromDomain: from,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  it('refuses a DKIM pass signed by an unrelated domain — a valid signature is not alignment', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=bulk-sender.test`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  /**
+   * THE PASS MUST BE THE ALIGNED SIGNATURE'S OWN PASS.
+   *
+   * A message may carry several DKIM signatures, and RFC 8601 has the MTA report one
+   * result per signature — failures included. An attacker signs their own message
+   * validly with a domain they control and attaches a second, bogus signature naming the
+   * victim's domain. Our MTA truthfully reports `dkim=pass header.d=attacker.test` and
+   * `dkim=fail header.d=victim.test`. Crediting the pass to the victim's domain would
+   * hand the attacker that family, using our own honest header.
+   */
+  it('refuses when the passing signature and the aligned domain are different signatures', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        `${MX}; dkim=pass header.d=attacker.test; dkim=fail header.d=example.com`,
+      ),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  it('refuses that same pairing whichever order the clauses arrive in', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        `${MX}; dkim=fail header.d=example.com; dkim=pass header.d=attacker.test`,
+      ),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  it('still trusts a genuinely multi-signed message when a PASSING signature aligns', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        `${MX}; dkim=fail header.d=oldselector.test; dkim=pass header.d=example.com`,
+      ),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  it('refuses a DKIM fail', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=fail header.d=example.com`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_failed' });
+  });
+
+  it('refuses an unsigned message', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; spf=pass smtp.mailfrom=example.com; dkim=none`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_failed' });
+  });
+
+  /**
+   * THE SPOOF. Anyone can type an `Authentication-Results` header into the message they
+   * send; only our own receiving MTA's copy means anything. A verifier that reads any
+   * A-R header it finds can be handed `dkim=pass header.d=<victim>` by the attacker.
+   */
+  it('ignores an Authentication-Results header stamped by anyone but our own MTA', () => {
+    const verdict = assessSenderTrust({
+      headers: header('attacker-controlled; dkim=pass header.d=example.com'),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+  });
+
+  it('picks our MTA’s verdict out of a list of hops, ignoring another MTA’s', () => {
+    const verdict = assessSenderTrust({
+      headers: {
+        'authentication-results': [
+          'evil.test; dkim=pass header.d=example.com',
+          `${MX}; dkim=fail header.d=example.com`,
+        ].join('\n'),
+      },
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_failed' });
+  });
+
+  /**
+   * A sender who writes their own `Authentication-Results` claiming OUR authserv-id
+   * produces a second copy. We cannot tell it from the real one by content — that is the
+   * point of the forgery — so two is no verdict at all, whichever order they arrive in.
+   */
+  it.each([
+    ['forged after', [`${MX}; dkim=fail header.d=example.com`, `${MX}; dkim=pass header.d=example.com`]],
+    ['forged before', [`${MX}; dkim=pass header.d=example.com`, `${MX}; dkim=fail header.d=example.com`]],
+  ])('refuses when our authserv-id appears twice (%s)', (_label, copies) => {
+    const verdict = assessSenderTrust({
+      headers: { 'authentication-results': copies.join('\n') },
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+  });
+
+  it('still accepts a single verdict that arrives folded across lines', () => {
+    const verdict = assessSenderTrust({
+      headers: { 'authentication-results': `${MX};\r\n  dkim=pass header.d=example.com` },
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  it('names the absence of any verdict rather than treating it as a pass or a fail', () => {
+    expect(assessSenderTrust({ headers: header(undefined), ...trusted })).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+    });
+  });
+
+  it('matches the Authentication-Results header name case-insensitively', () => {
+    const verdict = assessSenderTrust({
+      headers: { 'Authentication-Results': `${MX}; dkim=pass header.d=example.com` },
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  it('compares the authserv-id case-insensitively but never by prefix', () => {
+    expect(
+      assessSenderTrust({
+        headers: header('MX.RESEND.COM; dkim=pass header.d=example.com'),
+        ...trusted,
+      }),
+    ).toEqual({ trusted: true, basis: 'dkim_aligned' });
+
+    expect(
+      assessSenderTrust({
+        headers: header(`${MX}.evil.test; dkim=pass header.d=example.com`),
+        ...trusted,
+      }),
+    ).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+  });
+
+  /** A quoted or punctuation-trailed domain is misread rather than parsed — and a domain
+   * we misread simply does not align, so the failure direction is closed. */
+  it.each([
+    ['quoted', '"example.com"'],
+    ['comma-trailed', 'example.com,'],
+  ])('fails closed on a %s signing domain rather than trusting it', (_label, value) => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=${value}`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  it('refuses when the From domain is unknown, since nothing can be aligned against it', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=example.com`),
+      authservId: MX,
+      fromDomain: '',
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  /** A one-label suffix match would make `notexample.com` align with `example.com`. */
+  it('does not let a domain that merely ends with the From domain align', () => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=notexample.com`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+});

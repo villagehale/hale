@@ -91,6 +91,14 @@ export const RATE_LIMITS = {
   // it while stopping a script from running up spend or pumping SMS traffic. Over the
   // limit the machine goes SILENT — replying would hand an attacker the amplification.
   'sms-inbound': { limit: 30, windowSec: 3600 },
+  // Inbound EMAIL, per SENDER ADDRESS (the blind index — the raw address never reaches
+  // the limiter table, same as the phone one above). The same budget as its SMS twin on
+  // purpose: it is the same conversation arriving through a different door, so one
+  // channel must not grant a sender more turns than the other. It bounds a real cost —
+  // each inbound provokes a provider fetch to retrieve the body, and later a model call
+  // and a reply. Email is cheaper to send in bulk than SMS, which argues for a cap, not
+  // a looser one; a parent writing a few emails an hour stays far clear.
+  'email-inbound': { limit: 30, windowSec: 3600 },
   // VIL-245 · rsvp (20/hour/IP): the PUBLIC, unauthenticated RSVP write — the one
   // endpoint in Hale a stranger can POST to with no account. An HOUR window, not a
   // minute, because this is a genuine cap rather than a bot guard: the damage is a real
