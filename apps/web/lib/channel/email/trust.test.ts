@@ -91,12 +91,31 @@ describe('assessSenderTrust', () => {
     expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
   });
 
-  it('accepts an organizational-domain match, so a subdomain signature still aligns', () => {
+  it('accepts a signature from a subdomain of the From domain', () => {
     const verdict = assessSenderTrust({
       headers: header(`${MX}; dkim=pass header.d=mail.example.com`),
       ...trusted,
     });
     expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * The public-suffix hole, closed by construction. Relaxed DMARC would let an ANCESTOR
+   * domain sign for a subdomain, but computing "organizational domain" correctly needs
+   * the Public Suffix List — and without one, a signature from any shared-hosting parent
+   * becomes a signature for every tenant beneath it.
+   */
+  it.each([
+    ['com', 'example.com'],
+    ['co.uk', 'victim.co.uk'],
+    ['appspot.com', 'victim.appspot.com'],
+  ])('refuses an ancestor domain (d=%s) vouching for a subdomain sender', (signing, from) => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=${signing}`),
+      authservId: MX,
+      fromDomain: from,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
   });
 
   it('refuses a DKIM pass signed by an unrelated domain — a valid signature is not alignment', () => {

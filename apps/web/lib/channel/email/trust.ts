@@ -130,17 +130,31 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
 }
 
 /**
- * Whether `signing` is the sender's own domain or its organizational parent —
- * `mail.example.com` signing for `example.com` aligns, `notexample.com` does not.
+ * Whether `signing` may vouch for `fromDomain`: the same domain, or a SUBDOMAIN of it.
+ * `mail.example.com` signing for `example.com` aligns; `notexample.com` does not.
  *
- * A plain `endsWith` is the bug this guards: it would align `notexample.com` with
- * `example.com`, which is precisely the shape a spoofer registers. The dot makes the
- * comparison label-wise.
+ * Two deliberate narrowings, each closing a spoof:
+ *
+ * A plain `endsWith` would align `notexample.com` with `example.com` — precisely the
+ * shape a spoofer registers. The dot makes the comparison label-wise.
+ *
+ * The OTHER direction — letting an ancestor domain sign for a subdomain, which is what
+ * relaxed DMARC alignment permits — is refused, because doing it correctly needs the
+ * Public Suffix List and doing it naively is a hole. Without a PSL, `d=appspot.com`
+ * would vouch for `From: victim@victim.appspot.com`, and `d=com` would vouch for
+ * everything: any shared-hosting parent domain an attacker can obtain a signature from
+ * becomes a signature for every tenant beneath it. Requiring the signer to sit at or
+ * BELOW the From domain removes that class outright rather than guarding each instance
+ * of it — a signer inside the From domain's own DNS tree already controls it.
+ *
+ * The cost is a sender whose From is a subdomain but whose DKIM is signed by the parent
+ * (`From: @mail.example.com`, `d=example.com`). That is rare for the personal mailboxes
+ * this leg serves, and it fails CLOSED and NAMED (`dkim_not_aligned`), so it shows up as
+ * a logged refusal we can see rather than as mail that silently disappears.
  */
 function domainsAlign(signing: string, fromDomain: string): boolean {
   if (!signing || !fromDomain) return false;
-  if (signing === fromDomain) return true;
-  return signing.endsWith(`.${fromDomain}`) || fromDomain.endsWith(`.${signing}`);
+  return signing === fromDomain || signing.endsWith(`.${fromDomain}`);
 }
 
 /** Our own MTA's verdict, out of however many copies the message carries. */
