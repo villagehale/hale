@@ -1,4 +1,5 @@
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { requireTwilioConfig } from './config';
 
 /**
@@ -54,7 +55,16 @@ export function createTwilioTransport(deps: TwilioTransportDeps = {}): ChannelTr
             authorization: `Basic ${credentials}`,
             'content-type': 'application/x-www-form-urlencoded',
           },
-          body: new URLSearchParams({ To: to, From: config.fromNumber, Body: body }).toString(),
+          body: new URLSearchParams({
+            To: to,
+            From: config.fromNumber,
+            Body: body,
+            // Live-gate finding (2026-08-11): Twilio only sends delivery receipts to a
+            // StatusCallback named IN the send request — the number-level field does
+            // not apply to API-created messages, so without this the ledger's rows
+            // stop at 'sent' forever and a failed delivery is invisible.
+            StatusCallback: `${appBaseUrl()}/api/channels/twilio/status`,
+          }).toString(),
           signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
         },
       );
