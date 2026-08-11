@@ -29,7 +29,11 @@ export type ModelId =
  *    stage that must discard >95% of inbox noise before any body is fetched.
  *    `acknowledge` writes ONE warm sentence around facts that are already decided and
  *    lint-checked afterwards, so the tier buys warmth, not judgment — and it sits on
- *    the inbound-SMS hot path, where latency is a parent watching three dots)
+ *    the inbound-SMS hot path, where latency is a parent watching three dots.
+ *    `screen` decides only WHICH fixed line answers an inbound text and never a word of
+ *    it — the stage exists to cost a fraction of the coach turn it replaces, so anything
+ *    dearer than Haiku defeats its whole reason for being. Its error case falls through
+ *    to the coach, so a wrong screen costs a deflection, never an answer)
  *  - classify / review / extract → Sonnet 5  (eval-proven; classify and extract both
  *    carry teen_content — a rule-#1 safety call, gated on teenAccuracy ≥ Sonnet-4.6 in
  *    the model matrix)
@@ -47,7 +51,8 @@ export type AgentTask =
   | 'high-stakes-judgment'
   | 'triage'
   | 'extract'
-  | 'acknowledge';
+  | 'acknowledge'
+  | 'screen';
 
 const TASK_MODEL: Record<AgentTask, ModelId> = {
   classify: SONNET5_MODEL,
@@ -61,6 +66,7 @@ const TASK_MODEL: Record<AgentTask, ModelId> = {
   triage: HAIKU_MODEL,
   extract: SONNET5_MODEL,
   acknowledge: HAIKU_MODEL,
+  screen: HAIKU_MODEL,
 };
 
 /** The set of valid task names — used by the skill loader to validate frontmatter. */

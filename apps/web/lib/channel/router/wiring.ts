@@ -1,6 +1,9 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, isNull } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
+import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
@@ -181,12 +184,44 @@ export function defaultHandlers(): DeterministicHandler[] {
   ];
 }
 
+let screenAnthropic: Anthropic | undefined;
+
+/**
+ * The screen's client, resolved LAZILY — a function, not a value, for the reason the
+ * coach runtime states: these deps are built for EVERY inbound text, including the ones
+ * a deterministic handler answers with no model at all, so a missing ANTHROPIC_API_KEY
+ * must never be what stops a parent approving something. Deferring it also buys the
+ * honest `client_unavailable` reading instead of a thrown route.
+ */
+function screenClient(): AgentClient {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  }
+  screenAnthropic ??= new Anthropic({ apiKey });
+  return screenAnthropic;
+}
+
+/**
+ * VIL-273 — the off-domain lane, with its pending count bound to the SAME query the
+ * approval grammar resolves ordinals against. A second count of "what is waiting" could
+ * disagree with the list a "YES 1" actually hits; this one cannot.
+ */
+function defaultOffDomainLane(database: Database) {
+  const spine = defaultApprovalSpine();
+  return productionOffDomainLane(database, screenClient, async (familyId) => {
+    const pending = await spine.listPending(database, familyId);
+    return pending.length;
+  });
+}
+
 export function channelRouterDeps(database: Database): ChannelRouterDeps {
   return {
     database,
     loadContext: loadInboundContext,
     transport: createTwilioTransport(),
     handlers: defaultHandlers(),
+    offDomain: defaultOffDomainLane(database),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),

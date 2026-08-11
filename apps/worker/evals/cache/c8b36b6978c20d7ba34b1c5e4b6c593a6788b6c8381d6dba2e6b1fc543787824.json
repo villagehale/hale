@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "child injury with ongoing symptoms requiring immediate medical evaluation"
+  },
+  "latencyMs": 1331
+}

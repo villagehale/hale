@@ -72,6 +72,9 @@ jobs:
       - name: SMS intake extraction/intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake
 
+      - name: Off-domain capability lane eval (cached-only)
+        run: pnpm --filter @hale/worker eval:inbound-lane
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 

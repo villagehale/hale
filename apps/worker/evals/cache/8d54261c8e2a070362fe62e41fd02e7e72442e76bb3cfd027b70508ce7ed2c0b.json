@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "weather",
+    "reason": "factual weather question not connected to family scheduling"
+  },
+  "latencyMs": 1010
+}

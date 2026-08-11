@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "prolonged high fever in a child requires immediate medical attention"
+  },
+  "latencyMs": 1298
+}

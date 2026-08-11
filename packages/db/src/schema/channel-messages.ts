@@ -27,6 +27,55 @@ import { users } from './users.js';
  * contract). Outbound rows never store a rendered body: it is reconstructable from
  * template + payload, and storing rendered child-data is a liability (rule #1).
  */
+
+/**
+ * Which fixed line answered an inbound text that Hale declined to take on
+ * (VIL-273). Set on the INBOUND row, and null on every message the coach actually
+ * answered — so "how often does Hale say no, and to what" is one indexed scan.
+ *
+ * The values are the lanes the screening skill chooses between, minus `in_domain`:
+ * an in-domain message leaves both columns null, because a question Hale answered is
+ * not an unmet intent.
+ */
+export const UNMET_INTENT_LANES = [
+  'off_domain_general',
+  'safety_critical',
+  'provider_access',
+] as const;
+
+export type UnmetIntentLane = (typeof UNMET_INTENT_LANES)[number];
+
+/**
+ * WHAT the parent wanted, as a bucket — never as words they typed.
+ *
+ * A closed vocabulary is the structural half of rule #1 here: the value is produced by
+ * a model reading a family's private message, and the only way a name or a symptom can
+ * never reach a founder's weekly email is for the column to be incapable of holding
+ * one. `other` is the escape hatch, and its own count is the signal that the list needs
+ * a new entry.
+ *
+ * THIS ARRAY IS THE SOURCE. The type is derived from it, the screen's runtime allowlist
+ * imports it, and migration 0080's CHECK constraint restates it in SQL — which is the
+ * one copy TypeScript cannot own, so `unmet-vocabulary-consistency.test.mjs` holds the
+ * two together mechanically. Adding a bucket is deliberately a migration.
+ */
+export const UNMET_INTENT_CATEGORIES = [
+  'weather',
+  'news-or-politics',
+  'general-knowledge',
+  'nearby-places',
+  'traffic-or-transit',
+  'shopping-or-deals',
+  'other',
+  'medical-symptom',
+  'mental-health',
+  'child-safety',
+  'emergency',
+  'doctor-access',
+  'specialist-access',
+] as const;
+
+export type UnmetIntentCategory = (typeof UNMET_INTENT_CATEGORIES)[number];
 export const channelMessages = pgTable(
   'channel_messages',
   {
@@ -60,6 +109,12 @@ export const channelMessages = pgTable(
     relatedConversationId: uuid('related_conversation_id').references(() => conversations.id, {
       onDelete: 'set null',
     }),
+    /** The lane that answered this inbound text without waking the coach, or null when
+     * nothing did. Always written together with {@link channelMessages.unmetCategory} —
+     * a DB check constraint refuses the half-filled pair. */
+    unmetLane: text('unmet_lane').$type<UnmetIntentLane>(),
+    /** The demand-signal bucket (see {@link UnmetIntentCategory}). Never free text. */
+    unmetCategory: text('unmet_category').$type<UnmetIntentCategory>(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -76,6 +131,11 @@ export const channelMessages = pgTable(
       table.category,
       table.createdAt,
     ),
+    // The founder digest's weekly window over deflections. Partial, so it indexes only
+    // the handful of rows that carry a lane rather than the whole ledger.
+    unmetIdx: index('channel_messages_unmet_idx')
+      .on(table.createdAt)
+      .where(sql`${table.unmetLane} IS NOT NULL`),
   }),
 );
 

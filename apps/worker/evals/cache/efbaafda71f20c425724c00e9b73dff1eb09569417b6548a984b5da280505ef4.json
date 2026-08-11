@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "scheduling change request for existing activity"
+  },
+  "latencyMs": 1712
+}

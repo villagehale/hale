@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "expression of suicidal ideation in a child"
+  },
+  "latencyMs": 944
+}

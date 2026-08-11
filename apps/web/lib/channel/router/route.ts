@@ -1,6 +1,7 @@
-import { type Database, schema } from '@hale/db';
+import { type Database, type UnmetIntentLane, schema } from '@hale/db';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
+import type { OffDomainLane } from '~/lib/channel/off-domain/lane';
 import { type FamilyRole, isCaregiverRole } from '~/lib/channel/role-scope';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
@@ -33,6 +34,15 @@ import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
  *   3. CAN WE AFFORD TO THINK?   Flood control sits BELOW the handlers, so a parent
  *      whose hour is spent can still approve, decline, and file a "done". Only the
  *      expensive half is held.
+ *
+ *   4. IS THIS EVEN OUR JOB?   (VIL-273) The last question before the expensive one,
+ *      and the cheapest of the four that costs a model at all. Hale is a chief of staff,
+ *      not an event finder and not a search box: "how's the weather" has a right answer
+ *      that no coach turn improves, and on live-gate day 1 it cost ~42 seconds of one to
+ *      say nothing. The off-domain lane answers those in one fixed line. It sits HERE
+ *      rather than among the handlers because it is not deterministic — it costs a Haiku
+ *      call, and a Haiku call must never be what stands between a parent and the word
+ *      "yes".
  *
  * Everything the router does after that is bookkeeping it owes the parent: the turn is
  * threaded into their one long-lived conversation (visible in the app's Ask history),
@@ -119,6 +129,10 @@ export interface ChannelRouterDeps {
   ): Promise<InboundContext | null>;
   transport: ChannelTransport;
   handlers: readonly DeterministicHandler[];
+  /** The cheap screen that answers what Hale does not do, before the coach is woken.
+   * Non-nullable (rule #11): "no lane wired" is not a state this router has — a lane
+   * that cannot run says so by returning `in_domain` with a named fallback. */
+  offDomain: OffDomainLane;
   coach: ChannelCoachRuntime;
   limiter: RateLimiter;
   ackTimer(ms: number): AckTimer;
@@ -136,6 +150,8 @@ export type RouterStatus =
   /** A deterministic handler owned it. */
   | 'handled'
   | 'flood_held'
+  /** The off-domain lane answered it with a fixed line; no coach turn was spent. */
+  | 'deflected'
   | 'agent_replied'
   | 'agent_failed';
 
@@ -144,6 +160,9 @@ export interface RouterResult {
   /** Which handler claimed it, when one did. */
   handler: string | null;
   conversationId: string | null;
+  /** Which lane deflected it, when one did. Null for every other status — including an
+   * in-domain turn, which is not an unmet intent and is counted as nothing. */
+  lane: UnmetIntentLane | null;
 }
 
 export async function routeChannelMessage(
@@ -153,7 +172,12 @@ export async function routeChannelMessage(
   const now = deps.now();
   const context = await deps.loadContext(deps.database, job);
   if (!context) {
-    return done(deps, job, { status: 'unknown_message', handler: null, conversationId: null });
+    return done(deps, job, {
+      status: 'unknown_message',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
   }
 
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can
@@ -170,11 +194,21 @@ export async function routeChannelMessage(
         conversationId: null,
       });
     }
-    return done(deps, job, { status: 'not_a_parent', handler: null, conversationId: null });
+    return done(deps, job, {
+      status: 'not_a_parent',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
   }
 
   if (!context.phoneE164) {
-    return done(deps, job, { status: 'unreachable', handler: null, conversationId: null });
+    return done(deps, job, {
+      status: 'unreachable',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
   }
   const phoneE164 = context.phoneE164;
 
@@ -207,6 +241,7 @@ export async function routeChannelMessage(
       status: 'handled',
       handler: handler.name,
       conversationId,
+      lane: null,
     });
   }
 
@@ -219,7 +254,26 @@ export async function routeChannelMessage(
   );
   if (!decision.allowed) {
     await say(FLOOD_REPLY);
-    return done(deps, job, { status: 'flood_held', handler: null, conversationId });
+    return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
+  }
+
+  // GATE 4 — is this even our job. The screen reads the LEDGER body (the same words the
+  // handlers just declined), stamps its verdict on that same row, and answers with a
+  // fixed line — so a deflection costs one Haiku call and no coach turn at all. An
+  // in-domain verdict, including every fail-open one, falls through untouched.
+  const verdict = await deps.offDomain.consider({
+    familyId: job.family_id,
+    channelMessageId: job.channel_message_id,
+    text: context.body,
+  });
+  if (verdict.status === 'deflected') {
+    await say(verdict.reply);
+    return done(deps, job, {
+      status: 'deflected',
+      handler: null,
+      conversationId,
+      lane: verdict.lane,
+    });
   }
 
   return runAgentTurn(deps, { job, turn, say, conversationId });
@@ -278,6 +332,7 @@ async function runAgentTurn(
       status: 'agent_replied',
       handler: null,
       conversationId: args.conversationId,
+      lane: null,
     });
   } catch (err) {
     // A turn can break AFTER its drafts landed, and those are real rows the parent can
@@ -299,6 +354,7 @@ async function runAgentTurn(
       status: 'agent_failed',
       handler: null,
       conversationId: args.conversationId,
+      lane: null,
     });
   }
 }
@@ -366,7 +422,9 @@ async function sendReply(
   }
 }
 
-/** One structured line per routed message: ids and an outcome enum, never a body. */
+/** One structured line per routed message: ids and outcome enums, never a body. The
+ * lane rides along because a deflection is the one outcome where Hale said no, and how
+ * often it does that is the number X1 reports weekly. */
 function done(
   deps: ChannelRouterDeps,
   job: ChannelMessageReceivedJob,
@@ -377,6 +435,7 @@ function done(
       channelMessageId: job.channel_message_id,
       status: result.status,
       handler: result.handler,
+      lane: result.lane,
     },
     'channel router: routed',
   );

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "emergency",
+    "reason": "child missing for an hour requires immediate emergency response"
+  },
+  "latencyMs": 887
+}
