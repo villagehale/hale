@@ -17,35 +17,35 @@ import {
  * the payload assembled from the artifact + children.
  */
 
-// DEFAULT_LOOP_PREFS.weeklyPlanSendTime is 19:30:00; weekStartDay=1 (Mon) → send Sun.
-// 2026-01-18 and 2026-07-19 are both Sundays (EST/PST winter, EDT/PDT summer).
+// DEFAULT_LOOP_PREFS.weeklyPlanSendTime is 07:00:00; weekStartDay=1 (Mon) → send Mon.
+// 2026-01-19 and 2026-07-20 are both Mondays (EST/PST winter, EDT/PDT summer).
 
 describe('isSendMoment — the local send weekday + time, one-hour slot, DST-safe', () => {
   const view = { ...DEFAULT_LOOP_PREFS };
 
-  it('matches each parent at their own local Sunday 19:30, winter and summer', () => {
-    // Toronto EST (UTC-5): Sun 19:30 local = Mon 00:30Z.
-    expect(isSendMoment(view, new Date('2026-01-19T00:30:00Z'), 'America/Toronto', 1)).toBe(true);
-    // Vancouver PST (UTC-8): Sun 19:30 local = Mon 03:30Z.
-    expect(isSendMoment(view, new Date('2026-01-19T03:30:00Z'), 'America/Vancouver', 1)).toBe(true);
-    // Toronto EDT (UTC-4) summer: Sun 19:30 local = Sun 23:30Z.
-    expect(isSendMoment(view, new Date('2026-07-19T23:30:00Z'), 'America/Toronto', 1)).toBe(true);
+  it('matches each parent at their own local Monday 07:00, winter and summer', () => {
+    // Toronto EST (UTC-5): Mon 07:00 local = Mon 12:00Z.
+    expect(isSendMoment(view, new Date('2026-01-19T12:00:00Z'), 'America/Toronto', 1)).toBe(true);
+    // Vancouver PST (UTC-8): Mon 07:00 local = Mon 15:00Z.
+    expect(isSendMoment(view, new Date('2026-01-19T15:00:00Z'), 'America/Vancouver', 1)).toBe(true);
+    // Toronto EDT (UTC-4) summer: Mon 07:00 local = Mon 11:00Z.
+    expect(isSendMoment(view, new Date('2026-07-20T11:00:00Z'), 'America/Toronto', 1)).toBe(true);
   });
 
-  it('holds the one-hour slot open (19:30–20:29 local) and closes it after', () => {
-    expect(isSendMoment(view, new Date('2026-01-19T01:29:00Z'), 'America/Toronto', 1)).toBe(true); // 20:29
-    expect(isSendMoment(view, new Date('2026-01-19T01:30:00Z'), 'America/Toronto', 1)).toBe(false); // 20:30
-    expect(isSendMoment(view, new Date('2026-01-19T00:29:00Z'), 'America/Toronto', 1)).toBe(false); // 19:29
+  it('holds the one-hour slot open (07:00–07:59 local) and closes it after', () => {
+    expect(isSendMoment(view, new Date('2026-01-19T12:59:00Z'), 'America/Toronto', 1)).toBe(true); // 07:59
+    expect(isSendMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', 1)).toBe(false); // 08:00
+    expect(isSendMoment(view, new Date('2026-01-19T11:59:00Z'), 'America/Toronto', 1)).toBe(false); // 06:59
   });
 
   it('does not match the wrong weekday', () => {
-    // Saturday 19:30 Toronto (2026-01-17 is a Saturday) with a Monday-start week.
-    expect(isSendMoment(view, new Date('2026-01-18T00:30:00Z'), 'America/Toronto', 1)).toBe(false);
+    // Sunday 07:00 Toronto (2026-01-18 is a Sunday) with a Monday-start week.
+    expect(isSendMoment(view, new Date('2026-01-18T12:00:00Z'), 'America/Toronto', 1)).toBe(false);
   });
 
-  it('sends Saturday for a Sunday-start week (weekStartDay=0)', () => {
-    // weekStartDay 0 → send weekday = Saturday. 2026-01-17 is a Saturday.
-    expect(isSendMoment(view, new Date('2026-01-18T00:30:00Z'), 'America/Toronto', 0)).toBe(true);
+  it('sends Sunday morning for a Sunday-start week (weekStartDay=0)', () => {
+    // weekStartDay 0 → send weekday = Sunday. 2026-01-18 is a Sunday.
+    expect(isSendMoment(view, new Date('2026-01-18T12:00:00Z'), 'America/Toronto', 0)).toBe(true);
   });
 });
 
@@ -80,10 +80,10 @@ describe('runSundaySendCron', () => {
     const deps: SundaySendDeps = {
       selectParents: async () => [parent],
       // KEY-STRICT, like the real store: the composer keys the artifact on the
-      // UPCOMING Monday (cron.ts weekWindow offset 1). NOW is Sun 19:30 Toronto
-      // Jan 18, so the only findable key is 2026-01-19. A wrong-week lookup
-      // returns null — this is what catches the outgoing-week regression the
-      // first prod probe found (offset 0 keyed the OUTGOING Monday).
+      // week's Monday. NOW is Mon 07:00 Toronto Jan 19 — the brief sends the
+      // morning the week starts, so the only findable key is TODAY, 2026-01-19.
+      // A wrong-week lookup returns null — this is what catches a mismatched
+      // send-vs-compose week key (the first prod probe found that class).
       readPlan: async (_db, _familyId, weekStart) => {
         readPlanWeekStart = weekStart;
         return weekStart === '2026-01-19' ? plan : null;
@@ -102,7 +102,7 @@ describe('runSundaySendCron', () => {
     return { deps, enqueued, captured, weekStartOf: () => readPlanWeekStart };
   }
 
-  const NOW = new Date('2026-01-19T00:30:00Z'); // Sun 19:30 Toronto
+  const NOW = new Date('2026-01-19T12:00:00Z'); // Mon 07:00 Toronto
 
   it('enqueues one weekly_plan job per matching parent when LOOP_SEND_ENABLED is on', async () => {
     vi.stubEnv('LOOP_SEND_ENABLED', 'true');
@@ -150,8 +150,19 @@ describe('runSundaySendCron', () => {
     const { deps, enqueued, weekStartOf } = makeDeps();
     await runSundaySendCron({} as never, deps, NOW);
     expect(enqueued[0]?.dedupeKey).toBe(`fam-1:${weekStartOf()}:u1`);
-    // The UPCOMING Monday — the week the Sunday-evening send announces, and the
-    // key the composer wrote the artifact under (cron.ts weekWindow offset 1).
+    // Monday morning of the week the brief opens — the key the composer wrote
+    // the artifact under the day before (cron.ts weekWindow offset 1).
+    expect(weekStartOf()).toBe('2026-01-19');
+  });
+
+  it('keys a Sunday-start parent on the UPCOMING Monday (artifacts are Monday-keyed)', async () => {
+    vi.stubEnv('LOOP_SEND_ENABLED', 'true');
+    const { deps, weekStartOf } = makeDeps({
+      selectParents: async () => [{ ...parent, weekStartDay: 0 }],
+    });
+    // Sunday-start → their brief sends Sunday 07:00. 2026-01-18 is a Sunday;
+    // Toronto EST 07:00 = 12:00Z. Their Sun–Sat week's Monday key is TOMORROW.
+    await runSundaySendCron({} as never, deps, new Date('2026-01-18T12:00:00Z'));
     expect(weekStartOf()).toBe('2026-01-19');
   });
 });
@@ -188,7 +199,7 @@ describe('selectParentsToSend — deliverability', () => {
     } as unknown as Database;
   }
 
-  const NOW = new Date('2026-01-19T00:30:00Z'); // Sun 19:30 Toronto
+  const NOW = new Date('2026-01-19T12:00:00Z'); // Mon 07:00 Toronto
 
   it('skips an email-channel parent with no email address', async () => {
     const db = fakeDb([{ ...MEMBER, email: null }], [{ ...DEFAULT_LOOP_PREFS }]);

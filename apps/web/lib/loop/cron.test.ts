@@ -148,31 +148,31 @@ const TZ = 'America/Toronto';
  * per-parent send time, never read back from the function.
  */
 describe('isComposeMoment — the family-local compose slot (day before the send moment)', () => {
-  it('matches Saturday from the send time through <60 min later (Monday-start week)', () => {
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 30, TZ), TZ, 1)).toBe(true); // Sat 19:30
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 20, 29, TZ), TZ, 1)).toBe(true); // +59
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 29, TZ), TZ, 1)).toBe(false); // 1 early
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 20, 30, TZ), TZ, 1)).toBe(false); // +60
+  it('matches Sunday from the send time through <60 min later (Monday-start week)', () => {
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 7, 0, TZ), TZ, 1)).toBe(true); // Sun 07:00
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 7, 59, TZ), TZ, 1)).toBe(true); // +59
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 6, 59, TZ), TZ, 1)).toBe(false); // 1 early
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 8, 0, TZ), TZ, 1)).toBe(false); // +60
   });
 
-  it('does NOT fire on the SEND day (Sunday) — that is B2 delivery, not compose', () => {
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 19, 30, TZ), TZ, 1)).toBe(false); // Sunday
+  it('does NOT fire on the SEND day (Monday) — that is B2 delivery, not compose', () => {
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 27, 7, 0, TZ), TZ, 1)).toBe(false); // Monday
   });
 
   it('honors the parent per-parent weekly_plan_send_time', () => {
     const p = prefs({ weeklyPlanSendTime: '08:00:00' });
-    expect(isComposeMoment(p, zoned(2026, 7, 25, 8, 15, TZ), TZ, 1)).toBe(true); // Sat 08:15
-    expect(isComposeMoment(p, zoned(2026, 7, 25, 19, 30, TZ), TZ, 1)).toBe(false); // default time no longer matches
+    expect(isComposeMoment(p, zoned(2026, 7, 26, 8, 15, TZ), TZ, 1)).toBe(true); // Sun 08:15
+    expect(isComposeMoment(p, zoned(2026, 7, 26, 7, 0, TZ), TZ, 1)).toBe(false); // default time no longer matches
   });
 
   it('reads the offset live across DST (winter EST) and catches a :45 zone', () => {
-    expect(isComposeMoment(prefs(), zoned(2026, 1, 31, 19, 30, TZ), TZ, 1)).toBe(true); // Sat 19:30 EST
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 45, 'Asia/Kathmandu'), 'Asia/Kathmandu', 1)).toBe(true);
+    expect(isComposeMoment(prefs(), zoned(2026, 2, 1, 7, 0, TZ), TZ, 1)).toBe(true); // Sun 07:00 EST
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 7, 15, 'Asia/Kathmandu'), 'Asia/Kathmandu', 1)).toBe(true);
   });
 
-  it('shifts the compose day with the parent week-start (Sunday-start → compose Friday)', () => {
-    // weekStartDay 0 → send Saturday (weeklyPlanWeekday(0)=6) → compose Friday.
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 24, 19, 30, TZ), TZ, 0)).toBe(true); // Friday
-    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 19, 30, TZ), TZ, 0)).toBe(false); // Saturday
+  it('shifts the compose day with the parent week-start (Sunday-start → compose Saturday)', () => {
+    // weekStartDay 0 → send Sunday (weeklyPlanWeekday(0)=0) → compose Saturday.
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 25, 7, 0, TZ), TZ, 0)).toBe(true); // Saturday
+    expect(isComposeMoment(prefs(), zoned(2026, 7, 26, 7, 0, TZ), TZ, 0)).toBe(false); // Sunday
   });
 });
