@@ -112,9 +112,31 @@ describe('createRadarComposer', () => {
       areaCoarse: 'M5V',
     });
 
-    expect(payload.message.toLowerCase()).toContain('still learning');
+    // No candidates, no windows, and no children on file to key a checkpoint to: the
+    // one shape where all three rungs are empty. It maps, and it says when the first
+    // find lands — it does not shrug.
+    expect(payload.message).toContain('Your first weekend find lands in a day or two.');
     expect(payload.itemCount).toBe(0);
     expect(payload.followUpNeeded).toBe(true);
+  });
+
+  it('reaches for the age checkpoint when this family has no window and no candidate', async () => {
+    const db = makeFakeDb();
+    db.db
+      .insert(schema.children)
+      .values({ familyId: FAMILY_ID, name: 'Mia', dateOfBirth: '2025-01-31' } as never);
+
+    const payload = await composer(db).compose({
+      familyId: FAMILY_ID,
+      children: [{ name: 'Mia', ageMonths: 18, agePrecision: 'months' }],
+      areaCoarse: 'L7G',
+    });
+
+    // Halton Hills: no civic adapter, no registration windows, nothing discovered yet.
+    // The child is 18 months old, and Ontario publishes a calendar against that.
+    expect(payload.message).toContain('Mia');
+    expect(payload.message).toContain('18 months');
+    expect(payload.itemCount).toBe(1);
   });
 
   it('sends only the COARSE area to the weather port — never a postal code (rule #1)', async () => {
@@ -148,7 +170,11 @@ describe('createRadarComposer', () => {
     });
 
     expect(payload.message).not.toContain('Teen climbing night');
-    expect(payload.itemCount).toBe(0);
+    // The checkpoint block is the one thing a 13+ child's household still hears, and it
+    // hears it in the GENERIC wording with no name attached (rule #1).
+    expect(payload.message).toContain('A routine vaccine record check is due');
+    expect(payload.message).not.toContain('Ava');
+    expect(payload.itemCount).toBe(1);
   });
 
   it('still composes when the family has no postal-derived area at all', async () => {

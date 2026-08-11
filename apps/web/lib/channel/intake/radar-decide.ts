@@ -1,5 +1,6 @@
 import { formatWhenPhrase } from '~/lib/format/datetime';
 import { priceBandLabel } from '~/lib/format/labels';
+import { type HealthChild, matchHealthCheckpoints } from '~/lib/health/match';
 import type { RegistrationMatch } from '~/lib/registration/match-registration-windows';
 import { AGE_TOLERANCE_MONTHS } from '~/lib/registration/match-registration-windows';
 import { type Season, seasonOf } from '~/lib/village/visibility';
@@ -89,9 +90,26 @@ export interface RegistrationLine {
   ageApproximate: boolean;
 }
 
+/**
+ * The age block: the nearest Ontario health-ADMIN window the family's youngest child is
+ * inside. Administrative, never clinical — see lib/health/checkpoints.ts, whose reviewed
+ * rows are the only wording this line may ever carry.
+ */
+export interface CheckpointLine {
+  /** Which reviewed row this is. For us and for tests; never for the parent. */
+  checkpointRef: { id: string };
+  /** The administrative fact in the table's own words, already resolved to the generic
+   * wording when the child it belongs to is 13+ (rule #1). */
+  task: string;
+  /** Whose it is. Empty when the parent named nobody, and always for a 13+ child. */
+  kidNames: string[];
+}
+
 export interface RadarDecision {
   weekendPick: WeekendPick | null;
   registrationLine: RegistrationLine | null;
+  /** The age block, or null when no reviewed window applies to this family right now. */
+  checkpoint: CheckpointLine | null;
   /** Always true: the state machine appends the watch offer itself, so the composer
    * must not write a question of its own (that would ask twice). */
   offerQuestion: true;
@@ -109,6 +127,19 @@ export interface DecideRadarInput {
   weather: readonly DailyOutlook[];
   /** Candidates attributed to these children never leave the building (rule #1). */
   teenChildIds: readonly string[];
+  /**
+   * EVERY child, 13+ included, with the ids a checkpoint keys on — the same roster M4
+   * builds (lib/channel/nudge/run.ts). Separate from `children` for the same reason it
+   * is there: a weekend suggestion is for under-13s, while an administrative window is
+   * the parent's obligation whatever the child's age, and only the WORDING changes.
+   */
+  healthChildren: readonly HealthChild[];
+  /** The family's FSA. Checkpoints are region-gated; null means none apply. */
+  areaCoarse: string | null;
+  /** Checkpoints this family must not be raised about again (already told, or told to
+   * us as done). Empty for a family provisioned seconds ago — read for real anyway, so
+   * the radar can never become the one surface that re-raises settled paperwork. */
+  suppressedCheckpointRefs: ReadonlySet<string>;
   now: Date;
   timeZone: string;
 }
@@ -455,11 +486,55 @@ function decideWeekendPick(input: DecideRadarInput): WeekendPick | null {
   };
 }
 
+/** The youngest child on file. Ties keep the first, which is how the health matcher's
+ * own first-wins reduce breaks them — so the two can never disagree about who that is. */
+function youngestOf(children: readonly HealthChild[]): HealthChild | null {
+  return children.reduce<HealthChild | null>(
+    (best, child) => (best === null || child.ageMonths < best.ageMonths ? child : best),
+    null,
+  );
+}
+
+/**
+ * The age block, and the reason no family's first message is a shrug.
+ *
+ * Geography can be empty: an FSA no civic adapter covers, a town publishing no
+ * registration windows, a family four milliseconds old with no discovered candidates.
+ * An age never is, and Ontario publishes an administrative calendar against it.
+ *
+ * The YOUNGEST child, and only them, expressed by running the shared matcher over a
+ * one-child roster. That is the same multi-kid discipline the weekend pick follows (one
+ * message, one thing) — and it keeps the region gate, the teen wording, the clamped
+ * tolerance and the suppression set in the ONE module that owns them (lib/health/match),
+ * so this stage cannot hold a different opinion than the 48h nudge about what applies to
+ * a child.
+ */
+function decideCheckpoint(input: DecideRadarInput): CheckpointLine | null {
+  const youngest = youngestOf(input.healthChildren);
+  if (youngest === null) return null;
+
+  const [match] = matchHealthCheckpoints({
+    children: [youngest],
+    areaCoarse: input.areaCoarse,
+    suppressedRefs: input.suppressedCheckpointRefs,
+    now: input.now,
+  });
+  if (!match) return null;
+
+  const task = match.teenOnly ? match.checkpoint.teenSafeTask : match.checkpoint.task;
+  // The matcher never admits a 13+ child to a row with no generic wording, so this is
+  // its invariant restated for the type. Silence is the fail-closed answer either way.
+  if (task === null) return null;
+
+  return { checkpointRef: { id: match.checkpoint.id }, task, kidNames: match.kidNames };
+}
+
 export function decideRadar(input: DecideRadarInput): RadarDecision {
   const weekendPick = decideWeekendPick(input);
   return {
     weekendPick,
     registrationLine: decideRegistration(input),
+    checkpoint: decideCheckpoint(input),
     offerQuestion: true,
     // Nothing to point at this weekend: discovery may still be running, so Hale owes
     // this family a pick later. Flag only — this stage sends nothing.

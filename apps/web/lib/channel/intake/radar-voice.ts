@@ -3,6 +3,7 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { loadRadarVoiceSkill } from '~/lib/cron/skill';
+import { findBannedPhrases } from '~/lib/health/framing';
 import { findInventedFacts } from '~/lib/loop/voice/facts-lint';
 import { composeVoice, firstJsonObject } from '~/lib/loop/voice/compose';
 import { WATCH_OFFER } from './copy';
@@ -47,6 +48,16 @@ const VOICE_MAX_TOKENS = 300;
  */
 export const MAX_PAYLOAD_SEGMENTS = 3;
 
+/**
+ * The forward beat, and the reason it is a FACT rather than a phrase in the skill.
+ *
+ * "A day or two" is a specific, and a specific a model writes from its own head is the
+ * exact shape this stage exists to stop — the fact lint has no slot to check it against
+ * and a parent would act on it. It is true because the 48h sweep covers every family it
+ * serves, which is something Hale knows and the model cannot, so Hale hands it over.
+ */
+export const FIRST_FIND_BEAT = 'Your first weekend find lands in a day or two.';
+
 export interface RadarVoice {
   message: string;
 }
@@ -64,6 +75,15 @@ export function townLabel(municipality: string): string {
     .join(' ');
 }
 
+/** Every rung of the cascade is empty — the one shape with no family fact in it. */
+function emptyHanded(decision: RadarDecision): boolean {
+  return (
+    decision.weekendPick === null &&
+    decision.registrationLine === null &&
+    decision.checkpoint === null
+  );
+}
+
 /**
  * What the model is handed: the decision's FACTS, and nothing else. No candidate uuid
  * (an internal identifier has no business in a text message), no follow-up flag (that
@@ -74,6 +94,9 @@ export function radarVoiceContext(decision: RadarDecision): unknown {
   const pick = decision.weekendPick;
   const registration = decision.registrationLine;
   return {
+    // Present ONLY in the shape it is true of: a family Hale has nothing for yet is
+    // owed the sweep that will find them something, and nobody else is owed a promise.
+    firstFindBeat: emptyHanded(decision) ? FIRST_FIND_BEAT : null,
     weekendPick: pick
       ? {
           what: pick.candidateRef.title,
@@ -92,6 +115,11 @@ export function radarVoiceContext(decision: RadarDecision): unknown {
           residentNote: registration.residentNote,
           ageApproximate: registration.ageApproximate,
         }
+      : null,
+    // The row id stays behind with the candidate uuid: `task` is the whole fact, and it
+    // is a sentence a human reviewed, so there is nothing for the model to look up.
+    checkpoint: decision.checkpoint
+      ? { task: decision.checkpoint.task, kidNames: decision.checkpoint.kidNames }
       : null,
     offerQuestion: decision.offerQuestion,
   };
@@ -115,6 +143,9 @@ export function radarFactSlots(decision: RadarDecision): string[] {
     );
     if (registration.residentNote) slots.push(registration.residentNote);
   }
+  const checkpoint = decision.checkpoint;
+  if (checkpoint) slots.push(checkpoint.task, ...checkpoint.kidNames);
+  if (emptyHanded(decision)) slots.push(FIRST_FIND_BEAT);
   return slots;
 }
 
@@ -139,16 +170,35 @@ export function parseRadarVoiceAnswer(answer: string | null): RadarVoice | null 
   return parsed.data;
 }
 
-/** Whether a composed message may be sent as-is: grounded, question-free, and inside
- * the segment budget once the watch offer is appended. */
+/** Whether a composed message may be sent as-is: grounded, question-free, clear of
+ * M8's framing line, and inside the segment budget once the watch offer is appended. */
 export function usableRadarMessage(message: string, decision: RadarDecision): boolean {
   if (findInventedFacts(message, radarFactSlots(decision)).length > 0) return false;
+  // The checkpoint block is the one place a model writes health-ADMIN words, and M8's
+  // whole argument for static templates was that a single invented clause there ("she's
+  // a bit behind") is a diagnosis Hale has no standing to make. So the framing lint runs
+  // over the composed message whenever a checkpoint is in play: a message that turns an
+  // administrative window into a claim about the child, or into an instruction, is
+  // discarded and the reviewed table's own wording goes out instead.
+  if (decision.checkpoint !== null && findBannedPhrases(message).length > 0) return false;
   if (message.includes(WATCH_OFFER)) return false;
   return smsSegments(`${message}\n\n${WATCH_OFFER}`) <= MAX_PAYLOAD_SEGMENTS;
 }
 
 const STILL_LEARNING = "I'm still learning what's on around you - I'll have a pick for you soon.";
 const NO_WINDOW = 'Nothing has a registration date coming up just yet.';
+/** The all-empty answer: what Hale is doing, what it does NOT have yet — said plainly,
+ * because a warm line with no content in it reads as a brand and not as a neighbour —
+ * and then, from {@link FIRST_FIND_BEAT}, when that changes. */
+const MAPPING_NOW =
+  "I'm mapping what's near you now - nothing to point you to yet, and no registration date coming up.";
+
+/** How many blocks the render may spend, and the same ceiling the skill is written to.
+ * Not a segment budget — {@link MAX_PAYLOAD_SEGMENTS} is the arithmetic one — but the
+ * copy contract: three sentences, read on a phone, one hand holding a toddler. When all
+ * three rungs are filled the checkpoint is the one that yields, because a registration
+ * date closes and a weekend passes while an administrative window stays open for months. */
+const MAX_BLOCKS = 2;
 
 function joinNames(names: readonly string[]): string {
   if (names.length === 0) return '';
@@ -165,21 +215,18 @@ function dayLabel(day: string): string {
  * out whenever the composed voice is unusable or unavailable — so an outage, a bad
  * answer, or a fabricated venue costs a parent WARMTH, never accuracy.
  *
+ * The CASCADE, and it is the same order the skill is written to: a registration date
+ * that closes beats a drop-in that repeats, and a drop-in this weekend beats an
+ * administrative window that stays open for months. An absence is worth a line only
+ * when Hale has nothing better to put there — which is the whole point of the third
+ * rung: a family whose geography is empty now hears their child's next real checkpoint
+ * instead of two apologies.
+ *
  * Plain ASCII on purpose: one typographic dash would flip the whole SMS to UCS-2 and
  * halve the character budget (see sms-segments.ts).
  */
 export function renderRadarDeterministically(decision: RadarDecision): string {
   const blocks: string[] = [];
-
-  const pick = decision.weekendPick;
-  if (pick) {
-    const where = pick.candidateRef.venueName ? ` at ${pick.candidateRef.venueName}` : '';
-    const who = pick.kidNames.length > 0 ? ` for ${joinNames(pick.kidNames)}` : '';
-    const why = pick.whyFacts.length > 0 ? ` (${pick.whyFacts.join(', ')})` : '';
-    blocks.push(`${dayLabel(pick.day)}: ${pick.candidateRef.title}${where}${who}${why}.`);
-  } else {
-    blocks.push(STILL_LEARNING);
-  }
 
   const registration = decision.registrationLine;
   if (registration) {
@@ -188,11 +235,27 @@ export function renderRadarDeterministically(decision: RadarDecision): string {
     blocks.push(
       `${townLabel(registration.windowRef.municipality)} ${registration.windowRef.cycleLabel} registration opens ${registration.opensAtLocal}${who}${resident}.`,
     );
-  } else {
-    blocks.push(NO_WINDOW);
   }
 
-  return blocks.join('\n\n');
+  const pick = decision.weekendPick;
+  if (pick) {
+    const where = pick.candidateRef.venueName ? ` at ${pick.candidateRef.venueName}` : '';
+    const who = pick.kidNames.length > 0 ? ` for ${joinNames(pick.kidNames)}` : '';
+    const why = pick.whyFacts.length > 0 ? ` (${pick.whyFacts.join(', ')})` : '';
+    blocks.push(`${dayLabel(pick.day)}: ${pick.candidateRef.title}${where}${who}${why}.`);
+  }
+
+  const checkpoint = decision.checkpoint;
+  if (checkpoint) {
+    const who = checkpoint.kidNames.length > 0 ? `${joinNames(checkpoint.kidNames)}: ` : '';
+    blocks.push(`${who}${checkpoint.task}`);
+  }
+
+  if (blocks.length === 0) return `${MAPPING_NOW} ${FIRST_FIND_BEAT}`;
+  // One real fact, and room for the absence that matters: a family who got the pick is
+  // owed the registration answer, and everyone else is owed the promise of a pick.
+  if (blocks.length === 1) blocks.push(pick ? NO_WINDOW : STILL_LEARNING);
+  return blocks.slice(0, MAX_BLOCKS).join('\n\n');
 }
 
 /**
