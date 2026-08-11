@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, count, eq, gte, inArray, lt } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNotNull, lt } from 'drizzle-orm';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { createResendTransport } from '~/lib/channel/resend-transport';
@@ -39,6 +39,21 @@ export interface ProviderIncidentRow {
   at: Date;
 }
 
+/**
+ * One bucket of texts Hale declined to take on this week (VIL-273).
+ *
+ * This is the product's demand signal: the off-domain lane is the only place Hale ever
+ * says no, and what parents ask for when it does is the shortest list of what to build
+ * next. The category is drawn from a closed vocabulary (see `UnmetIntentCategory`)
+ * precisely so this email can only ever hold a bucket and a number — never the words a
+ * parent typed, never a child (rule #1).
+ */
+export interface UnmetIntentRow {
+  lane: string;
+  category: string;
+  count: number;
+}
+
 export interface LoopHealthSummary {
   windowStart: Date;
   windowEnd: Date;
@@ -48,6 +63,9 @@ export interface LoopHealthSummary {
   providerIncidents: ProviderIncidentRow[];
   /** X1 · the F14 intake-funnel scoreboard for the same window. */
   scoreboard: FunnelScoreboard;
+  /** VIL-273 · what parents asked for that Hale does not do, bucketed. Any order —
+   * the formatter ranks it. */
+  unmetIntents: UnmetIntentRow[];
 }
 
 /** Sums channel_messages (outbound legs) by channel/category/status, the loop_stop
@@ -107,6 +125,26 @@ export async function aggregateLoopHealth(
       ),
     );
 
+  // VIL-273 · the deflections. Same table and same window as the message breakdown
+  // above, because the signal is stamped on the inbound row itself rather than kept in
+  // a ledger of its own — the partial index makes this the handful of rows that carry a
+  // lane rather than a scan of the whole week's traffic.
+  const unmetRows = await database
+    .select({
+      lane: schema.channelMessages.unmetLane,
+      category: schema.channelMessages.unmetCategory,
+      count: count(),
+    })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        isNotNull(schema.channelMessages.unmetLane),
+        gte(schema.channelMessages.createdAt, windowStart),
+        lt(schema.channelMessages.createdAt, windowEnd),
+      ),
+    )
+    .groupBy(schema.channelMessages.unmetLane, schema.channelMessages.unmetCategory);
+
   const scoreboard = await aggregateFunnelScoreboard(database, windowStart, windowEnd);
 
   return {
@@ -120,6 +158,13 @@ export async function aggregateLoopHealth(
       at: row.at,
     })),
     scoreboard,
+    // The check constraint makes a half-stamped row unwritable, so a lane implies a
+    // category; the coalesce is a type narrowing, not a guess about missing data.
+    unmetIntents: unmetRows.map((row) => ({
+      lane: row.lane ?? 'unknown',
+      category: row.category ?? 'unknown',
+      count: row.count,
+    })),
   };
 }
 
@@ -163,8 +208,23 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     '',
     ...formatFunnelScoreboard(summary.scoreboard),
     '',
-    'Messages by channel / category / status:',
+    'Top unmet intents (7d):',
   ];
+  // Ranked, then alphabetical so a tie does not reshuffle week to week. An empty week
+  // here is a real measurement (nothing was deflected), not missing data — so the line
+  // says which of the two it is rather than leaving a founder to wonder whether the
+  // lane is even live.
+  if (summary.unmetIntents.length === 0) {
+    lines.push('  (none - no text was deflected this week)');
+  } else {
+    const ranked = [...summary.unmetIntents].sort(
+      (a, b) => b.count - a.count || `${a.lane}${a.category}`.localeCompare(`${b.lane}${b.category}`),
+    );
+    for (const row of ranked) {
+      lines.push(`  ${row.lane} · ${row.category}: ${row.count}`);
+    }
+  }
+  lines.push('', 'Messages by channel / category / status:');
   if (summary.messageCounts.length === 0) {
     lines.push('  (none)');
   } else {

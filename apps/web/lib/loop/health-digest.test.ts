@@ -35,6 +35,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 45,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      unmetIntents: [],
     };
 
     const body = formatLoopHealthDigest(summary);
@@ -57,6 +58,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      unmetIntents: [],
     };
 
     expect(formatLoopHealthDigest(summary)).toContain('(none)');
@@ -72,6 +74,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      unmetIntents: [],
     };
 
     expect(formatLoopHealthDigest(summary)).toContain('LLM provider: no incidents');
@@ -90,6 +93,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
         { kind: 'run_spike', at: new Date('2026-07-30T00:00:00Z') },
       ],
       scoreboard: EMPTY_SCOREBOARD,
+      unmetIntents: [],
     };
 
     const line = formatLoopHealthDigest(summary)
@@ -110,12 +114,74 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      unmetIntents: [],
     });
 
     for (const line of formatFunnelScoreboard(EMPTY_SCOREBOARD)) {
       expect(body).toContain(line);
     }
     expect(body).toContain('no sessions started yet');
+  });
+});
+
+/**
+ * VIL-273 · the demand signal. Every text Hale declined to take on is one row, bucketed
+ * and counted — the only place the founder finds out WHAT parents keep asking for that
+ * Hale does not do yet.
+ */
+describe('formatLoopHealthDigest — top unmet intents', () => {
+  const base = {
+    windowStart: new Date('2026-08-03T00:00:00Z'),
+    windowEnd: new Date('2026-08-10T00:00:00Z'),
+    messageCounts: [],
+    stopCount: 0,
+    weekPlansComposed: 0,
+    providerIncidents: [],
+    scoreboard: EMPTY_SCOREBOARD,
+  };
+
+  it('ranks the buckets by how often they were asked', () => {
+    const body = formatLoopHealthDigest({
+      ...base,
+      unmetIntents: [
+        { lane: 'provider_access', category: 'doctor-access', count: 3 },
+        { lane: 'off_domain_general', category: 'weather', count: 11 },
+        { lane: 'safety_critical', category: 'medical-symptom', count: 5 },
+      ],
+    });
+
+    const listed = body
+      .split('\n')
+      .filter((l) => l.startsWith('  ') && l.includes('·') && l.includes(':'));
+    expect(listed).toEqual([
+      '  off_domain_general · weather: 11',
+      '  safety_critical · medical-symptom: 5',
+      '  provider_access · doctor-access: 3',
+    ]);
+  });
+
+  /**
+   * A zero here is a real measurement, not missing data — so the line says which of the
+   * two it is rather than leaving a founder to guess whether the lane is even live.
+   */
+  it('says nothing was deflected rather than printing an empty heading', () => {
+    const body = formatLoopHealthDigest({ ...base, unmetIntents: [] });
+
+    expect(body).toContain('Top unmet intents (7d):');
+    expect(body).toContain('  (none - no text was deflected this week)');
+  });
+
+  /** Counts and buckets only. A category is drawn from a closed vocabulary precisely so
+   * this email can never carry a child's name or a symptom (rule #1). */
+  it('carries the heading above the breakdown', () => {
+    const body = formatLoopHealthDigest({
+      ...base,
+      unmetIntents: [{ lane: 'off_domain_general', category: 'other', count: 1 }],
+    });
+    const lines = body.split('\n');
+    const heading = lines.indexOf('Top unmet intents (7d):');
+    expect(heading).toBeGreaterThan(-1);
+    expect(lines[heading + 1]).toBe('  off_domain_general · other: 1');
   });
 });
 
@@ -177,6 +243,7 @@ describe('runLoopHealthDigestCron', () => {
     weekPlansComposed: 5,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
+    unmetIntents: [{ lane: 'off_domain_general', category: 'weather', count: 2 }],
   };
 
   it('aggregates the trailing 7-day window and emails the founder the formatted digest', async () => {

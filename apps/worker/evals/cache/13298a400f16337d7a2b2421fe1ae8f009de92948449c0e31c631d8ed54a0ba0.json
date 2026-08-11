@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "Family seeking to establish care with a pediatrician after relocation"
+  },
+  "latencyMs": 977
+}

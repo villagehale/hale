@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "physical symptom (rash) takes precedence over provider access; symptom is the urgent concern"
+  },
+  "latencyMs": 1780
+}

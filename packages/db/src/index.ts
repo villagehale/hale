@@ -12,6 +12,10 @@ export type {
 export type { FamilyEvent, NewFamilyEvent } from './schema/family-events.js';
 export type { ContentProvenance } from './schema/events.js';
 export type {
+  UnmetIntentCategory,
+  UnmetIntentLane,
+} from './schema/channel-messages.js';
+export type {
   Municipality,
   ProgramDomain,
   RegistrationWindow,

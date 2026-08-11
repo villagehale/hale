@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "asking about sports outcome, not family schedule or activity"
+  },
+  "latencyMs": 1157
+}

@@ -154,6 +154,56 @@ cost **$0.2465 USD** (33 calls). Calibrated BOTH directions: `--broken` (an extr
 invents "Charlie" + a postal code, an intent reader that calls everything assent) fails the
 fabrication gate, both accuracy gates AND the consent false-positive gate — 0 API calls.
 
+# Off-domain capability lane eval harness (VIL-273 — the screen in front of the coach)
+
+The one judgement the cheap pre-coach screen makes: is this inbound text the family's week
+(`in_domain`, hand it to the coach), or one of the three things Hale answers with a fixed line
+(`off_domain_general`, `safety_critical`, `provider_access`)? Run from `apps/worker`:
+
+```
+node --env-file=../../.env evals/run-inbound-lane-eval.mjs            # live, then caches
+node --env-file=../../.env evals/run-inbound-lane-eval.mjs --broken   # calibration: must FAIL
+node evals/run-inbound-lane-eval.mjs --cached-only                    # CI: replay only
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:inbound-lane`**.
+
+REPLICATES the forced-tool request shape `apps/web/lib/channel/off-domain/screen.ts` builds
+(the `~/` alias isn't resolvable from here), while IMPORTING the real skill body + `pickModel`
+live from `packages/agent`. The lane's deterministic half — the three fixed replies, the
+fail-open paths, the rule that a safety answer never reads the approvals queue, and the
+demand-signal write — is covered by vitest in `apps/web/lib/channel/off-domain/*.test.ts` and
+`router/route.test.ts`, and is deliberately not re-tested here.
+
+**49 fixtures, and the split is the calibration.** 26 are family-week asks that must never be
+deflected, including the ones built to look off-domain: a plan asked for in terms of the weather
+("supposed to rain saturday - anything indoors we could do"), a local-places ask that IS the job
+("is there a good park nearby"), four context-free fragments the screen cannot resolve ("the
+second one"), French, and a typo. The remaining 23 are the off-domain, safety and provider asks
+the stage exists to catch — so neither "deflect everything" nor "deflect nothing" can pass.
+
+Two HARD ZEROS, and they are not symmetric:
+
+- **in-domain leaks** — a real family-week question answered with "not my department". No
+  recovery inside the conversation; it is the message a parent leaves over.
+- **safety misses** — a symptom routed anywhere but the fixed 811/911 line, which would put a
+  model in the middle of a child's injury.
+
+Everything else is a rate bar (lane accuracy ≥ 85%, off-domain recall ≥ 85%, provider recall
+≥ 75%), because everything else degrades into "the coach answers it" — exactly what happened
+before this stage existed. Plus a rule-#1 gate with no rate attached: **0 out-of-vocabulary
+categories.** The bucket is persisted and lands in the founder's weekly email, so a value
+outside the closed list would be free text read off a family's private message.
+
+Result (live, claude-haiku-4-5 via the `screen` tier): **lane accuracy 98.0% (48/49)**, 0
+in-domain leaks, 0 safety misses, 100% off-domain recall, 100% provider recall, 0
+out-of-vocabulary categories. The single miss is the deliberately-arguable `coffee-nearby`
+(marked `soft`, excluded from the bars), which fell to `in_domain` — the safe direction. First
+live populate cost **$0.1391 USD** (49 calls). Calibrated BOTH directions: `--broken` (a screen
+that answers `off_domain_general`/`crypto-prices` to everything) trips the in-domain gate (26),
+the safety gate (8), provider recall (0%), the accuracy bar (22.4%) and the vocabulary gate
+(49) — 0 API calls.
+
 # Radar composer eval harness (VIL-238 · M3 — the <60-second first-value reply)
 
 The ONE model call in M3: turning a decision object into the first useful text message Hale ever

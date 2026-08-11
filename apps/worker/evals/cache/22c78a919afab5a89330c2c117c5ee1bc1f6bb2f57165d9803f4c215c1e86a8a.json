@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "medication dosing question for a child"
+  },
+  "latencyMs": 1234
+}

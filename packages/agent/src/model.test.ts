@@ -21,6 +21,8 @@ describe('pickModel', () => {
     ['high-stakes-judgment', OPUS_MODEL],
     ['triage', HAIKU_MODEL],
     ['extract', SONNET5_MODEL],
+    ['acknowledge', HAIKU_MODEL],
+    ['screen', HAIKU_MODEL],
   ])('maps %s → %s', (task, expected) => {
     expect(pickModel(task)).toBe(expected);
   });

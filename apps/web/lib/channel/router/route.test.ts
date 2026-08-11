@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
+import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
@@ -88,6 +89,31 @@ function fakeCoach(reply = 'coach says hi'): ChannelCoachRuntime & { calls: numb
   return coach;
 }
 
+/**
+ * VIL-273 — a stand-in for the off-domain screen. It records what it was asked so the
+ * ORDER can be asserted: a lane that was consulted for a message a handler should have
+ * claimed is a model call the parent paid for, and a lane consulted AFTER the coach
+ * would be no lane at all.
+ */
+function fakeLane(verdict: OffDomainVerdict): OffDomainLane & {
+  calls: number;
+  seen: Array<{ text: string; channelMessageId: string }>;
+} {
+  const lane = {
+    calls: 0,
+    seen: [] as Array<{ text: string; channelMessageId: string }>,
+    async consider(input: { familyId: string; channelMessageId: string; text: string }) {
+      lane.calls += 1;
+      lane.seen.push({ text: input.text, channelMessageId: input.channelMessageId });
+      return verdict;
+    },
+  };
+  return lane;
+}
+
+/** The lane's answer for everything Hale actually does — the overwhelmingly common one. */
+const IN_DOMAIN: OffDomainVerdict = { status: 'in_domain', fallback: null };
+
 /** A timer that never fires — the fast-turn case. */
 const neverFires = (): AckTimer => ({ elapsed: new Promise<void>(() => {}), cancel: () => {} });
 
@@ -105,6 +131,7 @@ function harness(
     coach?: ChannelCoachRuntime;
     limiter?: FakeRateLimiter;
     ackTimer?: () => AckTimer;
+    offDomain?: OffDomainLane;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -131,6 +158,7 @@ function harness(
       transport,
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
+      offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       ackTimer: options.ackTimer ?? neverFires,
       now: () => NOW,
@@ -264,6 +292,166 @@ describe('routing order', () => {
 
     await routeChannelMessage(h.deps, job());
     expect(h.transport.sent).toEqual([]);
+  });
+});
+
+// ── the off-domain lane ──────────────────────────────────────────────────────
+
+/**
+ * VIL-273 — the cheap screen, and where it sits.
+ *
+ * Live-gate day 1: "how's the weather" cost a ~42s full coach turn and answered
+ * nothing. The lane fixes that by asking one cheap question first — but only if it is
+ * in the right place, and "the right place" is three orderings at once:
+ *
+ *   BEHIND the deterministic handlers, because "YES 2" is consent and a screen that saw
+ *   it first could spend a model call deciding whether consent is on-topic.
+ *   BEHIND flood control, because a parent who is already being held does not need a
+ *   second opinion about what they asked.
+ *   AHEAD of the coach, which is the entire point.
+ */
+describe('the off-domain lane', () => {
+  const DEFLECT: OffDomainVerdict = {
+    status: 'deflected',
+    lane: 'off_domain_general',
+    category: 'weather',
+    reply: "Ha - not my department. I stick to your family's week.",
+    signal: 'recorded',
+  };
+
+  it('answers an off-domain text without ever waking the coach', async () => {
+    const lane = fakeLane(DEFLECT);
+    const coach = fakeCoach();
+    const h = harness({ context: { body: "how's the weather" }, offDomain: lane, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('deflected');
+    expect(result.lane).toBe('off_domain_general');
+    expect(coach.calls).toBe(0);
+    expect(h.transport.bodies()).toEqual([DEFLECT.reply]);
+  });
+
+  it('hands an in-domain text straight on to the coach', async () => {
+    const lane = fakeLane(IN_DOMAIN);
+    const coach = fakeCoach();
+    const h = harness({ context: { body: 'can you find swim classes' }, offDomain: lane, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(lane.calls).toBe(1);
+    expect(coach.calls).toBe(1);
+    expect(result.status).toBe('agent_replied');
+    expect(result.lane).toBeNull();
+  });
+
+  /** A broken screen must never eat a real request. Every degraded path returns
+   * `in_domain` carrying WHY, and the turn proceeds exactly as it did before this stage
+   * existed (rule #11). */
+  it('falls open to the coach when the screen could not run', async () => {
+    const lane = fakeLane({ status: 'in_domain', fallback: 'model_failed' });
+    const coach = fakeCoach();
+    const h = harness({ offDomain: lane, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(coach.calls).toBe(1);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  /** The handlers own consent, receipts and filed facts. None of them may cost a model
+   * call to reach, so a claimed message never reaches the screen at all. */
+  it('is never consulted for a message a deterministic handler claims', async () => {
+    const lane = fakeLane(DEFLECT);
+    const h = harness({
+      context: { body: 'yes' },
+      handlers: [claimingHandler('approval', 'Approved.')],
+      offDomain: lane,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(lane.calls).toBe(0);
+  });
+
+  it('is never consulted once flood control has held the turn', async () => {
+    const limiter = new FakeRateLimiter(() => NOW.getTime());
+    const lane = fakeLane(DEFLECT);
+    const h = harness({ offDomain: lane, limiter });
+    for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
+      await routeChannelMessage(h.deps, job());
+    }
+    const consultedBefore = lane.calls;
+
+    const overflow = await routeChannelMessage(h.deps, job());
+
+    expect(overflow.status).toBe('flood_held');
+    expect(lane.calls).toBe(consultedBefore);
+  });
+
+  /** The screen reads the ledger body, not the queue payload, and it is stamped against
+   * the row that body came from — the same id the router was handed. */
+  it('screens the parent words and names the row to stamp', async () => {
+    const lane = fakeLane(IN_DOMAIN);
+    const h = harness({ context: { body: 'who is the prime minister' }, offDomain: lane });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(lane.seen).toEqual([
+      { text: 'who is the prime minister', channelMessageId: job().channel_message_id },
+    ]);
+  });
+
+  /** A deflection is a real message: it is threaded, ledgered and audited like any other
+   * reply, because rule #6 is about the ACT of texting someone. */
+  it('threads, ledgers and audits the deflection', async () => {
+    const h = harness({ offDomain: fakeLane(DEFLECT) });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(messageRows(h.fake).map((r) => [r.role, r.content])).toEqual([
+      ['user', 'anything indoors this weekend?'],
+      ['assistant', DEFLECT.reply],
+    ]);
+    expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toHaveLength(1);
+    expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
+  });
+
+  /** Every deflect is counted, and counted WITHOUT the words that caused it: the lane
+   * enum is the whole of what a log aggregator gets to hold (rule #1). */
+  it('logs the lane on every deflect and never the message', async () => {
+    const secret = 'is there a walk-in clinic for Mia near Dundas West';
+    const h = harness({
+      context: { body: secret },
+      offDomain: fakeLane({
+        status: 'deflected',
+        lane: 'provider_access',
+        category: 'doctor-access',
+        reply: 'Finding you a doctor is not something I can do.',
+        signal: 'recorded',
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    const dump = JSON.stringify(h.logs);
+    expect(dump).toContain('provider_access');
+    expect(dump).toContain('deflected');
+    expect(dump).not.toContain(secret);
+    expect(dump).not.toContain('Mia');
+  });
+
+  /** A caregiver is answered by M6 and stops. The screen must not see a message from
+   * someone we cannot vouch for as a parent — that is a disclosure to a model about a
+   * household that never consented to it (rule #1). */
+  it('never screens a caregiver', async () => {
+    const lane = fakeLane(DEFLECT);
+    const h = harness({ context: { role: 'nanny' }, offDomain: lane });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(lane.calls).toBe(0);
   });
 });
 

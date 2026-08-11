@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "news-or-politics",
+    "reason": "direct factual question about politics unrelated to family scheduling or activities"
+  },
+  "latencyMs": 1431
+}

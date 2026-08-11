@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking for weekend activity planning given weather constraint"
+  },
+  "latencyMs": 1022
+}

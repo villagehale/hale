@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking Hale to find/schedule family activities for a specific day"
+  },
+  "latencyMs": 1104
+}

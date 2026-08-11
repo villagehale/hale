@@ -31,6 +31,10 @@
     "file": "find-activities.md",
     "sha256": "ae7851375ce913f6a66a552922cc1411c4733be83369cf082e0e0f1cc7c166fb"
   },
+  "inbound-lane.md": {
+    "file": "inbound-lane.md",
+    "sha256": "bd65817bd0955f074a6e41602fd9063a7caca71e3d11d9095304a688fb827344"
+  },
   "infer-memory.md": {
     "file": "infer-memory.md",
     "sha256": "e59396e8e8de4ccd095c5740ef8d79d911b9d21f77ad751cbdd97d3f37c1adb2"

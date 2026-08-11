@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Fragment that reads like a follow-up to an unseen question; cannot determine intent without context"
+  },
+  "latencyMs": 1148
+}

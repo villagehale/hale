@@ -16,6 +16,11 @@ import {
   followUp,
   greeting,
 } from '~/lib/channel/intake/copy';
+import {
+  PROVIDER_ACCESS_REPLY,
+  SAFETY_REPLY,
+  offDomainReply,
+} from '~/lib/channel/off-domain/copy';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
 
@@ -52,6 +57,7 @@ const WEB_ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/\/$/,
 const SMS_COPY_SOURCES = [
   'lib/channel/router/copy.ts',
   'lib/channel/intake/copy.ts',
+  'lib/channel/off-domain/copy.ts',
   'lib/channel/caregiver/copy.ts',
   'lib/channel/twilio/copy.ts',
   'lib/health/copy.ts',
@@ -154,6 +160,53 @@ describe('the intake script stays GSM-7 once rendered', () => {
   it('keeps the consent ask, privacy link and all, inside one GSM-7 segment', () => {
     expect(WATCH_OFFER).toContain(PRIVACY_URL);
     expect(smsSegments(WATCH_OFFER)).toBe(1);
+  });
+});
+
+/**
+ * VIL-273 — the off-domain lane's three answers, rendered.
+ *
+ * The deflect is BUILT (the pending-approvals clause is appended at runtime), so a
+ * clean copy.ts does not by itself prove a clean sent message. The two fixed lines are
+ * scanned by the file pass above and re-checked here for their segment cost, because
+ * these are the replies Hale sends most often to a parent who is not getting what they
+ * asked for — the worst possible place to be paying triple.
+ */
+describe('the off-domain lane stays GSM-7 once rendered', () => {
+  const RENDERED: Record<string, string> = {
+    'deflect (nothing pending)': offDomainReply({ pendingApprovals: 0 }),
+    'deflect (one pending)': offDomainReply({ pendingApprovals: 1 }),
+    'deflect (several pending)': offDomainReply({ pendingApprovals: 4 }),
+    SAFETY_REPLY,
+    PROVIDER_ACCESS_REPLY,
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
+    expect(smsEncoding(body)).toBe('gsm7');
+  });
+
+  /** The F14 voice budget: two segments is the ceiling for anything Hale sends. The
+   * deflect must hold at ONE even carrying its append — it is the most-sent line in the
+   * lane and the least valuable, so it is the one that must not cost double. */
+  it('keeps the deflect inside one segment, append and all', () => {
+    expect(smsSegments(offDomainReply({ pendingApprovals: 0 }))).toBe(1);
+    expect(smsSegments(offDomainReply({ pendingApprovals: 12 }))).toBe(1);
+  });
+
+  it('keeps the two fixed lines inside the two-segment ceiling', () => {
+    expect(smsSegments(SAFETY_REPLY)).toBe(1);
+    expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
+  });
+
+  /** The append is a count and a destination, never a description of the draft: an
+   * action's own label can name a teenager's change (rule #1), and this line has not
+   * earned the right to print one. It also must not invite a bare "yes" — no numbered
+   * list was sent, so a yes here would approve something unread (rule #4). */
+  it('never names what is pending, and never asks for a YES', () => {
+    const body = offDomainReply({ pendingApprovals: 2 });
+    expect(body).toContain('2 things are waiting');
+    expect(body).not.toMatch(/\byes\b/i);
+    expect(body).not.toMatch(/calendar|appointment|registration/i);
   });
 });
 

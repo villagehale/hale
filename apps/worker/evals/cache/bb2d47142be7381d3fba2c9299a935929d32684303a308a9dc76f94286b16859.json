@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "physical symptom in a child requiring medical evaluation"
+  },
+  "latencyMs": 1121
+}

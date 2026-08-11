@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "Fragment that reads like a follow-up to a scheduling context the user cannot see; missing context makes it in_domain by default."
+  },
+  "latencyMs": 2358
+}
