@@ -479,6 +479,34 @@ describe('routeEmailInbound · CASL', () => {
     });
   });
 
+  /**
+   * An unsubscribe writes no channel_messages row, so it is invisible to the Message-ID
+   * dedupe — every redelivery re-runs it, and it must stay honoured rather than erroring
+   * or flipping to another outcome.
+   *
+   * NOT asserted here: that the second delivery skips the audit row. That guard rides on
+   * `recordOptOut` returning false on a unique-index conflict, and this fake does not
+   * enforce indexes — an assertion about it would only be testing the fake's permissiveness.
+   * The behaviour is `recordOptOut`'s own contract, covered against real semantics in
+   * lib/cron/email-compliance's suite, and worth re-checking on the live probe.
+   */
+  it('stays honoured, and does not error, when the same unsubscribe is redelivered', async () => {
+    const h = harness(
+      FakeContentReader.ok({
+        text: 'unsubscribe',
+        headers: { 'authentication-results': authPass() },
+      }),
+    );
+    seedParent(h.fake);
+
+    for (const _attempt of [1, 2, 3]) {
+      expect(await outcomeOf(await handleEmailInboundRequest(request(body()), h.deps))).toBe(
+        'unsubscribed',
+      );
+    }
+    expect(h.fake.rows(schema.channelMessages)).toHaveLength(0);
+  });
+
   /** A3's rule, kept identical: an unsubscribe with a photo attached is still an
    * unsubscribe, and must not be answered with "I can't read attachments". */
   it('honours an unsubscribe that arrives with an attachment', async () => {

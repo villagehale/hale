@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
+import { type EmailType, recordOptOut } from '~/lib/cron/email-compliance';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -167,7 +168,7 @@ export async function routeEmailInbound(
 
   // CASL before the attachment branch — see the module note.
   if (matchKeyword(body) === 'stop') {
-    return unsubscribe(deps, { ...owner, event });
+    return unsubscribe(deps, owner);
   }
 
   if (!body) return 'empty_after_extraction';
@@ -212,28 +213,38 @@ async function alreadyRecorded(database: Database, messageId: string): Promise<b
  * Nothing is sent back. SMS answers a STOP because carriers require one final
  * confirmation; email has no such rule, and emailing someone who just asked not to be
  * emailed is the thing they asked us not to do.
+ *
+ * The write goes through `recordOptOut`, the same function the unsubscribe LINK and the
+ * settings toggle call, rather than a second inline insert that could drift from it. It
+ * is idempotent on the unique (user, stream) index and reports whether THIS call was the
+ * one that changed anything.
+ *
+ * That report is used, because an unsubscribe writes no `channel_messages` row and is
+ * therefore invisible to the Message-ID dedupe above — every redelivery re-runs this. The
+ * audit row is written only when a stream ACTUALLY changed, so a retried webhook does not
+ * make the trail read as a parent unsubscribing over and over. Rule #6 asks for a row per
+ * ACTION, and opting out something already opted out is not one; this is the same
+ * reasoning as X1's STOP alert firing once per unsubscribe rather than once per click.
  */
 async function unsubscribe(
   deps: EmailInboundDeps,
-  args: { userId: string; familyId: string; event: InboundEmailEvent },
+  args: { userId: string; familyId: string },
 ): Promise<EmailInboundOutcome> {
-  const now = deps.now?.() ?? new Date();
   await deps.database.transaction(async (tx) => {
+    const changed: EmailType[] = [];
     for (const emailType of UNSUBSCRIBABLE_STREAMS) {
-      await tx
-        .insert(schema.emailOptOuts)
-        .values({ userId: args.userId, emailType, optedOutAt: now })
-        .onConflictDoNothing({
-          target: [schema.emailOptOuts.userId, schema.emailOptOuts.emailType],
-        });
+      const first = await recordOptOut(tx as unknown as Database, args.userId, emailType);
+      if (first) changed.push(emailType);
     }
+    if (changed.length === 0) return;
+
     await tx.insert(schema.auditLog).values({
       familyId: args.familyId,
       actor: args.userId,
       actionTaken: 'email_unsubscribe_received',
       targetTable: 'email_opt_outs',
       targetId: args.userId,
-      after: { streams: [...UNSUBSCRIBABLE_STREAMS], via: 'inbound_email' },
+      after: { streams: changed, via: 'inbound_email' },
     });
   });
   return 'unsubscribed';
@@ -247,7 +258,7 @@ const UNSUBSCRIBABLE_STREAMS = [
   'reminder',
   'approval',
   'alert',
-] as const;
+] as const satisfies readonly EmailType[];
 
 /**
  * File the message in the family's ledger, with its audit row (rule #6).
