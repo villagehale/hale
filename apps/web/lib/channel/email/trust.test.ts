@@ -47,6 +47,36 @@ describe('parseAuthenticationResults', () => {
     ]);
   });
 
+  /**
+   * The `header.d=` capture is the whole gate now, so the ways it could pick up the wrong
+   * token are pinned. Every one of these must fail CLOSED — a domain we misread simply
+   * will not align.
+   */
+  it('reads header.d and not its neighbours', () => {
+    const header = `${MX}; dkim=pass header.i=@decoy.test header.s=sel header.d=real.test`;
+    expect(parseAuthenticationResults(header)?.dkim).toEqual([
+      { verdict: 'pass', domain: 'real.test' },
+    ]);
+  });
+
+  it('does not read header.d out of a longer parameter name', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass header.dkim=nope.test`)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+    ]);
+  });
+
+  it('cannot capture a domain across a clause boundary', () => {
+    const header = `${MX}; dkim=pass; dkim=fail header.d=victim.test`;
+    expect(parseAuthenticationResults(header)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+      { verdict: 'fail', domain: 'victim.test' },
+    ]);
+  });
+
+  it('does not treat a method name embedded in a longer token as that method', () => {
+    expect(parseAuthenticationResults(`${MX}; x-dkim=pass header.d=evil.test`)?.dkim).toEqual([]);
+  });
+
   it('lowercases the domains so alignment is not case-sensitive', () => {
     const header = `${MX}; dkim=pass header.d=EXAMPLE.COM`;
     expect(parseAuthenticationResults(header)?.dkim).toEqual([
@@ -274,6 +304,19 @@ describe('assessSenderTrust', () => {
         ...trusted,
       }),
     ).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+  });
+
+  /** A quoted or punctuation-trailed domain is misread rather than parsed — and a domain
+   * we misread simply does not align, so the failure direction is closed. */
+  it.each([
+    ['quoted', '"example.com"'],
+    ['comma-trailed', 'example.com,'],
+  ])('fails closed on a %s signing domain rather than trusting it', (_label, value) => {
+    const verdict = assessSenderTrust({
+      headers: header(`${MX}; dkim=pass header.d=${value}`),
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
   });
 
   it('refuses when the From domain is unknown, since nothing can be aligned against it', () => {
