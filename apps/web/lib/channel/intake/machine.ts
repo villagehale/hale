@@ -34,15 +34,14 @@ import {
   START_ACK,
   STOP_ACK,
   WATCH_OFFER,
-  assistantDisclosure,
   detailsBlocked,
-  followUp,
   greeting,
   sourceCodeFromBody,
   venueForCode,
 } from './copy';
 import { parseCanadianPostal, summarizeChildren } from './derive';
 import type { ExtractedChild, IntakeCollected, IntakeExtractor } from './extract';
+import type { IntakeAckComposer } from './intake-voice';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { matchKeyword } from './keywords';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
@@ -83,6 +82,10 @@ export interface IntakeDeps {
   extractor: IntakeExtractor;
   intentReader: ReplyIntentReader;
   radar: RadarComposer;
+  /** Writes the acknowledgment half of the one follow-up. Required, never nullable
+   * (rule #11): it owns its own deterministic fallback and always returns a whole
+   * message, so "no composer" would be a silently colder intake with nothing logged. */
+  ackComposer: IntakeAckComposer;
   limiter: RateLimiter;
   /** Places this family near the free civic sessions already on file, INLINE — pure DB
    * work over rows the civic sweep wrote days ago, so it is fast enough to run before
@@ -322,9 +325,10 @@ async function greet(
 
   const recorded = await recordInbound(database, ctx, args.inbound, session.transcript);
   const venue = venueForCode(sourceCode);
-  // The disclosure rides on the first reply only — one message in, a stranger knows
-  // they are texting software and where the privacy terms are.
-  const body = `${greeting(venue?.name ?? null)}\n\n${assistantDisclosure()}`;
+  // ONE message, disclosure included: the greeting introduces Hale as an AI in its own
+  // first sentence, so there is no second paragraph to append (and no second segment to
+  // pay for). The privacy link rides on the consent ask instead — see WATCH_OFFER.
+  const body = greeting(venue?.name ?? null);
   const transcript = await sendAndRecord(database, ctx, body, deps, recorded.transcript);
 
   await saveSession(
@@ -388,8 +392,17 @@ async function handleDetails(
     // quiet: a third ask is nagging, and the session stays open so an answer sent later
     // still completes the setup.
     if (session.followUpCount === 0) {
-      const body = followUp(summarizeChildren(collected.children), missing);
-      transcript = await sendAndRecord(database, ctx, body, deps, transcript);
+      // The one turn in intake whose WORDS are the product: the model writes the "I heard
+      // you" half, the ask is appended deterministically, and any failure comes back as
+      // the template with a named reason (intake-voice.ts).
+      const ack = await deps.ackComposer.compose({
+        parentWords: inbound.body,
+        summary: summarizeChildren(collected.children),
+        children: collected.children,
+        venue: venueForCode(session.sourceCode)?.name ?? null,
+        missing,
+      });
+      transcript = await sendAndRecord(database, ctx, ack.body, deps, transcript);
       await saveSession(
         database,
         session,

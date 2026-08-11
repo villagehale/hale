@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { PRIVACY_URL } from '~/lib/legal-links';
 import {
-  assistantDisclosure,
+  ASSENT_ACK,
+  DECLINE_ACK,
+  WATCH_OFFER,
   detailsBlocked,
   greeting,
   followUp,
@@ -11,7 +14,7 @@ import {
 describe('greeting', () => {
   it('is the verbatim no-context spec line when there is no venue', () => {
     expect(greeting(null)).toBe(
-      "Hi, I'm Hale - I keep family weeks on track for GTA parents. What are your kids' names and ages - and what's your postal code?",
+      "Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. Tell me your kids' names and ages, plus your postal code - and I'll get to work.",
     );
   });
 
@@ -19,9 +22,17 @@ describe('greeting', () => {
     // The QR venue already tells us the area, so asking for the postal code would be
     // asking for data we don't need — the whole point of the venue variant.
     expect(greeting('library')).toBe(
-      "Hi, I'm Hale - I keep family weeks on track around here. You found me at the library, so I know the area. What are your kids' names and ages?",
+      "Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the library, so I already know the area. Kids' names and ages, and I'll get to work.",
     );
     expect(greeting('library')).not.toContain('postal');
+  });
+
+  // v2 folded the AI disclosure INTO the first sentence rather than trailing it as a
+  // parenthetical. It is the same promise made better: a stranger reads "an AI" in the
+  // words Hale introduces itself with, not in a footnote after the ask.
+  it('discloses that Hale is an AI in the greeting itself, in BOTH variants', () => {
+    expect(greeting(null)).toContain("I'm Hale - an AI");
+    expect(greeting('library')).toContain("I'm Hale - an AI");
   });
 });
 
@@ -64,18 +75,51 @@ describe('sourceCodeFromBody / venueForCode', () => {
 describe('followUp', () => {
   it('echoes the summary back before asking the one missing field', () => {
     expect(followUp('Maya (4) and Leo (1)', ['location'])).toBe(
-      "Got it - Maya (4) and Leo (1). What's your postal code?",
+      "Got it - Maya (4) and Leo (1). Last thing: what's your postal code?",
     );
   });
 
   it('asks for the ages when those are what is missing — never invents one', () => {
-    expect(followUp('Nora and Ben', ['ages'])).toBe('Got it - Nora and Ben. How old are they?');
+    expect(followUp('Nora and Ben', ['ages'])).toBe(
+      'Got it - Nora and Ben. Last thing: how old are they?',
+    );
   });
 
   it('asks for both in ONE message, because there is only ever one follow-up', () => {
     expect(followUp('Nora and Ben', ['ages', 'location'])).toBe(
-      "Got it - Nora and Ben. How old are they, and what's your postal code?",
+      "Got it - Nora and Ben. Last thing: how old are they, and what's your postal code?",
     );
+  });
+});
+
+describe('the consent moment', () => {
+  // The privacy link moved here from the greeting's disclosure parenthetical (v2): the
+  // one place a parent is actually asked to say yes is the one place the link earns its
+  // characters. It is the CONSTANT, never a copy of the string — a policy move that
+  // edits legal-links.ts must not leave a stale URL in the consent ask.
+  it('asks the watch question and names where the privacy policy lives', () => {
+    expect(WATCH_OFFER).toBe(
+      `Want me to keep an eye on all of this for you? (how I handle your family's info: ${PRIVACY_URL})`,
+    );
+    expect(WATCH_OFFER).toContain('https://www.villagehale.com/privacy');
+  });
+
+  it('confirms coverage, names the STOP escape, and opens the first real question', () => {
+    expect(ASSENT_ACK).toBe(
+      "Done - you're covered. I only text when something actually matters, and STOP always works. While I dig in: what part of the week wears you out the most?",
+    );
+  });
+
+  it('takes a no without friction and leaves the door open', () => {
+    expect(DECLINE_ACK).toBe(
+      'No problem - text me whenever you like. The dates and finds are here when you want them.',
+    );
+  });
+
+  // CASL: the unsubscribe instruction must survive any copy revision. It is the one
+  // sentence in the consent turn that is not ours to soften.
+  it('keeps STOP visible in the acknowledgment a consenting parent reads', () => {
+    expect(ASSENT_ACK).toContain('STOP');
   });
 });
 
@@ -89,16 +133,6 @@ describe('detailsBlocked', () => {
     );
     expect(detailsBlocked(['ages', 'location'])).toBe(
       "I can't set your family up until I know your kids' ages and your postal code - send them whenever you're ready.",
-    );
-  });
-});
-
-describe('assistantDisclosure', () => {
-  // D20 moved the policies to the marketing site; the app's /terms is a 308 to it.
-  // A stranger's first message must not spend its one link on a redirect hop.
-  it('names the terms URL on the marketing site, not the redirecting app path', () => {
-    expect(assistantDisclosure()).toBe(
-      "(I'm an assistant, not a person - details & privacy: https://www.villagehale.com/terms)",
     );
   });
 });

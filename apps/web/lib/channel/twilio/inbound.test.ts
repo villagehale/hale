@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STOP_ACK } from '~/lib/channel/intake/copy';
-import { FakeExtractor, FakeIntentReader, type FakeDb, fakeRadar, makeFakeDb } from '~/lib/channel/intake/fakes';
+import { FakeExtractor, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, makeFakeDb } from '~/lib/channel/intake/fakes';
 import type { IntakeDeps } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -94,6 +94,7 @@ function harness(): Harness {
       { intent: 'assent', verbatim: 'yes', interpretation: 'plain yes' },
     ]),
     radar: fakeRadar,
+    ackComposer: fakeAckComposer,
     limiter: new FakeRateLimiter(() => NOW.getTime()),
     now: NOW,
   };

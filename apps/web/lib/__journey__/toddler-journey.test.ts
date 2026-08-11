@@ -22,6 +22,7 @@ import {
   FakeIntentReader,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
+import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import type { IntentReading } from '~/lib/channel/intake/intent';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { readCandidates, readWindows, createRadarComposer } from '~/lib/channel/intake/radar';
@@ -452,6 +453,10 @@ async function runToddlerJourney(): Promise<Journey> {
     },
     resolveCenter: async () => L3R_CENTRE,
     discoveryTrigger: () => {},
+    // Same discipline as the radar above: the REAL composer on the REAL production
+    // fallback path (`null` client renders the deterministic follow-up and names the
+    // reason), so the journey reads the words a family actually gets when voice is off.
+    ackComposer: createIntakeAckComposer(null),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
   };

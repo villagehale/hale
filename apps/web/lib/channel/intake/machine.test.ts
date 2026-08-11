@@ -13,7 +13,14 @@ import {
   WATCH_OFFER,
   detailsBlocked,
 } from './copy';
-import { FakeExtractor, FakeIntentReader, type FakeDb, fakeRadar, makeFakeDb } from './fakes';
+import {
+  FakeExtractor,
+  FakeIntentReader,
+  type FakeDb,
+  fakeAckComposer,
+  fakeRadar,
+  makeFakeDb,
+} from './fakes';
 import type { IntakeCollected } from './extract';
 import type { IntentReading } from './intent';
 import { type IntakeDeps, handleInboundSms } from './machine';
@@ -76,6 +83,7 @@ function harness(options: {
           return fakeRadar.compose(input);
         },
       },
+      ackComposer: fakeAckComposer,
       seedCivic: async (_db, familyId, areaCoarse, center) => {
         const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
         steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}:${placed}`);
@@ -118,9 +126,10 @@ describe('intake · happy path', () => {
     const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
 
     expect(await text(fake, transport, deps, 'hi')).toEqual({ status: 'greeted' });
-    expect(transport.bodies()[0]).toContain("I keep family weeks on track for GTA parents");
-    // The disclosure rides on the first reply, once.
-    expect(transport.bodies()[0]).toContain("I'm an assistant, not a person");
+    expect(transport.bodies()[0]).toContain('an AI that quietly runs the family week');
+    // v2: the disclosure is IN the greeting, so the first reply is ONE paragraph and
+    // spends no characters on a trailing parenthetical.
+    expect(transport.bodies()[0]).not.toContain('\n\n');
 
     const provisioned = await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     expect(provisioned.status).toBe('provisioned');
@@ -164,6 +173,32 @@ describe('intake · happy path', () => {
     const answered = await text(fake, transport, deps, 'yes please');
     expect(answered).toEqual({ status: 'watch_recorded', intent: 'assent', granted: true });
     expect(transport.bodies().at(-1)).toBe(ASSENT_ACK);
+  });
+
+  /**
+   * ASSENT_ACK ends on a real question ("what part of the week wears you out the most?")
+   * and then CLOSES the session — so the answer to it always lands after intake is over.
+   * That is deliberate, not a gap: the reply belongs to the coach, and the machine's job
+   * is to decline it cleanly so A3 can record it and queue it (twilio/inbound.ts
+   * handOffToConversation). The bug this guards against is the machine answering it
+   * itself with a canned intake line, which would teach a parent that the question was
+   * rhetorical.
+   */
+  it('hands the answer to its own closing question to the coach, rather than replying', async () => {
+    const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fake, transport, deps, 'yes please');
+    expect(transport.bodies().at(-1)).toBe(ASSENT_ACK);
+    const sentDuringIntake = transport.bodies().length;
+
+    // The parent answers the question ASSENT_ACK just asked. The session is complete.
+    const answer = await text(fake, transport, deps, 'bedtime, honestly. it takes two hours');
+
+    expect(answer).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
+    // Nothing was sent back HERE — the reply is the coach's turn to take, and a second
+    // intake message would be Hale talking over its own question.
+    expect(transport.bodies()).toHaveLength(sentDuringIntake);
   });
 
   it('records the consent evidence BEFORE the family is flipped to sms_active', async () => {
@@ -325,7 +360,7 @@ describe('intake · a child with no age', () => {
 
     const asked = await text(fake, transport, deps, 'Nora and Ben, M5V');
     expect(asked).toEqual({ status: 'follow_up_asked' });
-    expect(transport.bodies().at(-1)).toBe('Got it - Nora and Ben. How old are they?');
+    expect(transport.bodies().at(-1)).toBe('Got it - Nora and Ben. Last thing: how old are they?');
     expect(inserts(fake, schema.children)).toHaveLength(0);
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
@@ -381,7 +416,7 @@ describe('intake · a child with no age', () => {
 
     const asked = await text(fake, transport, deps, 'Nora and Ben');
     expect(asked).toEqual({ status: 'follow_up_asked' });
-    expect(transport.bodies().at(-1)).toBe('Got it - Nora and Ben. How old are they?');
+    expect(transport.bodies().at(-1)).toBe('Got it - Nora and Ben. Last thing: how old are they?');
     expect(inserts(fake, schema.children)).toHaveLength(0);
     expect(inserts(fake, schema.families)).toHaveLength(0);
   });
@@ -395,7 +430,7 @@ describe('intake · a child with no age', () => {
     const asked = await text(fake, transport, deps, 'Nora and Ben');
     expect(asked).toEqual({ status: 'follow_up_asked' });
     expect(transport.bodies().at(-1)).toBe(
-      "Got it - Nora and Ben. How old are they, and what's your postal code?",
+      "Got it - Nora and Ben. Last thing: how old are they, and what's your postal code?",
     );
   });
 });
@@ -477,7 +512,9 @@ describe('intake · the one follow-up', () => {
 
     const asked = await text(fake, transport, deps, 'Maya is 4 and Leo is 1');
     expect(asked).toEqual({ status: 'follow_up_asked' });
-    expect(transport.bodies().at(-1)).toBe("Got it - Maya (4) and Leo (1). What's your postal code?");
+    expect(transport.bodies().at(-1)).toBe(
+      "Got it - Maya (4) and Leo (1). Last thing: what's your postal code?",
+    );
 
     const provisioned = await text(fake, transport, deps, 'M5V 2T6');
     expect(provisioned.status).toBe('provisioned');
@@ -604,6 +641,7 @@ describe('intake · CASL keywords', () => {
       extractor,
       intentReader,
       radar: fakeRadar,
+      ackComposer: fakeAckComposer,
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
     };
