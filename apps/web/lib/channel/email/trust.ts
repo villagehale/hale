@@ -157,7 +157,18 @@ function domainsAlign(signing: string, fromDomain: string): boolean {
   return signing === fromDomain || signing.endsWith(`.${fromDomain}`);
 }
 
-/** Our own MTA's verdict, out of however many copies the message carries. */
+/**
+ * Our own MTA's verdict, out of however many copies the message carries.
+ *
+ * EXACTLY ONE, or none at all. Our MTA stamps a single verdict, so a second copy
+ * claiming the same authserv-id is not a hop — it is the sender having written one. We
+ * cannot tell the two apart by content (that is the whole point of the forgery), so
+ * ambiguity resolves to no verdict rather than to a coin flip on ordering.
+ *
+ * This matters because the provider hands headers back as a MAP, and a map collapses
+ * duplicates: when it joins them instead, both land in one value, and picking "the first"
+ * would silently depend on whether the receiving MTA prepends or appends.
+ */
 function trustedResults(
   headers: Readonly<Record<string, string>>,
   authservId: string,
@@ -168,16 +179,14 @@ function trustedResults(
   if (!raw) return null;
 
   const wanted = authservId.toLowerCase();
-  // Several hops may each have stamped one; a provider that collapses duplicate headers
-  // joins them with a newline. Unfolding happens per-candidate inside the parser, so the
-  // split is on newlines that are NOT continuations.
-  for (const candidate of raw.split(/\r?\n(?![ \t])/)) {
-    const parsed = parseAuthenticationResults(candidate);
-    if (parsed && parsed.authservId.toLowerCase() === wanted) {
-      return parsed;
-    }
-  }
-  return null;
+  // Unfolding happens per-candidate inside the parser, so the split is on newlines that
+  // are NOT continuations.
+  const ours = raw
+    .split(/\r?\n(?![ \t])/)
+    .map(parseAuthenticationResults)
+    .filter((parsed) => parsed !== null && parsed.authservId.toLowerCase() === wanted);
+
+  return ours.length === 1 ? (ours[0] as AuthenticationResults) : null;
 }
 
 /**

@@ -155,7 +155,7 @@ describe('assessSenderTrust', () => {
     expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
   });
 
-  it('picks our MTA’s verdict out of a list of hops, ignoring the forged one', () => {
+  it('picks our MTA’s verdict out of a list of hops, ignoring another MTA’s', () => {
     const verdict = assessSenderTrust({
       headers: {
         'authentication-results': [
@@ -166,6 +166,30 @@ describe('assessSenderTrust', () => {
       ...trusted,
     });
     expect(verdict).toEqual({ trusted: false, reason: 'dkim_failed' });
+  });
+
+  /**
+   * A sender who writes their own `Authentication-Results` claiming OUR authserv-id
+   * produces a second copy. We cannot tell it from the real one by content — that is the
+   * point of the forgery — so two is no verdict at all, whichever order they arrive in.
+   */
+  it.each([
+    ['forged after', [`${MX}; dkim=fail header.d=example.com`, `${MX}; dkim=pass header.d=example.com`]],
+    ['forged before', [`${MX}; dkim=pass header.d=example.com`, `${MX}; dkim=fail header.d=example.com`]],
+  ])('refuses when our authserv-id appears twice (%s)', (_label, copies) => {
+    const verdict = assessSenderTrust({
+      headers: { 'authentication-results': copies.join('\n') },
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+  });
+
+  it('still accepts a single verdict that arrives folded across lines', () => {
+    const verdict = assessSenderTrust({
+      headers: { 'authentication-results': `${MX};\r\n  dkim=pass header.d=example.com` },
+      ...trusted,
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
   });
 
   it('names the absence of any verdict rather than treating it as a pass or a fail', () => {
