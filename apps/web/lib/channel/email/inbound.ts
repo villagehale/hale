@@ -78,7 +78,9 @@ export interface EmailInboundDeps {
   content: () => InboundContentReader;
   limiter: RateLimiter;
   now?: () => Date;
-  log?: Pick<Console, 'info' | 'error'>;
+  /** Required, mirroring C1's router: every outcome this leg reaches without sending
+   * anything is only visible if it is written down (rule #11). */
+  log: Pick<Console, 'info' | 'error'>;
 }
 
 export type EmailInboundOutcome =
@@ -106,13 +108,6 @@ export type EmailInboundOutcome =
   /** Filed in the family's ledger. The routing hand-off is phase 2 (see module note). */
   | 'recorded';
 
-/** Everything one authenticated inbound is judged on, resolved once. */
-interface Judged {
-  event: InboundEmailEvent;
-  address: string;
-  body: string;
-}
-
 /**
  * Route one authenticated inbound email. Exported so every routing decision is testable
  * without building an HTTP request; the request shell is
@@ -139,7 +134,7 @@ export async function routeEmailInbound(
 
   const fetched = await deps.content().fetch(event.emailId);
   if (fetched.status === 'failed') {
-    deps.log?.error('inbound email: content unavailable', {
+    deps.log.error('inbound email: content unavailable', {
       emailId: event.emailId,
       reason: fetched.reason,
     });
@@ -157,7 +152,7 @@ export async function routeEmailInbound(
     fromDomain: sender.domain,
   });
   if (!trust.trusted) {
-    deps.log?.info('inbound email: sender not trusted', { reason: trust.reason });
+    deps.log.info('inbound email: sender not trusted', { reason: trust.reason });
     return 'untrusted';
   }
 
@@ -177,7 +172,7 @@ export async function routeEmailInbound(
 
   if (!body) return 'empty_after_extraction';
 
-  await record(deps, { owner, judged: { event, address: sender.address, body } });
+  await record(deps, { owner, event, body });
   return 'recorded';
 }
 
@@ -266,9 +261,13 @@ const UNSUBSCRIBABLE_STREAMS = [
  */
 async function record(
   deps: EmailInboundDeps,
-  args: { owner: { userId: string; familyId: string }; judged: Judged },
+  args: {
+    owner: { userId: string; familyId: string };
+    event: InboundEmailEvent;
+    body: string;
+  },
 ): Promise<void> {
-  const { owner, judged } = args;
+  const { owner, event, body } = args;
   const [row] = await deps.database
     .insert(schema.channelMessages)
     .values({
@@ -277,10 +276,10 @@ async function record(
       channel: 'email',
       direction: 'in',
       category: 'reply',
-      providerMessageId: judged.event.messageId,
+      providerMessageId: event.messageId,
       status: 'delivered',
-      body: judged.body,
-      sentAt: judged.event.receivedAt,
+      body,
+      sentAt: event.receivedAt,
     })
     .returning({ id: schema.channelMessages.id });
   const channelMessageId = row?.id;
@@ -299,7 +298,7 @@ async function record(
   // Named rather than silent (rule #11): the message is filed and NOTHING will answer it
   // until the router speaks email. An operator reading this line knows the difference
   // between "we replied" and "we have it".
-  deps.log?.info('inbound email recorded; no reply — router is sms-only (phase 2)', {
+  deps.log.info('inbound email recorded; no reply — router is sms-only (phase 2)', {
     familyId: owner.familyId,
     channelMessageId,
   });
