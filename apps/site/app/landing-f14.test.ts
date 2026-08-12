@@ -200,16 +200,22 @@ describe('flag-on landing (impact numbers — honesty rule)', () => {
 describe('flag-on landing (the transcript is the real script)', () => {
   const html = renderOn();
 
-  it('plays the first-10-minutes script from the Conversation Design book', () => {
+  it('plays the first-10-minutes script from the Conversation Design book (v2, 2026-08-11)', () => {
     expect(html).toContain(
-      'Hi, I’m Hale — I keep family weeks on track for GTA parents. What are your kids’ names and ages — and what’s your postal code?',
+      'Hi, I’m Hale — an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips.',
     );
-    expect(html).toContain('I’m an assistant, not a person');
+    // v2 folded the AI disclosure into the greeting itself; the old parenthetical
+    // disclaimer must be gone, and the privacy link now rides the consent moment.
+    expect(html).not.toContain('I’m an assistant, not a person');
+    expect(html).toContain('how I handle your family’s info: villagehale.com/privacy');
     expect(html).toContain('Max is 4, Mia is 18 months, L4C');
     expect(html).toContain(
-      'Richmond Hill fall swim registration opens Tue Aug 12, 7:00 a.m. — spots for Max’s age usually go in minutes.',
+      'Mark this: Richmond Hill fall swim registration opens Tue Aug 12 at 7am',
     );
-    expect(html).toContain('Done — you’re covered. I’ll only text when something actually matters.');
+    expect(html).toContain(
+      'Done — you’re covered. I only text when something actually matters, and STOP always',
+    );
+    expect(html).toContain('what part of the week wears you out the most?');
   });
 
   it('labels the thread as an example rather than passing it off as a screenshot', () => {
