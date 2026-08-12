@@ -4,6 +4,7 @@ import { plainText } from '~/lib/channel/coach/reply';
 import { smsEncoding } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
+import { reachesForTheHealthLine } from './copy';
 
 /**
  * Boundary v3 — the general answer.
@@ -61,6 +62,13 @@ export type GeneralAnswerFallback =
 
 export type GeneralAnswerOutcome =
   | { status: 'composed'; reply: string }
+  /**
+   * The question turned out to be about someone hurt or ill, and the model answered it
+   * with a referral of its own (skill audit P0 #3). This branch carries NO reply on
+   * purpose: the words a parent gets in that moment are the reviewed ones in copy.ts,
+   * and a variant with a text field is one an edit could later fill from the model.
+   */
+  | { status: 'safety' }
   | { status: 'unavailable'; reason: GeneralAnswerFallback };
 
 export interface GeneralAnswerComposer {
@@ -110,6 +118,13 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 
 function sendable(raw: string): GeneralAnswerOutcome {
   const flattened = plainText(raw);
+  // Before every other gate, because this one SUBSTITUTES where the rest refuse: a
+  // parent who turns out to be describing a hurt child must get the fixed line, never
+  // the "couldn't get to that one" a refusal would send them.
+  if (reachesForTheHealthLine(flattened)) {
+    console.error('off-domain answer: composer reached for a referral; sent the fixed line');
+    return { status: 'safety' };
+  }
   if (flattened === '') return unavailable('unsendable', 'empty');
   if (flattened.length > MAX_ANSWER_CHARS) return unavailable('unsendable', 'over_char_cap');
   if (smsEncoding(flattened) !== 'gsm7') return unavailable('unsendable', 'not_gsm7');

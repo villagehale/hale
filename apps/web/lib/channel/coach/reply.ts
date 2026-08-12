@@ -1,3 +1,4 @@
+import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
@@ -23,6 +24,12 @@ import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
  *   profile, and lookup_week reads through the teen-safe projections — but the PARENT
  *   can type the name, and the model can echo it back. This is the deterministic
  *   age-derived floor under all of that (rule #1), applied to the outbound body itself.
+ *
+ *   A SIREN is the fourth, and the only one that replaces the whole body rather than
+ *   editing it. The lane screen in front of this path fails open, so a symptom reaches
+ *   the coach whenever the screen could not run — and what a parent standing over a hurt
+ *   child is told has to be the reviewed sentence, not the model's approximation of it
+ *   (off-domain/copy.ts, skill audit P0 #3).
  */
 
 /** The ceiling the ticket sets, and what the eval gates against. Two segments is about
@@ -158,5 +165,12 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     throw new Error('channel coach: model answer was empty after post-processing');
   }
   const redacted = redactTeenNames(flattened, args.children, args.now);
+  if (reachesForTheHealthLine(redacted)) {
+    // Named rather than swapped in silence: this only fires when the screen in front of
+    // the coach did not, so each one is a screen outage worth counting. The body itself
+    // never reaches the log — it can carry back what the parent typed (rule #1).
+    console.error('channel coach: model composed a safety referral; sent the fixed line');
+    return SAFETY_REPLY;
+  }
   return fitToBudget(redacted, args.appLink, MAX_REPLY_SEGMENTS);
 }

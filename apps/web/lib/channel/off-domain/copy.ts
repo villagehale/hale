@@ -53,6 +53,38 @@ export const SAFETY_REPLY =
   "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.";
 
 /**
+ * The tripwire that makes {@link SAFETY_REPLY} the ONLY siren Hale sends (skill audit
+ * P0 #3).
+ *
+ * The lane screen fails open by design (screen.ts openTheGate), so a missing key, a
+ * skill-load failure or a provider outage puts "she hit her head and won't stop crying"
+ * in front of a model instead of in front of the line above — and both composing skills
+ * answer that by writing a siren of their own, one of which names a doctor and no number
+ * at all. The fix cannot be a better instruction: the paths that reach a model are
+ * exactly the paths where the deterministic layer already failed.
+ *
+ * So the numbers themselves are the signal. Hale's own vocabulary contains 811 and 911
+ * in two fixed lines and nowhere else, and neither passes through a composer — a
+ * MODEL-WRITTEN body carrying either is a model reaching for the health line, and the
+ * reviewed sentence is strictly better than whatever it reached for. Callers substitute
+ * rather than refuse: a parent describing a hurt child must never be answered with "try
+ * me again in a minute".
+ *
+ * Whole tokens only, so an ordinary week does not trip it — `9:11` is a swim time and
+ * `647-555-0811` is a phone number, and neither contains the token. Calibrated toward
+ * the false positive on purpose: sending the fixed line about a $911 fee is a bad
+ * message, and missing a real one is the failure this file exists to prevent.
+ *
+ * What it does NOT catch, stated so nobody reads it as more than it is: an improvised
+ * referral that names no number ("that one's for your doctor") is invisible here. The
+ * skills' own siren prose and a coach-eval fixture that gates on both numbers are what
+ * close that half; this closes the half a prompt cannot.
+ */
+export function reachesForTheHealthLine(body: string): boolean {
+  return /\b(?:811|911)\b/.test(body);
+}
+
+/**
  * Getting a doctor, as opposed to asking one a question.
  *
  * Two sentences, the real Ontario workflow, and no invented specifics: no clinic names

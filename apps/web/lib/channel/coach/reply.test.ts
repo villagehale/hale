@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { MAX_REPLY_SEGMENTS, redactTeenNames, toSmsReply } from './reply';
 
@@ -116,5 +117,56 @@ describe('toSmsReply', () => {
     expect(() => toSmsReply('   \n  ', { children: [], appLink: LINK, now: NOW })).toThrow(
       /empty/i,
     );
+  });
+});
+
+/**
+ * Skill audit P0 #3 — the siren, on the path that fires when the screen breaks.
+ *
+ * The off-domain screen FAILS OPEN by design (screen.ts openTheGate), so on a missing
+ * key, a skill-load failure or a provider outage a "she hit her head and won't stop
+ * crying" walks straight past the fixed 811/911 line and into the coach, whose skill
+ * then asks it for a siren of its own — one that historically named a doctor and no
+ * number at all. A prompt cannot be the guarantee here. This is.
+ *
+ * Strict equality against the constant, never a regex: "mentions 811" is what the
+ * improvised version already did. What a parent standing over a hurt child gets has to
+ * be the reviewed sentence, whole, including the 911 the improvisation drops.
+ */
+describe('the fixed safety reply is the only siren that leaves the coach', () => {
+  const send = (raw: string) => toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
+
+  it.each([
+    ['a referral naming only the health line', 'Sounds rough - call 811 if it gets worse.'],
+    ['a referral naming only emergency', 'If she is struggling to breathe, call 911 now.'],
+    ['a referral wrapped in advice', 'Most bumps are fine. Watch her, and 811 can advise.'],
+    ['a referral buried in a scheduling answer', 'Swim is Tuesday. Ring 811 about the rash.'],
+  ])('replaces %s with the fixed line, verbatim', (_name, raw) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(send(raw)).toBe(SAFETY_REPLY);
+  });
+
+  it('is idempotent — the fixed line survives its own guard unchanged', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(send(SAFETY_REPLY)).toBe(SAFETY_REPLY);
+  });
+
+  it('says out loud that it fired, so an improvised siren is countable', () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    send('Call 811 about that one.');
+
+    expect(logged).toHaveBeenCalledTimes(1);
+  });
+
+  /** The trigger is the two numbers as whole tokens, so an ordinary week does not trip
+   * it: a clock time and a phone number both carry those digits inside something else. */
+  it.each([
+    'Swim moved to Thursday at 9:11 and I have told the coach.',
+    'The number they gave me is 647-555-0811, want me to save it?',
+  ])('leaves an ordinary reply alone: %s', (raw) => {
+    expect(send(raw)).toBe(raw);
   });
 });

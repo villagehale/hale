@@ -217,3 +217,23 @@ describe('link refusal', () => {
     }
   });
 });
+
+/**
+ * Skill audit P0 #3. The screen sends "off_domain_general" for a question about the
+ * world, but the world sometimes turns out to be a hurt child mid-sentence — and the
+ * skill's answer to that today is a siren the model writes itself. It cannot: this
+ * branch carries no text, so the fixed line in copy.ts is the only thing the lane can
+ * put on the wire (see lane.test.ts for the words).
+ */
+describe('safety refusal', () => {
+  it.each([
+    'Not medical advice, but 811 can help any time.',
+    'That needs a person - call 911.',
+  ])('hands a composed referral to the fixed line instead of sending it: %s', async (body) => {
+    quiet();
+
+    expect(await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK)).toEqual({
+      status: 'safety',
+    });
+  });
+});
