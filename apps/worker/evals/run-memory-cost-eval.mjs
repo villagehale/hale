@@ -335,7 +335,35 @@ function buildTools(agent, context) {
     inputSchema: zPassthrough(),
     handler: async () => ({ candidates: [] }),
   });
-  return [getChildProfile, searchMemory, saveMemory, getFrameworkGuidance, searchVillage];
+  // The connector reads the ask-hale frontmatter lists — G1 makes a listed-but-
+  // absent tool a throw. Not connected is what prod returns for these families.
+  const driveSearch = agent.defineTool({
+    name: 'drive_search',
+    description: "Search the SIGNED-IN PARENT's connected Google Drive by file name. Read-only.",
+    inputSchema: zPassthrough(),
+    handler: async () => ({
+      status: 'not_connected',
+      card: { kind: 'not_connected', provider: 'gdrive' },
+    }),
+  });
+  const calendarLookup = agent.defineTool({
+    name: 'calendar_lookup',
+    description: "Look at the SIGNED-IN PARENT's connected Google Calendar for the next 7 days. Read-only.",
+    inputSchema: zPassthrough(),
+    handler: async () => ({
+      status: 'not_connected',
+      card: { kind: 'not_connected', provider: 'gcal' },
+    }),
+  });
+  return [
+    getChildProfile,
+    searchMemory,
+    saveMemory,
+    getFrameworkGuidance,
+    searchVillage,
+    driveSearch,
+    calendarLookup,
+  ];
 }
 
 function fmtPct(x) {

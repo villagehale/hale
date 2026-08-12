@@ -171,6 +171,36 @@ describe('compileToolSchema', () => {
     expect(schema.required).toEqual(['factKey']);
   });
 
+  it('a .passthrough() object keeps additionalProperties open and is never strict', () => {
+    // The eval harnesses use z.object({}).passthrough() as "args accepted as
+    // given". Sealing that to additionalProperties:false + strict made every
+    // argument UNSAMPLABLE — the model could not draft at all (5/5 missed
+    // actions in the coach-channel re-record, 2026-08-12).
+    const { schema, strictSafe } = compileToolSchema(z.object({}).passthrough());
+    expect(schema.additionalProperties).toBe(true);
+    expect(strictSafe).toBe(false);
+  });
+
+  it('a .catchall() object keeps additionalProperties open and is never strict', () => {
+    const { schema, strictSafe } = compileToolSchema(
+      z.object({ known: z.string() }).catchall(z.string()),
+    );
+    expect(schema.additionalProperties).toBe(true);
+    expect(schema.properties.known).toEqual({ type: 'string' });
+    expect(strictSafe).toBe(false);
+  });
+
+  it('a nested .passthrough() object opens only its own level and flips strictSafe', () => {
+    const { schema, strictSafe } = compileToolSchema(
+      z.object({ meta: z.object({}).passthrough() }),
+    );
+    expect(schema.additionalProperties).toBe(false);
+    expect((schema.properties.meta as { additionalProperties: boolean }).additionalProperties).toBe(
+      true,
+    );
+    expect(strictSafe).toBe(false);
+  });
+
   it('throws on a Zod type it cannot express rather than emitting a wrong schema', () => {
     expect(() => compileToolSchema(z.object({ bag: z.record(z.string()) }))).toThrow(
       /ZodRecord/,

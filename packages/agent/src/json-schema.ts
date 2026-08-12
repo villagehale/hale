@@ -32,12 +32,13 @@ import type { z } from 'zod';
 /** One JSON Schema node. Untyped by design: it is a wire payload, not a domain type. */
 export type JsonSchemaNode = Record<string, unknown>;
 
-/** The root schema a tool's `input_schema` must be: a sealed object. */
+/** The root schema a tool's `input_schema` must be: an object, sealed unless the
+ * Zod source explicitly opened it (`.passthrough()` / `.catchall()`). */
 export interface ToolInputSchema extends JsonSchemaNode {
   type: 'object';
   properties: Record<string, JsonSchemaNode>;
   required: string[];
-  additionalProperties: false;
+  additionalProperties: boolean;
 }
 
 export interface CompiledToolSchema {
@@ -228,7 +229,8 @@ function compileObject(
   path: string,
   state: { strictSafe: boolean },
 ): ToolInputSchema {
-  const shape = defOf(schema).shape() as Record<string, z.ZodTypeAny>;
+  const def = defOf(schema);
+  const shape = def.shape() as Record<string, z.ZodTypeAny>;
   const properties: Record<string, JsonSchemaNode> = {};
   const required: string[] = [];
 
@@ -237,7 +239,19 @@ function compileObject(
     if (!value.isOptional()) required.push(key);
   }
 
-  return { type: 'object', properties, required, additionalProperties: false };
+  // An object the Zod source deliberately left open (`.passthrough()`, or a
+  // `.catchall()` other than never) must stay open on the wire. Sealing it here
+  // once made the eval harnesses' zPassthrough tools take NO arguments under a
+  // strict grammar — every draft became unsamplable and the model "chose" prose
+  // (5/5 missed actions, 2026-08-12). Open objects are inexpressible in the
+  // strict subset, so the whole tool ships without `strict`.
+  const unknownKeys = (def as { unknownKeys?: string }).unknownKeys;
+  const catchall = (def as { catchall?: z.ZodTypeAny }).catchall;
+  const open =
+    unknownKeys === 'passthrough' || (catchall !== undefined && typeNameOf(catchall) !== 'ZodNever');
+  if (open) state.strictSafe = false;
+
+  return { type: 'object', properties, required, additionalProperties: open };
 }
 
 /**
