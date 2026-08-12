@@ -34,10 +34,14 @@ function fakeDb(capture: Capture) {
     return { from: () => ({ where: async () => [] }) };
   });
 
+  // writeFact closes the prior live row with `.where(...).returning({id})` and then
+  // stamps the back-pointer with a bare awaited `.where(...)`, so the fake's `where`
+  // has to serve both shapes.
   const update = vi.fn().mockImplementation(() => ({
     set: () => ({
-      where: async () => {
+      where: () => {
         capture.factSupersedes += 1;
+        return Object.assign(Promise.resolve(undefined), { returning: async () => [] });
       },
     }),
   }));

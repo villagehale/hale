@@ -94,7 +94,11 @@ function fakeDb(state: FakeDbState): Database {
       },
     }),
     update: (_table: unknown) => ({
-      set: () => ({ where: async () => undefined }),
+      // writeFact's supersede reads back the rows it closed, then stamps the
+      // back-pointer with a bare awaited `.where(...)` — both shapes, one fake.
+      set: () => ({
+        where: () => Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
+      }),
     }),
   };
   return db as unknown as Database;
@@ -312,7 +316,7 @@ describe('Ask Hale guard rails + family scoping', () => {
 
     const result = await invokeTool(
       toolByName(db, 'save_memory'),
-      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm' },
+      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm', confidence: 1 },
       { familyId: FAMILY_ID, actor: 'user-1' },
       buildGuardDeps(db),
     );
