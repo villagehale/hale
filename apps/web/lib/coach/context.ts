@@ -305,42 +305,56 @@ export async function loadAgentContext(
   database: Database,
   now: Date = new Date(),
 ): Promise<AgentContext> {
-  const familyRows = await database
-    .select({
-      planTier: schema.families.planTier,
-      city: schema.families.city,
-      province: schema.families.province,
-      country: schema.families.country,
-    })
-    .from(schema.families)
-    .where(eq(schema.families.id, input.familyId))
-    .limit(1);
+  // Four independent reads, all keyed on familyId alone — issued together rather
+  // than as four sequential round trips. Only the fact select genuinely depends on
+  // an earlier one (it narrows to the RESOLVED focused child), so it stays behind.
+  const [familyRows, parentRows, childRows, episodeRows] = await Promise.all([
+    database
+      .select({
+        planTier: schema.families.planTier,
+        city: schema.families.city,
+        province: schema.families.province,
+        country: schema.families.country,
+      })
+      .from(schema.families)
+      .where(eq(schema.families.id, input.familyId))
+      .limit(1),
+    database
+      .select({ name: schema.users.name })
+      .from(schema.familyMembers)
+      .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
+      .where(
+        and(
+          eq(schema.familyMembers.familyId, input.familyId),
+          eq(schema.familyMembers.role, 'primary_parent'),
+        ),
+      )
+      .limit(1),
+    database
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
+      .from(schema.children)
+      .where(eq(schema.children.familyId, input.familyId)),
+    database
+      .select({
+        childId: schema.familyMemoryEpisodes.childId,
+        occurredAt: schema.familyMemoryEpisodes.occurredAt,
+        episodeType: schema.familyMemoryEpisodes.episodeType,
+        summary: schema.familyMemoryEpisodes.summary,
+      })
+      .from(schema.familyMemoryEpisodes)
+      .where(eq(schema.familyMemoryEpisodes.familyId, input.familyId))
+      .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
+      .limit(RECENT_EPISODE_LIMIT),
+  ]);
 
   const family = familyRows[0];
   if (!family) {
     throw new Error(`loadAgentContext: no family row for ${input.familyId}`);
   }
-
-  const parentRows = await database
-    .select({ name: schema.users.name })
-    .from(schema.familyMembers)
-    .innerJoin(schema.users, eq(schema.familyMembers.userId, schema.users.id))
-    .where(
-      and(
-        eq(schema.familyMembers.familyId, input.familyId),
-        eq(schema.familyMembers.role, 'primary_parent'),
-      ),
-    )
-    .limit(1);
-
-  const childRows = await database
-    .select({
-      id: schema.children.id,
-      name: schema.children.name,
-      dateOfBirth: schema.children.dateOfBirth,
-    })
-    .from(schema.children)
-    .where(eq(schema.children.familyId, input.familyId));
 
   const children = childRows.map(toChildContext);
   const presentStages = new Set(children.map((c) => c.stage));
@@ -387,18 +401,6 @@ export async function loadAgentContext(
   const stageByChild = new Map<string, FamilyStage>(
     childRows.map((c) => [c.id, deriveStage(c.dateOfBirth, now)]),
   );
-
-  const episodeRows = await database
-    .select({
-      childId: schema.familyMemoryEpisodes.childId,
-      occurredAt: schema.familyMemoryEpisodes.occurredAt,
-      episodeType: schema.familyMemoryEpisodes.episodeType,
-      summary: schema.familyMemoryEpisodes.summary,
-    })
-    .from(schema.familyMemoryEpisodes)
-    .where(eq(schema.familyMemoryEpisodes.familyId, input.familyId))
-    .orderBy(desc(schema.familyMemoryEpisodes.occurredAt))
-    .limit(RECENT_EPISODE_LIMIT);
 
   return {
     parentName: parentRows[0]?.name ?? null,
