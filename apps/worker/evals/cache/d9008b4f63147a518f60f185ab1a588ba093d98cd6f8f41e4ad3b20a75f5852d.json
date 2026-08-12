@@ -1,0 +1,29 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxfNvqQAvfgKtRinNaZP",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it — weekends only, noted for next time.\n\nNo local activities have been discovered for your area yet, which is likely because your city hasn't been set up in your profile. Once you add your location in Settings, Hale can surface verified weekend classes and groups near you for Mia.\n\nIn the meantime, if you want to share your city, I'm happy to keep an eye out for toddler-friendly weekend options."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5845,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 98,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

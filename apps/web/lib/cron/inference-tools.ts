@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { type FamilyStage, deriveStage } from '@hale/types';
 import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { CONFIDENCE_FLOOR, resolveValidFrom, writeFact } from '~/lib/memory/facts';
 
 /**
  * The memory-inferencer agent's tools — family-scoped (rule #1) and run through
@@ -20,9 +21,7 @@ import { z } from 'zod';
  * model promise (the same belt-and-braces the worker uses).
  */
 
-/** Facts below this confidence are refused, never written — the worker's
- * CONFIDENCE_FLOOR, enforced at the tool boundary. */
-export const CONFIDENCE_FLOOR = 0.7;
+export { CONFIDENCE_FLOOR } from '~/lib/memory/facts';
 
 /** How many days of recent activity the inferencer reads. */
 const WINDOW_DAYS = 7;
@@ -194,12 +193,13 @@ export function buildInferenceTools(
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist ONE high-precision fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED — do not call this for a hunch. Upserts on (factType, factKey): a new value supersedes the old one.",
+      "Persist ONE high-precision fact inferred about THIS family, with a confidence in [0,1]. Facts below 0.7 confidence are REFUSED — do not call this for a hunch. Upserts on (factType, factKey): a new value supersedes the old one. Pass `observedAt` (ISO-8601) with the timestamp of the event or episode this came from — WHEN it became true, not when you read it. Omit it if the source carries no time; never guess.",
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
+      observedAt: z.string().optional(),
     }),
     monetary: false,
     touchesChildContent: false,
@@ -210,34 +210,16 @@ export function buildInferenceTools(
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
-      await database
-        .update(schema.familyMemoryFacts)
-        .set({ validUntil: now })
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, ctx.familyId),
-            eq(schema.familyMemoryFacts.factType, input.factType),
-            eq(schema.familyMemoryFacts.factKey, input.factKey),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        );
-
-      const inserted = await database
-        .insert(schema.familyMemoryFacts)
-        .values({
-          familyId: ctx.familyId,
-          factType: input.factType,
-          factKey: input.factKey,
-          factValue: input.factValue,
-          confidence: input.confidence,
-          inferredBy: 'memory_inferencer',
-        })
-        .returning({ id: schema.familyMemoryFacts.id });
-
-      const factId = inserted[0]?.id;
-      if (!factId) {
-        throw new Error('save_memory: family_memory_facts insert returned no row');
-      }
+      const { factId } = await writeFact(database, {
+        familyId: ctx.familyId,
+        childId: null,
+        factType: input.factType,
+        factKey: input.factKey,
+        factValue: input.factValue,
+        confidence: input.confidence,
+        inferredBy: 'memory_inferencer',
+        validFrom: resolveValidFrom(input.observedAt, now),
+      });
       return { saved: true as const, factId };
     },
   });
@@ -413,38 +395,16 @@ export function buildDistillTools(database: Database, now: Date = new Date()): R
         return { saved: false as const, reason: 'below_confidence_floor' };
       }
 
-      const factType = CATEGORY_TO_FACT_TYPE[input.category];
-      const childId = input.childId ?? null;
-
-      await database
-        .update(schema.familyMemoryFacts)
-        .set({ validUntil: now })
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, ctx.familyId),
-            eq(schema.familyMemoryFacts.factType, factType),
-            eq(schema.familyMemoryFacts.factKey, input.factKey),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        );
-
-      const inserted = await database
-        .insert(schema.familyMemoryFacts)
-        .values({
-          familyId: ctx.familyId,
-          childId,
-          factType,
-          factKey: input.factKey,
-          factValue: { category: input.category, summary: input.summary },
-          confidence: input.confidence,
-          inferredBy: 'chat_distiller',
-        })
-        .returning({ id: schema.familyMemoryFacts.id });
-
-      const factId = inserted[0]?.id;
-      if (!factId) {
-        throw new Error('save_child_fact: family_memory_facts insert returned no row');
-      }
+      const { factId } = await writeFact(database, {
+        familyId: ctx.familyId,
+        childId: input.childId ?? null,
+        factType: CATEGORY_TO_FACT_TYPE[input.category],
+        factKey: input.factKey,
+        factValue: { category: input.category, summary: input.summary },
+        confidence: input.confidence,
+        inferredBy: 'chat_distiller',
+        validFrom: now,
+      });
       return { saved: true as const, factId };
     },
   });

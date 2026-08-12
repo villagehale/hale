@@ -39,6 +39,43 @@ Calibrated BOTH directions: the real cached model passes 10/10; the `--drafter=b
 oversized, recipient-dropping, ungrounded) is rejected on every fixture by the deterministic checks alone (no API
 call). Gate: real mode exits 0 iff every fixture passes; broken mode exits 0 iff at least one fixture is rejected.
 
+# Memory writeback eval harness (MEM-12 — the round trip)
+
+Every other memory eval scores what the model EMITS. This one scores the PIPELINE: a fact the parent states at
+turn N has to survive the write, the ranking, and the next turn's context assembly.
+
+```
+node --env-file=.env apps/worker/evals/run-memory-writeback-eval.mjs   # live pass, then caches
+node apps/worker/evals/run-memory-writeback-eval.mjs --cached-only     # CI: replay only, never calls the API
+node apps/worker/evals/run-memory-writeback-eval.mjs --broken          # calibration: coach never saves
+node apps/worker/evals/run-memory-writeback-eval.mjs --unranked        # calibration: pre-MEM-1 fact select
+```
+
+**IMPORT, don't replicate — the opposite call from the classifier/drafter harnesses, deliberately.** Those score a
+PROMPT, so a replica of the request shape is the right unit. This scores a pipeline, and a replica would be the
+bug's hiding place: an eval that re-implements the fact select cannot notice that the real one shipped unordered.
+So it runs the REAL `ask-hale` skill through the REAL agent loop over the REAL tools (guarded invoker included),
+against a REAL Postgres (PGlite + the committed migration chain), then reads back through the REAL
+`loadAgentContext`. Only the network hop is replayed — the cache sits behind `AgentClient`, which the loop cannot
+distinguish from Anthropic.
+
+Two things make the cache usable in CI: fixtures pin their own family/child uuids (the assembled context carries
+them, so a random id is a permanent miss), and the key masks database-minted uuids (`save_memory` returns the row
+id it just wrote, and that rides back into the loop's next turn as tool_result content).
+
+Each family is seeded with 40 distractor facts against a fact cap of 30 (read live from `context.ts`), so the new
+fact has to EARN its place — that is what makes this a MEM-1 regression gate. Gate: for every fixture the coach
+must write a fact, that fact must carry a `valid_from` and a numeric confidence (the MEM-2 provenance
+obligations), and the fixture's reference terms must be present in the next turn's assembled context. Reference
+terms come from the fixture, never from model output (rule #7).
+
+Calibrated BOTH directions, and both halves of the round trip have their own broken arm: `--broken` (the coach
+answers warmly and calls no tool — the likeliest real failure) and `--unranked` (the write succeeds but retrieval
+uses the pre-MEM-1 unordered select). Real cached mode exits 0; either broken arm must exit NONZERO.
+
+Note: register the tsx loader ONCE (`register()` + dynamic `import()`). `tsImport()` per-module — what the older
+harnesses call — installs a fresh ESM loader each call and they stack; the fourth web module never resolves.
+
 # Village eval harness (discovery + routine)
 
 The village feature has two agents with very different testability, so the harness scores them differently.

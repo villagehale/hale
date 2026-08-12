@@ -66,7 +66,13 @@ describe('redactTimelineForDistill (rule #1)', () => {
 
 describe('save_child_fact tool', () => {
   function fakeDb(capture: { factInserts: Record<string, unknown>[]; audit: unknown[] }) {
-    const update = () => ({ set: () => ({ where: async () => {} }) });
+    // writeFact's supersede reads back the rows it closed, then stamps the
+    // back-pointer with a bare awaited `.where(...)` — both shapes, one fake.
+    const update = () => ({
+      set: () => ({
+        where: () => Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
+      }),
+    });
     const insert = vi.fn().mockImplementation((table: unknown) => {
       if (table === schema.auditLog) {
         return { values: async (row: unknown) => capture.audit.push(row) };
@@ -160,7 +166,14 @@ describe('save_child_fact — teen gate at the tool boundary (rule #1/#5)', () =
           return { returning: async () => [{ id: 'fact-1' }] };
         },
       }),
-      update: () => ({ set: () => ({ where: async () => undefined }) }),
+      // writeFact's supersede reads back the rows it closed, then stamps the
+      // back-pointer with a bare awaited `.where(...)` — both shapes, one fake.
+      update: () => ({
+        set: () => ({
+          where: () =>
+            Object.assign(Promise.resolve(undefined), { returning: async () => [] }),
+        }),
+      }),
     } as unknown as Database;
   }
 

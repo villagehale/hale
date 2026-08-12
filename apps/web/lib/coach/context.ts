@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import {
   ageInMonths,
@@ -289,7 +289,22 @@ export async function loadAgentContext(
       and(
         eq(schema.familyMemoryFacts.familyId, input.familyId),
         isNull(schema.familyMemoryFacts.validUntil),
+        // Narrow to the focused child, family-wide facts included: "where do we
+        // live" belongs in a conversation about Ella. Keyed on the RESOLVED child
+        // (never the raw input) so an id that names nobody in this family falls
+        // back to the whole family rather than filtering everything away.
+        focusedChild
+          ? or(
+              isNull(schema.familyMemoryFacts.childId),
+              eq(schema.familyMemoryFacts.childId, focusedChild.id),
+            )
+          : undefined,
       ),
+    )
+    .orderBy(
+      desc(schema.familyMemoryFacts.confidence),
+      desc(schema.familyMemoryFacts.validFrom),
+      schema.familyMemoryFacts.id,
     )
     .limit(RELEVANT_FACT_LIMIT);
 

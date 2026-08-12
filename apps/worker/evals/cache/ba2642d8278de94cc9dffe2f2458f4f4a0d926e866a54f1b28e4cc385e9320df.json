@@ -1,0 +1,56 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxfNK9JYyvKuErKeXP2t",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll save that scheduling preference and check what weekend activities might already be on Hale's radar for your area — both at the same time."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01CXJXZ3u3txHic9shA1ZSzR",
+        "name": "save_memory",
+        "input": {
+          "factType": "logistic",
+          "factKey": "activity_availability",
+          "factValue": {
+            "note": "Both parents work weekdays until 6pm. Family can only do weekend activities."
+          },
+          "confidence": 1
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01AFuM1xS53j7Fa17TAkw6tW",
+        "name": "search_village",
+        "input": {
+          "query": "weekend toddler activities"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5539,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 201,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
