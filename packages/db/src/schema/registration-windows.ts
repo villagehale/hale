@@ -14,7 +14,14 @@ export type Municipality =
   | 'mississauga'
   | 'oakville'
   | 'burlington'
-  | 'halton_hills';
+  | 'halton_hills'
+  | 'brampton'
+  | 'caledon'
+  | 'ajax'
+  | 'pickering'
+  | 'whitby'
+  | 'oshawa'
+  | 'aurora';
 
 /**
  * What kind of registration the window is for. `rec_program` is the seasonal
