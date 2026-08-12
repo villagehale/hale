@@ -50,7 +50,7 @@ export const DEFAULT_LOOP_PREFS: LoopPrefsView = Object.freeze({
   quietHoursStart: '21:30:00',
   quietHoursEnd: '07:30:00',
   urgentBypassQuietHours: true,
-  weeklyPlanSendTime: '07:00:00',
+  weeklyPlanSendTime: '08:00:00',
   childNameLevel: 'generic',
 });
 

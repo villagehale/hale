@@ -124,33 +124,49 @@ describe('deliverableNow composes quiet hours with the urgent-bypass toggle', ()
   });
 });
 
-describe('weekly-plan send moment: Monday 07:00 local for each parent, DST-correct', () => {
-  const view: LoopPrefsView = { ...DEFAULT_LOOP_PREFS }; // send 07:00
+describe('weekly-plan send moment: Monday 08:00 local for each parent, DST-correct', () => {
+  const view: LoopPrefsView = { ...DEFAULT_LOOP_PREFS }; // send 08:00
   const WEEK_START_MON = 1; // Monday-start week → Monday-morning brief
 
   // 2026-01-19 and 2026-07-20 are both Mondays (winter EST/PST, summer EDT/PDT).
-  it('matches each parent at their own local Monday 07:00 in winter', () => {
-    // Toronto EST (UTC-5): Mon 07:00 local = Mon 12:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T12:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
-    // Vancouver PST (UTC-8): Mon 07:00 local = Mon 15:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T15:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(true);
+  it('matches each parent at their own local Monday 08:00 in winter', () => {
+    // Toronto EST (UTC-5): Mon 08:00 local = Mon 13:00Z.
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
+    // Vancouver PST (UTC-8): Mon 08:00 local = Mon 16:00Z.
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T16:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(true);
   });
 
-  it('matches each parent at their own local Monday 07:00 in summer (DST)', () => {
-    // Toronto EDT (UTC-4): Mon 07:00 local = Mon 11:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-07-20T11:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
-    // Vancouver PDT (UTC-7): Mon 07:00 local = Mon 14:00Z.
-    expect(isWeeklyPlanMoment(view, new Date('2026-07-20T14:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(true);
+  it('matches each parent at their own local Monday 08:00 in summer (DST)', () => {
+    // Toronto EDT (UTC-4): Mon 08:00 local = Mon 12:00Z.
+    expect(isWeeklyPlanMoment(view, new Date('2026-07-20T12:00:00Z'), 'America/Toronto', WEEK_START_MON)).toBe(true);
+    // Vancouver PDT (UTC-7): Mon 08:00 local = Mon 14:00Z.
+    expect(isWeeklyPlanMoment(view, new Date('2026-07-20T15:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(true);
   });
 
   it('does not match the same UTC instant for a parent in a different zone', () => {
     // At Toronto's Mon-07:00 instant, the Vancouver parent is at 04:00 (not due).
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T12:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(false);
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-19T13:00:00Z'), 'America/Vancouver', WEEK_START_MON)).toBe(false);
   });
 
   it('sends the morning the week starts — Sunday for a Sunday-start week', () => {
     // weekStartDay=0 (Sun) → send Sunday morning. 2026-01-18 is a Sunday.
-    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T12:00:00Z'), 'America/Toronto', 0)).toBe(true); // Sun 07:00 EST
+    expect(isWeeklyPlanMoment(view, new Date('2026-01-18T13:00:00Z'), 'America/Toronto', 0)).toBe(true); // Sun 08:00 EST
+  });
+});
+
+
+describe('default send time vs default quiet hours — the class killer', () => {
+  it('the default weekly-brief send time is OUTSIDE the default quiet-hours window', () => {
+    // Launch-day review P0 (2026-08-11): 0079 set the brief to 07:00 while default
+    // quiet hours end 07:30 — every default family's brief would have been
+    // suppressed forever. This pins send-after-quiet for the DEFAULTS themselves.
+    const minutes = (t: string): number => {
+      const [h = 0, m = 0] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    expect(minutes(DEFAULT_LOOP_PREFS.weeklyPlanSendTime)).toBeGreaterThanOrEqual(
+      minutes(DEFAULT_LOOP_PREFS.quietHoursEnd),
+    );
   });
 });
 

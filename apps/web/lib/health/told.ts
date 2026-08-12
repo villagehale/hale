@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, like } from 'drizzle-orm';
+import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
 import { parseCheckpointRef } from './checkpoints';
 
 /**
@@ -112,7 +113,12 @@ export async function loadToldCheckpointRefs(
         eq(schema.channelMessages.familyId, familyId),
         eq(schema.channelMessages.direction, 'out'),
         like(schema.channelMessages.dedupeKey, `${prefix}%`),
-        inArray(schema.channelMessages.status, ['queued', 'sent', 'delivered']),
+        // CONSUMED_SEND_STATUSES: a failed delivery still counts as told-attempted.
+        // The alternative — 'failed' un-consuming the marker — re-tells the same
+        // checkpoint on the next sweep and crashes on the dedupe unique index
+        // (launch-day review P0, 2026-08-11). Quiet beats duplicate; deliberate
+        // re-tells will be their own decision with their own key.
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
       ),
     );
   const refs = new Set<string>();

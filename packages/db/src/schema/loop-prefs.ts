@@ -46,7 +46,7 @@ export const loopPrefs = pgTable('loop_prefs', {
   urgentBypassQuietHours: boolean('urgent_bypass_quiet_hours').notNull().default(true),
   /** Local time-of-day for the weekly brief; the DAY composes with the parent's
    * users.weekStartDay (the morning the week starts → Mon for a Mon week). */
-  weeklyPlanSendTime: time('weekly_plan_send_time').notNull().default('07:00:00'),
+  weeklyPlanSendTime: time('weekly_plan_send_time').notNull().default('08:00:00'),
   /** How much of a child's identity a body may carry. Default 'generic' (most
    * private, rule #1); the teen age gate can only force it more private. */
   childNameLevel: childNameLevelEnum('child_name_level').notNull().default('generic'),

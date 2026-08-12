@@ -323,8 +323,10 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
  * The first ten minutes, as an SMS thread — the script from the F14 Conversation
  * Design book, not a dramatisation and not a screenshot. Real DOM text in a
  * plain card: no device frame, no status bar, nothing pretending to be a photo
- * of a phone. Emoji-free on purpose: the real transport is GSM-7, so the mockup
- * must never show a message Hale cannot actually send.
+ * of a phone. Emoji-free on purpose: the real transport is GSM-7 and Hale sends
+ * none. (The em dashes and curly quotes here are the site's typographic render
+ * of the plain-ASCII originals in intake/copy.ts — WORDS match the script
+ * exactly; punctuation is display-layer.)
  */
 function FirstConversation() {
   return (
@@ -346,7 +348,8 @@ function FirstConversation() {
         <Bubble from="parent">Max is 4, Mia is 18 months, L4C</Bubble>
         <Bubble from="hale">
           Mark this: Richmond Hill fall swim registration opens Tue Aug 12 at 7am — spots for
-          Max’s age go in minutes, and I’ll text you the morning before with everything ready.
+          Max’s age go in minutes. You’ll have the plan the evening before, and a text right
+          before it opens.
           Saturday looks warm too — the Mill Pond splash pad is 6 minutes from you, free. Want me
           to keep an eye on all of this for you?
           <span className="mt-2 block text-[0.8rem] opacity-70">

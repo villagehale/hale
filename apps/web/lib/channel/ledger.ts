@@ -64,9 +64,21 @@ export async function countRecentSends(
   return rows.length;
 }
 
-/** Whether this dedupe key already carries an in-flight or completed send — the
- * idempotency guard that makes a re-drain a no-op. Suppressions never carry the
- * key, so a legitimate re-attempt (e.g. after quiet hours) is not blocked. */
+/**
+ * The statuses that CONSUME a dedupe key: any attempt that reached the provider,
+ * INCLUDING 'failed'. Launch-day review P0 (2026-08-11): once #396 made delivery
+ * receipts real, an 'undelivered' receipt flipped a keyed row sent→failed in
+ * place — and with 'failed' excluded here, the next cron slot re-composed and
+ * RE-SENT the same message, then crashed on the dedupe unique index (which has
+ * no status predicate), skipping the audit row. A failed delivery must never
+ * un-consume idempotency: at-most-once per key is the quiet-operator contract,
+ * and deliberate retries, when we build them, will mint their own keys.
+ */
+export const CONSUMED_SEND_STATUSES = ['queued', 'sent', 'delivered', 'failed'] as const;
+
+/** Whether this dedupe key already carries an attempted send — the idempotency
+ * guard that makes a re-drain a no-op. Suppressions never carry the key, so a
+ * legitimate re-attempt (e.g. after quiet hours) is not blocked. */
 export async function dedupeActive(dedupeKey: string, database: Database): Promise<boolean> {
   const rows = await database
     .select({ id: schema.channelMessages.id })
@@ -74,7 +86,7 @@ export async function dedupeActive(dedupeKey: string, database: Database): Promi
     .where(
       and(
         eq(schema.channelMessages.dedupeKey, dedupeKey),
-        inArray(schema.channelMessages.status, ['queued', 'sent', 'delivered']),
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
       ),
     )
     .limit(1);
