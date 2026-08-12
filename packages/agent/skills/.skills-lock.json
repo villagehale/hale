@@ -27,10 +27,6 @@
     "file": "extract-child-event.md",
     "sha256": "99be20c3915b05a6a6aeab67dffd877c0769b42655beba75bb317509e96b046b"
   },
-  "find-activities.md": {
-    "file": "find-activities.md",
-    "sha256": "ae7851375ce913f6a66a552922cc1411c4733be83369cf082e0e0f1cc7c166fb"
-  },
   "general-answer.md": {
     "file": "general-answer.md",
     "sha256": "e190c9fecad22fd6f15a95b6c5b47e43cc48c3cf9982536766ef2dfe5cc48e26"
@@ -50,10 +46,6 @@
   "intake-voice.md": {
     "file": "intake-voice.md",
     "sha256": "8614211ced33c27f861c816b3a4bd060d908e58cba5ed529b60419d577dccc99"
-  },
-  "log-care.md": {
-    "file": "log-care.md",
-    "sha256": "7e026f111a88cd15b0a6c06ad3692fff9f27cfa907a837cb46976c0d9a55f5db"
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
