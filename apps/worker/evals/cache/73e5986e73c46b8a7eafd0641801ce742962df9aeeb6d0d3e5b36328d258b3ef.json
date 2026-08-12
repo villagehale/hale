@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely evades the question. The parent asked a straightforward factual question (capital of Peru is Lima). Instead, Hale: invents weather data it cannot know, references an external app/website, mentions the family's plans (\"the park\"), offers future action (\"set a reminder\"), includes greeting/hype (\"Great question!\"), emoji, and ends with a question. It violates nearly every principle of a good answer - it doesn't answer the question at all, manufactures specific details it couldn't know, and pads the response with low-value additions."
+  }
+}

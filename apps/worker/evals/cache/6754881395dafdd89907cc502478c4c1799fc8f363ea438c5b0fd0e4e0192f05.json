@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer violates the core instruction by pointing at an app (Costco app) and a website/tool. It should plainly state it cannot see live prices without offering to check elsewhere. The mention of \"the Costco app\" and \"your local warehouse\" treats the questioner as though Hale knows their setup and can direct them to solutions—evasion dressed as helpfulness. A 5 would be: \"I can't see live prices\" or \"Can't see live fuel prices\"—direct, no pointing at apps or solutions."
+  }
+}

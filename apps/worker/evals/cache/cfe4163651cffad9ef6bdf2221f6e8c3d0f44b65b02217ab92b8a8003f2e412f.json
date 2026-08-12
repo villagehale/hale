@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer correctly refuses to fabricate market data and plainly states it cannot see live numbers, which is right. However, it then pivots to directing the parent to \"your bank's app or a finance site\" - which violates the constraint against pointing at apps or websites. The phrasing also leans apologetic (\"I have no idea\") rather than direct. A 5-level response would state flatly \"I can't see live market data\" and stop there, or say it in one confident sentence without redirects."
+  }
+}

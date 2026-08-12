@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Complete evasion of an answerable factual question. The answer invents a weather detail (24 degrees, sunny) that cannot be known, points at a website, uses greeting (\"Great question!\"), emoji, and ends with a question. It does not name the PM at all. This violates nearly every criterion: it answers the wrong question entirely, invents specific live data, includes greeting/hype, points at a tool, and fails to address what was asked."
+  }
+}

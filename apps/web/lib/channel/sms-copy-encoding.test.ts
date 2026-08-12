@@ -17,9 +17,9 @@ import {
   greeting,
 } from '~/lib/channel/intake/copy';
 import {
+  ANSWER_UNAVAILABLE_REPLY,
   PROVIDER_ACCESS_REPLY,
   SAFETY_REPLY,
-  offDomainReply,
 } from '~/lib/channel/off-domain/copy';
 import { PRIVACY_URL } from '~/lib/legal-links';
 import { smsEncoding, smsSegments } from './sms-segments';
@@ -175,9 +175,7 @@ describe('the intake script stays GSM-7 once rendered', () => {
  */
 describe('the off-domain lane stays GSM-7 once rendered', () => {
   const RENDERED: Record<string, string> = {
-    'deflect (nothing pending)': offDomainReply({ pendingApprovals: 0 }),
-    'deflect (one pending)': offDomainReply({ pendingApprovals: 1 }),
-    'deflect (several pending)': offDomainReply({ pendingApprovals: 4 }),
+    ANSWER_UNAVAILABLE_REPLY,
     SAFETY_REPLY,
     PROVIDER_ACCESS_REPLY,
   };
@@ -186,28 +184,22 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  /** The F14 voice budget: two segments is the ceiling for anything Hale sends. The
-   * deflect must hold at ONE even carrying its append — it is the most-sent line in the
-   * lane and the least valuable, so it is the one that must not cost double. */
-  it('keeps the deflect inside one segment, append and all', () => {
-    expect(smsSegments(offDomainReply({ pendingApprovals: 0 }))).toBe(1);
-    expect(smsSegments(offDomainReply({ pendingApprovals: 12 }))).toBe(1);
-  });
-
-  it('keeps the two fixed lines inside the two-segment ceiling', () => {
+  it('keeps all three fixed lines inside the two-segment ceiling', () => {
+    expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
     expect(smsSegments(SAFETY_REPLY)).toBe(1);
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
   });
 
-  /** The append is a count and a destination, never a description of the draft: an
-   * action's own label can name a teenager's change (rule #1), and this line has not
-   * earned the right to print one. It also must not invite a bare "yes" — no numbered
-   * list was sent, so a yes here would approve something unread (rule #4). */
-  it('never names what is pending, and never asks for a YES', () => {
-    const body = offDomainReply({ pendingApprovals: 2 });
-    expect(body).toContain('2 things are waiting');
-    expect(body).not.toMatch(/\byes\b/i);
-    expect(body).not.toMatch(/calendar|appointment|registration/i);
+  /**
+   * Skill audit P0 #4. Every one of these goes to a parent who texted, and a text is
+   * owed a text back — "finish it in the app" is the dead end the F14 voice rules and
+   * the v3 doctrine both refuse. The pending-approvals append that used to ride on the
+   * deflect is what this replaced, so the guard is on the whole file's output rather
+   * than on the one line that broke it.
+   */
+  it.each(Object.entries(RENDERED))('%s points at no app and no link', (_name, body) => {
+    expect(body).not.toMatch(/\bthe app\b/i);
+    expect(body).not.toMatch(/https?:/i);
   });
 });
 

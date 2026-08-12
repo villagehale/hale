@@ -311,16 +311,19 @@ describe('routing order', () => {
  *   AHEAD of the coach, which is the entire point.
  */
 describe('the off-domain lane', () => {
-  const DEFLECT: OffDomainVerdict = {
+  // Boundary v3: the general lane ANSWERS. What the router owes it is unchanged — one
+  // send, threaded, ledgered, audited, and no coach woken.
+  const ANSWERED: OffDomainVerdict = {
     status: 'deflected',
     lane: 'off_domain_general',
     category: 'weather',
-    reply: "Ha - not my department. I stick to your family's week.",
+    reply: "I can't see live conditions, but I do check your area's forecast for weekends.",
+    replySource: 'composed',
     signal: 'recorded',
   };
 
   it('answers an off-domain text without ever waking the coach', async () => {
-    const lane = fakeLane(DEFLECT);
+    const lane = fakeLane(ANSWERED);
     const coach = fakeCoach();
     const h = harness({ context: { body: "how's the weather" }, offDomain: lane, coach });
 
@@ -329,7 +332,7 @@ describe('the off-domain lane', () => {
     expect(result.status).toBe('deflected');
     expect(result.lane).toBe('off_domain_general');
     expect(coach.calls).toBe(0);
-    expect(h.transport.bodies()).toEqual([DEFLECT.reply]);
+    expect(h.transport.bodies()).toEqual([ANSWERED.reply]);
   });
 
   it('hands an in-domain text straight on to the coach', async () => {
@@ -362,7 +365,7 @@ describe('the off-domain lane', () => {
   /** The handlers own consent, receipts and filed facts. None of them may cost a model
    * call to reach, so a claimed message never reaches the screen at all. */
   it('is never consulted for a message a deterministic handler claims', async () => {
-    const lane = fakeLane(DEFLECT);
+    const lane = fakeLane(ANSWERED);
     const h = harness({
       context: { body: 'yes' },
       handlers: [claimingHandler('approval', 'Approved.')],
@@ -377,7 +380,7 @@ describe('the off-domain lane', () => {
 
   it('is never consulted once flood control has held the turn', async () => {
     const limiter = new FakeRateLimiter(() => NOW.getTime());
-    const lane = fakeLane(DEFLECT);
+    const lane = fakeLane(ANSWERED);
     const h = harness({ offDomain: lane, limiter });
     for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
       await routeChannelMessage(h.deps, job());
@@ -406,13 +409,13 @@ describe('the off-domain lane', () => {
   /** A deflection is a real message: it is threaded, ledgered and audited like any other
    * reply, because rule #6 is about the ACT of texting someone. */
   it('threads, ledgers and audits the deflection', async () => {
-    const h = harness({ offDomain: fakeLane(DEFLECT) });
+    const h = harness({ offDomain: fakeLane(ANSWERED) });
 
     await routeChannelMessage(h.deps, job());
 
     expect(messageRows(h.fake).map((r) => [r.role, r.content])).toEqual([
       ['user', 'anything indoors this weekend?'],
-      ['assistant', DEFLECT.reply],
+      ['assistant', ANSWERED.reply],
     ]);
     expect(ledgerRows(h.fake).filter((r) => r.direction === 'out')).toHaveLength(1);
     expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
@@ -429,6 +432,7 @@ describe('the off-domain lane', () => {
         lane: 'provider_access',
         category: 'doctor-access',
         reply: 'Finding you a doctor is not something I can do.',
+        replySource: 'fixed',
         signal: 'recorded',
       }),
     });
@@ -446,7 +450,7 @@ describe('the off-domain lane', () => {
    * someone we cannot vouch for as a parent — that is a disclosure to a model about a
    * household that never consented to it (rule #1). */
   it('never screens a caregiver', async () => {
-    const lane = fakeLane(DEFLECT);
+    const lane = fakeLane(ANSWERED);
     const h = harness({ context: { role: 'nanny' }, offDomain: lane });
 
     await routeChannelMessage(h.deps, job());

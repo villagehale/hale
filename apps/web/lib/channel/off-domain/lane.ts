@@ -1,7 +1,12 @@
 import { type Database, type UnmetIntentCategory, type UnmetIntentLane, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import type { AgentClient } from '@hale/agent';
-import { PROVIDER_ACCESS_REPLY, SAFETY_REPLY, offDomainReply } from './copy';
+import {
+  type GeneralAnswerComposer,
+  type GeneralAnswerFallback,
+  createGeneralAnswer,
+} from './answer';
+import { ANSWER_UNAVAILABLE_REPLY, PROVIDER_ACCESS_REPLY, SAFETY_REPLY } from './copy';
 import {
   type InboundLaneScreen,
   type LaneScreenFallback,
@@ -11,25 +16,42 @@ import {
 /**
  * VIL-273 — the off-domain capability lane, end to end minus the sending.
  *
- * Hale is a chief of staff, not an event finder and not a search box (founder policy,
- * live gate day 1). Three kinds of text therefore have a right answer that no model
- * needs to be woken for: a question about the world, a question about a symptom, and a
- * parent trying to get a doctor. This module turns one inbound message into whichever
- * of those it is, the fixed line that answers it, and a countable demand signal — and
- * the router does the rest.
+ * Three kinds of text have an answer that the full coach turn does not improve: a
+ * question about the world, a question about a symptom, and a parent trying to get a
+ * doctor. This module turns one inbound message into whichever of those it is, the
+ * answer that ends it, and a countable demand signal — and the router does the rest.
  *
- * WHY THE SIGNAL LIVES HERE AND NOT IN THE ROUTER. A deflection is the only outcome in
- * the whole inbound path where Hale says no, and the ONE thing worth knowing about it
- * is what was asked. Recording that is not the router's business (it deals in threads,
- * ledgers and audit rows); it is the last step of deciding to deflect. Keeping the two
- * in one call is also what makes the count trustworthy: there is no path that sends a
- * deflection without producing a signal, because it is the same return value.
+ * BOUNDARY V3 (founder-locked 2026-08-11) moved ONE of those three. The quiet-operator
+ * promise governs OUTBOUND: Hale never starts the chatter. Inbound it had been applied
+ * too widely, and a parent who asked who the best striker is got charm and a closed
+ * door — which reads as a product that CANNOT rather than one that chooses not to. So
+ * `off_domain_general` now composes one brief, honest answer (see answer.ts) and stops
+ * there. The other two do not move: a symptom still gets the fixed 811/911 line and a
+ * parent hunting a paediatrician still gets Health Care Connect, both from copy.ts,
+ * both untouched by any model.
+ *
+ * WHY `status: 'deflected'` KEPT ITS NAME. It is the router's outcome enum and the
+ * founder's X1 log taxonomy — it means "this lane finished the turn, no coach was
+ * woken", which is still exactly what happened. What the parent actually received is
+ * carried honestly beside it in {@link OffDomainVerdict.replySource}, and renaming a
+ * logged enum to describe one of its three branches would cost the weekly counts their
+ * history for no reader's benefit.
+ *
+ * WHY THE SIGNAL LIVES HERE AND NOT IN THE ROUTER. This lane is where Hale learns what
+ * parents bring it that its own job does not cover, and the ONE thing worth knowing is
+ * what was asked. Recording that is not the router's business (it deals in threads,
+ * ledgers and audit rows); it is the last step of the lane's own decision. Keeping the
+ * two in one call is also what makes the count trustworthy: there is no path that
+ * answers off-domain without producing a signal, because it is the same return value —
+ * and that stayed true through the flip, so the digest keeps counting (the bucket now
+ * reads "questions parents ask us", which is if anything the more useful signal).
  *
  * Rule #11 all the way down. The screen's degraded paths come back NAMED
- * ({@link LaneScreenFallback}), the record's outcome comes back NAMED
- * ({@link UnmetSignalOutcome}), and neither can be silent. A signal that failed to
- * write must never cost a parent their reply, so the write is best-effort and says so
- * out loud rather than throwing.
+ * ({@link LaneScreenFallback}), the composer's come back NAMED
+ * ({@link GeneralAnswerFallback}) and ride out in `replySource`, the record's outcome
+ * comes back NAMED ({@link UnmetSignalOutcome}), and none of them can be silent. A
+ * signal that failed to write must never cost a parent their reply, so the write is
+ * best-effort and says so out loud rather than throwing.
  */
 
 /** Whether the demand signal actually landed. `not_recorded` is a real, countable
@@ -37,29 +59,35 @@ import {
  * row that the log line accounts for. */
 export type UnmetSignalOutcome = 'recorded' | 'not_recorded';
 
+/**
+ * Where the words that went out came from. `fixed` is one of the two door lines in
+ * copy.ts; `composed` is the general answer; anything else is a
+ * {@link GeneralAnswerFallback} naming why the composer could not run and the deflect
+ * line stood in for it (rule #11).
+ */
+export type ReplySource = 'fixed' | 'composed' | GeneralAnswerFallback;
+
 export type OffDomainVerdict =
   /** Hale's job. The turn continues to the coach exactly as it did before this stage
    * existed — carrying WHY, when the screen could not run (rule #11). */
   | { status: 'in_domain'; fallback: LaneScreenFallback | null }
-  /** Not Hale's job, and here is the fixed line that says so. */
+  /** The lane finished the turn itself. See the module note on why this kept its name
+   * now that one of the three branches is an answer rather than a refusal. */
   | {
       status: 'deflected';
       lane: UnmetIntentLane;
       category: UnmetIntentCategory;
       reply: string;
+      replySource: ReplySource;
       signal: UnmetSignalOutcome;
     };
 
 export interface OffDomainPorts {
   screen: InboundLaneScreen;
-  /**
-   * How many actions are waiting on this family's OK right now — the only true thing
-   * the charm deflect is allowed to add, and only ever as a count.
-   *
-   * Read LAZILY by {@link offDomainLane}: it is asked only once a message is known to
-   * be off-domain, so the overwhelmingly common in-domain turn pays nothing for it.
-   */
-  pendingApprovals(familyId: string): Promise<number>;
+  /** Writes the one brief answer to a question about the world. Non-nullable (rule
+   * #11): "no composer wired" is not a state this lane has — a composer that cannot run
+   * says so by name and the fixed line goes out instead. */
+  answer: GeneralAnswerComposer;
   /** Stamps the inbound row with the lane + bucket. Never throws — see
    * {@link UnmetSignalOutcome}. */
   recordUnmetIntent(input: {
@@ -87,16 +115,16 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       }
       const lane = reading.lane;
 
-      // The pending count is read for the charm deflect ONLY. The other two lanes are
-      // fixed sentences on purpose: appending "and 2 things are waiting on your OK" to
-      // an answer about a child's head injury would be the worst sentence Hale ever
-      // sent, and the way to make that impossible is for the fact never to be fetched.
-      const reply =
+      // The two doors are fixed sentences and the composer is never woken for them. Not
+      // a prompt asked nicely to decline — a branch it cannot reach. Letting a model
+      // anywhere near what a parent is told about their child's head injury is the
+      // failure this shape makes impossible rather than merely discouraged.
+      const { reply, replySource } =
         lane === 'safety_critical'
-          ? SAFETY_REPLY
+          ? { reply: SAFETY_REPLY, replySource: 'fixed' as const }
           : lane === 'provider_access'
-            ? PROVIDER_ACCESS_REPLY
-            : offDomainReply({ pendingApprovals: await ports.pendingApprovals(input.familyId) });
+            ? { reply: PROVIDER_ACCESS_REPLY, replySource: 'fixed' as const }
+            : await answerOrFallback(ports, input.text);
 
       const signal = await ports.recordUnmetIntent({
         channelMessageId: input.channelMessageId,
@@ -105,9 +133,35 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
         category: reading.category,
       });
 
-      return { status: 'deflected', lane, category: reading.category, reply, signal };
+      return {
+        status: 'deflected',
+        lane,
+        category: reading.category,
+        reply,
+        replySource,
+        signal,
+      };
     },
   };
+}
+
+/**
+ * The general terminal: the composed answer, or the honest line when it could not be
+ * written.
+ *
+ * The parent always gets SOMETHING — that is the whole contract. What they get on the
+ * failure branch says what actually happened rather than reciting a boundary, because
+ * under v3 there is no boundary here to recite: the same question tomorrow gets a real
+ * answer, and a line claiming otherwise would be the one false thing in the exchange.
+ */
+async function answerOrFallback(
+  ports: OffDomainPorts,
+  text: string,
+): Promise<{ reply: string; replySource: ReplySource }> {
+  const composed = await ports.answer.compose(text);
+  return composed.status === 'composed'
+    ? { reply: composed.reply, replySource: 'composed' }
+    : { reply: ANSWER_UNAVAILABLE_REPLY, replySource: composed.reason };
 }
 
 /**
@@ -160,19 +214,22 @@ export function recordUnmetIntent(database: Database) {
 }
 
 /**
- * The production lane. `pendingApprovals` is passed in rather than queried here so it
- * can be bound to the SAME read the approval grammar resolves ordinals against — see
- * router/wiring.ts. One reader, one answer: the number in the deflect and the list a
- * "YES 1" would hit can never disagree.
+ * The production lane. Both model stages share ONE client resolver — they are two calls
+ * on the same turn, and a screen that could reach Anthropic while the composer could not
+ * is not a state worth being able to represent.
+ *
+ * It used to take a `pendingApprovals` reader as well, bound to the approvals query so
+ * the count in the deflect could never disagree with the list a "YES 1" would hit. The
+ * count is gone with the append that printed it (skill audit P0 #4: nothing Hale texts
+ * points at the app), and the reader went with it rather than staying wired to nothing.
  */
 export function productionOffDomainLane(
   database: Database,
   client: () => AgentClient,
-  pendingApprovals: (familyId: string) => Promise<number>,
 ): OffDomainLane {
   return offDomainLane({
     screen: createInboundLaneScreen(client),
-    pendingApprovals,
+    answer: createGeneralAnswer(client),
     recordUnmetIntent: recordUnmetIntent(database),
   });
 }

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Complete evasion of the question. The answer doesn't address \"who's the GOAT in football\" at all—it pivots to weather, mentions a URL and app (prohibited), includes greeting (\"Great question!\"), emoji, and ends with a question. It invents a specific temperature and forecast without live data. Shows none of the required lean between candidates; this is the exact evasion the watchFor warns against."
+  }
+}

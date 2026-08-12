@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer correctly states it cannot see the forecast, which is right. However, it ends with \"you'll want to check it\" phrased as advice about weekend plans, which crosses into mentioning family plans and giving a directive instruction. The watchFor notes that mentioning Hale checks the forecast when it changes weekend plans is acceptable context, but the answer phrases it as advice to the parent about their plans rather than a plain statement of inability. Additionally, the second sentence verges on evasion—it should just say it cannot see the forecast plainly, without the \"when it matters for weekend plans\" qualifier that implies involvement in their planning. A 5 would be sharper and more direct: \"I can't see tomorrow's forecast\" full stop, or add only a light note about checking live data."
+  }
+}

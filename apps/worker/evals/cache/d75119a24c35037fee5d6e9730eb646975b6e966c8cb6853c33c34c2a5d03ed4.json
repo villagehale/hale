@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer correctly acknowledges inability to see live prices, which is right. However, it violates the brief-and-useful principle by pointing at an app (\"Check the Costco app\") and offering alternative steps (\"stop by your local station\"), which are exactly the kinds of app/website/future-action references the rubric flags as errors. A sharp response would just say plainly \"I can't see live prices\" without the redirect. The answer is evasive by deflecting rather than stating the constraint flat."
+  }
+}

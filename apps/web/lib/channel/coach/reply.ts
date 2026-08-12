@@ -84,8 +84,14 @@ const GSM7_SUBSTITUTIONS: ReadonlyArray<readonly [RegExp, string]> = [
  * Markdown out, one line in. The list markers are dropped rather than rewritten into
  * "1. 2. 3." — the skill's answer shape is prose, and a list that survived the strip
  * would just be prose with stray numbers in it.
+ *
+ * Exported for the off-domain lane's general answer (boundary v3), which is the second
+ * model-composed body Hale texts back. It needs this treatment and none of the rest of
+ * `toSmsReply`: it never sees a child to redact, and it has no app link to hand an
+ * overflow to. A second copy of the substitution table is the thing to avoid — two
+ * readers of "what is safe to send" would disagree the first time one of them is edited.
  */
-function plainText(text: string): string {
+export function plainText(text: string): string {
   let out = text;
   out = out.replace(/```[\s\S]*?```/g, ' ');
   out = out.replace(/`([^`]*)`/g, '$1');

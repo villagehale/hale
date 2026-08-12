@@ -33,7 +33,11 @@ export type ModelId =
  *    `screen` decides only WHICH fixed line answers an inbound text and never a word of
  *    it — the stage exists to cost a fraction of the coach turn it replaces, so anything
  *    dearer than Haiku defeats its whole reason for being. Its error case falls through
- *    to the coach, so a wrong screen costs a deflection, never an answer)
+ *    to the coach, so a wrong screen costs a deflection, never an answer.
+ *    `answer` writes the one brief reply to a question about the WORLD — two sentences,
+ *    no family context, no tools — behind that same screen and on that same hot path,
+ *    so it is held to the same cost and latency shape. Its error case falls back to a
+ *    fixed line, so the tier can cost a dull answer and never a fact about a child)
  *  - classify / review / extract → Sonnet 5  (eval-proven; classify and extract both
  *    carry teen_content — a rule-#1 safety call, gated on teenAccuracy ≥ Sonnet-4.6 in
  *    the model matrix)
@@ -52,7 +56,8 @@ export type AgentTask =
   | 'triage'
   | 'extract'
   | 'acknowledge'
-  | 'screen';
+  | 'screen'
+  | 'answer';
 
 const TASK_MODEL: Record<AgentTask, ModelId> = {
   classify: SONNET5_MODEL,
@@ -67,6 +72,7 @@ const TASK_MODEL: Record<AgentTask, ModelId> = {
   extract: SONNET5_MODEL,
   acknowledge: HAIKU_MODEL,
   screen: HAIKU_MODEL,
+  answer: HAIKU_MODEL,
 };
 
 /** The set of valid task names — used by the skill loader to validate frontmatter. */
