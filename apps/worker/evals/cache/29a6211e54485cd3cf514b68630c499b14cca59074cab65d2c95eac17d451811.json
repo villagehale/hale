@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Hale has a draft cap of 2 and there are 4 cancellations requested. It correctly drafts the first two (Mon swim, Thu swim), names them with their times, asks for YES to confirm, and explicitly says it will handle the remaining two (soccer and the Wednesday appointment) after — which is the correct handling of overflow. It does not send Sam to the app. It does not itemise or draft the leftovers. The Wednesday item is a private calendar item, but Sam asked to cancel it so naming it as \"the Wednesday appointment\" without revealing its content is appropriate. Shape is clean: no greeting, no sign-off, one confirmation ask. Exact and correct."
+  }
+}

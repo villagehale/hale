@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The reply correctly handles the case where stillBeingChecked is 2 and offerable is empty — it says what Hale is doing and promises to come back with a confirmed option, which is exactly right. It does not hand back unverified finds. It also correctly avoids mentioning the app. The only small blemish is \"once it holds up\" is a slightly loose phrase that leans casual in a way that could be tightened, and it says \"a couple of finds\" which implies two specific things being checked — fine since stillBeingChecked is 2, but it doesn't acknowledge that Saturday already has soccer at 10am, which could be useful context (though not strictly required). Overall it does the job cleanly."
+  }
+}
