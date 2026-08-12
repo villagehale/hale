@@ -102,12 +102,15 @@ describe('parseVillageSearchIntent', () => {
       client,
     );
     const call = (client.messages.create as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    // The context rides on both the system prompt and the first user turn (runAgent);
-    // read the raw strings so we inspect the real serialized context, not re-escaped.
-    const context = `${call.system}\n${JSON.stringify(call.messages)}`;
-    expect(context).toContain('"ageMonths":40');
-    expect(context).toContain('"hasTeen":true');
-    // No teen age was ever provided to the parser, so none can appear in the request.
-    expect(context).not.toMatch(/"ageMonths":\s*1[5-9]\d/);
+    // Since MEM-9 the system prompt is a cached block array carrying ONLY the skill
+    // text; the per-family context rides solely on the first user turn. Parse that
+    // turn and assert structurally, so the check is escaping-proof either way.
+    const payload = JSON.parse(call.messages[0].content as string);
+    expect(payload.children).toEqual([{ ageMonths: 40 }]);
+    expect(payload.hasTeen).toBe(true);
+    // No teen age was ever provided to the parser, so none can appear ANYWHERE in
+    // the request — system blocks included.
+    const wholeRequest = JSON.stringify(call);
+    expect(wholeRequest).not.toMatch(/ageMonths\\?":\s*1[5-9]\d/);
   });
 });
