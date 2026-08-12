@@ -33,6 +33,15 @@ import type { TranscriptMessage } from './conversation';
 const RECENT_EPISODE_LIMIT = 10;
 const RELEVANT_FACT_LIMIT = 30;
 
+/** Newest turns of the thread the agent sees verbatim; everything older compacts. */
+const TRANSCRIPT_VERBATIM_TURNS = 20;
+/** How much of one compacted turn survives as an excerpt, in characters. */
+const COMPACTED_EXCERPT_CHARS = 120;
+/** Ceiling on the excerpt list inside the digest, in characters (~250 tokens). */
+const COMPACTED_EXCERPTS_MAX_CHARS = 1_000;
+
+const EXCERPT_SEPARATOR = ' | ';
+
 /** A child as the agent sees it — teen detail redacted to stage only (rule #1). */
 export interface ChildContext {
   id: string;
@@ -131,6 +140,69 @@ function redactFactsForTeens(
   );
 }
 
+/** Collapse whitespace and clip to `max` characters, marking the cut. */
+function clip(text: string, max: number): string {
+  const collapsed = text.replace(/\s+/g, ' ').trim();
+  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
+}
+
+/**
+ * Bound the thread the agent reasons over: the newest {@link TRANSCRIPT_VERBATIM_TURNS}
+ * turns survive verbatim, everything older collapses into one digest.
+ *
+ * Deterministic on purpose — no model call on a turn a parent is waiting on, and a
+ * digest that can't hallucinate a conversation that didn't happen. The digest keeps
+ * the PARENT's earlier messages (what they asked and told Hale is the durable
+ * signal) and drops Hale's own earlier replies; the parts of those replies that must
+ * survive are already rows elsewhere — facts, episodes, and the open-loops ledger
+ * that holds Hale's promises precisely because compaction is lossy by design.
+ *
+ * The digest is itself capped, and every loss is NAMED: how many turns went, how
+ * many excerpts didn't fit, and that what remains is partial. A silently shortened
+ * thread reads to the model as the whole conversation, which is how a coach ends up
+ * confidently contradicting something the parent said last month.
+ */
+function compactTranscript(transcript: readonly TranscriptMessage[]): {
+  transcript: TranscriptMessage[];
+  transcriptSummary: string | null;
+} {
+  if (transcript.length <= TRANSCRIPT_VERBATIM_TURNS) {
+    return { transcript: [...transcript], transcriptSummary: null };
+  }
+
+  const cut = transcript.length - TRANSCRIPT_VERBATIM_TURNS;
+  const olderAsks = transcript.slice(0, cut).filter((t) => t.role === 'user');
+
+  // Newest-first, so the excerpts that survive the budget are the ones nearest now.
+  const excerpts: string[] = [];
+  let budget = COMPACTED_EXCERPTS_MAX_CHARS;
+  for (let i = olderAsks.length - 1; i >= 0; i -= 1) {
+    const ask = olderAsks[i];
+    if (!ask) continue;
+    const excerpt = clip(ask.content, COMPACTED_EXCERPT_CHARS);
+    if (excerpt.length + EXCERPT_SEPARATOR.length > budget) break;
+    budget -= excerpt.length + EXCERPT_SEPARATOR.length;
+    excerpts.push(excerpt);
+  }
+  excerpts.reverse();
+  const omitted = olderAsks.length - excerpts.length;
+
+  const parts = [`${cut} earlier turns of this conversation are not shown.`];
+  if (excerpts.length > 0) {
+    parts.push(
+      `What the parent said in that span, oldest first: ${excerpts.map((e) => `"${e}"`).join(EXCERPT_SEPARATOR)}.`,
+    );
+  }
+  if (omitted > 0) {
+    parts.push(`${omitted} older messages from the parent are omitted from this digest.`);
+  }
+  parts.push(
+    "Hale's own earlier replies are not included. This is a partial record of the thread — do not treat it as complete, and ask rather than assume if an earlier detail matters.",
+  );
+
+  return { transcript: transcript.slice(cut), transcriptSummary: parts.join(' ') };
+}
+
 /**
  * The Hale note a reply is grounding on — the ALREADY-REDACTED mobile view of a
  * Messages note (eyebrow/body/when), the same fields the app renders. Structured,
@@ -159,8 +231,10 @@ export interface AgentContext {
   stages: FamilyStage[];
   memoryFacts: MemoryFactContext[];
   recentEpisodes: MemoryEpisodeContext[];
-  /** The prior turns of THIS conversation — the multi-turn thread. */
+  /** The most recent turns of THIS conversation, verbatim and bounded. */
   transcript: TranscriptMessage[];
+  /** A digest of the turns compaction dropped, or null when the whole thread fits. */
+  transcriptSummary: string | null;
   /** The parent's current question. */
   question: string;
   /** Optional UI intent chip the parent tapped (e.g. "find a daycare near me"). */
@@ -276,6 +350,8 @@ export async function loadAgentContext(
     ? toFocusedChild(input.focusedChildId, childRows, now)
     : null;
 
+  const thread = compactTranscript(input.transcript);
+
   const factRows = await database
     .select({
       childId: schema.familyMemoryFacts.childId,
@@ -350,11 +426,19 @@ export async function loadAgentContext(
       })),
       stageByChild,
     ),
-    transcript: input.transcript,
+    transcript: thread.transcript,
+    transcriptSummary: thread.transcriptSummary,
     question: input.question,
     intent: input.intent,
     sourceNote: input.sourceNote,
   };
 }
 
-export const _internal = { toChildContext, toFocusedChild, redactEpisodesForTeens, redactFactsForTeens };
+export const _internal = {
+  toChildContext,
+  toFocusedChild,
+  redactEpisodesForTeens,
+  redactFactsForTeens,
+  compactTranscript,
+  TRANSCRIPT_VERBATIM_TURNS,
+};
