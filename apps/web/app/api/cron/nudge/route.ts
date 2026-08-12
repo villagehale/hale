@@ -3,6 +3,7 @@ import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
+import { runVillageIntroSweep } from '~/lib/village/intros/run';
 
 // Node runtime: the sweep reaches the voice client and the channel seam, neither of
 // which runs on the edge runtime.
@@ -22,6 +23,14 @@ export const maxDuration = 300;
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and NOTHING runs. F14_ENABLED /
  * F14_FAMILY_ALLOWLIST is the D21 dark-launch gate: unarmed, the sweep does not even
  * select families.
+ *
+ * THE VILLAGE INTRO SWEEP RIDES THIS ROUTE as a second step rather than taking a cron
+ * slot of its own. It asks the same question about a different subject — may Hale
+ * interrupt this parent, and with what — and it needs the same hourly cadence. It has
+ * its OWN dark-launch flag (VILLAGE_INTROS_ENABLED), so arming F14 does not arm
+ * cross-household introductions. It runs SECOND and independently: the nudge sweep has
+ * already committed its own work before this starts, so an intro failure cannot undo a
+ * nudge, and each family-level error inside either sweep is caught by that sweep.
  */
 export async function GET(req: Request) {
   const denied = requireCronSecret(req);
@@ -29,7 +38,8 @@ export async function GET(req: Request) {
 
   try {
     const summary = await runNudgeCron(db());
-    return NextResponse.json({ ok: true, ...summary }, { status: 200 });
+    const villageIntros = await runVillageIntroSweep(db());
+    return NextResponse.json({ ok: true, ...summary, villageIntros }, { status: 200 });
   } finally {
     await flushTelemetry();
   }

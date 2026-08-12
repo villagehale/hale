@@ -3,9 +3,13 @@ import type { ResendTransport } from '~/lib/channel/resend-transport';
 import { INTRO_EMAIL_SUBJECT } from './copy';
 import { createIntroEmailSender, introFirstName } from './email';
 
-function fakeTransport(result: Awaited<ReturnType<ResendTransport['send']>> = { id: 'msg-1', error: null }) {
-  const send = vi.fn(async () => result);
-  return { transport: { send } as unknown as ResendTransport, send };
+type SendArg = Parameters<ResendTransport['send']>[0];
+
+function fakeTransport(
+  result: Awaited<ReturnType<ResendTransport['send']>> = { id: 'msg-1', error: null },
+) {
+  const send = vi.fn(async (_msg: SendArg) => result);
+  return { transport: { send } as ResendTransport, send };
 }
 
 const REQUEST = {
@@ -22,7 +26,7 @@ describe('createIntroEmailSender', () => {
 
     expect(result).toEqual({ status: 'sent', providerMessageId: 'msg-1' });
     expect(send).toHaveBeenCalledTimes(1);
-    const msg = send.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+    const msg = send.mock.calls[0]?.[0] as SendArg;
     expect(msg.to).toBe('sam@example.com');
     expect(msg.cc).toBe('priya@example.com');
     expect(msg.bcc).toBeUndefined();
@@ -53,7 +57,7 @@ describe('createIntroEmailSender', () => {
       stage: 'preschool',
       anchorTitle: 'Family Storytime',
     });
-    const text = (send.mock.calls[0]?.[0] as unknown as { text: string }).text;
+    const text = (send.mock.calls[0]?.[0] as SendArg).text;
     expect(text).toContain('Hi Sam and Priya,');
     expect(text).toContain('you each have a preschooler');
     expect(text).toContain('You were also both eyeing Family Storytime');

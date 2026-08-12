@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { HealthReplyDeps } from '~/lib/health/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import type { AwaitingSequence, SequenceReplyDeps } from '~/lib/registration/sequence/reply';
-import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
+import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import {
+  approvalHandler,
+  healthReplyHandler,
+  sequenceReplyHandler,
+  villageIntroHandler,
+} from './handlers';
 import type { HandlerContext } from './route';
 
 /**
@@ -323,13 +329,45 @@ describe('handler order — registration last', () => {
 });
 
 /**
+ * The intro lane sits FIRST, so the pair of properties that lets it sit there safely is
+ * pinned in both directions — the same treatment "yes" gets above.
+ */
+describe('the village intro lane and the lanes behind it', () => {
+  const introDeps: VillageIntroReplyDeps = {
+    recordDiscoverability: async () => {},
+    openProposal: async () => null,
+    recordDecision: async () => {},
+    cancelOpenProposals: async () => {},
+  };
+
+  it('does not swallow a bare yes - it stays the approval lane s to answer', async () => {
+    expect((await villageIntroHandler(introDeps).handle(DB, turn('yes'))).claimed).toBe(false);
+    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup' }]);
+    expect((await approvalHandler(pending).handle(DB, turn('yes'))).claimed).toBe(true);
+    expect(pending.approved).toEqual(['act-1']);
+  });
+
+  it('and the approval lane would not have answered YES INTRO even if it ran first', async () => {
+    const pending = spine([{ actionId: 'act-1', actionType: 'book_checkup' }]);
+    expect((await approvalHandler(pending).handle(DB, turn('YES INTRO'))).claimed).toBe(false);
+    expect(pending.approved).toEqual([]);
+    expect((await villageIntroHandler(introDeps).handle(DB, turn('YES INTRO'))).claimed).toBe(true);
+  });
+});
+
+/**
  * The order production actually ships. The tests above drive each handler directly, so
  * without this one the whole ordering argument could hold while `defaultHandlers`
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is approval, then health, then registration', async () => {
+  it('is village_intro, then approval, then health, then registration', async () => {
     const { defaultHandlers } = await import('./wiring');
-    expect(defaultHandlers().map((h) => h.name)).toEqual(['approval', 'health', 'registration']);
+    expect(defaultHandlers().map((h) => h.name)).toEqual([
+      'village_intro',
+      'approval',
+      'health',
+      'registration',
+    ]);
   });
 });

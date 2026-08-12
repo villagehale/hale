@@ -108,7 +108,7 @@ export interface IntroSweepFamily {
   familyId: string;
   parentUserId: string;
   /** The primary parent's display name; only its first token is ever disclosed. */
-  parentName: string;
+  parentName: string | null;
   parentEmail: string | null;
   areaCoarse: string | null;
   timeZone: string;
@@ -227,7 +227,7 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     introFailed: 0,
     closed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
-    skipped: { no_fsa: 0, no_parent_email: 0, no_matchable_child: 0 },
+    skipped: { no_fsa: 0, no_parent_email: 0, no_parent_name: 0, no_matchable_child: 0 },
     failed: 0,
   };
 }
@@ -377,6 +377,7 @@ async function runMatchPhase(
       parentUserId: family.parentUserId,
       fsa: family.areaCoarse,
       parentEmail: family.parentEmail,
+      parentName: family.parentName,
       children: await deps.loadChildren(database, family.familyId),
     })),
   );
@@ -552,10 +553,10 @@ async function introduce(
 ): Promise<void> {
   const familyA = byId.get(proposal.familyAId);
   const familyB = byId.get(proposal.familyBId);
-  if (!familyA?.parentEmail || !familyB?.parentEmail) {
-    // The matcher only pairs families that HAVE an address, so losing one between the
-    // pairing and the handoff is a real state change, not a shape to design around: the
-    // pair stays open and visible rather than closing as if it had been introduced.
+  if (!familyA?.parentEmail || !familyA.parentName || !familyB?.parentEmail || !familyB.parentName) {
+    // The matcher only pairs families that HAVE both, so losing one between the pairing
+    // and the handoff is a real state change, not a shape to design around: the pair
+    // stays open and visible rather than closing as if it had been introduced.
     result.introFailed += 1;
     return;
   }

@@ -57,6 +57,11 @@ export interface IntroCandidateFamily {
    * families that HAVE one: the handoff is an email, and half a handoff is worse than
    * none. */
   parentEmail: string | null;
+  /** The parent's display name. Also nullable — `users.name` is not required, and an
+   * SMS-intake family may never have typed one. An introduction whose greeting cannot
+   * name one of the two parents is not an introduction, so it is its OWN skip reason
+   * rather than being folded in with the missing address. */
+  parentName: string | null;
   children: readonly IntroCandidateChild[];
 }
 
@@ -84,7 +89,11 @@ export function eligibleAnchorChildren(
 
 /** Why a family that opted in still was not paired. An enum, never free text: it is
  * counted and logged, so it must be safe to emit and stable to aggregate on. */
-export type IntroSkipReason = 'no_fsa' | 'no_parent_email' | 'no_matchable_child';
+export type IntroSkipReason =
+  | 'no_fsa'
+  | 'no_parent_email'
+  | 'no_parent_name'
+  | 'no_matchable_child';
 
 export interface IntroPairing {
   familyAId: string;
@@ -156,6 +165,10 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
     }
     if (!family.parentEmail) {
       skipped.push({ familyId: family.familyId, reason: 'no_parent_email' });
+      continue;
+    }
+    if (!family.parentName?.trim()) {
+      skipped.push({ familyId: family.familyId, reason: 'no_parent_name' });
       continue;
     }
     const anchors = eligibleAnchorChildren(family.children, input.now);

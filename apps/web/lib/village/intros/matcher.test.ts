@@ -18,6 +18,7 @@ function family(overrides: Partial<IntroCandidateFamily> & { familyId: string })
     parentUserId: `user-${overrides.familyId}`,
     fsa: 'M4K',
     parentEmail: 'parent@example.com',
+    parentName: 'Sam Lee',
     // Born 2024-02-11 -> 30 months at NOW -> toddler.
     children: [{ id: `child-${overrides.familyId}`, dateOfBirth: '2024-02-11' }],
     ...overrides,
@@ -165,6 +166,17 @@ describe('matchIntroPairs', () => {
     });
     expect(result.pairings).toEqual([]);
     expect(result.skipped).toEqual([{ familyId: BBB, reason: 'no_fsa' }]);
+  });
+
+  it('skips a family with no display name - an intro cannot greet a nameless parent', () => {
+    const result = matchIntroPairs({
+      families: [family({ familyId: AAA }), family({ familyId: BBB, parentName: null })],
+      familiesWithOpenProposal: new Set(),
+      pairedBefore: new Set(),
+      now: NOW,
+    });
+    expect(result.pairings).toEqual([]);
+    expect(result.skipped).toEqual([{ familyId: BBB, reason: 'no_parent_name' }]);
   });
 
   it('skips a family whose only child is a teenager', () => {

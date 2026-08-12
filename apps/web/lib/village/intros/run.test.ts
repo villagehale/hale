@@ -375,7 +375,7 @@ describe('phase 2 - matching and the coarse card', () => {
     });
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
     expect(result.proposed).toBe(0);
-    expect(result.skipped).toEqual({ no_fsa: 0, no_parent_email: 1, no_matchable_child: 0 });
+    expect(result.skipped).toEqual({ no_fsa: 0, no_parent_email: 1, no_parent_name: 0, no_matchable_child: 0 });
   });
 });
 

@@ -4,6 +4,10 @@ import {
   handleSequenceReply,
 } from '~/lib/registration/sequence/reply';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import {
+  type VillageIntroReplyDeps,
+  handleVillageIntroReply,
+} from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
 import { checkupDraftedReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
@@ -46,6 +50,39 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  * word with the handler that actually recognises it, and leaves M7 exactly where its own
  * module note puts it: last before the conversational layer.
  */
+
+/**
+ * Village intros — YES INTROS / NO INTROS / YES INTRO / NO INTRO.
+ *
+ * FIRST IN THE CHAIN, and the narrowest thing in it: it claims a two-word phrase whose
+ * second word is `intro` or `intros` and nothing else, so it cannot starve a handler
+ * behind it — none of them recognise those phrases at all (the approval grammar
+ * declines them because they are not bare affirmatives).
+ *
+ * It goes first because one of the four words is a REVOCATION. "NO INTROS" turning off
+ * a family's discoverability must not depend on which other handlers happened to
+ * decline it that day, and first is the only position where that is true by
+ * construction rather than by audit.
+ */
+export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicHandler {
+  return {
+    name: 'village_intro',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handleVillageIntroReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+        },
+        deps,
+      );
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
 
 /**
  * C1's own approval grammar, resolved against the app's approve/decline/undo spine.
