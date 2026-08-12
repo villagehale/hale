@@ -130,5 +130,6 @@ export function twilioInboundDeps(): TwilioInboundDeps {
     database: db(),
     intake: buildIntakeDeps,
     enqueue: enqueueChannelMessageReceived,
+    log: console,
   };
 }

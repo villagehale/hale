@@ -78,6 +78,8 @@ interface Harness {
   fake: FakeDb;
   transport: FakeTransport;
   jobs: ChannelMessageReceivedJob[];
+  /** Every operator line the webhook wrote, as its argument arrays. */
+  errors: unknown[][];
   deps: TwilioInboundDeps;
   intakeBuilds: number;
 }
@@ -86,6 +88,7 @@ function harness(): Harness {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
   const jobs: ChannelMessageReceivedJob[] = [];
+  const errors: unknown[][] = [];
   const state = { intakeBuilds: 0 };
   const intake: IntakeDeps = {
     transport,
@@ -102,9 +105,15 @@ function harness(): Harness {
     fake,
     transport,
     jobs,
+    errors,
     intakeBuilds: 0,
     deps: {
       database: fake.db,
+      log: {
+        error: (...args: unknown[]) => {
+          errors.push(args);
+        },
+      },
       intake: () => {
         state.intakeBuilds += 1;
         h.intakeBuilds = state.intakeBuilds;
@@ -536,7 +545,13 @@ describe('handoff to C1', () => {
     expect(row?.handedOffAt).toEqual(NOW);
   });
 
-  it('leaves the row UNMARKED when the enqueue fails, so the text is still owed a reply', async () => {
+  /**
+   * A failed enqueue is an OUTCOME, not an exception that escapes (rule #11). Letting it
+   * throw made the route 500, which made Twilio retry, and the retry could only ever lose
+   * the claim and answer 'duplicate' — so the exception bought a retry that was
+   * guaranteed to do nothing while the text went unanswered and unnamed.
+   */
+  it('NAMES a failed enqueue rather than throwing, and never marks the row handed off', async () => {
     const h = harness();
     enrol(h.fake);
     closeIntake(h.fake);
@@ -544,16 +559,53 @@ describe('handoff to C1', () => {
       throw new Error('pool exhausted');
     };
 
-    await expect(
-      routeTwilioInbound(h.deps, inbound({ body: 'yes, book it' }), 0),
-    ).rejects.toThrow('pool exhausted');
+    const outcome = await routeTwilioInbound(h.deps, inbound({ body: 'yes, book it' }), 0);
 
+    expect(outcome).toBe('enqueue_failed');
     const [row] = h.fake.rows(schema.channelMessages);
     expect(row).toBeDefined();
     // The row is the durable record of the parent's words — it stays. What must NOT be
     // written is the claim that C1 has it, which is the only thing standing between a
     // failed enqueue and a permanently swallowed approval.
     expect(row?.handedOffAt ?? null).toBeNull();
+  });
+
+  it('LOGS the failed enqueue with the ids an operator needs and nothing the parent wrote', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+    h.deps.enqueue = async () => {
+      throw new Error('pool exhausted');
+    };
+
+    await routeTwilioInbound(h.deps, inbound({ body: 'Maya has an appointment at 4' }), 0);
+
+    expect(h.errors).toHaveLength(1);
+    const line = JSON.stringify(h.errors[0]);
+    expect(line).toContain('SM11111111111111111111111111111111');
+    expect(line).toContain('pool exhausted');
+    // Rule #1: the operator line names the message, never its contents or the number.
+    expect(line).not.toContain('Maya');
+    expect(line).not.toContain(PHONE);
+  });
+
+  /**
+   * The webhook still answers Twilio 200. A 5xx here asks for a redelivery that the claim
+   * index guarantees is a no-op, and burns the provider's retry budget on it; the row left
+   * unmarked is the re-drive request, and the reconciler is who reads it.
+   */
+  it('still answers Twilio an empty TwiML 200 when the enqueue failed', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+    h.deps.enqueue = async () => {
+      throw new Error('pool exhausted');
+    };
+
+    const res = await handleTwilioInboundRequest(twilioRequest(twilioParams()), h.deps);
+
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toBe('<Response/>');
   });
 
   /**

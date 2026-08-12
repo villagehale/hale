@@ -58,6 +58,9 @@ export interface TwilioInboundDeps {
    */
   intake: () => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
+  /** Required, not optional: the one thing that must never happen quietly here is a
+   * text Hale accepted and never queued (rule #11). */
+  log: Pick<Console, 'error'>;
   now?: () => Date;
 }
 
@@ -71,6 +74,10 @@ export type TwilioInboundOutcome =
   | 'rate_limited'
   /** Recorded and handed to C1's queue. */
   | 'handed_off'
+  /** Recorded, but the queue refused it: the row is left unmarked for the reconciler,
+   * and the parent is owed a reply Hale has not yet given. Never folded into
+   * `handed_off` — that value is a claim that C1 has the text. */
+  | 'enqueue_failed'
   /** Already recorded under this provider id — a retry, not a second text. */
   | 'duplicate'
   /** The machine handled it; its own outcome is the detail. */
@@ -238,15 +245,28 @@ async function handOffToConversation(
     targetId: channelMessageId,
   });
 
-  await deps.enqueue({
-    family_id: owner.familyId,
-    parent_user_id: owner.userId,
-    channel_message_id: channelMessageId,
-    provider_message_id: inbound.providerId,
-    received_at: inbound.receivedAt.toISOString(),
-  });
+  try {
+    await deps.enqueue({
+      family_id: owner.familyId,
+      parent_user_id: owner.userId,
+      channel_message_id: channelMessageId,
+      provider_message_id: inbound.providerId,
+      received_at: inbound.receivedAt.toISOString(),
+    });
+  } catch (err) {
+    // The ids an operator can act on, and nothing the parent typed (rule #1).
+    deps.log.error(
+      {
+        channelMessageId,
+        providerMessageId: inbound.providerId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'twilio inbound: recorded the text but could not queue it for C1 — left unmarked for the reconciler',
+    );
+    return 'enqueue_failed';
+  }
 
-  // Only now is the message really C1's. An enqueue that threw leaves this null and the
+  // Only now is the message really C1's. An enqueue that failed leaves this null and the
   // reconciler picks it up; marking before the enqueue would re-create the exact bug
   // this column exists to end.
   await deps.database

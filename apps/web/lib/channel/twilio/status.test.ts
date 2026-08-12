@@ -125,6 +125,7 @@ describe('handleTwilioStatusRequest — the same gates as inbound', () => {
     vi.unstubAllEnvs();
     const res = await handleTwilioStatusRequest(statusRequest(sign(STATUS_URL)), {
       database: forbiddenDb(),
+      log: silentLog(),
     });
     expect(res.status).toBe(503);
   });
@@ -132,6 +133,7 @@ describe('handleTwilioStatusRequest — the same gates as inbound', () => {
   it('answers 403 without touching the ledger on a forged signature', async () => {
     const res = await handleTwilioStatusRequest(statusRequest('forged'), {
       database: forbiddenDb(),
+      log: silentLog(),
     });
     expect(res.status).toBe(403);
   });
@@ -139,7 +141,7 @@ describe('handleTwilioStatusRequest — the same gates as inbound', () => {
   it('rejects a signature minted for the INBOUND endpoint', async () => {
     const res = await handleTwilioStatusRequest(
       statusRequest(sign(`${APP_URL}/api/channels/twilio/inbound`)),
-      { database: forbiddenDb() },
+      { database: forbiddenDb(), log: silentLog() },
     );
     expect(res.status).toBe(403);
   });
