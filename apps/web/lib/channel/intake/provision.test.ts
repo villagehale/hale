@@ -45,6 +45,7 @@ function fakeDatabase() {
       },
       returning: async () => rows,
       onConflictDoNothing: async () => rows,
+      // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
       then: (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve),
     };
     return builder;
