@@ -333,3 +333,22 @@ describe('the per-turn draft cap', () => {
     expect(h.port.drafts).toHaveLength(MAX_DRAFTS_PER_TURN);
   });
 });
+
+describe('get_framework_guidance — the coaching tool the skill instructs (audit find, 2026-08-12)', () => {
+  it('is registered in the channel coach toolset', () => {
+    const h = harness([]);
+    expect(h.tools.map((t) => t.name)).toContain('get_framework_guidance');
+  });
+
+  it('answers a toddler coaching lookup with companion content and the provider note', async () => {
+    const h = harness([]);
+    const result = (await h.call('get_framework_guidance', { stage: 'toddler', ageMonths: 18 })) as {
+      stage: string;
+      whatsNow: unknown[];
+      confirmWithProvider: string;
+    };
+    expect(result.stage).toBe('toddler');
+    expect(result.whatsNow.length).toBeGreaterThan(0);
+    expect(result.confirmWithProvider.length).toBeGreaterThan(0);
+  });
+});

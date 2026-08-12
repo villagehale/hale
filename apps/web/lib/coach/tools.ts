@@ -2,13 +2,9 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import {
-  CONFIRM_WITH_PROVIDER,
-  companionForChild,
-  deriveStage,
-  type FamilyStage,
-} from '@hale/types';
+import { companionForChild, deriveStage } from '@hale/types';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { formatCalendarDayLabel } from '~/lib/format/datetime';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
@@ -309,34 +305,10 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     },
   });
 
-  const getFrameworkGuidance = defineTool({
-    name: 'get_framework_guidance',
-    description:
-      "The Child Development & Wellbeing Companion for a stage: curated 'what matters now' guidance, milestone windows, and the Canadian health/immunization cadence. ALWAYS pass ageMonths when you know the child's age (get_child_profile returns it) — the 'child' stage spans four years old to twelve, and without an age this answers for the middle of it. Every item is general guidance — surface the confirm-with-provider note for anything health-related (rule #1).",
-    inputSchema: z.object({
-      stage: z.enum(['newborn', 'toddler', 'child', 'teenager']),
-      ageMonths: z.number().int().min(0).max(215).optional(),
-    }),
-    monetary: false,
-    touchesChildContent: false,
-    handler: async (input) => {
-      const reference = stageReferenceDob(input.stage, input.ageMonths);
-      const companion = companionForChild({ dateOfBirth: reference });
-      return {
-        stage: companion.stage,
-        ageMonths: companion.ageMonths,
-        whatsNow: companion.whatsNow,
-        whatsNext: companion.whatsNext,
-        milestones: companion.milestones.map((m) => ({
-          area: m.area,
-          what: m.what,
-          typicalWindowMonths: m.typicalWindowMonths,
-        })),
-        nextHealth: companion.nextHealth.map((h) => ({ what: h.what, kind: h.kind })),
-        confirmWithProvider: CONFIRM_WITH_PROVIDER,
-      };
-    },
-  });
+  // Shared with the SMS channel coach since 2026-08-12 (framework-tool.ts): the
+  // skill audit caught the two registries drifting — the channel skill instructed
+  // a tool only this runtime carried.
+  const getFrameworkGuidance = frameworkGuidanceTool();
 
   return [
     getChildProfile,
@@ -346,29 +318,4 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
     searchVillageTool(database),
     ...buildConnectorTools(database),
   ];
-}
-
-/**
- * A representative date-of-birth, so get_framework_guidance can reuse the
- * per-child companion (which keys on DOB) for stage-level guidance. No real
- * child's data is involved either way — only the age-derived guidance is
- * surfaced.
- *
- * VIL-260 · WS5: `ageMonths` is honoured when the caller has it. The stage
- * midpoints below are a LAST RESORT, and the 'child' one is why: that stage runs
- * from four years old to twelve, so its midpoint answered a four-year-old's
- * parent with an eight-year-old's milestones and the pre-teen immunization set.
- * An age is always the better question to answer.
- */
-function stageReferenceDob(stage: FamilyStage, ageMonths?: number): Date {
-  const monthsByStage: Record<FamilyStage, number> = {
-    newborn: 6,
-    toddler: 24,
-    preschool: 54,
-    child: 96,
-    teenager: 168,
-  };
-  const d = new Date();
-  d.setMonth(d.getMonth() - (ageMonths ?? monthsByStage[stage]));
-  return d;
 }
