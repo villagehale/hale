@@ -165,6 +165,14 @@ export const consentTypeEnum = pgEnum('consent_type', [
   // parent's channel consent): the scope column carries the ROLE, because what they
   // agreed to receive is defined by that role's scope and nothing wider.
   'caregiver_scoped_messages',
+  // Village intros v1 · the parent's decision about being INTRODUCED to another Hale
+  // household. Two scopes ride this one type and they are different acts: the standing
+  // "you may look for a match for us" (revocable at any time by texting NO INTROS), and
+  // the per-proposal "yes, introduce us to this one". Neither is a watch consent (that
+  // is permission to be TEXTED unprompted) and neither is an autonomous action class
+  // (that is permission to ACT on the family's behalf) — this is permission to DISCLOSE
+  // the family to a third household, which no other record in this table means.
+  'village_intro',
 ]);
 
 // VIL-147 · what a teen raw-access grant unlocks. Deliberately a CLOSED, SMALL
@@ -301,6 +309,12 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // Hale sent the PARENT — wrong in a PIPEDA right-to-access read, and wrong in every
   // cap that counts a category.
   'rsvp',
+  // Village intros v1 · the three texts the intro loop can send — the discoverability
+  // ask, the coarse card, the soft close. Its own category because the outbound gate
+  // COUNTS a category: folding these into 'nudge' would spend a family's weekly nudge
+  // budget on an intro question and then read the nudge cap as spent by messages the
+  // nudge sweep never sent.
+  'village_intro',
 ]);
 
 /**

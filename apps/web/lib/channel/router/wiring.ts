@@ -16,7 +16,13 @@ import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import type { ApprovalSpine, PendingAction } from './approval';
-import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
+import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import {
+  approvalHandler,
+  healthReplyHandler,
+  sequenceReplyHandler,
+  villageIntroHandler,
+} from './handlers';
 import {
   type ChannelRouterDeps,
   type DeterministicHandler,
@@ -178,6 +184,7 @@ export function defaultApprovalSpine(): ApprovalSpine {
  */
 export function defaultHandlers(): DeterministicHandler[] {
   return [
+    villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
     healthReplyHandler(defaultHealthReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),

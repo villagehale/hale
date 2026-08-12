@@ -19,6 +19,10 @@ export interface ResendTransport {
     subject: string;
     html?: string;
     text: string;
+    /** Recipients on the VISIBLE header. Village intros needs it: an introduction is
+     * one message two parents can both reply-all to, and a bcc would give each of them
+     * a private thread with Hale instead of one with each other. */
+    cc?: string | string[];
     bcc?: string;
     attachments?: ResendAttachment[];
   }): Promise<{ id: string | null; error: { name: string; message: string } | null }>;
