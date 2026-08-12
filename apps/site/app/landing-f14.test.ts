@@ -125,19 +125,27 @@ describe('flag-on landing (sections, in the Surfaces Plan order)', () => {
     .replace(/\s+/g, ' ')
     .trim();
 
-  it('names all eight municipalities it watches', () => {
+  it('names all fifteen seeded municipalities it watches', () => {
     for (const city of [
       'Toronto',
+      'Mississauga',
+      'Brampton',
       'Markham',
       'Vaughan',
       'Richmond Hill',
-      'Mississauga',
       'Oakville',
       'Burlington',
       'Halton Hills',
+      'Caledon',
+      'Ajax',
+      'Pickering',
+      'Whitby',
+      'Oshawa',
+      'Aurora',
     ]) {
       expect(text).toContain(city);
     }
+    expect(text).toContain('15 municipalities');
   });
 
   it('tells the three texts and the suggest → prepare → handle ladder with receipts', () => {

@@ -20,16 +20,25 @@ import { CONTACT_EMAIL, buildSmsHref, displaySmsNumber } from '~/lib/text-entry'
 
 const SIGN_IN = `${APP_URL}/sign-in`;
 
-/** The municipalities M1 tracks by name — the radar made concrete, not "the GTA". */
+/** The municipalities the radar tracks by name — every one backed by verified
+ * registration_windows rows in prod (M1 + the 2026-08-11 coverage sweep). A city
+ * joins this list when its rows land, never before. */
 const MUNICIPALITIES = [
   'Toronto',
+  'Mississauga',
+  'Brampton',
   'Markham',
   'Vaughan',
   'Richmond Hill',
-  'Mississauga',
   'Oakville',
   'Burlington',
   'Halton Hills',
+  'Caledon',
+  'Ajax',
+  'Pickering',
+  'Whitby',
+  'Oshawa',
+  'Aurora',
 ] as const;
 
 const WATCHED = [
