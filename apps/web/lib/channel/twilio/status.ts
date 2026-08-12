@@ -121,10 +121,19 @@ export async function applyTwilioStatus(
  *
  * Every authentic callback answers 204 — Twilio ignores the body of a status callback,
  * and a 4xx/5xx would only make it retry a receipt we have already applied.
+ *
+ * `unknown_message` is LOGGED, never discarded (rule #11). It is not an exotic case: the
+ * intake greeting is sent before any family row exists, so a receipt for the very first
+ * message Hale ever sends a parent has nothing to land on. Dropping those silently meant
+ * a carrier filtering every first message looked exactly like a carrier delivering them,
+ * and the module's own promised operator signal ("the callback URL is pointed at the
+ * wrong deployment") was never actually delivered anywhere. The line carries the
+ * provider's identifiers ONLY — never the phone number Twilio put in the same callback
+ * (rule #1).
  */
 export async function handleTwilioStatusRequest(
   req: Request,
-  deps: { database: Database },
+  deps: { database: Database; log: Pick<Console, 'warn'> },
 ): Promise<Response> {
   const config = twilioConfig();
   if (!config) {
@@ -145,13 +154,20 @@ export async function handleTwilioStatusRequest(
   const providerMessageId = params.MessageSid ?? params.SmsSid ?? '';
   const rawStatus = params.MessageStatus ?? params.SmsStatus ?? '';
   if (providerMessageId && rawStatus) {
-    await applyTwilioStatus(deps.database, {
+    // Present only on a failure; stored so a support question has an answer that
+    // isn't "it just didn't arrive".
+    const errorCode = params.ErrorCode || null;
+    const result = await applyTwilioStatus(deps.database, {
       providerMessageId,
       rawStatus,
-      // Present only on a failure; stored so a support question has an answer that
-      // isn't "it just didn't arrive".
-      errorCode: params.ErrorCode || null,
+      errorCode,
     });
+    if (result === 'unknown_message') {
+      deps.log.warn(
+        { providerMessageId, rawStatus, errorCode },
+        'twilio status: receipt for a message with no ledger row — pre-provisioning send, another deployment sharing the number, or a misrouted callback URL',
+      );
+    }
   }
   return new Response(null, { status: 204 });
 }

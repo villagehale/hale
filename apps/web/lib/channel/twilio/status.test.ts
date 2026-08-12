@@ -144,6 +144,10 @@ describe('handleTwilioStatusRequest — the same gates as inbound', () => {
     expect(res.status).toBe(403);
   });
 
+  function silentLog() {
+    return { warn: vi.fn() };
+  }
+
   it('applies an authentic receipt and answers 204', async () => {
     const applied: unknown[] = [];
     const database = {
@@ -156,10 +160,85 @@ describe('handleTwilioStatusRequest — the same gates as inbound', () => {
         },
       }),
     } as unknown as Database;
+    const log = silentLog();
 
-    const res = await handleTwilioStatusRequest(statusRequest(sign(STATUS_URL)), { database });
+    const res = await handleTwilioStatusRequest(statusRequest(sign(STATUS_URL)), {
+      database,
+      log,
+    });
 
     expect(res.status).toBe(204);
     expect(applied).toEqual([{ status: 'delivered', errorCode: null }]);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The front door's silent-drop. Receipts for messages sent BEFORE provisioning have
+   * no ledger row to land on — the intake greeting is the whole population — so they
+   * resolved `unknown_message` and were discarded with zero log lines. A carrier
+   * filtering every first message would look exactly like a carrier delivering them.
+   * Rule #11: an effect that could not be applied is named, not swallowed.
+   */
+  it('logs an unknown-message receipt instead of discarding it silently', async () => {
+    const database = {
+      update: () => ({
+        set: () => ({ where: () => ({ returning: async () => [] }) }),
+      }),
+      select: () => ({
+        from: () => ({ where: () => ({ limit: async () => [] }) }),
+      }),
+    } as unknown as Database;
+    const log = silentLog();
+
+    const res = await handleTwilioStatusRequest(statusRequest(sign(STATUS_URL)), {
+      database,
+      log,
+    });
+
+    expect(res.status).toBe(204);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    const [payload] = log.warn.mock.calls[0] as [Record<string, unknown>, string];
+    expect(payload).toEqual({
+      providerMessageId: PARAMS.MessageSid,
+      rawStatus: PARAMS.MessageStatus,
+      errorCode: null,
+    });
+  });
+
+  /** Rule #1: the operator signal carries the provider's own identifiers and nothing
+   * else — never the phone number Twilio put in the same callback. */
+  it('keeps the parent out of the unknown-message log line', async () => {
+    const database = {
+      update: () => ({
+        set: () => ({ where: () => ({ returning: async () => [] }) }),
+      }),
+      select: () => ({
+        from: () => ({ where: () => ({ limit: async () => [] }) }),
+      }),
+    } as unknown as Database;
+    const log = silentLog();
+
+    await handleTwilioStatusRequest(statusRequest(sign(STATUS_URL)), { database, log });
+
+    const serialized = JSON.stringify(log.warn.mock.calls);
+    expect(serialized).not.toContain(PARAMS.To);
+  });
+
+  /** An out-of-order receipt that lost the monotonic guard is normal traffic, not an
+   * operator signal — logging it would bury the one line that matters. */
+  it('does not warn when the row exists and the callback simply lost the guard', async () => {
+    const database = {
+      update: () => ({
+        set: () => ({ where: () => ({ returning: async () => [] }) }),
+      }),
+      select: () => ({
+        from: () => ({ where: () => ({ limit: async () => [{ id: 'row-1' }] }) }),
+      }),
+    } as unknown as Database;
+    const log = silentLog();
+
+    await handleTwilioStatusRequest(statusRequest(sign(STATUS_URL)), { database, log });
+
+    expect(log.warn).not.toHaveBeenCalled();
   });
 });
