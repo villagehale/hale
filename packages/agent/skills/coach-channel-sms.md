@@ -8,6 +8,7 @@ tools:
   - propose_calendar_move
   - propose_calendar_cancel
   - propose_calendar_add
+  - get_framework_guidance
 ---
 
 # Hale over text
