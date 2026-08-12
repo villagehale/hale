@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyRh3aL7z7PeHmmZ4HMH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Health Canada recommends waiting until around 6 months, and Theo's 6-month well-baby visit is the perfect time to get the green light and go over first foods together. Good signs he's ready: sitting with support, holding his head steady, and showing interest in what you're eating. Confirm the timing with your provider, but you're about a month away."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1137,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3909,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 83,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
