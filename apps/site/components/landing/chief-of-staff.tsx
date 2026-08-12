@@ -328,21 +328,24 @@ function FirstConversation() {
       <ol className="mt-6 flex flex-col gap-3">
         <Bubble from="parent">Hi</Bubble>
         <Bubble from="hale">
-          Hi, I’m Hale — I keep family weeks on track for GTA parents. What are your kids’ names and
-          ages — and what’s your postal code?
-          <span className="mt-2 block text-[0.8rem] opacity-70">
-            (I’m an assistant, not a person — details &amp; privacy: villagehale.com/privacy)
-          </span>
+          Hi, I’m Hale — an AI that quietly runs the family week. Registration dates, weekend
+          plans, the stuff that slips. Tell me your kids’ names and ages, plus your postal code —
+          and I’ll get to work.
         </Bubble>
         <Bubble from="parent">Max is 4, Mia is 18 months, L4C</Bubble>
         <Bubble from="hale">
-          Here’s your week, off the top: ☀️ Saturday’s 26° — the Mill Pond splash pad is 6 minutes
-          from you, free. ⏰ Richmond Hill fall swim registration opens Tue Aug 12, 7:00 a.m. —
-          spots for Max’s age usually go in minutes. Want me to keep an eye on all of this for you?
+          Mark this: Richmond Hill fall swim registration opens Tue Aug 12 at 7am — spots for
+          Max’s age go in minutes, and I’ll text you the morning before with everything ready.
+          Saturday looks warm too — the Mill Pond splash pad is 6 minutes from you, free. Want me
+          to keep an eye on all of this for you?
+          <span className="mt-2 block text-[0.8rem] opacity-70">
+            (how I handle your family’s info: villagehale.com/privacy)
+          </span>
         </Bubble>
         <Bubble from="parent">yes please</Bubble>
         <Bubble from="hale">
-          Done — you’re covered. I’ll only text when something actually matters.
+          Done — you’re covered. I only text when something actually matters, and STOP always
+          works. While I dig in: what part of the week wears you out the most?
         </Bubble>
       </ol>
     </figure>
