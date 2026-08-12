@@ -907,3 +907,119 @@ describe('tool results fed back to the model', () => {
     expect(TOOL_RESULT_MAX_CHARS / 4).toBeLessThanOrEqual(4096);
   });
 });
+
+/**
+ * The cached prefix (MEM-9 / G3).
+ *
+ * The wire order is tools → system → messages, so one ephemeral breakpoint on the
+ * last system block covers the tool definitions AND the skill instructions — the
+ * only two parts of the request that are identical for every run of a skill. The
+ * per-run family context must sit AFTER that breakpoint (it rides the first user
+ * message) or the "stable" prefix is a per-family string that never repeats and
+ * the breakpoint only buys cache-write premiums.
+ */
+describe('prompt cache prefix', () => {
+  const FAMILY_SECRET = 'Ella naps at 12:30';
+
+  function systemsFrom(client: AgentClient): unknown[] {
+    const mock = (client.messages as unknown as {
+      create?: { mock: { calls: Array<[{ system: unknown }]> } };
+      stream?: { mock: { calls: Array<[{ system: unknown }]> } };
+    });
+    const calls = (mock.create ?? mock.stream)?.mock.calls ?? [];
+    return calls.map(([params]) => params.system);
+  }
+
+  it('marks the skill instructions as the ephemeral cache breakpoint', async () => {
+    const client = fakeClient([textMessage('ok.', usage(10, 5))]);
+    await runAgent({
+      skill,
+      context: { note: FAMILY_SECRET },
+      tools: [profileTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+
+    expect(systemsFrom(client)[0]).toEqual([
+      {
+        type: 'text',
+        text: skill.instructions,
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+  });
+
+  it('keeps per-family context OUT of the cached prefix and in the first user turn', async () => {
+    const client = fakeClient([textMessage('ok.', usage(10, 5))]);
+    await runAgent({
+      skill,
+      context: { note: FAMILY_SECRET },
+      tools: [profileTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+
+    // Cacheing a per-family system prompt would be a cache MISS every run — and
+    // would put a child's routine in a prefix shared across the whole skill.
+    expect(JSON.stringify(systemsFrom(client)[0])).not.toContain(FAMILY_SECRET);
+
+    const createMock = client.messages.create as unknown as {
+      mock: { calls: Array<[{ messages: Anthropic.MessageParam[] }]> };
+    };
+    expect(createMock.mock.calls[0]?.[0].messages[0]?.content).toBe(
+      JSON.stringify({ note: FAMILY_SECRET }),
+    );
+  });
+
+  it('sends a byte-identical prefix on every step of a multi-step loop', async () => {
+    const client = fakeClient([
+      toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(10, 5)),
+      textMessage('done.', usage(10, 5)),
+    ]);
+    await runAgent({
+      skill,
+      context: { note: FAMILY_SECRET },
+      tools: [profileTool],
+      client,
+      maxSteps: 3,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+
+    const systems = systemsFrom(client);
+    expect(systems).toHaveLength(2);
+    // A prefix that differs by one byte between steps is re-processed at full
+    // price on every round-trip — the exact cost this breakpoint exists to avoid.
+    expect(JSON.stringify(systems[1])).toBe(JSON.stringify(systems[0]));
+  });
+
+  it('applies the same breakpoint on the streaming path', async () => {
+    const client = fakeStreamingClient([
+      { chunks: ['ok.'], final: textMessage('ok.', usage(10, 5)) },
+    ]);
+    await runAgentStreaming({
+      skill,
+      context: { note: FAMILY_SECRET },
+      tools: [profileTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+      onTextDelta: () => {},
+      onTurnReset: () => {},
+    });
+
+    expect(systemsFrom(client)[0]).toEqual([
+      {
+        type: 'text',
+        text: skill.instructions,
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+    expect(JSON.stringify(systemsFrom(client)[0])).not.toContain(FAMILY_SECRET);
+  });
+});

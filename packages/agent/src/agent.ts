@@ -218,8 +218,27 @@ function cardFromResult(result: unknown): ToolCard | undefined {
 
 const DEFAULT_MAX_TOKENS = 2048;
 
-function buildSystemPrompt(skill: Skill, context: unknown): string {
-  return `${skill.instructions}\n\n## Context\n\n${JSON.stringify(context)}`;
+/**
+ * The system prompt: the skill's instructions, behind an ephemeral cache breakpoint.
+ *
+ * The wire order is tools → system → messages, so a breakpoint on the last system
+ * block covers the tool definitions AND the instructions — everything that is
+ * byte-identical for every run of a skill, by every family. That prefix used to
+ * also carry `JSON.stringify(context)`, which made it per-family and therefore
+ * uncacheable; the same context was ALREADY being sent as the first user message
+ * (see initialUserContent), so dropping it here removes a duplicate rather than
+ * information. Per-run context must stay after the breakpoint — a cached
+ * per-family prefix is a guaranteed miss, and it would put one family's routine
+ * into a prefix keyed for the whole skill.
+ *
+ * A prefix shorter than the model's minimum cacheable length simply doesn't cache
+ * (no error, `cache_creation_input_tokens: 0`), so the small Haiku-tier skills are
+ * unaffected either way.
+ */
+function buildSystem(skill: Skill): Anthropic.TextBlockParam[] {
+  return [
+    { type: 'text', text: skill.instructions, cache_control: { type: 'ephemeral' } },
+  ];
 }
 
 /**
@@ -405,7 +424,7 @@ async function handleToolUses(
 
 export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   const model = pickModel(args.skill.meta.task);
-  const system = buildSystemPrompt(args.skill, args.context);
+  const system = buildSystem(args.skill);
   const tools = toAnthropicTools(args.skill, args.tools);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
@@ -463,7 +482,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
  */
 export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<RunAgentResult> {
   const model = pickModel(args.skill.meta.task);
-  const system = buildSystemPrompt(args.skill, args.context);
+  const system = buildSystem(args.skill);
   const tools = toAnthropicTools(args.skill, args.tools);
   const toolByName = new Map(args.tools.map((t) => [t.name, t]));
 
