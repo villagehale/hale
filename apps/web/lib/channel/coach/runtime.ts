@@ -22,7 +22,6 @@ import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from 
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
 import { searchVillageTool } from '~/lib/coach/tools';
-import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { traceAgentRun } from '~/lib/telemetry/langfuse';
 import { productionChannelDraftPort } from './draft';
@@ -113,7 +112,6 @@ export interface ChannelCoachPorts {
   client(): AgentClient;
   runAgent(args: RunAgentArgs): Promise<RunAgentResult>;
   recordRun(run: ChannelRunRecord): Promise<void>;
-  appLink(): string;
   now(): Date;
 }
 
@@ -145,15 +143,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       });
 
       const now = ports.now();
-      // NO app link in the model's context, deliberately. The thread does the work and
+      // NO app link anywhere on this path, deliberately. The thread does the work and
       // the app is the receipts room a parent never needs, so a reply that sends them
       // there hands the job back to the person who texted to be rid of it — which is
       // what happened on launch day ("You can also add anything manually in the app:
-      // https://…"). The skill says not to; a skill is a request. Withholding the URL
+      // https://…"). The skill says not to; a skill is a request. Holding no URL at all
       // is the guarantee: the model composes no link because it was handed none, and
-      // its standing rule is that a URL it was not given is one it invented. The
-      // deterministic post-processor still gets `appLink` (see toSmsReply below), where
-      // trimming an over-budget reply is a mechanical decision, not the model's.
+      // the post-processor cannot append one to an over-budget reply because it no
+      // longer takes one either (skill audit P0 #4).
       const context = {
         ...familyContext,
         channel: 'sms' as const,
@@ -221,11 +218,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             );
           }
 
-          const reply = toSmsReply(result.answer, {
-            children,
-            appLink: ports.appLink(),
-            now,
-          });
+          const reply = toSmsReply(result.answer, { children, now });
           await ports.recordRun(record('completed'));
           return { reply };
         },
@@ -282,7 +275,6 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         langfuseTraceId: run.langfuseTraceId,
       });
     },
-    appLink: appBaseUrl,
     now: () => new Date(),
   });
 }

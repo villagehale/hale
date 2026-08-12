@@ -66,10 +66,18 @@ export const CAREGIVER_ANSWER_PROMPT = "Reply YES to accept, or STOP if you'd ra
 export const ADD_EXAMPLE =
   'Tell me who, their number, and what they are - like: add grandma 647-555-0199 as grandparent. I can do grandparent, nanny or babysitter.';
 
-/** A co-parent sees the whole family surface; a texted YES is not enough to authorise
- * that, so this path is closed on purpose and says why. */
+/**
+ * A co-parent sees the whole family surface; a texted YES is not enough to authorise
+ * that, so this path is closed on purpose and says why.
+ *
+ * It used to close with "add them in the app" (skill audit P0 #4). What actually
+ * unblocks this is not a screen but a PERSON: the co-parent signing in as themselves, on
+ * an invite the other parent mints, which is the whole of rule #5. Naming the condition
+ * rather than the surface is both the true statement and the one that survives the day
+ * the invite moves.
+ */
 export const CO_PARENT_REDIRECT =
-  "A co-parent sees everything I show you, so I won't set that up over text - add them in the app and I'll check it's really them.";
+  "A co-parent sees everything I show you, so a texted yes isn't enough - they need to sign in as themselves before I can add them.";
 
 /** The number already has its own Hale account or an active caregiver slot. */
 export const NUMBER_IN_USE =

@@ -88,6 +88,24 @@ describe('what each lane says', () => {
     expect(SAFETY_REPLY).toContain('911');
   });
 
+  /**
+   * Skill audit P0 #3. The general terminal has a fourth outcome: the composer wrote a
+   * referral. The words are not its to carry — `{ status: 'safety' }` has no reply
+   * field — so what goes out is the same reviewed sentence a screened symptom gets, and
+   * `replySource` says `fixed` rather than crediting the model for words it did not send.
+   */
+  it('sends the fixed line, exactly, when the composer reached for a referral', async () => {
+    const p = ports({ answer: { status: 'safety' } });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: SAFETY_REPLY,
+      replySource: 'fixed',
+    });
+  });
+
   it('answers a provider ask with the Ontario workflow, and invents nothing', async () => {
     const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
 

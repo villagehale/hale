@@ -1,3 +1,4 @@
+import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
@@ -23,6 +24,12 @@ import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
  *   profile, and lookup_week reads through the teen-safe projections — but the PARENT
  *   can type the name, and the model can echo it back. This is the deterministic
  *   age-derived floor under all of that (rule #1), applied to the outbound body itself.
+ *
+ *   A SIREN is the fourth, and the only one that replaces the whole body rather than
+ *   editing it. The lane screen in front of this path fails open, so a symptom reaches
+ *   the coach whenever the screen could not run — and what a parent standing over a hurt
+ *   child is told has to be the reviewed sentence, not the model's approximation of it
+ *   (off-domain/copy.ts, skill audit P0 #3).
  */
 
 /** The ceiling the ticket sets, and what the eval gates against. Two segments is about
@@ -39,8 +46,6 @@ export interface ReplyChild {
 
 export interface SmsReplyArgs {
   children: readonly ReplyChild[];
-  /** The app URL a trimmed reply points at — passed in so this module holds no config. */
-  appLink: string;
   now?: Date;
 }
 
@@ -87,8 +92,8 @@ const GSM7_SUBSTITUTIONS: ReadonlyArray<readonly [RegExp, string]> = [
  *
  * Exported for the off-domain lane's general answer (boundary v3), which is the second
  * model-composed body Hale texts back. It needs this treatment and none of the rest of
- * `toSmsReply`: it never sees a child to redact, and it has no app link to hand an
- * overflow to. A second copy of the substitution table is the thing to avoid — two
+ * `toSmsReply`: it never sees a child to redact, and it refuses an over-long answer
+ * rather than trimming one. A second copy of the substitution table is the thing to avoid — two
  * readers of "what is safe to send" would disagree the first time one of them is edited.
  */
 export function plainText(text: string): string {
@@ -114,32 +119,38 @@ function sentences(text: string): string[] {
 }
 
 /**
- * Bring a body inside the segment budget, dropping whole sentences from the end and
- * handing the rest to the app.
+ * Bring a body inside the segment budget by dropping whole sentences from the end.
  *
  * Sentence-first because a body cut mid-clause reads as a bug, and because the FIRST
  * sentence is where the skill puts the answer — so the part that survives is the part
  * that mattered. Only when a single sentence is itself over budget does it fall back to
  * a word-boundary trim, which is still never mid-word.
+ *
+ * It used to append "More in the app: <url>" to whatever survived, which meant the
+ * app-point fired precisely when the answer was too long to send — the message where
+ * the job mattered most, handed back to the person who texted to be rid of it (skill
+ * audit P0 #4). Nothing replaces it. A parent who texted is owed a text back, and the
+ * sentence they get is the one carrying the answer.
  */
-function fitToBudget(body: string, appLink: string, max: number): string {
+function fitToBudget(body: string, max: number): string {
   if (smsSegments(body) <= max) return body;
 
-  const tail = `More in the app: ${appLink}`;
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
-    const candidate = `${parts.slice(0, count).join(' ')} ${tail}`;
+    const candidate = parts.slice(0, count).join(' ');
     if (smsSegments(candidate) <= max) return candidate;
   }
 
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
-    const candidate = `${words.slice(0, count).join(' ')}... ${tail}`;
+    const candidate = `${words.slice(0, count).join(' ')}...`;
     if (smsSegments(candidate) <= max) return candidate;
   }
-  // The link alone already exceeds the budget — a misconfigured appLink, not a long
-  // answer. Return it anyway: an over-budget honest pointer beats a silent empty send.
-  return tail;
+
+  // Not even the first word fits: a model returning one unbroken 300-character token,
+  // which is a failed turn and not a long answer. Throwing hands it to the router's
+  // honesty template, the same place an empty body goes (rule #8 — no invented body).
+  throw new Error('channel coach: model answer had no prefix inside the segment budget');
 }
 
 /**
@@ -158,5 +169,12 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     throw new Error('channel coach: model answer was empty after post-processing');
   }
   const redacted = redactTeenNames(flattened, args.children, args.now);
-  return fitToBudget(redacted, args.appLink, MAX_REPLY_SEGMENTS);
+  if (reachesForTheHealthLine(redacted)) {
+    // Named rather than swapped in silence: this only fires when the screen in front of
+    // the coach did not, so each one is a screen outage worth counting. The body itself
+    // never reaches the log — it can carry back what the parent typed (rule #1).
+    console.error('channel coach: model composed a safety referral; sent the fixed line');
+    return SAFETY_REPLY;
+  }
+  return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
 }

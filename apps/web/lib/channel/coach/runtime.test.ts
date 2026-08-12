@@ -69,7 +69,6 @@ function ports(overrides: Partial<ChannelCoachPorts> = {}) {
     recordRun: async (run) => {
       recorded.push({ agentName: run.agentName, status: run.status, latencyMs: run.latencyMs });
     },
-    appLink: () => LINK,
     now: () => NOW,
     ...overrides,
   };
@@ -130,9 +129,9 @@ describe('channelCoachRuntime', () => {
    * did, on launch day ("You can also add anything manually in the app: ..."). So
    * the link is not withheld by instruction, it is withheld by construction: the
    * loop is handed no URL, and the skill's standing rule is that a URL it did not
-   * receive is a URL it invented. `appLink` still reaches the POST-processor, where
-   * an over-budget reply is trimmed deterministically (reply.ts) rather than by the
-   * model's discretion.
+   * receive is a URL it invented. Nothing downstream holds one either: the
+   * post-processor stopped taking an app link when the overflow tail went (skill audit
+   * P0 #4), so there is no URL on this path at all.
    */
   it('hands the loop NO app link — a URL the model was never given cannot be sent', async () => {
     const seen: Record<string, unknown>[] = [];
@@ -164,7 +163,8 @@ describe('channelCoachRuntime', () => {
     const { reply } = await channelCoachRuntime(p).respond(turn());
 
     expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(reply).toContain(LINK);
+    expect(reply).not.toContain(LINK);
+    expect(reply.startsWith('Sentence number 0')).toBe(true);
   });
 
   /** A throw is what the router turns into the honesty template. A runtime that

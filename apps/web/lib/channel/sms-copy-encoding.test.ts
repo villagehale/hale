@@ -2,7 +2,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ActionType } from '@hale/types';
 import { describe, expect, it } from 'vitest';
-import { approvedReceipt, declinedReceipt } from '~/lib/channel/router/copy';
+import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import {
+  approvedReceipt,
+  declinedReceipt,
+  failureReply,
+  partialFailureReply,
+  whichOneReply,
+} from '~/lib/channel/router/copy';
+import { mediaUnsupportedReply } from '~/lib/channel/twilio/copy';
 import {
   AMBIGUOUS_CLARIFY,
   ASSENT_ACK,
@@ -200,6 +208,55 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
   it.each(Object.entries(RENDERED))('%s points at no app and no link', (_name, body) => {
     expect(body).not.toMatch(/\bthe app\b/i);
     expect(body).not.toMatch(/https?:/i);
+  });
+});
+
+/**
+ * Skill audit P0 #4 — the copy paths that were still handing the job back.
+ *
+ * Founder doctrine, 2026-08-11: Hale never points a parent at the app in chat. The
+ * thread IS the product, so "finish it in the app" is the work returned to the person
+ * who texted to be rid of it — and it fired on exactly the messages where the job
+ * mattered most: a turn that broke, an answer too long to send, a photo Hale could not
+ * read. Each of these now carries what to do next IN the thread.
+ *
+ * SCOPED to the five the audit named. Three lines in `router/copy.ts` still carry a URL
+ * and are deliberately not here: `nothingPendingReply` and `nothingToUndoReply` answer
+ * "where do my records live", which is the doctrine's one stated exception, and
+ * `capabilityReply` is a stub with no production caller (audit #21). Widening this to
+ * the whole file is a founder call about that exception, not a test change.
+ */
+describe('nothing Hale texts sends a parent to the app', () => {
+  const RENDERED: Record<string, string> = {
+    failureReply: failureReply(),
+    'partialFailureReply (1)': partialFailureReply(1),
+    'partialFailureReply (2)': partialFailureReply(2),
+    'whichOneReply (overflow)': whichOneReply([
+      'calendar_move',
+      'calendar_add',
+      'calendar_cancel',
+      'send_email',
+      'add_to_routine',
+    ]),
+    mediaUnsupportedReply: mediaUnsupportedReply(),
+    CO_PARENT_REDIRECT,
+  };
+
+  it.each(Object.entries(RENDERED))('%s', (_name, body) => {
+    expect(body).not.toMatch(/https?:/i);
+    expect(body).not.toMatch(/\bthe app\b/i);
+    // Still GSM-7 and still inside the budget: a rewrite is exactly when a curly
+    // apostrophe or a third segment gets in.
+    expect(smsEncoding(body)).toBe('gsm7');
+    expect(smsSegments(body)).toBeLessThanOrEqual(2);
+  });
+
+  /** The overflow is disclosed either way — what changed is that the rest are reachable
+   * by answering the three in front of them, rather than on another surface. */
+  it('discloses the approvals it could not list, without a destination', () => {
+    const reply = whichOneReply(Array.from({ length: 8 }, () => 'calendar_move'));
+
+    expect(reply).toContain('+5 more');
   });
 });
 

@@ -82,10 +82,14 @@ describe('loadSkill', () => {
     expect(skill.instructions.length).toBeGreaterThan(0);
   });
 
-  it('loads the bundled find-activities and log-care skills', async () => {
-    const find = await loadSkill('find-activities');
-    expect(find.meta.task).toBe('discover');
-    const log = await loadSkill('log-care');
-    expect(log.meta.task).toBe('classify');
+  /** Two more bundled skills, on two other task tiers — `task` is what `pickModel`
+   * reads, so a skill whose tier does not survive the parse is one that silently runs on
+   * the wrong model. It named find-activities and log-care until those were deleted as
+   * dead (skill audit #9/#10); these are the live skills on the same two tiers. */
+  it('parses the task tier of skills that are not converse', async () => {
+    const curate = await loadSkill('curate-shortlist');
+    expect(curate.meta.task).toBe('discover');
+    const classify = await loadSkill('classify-event');
+    expect(classify.meta.task).toBe('classify');
   });
 });

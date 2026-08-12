@@ -159,9 +159,13 @@ async function answerOrFallback(
   text: string,
 ): Promise<{ reply: string; replySource: ReplySource }> {
   const composed = await ports.answer.compose(text);
-  return composed.status === 'composed'
-    ? { reply: composed.reply, replySource: 'composed' }
-    : { reply: ANSWER_UNAVAILABLE_REPLY, replySource: composed.reason };
+  if (composed.status === 'composed') return { reply: composed.reply, replySource: 'composed' };
+  // A question about the world that turned out to be about a hurt child. It leaves by
+  // the same door a screened symptom does, words and all, and `fixed` says so — crediting
+  // the composer for a sentence it did not write would cost the founder's weekly count
+  // the one distinction it is for (skill audit P0 #3).
+  if (composed.status === 'safety') return { reply: SAFETY_REPLY, replySource: 'fixed' };
+  return { reply: ANSWER_UNAVAILABLE_REPLY, replySource: composed.reason };
 }
 
 /**
