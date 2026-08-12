@@ -5,6 +5,7 @@ import { readWindows as readRegistrationWindows } from '~/lib/channel/intake/rad
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import {
@@ -22,7 +23,12 @@ import {
   resolveFamilyOpen,
 } from '~/lib/registration/match-registration-windows';
 import { loadClaimedWindowIds } from './claims.js';
-import { renderSequenceLeg, renderShortlistRationale, windowPhrase } from './copy.js';
+import {
+  headsUpPromisesPlan,
+  renderSequenceLeg,
+  renderShortlistRationale,
+  windowPhrase,
+} from './copy.js';
 import {
   HEADS_UP_MINUTE_LOCAL,
   type RegistrationOutcome,
@@ -30,6 +36,7 @@ import {
   type SequenceOptIn,
   dueLeg,
   legIsUrgent,
+  openLegWindows,
   waitlistDeadline,
 } from './schedule.js';
 import { type SequenceChild, type Shortlist, buildShortlist } from './shortlist.js';
@@ -180,6 +187,14 @@ export interface SequenceRunDeps {
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: SequenceLedgerWrite): Promise<string>;
   audit(database: Database, row: SequenceAuditRow): Promise<void>;
+  /**
+   * MEM-10 · the open-loops ledger. Both REQUIRED for the reason `transport` is (rule
+   * #11): the heads-up leg tells an approved household "I will send your plan the
+   * evening before", and a ladder assembled without these would make that sentence the
+   * only record of it — a promise nobody can count, and nobody can see broken.
+   */
+  recordCommitment: typeof recordCommitment;
+  fulfillCommitment: typeof fulfillCommitment;
   /**
    * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
    * so a caller could decide + compose without sending, and the three P0s this ladder
@@ -437,7 +452,62 @@ async function runLegForSequence(
       urgent: legIsUrgent(leg),
     },
   });
+
+  await recordLegPromise(database, { sequence, shortlist, leg, messageId, opensForFamilyAt }, deps, now);
   return { kind: 'sent' };
+}
+
+/**
+ * MEM-10 · the ladder's own promise, opened and closed.
+ *
+ * ONE leg makes a commitment and ONE leg keeps it. The heads-up tells an approved
+ * household "I will send your plan the evening before" — a sentence with a deadline in
+ * it — and the battle plan is the message that makes good. Both are written AFTER the
+ * send, against the row that carried it, so a leg that never reached a transport neither
+ * opens a debt nor discharges one.
+ *
+ * The promise is conditional on the parent having approved: {@link headsUpPromisesPlan}
+ * is the same predicate the copy branches on, so an unapproved household — who is being
+ * ASKED to approve, not promised anything — cannot be recorded as owed a plan.
+ *
+ * The due time is the END of the battle-plan interval, which is the go leg's start: past
+ * that instant "the evening before" is no longer a thing that can happen, and a promise
+ * that cannot be kept is late whatever else the ladder does next.
+ */
+async function recordLegPromise(
+  database: Database,
+  args: {
+    sequence: LiveSequence;
+    shortlist: Shortlist;
+    leg: SequenceLeg;
+    messageId: string;
+    opensForFamilyAt: Date;
+  },
+  deps: SequenceRunDeps,
+  now: Date,
+): Promise<void> {
+  const { sequence, leg, messageId } = args;
+  if (leg === 'heads_up' && headsUpPromisesPlan(sequence.optIn)) {
+    await deps.recordCommitment(database, {
+      familyId: sequence.familyId,
+      kind: 'registration_plan',
+      // The municipality and the cycle, and nothing else: a household's plan is about a
+      // window, and no child's name has to appear for a founder or a parent to read it
+      // (rule #1).
+      summary: `${windowPhrase(args.shortlist)}: your plan, the evening before.`,
+      dueAt: openLegWindows(args.opensForFamilyAt, sequence.timeZone).battle_plan.until,
+      channelMessageId: messageId,
+    });
+    return;
+  }
+  if (leg === 'battle_plan') {
+    await deps.fulfillCommitment(database, {
+      familyId: sequence.familyId,
+      kind: 'registration_plan',
+      channelMessageId: messageId,
+      now,
+    });
+  }
 }
 
 /** The shortlist a leg is rendered from, rebuilt against the LIVE window and today's
@@ -691,5 +761,7 @@ export function defaultSequenceRunDeps(): SequenceRunDeps {
       await database.insert(schema.auditLog).values(row);
     },
     transport: createTwilioTransport(),
+    recordCommitment,
+    fulfillCommitment,
   };
 }

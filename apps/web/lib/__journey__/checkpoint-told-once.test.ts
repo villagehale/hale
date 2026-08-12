@@ -15,6 +15,7 @@ import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
 import { type NudgeRunDeps, type NudgeRunResult, runNudgeCron } from '~/lib/channel/nudge/run';
 import { checkpointById, checkpointRef } from '~/lib/health/checkpoints';
 import { checkpointToldKey, checkpointToldKeyPrefix } from '~/lib/health/told';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -204,6 +205,9 @@ function nudgeDeps(fake: FakeDb, transport: FakeTransport, familyId: string): Nu
     },
     transport,
     client: null,
+    // MEM-10 · the REAL writer over the same store (this family was promised nothing,
+    // so the honest outcome here is the ledger's `none_open`).
+    fulfillCommitment,
   };
 }
 

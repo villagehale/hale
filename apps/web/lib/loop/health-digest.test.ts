@@ -1,4 +1,5 @@
 import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CommitmentDebt } from '~/lib/commitments/ledger';
 import { type FunnelScoreboard, formatFunnelScoreboard } from './funnel-scoreboard';
 import {
   createLoopHealthDigestSender,
@@ -13,6 +14,13 @@ const EMPTY_SCOREBOARD: FunnelScoreboard = {
   ttfa: { p50Seconds: null, derivedFamilies: 0, notDerivableFamilies: 0 },
   nudges: { sent: 0, matured: 0, replied: 0 },
   cogs: { totalUsd: 0, families: 0 },
+};
+
+/** MEM-10 · an empty open-loops ledger: Hale has promised nothing and owes nothing. */
+const NO_DEBT: CommitmentDebt = {
+  overdueFamilies: 0,
+  overdueCommitments: 0,
+  openCommitments: 0,
 };
 
 /**
@@ -35,6 +43,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 45,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      commitmentDebt: NO_DEBT,
       unmetIntents: [],
     };
 
@@ -58,6 +67,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      commitmentDebt: NO_DEBT,
       unmetIntents: [],
     };
 
@@ -74,6 +84,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      commitmentDebt: NO_DEBT,
       unmetIntents: [],
     };
 
@@ -93,6 +104,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
         { kind: 'run_spike', at: new Date('2026-07-30T00:00:00Z') },
       ],
       scoreboard: EMPTY_SCOREBOARD,
+      commitmentDebt: NO_DEBT,
       unmetIntents: [],
     };
 
@@ -114,6 +126,7 @@ describe('formatLoopHealthDigest — pure, worked summaries', () => {
       weekPlansComposed: 0,
       providerIncidents: [],
       scoreboard: EMPTY_SCOREBOARD,
+      commitmentDebt: NO_DEBT,
       unmetIntents: [],
     });
 
@@ -138,6 +151,7 @@ describe('formatLoopHealthDigest — top unmet intents', () => {
     weekPlansComposed: 0,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
+    commitmentDebt: NO_DEBT,
   };
 
   it('ranks the buckets by how often they were asked', () => {
@@ -243,6 +257,7 @@ describe('runLoopHealthDigestCron', () => {
     weekPlansComposed: 5,
     providerIncidents: [],
     scoreboard: EMPTY_SCOREBOARD,
+    commitmentDebt: NO_DEBT,
     unmetIntents: [{ lane: 'off_domain_general', category: 'weather', count: 2 }],
   };
 
@@ -268,5 +283,72 @@ describe('runLoopHealthDigestCron', () => {
     const result = await runLoopHealthDigestCron({} as never, { aggregate, sender: { send } }, NOW);
 
     expect(result.sent).toBe(false);
+  });
+});
+
+
+/**
+ * MEM-10 · the open-loops line. What a founder is being told is how many FAMILIES are
+ * waiting on something Hale said it would do — not how many rows are late, because one
+ * family owed two things is still one apology to write.
+ */
+describe('formatLoopHealthDigest — overdue commitments', () => {
+  const base = {
+    windowStart: new Date('2026-08-04T00:00:00Z'),
+    windowEnd: new Date('2026-08-11T00:00:00Z'),
+    messageCounts: [],
+    stopCount: 0,
+    weekPlansComposed: 0,
+    providerIncidents: [],
+    scoreboard: EMPTY_SCOREBOARD,
+    unmetIntents: [],
+  };
+
+  function debtLine(summary: LoopHealthSummary): string {
+    const line = formatLoopHealthDigest(summary)
+      .split('\n')
+      .find((l) => l.startsWith('Open loops:'));
+    if (!line) throw new Error('digest carries no open-loops line');
+    return line;
+  }
+
+  it('counts families owed, and says how many promises that is', () => {
+    const line = debtLine({
+      ...base,
+      commitmentDebt: { overdueFamilies: 3, overdueCommitments: 4, openCommitments: 9 },
+    });
+
+    expect(line).toBe(
+      'Open loops: Hale owes 3 families something overdue (4 promises past due, 9 open)',
+    );
+  });
+
+  it('does not pluralise a single family into a crowd', () => {
+    const line = debtLine({
+      ...base,
+      commitmentDebt: { overdueFamilies: 1, overdueCommitments: 1, openCommitments: 1 },
+    });
+
+    expect(line).toBe(
+      'Open loops: Hale owes 1 family something overdue (1 promise past due, 1 open)',
+    );
+  });
+
+  /** The two zeros mean completely different things and only one of them is good news:
+   * a ledger nothing has written to is not the same as a ledger with nothing late. */
+  it('separates "nothing late" from "nothing tracked"', () => {
+    expect(
+      debtLine({
+        ...base,
+        commitmentDebt: { overdueFamilies: 0, overdueCommitments: 0, openCommitments: 6 },
+      }),
+    ).toBe('Open loops: none overdue - 6 open and still in time');
+
+    expect(
+      debtLine({
+        ...base,
+        commitmentDebt: { overdueFamilies: 0, overdueCommitments: 0, openCommitments: 0 },
+      }),
+    ).toBe('Open loops: no promise is open - nothing has been recorded yet');
   });
 });

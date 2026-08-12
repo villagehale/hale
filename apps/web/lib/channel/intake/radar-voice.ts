@@ -58,6 +58,28 @@ export const MAX_PAYLOAD_SEGMENTS = 3;
  */
 export const FIRST_FIND_BEAT = 'Your first weekend find lands in a day or two.';
 
+/**
+ * MEM-10 · when "a day or two" runs out, and the promise is simply late.
+ *
+ * Three days rather than two: the 48h sweep can only reach this family in their own
+ * mid-morning slot (NUDGE_SEND_HOUR_LOCAL), and a family provisioned at 11 a.m. is 47
+ * hours from their first eligible slot before a single tick has been missed. A due time
+ * inside Hale's own delivery mechanics would report a kept promise as broken.
+ */
+export const FIRST_FIND_DUE_HOURS = 72;
+
+/**
+ * Whether a message Hale is about to be held to actually made the forward promise.
+ *
+ * The SENTENCE is the commitment, so the sent words are what is asked — not the decision
+ * that authorised it. The composed message may leave the beat out (it is handed over as
+ * one fact among several), and a debt recorded for a promise nobody read would put this
+ * family in the overdue column for something Hale never said.
+ */
+export function promisesFirstFind(message: string): boolean {
+  return message.includes(FIRST_FIND_BEAT);
+}
+
 export interface RadarVoice {
   message: string;
 }

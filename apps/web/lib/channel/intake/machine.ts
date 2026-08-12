@@ -17,6 +17,7 @@ import {
   handleKnownNumberInbound,
 } from '~/lib/channel/caregiver/route';
 import { projectCivicCandidates } from '~/lib/civic/project';
+import { recordCommitment } from '~/lib/commitments/ledger';
 import { recordCheckpointTold } from '~/lib/health/told';
 import { type LatLng, geocodeArea } from '~/lib/village/geocode';
 import {
@@ -47,6 +48,7 @@ import type { ReplyIntent, ReplyIntentReader } from './intent';
 import { matchKeyword } from './keywords';
 import { type IntakeLocation, type ProvisionChild, provisionFromIntake } from './provision';
 import type { RadarComposer } from './radar';
+import { FIRST_FIND_BEAT, FIRST_FIND_DUE_HOURS } from './radar-voice';
 import {
   type IntakeSession,
   type IntakeState,
@@ -522,6 +524,24 @@ async function provision(
     await recordCheckpointTold(database, {
       familyId,
       ref: radar.checkpointTold,
+      channelMessageId: sent.channelMessageId,
+    });
+  }
+
+  // MEM-10 · the forward beat is a promise with a clock on it, and until now the only
+  // thing holding it was the hope that the 48h sweep would pick this family up. Written
+  // against the row that carried it, for the same reason the told-marker is: a message
+  // that never reached a transport put nobody in Hale's debt.
+  //
+  // Not branched on, for the same reason either: the parent already has the text. A
+  // write that did not land is logged as "this debt is invisible", which is exactly what
+  // a lost row costs (lib/commitments/ledger.ts).
+  if (radar.firstFindPromised) {
+    await recordCommitment(database, {
+      familyId,
+      kind: 'first_find',
+      summary: FIRST_FIND_BEAT,
+      dueAt: new Date(now.getTime() + FIRST_FIND_DUE_HOURS * 3_600_000),
       channelMessageId: sent.channelMessageId,
     });
   }

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { encryptString } from '~/lib/crypto/string-cipher';
+import { GO_LEAD_MINUTES } from './schedule.js';
 import {
   type LiveSequence,
   type SequenceFamily,
@@ -100,6 +101,9 @@ interface Harness {
   claims: Array<{ familyId: string; windowId: string }>;
   drafts: Array<Record<string, unknown>>;
   released: string[];
+  /** MEM-10 · promises opened, and promises closed, in call order. */
+  promised: Array<{ kind: string; summary: string; dueAt: Date; channelMessageId: string | null }>;
+  kept: Array<{ kind: string; channelMessageId: string | null }>;
 }
 
 function harness(
@@ -122,6 +126,8 @@ function harness(
   const claims: Harness['claims'] = [];
   const drafts: Harness['drafts'] = [];
   const released: string[] = [];
+  const promised: Harness['promised'] = [];
+  const kept: Harness['kept'] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: SequenceRunDeps = {
@@ -164,6 +170,23 @@ function harness(
       writes.push({ table: schema.auditLog, payload: row as unknown as Record<string, unknown> });
     },
     transport,
+    // MEM-10 · the ledger seam. Recorded rather than executed: the writer's own contract
+    // is unit-tested in lib/commitments/ledger.test.ts, and what this ladder owes is
+    // that the promise is opened by the leg that SAYS it and closed by the leg that
+    // KEEPS it — with the message id each time.
+    recordCommitment: async (_db, input) => {
+      promised.push({
+        kind: input.kind,
+        summary: input.summary,
+        dueAt: input.dueAt,
+        channelMessageId: input.channelMessageId,
+      });
+      return { status: 'recorded', commitmentId: `commitment-${promised.length}` };
+    },
+    fulfillCommitment: async (_db, input) => {
+      kept.push({ kind: input.kind, channelMessageId: input.channelMessageId });
+      return { status: 'closed', commitmentIds: ['commitment-1'] };
+    },
   };
 
   return {
@@ -174,6 +197,8 @@ function harness(
     claims,
     drafts,
     released,
+    promised,
+    kept,
   };
 }
 
@@ -354,6 +379,54 @@ describe('the legs', () => {
     expect(second).toMatchObject({ sent: 0, deduped: 1 });
     expect(h.transport.sent).toHaveLength(1);
     expect([...h.dedupeKeys]).toEqual(['registration_sequence:fam-1:w-1:heads_up']);
+  });
+
+  /**
+   * MEM-10 · the ladder is the one surface whose copy contains an explicit, dated
+   * promise, and these three cases are the whole contract: it is opened by the sentence
+   * that makes it, never by the one that merely invites, and closed by the message that
+   * delivers.
+   */
+  it('opens the plan promise when the heads-up actually promises one', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live({ optIn: 'opted_in' })] });
+
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    // Due where "the evening before" stops being possible: the go leg's start, derived
+    // from the window's open and GO_LEAD_MINUTES rather than from what the code emitted.
+    expect(h.promised).toEqual([
+      {
+        kind: 'registration_plan',
+        summary: 'Richmond Hill Fall 2026 recreation programs: your plan, the evening before.',
+        dueAt: new Date(OPEN_AT.getTime() - GO_LEAD_MINUTES * 60_000),
+        channelMessageId: 'msg-1',
+      },
+    ]);
+    // The body the family read is the sentence the row is holding Hale to.
+    expect(h.transport.bodies()[0]).toContain('I will send your plan the evening before.');
+  });
+
+  it('promises nothing to a household it is still asking to approve', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live({ optIn: 'pending' })] });
+
+    await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
+
+    // The same leg, a different sentence: this one invites an approval. Recording a debt
+    // against it would report a broken promise Hale never made.
+    expect(h.transport.bodies()[0]).toContain('Open Hale to approve the shortlist');
+    expect(h.promised).toEqual([]);
+  });
+
+  it('closes the plan promise with the battle plan that kept it', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ sequences: [live()] });
+
+    await runRegistrationSequenceCron(db(), h.deps, BATTLE_PLAN_TICK);
+
+    expect(h.kept).toEqual([{ kind: 'registration_plan', channelMessageId: 'msg-1' }]);
+    expect(h.promised).toEqual([]);
   });
 
   it('withholds the battle plan from a family that has not approved the shortlist', async () => {

@@ -41,11 +41,18 @@ export class FakeIntentReader implements ReplyIntentReader {
   }
 }
 
-/** A radar stand-in with a fixed, obviously-synthetic message. It tells no checkpoint:
- * the marker belongs to a message that really carried one (lib/health/told.ts). */
+/** A radar stand-in with a fixed, obviously-synthetic message. It tells no checkpoint and
+ * promises nothing: both markers belong to a message that really carried one
+ * (lib/health/told.ts, lib/commitments/ledger.ts). */
 export const fakeRadar: RadarComposer = {
   async compose() {
-    return { message: 'RADAR', itemCount: 0, followUpNeeded: false, checkpointTold: null };
+    return {
+      message: 'RADAR',
+      itemCount: 0,
+      followUpNeeded: false,
+      checkpointTold: null,
+      firstFindPromised: false,
+    };
   },
 };
 

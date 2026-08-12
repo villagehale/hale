@@ -349,3 +349,20 @@ export const reminderStatusEnum = pgEnum('reminder_status', [
   'cancelled',
   'stale',
 ]);
+
+/**
+ * MEM-10 · the kinds of promise Hale makes to a family in its own words, and the ONLY
+ * ones the open-loops ledger admits. Deliberately small and closed: a kind exists here
+ * because a surface SAYS it and another surface CLOSES it, so a value with no closing
+ * path could only ever accumulate debt nobody can discharge.
+ *
+ *   first_find        — the intake radar's forward beat to a family it had nothing for
+ *                       ("your first weekend find lands in a day or two"). Closed by the
+ *                       48h proactive nudge, the sweep that beat is true because of.
+ *   registration_plan — the M7 heads-up leg's promise to an opted-in household ("I will
+ *                       send your plan the evening before"). Closed by the battle-plan leg.
+ */
+export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
+  'first_find',
+  'registration_plan',
+]);

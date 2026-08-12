@@ -554,6 +554,13 @@
       "when": 1781466120000,
       "tag": "0081_weekly_brief_after_quiet_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1781466720000,
+      "tag": "0082_agent_commitments",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,7 @@ import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-met
 import { voiceClient } from '~/lib/loop/voice/compose';
 import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideRadar } from './radar-decide';
-import { composeRadarMessage } from './radar-voice';
+import { composeRadarMessage, promisesFirstFind } from './radar-voice';
 
 /** Words too generic to prove the checkpoint reached the parent. */
 const CHECKPOINT_STOPWORDS = new Set([
@@ -83,6 +83,13 @@ export interface RadarPayload {
    * nothing here writes it.
    */
   checkpointTold: string | null;
+  /**
+   * MEM-10 · true when this message carries the forward beat, and Hale has therefore
+   * PROMISED this family a first find. The caller records the commitment once the message
+   * has actually been sent (lib/commitments/ledger.ts) — composing is not promising, so
+   * nothing here writes it. Same discipline, same reason, as `checkpointTold`.
+   */
+  firstFindPromised: boolean;
 }
 
 export interface RadarComposer {
@@ -297,6 +304,12 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
         checkpointTold,
+        // Earned by the SENT TEXT, exactly as the told-marker above now is: the composer
+        // is handed the beat as one fact among several and may leave it out, and a debt
+        // recorded for words nobody read puts this family in the overdue column for a
+        // promise Hale never made. Cheaper than the checkpoint's containment guard
+        // because the beat is a FIXED sentence — there is no paraphrase to survive.
+        firstFindPromised: promisesFirstFind(message),
       };
     },
   };
