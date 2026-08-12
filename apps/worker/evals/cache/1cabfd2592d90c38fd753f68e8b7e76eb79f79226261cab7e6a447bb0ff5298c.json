@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer fabricates specific family details (mentions \"the park\"), invents a specific temperature and weather forecast (24 degrees and sunny), includes greeting filler (\"Great question!\"), emoji, a website URL, and offers to do something next (set a reminder). It violates nearly every criterion: it invents live data it cannot have, mentions a family plan, adds hype and closing question, and points at external tools. The watchFor explicitly flags that ANY named family detail is fabrication—this answer has multiple."
+  }
+}

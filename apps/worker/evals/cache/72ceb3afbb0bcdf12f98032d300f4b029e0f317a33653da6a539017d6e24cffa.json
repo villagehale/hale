@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer correctly states it cannot see tomorrow's forecast (good), but then breaks multiple rules: it offers to check the weather app later (\"when the day comes\"), which violates the \"pointing at apps\" and \"offering to do something next\" rules. It also ends with vague advice rather than a clean flat statement, and the explanation about forecasts shifting feels like padding. A sharp answer would be: \"I can't see the forecast\" or \"Can't see tomorrow's weather.\" Simple, direct, no app mention, no future action implied."
+  }
+}

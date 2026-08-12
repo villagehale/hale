@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) The question asks for the capital of France in French; the answer completely ignores this and responds about weather instead. (2) Does not answer the actual question at all - \"Paris\" is the correct answer and isn't mentioned. (3) Invents specific data (\"24 degrees and sunny tomorrow\") without live access. (4) Points to an app/website. (5) Offers future action (\"set a reminder\"). (6) Includes greeting (\"Great question!\"), emoji, and ends with a question. This violates nearly every principle of a sharp response."
+  }
+}

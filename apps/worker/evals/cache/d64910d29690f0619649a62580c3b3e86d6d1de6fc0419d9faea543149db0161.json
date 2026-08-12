@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely ignores the straightforward cooking question about boiling eggs. Instead it provides weather information (irrelevant), includes greeting/hype (\"Great question!\"), emoji, a website link, and an offer to do something later (\"set a reminder\"). It invents a specific weather detail. None of the required answer—a simple minutes range for hard-boiled eggs (typically 10-13 minutes)—is provided. This is evasion of an answerable factual question combined with multiple violations: invented specifics, pointing at websites/apps, greeting, emoji, and offering future action."
+  }
+}

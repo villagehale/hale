@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Invents specific forecast data (24 degrees, sunny) with no live data access; (2) Greeting (\"Great question!\") and emoji; (3) Mentions the family/their plans (\"perfect for the park\"); (4) Points at app/website (weather.gc.ca); (5) Offers to do something later (\"set a reminder\"); (6) Ends with a question. Should plainly state it cannot see the forecast."
+  }
+}

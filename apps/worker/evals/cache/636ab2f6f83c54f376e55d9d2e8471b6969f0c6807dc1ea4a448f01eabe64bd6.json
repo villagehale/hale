@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer does correctly state that Hale knows nothing about the family and avoids inventing any family details, which is good. However, it violates the core instruction by being defensive and lecturing—it mentions \"your instructions\" implicitly and spends a second sentence explaining what Hale is \"here to\" do rather than simply answering. The watchFor explicitly calls for \"one plain sentence, no lecture.\" The answer should have been just \"I don't know anything about your family\" and nothing else. The second sentence about sports calls and lookups is unnecessary framing that reads as evasive and preachy rather than crisp."
+  }
+}

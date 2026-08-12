@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely evades the question. The parent asked to solve a math equation (3x + 7 = 22), which has a straightforward correct answer: x = 5. Instead, Hale provided an entirely unrelated weather forecast, included multiple violations: greeting (\"Great question!\"), emoji, a specific invented number (24 degrees), a website link, and an offer to do something later (set a reminder). It does not answer the answerable question at all."
+  }
+}

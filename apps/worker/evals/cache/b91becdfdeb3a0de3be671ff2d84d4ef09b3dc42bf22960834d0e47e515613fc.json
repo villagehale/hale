@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This response fails on every dimension. It completely evades the question (TSX is the Toronto stock exchange index—a live market question). Instead it invents a weather answer with a specific temperature, includes greeting hype (\"Great question!\"), emoji, a website link, and ends with an offer to do something next. The watchFor explicitly notes that cannot see markets and a stated level is fabrication—this does none of that but answers an entirely different question. Multiple violations of the brief, useful, honest standard."
+  }
+}

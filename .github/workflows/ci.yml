@@ -75,6 +75,9 @@ jobs:
       - name: Off-domain capability lane eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-lane
 
+      - name: General-answer composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:general-answer
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 

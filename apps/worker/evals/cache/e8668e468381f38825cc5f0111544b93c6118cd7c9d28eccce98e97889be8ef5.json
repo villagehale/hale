@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer completely evades the actual question (gas price at Costco) and instead provides an unrelated weather forecast with invented details (temperature, condition, location assumption). It includes multiple low-score violations: greeting (\"Great question!\"), emoji, website/app reference, offering future action (\"set a reminder\"), and ends with a question. Most critically, it shows no awareness that live price data cannot be seen and does not address the answerable question at all."
+  }
+}

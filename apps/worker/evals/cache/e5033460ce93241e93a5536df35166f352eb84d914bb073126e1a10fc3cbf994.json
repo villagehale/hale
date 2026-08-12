@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) completely fails to answer the question about streaming the Euros - instead responds with weather information that was never asked about; (2) includes a link (https://weather.gc.ca), violating the no-links rule; (3) mentions family plans (\"park\") and the child implicitly; (4) uses greeting/hype language (\"Great question!\") and emoji; (5) ends with a question; (6) offers to do something later (\"set a reminder\"); (7) invents a specific number (24 degrees) it cannot know. The answer doesn't just miss the mark—it answers a completely different question."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This is a severe failure across multiple dimensions. The question asks about breakfast (unknowable without live data), but the answer: (1) completely ignores it and pivots to weather instead; (2) invents a specific temperature and conditions (24 degrees, sunny); (3) writes as if it has live data access; (4) points to a website and app; (5) offers to do something next (\"set a reminder\"); (6) includes greeting, hype (\"Great question!\"), and emoji. It violates nearly every criterion for a high score. A correct answer would be a single plain sentence saying \"I can't see that.\""
+  }
+}
