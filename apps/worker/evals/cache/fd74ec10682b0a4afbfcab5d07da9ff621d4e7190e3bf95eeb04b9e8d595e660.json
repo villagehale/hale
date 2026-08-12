@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyNz3AeWwxKp2usptfyH",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "```json\n{\n  \"greeting\": \"Hi Barton, we're really glad you're here.\",\n  \"villageLine\": \"Hale is here to be the village around your family — a little extra support and steadiness as you navigate the toddler years around Toronto.\",\n  \"closingNote\": \"If anything comes to mind or you're not sure where to start, just reply — a real person will read it.\"\n}\n```"
+      }
+    ],
+    "usage": {
+      "input_tokens": 646,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 101,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

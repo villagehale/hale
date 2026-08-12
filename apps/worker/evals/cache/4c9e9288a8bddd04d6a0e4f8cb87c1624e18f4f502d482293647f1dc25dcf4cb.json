@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyNxG7U1jm1P1CdmGpPx",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "good morning — hope the coffee is still warm.\n\nit looks like this week is a quiet one on the tracking front: no upcoming health items are flagged right now, and nothing new has surfaced locally for your family's area. that's genuinely okay — not every week needs an action item.\n\nif anything has been nudging at the back of your mind — a check-up that feels overdue, or a class you've been meaning to look into — this calm stretch might be a good moment to send that quick message to the pediatric office or do a little searching. otherwise, enjoy the lighter week."
+      }
+    ],
+    "usage": {
+      "input_tokens": 1449,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 130,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

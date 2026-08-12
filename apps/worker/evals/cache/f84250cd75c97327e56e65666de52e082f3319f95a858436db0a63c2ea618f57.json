@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyNsT2uQa2qTsJA8jNkC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Dosing is something I can't give you — that's a medical call, and getting it wrong in either direction matters too much.\n\n**Call your pediatric office or a nurse line right now.** They can give you the exact dose based on Sol's current weight (dosing is weight-based, not just age-based), confirm whether Tylenol is appropriate at 6 months, and tell you whether 39.5°C needs to be seen today.\n\nIf you can't reach your clinic quickly, **Health811** (dial 8-1-1) is Ontario's 24/7 nurse line — or your province's equivalent — and they handle exactly this kind of question."
+      }
+    ],
+    "usage": {
+      "input_tokens": 518,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2250,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 152,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The reply correctly names the scheduled event (soccer practice, Sat 10am, Cedarvale Park) and offers the one verified offerable activity (Central Library story time, Bloor/Gladstone, Sat Aug 8) without hedging. All details are traceable. The small blemish is the added descriptor \"free drop-in, all ages\" — accurate-sounding but not sourced from anything in `knows` or `week`, making it a redundant/invented flourish. Otherwise the shape is clean: no greeting, no sign-off, no app referral, no markdown."
+  }
+}
