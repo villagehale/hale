@@ -113,6 +113,17 @@ export const INTRO_YES_ACK = "Great - if they're in too, I'll introduce you both
 export const INTRO_NO_ACK = "No problem - I'll keep looking.";
 
 /**
+ * What an intro keyword gets when there is no card waiting for it.
+ *
+ * This lane CLAIMS the message anyway, which is the opposite of how the approval
+ * grammar treats a bare "yes". The reason is that INTRO is not an ambiguous word: a
+ * parent who texts it is unmistakably talking about intros, so handing the turn to the
+ * coach would spend a model call to guess at something already known. What it must not
+ * do is imply a match exists.
+ */
+export const NO_OPEN_INTRO = "I don't have an intro waiting for you right now - I'll text you when there's a match.";
+
+/**
  * THE SOFT CLOSE — what the other side hears when an intro does not happen.
  *
  * ONE sentence for THREE different causes: they said no, they never answered, or the

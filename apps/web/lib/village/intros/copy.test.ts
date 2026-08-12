@@ -9,6 +9,7 @@ import {
   INTRO_NO_ACK,
   INTRO_SOFT_CLOSE,
   INTRO_YES_ACK,
+  NO_OPEN_INTRO,
   activityAnchor,
   coarseCard,
   introEmailBody,
@@ -161,6 +162,7 @@ describe('every outbound SMS body', () => {
     ['INTRO_YES_ACK', INTRO_YES_ACK],
     ['INTRO_NO_ACK', INTRO_NO_ACK],
     ['INTRO_SOFT_CLOSE', INTRO_SOFT_CLOSE],
+    ['NO_OPEN_INTRO', NO_OPEN_INTRO],
     ...FAMILY_STAGES.map(
       (stage): [string, string] => [
         `coarseCard:${stage}`,
