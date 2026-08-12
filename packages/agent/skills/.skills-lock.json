@@ -31,6 +31,10 @@
     "file": "find-activities.md",
     "sha256": "ae7851375ce913f6a66a552922cc1411c4733be83369cf082e0e0f1cc7c166fb"
   },
+  "general-answer.md": {
+    "file": "general-answer.md",
+    "sha256": "037c6c01190f13e5384210bbe465ea3171b79f48857b9a2184301d48352bb8bf"
+  },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
     "sha256": "df50c6656961046aa82068a468d9f1cc6d90d308ca3cdf1cae60da3320e653d9"
