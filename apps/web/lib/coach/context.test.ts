@@ -160,3 +160,93 @@ describe('redactFactsForTeens (rule #1)', () => {
     expect(out).toEqual(input);
   });
 });
+
+/**
+ * The transcript the agent reasons over is bounded (MEM-4).
+ *
+ * One conversation of record per family is the right architecture, but it made
+ * the transcript grow without limit — a product built for ages 0–18 was loading
+ * the family's entire history into every turn, so the coach got slower and
+ * dumber the longer a family stayed. Newest-N verbatim plus one compacted digest
+ * bounds it; the digest NAMES what it dropped rather than silently shrinking the
+ * thread (the same discipline as the agent loop's tool-result truncation notice).
+ */
+describe('compactTranscript (MEM-4)', () => {
+  const turn = (role: 'user' | 'assistant', content: string) => ({ role, content });
+
+  function thread(pairs: number, prefix = 'turn'): Array<{ role: 'user' | 'assistant'; content: string }> {
+    const out: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (let i = 0; i < pairs; i += 1) {
+      out.push(turn('user', `${prefix} question ${i}`));
+      out.push(turn('assistant', `${prefix} answer ${i}`));
+    }
+    return out;
+  }
+
+  it('passes a short thread through untouched, with no digest', () => {
+    const short = thread(3);
+    const out = _internal.compactTranscript(short);
+    expect(out.transcript).toEqual(short);
+    expect(out.transcriptSummary).toBeNull();
+  });
+
+  it('keeps exactly the newest N turns verbatim once the budget is exceeded', () => {
+    const long = thread(40); // 80 turns
+    const out = _internal.compactTranscript(long);
+
+    expect(out.transcript).toHaveLength(_internal.TRANSCRIPT_VERBATIM_TURNS);
+    // The tail that survives is the NEWEST tail, in order — the last turn of the
+    // input must still be the last turn the model sees.
+    expect(out.transcript).toEqual(long.slice(long.length - _internal.TRANSCRIPT_VERBATIM_TURNS));
+    expect(out.transcript[out.transcript.length - 1]).toEqual(turn('assistant', 'turn answer 39'));
+  });
+
+  it('names how many turns were dropped and carries the parent\'s earlier asks', () => {
+    const long = [
+      turn('user', 'we switched Ella to the 2pm nap'),
+      ...thread(30),
+    ];
+    const out = _internal.compactTranscript(long);
+    const summary = out.transcriptSummary;
+    if (!summary) throw new Error('expected a digest for an over-budget thread');
+
+    // The count is the real number of dropped turns, not a vague "some".
+    expect(summary).toContain(String(long.length - _internal.TRANSCRIPT_VERBATIM_TURNS));
+    // The parent's own earlier words survive — that is the continuity the digest buys.
+    expect(summary).toContain('we switched Ella to the 2pm nap');
+    // ...and the model is told this is partial, so it asks instead of asserting.
+    expect(summary).toMatch(/partial/i);
+  });
+
+  it('bounds the digest itself — it does not grow with the thread', () => {
+    const chatty = (pairs: number) =>
+      _internal.compactTranscript(
+        Array.from({ length: pairs * 2 }, (_, i) => turn(i % 2 === 0 ? 'user' : 'assistant', 'x'.repeat(400))),
+      ).transcriptSummary ?? '';
+
+    const hundred = chatty(100);
+    const fiveThousand = chatty(5_000);
+
+    // A digest that scales with history just relocates the unbounded transcript.
+    // 50x the history may only move the length by the digits of the dropped-turn
+    // count; anything per-turn would be orders of magnitude, not a rounding error.
+    expect(fiveThousand.length - hundred.length).toBeLessThan(10);
+    // ~4 chars/token: the whole compacted block stays well inside one turn's budget.
+    expect(fiveThousand.length / 4).toBeLessThanOrEqual(512);
+    // And when the digest's own budget bites, that is said too — never silent.
+    expect(fiveThousand).toMatch(/omitted/i);
+  });
+
+  it('holds the whole thread slice bounded regardless of family age', () => {
+    const decade = _internal.compactTranscript(thread(5_000));
+    const oneYear = _internal.compactTranscript(thread(500));
+
+    // The slice the model sees is a constant number of turns whatever the family's
+    // age — this is the whole point: loyalty must not buy a slower, dumber coach.
+    expect(decade.transcript).toHaveLength(_internal.TRANSCRIPT_VERBATIM_TURNS);
+    expect(oneYear.transcript).toHaveLength(_internal.TRANSCRIPT_VERBATIM_TURNS);
+    // 10x the history, same payload size to within the dropped-count's digits.
+    const grew = JSON.stringify(decade).length - JSON.stringify(oneYear).length;
+    expect(grew).toBeLessThan(10);
+  });
+});

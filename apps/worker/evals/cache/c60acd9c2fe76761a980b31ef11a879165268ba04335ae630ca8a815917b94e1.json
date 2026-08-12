@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyNtWhC5zysA6UyucGk1",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Some withdrawal at this stage is genuinely typical — teenagers are doing real identity work and naturally pull toward peers and privacy. That doesn't mean you ignore it, just that it's usually not a sign something's wrong on its own.\n\nA few things that tend to help:\n\n- **Stay present without pressing.** Side-by-side time (a drive, cooking together, watching something they pick) keeps the door open without the pressure of a face-to-face \"how are you feeling\" talk.\n- **Offer, then back off.** A simple \"I'm here if you want to talk\" lands better than repeated check-ins that can feel like interrogation.\n- **Watch for shifts, not just the withdrawal itself.** The Child Development & Wellbeing framework flags changes in sleep, appetite, or schoolwork as the signals worth paying closer attention to.\n\nIf you're noticing several of those at once — or the withdrawal feels sudden and sharp — it's worth a conversation with their doctor as a starting point."
+      }
+    ],
+    "usage": {
+      "input_tokens": 624,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 2250,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 220,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
