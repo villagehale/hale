@@ -35,11 +35,12 @@ import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
  *      whose hour is spent can still approve, decline, and file a "done". Only the
  *      expensive half is held.
  *
- *   4. IS THIS EVEN OUR JOB?   (VIL-273) The last question before the expensive one,
- *      and the cheapest of the four that costs a model at all. Hale is a chief of staff,
- *      not an event finder and not a search box: "how's the weather" has a right answer
- *      that no coach turn improves, and on live-gate day 1 it cost ~42 seconds of one to
- *      say nothing. The off-domain lane answers those in one fixed line. It sits HERE
+ *   4. IS THIS THE FAMILY'S WEEK, OR THE WORLD?   (VIL-273, re-aimed by boundary v3.)
+ *      The last question before the expensive one, and the cheapest of the four that
+ *      costs a model at all. "How's the weather" has a right answer that no coach turn
+ *      improves, and on live-gate day 1 it cost ~42 seconds of one to say nothing. The
+ *      off-domain lane answers it in two sentences with no context assembled and no
+ *      tools — and answers a symptom with the fixed 811 line instead. It sits HERE
  *      rather than among the handlers because it is not deterministic — it costs a Haiku
  *      call, and a Haiku call must never be what stands between a parent and the word
  *      "yes".
@@ -257,10 +258,11 @@ export async function routeChannelMessage(
     return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
   }
 
-  // GATE 4 — is this even our job. The screen reads the LEDGER body (the same words the
-  // handlers just declined), stamps its verdict on that same row, and answers with a
-  // fixed line — so a deflection costs one Haiku call and no coach turn at all. An
-  // in-domain verdict, including every fail-open one, falls through untouched.
+  // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
+  // words the handlers just declined), stamps its verdict on that same row, and either
+  // answers it briefly or hands over one of the two fixed doors — so an off-domain turn
+  // costs two Haiku calls and no coach turn at all. An in-domain verdict, including
+  // every fail-open one, falls through untouched.
   const verdict = await deps.offDomain.consider({
     familyId: job.family_id,
     channelMessageId: job.channel_message_id,

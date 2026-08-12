@@ -199,3 +199,21 @@ describe('createGeneralAnswer', () => {
     log.mockRestore();
   });
 });
+
+/** The skill says "No links, ever" — this makes it structural rather than requested
+ * (skill-audit doctrine, 2026-08-12): a URL the model composes is a URL it invented,
+ * and the lane's fixed line beats an invented destination every time. */
+describe('link refusal', () => {
+  it('refuses an answer carrying any URL shape', async () => {
+    for (const body of [
+      'Check https://espn.com for the full debate.',
+      'See www.consumerlab.com - they reviewed it.',
+      'It is at http://parks.ca today.',
+    ]) {
+      expect(await createGeneralAnswer(clientReturning({ answer: body })).compose(ASK)).toEqual({
+        status: 'unavailable',
+        reason: 'unsendable',
+      });
+    }
+  });
+});

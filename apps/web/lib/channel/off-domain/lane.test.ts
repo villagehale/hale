@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { PROVIDER_ACCESS_REPLY, SAFETY_REPLY, offDomainReply } from './copy';
+import type { GeneralAnswerFallback, GeneralAnswerOutcome } from './answer';
+import { ANSWER_UNAVAILABLE_REPLY, PROVIDER_ACCESS_REPLY, SAFETY_REPLY } from './copy';
 import {
   type OffDomainPorts,
   type UnmetSignalOutcome,
@@ -10,18 +11,21 @@ import {
 import type { LaneReading, LaneScreenFallback } from './screen';
 
 /**
- * VIL-273 — the lane's decisions, with no model and no database.
+ * VIL-273 / boundary v3 — the lane's decisions, with no model and no database.
  *
  * The screen's QUALITY is not asserted here and cannot be: a faked classifier can only
  * ever confirm that our own fixture came back (rule #8). What it decides is measured in
- * apps/worker/evals/run-inbound-lane-eval.mjs against real cached Claude. What is
- * asserted here is everything AROUND it — which line each lane sends, what the lane is
- * allowed to look up before sending it, and that a failed demand-signal write costs a
- * count rather than a parent's answer.
+ * apps/worker/evals/run-inbound-lane-eval.mjs, and what the general answer says is
+ * measured in run-general-answer-eval.mjs, both against real cached Claude. What is
+ * asserted here is everything AROUND them — which of the three terminals a lane reaches,
+ * what the lane is allowed to look up before sending it, that a composed answer never
+ * costs the founder their demand signal, and that a failed compose still leaves the
+ * parent with a reply.
  */
 
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
+const ANSWER = "Messi, for me - the closest thing to a complete player I've watched.";
 
 function reading(overrides: Partial<LaneReading> = {}): LaneReading {
   return { lane: 'off_domain_general', category: 'weather', fallback: null, ...overrides };
@@ -34,23 +38,29 @@ interface Recorded {
 }
 
 interface Harness extends OffDomainPorts {
-  pendingCalls: number;
+  composeCalls: number;
   recorded: Recorded[];
 }
 
 function ports(
-  overrides: { read?: LaneReading; pending?: number; signal?: UnmetSignalOutcome } = {},
+  overrides: {
+    read?: LaneReading;
+    signal?: UnmetSignalOutcome;
+    answer?: GeneralAnswerOutcome;
+  } = {},
 ): Harness {
   const read = overrides.read ?? reading();
-  const pending = overrides.pending ?? 0;
   const signal = overrides.signal ?? 'recorded';
+  const answer = overrides.answer ?? ({ status: 'composed', reply: ANSWER } as const);
   const harness: Harness = {
-    pendingCalls: 0,
+    composeCalls: 0,
     recorded: [],
     screen: { read: async () => read },
-    pendingApprovals: async () => {
-      harness.pendingCalls += 1;
-      return pending;
+    answer: {
+      compose: async () => {
+        harness.composeCalls += 1;
+        return answer;
+      },
     },
     recordUnmetIntent: async (input) => {
       harness.recorded.push({
@@ -90,48 +100,74 @@ describe('what each lane says', () => {
     expect(PROVIDER_ACCESS_REPLY).not.toMatch(/https?:|\.ca\b|\.com\b/);
   });
 
-  it('answers an off-domain ask with the charm deflect', async () => {
-    const p = ports({ pending: 0 });
+  /**
+   * BOUNDARY V3, the whole point of it. A question about the world is ANSWERED — the
+   * charm deflect that used to stand here read as a product that could not rather than
+   * one that chose not to.
+   */
+  it('answers an off-domain ask with the composed answer, not the deflect', async () => {
+    const p = ports();
 
     const verdict = await consider(p);
 
     expect(verdict).toMatchObject({
       status: 'deflected',
-      reply: offDomainReply({ pendingApprovals: 0 }),
+      reply: ANSWER,
+      replySource: 'composed',
     });
-  });
-
-  it('adds the pending count when the family has one, and only then', async () => {
-    const withWork = await consider(ports({ pending: 2 }));
-    const without = await consider(ports({ pending: 0 }));
-
-    expect(withWork).toMatchObject({ reply: offDomainReply({ pendingApprovals: 2 }) });
-    expect(without).toMatchObject({ reply: offDomainReply({ pendingApprovals: 0 }) });
-    if (withWork.status !== 'deflected' || without.status !== 'deflected') throw new Error('x');
-    expect(withWork.reply.length).toBeGreaterThan(without.reply.length);
+    expect(p.composeCalls).toBe(1);
   });
 
   /**
-   * The structural half of the rule. "and 2 things are waiting on your OK" appended to
-   * an answer about a child's head injury is the worst sentence Hale could send, and the
-   * way to make it impossible is for the fact never to be fetched — not for a template
-   * to decline to print it.
+   * The fallback, and the promise under it (rule #11): a parent always gets SOMETHING.
+   * Each way the composer can fail is carried out by name rather than folded into one
+   * "it didn't work", because a missing key and a provider outage need different humans.
    */
+  it.each([
+    'client_unavailable',
+    'skill_unavailable',
+    'model_failed',
+    'unsendable',
+  ] as GeneralAnswerFallback[])('falls back to the fixed line when the answer %s', async (reason) => {
+    const p = ports({ answer: { status: 'unavailable', reason } });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({
+      status: 'deflected',
+      reply: ANSWER_UNAVAILABLE_REPLY,
+      replySource: reason,
+    });
+  });
+
+  /** The two doors are FIXED copy, and the way to keep them that way is for the composer
+   * never to be woken for them — not for a prompt to be asked nicely to decline. */
   it.each(['safety_critical', 'provider_access'] as const)(
-    'never even reads the approvals queue for a %s ask',
+    'never asks the model to compose a %s answer',
     async (lane) => {
       const p = ports({ read: reading({ lane, category: 'emergency' }) });
 
       await consider(p);
 
-      expect(p.pendingCalls).toBe(0);
+      expect(p.composeCalls).toBe(0);
     },
   );
 
-  it('reads the approvals queue exactly once for a charm deflect', async () => {
-    const p = ports();
-    await consider(p);
-    expect(p.pendingCalls).toBe(1);
+  /**
+   * Skill audit P0 #4. The line that used to stand here appended "2 things are waiting
+   * on your OK in the app" to every deflection — an app-point on the one surface that
+   * must never need one. Neither terminal may reach for it, and the lane no longer has
+   * a reader that could.
+   */
+  it.each([
+    ['composed', { status: 'composed', reply: ANSWER } as const],
+    ['fallback', { status: 'unavailable', reason: 'model_failed' } as const],
+  ])('never points the %s reply at the app', async (_name, answer) => {
+    const verdict = await consider(ports({ answer }));
+
+    if (verdict.status !== 'deflected') throw new Error('x');
+    expect(verdict.reply).not.toMatch(/\bthe app\b/i);
+    expect(verdict.reply).not.toMatch(/waiting on your OK/i);
   });
 });
 
@@ -142,7 +178,7 @@ describe('in-domain is the fall-through', () => {
     const verdict = await consider(p);
 
     expect(verdict).toEqual({ status: 'in_domain', fallback: null });
-    expect(p.pendingCalls).toBe(0);
+    expect(p.composeCalls).toBe(0);
     expect(p.recorded).toEqual([]);
   });
 
@@ -171,7 +207,7 @@ describe('the demand signal', () => {
     ]);
   });
 
-  it('records every deflect, whichever lane it was', async () => {
+  it('records every terminal, whichever lane it was', async () => {
     for (const lane of ['off_domain_general', 'safety_critical', 'provider_access'] as const) {
       const p = ports({ read: reading({ lane, category: 'other' }) });
       await consider(p);
@@ -180,18 +216,36 @@ describe('the demand signal', () => {
   });
 
   /**
+   * THE SIGNAL SURVIVES THE FLIP. An answered general question is still a countable
+   * thing a parent asked Hale for — the bucket now reads "questions parents bring us"
+   * rather than "things we turned down", and the founder's weekly digest is built on
+   * these two columns (loop/health-digest.ts). Composing an answer must not be what
+   * quietly empties it.
+   */
+  it('still records the demand signal when the answer was composed', async () => {
+    const p = ports({ read: reading({ lane: 'off_domain_general', category: 'general-knowledge' }) });
+
+    const verdict = await consider(p);
+
+    expect(verdict).toMatchObject({ replySource: 'composed', signal: 'recorded' });
+    expect(p.recorded).toEqual([
+      { lane: 'off_domain_general', category: 'general-knowledge', channelMessageId: MESSAGE },
+    ]);
+  });
+
+  /**
    * A telemetry row is not worth a parent's answer. The write is best-effort, and its
    * failure comes back NAMED so the founder's weekly count can be read as short by one
    * rather than silently wrong (rule #11).
    */
-  it('still deflects when the signal could not be written, and says so', async () => {
+  it('still answers when the signal could not be written, and says so', async () => {
     const p = ports({ signal: 'not_recorded' });
 
     const verdict = await consider(p);
 
     expect(verdict).toMatchObject({ status: 'deflected', signal: 'not_recorded' });
     if (verdict.status !== 'deflected') throw new Error('x');
-    expect(verdict.reply).toBe(offDomainReply({ pendingApprovals: 0 }));
+    expect(verdict.reply).toBe(ANSWER);
   });
 });
 

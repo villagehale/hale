@@ -209,17 +209,10 @@ function screenClient(): AgentClient {
   return screenAnthropic;
 }
 
-/**
- * VIL-273 — the off-domain lane, with its pending count bound to the SAME query the
- * approval grammar resolves ordinals against. A second count of "what is waiting" could
- * disagree with the list a "YES 1" actually hits; this one cannot.
- */
+/** VIL-273 / boundary v3 — the off-domain lane: the cheap screen, and the composer that
+ * answers whatever it puts in `off_domain_general`. Both run on the same lazy client. */
 function defaultOffDomainLane(database: Database) {
-  const spine = defaultApprovalSpine();
-  return productionOffDomainLane(database, screenClient, async (familyId) => {
-    const pending = await spine.listPending(database, familyId);
-    return pending.length;
-  });
+  return productionOffDomainLane(database, screenClient);
 }
 
 export function channelRouterDeps(database: Database): ChannelRouterDeps {

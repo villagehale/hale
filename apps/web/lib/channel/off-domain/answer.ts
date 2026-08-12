@@ -104,11 +104,16 @@ function unavailable(reason: GeneralAnswerFallback, detail?: string): GeneralAns
  * unsendable in the LOG without splitting the outcome the caller acts on — every one of
  * them means the same thing to the lane.
  */
+/** "No links, ever" (general-answer.md), held structurally: a URL this stage composes
+ * is a URL it invented — there is no tool it could have gotten one from. */
+const LINK_SHAPE = /https?:\/\/|www\./i;
+
 function sendable(raw: string): GeneralAnswerOutcome {
   const flattened = plainText(raw);
   if (flattened === '') return unavailable('unsendable', 'empty');
   if (flattened.length > MAX_ANSWER_CHARS) return unavailable('unsendable', 'over_char_cap');
   if (smsEncoding(flattened) !== 'gsm7') return unavailable('unsendable', 'not_gsm7');
+  if (LINK_SHAPE.test(flattened)) return unavailable('unsendable', 'carries_link');
   return { status: 'composed', reply: flattened };
 }
 
