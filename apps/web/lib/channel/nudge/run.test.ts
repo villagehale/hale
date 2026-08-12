@@ -108,6 +108,8 @@ interface Harness {
   transport: FakeTransport;
   writes: Array<{ table: unknown; payload: Record<string, unknown> }>;
   dedupeKeys: Set<string>;
+  /** MEM-10 · every open-loops promise this sweep tried to close. */
+  closed: Array<{ familyId: string; kind: string; channelMessageId: string | null }>;
 }
 
 function harness(
@@ -127,6 +129,7 @@ function harness(
 ): Harness {
   const writes: Harness['writes'] = [];
   const dedupeKeys = new Set<string>();
+  const closed: Harness['closed'] = [];
   const transport = options.transport ?? new FakeTransport();
 
   const deps: NudgeRunDeps = {
@@ -169,9 +172,20 @@ function harness(
     },
     transport,
     client: null,
+    // MEM-10 · the ledger seam. Recorded rather than executed: the real writer's own
+    // contract is unit-tested in lib/commitments/ledger.test.ts, and what this sweep
+    // owes is that it calls it, once, with the message that made good.
+    fulfillCommitment: async (_db, input) => {
+      closed.push({
+        familyId: input.familyId,
+        kind: input.kind,
+        channelMessageId: input.channelMessageId,
+      });
+      return { status: 'none_open' };
+    },
   };
 
-  return { deps, transport, writes, dedupeKeys };
+  return { deps, transport, writes, dedupeKeys, closed };
 }
 
 function db() {
@@ -395,6 +409,33 @@ describe('runNudgeCron — idempotency', () => {
     const swap = harness({ candidates: [candidate()], weather: WET });
     await runNudgeCron(db(), swap.deps, FRIDAY_10AM);
     expect([...swap.dedupeKeys][0]).toBe('nudge:fam-1:weather_swap:2026-07-27');
+  });
+
+  /**
+   * MEM-10 · this sweep is what makes the intake radar's "your first weekend find lands
+   * in a day or two" true, so a send is what pays that promise off — against the row
+   * that carried it, and never against a compose.
+   */
+  it('closes the first-find promise with the message that kept it', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness({ windows: [win()] });
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    expect(h.closed).toEqual([
+      { familyId: 'fam-1', kind: 'first_find', channelMessageId: 'msg-1' },
+    ]);
+  });
+
+  it('owes nothing new to a family it had nothing to say to', async () => {
+    vi.stubEnv('F14_ENABLED', 'true');
+    const h = harness();
+
+    await runNudgeCron(db(), h.deps, FRIDAY_10AM);
+
+    // A quiet family's promise stays open on purpose: the debt is real until a message
+    // actually lands, and closing it here is exactly the lie the ledger exists to stop.
+    expect(h.closed).toEqual([]);
   });
 });
 

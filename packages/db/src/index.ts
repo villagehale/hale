@@ -31,3 +31,4 @@ export type {
   CivicSystem,
   CivicVenueKind,
 } from './schema/civic.js';
+export type { AgentCommitment, NewAgentCommitment } from './schema/agent-commitments.js';

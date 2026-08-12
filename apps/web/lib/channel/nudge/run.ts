@@ -10,6 +10,7 @@ import {
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { fulfillCommitment } from '~/lib/commitments/ledger';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
@@ -173,6 +174,13 @@ export interface NudgeRunDeps {
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
   recordSend(database: Database, write: NudgeLedgerWrite): Promise<string>;
   audit(database: Database, row: NudgeAuditRow): Promise<void>;
+  /**
+   * MEM-10 · close the open-loops promise this sweep exists to make good on. REQUIRED
+   * for the same reason `transport` is (rule #11): a sweep assembled without it would
+   * text a family and still report Hale as owing them the message it just sent — a debt
+   * that is wrong in the direction that wastes a founder's attention every week.
+   */
+  fulfillCommitment: typeof fulfillCommitment;
   /**
    * The outbound SMS leg — REQUIRED, and that is the point (VIL-262). It was nullable
    * so a caller could decide + compose without sending, and the three P0s this sweep
@@ -419,6 +427,19 @@ async function runForFamily(
       ...(nudge.kind === 'health_checkpoint' ? { checkpointId: nudge.checkpointRef.id } : {}),
     },
   });
+
+  // MEM-10 · this sweep is what makes the intake radar's forward beat true, so a send —
+  // ANY send — is what pays that promise off. Not narrowed to the weekend class on
+  // purpose: what the beat promised a geo-empty family is that Hale would come back with
+  // something real, and a registration date they can act on is more of that, not less.
+  // Closed AFTER the send, against the row that carried it; a family owed nothing gets
+  // the ledger's `none_open`, which is the common outcome and not a failure.
+  await deps.fulfillCommitment(database, {
+    familyId: family.familyId,
+    kind: 'first_find',
+    channelMessageId: messageId,
+    now,
+  });
   return { kind: 'sent' };
 }
 
@@ -544,5 +565,6 @@ export function defaultNudgeRunDeps(): NudgeRunDeps {
     },
     transport: createTwilioTransport(),
     client: voiceClient(),
+    fulfillCommitment,
   };
 }

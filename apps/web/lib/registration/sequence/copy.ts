@@ -95,6 +95,16 @@ export function windowPhrase(shortlist: Shortlist): string {
   return `${townLabel(shortlist.windowRef.municipality)} ${shortlist.cyclePhrase}`;
 }
 
+/**
+ * MEM-10 · whether the heads-up leg's closing line is a PROMISE rather than an
+ * invitation. Exported so the sentence and the open-loops ledger cannot drift apart: an
+ * unapproved household is being ASKED to approve, and Hale owes them nothing until they
+ * do — recording a debt against that wording would report a broken promise nobody made.
+ */
+export function headsUpPromisesPlan(optIn: SequenceOptIn): boolean {
+  return optIn === 'opted_in';
+}
+
 function headsUp(input: LegCopyInput): string {
   const { shortlist } = input;
   const who = whoPhrase(shortlist.fitNotes);
@@ -106,10 +116,9 @@ function headsUp(input: LegCopyInput): string {
   // matcher grants a DOB derived from a spoken age, so asserting the band would be
   // asserting something Hale does not know.
   const hedge = shortlist.ageApproximate ? ' Worth a look if that is still their band.' : '';
-  const cta =
-    input.optIn === 'opted_in'
-      ? ' I will send your plan the evening before.'
-      : ' Open Hale to approve the shortlist and I will run the morning with you.';
+  const cta = headsUpPromisesPlan(input.optIn)
+    ? ' I will send your plan the evening before.'
+    : ' Open Hale to approve the shortlist and I will run the morning with you.';
   return `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, input.timeZone, input.now)} for ${who}.${resident}${hedge}${cta}`;
 }
 

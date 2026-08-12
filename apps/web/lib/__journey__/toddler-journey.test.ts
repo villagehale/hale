@@ -46,6 +46,7 @@ import { draftInlineAction } from '~/lib/coach/inline-action';
 import { findBannedPhrases } from '~/lib/health/framing';
 import { checkpointToldKeyPrefix } from '~/lib/health/told';
 import { matchHealthCheckpoints } from '~/lib/health/match';
+import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { matchRegistrationWindows } from '~/lib/registration/match-registration-windows';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
@@ -603,6 +604,9 @@ async function runToddlerJourney(): Promise<Journey> {
     },
     transport,
     client: null,
+    // MEM-10 · the REAL writer over the same store: a nudge that lands pays off the
+    // intake radar's forward promise, and the journey is where that has to be true.
+    fulfillCommitment,
   };
 
   vi.stubEnv('F14_ENABLED', 'true');
@@ -721,6 +725,10 @@ async function runToddlerJourney(): Promise<Journey> {
       await database.insert(schema.auditLog).values(row as never);
     },
     transport,
+    // MEM-10 · the REAL ledger over the same store: the heads-up leg's "I will send your
+    // plan the evening before" is a promise, and the battle plan is what keeps it.
+    recordCommitment,
+    fulfillCommitment,
   };
 
   const propose = await runRegistrationSequenceCron(fake.db, sequenceDeps, SEQUENCE_AT);

@@ -3,6 +3,7 @@ import { and, count, eq, gte, inArray, isNotNull, lt } from 'drizzle-orm';
 import type { Resend } from 'resend';
 import { founderAddress } from '~/lib/auth/founder-signal';
 import { createResendTransport } from '~/lib/channel/resend-transport';
+import { type CommitmentDebt, aggregateCommitmentDebt } from '~/lib/commitments/ledger';
 import { LOOP_EMAIL_TYPES } from '~/lib/cron/email-compliance';
 import {
   PROVIDER_INCIDENT_ROUTE,
@@ -63,6 +64,12 @@ export interface LoopHealthSummary {
   providerIncidents: ProviderIncidentRow[];
   /** X1 · the F14 intake-funnel scoreboard for the same window. */
   scoreboard: FunnelScoreboard;
+  /**
+   * MEM-10 · what Hale has promised and not yet delivered. A POINT-IN-TIME balance, not
+   * a windowed flow like everything above it: a promise made three weeks ago and still
+   * unkept is exactly what a trailing-7-day count would hide.
+   */
+  commitmentDebt: CommitmentDebt;
   /** VIL-273 · what parents asked for that Hale does not do, bucketed. Any order —
    * the formatter ranks it. */
   unmetIntents: UnmetIntentRow[];
@@ -147,6 +154,12 @@ export async function aggregateLoopHealth(
 
   const scoreboard = await aggregateFunnelScoreboard(database, windowStart, windowEnd);
 
+  // MEM-10 · read as of the window's END rather than over the window, because debt is a
+  // balance. NEVER a send: this sweep's whole job is that the debt is VISIBLE to the
+  // founder, and texting a family "sorry, I still owe you" is a send-policy decision
+  // nobody has made yet.
+  const commitmentDebt = await aggregateCommitmentDebt(database, windowEnd);
+
   return {
     windowStart,
     windowEnd,
@@ -158,6 +171,7 @@ export async function aggregateLoopHealth(
       at: row.at,
     })),
     scoreboard,
+    commitmentDebt,
     // The check constraint makes a half-stamped row unwritable, so a lane implies a
     // category; the coalesce is a type narrowing, not a guess about missing data.
     unmetIntents: unmetRows.map((row) => ({
@@ -195,6 +209,32 @@ function providerHealthLine(incidents: ProviderIncidentRow[]): string {
   return `LLM provider: ${incidents.length} incidents — ${breakdown} (last ${isoDate(last)})`;
 }
 
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/**
+ * MEM-10 · the one line that says whether Hale is keeping its word.
+ *
+ * Counted in FAMILIES, because that is the unit of the harm: one household owed two
+ * things is one household let down, and a promise count alone would make a single
+ * unlucky family read as an outage. The promise count rides along in the parenthesis so
+ * the shape of the debt is still visible.
+ *
+ * Three states, not two. "0 overdue" over an empty ledger and "0 overdue" over nine live
+ * promises are the same number and completely different news — a ledger nothing writes
+ * to is a broken wiring report, and it must not read as a clean week.
+ */
+function openLoopsLine(debt: CommitmentDebt): string {
+  if (debt.openCommitments === 0) {
+    return 'Open loops: no promise is open - nothing has been recorded yet';
+  }
+  if (debt.overdueCommitments === 0) {
+    return `Open loops: none overdue - ${debt.openCommitments} open and still in time`;
+  }
+  return `Open loops: Hale owes ${plural(debt.overdueFamilies, 'family', 'families')} something overdue (${plural(debt.overdueCommitments, 'promise', 'promises')} past due, ${debt.openCommitments} open)`;
+}
+
 /** Plain-text founder digest body. Pure — no DB, no network — so the format is
  * unit-tested against worked summaries. Counts only (rule #1): no family/child/
  * parent identifying detail ever enters this text. */
@@ -204,6 +244,7 @@ export function formatLoopHealthDigest(summary: LoopHealthSummary): string {
     '',
     `Weekly plans composed: ${summary.weekPlansComposed}`,
     `STOPs (loop unsubscribes): ${summary.stopCount}`,
+    openLoopsLine(summary.commitmentDebt),
     providerHealthLine(summary.providerIncidents),
     '',
     ...formatFunnelScoreboard(summary.scoreboard),
