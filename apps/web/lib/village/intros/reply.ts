@@ -269,7 +269,12 @@ async function writeDecision(database: Database, decision: IntroDecision): Promi
 /**
  * A revocation closes every live pairing this family is in.
  *
- * `closed_at` is deliberately LEFT NULL: the other side was asked a question and is
+ * IT ALSO STAMPS THE REVOKER'S OWN SIDE AS 'no'. That is not bookkeeping tidiness: the
+ * sweep decides who is owed a soft close by asking "which asked side did not itself say
+ * no", and a revoker whose side stayed null would be texted "no intro this time"
+ * seconds after being told "done, no intros" — Hale answering its own message.
+ *
+ * `closed_at` is deliberately LEFT NULL: the OTHER side was asked a question and is
  * owed an answer, and the sweep is what sends it. Stamping closed here would make the
  * pairing vanish from the sweep's view with one parent still waiting on a reply.
  */
@@ -278,18 +283,15 @@ async function cancelOpenProposalsFor(
   familyId: string,
   now: Date,
 ): Promise<void> {
+  const open = isNull(schema.villageIntroProposals.closedAt);
   await database
     .update(schema.villageIntroProposals)
-    .set({ status: 'declined', updatedAt: now })
-    .where(
-      and(
-        isNull(schema.villageIntroProposals.closedAt),
-        or(
-          eq(schema.villageIntroProposals.familyAId, familyId),
-          eq(schema.villageIntroProposals.familyBId, familyId),
-        ),
-      ),
-    );
+    .set({ status: 'declined', familyAReply: 'no', familyARepliedAt: now, updatedAt: now })
+    .where(and(open, eq(schema.villageIntroProposals.familyAId, familyId)));
+  await database
+    .update(schema.villageIntroProposals)
+    .set({ status: 'declined', familyBReply: 'no', familyBRepliedAt: now, updatedAt: now })
+    .where(and(open, eq(schema.villageIntroProposals.familyBId, familyId)));
 }
 
 export function defaultVillageIntroReplyDeps(): VillageIntroReplyDeps {

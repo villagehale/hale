@@ -48,7 +48,7 @@ import { isWithinQuietHours } from '~/lib/loop/prefs';
  * registration window is a request for a specific, finite ladder of messages about that
  * window. That single fact is what earns it both exemptions below.
  */
-export type ProactiveSendKind = 'nudge' | 'registration_sequence';
+export type ProactiveSendKind = 'nudge' | 'registration_sequence' | 'village_intro';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -83,6 +83,13 @@ export const PROACTIVE_CAP: Record<
 > = {
   nudge: { max: 1, windowHours: 24 * 7 },
   registration_sequence: null,
+  // Village intros v1. The intro loop is bounded by its own state machine — one ask
+  // ever, one card per side per pairing, one close — so in a healthy week a household
+  // sees at most three. The counter is not that bound restated; it is the rail under a
+  // MATCHER that goes wrong. A pairing bug is the one failure here that scales: it
+  // would text every family in an FSA about each other, unprompted, about other
+  // people's children. Three a week is the most that bug can cost before it stops.
+  village_intro: { max: 3, windowHours: 24 * 7 },
 };
 
 /**
@@ -101,6 +108,9 @@ export const PROACTIVE_CAP: Record<
 const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   nudge: false,
   registration_sequence: true,
+  // Nothing about an introduction is worthless an hour later. It waits seven days for
+  // an answer; it can wait until 08:00.
+  village_intro: false,
 };
 
 /**
@@ -113,9 +123,13 @@ export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
 
 /** The `channel_messages.category` each proactive class is counted under. A class of
  * its own per kind, so one class's volume can never consume another's budget. */
-const PROACTIVE_CATEGORY: Record<ProactiveSendKind, 'nudge' | 'registration_sequence'> = {
+const PROACTIVE_CATEGORY: Record<
+  ProactiveSendKind,
+  'nudge' | 'registration_sequence' | 'village_intro'
+> = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
+  village_intro: 'village_intro',
 };
 
 export interface OutboundGatePorts {
