@@ -48,7 +48,7 @@ describe('toSmsReply', () => {
   it('strips markdown the phone would render literally', () => {
     const raw = '**Two swims** this week:\n\n- Mon 4:30\n- Thu 5:15\n\nWhich one?';
 
-    const out = toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
+    const out = toSmsReply(raw, { children: [], now: NOW });
 
     expect(out).toBe('Two swims this week: Mon 4:30 Thu 5:15 Which one?');
   });
@@ -56,7 +56,7 @@ describe('toSmsReply', () => {
   it('transliterates the characters that would flip the message to UCS-2', () => {
     const raw = 'Move swim to Tue 4:30 — it’s free then. YES to confirm.';
 
-    const out = toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
+    const out = toSmsReply(raw, { children: [], now: NOW });
 
     expect(out).toBe("Move swim to Tue 4:30 - it's free then. YES to confirm.");
     expect(smsSegments(out)).toBe(1);
@@ -65,7 +65,6 @@ describe('toSmsReply', () => {
   it('redacts a teen name before the body ever reaches the carrier', () => {
     const out = toSmsReply('Nora has practice Thursday.', {
       children: [TEEN],
-      appLink: LINK,
       now: NOW,
     });
 
@@ -75,7 +74,7 @@ describe('toSmsReply', () => {
   it('leaves a reply already inside the budget untouched', () => {
     const raw = 'Move swim to Tue 4:30? YES to confirm.';
 
-    expect(toSmsReply(raw, { children: [], appLink: LINK, now: NOW })).toBe(raw);
+    expect(toSmsReply(raw, { children: [], now: NOW })).toBe(raw);
   });
 
   /**
@@ -94,7 +93,7 @@ describe('toSmsReply', () => {
       'I can draft any of those changes for you to approve whenever you are ready.',
     ].join(' ');
 
-    const out = toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
+    const out = toSmsReply(raw, { children: [], now: NOW });
 
     expect(smsSegments(raw)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
     expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
@@ -108,7 +107,7 @@ describe('toSmsReply', () => {
   it('trims a single unbroken over-budget sentence on a word boundary', () => {
     const raw = `${'swim '.repeat(80)}now`;
 
-    const out = toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
+    const out = toSmsReply(raw, { children: [], now: NOW });
 
     expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
     expect(out).not.toContain(LINK);
@@ -120,15 +119,11 @@ describe('toSmsReply', () => {
    * send. The router reads the throw as a failed turn and answers with its own template
    * — the same outcome an empty body gets, and the right one. */
   it('refuses a body with no prefix inside the budget', () => {
-    expect(() => toSmsReply('x'.repeat(400), { children: [], appLink: LINK, now: NOW })).toThrow(
-      /budget/i,
-    );
+    expect(() => toSmsReply('x'.repeat(400), { children: [], now: NOW })).toThrow(/budget/i);
   });
 
   it('refuses to emit an empty body', () => {
-    expect(() => toSmsReply('   \n  ', { children: [], appLink: LINK, now: NOW })).toThrow(
-      /empty/i,
-    );
+    expect(() => toSmsReply('   \n  ', { children: [], now: NOW })).toThrow(/empty/i);
   });
 });
 
@@ -146,7 +141,7 @@ describe('toSmsReply', () => {
  * be the reviewed sentence, whole, including the 911 the improvisation drops.
  */
 describe('the fixed safety reply is the only siren that leaves the coach', () => {
-  const send = (raw: string) => toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
+  const send = (raw: string) => toSmsReply(raw, { children: [], now: NOW });
 
   it.each([
     ['a referral naming only the health line', 'Sounds rough - call 811 if it gets worse.'],
