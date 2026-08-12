@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { and, asc, eq, gte, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { dedupeActive } from '~/lib/channel/ledger';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
