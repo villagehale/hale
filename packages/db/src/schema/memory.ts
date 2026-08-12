@@ -43,7 +43,7 @@ export const familyMemoryFacts = pgTable(
       .where(sql`${table.validUntil} IS NULL`),
     childIdx: index('memory_facts_child_idx').on(table.childId),
     // NOT DECLARED HERE, deliberately: `memory_facts_one_live_per_key_idx` (migration
-    // 0082) is a partial UNIQUE index on (family_id, child_id, fact_type, fact_key)
+    // 0084) is a partial UNIQUE index on (family_id, child_id, fact_type, fact_key)
     // WHERE valid_until IS NULL, with NULLS NOT DISTINCT so family-wide facts are
     // covered too. Drizzle's index builder cannot express NULLS NOT DISTINCT (only
     // `unique()` constraints can, and those cannot be partial), so declaring it as a
