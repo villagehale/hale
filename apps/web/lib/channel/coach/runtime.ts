@@ -145,10 +145,18 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       });
 
       const now = ports.now();
+      // NO app link in the model's context, deliberately. The thread does the work and
+      // the app is the receipts room a parent never needs, so a reply that sends them
+      // there hands the job back to the person who texted to be rid of it — which is
+      // what happened on launch day ("You can also add anything manually in the app:
+      // https://…"). The skill says not to; a skill is a request. Withholding the URL
+      // is the guarantee: the model composes no link because it was handed none, and
+      // its standing rule is that a URL it was not given is one it invented. The
+      // deterministic post-processor still gets `appLink` (see toSmsReply below), where
+      // trimming an over-budget reply is a mechanical decision, not the model's.
       const context = {
         ...familyContext,
         channel: 'sms' as const,
-        appLink: ports.appLink(),
         nowIso: now.toISOString(),
       };
 

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "child reports injury (head trauma) with acute symptom (crying) happening now"
+  },
+  "latencyMs": 1164
+}

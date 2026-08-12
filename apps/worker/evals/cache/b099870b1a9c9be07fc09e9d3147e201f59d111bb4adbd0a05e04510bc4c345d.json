@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The reply correctly drafts the cancel and asks for YES to confirm, names the right event with time and venue, and offers the only verified offerable activity with name/place/day. The small blemish is the appended caveat about under-fives — that detail isn't present in the offerable data Hale was given, so it's an invented qualification that slightly undermines the offer, though it doesn't rise to a score-2 fabrication since it's framed as a heads-up rather than a hard fact."
+  }
+}

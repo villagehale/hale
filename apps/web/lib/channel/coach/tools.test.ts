@@ -264,7 +264,7 @@ describe('propose_calendar_add', () => {
 });
 
 describe('the per-turn draft cap', () => {
-  it(`refuses the change after ${MAX_DRAFTS_PER_TURN} and says where the rest lives`, async () => {
+  it(`refuses the change after ${MAX_DRAFTS_PER_TURN} and tells the model to carry the rest`, async () => {
     const h = harness([
       scheduleEvent(),
       scheduleEvent({ eventId: THU_SWIM }),
@@ -273,9 +273,17 @@ describe('the per-turn draft cap', () => {
     await h.call('propose_calendar_cancel', { eventId: MON_SWIM });
     await h.call('propose_calendar_cancel', { eventId: THU_SWIM });
 
-    await expect(
-      h.call('propose_calendar_add', { title: 'Third thing', date: '2026-08-05', time: '10:00' }),
-    ).rejects.toThrow(/at most two changes/i);
+    const refusal = await h
+      .call('propose_calendar_add', { title: 'Third thing', date: '2026-08-05', time: '10:00' })
+      .then(() => null)
+      .catch((err: unknown) => (err as Error).message);
+
+    expect(refusal).toMatch(/at most two changes/i);
+    // The overflow is Hale's to keep, not the parent's to go and finish. A refusal
+    // that pointed at the app would re-teach the exact move the skill just dropped —
+    // the tool error is a prompt the model reads mid-turn.
+    expect(refusal).toMatch(/next message/i);
+    expect(refusal).not.toMatch(/\bapp\b/i);
     expect(h.port.drafts).toHaveLength(MAX_DRAFTS_PER_TURN);
   });
 

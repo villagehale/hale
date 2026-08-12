@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent seeking to access a specialist provider (pediatric dentist)"
+  },
+  "latencyMs": 1116
+}

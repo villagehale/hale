@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "schedule availability check for the family's week"
+  },
+  "latencyMs": 1148
+}

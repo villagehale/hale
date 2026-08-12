@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Hale correctly identifies the ambiguity — Sam asked to \"move\" Thursday swim to 17h45 (5:45pm), but the swim is currently at 5:15pm, so 5:45pm would be the destination time. The question is legitimate. However, the reply asks two questions in one message (\"Did you mean 5:45pm as the new time, or were you trying to reference the existing 5:15pm slot?\") when one clean question would do. It also restates the current time twice (5:15pm / 5:45pm / 5:15pm), adding redundancy. The shape is off enough to land at a 3."
+  }
+}

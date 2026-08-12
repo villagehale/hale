@@ -9,6 +9,7 @@ import {
   type FamilyStage,
 } from '@hale/types';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { formatCalendarDayLabel } from '~/lib/format/datetime';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
@@ -72,23 +73,52 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
+/** One activity Hale may actually put in front of a parent. Every field is non-null
+ * by construction — an offer a parent cannot turn up to is not an offer. */
+interface OfferableActivity {
+  title: string;
+  kind: string;
+  summary: string;
+  venue: string;
+  when: string;
+}
+
 /**
  * The Village read, as ONE definition shared by every surface that offers it — Ask in
  * the app and Hale over text (VIL-221 · C2). "Improvements compound across surfaces"
  * is only true if they are the same tool; two copies of this handler would be two
  * teen-redaction filters that can drift, which is the failure rule #1 cannot afford.
+ *
+ * WHAT A CANDIDATE HAS TO HAVE TO BE OFFERED. A row reaches the model as an offer only
+ * when its `venue_name` and `event_date` are both present — the two facts a parent needs
+ * to actually go. Everything else is a COUNT.
+ *
+ * This is structural on purpose. Handing the model a title and a blurb and asking it to
+ * police its own confidence produced exactly the failure it sounds like: on launch day
+ * Hale surfaced a real find and admitted, in the same breath, that it could not confirm
+ * the location or the time. That is not honesty, it is the work handed back — and it was
+ * unavoidable, because the model was shown a candidate it had no way to describe and its
+ * own rules (never name a place or a time no tool returned) then forced the hedge. A
+ * candidate it is never shown cannot be hedged about.
+ *
+ * The count exists so the silence is not a lie either: "two more still being checked" is
+ * a true, forward-looking thing to say, and it is all there is to say. A teen-attributed
+ * row is in NEITHER bucket — redaction leaves it with no venue and no date, so it can
+ * never be offered, and counting it would have Hale promise to come back about a find it
+ * must never mention (rule #1).
  */
 export function searchVillageTool(database: Database): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
-      "Surface local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. Teen-attributed candidates are redacted to category only (rule #1).",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1).",
     inputSchema: z.object({ query: z.string().optional() }),
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
       const teenChildIds = await teenChildIdsForFamily(database, ctx.familyId);
       const timeZone = await readFamilyTimezone(database, ctx.familyId);
+      const now = new Date();
 
       const currentRunRows = await database
         .select()
@@ -103,17 +133,34 @@ export function searchVillageTool(database: Database): RegisteredTool {
         .limit(MEMORY_RESULT_LIMIT);
 
       const needle = input.query?.toLowerCase();
-      const candidates = visibleCandidates(currentRunRows, new Date(), timeZone)
+      const views = visibleCandidates(currentRunRows, now, timeZone)
         .map((row) => toVillageCandidateView(row, isTeenAttributed(row.childId, teenChildIds)))
         .filter(
           (c) =>
             !needle ||
             c.title.toLowerCase().includes(needle) ||
             c.summary.toLowerCase().includes(needle),
-        )
-        .map((c) => ({ title: c.title, kind: c.kind, summary: c.summary }));
+        );
 
-      return { candidates };
+      const candidates: OfferableActivity[] = [];
+      let inVerification = 0;
+      for (const view of views) {
+        if (view.teenAttributed) continue;
+        const venue = (view.venueName ?? '').trim();
+        if (venue === '' || view.eventDate === null) {
+          inVerification += 1;
+          continue;
+        }
+        candidates.push({
+          title: view.title,
+          kind: view.kind,
+          summary: view.summary,
+          venue,
+          when: formatCalendarDayLabel(view.eventDate, now),
+        });
+      }
+
+      return { candidates, inVerification };
     },
   });
 }

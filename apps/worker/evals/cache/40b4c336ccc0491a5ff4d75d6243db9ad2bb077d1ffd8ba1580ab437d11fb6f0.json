@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking for family activity suggestions given weather constraint"
+  },
+  "latencyMs": 1000
+}

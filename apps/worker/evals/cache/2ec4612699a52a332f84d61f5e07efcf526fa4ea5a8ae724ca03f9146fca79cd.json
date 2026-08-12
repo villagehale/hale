@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "mental-health",
+    "reason": "reported suicidal statement in a child, requires immediate intervention"
+  },
+  "latencyMs": 1085
+}

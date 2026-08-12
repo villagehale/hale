@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "parent is trying to find and access a pediatrician after relocating"
+  },
+  "latencyMs": 967
+}

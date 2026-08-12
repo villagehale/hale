@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "shopping-or-deals",
+    "reason": "asking for current shopping deals on consumer electronics, unrelated to family schedule or activities"
+  },
+  "latencyMs": 1664
+}

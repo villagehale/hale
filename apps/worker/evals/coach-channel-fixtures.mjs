@@ -94,18 +94,68 @@ export const FIXTURE_EVENTS = [
   },
 ];
 
-/** What `search_village` returns — already teen-redacted upstream, as in production. */
-export const FIXTURE_VILLAGE = [
-  {
-    title: 'Central Library story time',
-    kind: 'drop_in',
-    summary: 'Free indoor drop-in for under-fives, Saturday mornings.',
-  },
-  {
-    title: 'Riverdale Farm visit',
-    kind: 'outing',
-    summary: 'Free outdoor farm, open daily.',
-  },
+/**
+ * What `search_village` returns, in the production shape (apps/web/lib/coach/tools.ts):
+ * `candidates` are OFFERABLE — every one carries a checked `venue` and `when`, which is
+ * what makes it a thing a parent can turn up to — and `inVerification` is a COUNT of
+ * finds whose place or day has not held up yet. The unverified ones are deliberately
+ * NAMELESS here, because that is the guarantee: a candidate the model is never shown is
+ * a candidate it cannot hedge about.
+ *
+ * Already teen-redacted upstream, as in production.
+ */
+export const FIXTURE_VILLAGE = {
+  candidates: [
+    {
+      title: 'Central Library story time',
+      kind: 'drop_in',
+      // All ages on purpose. An under-fives blurb would be a bad FIT for this
+      // family's 5- and 8-year-old, and a reply that declines it on those grounds
+      // is Hale reasoning correctly — which would make the offer fixtures grade
+      // age-matching rather than the offer boundary they exist for.
+      summary: 'Free indoor drop-in, all ages welcome.',
+      venue: 'Bloor/Gladstone branch',
+      when: 'Sat, Aug 8',
+    },
+    {
+      title: 'Riverdale Farm visit',
+      kind: 'outing',
+      summary: 'Free outdoor farm, open daily.',
+      venue: 'Riverdale Farm',
+      when: 'Sun, Aug 9',
+    },
+  ],
+  inVerification: 0,
+};
+
+/** One verified find and one still being checked — the mixed case. The offer must be
+ * the verified one, whole, with no mention of the other and no doubt attached. */
+export const FIXTURE_VILLAGE_MIXED = {
+  candidates: [FIXTURE_VILLAGE.candidates[0]],
+  inVerification: 1,
+};
+
+/** Nothing has checked out yet. There is no activity to name — only what Hale is
+ * doing about it. This is the founder's launch-day text, reproduced as a fixture. */
+export const FIXTURE_VILLAGE_UNVERIFIED = { candidates: [], inVerification: 2 };
+
+/**
+ * The hedge that IS the defect: an activity handed to a parent with the doubt still
+ * attached. Every one of these is a sentence that sounds like honesty and functions as
+ * the work returned — "here is a maybe, you go and check it". A find Hale cannot stand
+ * behind is not news; what Hale is DOING about it is.
+ */
+const HEDGES = [
+  "couldn't verify",
+  'could not verify',
+  "can't verify",
+  'cannot verify',
+  'unable to verify',
+  'not able to verify',
+  "couldn't confirm",
+  'could not confirm',
+  'unverified',
+  'unconfirmed',
 ];
 
 /**
@@ -122,6 +172,9 @@ export const FIXTURE_VILLAGE = [
  *   mustMention    tokens the reply must carry, derived from the fixture's own facts
  *   forbidden      tokens that would mean a leak or an invention
  *   maxDrafts      the per-turn cognitive cap, where the text asks for more
+ *
+ * `village` overrides what `search_village` returns for that one text, so the offer
+ * boundary can be exercised in both directions against the same week.
  */
 export const COACH_CHANNEL_FIXTURES = [
   {
@@ -186,12 +239,12 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'multi-intent',
     text: 'cancel thursday swim and find something indoors for saturday',
-    note: 'Two jobs, one text, one reply. The change needs a yes; the search does not.',
+    note: 'Two jobs, one text, one reply. The change needs a yes; the search does not. The offer is a VERIFIED candidate, so it must arrive whole - the place is what turns "there is a story time" into somewhere a parent can go.',
     expect: {
       mustCall: ['lookup_week', 'search_village'],
       mustDraft: ['calendar_cancel'],
       onlyTargets: ['evt-swim-thu'],
-      mustMention: ['story time'],
+      mustMention: ['story time', 'bloor'],
     },
   },
   {
@@ -226,12 +279,42 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'four-changes-in-one-text',
     text: 'cancel monday swim, cancel thursday swim, cancel soccer and cancel the appointment on wednesday',
-    note: 'More changes than a parent can reconcile against a text they have scrolled past.',
+    note: "More changes than a parent can reconcile against a text they have scrolled past. The cap is Hale's problem, not theirs: the first two are drafted and the REST IS CARRIED. Sending them to the app for the leftovers - which this fixture used to require - is the burden handed back to the person who texted to be rid of it.",
     expect: {
       mustCall: ['lookup_week'],
       maxDrafts: 2,
       onlyTargets: ['evt-swim-mon', 'evt-swim-thu', 'evt-soccer-sat', 'evt-dentist-wed'],
-      mustMention: ['app.villagehale.com'],
+      // The word YES is what C1's fast-path matches; "I'll" is the carry-forward — Hale
+      // keeping the outstanding two rather than parking them somewhere.
+      mustMention: ['yes', "i'll"],
+    },
+  },
+  {
+    id: 'village-one-verified-one-not',
+    text: 'anything on for the kids saturday?',
+    note: 'One find has checked out and one has not. The verified one is offered WHOLE - name, place, day - and the other does not exist as far as the parent is concerned. Hale keeps it.',
+    village: FIXTURE_VILLAGE_MIXED,
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      mustMention: ['story time', 'bloor'],
+      forbidden: HEDGES,
+    },
+  },
+  {
+    id: 'village-nothing-verified-yet',
+    text: 'find something for the kids to do saturday',
+    note: "THE launch-day fixture (founder: 'you find a legit activity but not able to verify the location and time'). Both finds are still being checked, so Hale has no name, no place and no day for either. The only honest sentence is forward-looking: what Hale is doing, and that it will come back. Not a hedge, and not a venue invented to fill the gap.",
+    village: FIXTURE_VILLAGE_UNVERIFIED,
+    expect: {
+      mustCall: ['search_village'],
+      mustNotDraft: true,
+      // A first-person future commitment: Hale is carrying the check, not reporting a
+      // dead end. The skill asks for contractions, so this is the form it comes in.
+      mustMention: ["i'll"],
+      // The hedges, plus the two names from the DEFAULT village — recalling a candidate
+      // this turn was not handed is the same invention as making one up.
+      forbidden: [...HEDGES, 'story time', 'riverdale'],
     },
   },
 ];

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The reply correctly surfaces soccer practice and the verified offerable activity. However, it has a few shape issues: it names Milo and Ada but not the teenager (whose name is redacted, so omitting them is fine, but the schedule item is for \"the kids\" generally so this is minor), it adds unrequested detail (\"free drop-in, all ages\") that Hale doesn't actually know from the data — this is invented detail — and it ends with an implicit invitation (\"if you want something extra\") which functions like a soft sign-off/prompt. The invented \"free drop-in, all ages\" detail is a real problem (score should reflect that), but the core answer is structurally sound. It's two sentences where one tighter one would do, and the extra detail is fabricated."
+  }
+}

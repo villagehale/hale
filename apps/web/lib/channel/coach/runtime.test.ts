@@ -104,7 +104,7 @@ describe('channelCoachRuntime', () => {
     ]);
   });
 
-  it('hands the loop the channel context: the surface, the app link, the family clock', async () => {
+  it('hands the loop the channel context: the surface and the family clock', async () => {
     const seen: unknown[] = [];
     const p = ports({
       runAgent: async (args) => {
@@ -118,11 +118,35 @@ describe('channelCoachRuntime', () => {
     expect(seen[0]).toEqual(
       expect.objectContaining({
         channel: 'sms',
-        appLink: LINK,
         nowIso: NOW.toISOString(),
         question: 'move swim to tuesday',
       }),
     );
+  });
+
+  /**
+   * The thread does the work; the app is the receipts room a parent never NEEDS. A
+   * model told not to send a link is a model that sometimes sends one anyway — it
+   * did, on launch day ("You can also add anything manually in the app: ..."). So
+   * the link is not withheld by instruction, it is withheld by construction: the
+   * loop is handed no URL, and the skill's standing rule is that a URL it did not
+   * receive is a URL it invented. `appLink` still reaches the POST-processor, where
+   * an over-budget reply is trimmed deterministically (reply.ts) rather than by the
+   * model's discretion.
+   */
+  it('hands the loop NO app link — a URL the model was never given cannot be sent', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const p = ports({
+      runAgent: async (args) => {
+        seen.push(args.context as Record<string, unknown>);
+        return answering('ok.')(args);
+      },
+    });
+
+    await channelCoachRuntime(p).respond(turn());
+
+    expect(seen[0]).not.toHaveProperty('appLink');
+    expect(JSON.stringify(seen[0])).not.toContain(LINK);
   });
 
   it("redacts a 13+ child's name out of the reply before returning it (rule #1)", async () => {

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment that reads as answer to unseen question; missing prior context"
+  },
+  "latencyMs": 1008
+}
