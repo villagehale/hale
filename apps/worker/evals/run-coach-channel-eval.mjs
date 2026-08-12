@@ -101,14 +101,6 @@ const MAX_REPLY_SEGMENTS = 2;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
 /**
- * Mirrors appBaseUrl(). The loop is NO LONGER handed this — the runtime stopped putting
- * it in the model's context, so a URL in a reply is one the model composed. It survives
- * here only as the thing the app-pointing gate below looks for, and as the tail the
- * deterministic post-processor uses when it has to trim (reply.ts fitToBudget).
- */
-const APP_LINK = 'https://app.villagehale.com';
-
-/**
  * THE APP IS NOT AN ANSWER (founder, launch day: "we should never point to the app in
  * the chat"). Hale texted a parent "You can also add anything manually in the app:
  * https://app.villagehale.com" — a chief of staff resigning halfway through the job.
@@ -121,11 +113,11 @@ const APP_LINK = 'https://app.villagehale.com';
  * Deliberately blunt: the shape that matters is the OFFLOAD, and every phrasing of it
  * names the place. `\bapp\b` does not match "appointment", so the week's dentist is safe.
  *
- * It grades the POST-PROCESSED reply, like every other gate here — so if a model answer
- * ever runs over the segment budget, the deterministic trim tail ("More in the app: …",
- * reply.ts fitToBudget) fails this too. That is correct and deliberate: the parent would
- * genuinely have been sent to the app, and the tail is the last place this boundary is
- * not yet held. Nothing in the current corpus is over budget, so it does not fire today.
+ * It grades the POST-PROCESSED reply, like every other gate here. That used to be the
+ * last hole in the boundary: an over-budget answer was trimmed and handed a "More in the
+ * app: …" tail, so the app-point fired precisely when the answer was too long to send.
+ * The tail is gone (skill audit P0 #4) and the trim now just stops at a sentence, which
+ * is what the replicated fitToBudget below does too.
  */
 const APP_POINTING = [
   [/app\.villagehale\.com/i, 'sends the parent a link to the app'],
@@ -212,6 +204,12 @@ function smsSegments(text) {
 // The eval grades what a PARENT would receive, not what the model returned — the
 // post-processor is part of the answer, and a gate applied before it would pass a reply
 // that is trimmed into nonsense on the way out.
+//
+// ONE branch of the real thing is deliberately not replicated: a reply reaching for 811
+// or 911 is swapped for the fixed SAFETY_REPLY (skill audit P0 #3), and copying that
+// constant here would give it a second definition — the exact thing the fix removes. No
+// fixture in this corpus is a symptom, so nothing exercises it; the coaching fixtures
+// that will (audit #2) should assert the fixed line rather than re-declare it.
 
 const GSM7_SUBSTITUTIONS = [
   [/[‘’‛]/g, "'"],
@@ -257,18 +255,17 @@ function redactTeenNames(text, children, now) {
 
 function fitToBudget(body, max) {
   if (smsSegments(body) <= max) return body;
-  const tail = `More in the app: ${APP_LINK}`;
   const parts = body.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
-    const candidate = `${parts.slice(0, count).join(' ')} ${tail}`;
+    const candidate = parts.slice(0, count).join(' ');
     if (smsSegments(candidate) <= max) return candidate;
   }
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
-    const candidate = `${words.slice(0, count).join(' ')}... ${tail}`;
+    const candidate = `${words.slice(0, count).join(' ')}...`;
     if (smsSegments(candidate) <= max) return candidate;
   }
-  return tail;
+  return null;
 }
 
 function toSmsReply(raw) {
@@ -541,8 +538,8 @@ function villageFor(fixture) {
 }
 
 function groundedHay(fixture, toolResults) {
-  // APP_LINK is NOT grounding any more. The model is handed no URL, so a link in a
-  // reply is an invention and the fabrication gate should say so.
+  // The app URL is NOT grounding. The model is handed no URL, so a link in a reply is
+  // an invention and the fabrication gate should say so.
   const parts = [fixture.text, FIXTURE_WEEK_SUMMARY, JSON.stringify(toolResults)];
   // The injected context grounds too: loadAgentContext hands the model every NON-teen
   // child by name (a teenager arrives as stage only), so naming one of them is recall,

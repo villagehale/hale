@@ -13,18 +13,26 @@ import { MAX_LISTED_APPROVALS } from './fast-path';
  * says (rule #1).
  */
 
-/** The app link every honest dead-end points at. */
+/**
+ * The link for the three lines that answer "where do my records live" — the doctrine's
+ * one stated exception to never pointing a parent at the app (skill audit P0 #4). Every
+ * other line here carries what to do next in the thread instead.
+ */
 function appLink(): string {
   return appBaseUrl();
 }
 
 /**
  * The failure-honesty template for a turn that broke having done NOTHING. Two promises:
- * that nothing changed, and where to go instead. Never silence, never a fabricated
- * success (F14 voice rule 5).
+ * that nothing changed, and that trying again is worth it. Never silence, never a
+ * fabricated success (F14 voice rule 5).
+ *
+ * It used to close with "or use the app", which is the failed turn handed back to the
+ * parent to redo by hand. What broke was Hale's end, so what they are owed is Hale
+ * trying again — not a second surface to learn on the worst possible message.
  */
 export function failureReply(): string {
-  return `Something went wrong on my end - nothing was changed. Try again or use the app: ${appLink()}`;
+  return 'Something went wrong on my end - nothing was changed. Try me again in a minute.';
 }
 
 /**
@@ -42,7 +50,7 @@ export function failureReply(): string {
  */
 export function partialFailureReply(draftCount: number): string {
   const noun = draftCount === 1 ? '1 change' : `${draftCount} changes`;
-  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or check the app: ${appLink()}`;
+  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or NO to drop it.`;
 }
 
 /**
@@ -108,13 +116,18 @@ export function outOfRangeReply(pendingCount: number): string {
  * order here IS the order `resolveApproval` resolves against; they are built from the
  * same array in the same call, which is what keeps "YES 2" pointing at the row the
  * parent actually read.
+ *
+ * The overflow is disclosed and points nowhere (skill audit P0 #4). "In the app" was
+ * the wrong destination twice over: the grammar refuses an ordinal past
+ * {@link MAX_LISTED_APPROVALS} (fast-path.ts), so those rows are unreachable by text —
+ * but the list is re-read every turn, so answering the three in front of them is what
+ * brings the next three up. The thread does get there; it just gets there in order.
  */
 export function whichOneReply(actionTypes: string[]): string {
   const shown = actionTypes.slice(0, MAX_LISTED_APPROVALS);
   const lines = shown.map((type, i) => `${i + 1}. ${actionTypeLabel(type)}`);
   const overflow = actionTypes.length - shown.length;
-  const tail =
-    overflow > 0 ? ` (+${overflow} more in the app: ${appLink()})` : '';
+  const tail = overflow > 0 ? ` (+${overflow} more after these)` : '';
   return `Which one? ${lines.join(' ')} - reply YES 1 or NO 1.${tail}`;
 }
 

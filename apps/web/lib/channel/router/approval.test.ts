@@ -173,8 +173,9 @@ describe('resolveApproval — more than one pending action', () => {
       expect(outcome.reply).toContain(`${n}.`);
     }
     expect(outcome.reply).not.toContain(`${MAX_LISTED_APPROVALS + 1}.`);
-    // The overflow is disclosed, never hidden.
-    expect(outcome.reply).toMatch(/more in the app/i);
+    // The overflow is disclosed, never hidden — and it now points at the next turn of
+    // this thread rather than at the app (skill audit P0 #4).
+    expect(outcome.reply).toMatch(/\+5 more after these/i);
   });
 });
 

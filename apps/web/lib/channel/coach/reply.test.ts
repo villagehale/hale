@@ -79,12 +79,13 @@ describe('toSmsReply', () => {
   });
 
   /**
-   * The trim drops whole sentences from the END and hands the parent the app instead
-   * of a body cut mid-word. What it must never do is exceed the budget it exists to
-   * enforce — a "trimmed" reply that is still three segments would be a bug that costs
-   * money silently.
+   * The trim drops whole sentences from the END and stops there. It used to append
+   * "More in the app: <url>", which fired precisely when the answer was too long to
+   * send — the app-point on the message that mattered most (skill audit P0 #4). What
+   * survives is the FIRST sentence, which is where the skill puts the answer, and what
+   * the trim must never do is exceed the budget it exists to enforce.
    */
-  it('trims an over-budget reply to whole sentences plus the app link', () => {
+  it('trims an over-budget reply to whole sentences, and points nowhere', () => {
     const raw = [
       'Swim is on Tuesday at four thirty and Thursday at five fifteen this week.',
       'The Thursday one is at the east pool rather than the usual west pool.',
@@ -97,7 +98,8 @@ describe('toSmsReply', () => {
 
     expect(smsSegments(raw)).toBeGreaterThan(MAX_REPLY_SEGMENTS);
     expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(out).toContain(LINK);
+    expect(out).not.toContain(LINK);
+    expect(out).not.toMatch(/\bthe app\b/i);
     expect(out.startsWith('Swim is on Tuesday')).toBe(true);
     // Whole sentences only — the trim never lands mid-word.
     expect(out).not.toMatch(/\w\.\.\.\s/);
@@ -109,8 +111,18 @@ describe('toSmsReply', () => {
     const out = toSmsReply(raw, { children: [], appLink: LINK, now: NOW });
 
     expect(smsSegments(out)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
-    expect(out).toContain(LINK);
+    expect(out).not.toContain(LINK);
+    expect(out.endsWith('...')).toBe(true);
     expect(out).not.toMatch(/swi\b/);
+  });
+
+  /** No prefix of a single 300-character token fits, so there is nothing honest left to
+   * send. The router reads the throw as a failed turn and answers with its own template
+   * — the same outcome an empty body gets, and the right one. */
+  it('refuses a body with no prefix inside the budget', () => {
+    expect(() => toSmsReply('x'.repeat(400), { children: [], appLink: LINK, now: NOW })).toThrow(
+      /budget/i,
+    );
   });
 
   it('refuses to emit an empty body', () => {
