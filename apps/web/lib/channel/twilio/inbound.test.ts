@@ -517,6 +517,71 @@ describe('handoff to C1', () => {
     expect(h.fake.rows(schema.channelMessages)).toHaveLength(1);
     expect(h.jobs).toHaveLength(1);
   });
+
+  /**
+   * The hand-off marker exists so that "have we seen this message" and "was it handed to
+   * C1" stop being the same question answered by the same row. Before it, a parent's
+   * "yes, book it" whose enqueue failed after the ledger row committed was swallowed
+   * forever: Twilio's retry found the row, said 'duplicate', answered 200, and the audit
+   * trail asserted the message had been received AND handled.
+   */
+  it('marks the row handed off once the job is really enqueued', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    await routeTwilioInbound(h.deps, inbound({ body: 'move swimming' }), 0);
+
+    const [row] = h.fake.rows(schema.channelMessages);
+    expect(row?.handedOffAt).toEqual(NOW);
+  });
+
+  it('leaves the row UNMARKED when the enqueue fails, so the text is still owed a reply', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+    h.deps.enqueue = async () => {
+      throw new Error('pool exhausted');
+    };
+
+    await expect(
+      routeTwilioInbound(h.deps, inbound({ body: 'yes, book it' }), 0),
+    ).rejects.toThrow('pool exhausted');
+
+    const [row] = h.fake.rows(schema.channelMessages);
+    expect(row).toBeDefined();
+    // The row is the durable record of the parent's words — it stays. What must NOT be
+    // written is the claim that C1 has it, which is the only thing standing between a
+    // failed enqueue and a permanently swallowed approval.
+    expect(row?.handedOffAt ?? null).toBeNull();
+  });
+
+  /**
+   * The P2 race. Twilio resends when the handler exceeds its 15s budget, and the resend
+   * can land while attempt #1 is still executing. Select-then-insert let both attempts
+   * pass the duplicate guard: two ledger rows for one MessageSid, two `sms_reply_received`
+   * audit rows, two jobs, and C1 answering one text twice. The unique index makes the
+   * INSERT itself the claim — exactly one request can win it.
+   */
+  it('double-delivery of one MessageSid produces one row, one audit row and one job', async () => {
+    const h = harness();
+    enrol(h.fake);
+    closeIntake(h.fake);
+
+    const outcomes = await Promise.all([
+      routeTwilioInbound(h.deps, inbound({ body: 'yes, book it' }), 0),
+      routeTwilioInbound(h.deps, inbound({ body: 'yes, book it' }), 0),
+    ]);
+
+    expect(outcomes.filter((o) => o === 'handed_off')).toHaveLength(1);
+    expect(outcomes.filter((o) => o === 'duplicate')).toHaveLength(1);
+    expect(h.fake.rows(schema.channelMessages)).toHaveLength(1);
+    expect(h.jobs).toHaveLength(1);
+    const replyAudits = h.fake.writes.filter(
+      (w) => w.table === schema.auditLog && w.payload.actionTaken === 'sms_reply_received',
+    );
+    expect(replyAudits).toHaveLength(1);
+  });
 });
 
 describe('privacy (rule #1)', () => {
