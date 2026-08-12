@@ -1,0 +1,29 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxfMQ5SeU4SiJDraidhX",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it — I've saved that for Noah so I'll always have it in mind.\n\nA few things worth keeping current as he moves through the preschool years:\n\n- **Tell every new setting** — his preschool, any activity leaders, playdate parents. A written allergy action plan (from his allergist or pediatrician) makes handoffs much cleaner than a verbal explanation.\n- **Two EpiPens, two locations** — one with Noah's bag, one kept at his school or regular care setting, if the facility allows it.\n- **Practice the drill with Noah** — at 4.5 he can start learning \"if I feel funny after eating, I tell a grown-up right away.\" Simple words, repeated often.\n\nHis allergist is the right person to confirm whether he's due for a follow-up skin test or any dosing review — that's worth asking at his next visit."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5750,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 201,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

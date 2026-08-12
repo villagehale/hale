@@ -20,6 +20,7 @@
     "eval:classifier": "node evals/run-eval.mjs --cached-only",
     "eval:drafter": "node evals/run-drafter-eval.mjs --cached-only",
     "eval:memory": "node evals/run-memory-eval.mjs --cached-only",
+    "eval:memory-writeback": "node evals/run-memory-writeback-eval.mjs --cached-only",
     "eval:agents": "node evals/run-agent-eval.mjs --cached-only",
     "eval:week-summary": "node evals/run-agent-eval.mjs --cached-only --suite=week-summary",
     "eval:reviewer": "node evals/run-reviewer-eval.mjs --cached-only",

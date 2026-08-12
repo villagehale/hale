@@ -58,6 +58,9 @@ jobs:
       - name: Memory inferencer eval (cached-only)
         run: pnpm --filter @hale/worker eval:memory
 
+      - name: Memory writeback eval (cached-only)
+        run: pnpm --filter @hale/worker eval:memory-writeback
+
       - name: Reviewer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reviewer
 

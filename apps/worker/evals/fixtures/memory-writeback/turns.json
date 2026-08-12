@@ -1,0 +1,32 @@
+[
+  {
+    "id": "naptime-moved",
+    "familyId": "aaaaaaa1-0000-4000-8000-000000000001",
+    "familyName": "Writeback Family A",
+    "children": [{ "id": "ccccccc1-0000-4000-8000-000000000001", "name": "Ella", "ageMonths": 30 }],
+    "turnAt": "2026-03-04T15:20:00.000Z",
+    "statement": "Just so you know, Ella's naptime moved to 1pm — she was going down at noon but that stopped working.",
+    "followUp": "What time does Ella nap?",
+    "mustRecall": ["1pm"]
+  },
+  {
+    "id": "peanut-allergy",
+    "familyId": "aaaaaaa1-0000-4000-8000-000000000002",
+    "familyName": "Writeback Family B",
+    "children": [{ "id": "ccccccc1-0000-4000-8000-000000000002", "name": "Noah", "ageMonths": 54 }],
+    "turnAt": "2026-03-05T09:00:00.000Z",
+    "statement": "Noah has a peanut allergy — we carry an EpiPen everywhere.",
+    "followUp": "Any snack ideas for daycare?",
+    "mustRecall": ["peanut"]
+  },
+  {
+    "id": "weekend-only",
+    "familyId": "aaaaaaa1-0000-4000-8000-000000000003",
+    "familyName": "Writeback Family C",
+    "children": [{ "id": "ccccccc1-0000-4000-8000-000000000003", "name": "Mia", "ageMonths": 42 }],
+    "turnAt": "2026-03-06T18:30:00.000Z",
+    "statement": "We can only do weekend activities — both of us work weekdays until 6.",
+    "followUp": "What should we sign Mia up for this spring?",
+    "mustRecall": ["weekend"]
+  }
+]

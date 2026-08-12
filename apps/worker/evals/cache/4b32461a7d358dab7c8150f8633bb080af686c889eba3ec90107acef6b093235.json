@@ -1,0 +1,45 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxbqgnqaDU5YmzVFA39E",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01EVAeT7FhuTniuE7m3Pg2h9",
+        "name": "save_memory",
+        "input": {
+          "factType": "routine",
+          "factKey": "ella_naptime",
+          "factValue": {
+            "childId": "8aa5dfc4-5ff4-4770-8529-056b38f0bac1",
+            "childName": "Ella",
+            "routine": "naptime",
+            "time": "1pm",
+            "note": "Moved from noon — noon stopped working"
+          },
+          "confidence": 1
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5569,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 176,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

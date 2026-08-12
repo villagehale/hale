@@ -83,11 +83,21 @@ export interface SeededFamily {
   parentUserId: string;
 }
 
-/** A family with one primary parent — the minimum any memory read needs. */
-export async function seedFamily(database: Database, displayName = 'Test Family'): Promise<SeededFamily> {
+/**
+ * A family with one primary parent — the minimum any memory read needs.
+ *
+ * `id` is worth pinning when the row's uuid reaches something content-addressed: an
+ * eval that caches real model responses keys on the assembled context, and a random
+ * family id makes every run a cache miss.
+ */
+export async function seedFamily(
+  database: Database,
+  displayName = 'Test Family',
+  id?: string,
+): Promise<SeededFamily> {
   const [family] = await database
     .insert(schema.families)
-    .values({ displayName, provinceOrState: 'ON' })
+    .values({ ...(id ? { id } : {}), displayName, provinceOrState: 'ON' })
     .returning({ id: schema.families.id });
   if (!family) throw new Error('seedFamily: families insert returned no row');
 
@@ -110,12 +120,13 @@ export async function seedChild(
   familyId: string,
   name: string,
   ageMonths: number,
+  id?: string,
 ): Promise<string> {
   const dob = new Date();
   dob.setMonth(dob.getMonth() - ageMonths);
   const [child] = await database
     .insert(schema.children)
-    .values({ familyId, name, dateOfBirth: dob.toISOString().slice(0, 10) })
+    .values({ ...(id ? { id } : {}), familyId, name, dateOfBirth: dob.toISOString().slice(0, 10) })
     .returning({ id: schema.children.id });
   if (!child) throw new Error('seedChild: children insert returned no row');
   return child.id;

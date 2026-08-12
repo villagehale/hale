@@ -1,0 +1,29 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxbsVRXYkVeG4Yd5KHNp",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it — weekends only, I'll remember that for Mia going forward.\n\nWe don't have any local activities on file for your area yet, which is likely because your location hasn't been set. Once you add your city in Settings, I can search for weekend toddler classes, drop-in programs, and playgroups near you and filter them to days that actually work for your family."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5857,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 88,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxbrW4Cb9hrBV28BX2vf",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Got it — I've saved that for Noah so I'll always have it in mind.\n\nA few things worth keeping on your radar at his age:\n\n- **Talk to his preschool** (if you haven't already) about their anaphylaxis protocol — who holds the EpiPen, who's trained to use it, and what the action plan looks like.\n- **Teach Noah a simple script** now: \"I can't eat that, I have an allergy.\" Four-and-a-half is a great age to start practising it so it becomes automatic.\n- **Check expiry dates** on your EpiPens every few months — easy to lose track of.\n\nHis allergist can also confirm whether he's due for any updated testing at this age, so that's worth asking at the next visit."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5764,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 181,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

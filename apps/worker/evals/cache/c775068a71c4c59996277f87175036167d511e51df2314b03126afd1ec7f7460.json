@@ -1,0 +1,42 @@
+{
+  "response": {
+    "model": "claude-sonnet-4-6",
+    "id": "msg_011CdxeBQdXwrTaX52e1uFPH",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01C31eoNmVeGKZHc7RSqPoCi",
+        "name": "save_memory",
+        "input": {
+          "factType": "routine",
+          "factKey": "ella_naptime",
+          "factValue": {
+            "note": "Ella's nap moved to 1pm. Noon stopped working.",
+            "childId": "ccccccc1-0000-4000-8000-000000000001"
+          },
+          "confidence": 1
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 5557,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 155,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}
