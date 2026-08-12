@@ -170,6 +170,13 @@ describe('the shipped verified list', () => {
       oakville: 'oakville.ca',
       burlington: 'burlington.ca',
       halton_hills: 'haltonhills.ca',
+      brampton: 'brampton.ca',
+      caledon: 'caledon.ca',
+      ajax: 'ajax.ca',
+      pickering: 'pickering.ca',
+      whitby: 'whitby.ca',
+      oshawa: 'oshawa.ca',
+      aurora: 'aurora.ca',
     };
     for (const seed of REGISTRATION_WINDOWS) {
       expect(new URL(seed.sourceUrl).hostname).toContain(HOSTS[seed.municipality]);

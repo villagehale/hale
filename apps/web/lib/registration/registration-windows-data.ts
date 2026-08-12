@@ -67,6 +67,25 @@ export interface RegistrationWindowSeed {
 const VERIFIED_AT = '2026-07-30T00:00:00-04:00';
 /** The Mississauga rows were re-read against a better source on this day (VIL-261). */
 const MISSISSAUGA_VERIFIED_AT = '2026-08-02T00:00:00-04:00';
+/** The eight-municipality coverage sweep (2026-08-11): every row below carrying this
+ * date was researched and then adversarially re-fetched against its source the same
+ * day, per the M1 discipline. */
+const SWEEP_VERIFIED_AT = '2026-08-11T00:00:00-04:00';
+
+const BRAMPTON_REGISTERED =
+  'https://www.brampton.ca/EN/residents/Recreation/Pages/Registered-Programs.aspx';
+const CALEDON_PROGRAMS = 'https://www.caledon.ca/en/living-here/recreation-programs.aspx';
+const HALTON_HILLS_PROGRAMS = 'https://www.haltonhills.ca/Play/Recreation/Programs';
+const AJAX_PROGRAMS =
+  'https://ajax.ca/explore/parks-recreation/sports-recreation/recreation-programs/';
+const PICKERING_REGISTRATION =
+  'https://www.pickering.ca/parks-recreation-culture/recreation-programs/program-registration/';
+const WHITBY_REGISTRATION =
+  'https://www.whitby.ca/explore-and-enjoy/parks-and-recreation/register-for-a-recreation-program/';
+const OSHAWA_PROGRAMS =
+  'https://www.oshawa.ca/explore-play/recreation/activeoshawa-registered-programs/';
+const AURORA_GUIDE =
+  'https://www.aurora.ca/recreation-arts-and-culture/recreation-programs-and-drop-in-activities/program-guide/';
 
 const TORONTO_ARC =
   'https://www.toronto.ca/explore-enjoy/parks-recreation/program-activities/camps-after-school/after-school-recreation-care/';
@@ -374,4 +393,314 @@ export const REGISTRATION_WINDOWS: readonly RegistrationWindowSeed[] = [
   // publishes no seasonal date table; nothing for Fall 2026 onward exists to record.
   // Its standing policy (7-day delay for non-taxpayers, +20% fee) is a rule without a
   // date, and a rule alone cannot make a window.
+  // ── Brampton ─────────────────────────────────────────────────────────────────
+  // Brampton splits swim/skate 16 days after general rec, and its Winter Break
+  // Camps register inside the FALL window — a parent waiting for a "winter" date
+  // misses them. Pages print weekdays but no year; 2026 confirmed by weekday math
+  // (Mon Aug 24 / Wed Sep 9 exist only in 2026) plus the live page banner.
+  {
+    municipality: 'brampton',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-24T07:00:00-04:00',
+    openAt: '2026-09-07T07:00:00-04:00',
+    residentPriorityDays: 14,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: BRAMPTON_REGISTERED,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'General Interest, Sports and STEAM programs plus Brampton Sports League. Residents Monday August 24 at 7 a.m.; non-residents Monday September 7 at 7 a.m. Source prints weekdays but no year — 2026 confirmed by weekday math and the live banner.',
+    publishedWeekdays: { residentOpenAt: 'Monday', openAt: 'Monday' },
+  },
+  {
+    municipality: 'brampton',
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026 (Learn to Swim and Learn to Skate)',
+    previewAt: null,
+    residentOpenAt: '2026-09-09T07:00:00-04:00',
+    openAt: '2026-09-21T07:00:00-04:00',
+    residentPriorityDays: 12,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: BRAMPTON_REGISTERED,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Aquatics and skating register on their OWN dates, 16 days after general rec: residents Wednesday September 9 at 7 a.m., non-residents Monday September 21 at 7 a.m.',
+    publishedWeekdays: { residentOpenAt: 'Wednesday', openAt: 'Monday' },
+  },
+  {
+    municipality: 'brampton',
+    programDomain: 'camp',
+    cycleLabel: 'Winter Break Camps December 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-24T07:00:00-04:00',
+    openAt: '2026-09-07T07:00:00-04:00',
+    residentPriorityDays: 14,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: BRAMPTON_REGISTERED,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'December winter-break camps register in the FALL window (residents August 24, non-residents September 7) — seeded as its own row so the radar fires in August, not December.',
+    publishedWeekdays: { residentOpenAt: 'Monday', openAt: 'Monday' },
+  },
+
+  // ── Caledon ──────────────────────────────────────────────────────────────────
+  {
+    municipality: 'caledon',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: '2026-08-12T07:00:00-04:00',
+    residentOpenAt: '2026-08-19T07:00:00-04:00',
+    openAt: '2026-08-26T07:00:00-04:00',
+    residentPriorityDays: 7,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: CALEDON_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'One blanket window for all registered seasonal programs, three stages: online catalogue viewable Wednesday August 12 at 7 a.m. (browse-only), residents Wednesday August 19 at 7 a.m., non-residents Wednesday August 26 at 7 a.m. Page carries "dates are subject to change" — the weekly verify sweep is the guard.',
+    publishedWeekdays: { previewAt: 'Wednesday', residentOpenAt: 'Wednesday', openAt: 'Wednesday' },
+  },
+
+  // ── Halton Hills ─────────────────────────────────────────────────────────────
+  // The gap the founder personally hit on live-gate day one (L7G, 2026-08-11):
+  // dates were unpublished on 2026-07-30, published by 2026-08-11.
+  {
+    municipality: 'halton_hills',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-09-01T07:00:00-04:00',
+    openAt: '2026-09-08T07:00:00-04:00',
+    residentPriorityDays: 7,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: HALTON_HILLS_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'One opening for all rec programs (fall swim, fitness, children\'s): taxpayers Tuesday September 1 at 7 a.m. Only the taxpayer date is printed; non-taxpayer open is the published "delayed 7 days" rule — September 8 is rule-derived with the time carried from the taxpayer open, and non-taxpayers pay a 20% surcharge.',
+    publishedWeekdays: { residentOpenAt: 'Tuesday' },
+  },
+
+  // ── Ajax ─────────────────────────────────────────────────────────────────────
+  // Aquatics opens BEFORE general rec (two distinct resident alarms), and the
+  // Active Ajax portal warns account activation "can take 24 business hours" —
+  // any prep message must say: create the account well before the 7 a.m. open.
+  {
+    municipality: 'ajax',
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-18T07:00:00-04:00',
+    openAt: '2026-08-26T07:00:00-04:00',
+    residentPriorityDays: 8,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: AJAX_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Aquatics: residents Tuesday August 18 at 7 a.m., non-residents Wednesday August 26. Active Ajax account activation can take 24 business hours — parents need the account BEFORE the open.',
+    publishedWeekdays: { residentOpenAt: 'Tuesday', openAt: 'Wednesday' },
+  },
+  {
+    municipality: 'ajax',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-20T07:00:00-04:00',
+    openAt: '2026-08-26T07:00:00-04:00',
+    residentPriorityDays: 6,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: AJAX_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'All other rec programs: residents Thursday August 20 at 7 a.m., non-residents Wednesday August 26. Same portal caveat as aquatics: account activation can take 24 business hours.',
+    publishedWeekdays: { residentOpenAt: 'Thursday', openAt: 'Wednesday' },
+  },
+
+  // ── Pickering ────────────────────────────────────────────────────────────────
+  // Pickering INVERTS its neighbours: aquatics registers a week AFTER general rec
+  // (Ajax/Whitby/Aurora open aquatics first) — no shared mental model across
+  // cities, which is exactly why the radar exists. Non-resident lines print a
+  // date but no time — start-of-local-day per the dataset convention.
+  {
+    municipality: 'pickering',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-20T07:00:00-04:00',
+    openAt: '2026-08-27T00:00:00-04:00',
+    residentPriorityDays: 7,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: PICKERING_REGISTRATION,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Fitness and Leisure programs: residents Thursday August 20 at 7 a.m.; non-residents Thursday August 27 — date printed with no time, recorded as start of the local day.',
+    publishedWeekdays: { residentOpenAt: 'Thursday', openAt: 'Thursday' },
+  },
+  {
+    municipality: 'pickering',
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-27T07:00:00-04:00',
+    openAt: '2026-09-03T00:00:00-04:00',
+    residentPriorityDays: 7,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: PICKERING_REGISTRATION,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Aquatics registers a week AFTER general rec: residents Thursday August 27 at 7 a.m.; non-residents Thursday September 3 — date printed with no time, recorded as start of the local day.',
+    publishedWeekdays: { residentOpenAt: 'Thursday', openAt: 'Thursday' },
+  },
+
+  // ── Whitby ───────────────────────────────────────────────────────────────────
+  // Whitby opens at 9 a.m., not the 7 a.m. most of the GTA uses.
+  {
+    municipality: 'whitby',
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-18T09:00:00-04:00',
+    openAt: '2026-08-26T09:00:00-04:00',
+    residentPriorityDays: 8,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: WHITBY_REGISTRATION,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'All aquatics programs: residents Tuesday August 18 at 9 a.m., non-residents Wednesday August 26 at 9 a.m.',
+    publishedWeekdays: { residentOpenAt: 'Tuesday', openAt: 'Wednesday' },
+  },
+  {
+    municipality: 'whitby',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-20T09:00:00-04:00',
+    openAt: '2026-08-26T09:00:00-04:00',
+    residentPriorityDays: 6,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: WHITBY_REGISTRATION,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'General (non-aquatics) rec programs: residents Thursday August 20 at 9 a.m., non-residents Wednesday August 26 at 9 a.m.',
+    publishedWeekdays: { residentOpenAt: 'Thursday', openAt: 'Wednesday' },
+  },
+
+  // ── Oshawa ───────────────────────────────────────────────────────────────────
+  // No resident/non-resident split at all — one open for everyone. The PRACTICAL
+  // action time is 8 a.m., when the virtual waiting room opens, an hour before
+  // the nominal 9 a.m. — a "be ready at 9" reminder would be an hour late.
+  // Fall section prints no year; 2026 read from the live page's own context on
+  // the fetch date, flagged here as an inference.
+  {
+    municipality: 'oshawa',
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: null,
+    openAt: '2026-08-18T09:00:00-04:00',
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: OSHAWA_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Swimming registers Tuesday August 18 at 9 a.m., one open for all (no resident priority). Virtual waiting room opens at 8 a.m. — the practical be-ready time. Year not printed; 2026 inferred from live-page context on 2026-08-11.',
+    publishedWeekdays: { openAt: 'Tuesday' },
+  },
+  {
+    municipality: 'oshawa',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: null,
+    openAt: '2026-08-20T09:00:00-04:00',
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: OSHAWA_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'General rec programs register Thursday August 20 at 9 a.m., one open for all. Virtual waiting room opens at 8 a.m. Year not printed; 2026 inferred from live-page context on 2026-08-11.',
+    publishedWeekdays: { openAt: 'Thursday' },
+  },
+  {
+    municipality: 'oshawa',
+    programDomain: 'camp',
+    cycleLabel: 'Holiday Camp (winter break) — registers in the Fall 2026 window',
+    previewAt: null,
+    residentOpenAt: null,
+    openAt: '2026-08-20T09:00:00-04:00',
+    residentPriorityDays: null,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: OSHAWA_PROGRAMS,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Holiday Camp registers with the general fall open (Thursday August 20 at 9 a.m.) — seeded as its own row so the radar fires in August, not December.',
+    publishedWeekdays: { openAt: 'Thursday' },
+  },
+
+  // ── Aurora ───────────────────────────────────────────────────────────────────
+  // Aurora opens at 6 a.m. — the earliest clock time in the GTA dataset; a
+  // generic "7 a.m." assumption would be an hour late. The general-rec resident
+  // open (Aug 10) had already passed on the verification date; the row stays for
+  // the still-upcoming non-resident open and the cycle's source of record.
+  {
+    municipality: 'aurora',
+    programDomain: 'rec_program',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-10T06:00:00-04:00',
+    openAt: '2026-08-17T06:00:00-04:00',
+    residentPriorityDays: 7,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: AURORA_GUIDE,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'General registered rec programs: residents Monday August 10 at 6 a.m., non-residents Monday August 17 at 6 a.m.',
+    publishedWeekdays: { residentOpenAt: 'Monday', openAt: 'Monday' },
+  },
+  {
+    municipality: 'aurora',
+    programDomain: 'swim',
+    cycleLabel: 'Fall 2026',
+    previewAt: null,
+    residentOpenAt: '2026-08-12T06:00:00-04:00',
+    openAt: '2026-08-19T06:00:00-04:00',
+    residentPriorityDays: 7,
+    waitlistResponseHours: null,
+    ageMinMonths: null,
+    ageMaxMonths: null,
+    sourceUrl: AURORA_GUIDE,
+    verifiedAt: SWEEP_VERIFIED_AT,
+    notes:
+      'Aquatics / Learn to Swim: residents Wednesday August 12 at 6 a.m., non-residents Wednesday August 19 at 6 a.m.',
+    publishedWeekdays: { residentOpenAt: 'Wednesday', openAt: 'Wednesday' },
+  },
 ];
