@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "child reporting a sustained high fever (39°C) for three days — a physical symptom requiring immediate medical assessment"
+  },
+  "latencyMs": 1152
+}

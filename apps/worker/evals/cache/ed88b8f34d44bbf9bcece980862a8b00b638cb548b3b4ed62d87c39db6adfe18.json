@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "off_domain_general",
+    "category": "traffic-or-transit",
+    "reason": "asking about current traffic conditions on a specific highway"
+  },
+  "latencyMs": 1049
+}

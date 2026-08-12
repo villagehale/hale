@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "Hale correctly identifies the Thursday swim and checks for Friday conflicts, but then asks which child the lesson is for — information that was never on the schedule and isn't needed to draft the move. The schedule just shows \"Swim lesson\" with no child attached, so the question is invented friction. Worse, Hale says it *will* draft the move but then doesn't — drafted is empty and no YES prompt is given. That combination (stalling on an unnecessary question instead of drafting) means the job isn't done, and the shape is off."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "fragment or follow-up to unseen conversation; parent appears to be replying to something; missing context makes it unclassifiable, so defaults to in_domain"
+  },
+  "latencyMs": 1708
+}

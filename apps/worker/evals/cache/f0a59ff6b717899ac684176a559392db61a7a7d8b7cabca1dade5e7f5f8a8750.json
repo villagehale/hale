@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "doctor-access",
+    "reason": "Parent is trying to get a doctor, not asking a medical question"
+  },
+  "latencyMs": 1058
+}

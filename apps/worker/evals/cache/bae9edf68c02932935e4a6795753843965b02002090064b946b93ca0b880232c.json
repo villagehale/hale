@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "request to find a place for the family to do an activity"
+  },
+  "latencyMs": 1023
+}

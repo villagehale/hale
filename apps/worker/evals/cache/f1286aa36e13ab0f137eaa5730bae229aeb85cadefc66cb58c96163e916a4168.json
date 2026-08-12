@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "safety_critical",
+    "category": "medical-symptom",
+    "reason": "reports a physical symptom (rash) happening now"
+  },
+  "latencyMs": 1061
+}

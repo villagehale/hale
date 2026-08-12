@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "provider_access",
+    "category": "specialist-access",
+    "reason": "parent is trying to book an appointment with a named specialist (speech therapist)"
+  },
+  "latencyMs": 1651
+}

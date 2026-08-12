@@ -136,6 +136,24 @@ export function formatCalendarDate(iso: string | Date, now: Date = new Date()): 
   }).format(date);
 }
 
+/**
+ * `Sat, Jul 11` for a bare CALENDAR date — the weekday first, because a parent
+ * being offered somewhere to turn up plans against the DAY and would otherwise
+ * have to look the date up. UTC for the same reason {@link formatCalendarDate}
+ * is: a bare day has no instant, and rendering it west of UTC would name the
+ * weekday before.
+ */
+export function formatCalendarDayLabel(iso: string | Date, now: Date = new Date()): string {
+  const date = new Date(iso);
+  return new Intl.DateTimeFormat(LOCALE, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: isOtherYear(date, 'UTC', now) ? 'numeric' : undefined,
+    timeZone: 'UTC',
+  }).format(date);
+}
+
 /** The parts of the page-corner long-date stamp, computed in the family's zone so
  * a parent at 11pm ET never sees the server's (UTC) "tomorrow". Lower-cased to the
  * surface's typographic style by the caller. */

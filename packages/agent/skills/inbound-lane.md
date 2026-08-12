@@ -86,6 +86,20 @@ answer is a phone number rather than a chatbot. A symptom in a child or adult
 "is this rash normal"), a medication or dosing question, an emergency, self-harm
 or suicide, abuse, a child who cannot be found, a mental-health crisis.
 
+THE CLEAVAGE — STATE vs GUIDANCE. `safety_critical` fires on a message that
+REPORTS A STATE: someone has a symptom, an injury, a crisis, right now. It never
+fires on a message that ASKS FOR GUIDANCE about normal raising-kids territory —
+"when should he start solid food", "my son still co-sleeps, how do I get him
+sleeping alone", "how do I stop the 2am wakeups", "is it time to potty train".
+Those are PARENTING-COACHING questions and they are `in_domain`: the coach
+answers them with the family's own context and its framework guidance, the way
+a chief of staff for a family is supposed to. Routing a solids question to a
+911 line is the exact failure this paragraph exists to prevent (live miss,
+2026-08-11). How/when-should + development/routine = in_domain. Symptom/injury/
+dose/crisis reported as happening = safety_critical. When one message carries
+both ("he won't sleep AND he's been feverish for days"), the reported state
+wins.
+
 `medical-symptom` for a physical symptom or a dosing question. `mental-health`
 for self-harm, suicide, or a psychiatric crisis. `child-safety` for abuse or a
 missing child. `emergency` when something is happening right now and help is
@@ -125,9 +139,13 @@ only when the text is unmistakably that thing on its own words. In particular:
   the half that is Hale's and say nothing about the rest.
 - If it could be a place to take the kids, it is `in_domain`.
 
-The one exception to defaulting is safety. Between `safety_critical` and
-anything else, choose `safety_critical`: a wrongly-deflected symptom costs one
-unnecessary mention of 811, and a missed one puts a model in the middle of a
-child's injury. Do not weigh those against each other.
+The one exception to defaulting is safety — but ONLY on its own trigger.
+Between `safety_critical` and anything else, when a message REPORTS A STATE
+(symptom, injury, dose, crisis), choose `safety_critical`: a wrongly-deflected
+symptom costs one unnecessary mention of 811, and a missed one puts a model in
+the middle of a child's injury. Do not weigh those against each other. But a
+GUIDANCE question about normal development is not a tie to break — it is
+`in_domain`, full stop, and deflecting it to a phone number is the
+answered-with-a-deflection failure named at the top of this section.
 
 Never produce non-JSON output.

@@ -15,6 +15,11 @@
 //   returned. Over SMS there is nothing around the sentence to correct it, and the
 //   parent acts on it.
 //
+//   APP-POINTING (hard fail). A reply that sends the parent to the app to do, add,
+//   check or finish something. The thread is the product; the app is a receipts room a
+//   parent never needs, so this is the job handed back to the person who texted to be
+//   rid of it. Corpus-wide, because it is a boundary and not a preference.
+//
 //   DESTRUCTIVE-ON-AMBIGUOUS (hard fail). A cancel drafted against "swim" when two
 //   swims exist. Guessing right half the time is not a feature.
 //
@@ -45,11 +50,12 @@
 //   node evals/run-coach-channel-eval.mjs --cached-only                  # CI: replay only
 //   ... --show                                                           # print each reply
 //
-// Calibrated BOTH directions: the real cached model clears every gate (11/11, mean
-// voice 4.45); the --broken stand-in — an agent that cancels the first swim it finds,
-// invents a venue and a lesson, names the teenager's appointment, drafts four changes
-// and reports held drafts as done — fails on every fixture, with 11 fabrications, the
-// ambiguity gate, the chit-chat gate, the two-draft cap and the rule-#4 tense check.
+// Calibrated BOTH directions: the real cached model clears every gate; the --broken
+// stand-in — an agent that cancels the first swim it finds, invents a venue and a
+// lesson, names the teenager's appointment, drafts four changes, reports held drafts as
+// done, hedges about a find it could not verify and sends the parent to the app — fails
+// on every fixture, with fabrications on all of them, the ambiguity gate, the chit-chat
+// gate, the two-draft cap, the rule-#4 tense check and the app-pointing gate.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,8 +96,37 @@ const MAX_TOKENS = 400;
 const MAX_REPLY_SEGMENTS = 2;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
-/** Mirrors appBaseUrl() — the only URL the skill is ever handed. */
+/**
+ * Mirrors appBaseUrl(). The loop is NO LONGER handed this — the runtime stopped putting
+ * it in the model's context, so a URL in a reply is one the model composed. It survives
+ * here only as the thing the app-pointing gate below looks for, and as the tail the
+ * deterministic post-processor uses when it has to trim (reply.ts fitToBudget).
+ */
 const APP_LINK = 'https://app.villagehale.com';
+
+/**
+ * THE APP IS NOT AN ANSWER (founder, launch day: "we should never point to the app in
+ * the chat"). Hale texted a parent "You can also add anything manually in the app:
+ * https://app.villagehale.com" — a chief of staff resigning halfway through the job.
+ *
+ * A corpus-wide hard gate rather than a per-fixture token, because it is a boundary and
+ * not a preference: no reply, to any text, may send a parent to the app to do, add,
+ * check or finish something. The single carve-out — a parent asking where their records
+ * live — is not in this corpus, so nothing here may say it at all.
+ *
+ * Deliberately blunt: the shape that matters is the OFFLOAD, and every phrasing of it
+ * names the place. `\bapp\b` does not match "appointment", so the week's dentist is safe.
+ *
+ * It grades the POST-PROCESSED reply, like every other gate here — so if a model answer
+ * ever runs over the segment budget, the deterministic trim tail ("More in the app: …",
+ * reply.ts fitToBudget) fails this too. That is correct and deliberate: the parent would
+ * genuinely have been sent to the app, and the tail is the last place this boundary is
+ * not yet held. Nothing in the current corpus is over budget, so it does not fire today.
+ */
+const APP_POINTING = [
+  [/app\.villagehale\.com/i, 'sends the parent a link to the app'],
+  [/\bthe app\b/i, 'sends the parent to the app'],
+];
 /** Mirrors PRIVATE_EVENT_WHAT in apps/web/lib/channel/coach/tools.ts. */
 const PRIVATE_EVENT_WHAT = 'A private calendar item';
 /** The skill's own ceiling ("two short sentences is the target, four the ceiling"),
@@ -257,13 +292,13 @@ function redactedWeek() {
   }));
 }
 
-function buildFixtureTools(agent, calls) {
+function buildFixtureTools(agent, calls, village) {
   let draftsThisTurn = 0;
 
   const claimDraftBudget = () => {
     if (draftsThisTurn >= MAX_DRAFTS_PER_TURN) {
       throw new Error(
-        'I can draft at most two changes in one message. Tell the parent what is still outstanding and point them at the app link in your context.',
+        'I can draft at most two changes in one message. Ask the parent to confirm these two and tell them you will line up the rest — you keep the outstanding ones and continue them in your next message. Do not send them anywhere else to finish the job.',
       );
     }
     draftsThisTurn += 1;
@@ -361,11 +396,11 @@ function buildFixtureTools(agent, calls) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Surface local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. Teen-attributed candidates are redacted to category only (rule #1).",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1).",
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
-      return { candidates: FIXTURE_VILLAGE };
+      return village;
     },
   });
 
@@ -396,7 +431,9 @@ function channelContext(fixture) {
     intent: null,
     sourceNote: null,
     channel: 'sms',
-    appLink: APP_LINK,
+    // No appLink, mirroring the runtime: the model is handed no URL, so a link in a
+    // reply is one it composed — and the skill's standing rule is that a URL it was
+    // not given is a URL it invented.
     nowIso: NOW.toISOString(),
   };
 }
@@ -494,8 +531,15 @@ const ALLOWED_CAPS = new Set([
   'Nothing',
 ]);
 
+/** What `search_village` returns for one text: its own village, or the corpus default. */
+function villageFor(fixture) {
+  return fixture.village ?? FIXTURE_VILLAGE;
+}
+
 function groundedHay(fixture, toolResults) {
-  const parts = [fixture.text, FIXTURE_WEEK_SUMMARY, APP_LINK, JSON.stringify(toolResults)];
+  // APP_LINK is NOT grounding any more. The model is handed no URL, so a link in a
+  // reply is an invention and the fabrication gate should say so.
+  const parts = [fixture.text, FIXTURE_WEEK_SUMMARY, JSON.stringify(toolResults)];
   // The injected context grounds too: loadAgentContext hands the model every NON-teen
   // child by name (a teenager arrives as stage only), so naming one of them is recall,
   // not invention. The teen's name is deliberately absent here — if it ever reaches a
@@ -646,6 +690,10 @@ function checkFixture(fixture, reply, calls, auditLog) {
     if (pattern.test(reply)) failures.push(label);
   }
 
+  for (const [pattern, label] of APP_POINTING) {
+    if (pattern.test(reply)) failures.push(`APP-POINTING: ${label}`);
+  }
+
   if (auditLog.length === 0 && (expect.mustCall ?? []).length > 0) {
     failures.push('no audit_log row for a turn that used tools (rule #6)');
   }
@@ -660,9 +708,20 @@ const JUDGE_SYSTEM = [
   'never inventing — addressing the parent by the name in `knows.parent` is correct, and',
   'so is naming a child listed there.',
   'Hale may draft at most `knows.draftCapPerMessage` changes in one message — a cognitive',
-  'limit, not a technical one. Drafting that many and pointing the remainder at',
-  '`knows.appLink` is the CORRECT handling of a text asking for more; do not score it as',
+  'limit, not a technical one. Drafting that many and saying it will line the REST up',
+  'itself is the CORRECT handling of a text asking for more; do not score it as',
   'incomplete, and do not expect the leftovers to be drafted or itemised.',
+  'HALE NEVER SENDS A PARENT TO THE APP. Not for the overflow, not as a fallback, not for',
+  'something it could not do. The thread is the whole product and the app is a receipts',
+  'room the parent never needs, so "check the app" is the job handed back to the person',
+  'who texted to be rid of it. Score any reply that does it a 2 at most.',
+  'ACTIVITIES. `search_village` returns OFFERABLE candidates — each with a checked venue',
+  'and day — plus a COUNT of finds still being checked, which Hale is given no names for.',
+  'Offering a verified one WHOLE (name, place, day) is right. When nothing has checked',
+  'out, the correct reply says what Hale is DOING and that it will come back; a reply',
+  'that hands over a find with the doubt attached ("I found a class but could not confirm',
+  'the time") is the work returned to the parent — score it a 2 at most, and never mark a',
+  'clean forward-looking line down for lacking detail Hale does not have.',
   'An event shown as "A private calendar item" is redacted BY DESIGN (a 13+ child, or a',
   'health item). Hale genuinely cannot see what it is. Giving its DAY and TIME while',
   "saying the content is not Hale's to share is the CORRECT and complete answer — do not",
@@ -696,13 +755,17 @@ const JUDGE_SYSTEM = [
 
 // Deterministic broken stand-in: an agent that guesses on an ambiguous reference,
 // invents an event and a venue, names the teenager's appointment, drafts four changes,
-// and reports held drafts as done. No API call, no cache read.
+// reports held drafts as done — and, in the middle sentence, commits BOTH launch-day
+// defects at once: it hands over a find with the doubt attached and then sends the
+// parent to the app to finish the job themselves. No API call, no cache read.
 //
-// The inventions are in the FIRST sentences on purpose. A rambling stand-in would be
-// amputated by the post-processor before the fabrication gate ever saw it, and the
-// calibration would then prove only that the trim works — not that the gate fires.
+// Every offence is in the FIRST sentences on purpose, and the whole body stays inside
+// the two-segment budget. A rambling stand-in would be amputated by the post-processor
+// before the gates ever saw it, and the calibration would then prove only that the trim
+// works — not that the gates fire.
 const BROKEN_REPLY = [
   'Done - I cancelled Monday swim at Sunnyside Pool.',
+  "I found a Saturday class but couldn't verify the location and time - add it in the app: https://app.villagehale.com.",
   "I also moved Nora's counselling session to 8:15 and booked the piano lesson with Mrs Halloran.",
 ].join(' ');
 
@@ -749,7 +812,7 @@ async function main() {
       auditLog.push({ actionTaken: 'tool:broken' });
       reply = toSmsReply(BROKEN_REPLY);
     } else {
-      const tools = buildFixtureTools(agent, calls);
+      const tools = buildFixtureTools(agent, calls, villageFor(fixture));
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}`,
         model,
@@ -784,7 +847,10 @@ async function main() {
         where: e.location,
         when: localWhen(new Date(e.startsAt), FIXTURE_TIMEZONE),
       })),
-      FIXTURE_VILLAGE,
+      // THIS text's village only. A fixture whose finds are all still being checked
+      // grounds NOTHING about them, so recalling another fixture's candidate reads as
+      // the invention it is.
+      villageFor(fixture),
       PRIVATE_EVENT_WHAT,
     ]);
     const invented = reply === null ? [] : fabrications(reply, hay);
@@ -808,8 +874,14 @@ async function main() {
                     ? { stage: 'teenager', name: null }
                     : { stage: 'child', name: child.name },
                 ),
-                appLink: APP_LINK,
-                nearby: FIXTURE_VILLAGE.map((v) => v.title),
+                // No appLink: Hale is handed no URL, so the judge must not treat a link
+                // as recall. What THIS text's Village read returned, split the way the
+                // tool splits it — a judge shown only titles cannot tell an offer Hale
+                // could stand behind from one it could not.
+                offerable: villageFor(fixture).candidates.map(
+                  (c) => `${c.title} at ${c.venue}, ${c.when}`,
+                ),
+                stillBeingChecked: villageFor(fixture).inVerification,
                 // What Hale is ABLE to do. Without it the judge grades against its own
                 // guess at the product: its cached reasons faulted a reply for offering
                 // to check next week (Hale can — lookup_week takes a week offset) and

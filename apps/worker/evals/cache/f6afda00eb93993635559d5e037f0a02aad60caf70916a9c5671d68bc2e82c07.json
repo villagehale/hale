@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "bare greeting with no context or question"
+  },
+  "latencyMs": 1025
+}

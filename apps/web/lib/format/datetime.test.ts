@@ -3,6 +3,7 @@ import {
   DEFAULT_TIMEZONE,
   dayKeyOf,
   formatCalendarDate,
+  formatCalendarDayLabel,
   formatDateTime,
   formatDayHeading,
   formatLongDate,
@@ -90,6 +91,24 @@ describe('formatCalendarDate', () => {
   it('includes the year for an other-year calendar date', () => {
     const stored2025 = new Date('2025-12-24').toISOString();
     expect(formatCalendarDate(stored2025, NOW_SAME_YEAR)).toBe('Dec 24, 2025');
+  });
+});
+
+describe('formatCalendarDayLabel', () => {
+  it('names the weekday a parent plans against, from a bare YYYY-MM-DD key', () => {
+    // 2026-07-11 is a Saturday. A parent asked to turn up somewhere needs the day
+    // of the week, not a date they have to look up.
+    expect(formatCalendarDayLabel('2026-07-11', NOW_SAME_YEAR)).toBe('Sat, Jul 11');
+  });
+
+  it('holds the day in UTC — a west-of-UTC zone must not roll it back', () => {
+    // Rendered in America/Toronto this UTC-midnight value is the evening BEFORE,
+    // which would name the wrong weekday to the parent.
+    expect(formatCalendarDayLabel('2026-07-12', NOW_SAME_YEAR)).toBe('Sun, Jul 12');
+  });
+
+  it('includes the year for an other-year day', () => {
+    expect(formatCalendarDayLabel('2025-12-24', NOW_SAME_YEAR)).toBe('Wed, Dec 24, 2025');
   });
 });
 

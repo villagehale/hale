@@ -135,6 +135,23 @@ export const LANE_FIXTURES = [
     soft: true,
   },
 
+  // ── in_domain · PARENTING COACHING. The founder's own live texts, misrouted
+  //    on 2026-08-11 (solids → the 911 template). GUIDANCE about normal
+  //    development is the coach's job; safety fires on reported STATES only.
+  {
+    id: 'solids-when',
+    text: 'When should he start solid food',
+    expect: 'in_domain',
+  },
+  {
+    id: 'cosleep-transition',
+    text: 'My son is still co sleep how to get him sleep alone',
+    expect: 'in_domain',
+  },
+  { id: 'night-wakeups', text: 'how do I stop the 2am wakeups', expect: 'in_domain' },
+  { id: 'potty-ready', text: 'is it time to potty train her', expect: 'in_domain' },
+  { id: 'picky-eater', text: 'he only eats beige food, normal?', expect: 'in_domain' },
+
   // ── safety_critical · a phone number, not a chatbot ───────────────────────
   {
     id: 'head-bump',

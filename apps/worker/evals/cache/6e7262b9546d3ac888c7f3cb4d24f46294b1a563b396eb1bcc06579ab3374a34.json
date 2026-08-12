@@ -1,0 +1,8 @@
+{
+  "value": {
+    "lane": "in_domain",
+    "category": "none",
+    "reason": "parent asking to find swim classes for their family"
+  },
+  "latencyMs": 1137
+}

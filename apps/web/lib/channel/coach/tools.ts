@@ -143,11 +143,16 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
   }
 
   /** Spend one unit of the turn's budget, or refuse. Counted only where a draft is
-   * actually about to be minted, so a refused or unresolvable change costs nothing. */
+   * actually about to be minted, so a refused or unresolvable change costs nothing.
+   *
+   * The refusal is a sentence the model reads mid-turn, so it is a prompt: it has to
+   * name the RIGHT next move, not just the limit. The overflow stays Hale's — the
+   * parent confirms these two and Hale lines up the rest next message. An earlier
+   * version sent them to the app for the leftovers, which is the burden handed back. */
   function claimDraftBudget(): void {
     if (draftsThisTurn >= MAX_DRAFTS_PER_TURN) {
       throw new Error(
-        'I can draft at most two changes in one message. Tell the parent what is still outstanding and point them at the app link in your context.',
+        'I can draft at most two changes in one message. Ask the parent to confirm these two and tell them you will line up the rest — you keep the outstanding ones and continue them in your next message. Do not send them anywhere else to finish the job.',
       );
     }
     draftsThisTurn += 1;
