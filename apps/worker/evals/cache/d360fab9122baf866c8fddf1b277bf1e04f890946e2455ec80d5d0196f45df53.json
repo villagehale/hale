@@ -1,0 +1,53 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Parent-and-tot swim lessons, City of Toronto indoor pools",
+        "description": "Toronto Recreation runs structured parent-and-tot aquatics lessons for children roughly 6 months to 3 years old at multiple indoor pools. A caregiver enters the water with the child, building comfort and basic water skills — a strong fit for a water-interested toddler.",
+        "confidence": 0.82,
+        "coverageNote": "Toronto Recreation pools serving M5V include the Lamport Stadium area and nearby facilities; exact session schedules require checking the City's ActiveTO registration portal.",
+        "sourceUrl": "https://www.toronto.ca/parks/swimming/"
+      },
+      {
+        "title": "Drop-in parent-and-tot leisure swim, Toronto Recreation",
+        "description": "Many City of Toronto indoor pools offer unstructured drop-in family/tot swims separate from registered lessons — a low-commitment way to splash around with a toddler any week. No registration required for drop-in swims.",
+        "confidence": 0.78,
+        "coverageNote": "Specific drop-in hours and which pool is closest to M5V should be confirmed via the City's online schedule finder; general availability in this area is well-established.",
+        "sourceUrl": "https://www.toronto.ca/parks/swimming/"
+      },
+      {
+        "title": "Toddler storytime, Toronto Public Library (Fort York or Spadina Road branches)",
+        "description": "Toronto Public Library branches near M5V host regular toddler storytimes that often incorporate sensory and movement play. While not water-specific, these sessions are a beloved weekly ritual for caregivers with young children and frequently touch on nature themes including water.",
+        "confidence": 0.8,
+        "coverageNote": "TPL storytime is a well-established ongoing program; specific branch schedules and age groupings should be verified at tpl.ca or by calling the branch.",
+        "sourceUrl": "https://www.torontopubliclibrary.ca/programs-and-classes/"
+      },
+      {
+        "title": "Harbourfront Centre free drop-in play & water-themed programming",
+        "description": "Harbourfront Centre (Queens Quay W, within M5V) runs family drop-in programs year-round, and its lakefront location makes water a recurring theme in seasonal events and outdoor play areas. An excellent destination for a water-curious toddler.",
+        "confidence": 0.75,
+        "coverageNote": "Harbourfront Centre's family programming calendar changes seasonally; confirming current toddler-specific offerings at harbourfrontcentre.com is recommended.",
+        "sourceUrl": "https://www.harbourfrontcentre.com/family/"
+      },
+      {
+        "title": "Splash pad at Canoe Landing Park",
+        "description": "Canoe Landing Park (CityPlace, M5V) features a splash pad that operates during warm months — free, no registration, and purpose-built for toddlers who love water play. One of the most accessible outdoor water options in the neighbourhood.",
+        "confidence": 0.85,
+        "coverageNote": "Splash pad season in Toronto typically runs late May through early September; hours can be confirmed with the City of Toronto parks site.",
+        "sourceUrl": "https://www.toronto.ca/data/parks/prd/facilities/indoor-complex/10434/index.html"
+      },
+      {
+        "title": "Little Swimmers sensory water play class (private providers, M5V area)",
+        "description": "Several private studios and gyms in the downtown Toronto core offer sensory water-play or 'aqua tots' style classes for toddlers, often in heated indoor pools or water-play spaces. These tend to be small-group, caregiver-and-child format and registration-based.",
+        "confidence": 0.55,
+        "coverageNote": "Specific provider names and schedules vary; searching 'toddler water play class Toronto M5V' or checking local parenting groups (e.g. Toronto Parents Facebook groups) is the most reliable way to find current offerings."
+      },
+      {
+        "title": "Waterfront Toronto lakefront walking & play (Rees Street to York Street)",
+        "description": "The revitalized waterfront immediately south of M5V offers accessible promenades, water-edge play features, and frequent family-oriented pop-up events. An easy, free, any-time outing that puts a water-loving toddler right at the lake's edge.",
+        "confidence": 0.88,
+        "coverageNote": "Public space — always accessible. Weather and season will affect experience; best in spring through fall."
+      }
+    ]
+  }
+}

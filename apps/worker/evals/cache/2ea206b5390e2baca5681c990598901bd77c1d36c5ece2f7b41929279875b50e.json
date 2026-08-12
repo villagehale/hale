@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyHLMFwdTHqNwbp8o4Uo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I can see all four: Mon swim (4:30pm, West pool), Thu swim (5:15pm, East pool), soccer Sat (10:00am, Cedarvale Park), and a private item Wed 9:00am. Cancel Mon swim and Thu swim first - YES to confirm these two, then I'll line up soccer and Wednesday."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5090,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 80,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

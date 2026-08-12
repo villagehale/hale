@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyHwtMgvZvc5DAq1sRMC",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "For Kit at 8, there's no magic number — the Canadian Paediatric Society moves away from a strict hourly cap at this age and focuses more on *how* screen time fits into the day.\n\nA practical weekend frame that works for most families:\n\n- **Basics first** — sleep, outdoor time, and some face-to-face connection happen before screens open up.\n- **Quality over clock-watching** — a two-hour movie together lands differently than two hours of passive autoplay alone.\n- **A natural stopping point** — tying screens to a block (after lunch until dinner, for example) is easier to hold than a running minute count.\n\nIf weekends feel like a constant negotiation, a simple visual schedule Kit helps build can take the fight out of it."
+      }
+    ],
+    "usage": {
+      "input_tokens": 3095,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 172,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
+import { compileToolSchema } from './json-schema.js';
 import { pickModel } from './model.js';
 import type { Skill } from './skill.js';
 import {
@@ -236,6 +237,29 @@ function initialUserContent(args: RunAgentArgs): Anthropic.MessageParam['content
   return [{ type: 'text', text: contextText }, ...args.attachments];
 }
 
+/**
+ * The tool definition as the API accepts it. The pinned SDK (0.41.0) types
+ * neither `strict` nor `input_examples` — both are plain top-level fields on the
+ * wire and need no beta header, so this widens the SDK's `Tool` rather than
+ * waiting on a version bump. Same blocker, same shape as the note at
+ * apps/worker/src/agents/structured.ts.
+ */
+type WireTool = Anthropic.Tool & {
+  strict?: boolean;
+  input_examples?: ReadonlyArray<Record<string, unknown>>;
+};
+
+/**
+ * Compile the skill's allowlisted tools into wire definitions.
+ *
+ * This used to send `{type:'object', additionalProperties:true}` for every tool:
+ * the model was told a tool existed and told nothing about its arguments, so it
+ * guessed argument names, `invokeTool`'s `.parse()` threw, and the loop fed
+ * "correct the arguments and try again" back — a wasted round trip on a turn a
+ * parent is waiting on. Now each tool ships the schema it already declares, plus
+ * `strict: true` wherever a grammar can be compiled from it, so a malformed call
+ * is unsamplable rather than merely rejected afterwards.
+ */
 function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool[] {
   const byName = new Map(tools.map((t) => [t.name, t]));
   return skill.meta.tools.map((name) => {
@@ -245,11 +269,20 @@ function toAnthropicTools(skill: Skill, tools: RegisteredTool[]): Anthropic.Tool
         `runAgent: skill '${skill.meta.name}' lists tool '${name}' not present in the provided tools`,
       );
     }
-    return {
+    const { schema, strictSafe } = compileToolSchema(tool.inputSchema);
+    const wire: WireTool = {
       name: tool.name,
       description: tool.description,
-      input_schema: { type: 'object', additionalProperties: true },
+      input_schema: schema as Anthropic.Tool.InputSchema,
+      // Withheld — never defaulted on — when the schema has a node the grammar
+      // compiler cannot express, because `strict` over such a schema is a 400
+      // rather than a weaker constraint (see compileToolSchema).
+      ...(strictSafe ? { strict: true } : {}),
+      ...(tool.inputExamples && tool.inputExamples.length > 0
+        ? { input_examples: tool.inputExamples }
+        : {}),
     };
+    return wire;
   });
 }
 
@@ -258,6 +291,35 @@ function textFrom(content: Anthropic.ContentBlock[]): string | null {
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b) => b.text);
   return parts.length > 0 ? parts.join('\n') : null;
+}
+
+/**
+ * How much of one tool's output may re-enter the context, in characters
+ * (~2k tokens at 4 chars/token).
+ *
+ * A tool result is model-authored context the caller never sized: a wide week, a
+ * long memory slice, or a chatty connector response used to ride back whole, on
+ * every step, at full input price. The ceiling is per-call rather than
+ * per-conversation because the failure it prevents is one fat result crowding
+ * out the turn, not slow accumulation — maxSteps already bounds that.
+ */
+export const TOOL_RESULT_MAX_CHARS = 8_000;
+
+/**
+ * Serialize a tool result for the model, bounded.
+ *
+ * Truncation is NAMED in the payload, never silent (rule #11). A cut-off JSON
+ * object is indistinguishable from a complete one to a model reading it, and the
+ * failure that produces — answering confidently from half a week's calendar — is
+ * exactly the fabrication the SMS surface cannot afford. So the notice says what
+ * was cut, that the JSON is no longer well-formed, and what to do instead.
+ */
+function boundedToolResult(name: string, result: unknown): string {
+  const serialized = JSON.stringify(result) ?? 'null';
+  if (serialized.length <= TOOL_RESULT_MAX_CHARS) {
+    return serialized;
+  }
+  return `${serialized.slice(0, TOOL_RESULT_MAX_CHARS)}\n\n[TRUNCATED: ${name} returned ${serialized.length} characters and only the first ${TOOL_RESULT_MAX_CHARS} are above, so the JSON is cut mid-structure. Narrow your arguments and call ${name} again if you need the rest. Do not guess at the omitted content, and do not describe it as complete.]`;
 }
 
 /** A tool failure fed back to the model so it self-corrects instead of crashing the turn. */
@@ -322,7 +384,7 @@ async function handleToolUses(
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,
-        content: JSON.stringify(result),
+        content: boundedToolResult(block.name, result),
       });
     } catch (err) {
       hooks?.onToolResult?.({

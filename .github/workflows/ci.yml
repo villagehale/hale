@@ -66,6 +66,10 @@ jobs:
 
       - name: Week-summary eval (cached-only)
         run: pnpm --filter @hale/worker eval:week-summary
+
+      - name: Agent suites eval (ask-hale/daily-brief/discovery, cached-only)
+        run: pnpm --filter @hale/worker eval:agents
+
       - name: Village search intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:village-search
 
@@ -74,6 +78,9 @@ jobs:
 
       - name: SMS intake extraction/intent eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake
+
+      - name: Intake voice composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intake-voice
 
       - name: Off-domain capability lane eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-lane

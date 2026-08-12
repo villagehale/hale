@@ -408,7 +408,39 @@ async function buildAskHaleTools(agent, fixture) {
     inputSchema: zPassthrough(),
     handler: async () => ({ candidates: s.village ?? [] }),
   });
-  return [getChildProfile, searchMemory, saveMemory, getFrameworkGuidance, searchVillage];
+  // The two connector reads the frontmatter lists. G1 made a listed-but-absent
+  // tool a THROW (the framework-tool void, made structural), so the harness must
+  // carry them; the fixture families have no Google connection, and the typed
+  // `not_connected` card is exactly what prod returns then (rule #11).
+  const driveSearch = agent.defineTool({
+    name: 'drive_search',
+    description:
+      "Search the SIGNED-IN PARENT's connected Google Drive by file name. Read-only, file NAMES and links only. If Drive isn't connected, say so and point them to Settings.",
+    inputSchema: zPassthrough(),
+    handler: async () => ({
+      status: 'not_connected',
+      card: { kind: 'not_connected', provider: 'gdrive' },
+    }),
+  });
+  const calendarLookup = agent.defineTool({
+    name: 'calendar_lookup',
+    description:
+      "Look at the SIGNED-IN PARENT's connected Google Calendar for the next 7 days. Read-only. If Calendar isn't connected, say so and point them to Settings.",
+    inputSchema: zPassthrough(),
+    handler: async () => ({
+      status: 'not_connected',
+      card: { kind: 'not_connected', provider: 'gcal' },
+    }),
+  });
+  return [
+    getChildProfile,
+    searchMemory,
+    saveMemory,
+    getFrameworkGuidance,
+    searchVillage,
+    driveSearch,
+    calendarLookup,
+  ];
 }
 
 // A permissive object schema — the eval is not testing input validation (that has

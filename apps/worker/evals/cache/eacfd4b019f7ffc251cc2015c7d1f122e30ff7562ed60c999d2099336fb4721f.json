@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The reply correctly drafts the Thursday swim cancellation and asks for YES to confirm. It offers the verified Saturday indoor option (Central Library story time) with full details — name, place, day — which is exactly right since stillBeingChecked is 0 and that activity is offerable. The only small blemish is the added \"free drop-in, all ages\" detail, which is information Hale was not given in `offerable` and therefore risks being invented. That extra clause is one step beyond what the data supports, but the core structure is correct."
+  }
+}

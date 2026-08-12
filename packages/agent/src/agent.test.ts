@@ -1,7 +1,13 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { type AgentClient, type ToolResultEvent, runAgent, runAgentStreaming } from './agent.js';
+import {
+  type AgentClient,
+  TOOL_RESULT_MAX_CHARS,
+  type ToolResultEvent,
+  runAgent,
+  runAgentStreaming,
+} from './agent.js';
 import type { Skill } from './skill.js';
 import { type AuditEntry, type GuardDeps, defineTool } from './tool.js';
 
@@ -657,5 +663,247 @@ describe('runAgentStreaming', () => {
     ]);
     // The turn did not crash — the model got the error back and answered.
     expect(result.answer).toBe('here is guidance.');
+  });
+});
+
+// ── the wire the model actually reads ────────────────────────────────────────
+// Everything above exercises the loop's control flow. These assert the REQUEST:
+// what the tool definitions look like by the time they leave the process, and
+// how much of a tool's output is allowed back in.
+
+/** Records every `messages.create` param object while replaying a script. */
+function capturingClient(script: Anthropic.Message[]): {
+  client: AgentClient;
+  requests: Anthropic.MessageCreateParamsNonStreaming[];
+} {
+  const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+  let calls = 0;
+  const client = {
+    messages: {
+      create: vi.fn(async (params: Anthropic.MessageCreateParamsNonStreaming) => {
+        requests.push(params);
+        const msg = script[calls];
+        calls += 1;
+        if (!msg) throw new Error('capturingClient: script exhausted');
+        return msg;
+      }),
+    },
+  } as unknown as AgentClient;
+  return { client, requests };
+}
+
+/** One named tool definition off the first request, as it left the process. */
+function wireTool(
+  requests: Anthropic.MessageCreateParamsNonStreaming[],
+  name: string,
+): Record<string, unknown> {
+  const tools = (requests[0]?.tools ?? []) as unknown as Array<Record<string, unknown>>;
+  const found = tools.find((t) => t.name === name);
+  if (!found) throw new Error(`no '${name}' tool on the wire; got ${tools.length} tools`);
+  return found;
+}
+
+describe('tool definitions on the wire', () => {
+  const scheduleTool = defineTool({
+    name: 'propose_calendar_move',
+    description: 'Draft a re-time of one existing event.',
+    monetary: false,
+    touchesChildContent: false,
+    inputSchema: z.object({
+      eventId: z.string().min(1),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+      time: z.string(),
+      note: z.string().optional(),
+    }),
+    inputExamples: [
+      { eventId: 'evt-1', date: '2026-08-13', time: '17:15' },
+      { eventId: 'evt-2', date: '2026-08-14', time: '09:00', note: 'after school' },
+    ],
+    handler: async () => ({ drafted: true }),
+  });
+
+  const scheduleSkill: Skill = {
+    meta: {
+      name: 'coach-channel-sms',
+      whenToUse: 'test',
+      task: 'converse',
+      tools: ['propose_calendar_move'],
+    },
+    instructions: 'You are Hale over text.',
+  };
+
+  it('sends the tool’s REAL properties and required list, not a permissive placeholder', async () => {
+    const { client, requests } = capturingClient([textMessage('ok.', usage(1, 1))]);
+    const { deps } = guardDeps();
+
+    await runAgent({
+      skill: scheduleSkill,
+      context: {},
+      tools: [scheduleTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: deps,
+    });
+
+    const wire = wireTool(requests, 'propose_calendar_move');
+    expect(wire.input_schema).toEqual({
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'At least 1 characters.' },
+        date: { type: 'string', description: 'date must be YYYY-MM-DD' },
+        time: { type: 'string' },
+        note: { type: 'string' },
+      },
+      required: ['eventId', 'date', 'time'],
+      additionalProperties: false,
+    });
+  });
+
+  it('sets strict:true per tool so the grammar constrains sampling', async () => {
+    const { client, requests } = capturingClient([textMessage('ok.', usage(1, 1))]);
+    const { deps } = guardDeps();
+
+    await runAgent({
+      skill: scheduleSkill,
+      context: {},
+      tools: [scheduleTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: deps,
+    });
+
+    expect(wireTool(requests, 'propose_calendar_move').strict).toBe(true);
+  });
+
+  it('WITHHOLDS strict for a tool whose schema has no grammar, and still sends the schema', async () => {
+    // z.unknown() is "any JSON" — no grammar can be compiled, and sending
+    // `strict` anyway is a 400. The properties must still reach the model.
+    const saveMemory = defineTool({
+      name: 'save_memory',
+      description: 'Persist one durable fact.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ factKey: z.string(), factValue: z.unknown() }),
+      handler: async () => ({ saved: true }),
+    });
+    const memorySkill: Skill = {
+      meta: { name: 'ask-hale', whenToUse: 't', task: 'converse', tools: ['save_memory'] },
+      instructions: 'x',
+    };
+    const { client, requests } = capturingClient([textMessage('ok.', usage(1, 1))]);
+    const { deps } = guardDeps();
+
+    await runAgent({
+      skill: memorySkill,
+      context: {},
+      tools: [saveMemory],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: deps,
+    });
+
+    const wire = wireTool(requests, 'save_memory');
+    expect(wire).not.toHaveProperty('strict');
+    expect((wire.input_schema as Record<string, unknown>).required).toEqual(['factKey']);
+  });
+
+  it('forwards input_examples when the tool declares them, and omits the key when it does not', async () => {
+    const { client, requests } = capturingClient([textMessage('ok.', usage(1, 1))]);
+    const { deps } = guardDeps();
+
+    await runAgent({
+      skill: scheduleSkill,
+      context: {},
+      tools: [scheduleTool],
+      client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: deps,
+    });
+    expect(wireTool(requests, 'propose_calendar_move').input_examples).toEqual([
+      { eventId: 'evt-1', date: '2026-08-13', time: '17:15' },
+      { eventId: 'evt-2', date: '2026-08-14', time: '09:00', note: 'after school' },
+    ]);
+
+    // profileTool declares none — the key must be absent, not an empty array.
+    const bare = capturingClient([textMessage('ok.', usage(1, 1))]);
+    await runAgent({
+      skill,
+      context: {},
+      tools: [profileTool],
+      client: bare.client,
+      maxSteps: 2,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+    expect(wireTool(bare.requests, 'get_child_profile')).not.toHaveProperty('input_examples');
+  });
+});
+
+describe('tool results fed back to the model', () => {
+  /** A tool whose output serializes to at least `chars` characters. */
+  function bulkTool(chars: number) {
+    return defineTool({
+      name: 'get_child_profile',
+      description: 'Read a child profile.',
+      monetary: false,
+      touchesChildContent: false,
+      inputSchema: z.object({ childId: z.string() }),
+      handler: async () => ({ blob: 'x'.repeat(chars) }),
+    });
+  }
+
+  /** The tool_result content the loop appended after the first turn. */
+  function toolResultContent(requests: Anthropic.MessageCreateParamsNonStreaming[]): string {
+    const followUp = requests[1];
+    if (!followUp) throw new Error('expected a second round-trip');
+    const last = followUp.messages[followUp.messages.length - 1];
+    const blocks = last?.content as Anthropic.ToolResultBlockParam[];
+    return String(blocks[0]?.content);
+  }
+
+  async function runWith(tool: ReturnType<typeof bulkTool>): Promise<string> {
+    const { client, requests } = capturingClient([
+      toolUseMessage('tu-1', 'get_child_profile', { childId: 'kid-1' }, usage(1, 1)),
+      textMessage('done.', usage(1, 1)),
+    ]);
+    await runAgent({
+      skill,
+      context: {},
+      tools: [tool],
+      client,
+      maxSteps: 3,
+      toolContext: { familyId: 'fam-1', actor: 'run-1' },
+      guardDeps: guardDeps().deps,
+    });
+    return toolResultContent(requests);
+  }
+
+  it('passes a result under the ceiling through byte-for-byte', async () => {
+    const content = await runWith(bulkTool(50));
+    expect(content).toBe(JSON.stringify({ blob: 'x'.repeat(50) }));
+  });
+
+  it('caps an oversized result and NAMES the truncation in the payload (rule #11)', async () => {
+    const content = await runWith(bulkTool(TOOL_RESULT_MAX_CHARS * 3));
+
+    // Bounded — an unbounded result is a p95 latency and unpriced cost risk on
+    // a turn a parent is watching three dots for.
+    expect(content.length).toBeLessThan(TOOL_RESULT_MAX_CHARS + 500);
+    // ...and the model is TOLD, rather than silently handed a cut-off object it
+    // would otherwise read as the whole answer.
+    expect(content).toContain('TRUNCATED');
+    expect(content).toContain('get_child_profile');
+    expect(content).toContain(String(TOOL_RESULT_MAX_CHARS));
+    expect(content).toMatch(/do not (guess|invent)/i);
+  });
+
+  it('keeps the ceiling small enough to matter on a latency-bound turn', () => {
+    // ~4 chars/token: the ceiling must stay well inside one SMS turn's budget,
+    // or "bounded" is a nominal guarantee.
+    expect(TOOL_RESULT_MAX_CHARS / 4).toBeLessThanOrEqual(4096);
   });
 });

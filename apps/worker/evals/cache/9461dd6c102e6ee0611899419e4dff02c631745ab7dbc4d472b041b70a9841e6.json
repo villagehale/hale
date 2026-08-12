@@ -1,0 +1,36 @@
+{
+  "parsed": {
+    "candidates": [
+      {
+        "title": "Bibliothèque du Plateau-Mont-Royal – bébé-lecture / lapsit storytime",
+        "description": "The local branch of the Réseau des bibliothèques de Montréal regularly offers gentle lap-sit and early literacy sessions for babies 0–18 months with a caregiver. A calm, free, and welcoming indoor option year-round.",
+        "confidence": 0.78,
+        "coverageNote": "Library branches in the Plateau reliably run newborn/infant programming; specific schedule not individually verified."
+      },
+      {
+        "title": "CLSC du Plateau-Mont-Royal – parent-newborn drop-in support group",
+        "description": "Montreal CLSCs serve as community health anchors and routinely host drop-in new-parent groups (groupes de parents) where caregivers with newborns can meet, ask questions, and connect. Free and walk-in friendly.",
+        "confidence": 0.75,
+        "coverageNote": "CLSC-run newborn support groups are standard across Montreal neighbourhoods; current schedule at this specific CLSC not confirmed."
+      },
+      {
+        "title": "Parent-and-baby aqua-fitness / tot pool time at a nearby Ville de Montréal pool",
+        "description": "Montréal municipal pools offer parent-and-infant water familiarisation classes for babies as young as 4 months. A gentle way to introduce water and connect with other new parents in the borough.",
+        "confidence": 0.7,
+        "coverageNote": "Parent-infant pool programs are widely available at Ville de Montréal facilities; nearest pool to the Plateau and current session dates not individually verified."
+      },
+      {
+        "title": "Parc Lafontaine – stroller walks and fresh-air outings",
+        "description": "Parc Lafontaine is one of Montréal's largest green spaces, steps from the Plateau, with wide paved paths ideal for daily stroller walks. A standing free option for new parents seeking outdoor air and gentle movement any day of the week.",
+        "confidence": 0.92,
+        "coverageNote": "Parc Lafontaine is a well-established, publicly accessible park in the Plateau-Mont-Royal borough."
+      },
+      {
+        "title": "Café-parents or new-parent social meetup (Plateau neighbourhood)",
+        "description": "Community organisations and family resource centres (Centres de ressources familiales) in the Plateau periodically host informal café-parents gatherings where caregivers bring newborns, share experiences, and ease isolation. Usually free or by donation.",
+        "confidence": 0.62,
+        "coverageNote": "Family resource centres operating in the Plateau are known to run these gatherings; specific current listings not confirmed."
+      }
+    ]
+  }
+}

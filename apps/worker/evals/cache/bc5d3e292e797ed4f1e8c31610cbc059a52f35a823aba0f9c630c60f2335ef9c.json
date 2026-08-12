@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Identifies the correct event (Thu swim at 5:15pm, East pool), confirms with the parent before acting, and ends with the required YES prompt. No greeting, no sign-off, no extraneous detail. Exactly the right shape."
+  }
+}

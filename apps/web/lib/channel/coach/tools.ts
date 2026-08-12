@@ -5,6 +5,7 @@ import type { CalendarPlacementPayload } from '@hale/types';
 import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
+import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
@@ -48,6 +49,10 @@ export const MAX_DRAFTS_PER_TURN = 2;
  * assistant-events convention: the item's EXISTENCE is the parent's to know, its
  * content is not (rule #1). */
 const PRIVATE_EVENT_WHAT = 'A private calendar item';
+
+/** An unmistakable placeholder, never a row — examples ride the cached tool
+ * definition outside message protections (rule #1; see EXAMPLE_CHILD_ID). */
+const EXAMPLE_EVENT_ID = 'evt_0000000000example';
 
 /**
  * One changeable thing on the family's calendar, as the tools need it: the redaction
@@ -174,6 +179,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     description:
       "THIS family's week: the composed plan summary plus every calendar item that can be moved, cancelled, or referred to. Each item carries an `eventId` — the ONLY handle the propose_* tools accept. weekOffset 0 is the current week, 1 is next week.",
     inputSchema: z.object({ weekOffset }),
+    inputExamples: [{}, { weekOffset: 1 }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input) => {
@@ -206,6 +212,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     description:
       "DRAFT a re-time of one existing event for the parent to approve — it does NOT move anything. `eventId` must come from lookup_week; `date`/`time` are the family's own wall clock. The event keeps its title, place and child.",
     inputSchema: z.object({ eventId: z.string().min(1), date: dayKey, time: wallClock }),
+    inputExamples: [{ eventId: EXAMPLE_EVENT_ID, date: '2026-09-15', time: '17:15' }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
@@ -240,6 +247,7 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     description:
       "DRAFT the removal of one existing event for the parent to approve — it does NOT cancel anything. `eventId` must come from lookup_week. Never call this on a reference that matched more than one event; ask which first.",
     inputSchema: z.object({ eventId: z.string().min(1) }),
+    inputExamples: [{ eventId: EXAMPLE_EVENT_ID }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
@@ -279,6 +287,20 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
       location: z.string().max(120).optional(),
       childId: z.string().min(1).optional(),
     }),
+    // Five arguments, three of them optional — the shape most worth showing.
+    // The second example is the child-scoped form; `childId` comes from the
+    // run's context, never composed (rule #1: the id here is an invented
+    // placeholder, since examples are cached outside message protections).
+    inputExamples: [
+      { title: 'Swim lesson', date: '2026-09-15', time: '17:15' },
+      {
+        title: 'Dentist',
+        date: '2026-09-18',
+        time: '09:30',
+        location: 'Main Street Dental',
+        childId: EXAMPLE_CHILD_ID,
+      },
+    ],
     // A child-scoped placement names a child, so the guarded invoker's teen check runs
     // BEFORE this handler — a 13+ child's item cannot be drafted from a text at all
     // (rule #1/#5), which is the same refusal get_child_profile gets in the app.

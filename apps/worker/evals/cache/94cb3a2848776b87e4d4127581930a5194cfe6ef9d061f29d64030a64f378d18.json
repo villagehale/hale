@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyHJouWZuGDjabN8UYA9",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I have Thursday swim (evt-swim-thu, currently 5:15pm at East pool). I'll move it to 5:45pm Thu as requested (17h45).\n\nMove Thursday swim from 5:15pm to 5:45pm at East pool? YES to confirm."
+      }
+    ],
+    "usage": {
+      "input_tokens": 5005,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 66,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

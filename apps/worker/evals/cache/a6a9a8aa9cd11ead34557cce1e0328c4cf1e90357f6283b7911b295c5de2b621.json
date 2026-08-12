@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The assistant completely failed to answer the question. The reference clearly states \"Mira goes to the Tumbleweeds toddler gym class on saturdays,\" but the assistant claimed it didn't have access to this information and said it couldn't confirm her Saturday class. The assistant also speculated about a parent-and-tot swim class, which is not mentioned in the reference and contradicts the correct answer. This is a factual error - the assistant should have provided the specific class name (Tumbleweeds toddler gym class) but instead said it doesn't know."
+  }
+}

@@ -41,6 +41,13 @@ export function frameworkGuidanceTool(): RegisteredTool {
       stage: z.enum(['newborn', 'toddler', 'preschool', 'child', 'teenager']),
       ageMonths: z.number().int().min(0).max(215).optional(),
     }),
+    // The 'child' stage spans four to twelve years old, so an age-less call
+    // answers for the middle of it. Both examples pass one — invented values
+    // only, since examples ride the cached tool-definition grammar (rule #1).
+    inputExamples: [
+      { stage: 'toddler', ageMonths: 26 },
+      { stage: 'child', ageMonths: 68 },
+    ],
     monetary: false,
     touchesChildContent: false,
     handler: async (input) => {
