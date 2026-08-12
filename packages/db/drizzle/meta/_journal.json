@@ -561,6 +561,13 @@
       "when": 1781466720000,
       "tag": "0082_agent_commitments",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1781467320000,
+      "tag": "0083_village_intros",
+      "breakpoints": true
     }
   ]
 }
