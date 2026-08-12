@@ -75,7 +75,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       {/* ── Hero — the persona, the one action, and the real thread ────────── */}
       <section className="shell grid items-center gap-12 pb-20 pt-8 sm:pt-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:pb-28">
         <div className="rise rise-1 max-w-xl">
-          <h1 className="text-[clamp(2.1rem,5.2vw,3.4rem)]">
+          <h1 className="text-balance text-[clamp(2.1rem,5.2vw,3.4rem)]">
             Hi, I’m Hale — your family’s quiet chief of staff.
           </h1>
           <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
@@ -89,10 +89,13 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
                 Text me
               </a>
               <p className="meta mt-4">
-                Your message is already written. You send it; I never text first.
+                Your message is already written. You send it; I never text first. Standard message
+                rates apply; reply STOP any time.
               </p>
 
-              <div className="card mt-8 flex flex-col gap-6 sm:flex-row sm:items-center">
+              {/* Desktop-only: a phone can't scan its own screen, and on mobile this card
+                  only pushed the example conversation below the fold. */}
+              <div className="card mt-8 hidden gap-6 sm:flex sm:items-center">
                 <QrCode value={smsHref} size={132} />
                 <div>
                   <span className="eyebrow">On a laptop?</span>
@@ -100,8 +103,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
                     {displaySmsNumber(smsNumber)}
                   </p>
                   <p className="meta mt-2">
-                    Scan the code with your phone’s camera, or text that number yourself. Standard
-                    message rates apply; reply STOP any time.
+                    Scan the code with your phone’s camera, or text that number yourself.
                   </p>
                 </div>
               </div>
@@ -123,8 +125,8 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       <section className="band-cream py-20 lg:py-28">
         <div className="shell">
           <span className="eyebrow">What I watch</span>
-          <h2 className="mt-3 max-w-2xl">
-            Eight municipalities, <span className="accent">by name.</span>
+          <h2 className="mt-3 max-w-2xl text-balance">
+            {MUNICIPALITIES.length} municipalities, <span className="accent">by name.</span>
           </h2>
           <p className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
             Registration opens at 7 a.m. on a Tuesday and fills before breakfast. I follow the
@@ -153,7 +155,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       {/* ── How I work — three texts, then the ladder ─────────────────────── */}
       <section className="shell py-20 lg:py-28">
         <span className="eyebrow">How I work</span>
-        <h2 className="mt-3 max-w-2xl">
+        <h2 className="mt-3 max-w-2xl text-balance">
           Three texts, then I’m <span className="accent">quiet.</span>
         </h2>
 
@@ -190,7 +192,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       <section className="band-cream py-20 lg:py-28">
         <div className="shell">
           <span className="eyebrow">Your village</span>
-          <h2 className="mt-3 max-w-2xl">
+          <h2 className="mt-3 max-w-2xl text-balance">
             Your village, <span className="accent">covered.</span>
           </h2>
 
@@ -216,7 +218,7 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
       {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
       <section className="shell py-20 lg:py-28">
         <span className="eyebrow">Privacy</span>
-        <h2 className="mt-3 max-w-2xl">
+        <h2 className="mt-3 max-w-2xl text-balance">
           Privacy, the <span className="accent">Canadian way.</span>
         </h2>
         <div className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
@@ -312,8 +314,8 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
  * The first ten minutes, as an SMS thread — the script from the F14 Conversation
  * Design book, not a dramatisation and not a screenshot. Real DOM text in a
  * plain card: no device frame, no status bar, nothing pretending to be a photo
- * of a phone. The two emoji are quoted from Hale's actual radar reply (the voice
- * rules allow one per message); the site's own chrome stays emoji-free.
+ * of a phone. Emoji-free on purpose: the real transport is GSM-7, so the mockup
+ * must never show a message Hale cannot actually send.
  */
 function FirstConversation() {
   return (
