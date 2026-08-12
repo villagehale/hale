@@ -116,6 +116,12 @@ export const channelMessages = pgTable(
     /** The demand-signal bucket (see {@link UnmetIntentCategory}). Never free text. */
     unmetCategory: text('unmet_category').$type<UnmetIntentCategory>(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
+    /** INBOUND only: when this text was actually handed to C1's queue. Null means the
+     * job does not exist — either the enqueue has not happened yet or it failed. It is a
+     * separate question from "does a row exist", and conflating the two is what let a
+     * failed enqueue read as a handled message forever (the retry saw the row and said
+     * 'duplicate'). The reconciler re-drives rows left null. */
+    handedOffAt: timestamp('handed_off_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -125,6 +131,15 @@ export const channelMessages = pgTable(
       .where(sql`${table.dedupeKey} IS NOT NULL`),
     // Status callbacks resolve a row by the provider's id.
     providerIdx: index('channel_messages_provider_msg_idx').on(table.providerMessageId),
+    // One inbound row per provider message, enforced by the DATABASE. The webhook's
+    // duplicate guard used to be select-then-insert, which two concurrent deliveries of
+    // the same MessageSid both pass — Twilio resends on a 15s timeout, so the resend can
+    // land mid-flight. This index is what makes the insert itself the claim: exactly one
+    // request wins it and is the one that enqueues. Partial on direction, because
+    // outbound rows legitimately share nothing with this rule.
+    inboundProviderUniq: uniqueIndex('channel_messages_inbound_provider_msg_uniq')
+      .on(table.providerMessageId)
+      .where(sql`${table.direction} = 'in' AND ${table.providerMessageId} IS NOT NULL`),
     // Cap counting: recent rows for a parent + category.
     capIdx: index('channel_messages_cap_idx').on(
       table.parentUserId,

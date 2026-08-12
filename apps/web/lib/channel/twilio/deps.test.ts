@@ -26,30 +26,54 @@ const OTHER_PARENT = '55555555-5555-4555-8555-555555555555';
 interface Sent {
   name: string;
   data: unknown;
-  options?: { expireInSeconds?: number; singletonKey?: string };
+  options?: { expireInSeconds?: number; singletonKey?: string; id?: string };
 }
 
-function fakeQueue(): MessageQueue & {
+/**
+ * A pg-boss stand-in that models the ONE behaviour the producer has to get right:
+ * `send` inserts ON CONFLICT DO NOTHING keyed on the job id, so a repeat of a job that
+ * is still in the table returns null rather than creating a second one — and null is
+ * ALSO what a send that landed nowhere returns. `existing` is the job table, which is
+ * the only thing that can tell those two apart.
+ */
+function fakeQueue(
+  options: { accepts?: boolean } = {},
+): MessageQueue & {
   sent: Sent[];
   created: Array<{ name: string; policy?: string; expireInSeconds?: number }>;
   updated: Array<{ name: string; policy?: string }>;
+  existing: Set<string>;
+  lookups: string[];
 } {
+  const accepts = options.accepts ?? true;
   const sent: Sent[] = [];
   const created: Array<{ name: string; policy?: string; expireInSeconds?: number }> = [];
   const updated: Array<{ name: string; policy?: string }> = [];
+  const existing = new Set<string>();
+  const lookups: string[] = [];
   return {
     sent,
     created,
     updated,
-    async createQueue(name, options) {
-      created.push({ name, policy: options?.policy, expireInSeconds: options?.expireInSeconds });
+    existing,
+    lookups,
+    async createQueue(name, opts) {
+      created.push({ name, policy: opts?.policy, expireInSeconds: opts?.expireInSeconds });
     },
-    async updateQueue(name, options) {
-      updated.push({ name, policy: options?.policy });
+    async updateQueue(name, opts) {
+      updated.push({ name, policy: opts?.policy });
     },
-    async send(name, data, options) {
-      sent.push({ name, data, options });
-      return 'job-id';
+    async send(name, data, opts) {
+      sent.push({ name, data, options: opts });
+      const id = opts?.id;
+      if (!accepts) return null;
+      if (id && existing.has(id)) return null;
+      if (id) existing.add(id);
+      return id ?? 'job-id';
+    },
+    async getJobById(_name, id) {
+      lookups.push(id);
+      return existing.has(id) ? { id } : null;
     },
   };
 }
@@ -144,5 +168,67 @@ describe('sendChannelMessageReceived', () => {
 
     expect(JSON.stringify(queue.sent[0]?.data)).not.toMatch(/body|phone|\+1416/i);
     expect(queue.sent[0]?.data).toEqual(job());
+  });
+});
+
+/**
+ * Exactly-once, and the difference between asserting it and checking it.
+ *
+ * The webhook is no longer the only producer — the reconciler re-drives any inbound row
+ * that was never marked handed off, and it cannot tell "the enqueue failed" from "the
+ * enqueue worked and the mark didn't". Without a stable identity for the job those two
+ * look the same and the parent gets answered twice. The channel message id IS that
+ * identity: it is already a uuid, already one per text, and already the pointer the job
+ * carries, so no new key format has to be invented or kept in sync.
+ */
+describe('the job id is the channel message id', () => {
+  it('sends under the channel message id, so one text can only ever be one job', async () => {
+    const queue = fakeQueue();
+    await sendChannelMessageReceived(queue, job());
+
+    expect(queue.sent[0]?.options?.id).toBe('33333333-3333-4333-8333-333333333333');
+  });
+
+  it('re-driving the same message enqueues NOTHING the second time', async () => {
+    const queue = fakeQueue();
+
+    await sendChannelMessageReceived(queue, job());
+    await sendChannelMessageReceived(queue, job());
+
+    // Both calls reached pg-boss; only the first created a job.
+    expect(queue.sent).toHaveLength(2);
+    expect(queue.existing.size).toBe(1);
+  });
+
+  /**
+   * pg-boss's insert ends in ON CONFLICT DO NOTHING and its SELECT joins the queue
+   * table, so `send` returns null for BOTH "this job already exists" (idempotency
+   * working) and "there was no queue row, nothing was inserted" (the text going
+   * nowhere). Returning normally on that second case is how a caller comes to write
+   * `handed_off_at` over a job that does not exist — the original bug, one layer down.
+   */
+  it('THROWS when pg-boss accepted nothing and no such job exists', async () => {
+    const queue = fakeQueue({ accepts: false });
+
+    await expect(sendChannelMessageReceived(queue, job())).rejects.toThrow(
+      /33333333-3333-4333-8333-333333333333/,
+    );
+  });
+
+  it('is SILENT when the null meant the job was already there', async () => {
+    const queue = fakeQueue({ accepts: false });
+    queue.existing.add('33333333-3333-4333-8333-333333333333');
+
+    await expect(sendChannelMessageReceived(queue, job())).resolves.toBeUndefined();
+    expect(queue.lookups).toEqual(['33333333-3333-4333-8333-333333333333']);
+  });
+
+  /** The happy path must not pay for the check — the job table is consulted only when
+   * pg-boss said nothing was created. */
+  it('does not consult the job table when the send created a job', async () => {
+    const queue = fakeQueue();
+    await sendChannelMessageReceived(queue, job());
+
+    expect(queue.lookups).toEqual([]);
   });
 });

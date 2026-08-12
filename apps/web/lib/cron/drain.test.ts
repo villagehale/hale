@@ -166,12 +166,83 @@ describe('drainHotQueues', () => {
    * enqueues the approval FROM inside the turn, and draining approvals first means the
    * calendar write it authorises waits for the next tick.
    */
-  it('drains the inbound turn queue FIRST, ahead of the ranker and the approvals', async () => {
+  it('drains the outbound send queue first, then the inbound turn queue ahead of the ranker and the approvals', async () => {
     const { boss } = makeFakeBoss({});
     await drainHotQueues(makeDeps(boss));
 
     const order = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
-    expect(order).toEqual([INBOUND, EVENTS, ACTIONS, RERANK, CHANNEL]);
+    expect(order).toEqual([CHANNEL, INBOUND, EVENTS, ACTIONS, RERANK]);
+  });
+
+  /**
+   * G7 — starvation. `channel.send` carries messages Hale has already decided to send:
+   * the weekly brief and the reminders. It used to drain LAST, behind two LLM-bound
+   * queues sharing one deadline, so an inference backlog withheld an already-composed
+   * message for the whole tick with nothing in the summary saying so.
+   */
+  it('still delivers the outbound send when an LLM-bound queue eats the whole tick budget', async () => {
+    const channelSend = vi.fn(async () => undefined);
+    const { boss, completed } = makeFakeBoss({
+      [CHANNEL]: [{ id: 'c1', data: validChannelSend() }],
+      [INBOUND]: [
+        {
+          id: 'i1',
+          data: {
+            family_id: FAMILY,
+            parent_user_id: PARENT,
+            channel_message_id: '33333333-3333-4333-8333-333333333333',
+            provider_message_id: 'SM1',
+            received_at: new Date().toISOString(),
+          },
+        },
+      ],
+    });
+
+    let clock = 0;
+    const deps: DrainDeps = {
+      ...makeDeps(boss, {
+        // One backed-up inference turn burns the entire wall-clock budget.
+        channelMessage: vi.fn(async () => {
+          clock += 800_000;
+        }),
+        channelSend,
+      }),
+      now: () => clock,
+    };
+
+    await drainHotQueues(deps);
+
+    expect(channelSend).toHaveBeenCalledTimes(1);
+    expect(completed(CHANNEL)).toEqual(['c1']);
+  });
+
+  /**
+   * The other half of the same invariant: the send queue gets a SLICE, not the tick.
+   * A backlog of sends must not become the new thing that starves the parent whose
+   * text is waiting — so its budget runs out and the inbound queue still gets fetched.
+   */
+  it('bounds the send queue to its own budget slice so it cannot starve the inbound turn', async () => {
+    const { boss } = makeFakeBoss({});
+    let clock = 0;
+    // A send queue that never empties, each job costing a tenth of the tick.
+    (boss.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (name: string) =>
+      name === CHANNEL ? [{ id: `c${clock}`, data: validChannelSend() }] : [],
+    );
+    const deps: DrainDeps = {
+      ...makeDeps(boss, {
+        channelSend: vi.fn(async () => {
+          clock += 70_000;
+        }),
+      }),
+      now: () => clock,
+    };
+
+    await drainHotQueues(deps);
+
+    const fetched = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
+    expect(fetched).toContain(INBOUND);
+    // And the slice really is a slice: it gave up well before the 700s tick budget.
+    expect(clock).toBeLessThan(700_000);
   });
 
   it('materializes the feed rank for a pending village.rerank job and completes it', async () => {
@@ -330,21 +401,21 @@ describe('drainHotQueues', () => {
       name === EVENTS ? fullBatch.map((j) => ({ ...j })) : [],
     );
 
-    // now() call 0 seeds the deadline (= 0 + budget); call 1 is the inbound queue's
-    // while check (it fetches nothing and returns); call 2 is the events queue's
-    // first check, under the deadline → one batch is fetched + processed; call 3
-    // jumps past the deadline → the loop stops, and every later queue's first check
-    // is past it too, so nothing else is fetched.
+    // now() call 0 seeds the deadlines (= 0 + budget); calls 1 and 2 are the send and
+    // inbound queues' while checks (both fetch nothing and return); call 3 is the events
+    // queue's first check, under the deadline → one batch is fetched + processed; call 4
+    // jumps past the deadline → the loop stops, and every later queue's first check is
+    // past it too, so nothing else is fetched.
     let calls = 0;
     const deps: DrainDeps = {
       ...makeDeps(boss),
-      now: () => (calls++ < 3 ? 0 : 1_000_000_000),
+      now: () => (calls++ < 4 ? 0 : 1_000_000_000),
     };
 
     const summary = await drainHotQueues(deps);
 
-    expect(boss.fetch).toHaveBeenCalledTimes(2);
-    expect(boss.fetch).toHaveBeenNthCalledWith(2, EVENTS, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledTimes(3);
+    expect(boss.fetch).toHaveBeenNthCalledWith(3, EVENTS, { batchSize: 10 });
     expect(summary.processed).toBe(10);
   });
 

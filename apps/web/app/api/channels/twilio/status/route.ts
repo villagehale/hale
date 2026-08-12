@@ -9,5 +9,5 @@ export const runtime = 'nodejs';
  * Resolves the message by its provider id and advances channel_messages.status.
  */
 export async function POST(req: Request): Promise<Response> {
-  return handleTwilioStatusRequest(req, { database: db() });
+  return handleTwilioStatusRequest(req, { database: db(), log: console });
 }

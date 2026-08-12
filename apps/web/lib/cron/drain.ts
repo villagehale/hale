@@ -48,6 +48,16 @@ export const HOT_QUEUE_EXPIRE_SECONDS = 180;
 const BATCH_SIZE = 10;
 const WALL_CLOCK_BUDGET_MS = 700_000;
 
+/**
+ * The slice `channel.send` drains under before anything else runs (G7).
+ *
+ * It is a SLICE, not a priority: a share big enough that a normal outbound backlog
+ * clears in the same tick it was enqueued, small enough that a stuck send queue can
+ * never become the new thing starving the parent whose text is waiting behind it.
+ * Both directions are pinned by test.
+ */
+const CHANNEL_SEND_BUDGET_MS = 120_000;
+
 /** The minimal pg-boss surface the drain loop uses — injected so the
  * fetch/complete/fail/expiry control flow is unit-testable without a live
  * pg-boss (rule #8: this fakes the QUEUE, never the LLM). */
@@ -287,12 +297,27 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
   });
 
-  const deadlineMs = deps.now() + WALL_CLOCK_BUDGET_MS;
+  const startedMs = deps.now();
+  const deadlineMs = startedMs + WALL_CLOCK_BUDGET_MS;
   const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
 
-  // Inbound turns FIRST. It is the only queue with a parent holding a phone waiting on
-  // it, and it must precede actions.approved: a texted "YES" enqueues its approval from
-  // inside the turn, so approvals drained first would always miss it by a full tick.
+  // Outbound sends FIRST, under their own slice. These jobs carry a message Hale has
+  // ALREADY decided to send — a weekly brief, a reminder — so every second they wait is
+  // pure delay on a decision that is finished. They used to drain last, behind two
+  // LLM-bound queues sharing one deadline, which meant an inference backlog withheld a
+  // composed message for the whole tick and the summary said nothing about it. The slice
+  // is what keeps the reordering honest in both directions: a stuck send queue hands the
+  // rest of the tick back rather than becoming the new starvation.
+  await drainQueue(
+    deps,
+    CHANNEL_SEND_QUEUE,
+    processChannelSendJob,
+    Math.min(startedMs + CHANNEL_SEND_BUDGET_MS, deadlineMs),
+    summary,
+  );
+  // Inbound turns next. It is the queue with a parent holding a phone waiting on it, and
+  // it must precede actions.approved: a texted "YES" enqueues its approval from inside
+  // the turn, so approvals drained first would always miss it by a full tick.
   await drainQueue(
     deps,
     CHANNEL_MESSAGE_RECEIVED_QUEUE,
@@ -303,7 +328,6 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
   await drainQueue(deps, EVENTS_QUEUE, processIngestedJob, deadlineMs, summary);
   await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
   await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
-  await drainQueue(deps, CHANNEL_SEND_QUEUE, processChannelSendJob, deadlineMs, summary);
 
   deps.log.info({ ...summary }, 'drain: run complete');
   return summary;

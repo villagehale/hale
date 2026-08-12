@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { resolveVerifiedChannelByPhone } from '~/lib/channels/sms-consent-core';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -58,6 +58,9 @@ export interface TwilioInboundDeps {
    */
   intake: () => IntakeDeps;
   enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
+  /** Required, not optional: the one thing that must never happen quietly here is a
+   * text Hale accepted and never queued (rule #11). */
+  log: Pick<Console, 'error'>;
   now?: () => Date;
 }
 
@@ -71,6 +74,10 @@ export type TwilioInboundOutcome =
   | 'rate_limited'
   /** Recorded and handed to C1's queue. */
   | 'handed_off'
+  /** Recorded, but the queue refused it: the row is left unmarked for the reconciler,
+   * and the parent is owed a reply Hale has not yet given. Never folded into
+   * `handed_off` — that value is a claim that C1 has the text. */
+  | 'enqueue_failed'
   /** Already recorded under this provider id — a retry, not a second text. */
   | 'duplicate'
   /** The machine handled it; its own outcome is the detail. */
@@ -162,9 +169,21 @@ async function replyMediaUnsupported(
  * handed to an agent that answers with household data. Anyone who is not demonstrably a
  * parent is dropped, so a role we cannot vouch for is silence rather than disclosure.
  *
- * Idempotent on the provider's message id: a webhook retry (Twilio resends when we time
- * out) must not add a second ledger row or a second job. The lookup rides the index A2
- * left on `provider_message_id` for exactly this kind of resolution.
+ * Idempotent on the provider's message id, and the INSERT is what makes it so. Twilio
+ * resends when we exceed its 15s budget, so the resend can arrive while this handler is
+ * still running: a select-then-insert guard is a guard both deliveries walk straight
+ * through. The unique index on `provider_message_id` where `direction = 'in'` decides it
+ * in the database instead — exactly one request wins the row, and winning the row is what
+ * confers the right (and the duty) to enqueue.
+ *
+ * `handed_off_at` is then the answer to a DIFFERENT question: not "have we seen this
+ * text" but "does C1 actually have it". Those were one question before, and that is how a
+ * failed enqueue swallowed a parent's approval forever — the ledger row committed, the
+ * enqueue threw, and every Twilio retry found the row and answered 'duplicate'. The mark
+ * is written only after the job really exists, so a row left null is a text still owed a
+ * reply, and `reconcileUnhandedInbound` (queue-maintenance cron) is what re-drives it.
+ * Nothing re-drives it inside the request: a retry arriving seconds later cannot tell a
+ * dead attempt from one still in flight, and the reconciler can, because it uses age.
  */
 const PARENT_ROLES: readonly string[] = ['primary_parent', 'co_parent'];
 
@@ -193,13 +212,6 @@ async function handOffToConversation(
     return 'not_a_parent';
   }
 
-  const seen = await deps.database
-    .select({ id: schema.channelMessages.id })
-    .from(schema.channelMessages)
-    .where(eq(schema.channelMessages.providerMessageId, inbound.providerId))
-    .limit(1);
-  if (seen.length > 0) return 'duplicate';
-
   const [row] = await deps.database
     .insert(schema.channelMessages)
     .values({
@@ -215,11 +227,15 @@ async function handOffToConversation(
       body: inbound.body,
       sentAt: inbound.receivedAt,
     })
+    .onConflictDoNothing({
+      target: schema.channelMessages.providerMessageId,
+      where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
+    })
     .returning({ id: schema.channelMessages.id });
+  // No row means another delivery of this same MessageSid won the claim. It owns the
+  // hand-off; a second job here would be a second reply to one text.
   const channelMessageId = row?.id;
-  if (!channelMessageId) {
-    throw new Error('twilio inbound: channel_messages insert returned no row');
-  }
+  if (!channelMessageId) return 'duplicate';
 
   await deps.database.insert(schema.auditLog).values({
     familyId: owner.familyId,
@@ -229,13 +245,34 @@ async function handOffToConversation(
     targetId: channelMessageId,
   });
 
-  await deps.enqueue({
-    family_id: owner.familyId,
-    parent_user_id: owner.userId,
-    channel_message_id: channelMessageId,
-    provider_message_id: inbound.providerId,
-    received_at: inbound.receivedAt.toISOString(),
-  });
+  try {
+    await deps.enqueue({
+      family_id: owner.familyId,
+      parent_user_id: owner.userId,
+      channel_message_id: channelMessageId,
+      provider_message_id: inbound.providerId,
+      received_at: inbound.receivedAt.toISOString(),
+    });
+  } catch (err) {
+    // The ids an operator can act on, and nothing the parent typed (rule #1).
+    deps.log.error(
+      {
+        channelMessageId,
+        providerMessageId: inbound.providerId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'twilio inbound: recorded the text but could not queue it for C1 — left unmarked for the reconciler',
+    );
+    return 'enqueue_failed';
+  }
+
+  // Only now is the message really C1's. An enqueue that failed leaves this null and the
+  // reconciler picks it up; marking before the enqueue would re-create the exact bug
+  // this column exists to end.
+  await deps.database
+    .update(schema.channelMessages)
+    .set({ handedOffAt: deps.now?.() ?? new Date() })
+    .where(eq(schema.channelMessages.id, channelMessageId));
   return 'handed_off';
 }
 

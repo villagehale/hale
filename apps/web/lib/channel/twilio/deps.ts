@@ -64,26 +64,70 @@ export interface MessageQueue {
   send(
     name: string,
     data: ChannelMessageReceivedJob,
-    options?: { expireInSeconds?: number; singletonKey?: string },
+    options?: { expireInSeconds?: number; singletonKey?: string; id?: string },
   ): Promise<string | null>;
+  /** The only thing that can tell an idempotent no-op from a send that went nowhere. */
+  getJobById(
+    name: string,
+    id: string,
+    options?: { includeArchive: boolean },
+  ): Promise<{ id: string } | null>;
 }
 
 /**
  * The send options, in one place because two call sites use them.
  *
- * The key is the CONVERSATION anchor — the same string the router threads on — not the
+ * The KEY is the CONVERSATION anchor — the same string the router threads on — not the
  * provider message id A3 shipped. A per-message key serializes nothing, because every
  * message has a different one. Per-PARENT rather than per-family, so a co-parent's text
- * never waits behind a turn that has nothing to do with them.
+ * never waits behind a turn that has nothing to do with them. That is ordering, not
+ * deduplication.
  *
- * This is ordering, not deduplication: the duplicate guard remains the ledger's
- * provider_message_id lookup in inbound.ts, which runs before this is ever reached.
+ * The ID is the deduplication, and it is deliberately the channel message id rather than
+ * a key of its own: one text is one row is one job, an identity that already exists, is
+ * already a uuid, and is already the pointer the payload carries. It matters because the
+ * webhook is no longer the only producer — the reconciler re-drives rows that were never
+ * marked handed off, and it cannot distinguish "the enqueue failed" from "the enqueue
+ * worked and the mark didn't". Under a stable id it does not have to: pg-boss's insert
+ * ends in ON CONFLICT DO NOTHING, so the second attempt creates nothing.
  */
 function sendOptions(job: ChannelMessageReceivedJob) {
   return {
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
     singletonKey: channelSmsNoteKey(job.parent_user_id),
+    id: job.channel_message_id,
   };
+}
+
+/**
+ * Send it, then make sure it is actually there.
+ *
+ * pg-boss returns null from `send` for two opposite reasons: a job with this id already
+ * exists (idempotency working exactly as intended) or nothing was inserted at all —
+ * its insert SELECTs through a join on the queue table, so a missing or mistyped queue
+ * silently yields zero rows. Treating both as success is how a caller ends up writing
+ * `handed_off_at` over a job that does not exist, which is the swallowed-text bug one
+ * layer further down. The job table is the only thing that can tell them apart, so on
+ * the null path we ask it — including the archive, since a job that already ran and was
+ * archived is still a text that was delivered to C1.
+ */
+async function sendAndConfirm(
+  queue: MessageQueue,
+  job: ChannelMessageReceivedJob,
+): Promise<void> {
+  const created = await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, sendOptions(job));
+  if (created) return;
+
+  const existing = await queue.getJobById(
+    CHANNEL_MESSAGE_RECEIVED_QUEUE,
+    job.channel_message_id,
+    { includeArchive: true },
+  );
+  if (!existing) {
+    throw new Error(
+      `${CHANNEL_MESSAGE_RECEIVED_QUEUE}: pg-boss created no job and none exists for channel message ${job.channel_message_id}`,
+    );
+  }
 }
 
 /**
@@ -108,7 +152,7 @@ export async function sendChannelMessageReceived(
   };
   await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
   await queue.updateQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
-  await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, sendOptions(job));
+  await sendAndConfirm(queue, job);
 }
 
 /** Production entrypoint. The queue setup is cached per process (A3's discipline): one
@@ -118,7 +162,7 @@ let queueEnsured = false;
 export async function enqueueChannelMessageReceived(job: ChannelMessageReceivedJob): Promise<void> {
   const queue = (await getQueue()) as unknown as MessageQueue;
   if (queueEnsured) {
-    await queue.send(CHANNEL_MESSAGE_RECEIVED_QUEUE, job, sendOptions(job));
+    await sendAndConfirm(queue, job);
     return;
   }
   await sendChannelMessageReceived(queue, job);
@@ -130,5 +174,6 @@ export function twilioInboundDeps(): TwilioInboundDeps {
     database: db(),
     intake: buildIntakeDeps,
     enqueue: enqueueChannelMessageReceived,
+    log: console,
   };
 }

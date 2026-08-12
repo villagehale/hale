@@ -144,12 +144,53 @@ export function makeFakeDb(): FakeDb {
     return chain;
   };
 
+  /**
+   * The ONE unique index this fake models: channel_messages(provider_message_id) WHERE
+   * direction = 'in'. It has to be modelled here because it is the whole mechanism of
+   * the inbound hand-off claim — the winner of the insert is the request that enqueues
+   * — and a fake that let both concurrent retries insert would pass a test the deployed
+   * webhook fails.
+   *
+   * Faithful in BOTH directions: a conflicting insert that declared
+   * `onConflictDoNothing` resolves to no rows, and one that did NOT raises the unique
+   * violation real Postgres would. Otherwise a caller could drop the conflict clause
+   * and still go green here while 23505-ing in production.
+   */
+  const conflictsOnProviderId = (table: unknown, value: Record<string, unknown>): boolean =>
+    table === schema.channelMessages &&
+    value.direction === 'in' &&
+    typeof value.providerMessageId === 'string' &&
+    (store.get(table) ?? []).some(
+      (row) => row.direction === 'in' && row.providerMessageId === value.providerMessageId,
+    );
+
+  /** A conflicting insert: `onConflictDoNothing` swallows it, any other terminal throws. */
+  const conflictChain = () => {
+    const violation = () =>
+      Promise.reject(
+        new Error(
+          'duplicate key value violates unique constraint "channel_messages_inbound_provider_msg_uniq"',
+        ),
+      );
+    const chain: Record<string, unknown> = {
+      onConflictDoNothing: () => thenable([]),
+      returning: violation,
+      // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+        violation().then(res, rej),
+    };
+    return chain;
+  };
+
   const handle = {
     select: () => ({ from: (table: unknown) => thenable(rowsFor(table)) }),
     insert: (table: unknown) => {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {
         const list = Array.isArray(payload) ? payload : [payload];
+        if (list.some((value) => conflictsOnProviderId(table, value))) {
+          return conflictChain();
+        }
         const stored = store.get(table) ?? [];
         const inserted: Record<string, unknown>[] = [];
         for (const value of list) {

@@ -191,6 +191,15 @@ export async function provisionFromIntake(
     // channel_messages.family_id / parent_user_id are NOT NULL, so these rows could
     // not have been written as the conversation happened; until this moment the
     // record lived encrypted on the intake session.
+    //
+    // The replayed status is what we KNOW, which is less than it looks. An inbound is
+    // 'delivered' because we are holding it. An outbound is only 'queued': it was handed
+    // to the provider, and any receipt that came back while the family did not yet exist
+    // resolved `unknown_message` and could not be applied to a row that wasn't there.
+    // Writing 'sent' asserted carrier acceptance nobody ever observed — and 'sent' is one
+    // of the statuses the funnel scoreboard counts as having reached the parent, so a
+    // carrier filtering every greeting read as a carrier delivering every greeting. Late
+    // receipts still land: 'queued' is overwritable by sent/delivered/failed alike.
     for (const entry of input.transcript) {
       await tx.insert(schema.channelMessages).values({
         familyId,
@@ -199,7 +208,7 @@ export async function provisionFromIntake(
         direction: entry.direction,
         category: 'intake',
         providerMessageId: entry.providerId,
-        status: entry.direction === 'in' ? 'delivered' : 'sent',
+        status: entry.direction === 'in' ? 'delivered' : 'queued',
         // Verbatim bodies are stored for INBOUND only, matching the ledger's rule:
         // an outbound is reconstructable from the copy module, and storing rendered
         // child data is a liability (rule #1).
