@@ -39,6 +39,19 @@ export interface ToolDefinition<TInput, TOutput> {
    * source, because the guard has no child to resolve from its input.
    */
   touchesChildContent: boolean;
+  /**
+   * Sample INPUTS shown to the model alongside the schema (`input_examples` on
+   * the wire). Worth declaring on multi-argument tools, where a schema says what
+   * is well-typed but not what a well-formed call looks like — which optional
+   * arguments to include, and where a value is supposed to come from.
+   *
+   * Rule #1: these ride in the tool definition, which is compiled to a grammar
+   * and cached OUTSIDE the protections message content gets. An example is
+   * therefore always invented — never a real child's name, address, school, or
+   * identifier. Each one must also satisfy `inputSchema`; an invalid example is
+   * a 400, so the sweep test parses every example against its own schema.
+   */
+  inputExamples?: ReadonlyArray<Record<string, unknown>>;
   handler: (input: TInput, ctx: ToolHandlerContext) => Promise<TOutput>;
 }
 
