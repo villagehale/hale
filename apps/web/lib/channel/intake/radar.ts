@@ -15,6 +15,33 @@ import type { ExtractedChild } from './extract';
 import { type RadarCandidate, type RadarChild, decideRadar } from './radar-decide';
 import { composeRadarMessage } from './radar-voice';
 
+/** Words too generic to prove the checkpoint reached the parent. */
+const CHECKPOINT_STOPWORDS = new Set([
+  'your', 'with', 'them', 'they', 'this', 'that', 'have', 'about', 'their',
+  'book', 'call', 'time', 'when', 'week', 'month', 'months', 'year', 'years',
+  'child', 'kids', 'ontario', 'free', 'ask', 'now', 'the', 'and', 'for',
+]);
+
+/**
+ * Whether the composed message actually carries the decided checkpoint: at least
+ * one distinctive word of the checkpoint's parent-facing task, or its age phrase
+ * ("18 month" / "18-month"), survives in the text. Conservative on purpose — a
+ * paraphrase that keeps ANY distinctive task word passes; a compose that dropped
+ * the rung entirely cannot.
+ */
+export function checkpointSurvivedCompose(message: string, task: string): boolean {
+  const text = message.toLowerCase();
+  const agePhrases = task.toLowerCase().match(/\d+[\s-]?(?:month|year|week)/g) ?? [];
+  if (agePhrases.some((phrase) => text.includes(phrase.replace(/[\s-]/g, ' ')) || text.includes(phrase.replace(/[\s-]/g, '-')) || text.includes(phrase))) {
+    return true;
+  }
+  const words = task
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4 && !CHECKPOINT_STOPWORDS.has(w));
+  return words.some((w) => text.includes(w));
+}
+
 /**
  * VIL-238 · M3 — the radar: the first real thing Hale has spotted for these kids in
  * this area, said back to the parent within a minute of them texting in.
@@ -245,6 +272,23 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
         client: deps.client,
       });
 
+      // Launch-day review P0 (2026-08-11): the decision yielding at DECIDE is not
+      // enough — the composer samples at temperature 1 and CAN drop the checkpoint
+      // from the rendered text. A told-marker written for words the parent never
+      // read suppresses that checkpoint permanently and silently. So the marker is
+      // earned by the MESSAGE: only a ref whose task words survived composition
+      // counts as told (rule #11: the dropped case is logged, never silent).
+      const checkpointTold =
+        decision.checkpoint && checkpointSurvivedCompose(message, decision.checkpoint.task)
+          ? decision.checkpoint.ref
+          : null;
+      if (decision.checkpoint && !checkpointTold) {
+        console.warn(
+          'radar compose dropped the decided checkpoint from the text; NOT marking told - it may be raised again',
+          { ref: decision.checkpoint.ref },
+        );
+      }
+
       return {
         message,
         itemCount:
@@ -252,10 +296,7 @@ export function createRadarComposer(deps: RadarDeps): RadarComposer {
           (decision.registrationLine ? 1 : 0) +
           (decision.checkpoint ? 1 : 0),
         followUpNeeded: decision.followUpNeeded,
-        // A checkpoint in the decision is a checkpoint in the message — the rung yields
-        // at DECIDE when it cannot fit (radar-decide.ts), so there is no third opinion
-        // to form here about what the parent is about to read.
-        checkpointTold: decision.checkpoint?.ref ?? null,
+        checkpointTold,
       };
     },
   };

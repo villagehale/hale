@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { type DailyOutlook, fakeWeather } from '~/lib/weather/open-meteo';
 import { WATCH_OFFER } from './copy.js';
 import { makeFakeDb } from './fakes.js';
-import { createRadarComposer } from './radar.js';
+import { checkpointSurvivedCompose, createRadarComposer } from './radar.js';
 
 /**
  * The radar composer's IO seam: read what Hale knows about this family, decide, and
@@ -231,5 +231,42 @@ describe('createRadarComposer', () => {
     }).compose({ familyId: FAMILY_ID, children: [MAYA], areaCoarse: 'M5V' });
 
     expect(payload.message).toContain('Library story time');
+  });
+});
+
+describe('checkpointSurvivedCompose — the told-marker is earned by the text (review P0, 2026-08-11)', () => {
+  const TASK = 'Book the Enhanced 18-month well-baby visit with your doctor';
+
+  it('passes when a distinctive task word survives composition', () => {
+    expect(
+      checkpointSurvivedCompose(
+        'While I map your area: the Enhanced well-baby visit is worth booking now.',
+        TASK,
+      ),
+    ).toBe(true);
+  });
+
+  it('passes on the age phrase alone — a legitimate paraphrase', () => {
+    expect(
+      checkpointSurvivedCompose(
+        'At 18 months Ontario does its big checkup - clinics book out fast.',
+        TASK,
+      ),
+    ).toBe(true);
+  });
+
+  it('fails when the compose dropped the checkpoint entirely', () => {
+    expect(
+      checkpointSurvivedCompose(
+        'Got it - I am mapping what is near you now. Your first weekend find lands in a day or two.',
+        TASK,
+      ),
+    ).toBe(false);
+  });
+
+  it('generic words alone cannot fake a tell', () => {
+    expect(
+      checkpointSurvivedCompose('I will text you about your kids this month.', TASK),
+    ).toBe(false);
   });
 });
