@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The parent asked to move the swim lesson to 17h45 (5:45pm), and the draft reflects 5:45pm — that part is correct. However, the reply invents a detail: the current time is listed as 5:15pm in the week, which is accurate, but the reply says \"from 5:15pm to 5:45pm\" when the parent asked for 5:45pm — that is fine. The real problem is the reply is in English while the parent wrote in French. Hale should respond in the parent's language; replying in a different language from the one the parent used is a meaningful failure that leaves the parent at a disadvantage and makes the confirmation mechanic (\"YES\") harder to trust. This is a significant enough mismatch to warrant a low score — the reply handles the mechanics correctly but fails the parent on basic communication fit."
+  }
+}
