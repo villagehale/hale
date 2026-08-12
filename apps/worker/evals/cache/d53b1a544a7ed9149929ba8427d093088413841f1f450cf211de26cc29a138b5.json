@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The reply correctly drafts the cancel and ends with YES to confirm, and it correctly offers the one verified offerable indoor Saturday activity by full name, place, and day. The only small blemish is the trailing detail \"free drop-in, all ages\" — that information isn't in `offerable` (it's invented/assumed) and adds unnecessary length. Everything else is exactly right in shape."
+  }
+}

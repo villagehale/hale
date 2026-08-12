@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The cancel draft is correctly named and ends \"YES to confirm.\" The offerable activity is handed over whole (name, place, day) from the verified list. The only small blemish is the trailing detail \"free drop-in, all ages\" — that information isn't in `knows` or `week`, so it's invented. Everything else is exactly right and compact."
+  }
+}

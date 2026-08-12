@@ -87,6 +87,10 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
+/** The REAL framework-guidance tool (pure, no DB) — imported rather than replicated
+ * because the skill's frontmatter now requires it and a replica would drift from the
+ * one definition both runtimes share (#409). */
+const FRAMEWORK_TOOL_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'coach', 'framework-tool.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'coach-channel-sms.md');
 
 /** Mirrors MAX_STEPS / MAX_TOKENS in apps/web/lib/channel/coach/runtime.ts. */
@@ -782,6 +786,7 @@ async function main() {
   const show = process.argv.includes('--show');
 
   const agent = await tsImport(AGENT_SRC, import.meta.url);
+  const { frameworkGuidanceTool } = await tsImport(FRAMEWORK_TOOL_SRC, import.meta.url);
   const getClient = lazyAnthropic();
   const cost = makeCost();
 
@@ -812,7 +817,7 @@ async function main() {
       auditLog.push({ actionTaken: 'tool:broken' });
       reply = toSmsReply(BROKEN_REPLY);
     } else {
-      const tools = buildFixtureTools(agent, calls, villageFor(fixture));
+      const tools = [...buildFixtureTools(agent, calls, villageFor(fixture)), frameworkGuidanceTool()];
       const client = makeCachedAgentClient(
         `coach-channel:${fixture.id}`,
         model,

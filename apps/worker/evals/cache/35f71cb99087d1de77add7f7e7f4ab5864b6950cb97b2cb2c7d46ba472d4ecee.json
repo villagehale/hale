@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The reply correctly drafts exactly 2 cancellations (the cap), names both with day and time so Sam can verify, uses the required YES trigger, and explicitly states it will handle the remaining two after confirmation — never sending Sam to the app, never inventing details, no greeting or sign-off. Textbook handling of the overflow case."
+  }
+}

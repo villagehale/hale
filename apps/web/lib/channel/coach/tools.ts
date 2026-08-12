@@ -1,4 +1,5 @@
 import { type RegisteredTool, defineTool } from '@hale/agent';
+import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { type Database, schema } from '@hale/db';
 import type { CalendarPlacementPayload } from '@hale/types';
 import { deriveStage } from '@hale/types';
@@ -308,7 +309,17 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     },
   });
 
-  const tools: RegisteredTool[] = [lookupWeek, proposeMove, proposeCancel, proposeAdd];
+  const tools: RegisteredTool[] = [
+    lookupWeek,
+    proposeMove,
+    proposeCancel,
+    proposeAdd,
+    // The coaching tool the skill instructs (audit find, 2026-08-12): the skill's
+    // "Parenting questions are yours" section calls get_framework_guidance, and
+    // until now only the WEB coach carried it — the SMS runtime would have made
+    // a tool call into a void. Shared definition: ~/lib/coach/framework-tool.
+    frameworkGuidanceTool(),
+  ];
   if (args.villageTool) tools.push(args.villageTool);
   return tools;
 }
