@@ -295,9 +295,11 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
     }),
+    // `confidence` is required by the schema, so the API validates it in every
+    // example: 1 is the parent's own words, 0.8 a clear implication.
     inputExamples: [
-      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm, bath then two books' },
-      { factType: 'logistic', factKey: 'daycare_pickup_owner', factValue: 'the other parent' },
+      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm, bath then two books', confidence: 1 },
+      { factType: 'logistic', factKey: 'daycare_pickup_owner', factValue: 'the other parent', confidence: 0.8 },
     ],
     monetary: false,
     touchesChildContent: false,

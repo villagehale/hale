@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_011CdyJGBFC4r65hJaAepuaV",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Mira's bedtime is **7:30 pm**, with this wind-down routine you've got in place:\n\n1. **Bath**\n2. **Story**\n3. **Lights out**\n\nThat's a solid sequence for 18 months — the bath-to-story-to-dark flow gives her clear, predictable cues that sleep is coming, which helps a lot at this age.\n\nOne small tip: if she's had a short nap and is cranky by evening (which has come up a fair bit recently), pulling the whole sequence forward by 20–30 minutes can make settling easier."
+      }
+    ],
+    "usage": {
+      "input_tokens": 10576,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 139,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 4310,
+  "firstInputTokens": 10576
+}

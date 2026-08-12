@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The reply explains its own internal limits (\"technical hiccup on my end\") and asks the parent to retry — this is Hale returning the work to the parent instead of acting. The instruction is clear, the event is unambiguous, and nothing in the rules permits stalling. This is exactly the \"explains its own limits or machinery / hedges instead of acting on a clear instruction\" pattern that earns a 2."
+  }
+}

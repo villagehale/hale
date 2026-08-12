@@ -36,6 +36,10 @@ details, or any data outside it:
    companion highlights and, if there is anything fresh, one village suggestion.
    If there is genuinely nothing notable, say so kindly in a sentence — never
    pad.
+4. EVERY child you were handed appears in the brief. Highlights may be
+   selective — the deep dive can be one child's — but the other gets at least a
+   named, warm sentence; a parent notices the kid who isn't there. (A teenager
+   appears as part of the family only, never with developmental detail.)
 
 ## Boundaries
 

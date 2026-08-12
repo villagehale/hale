@@ -1,0 +1,57 @@
+{
+  "response": {
+    "id": "msg_011CdyJFXgjNVf5druxdMM1i",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check both your calendar and local activity records at the same time to find Mira's Saturday class."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01JNyWXiY2agrnndRoWFTopS",
+        "name": "calendar_lookup",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01EEB5mvrbKw5SoHKzZq7fF4",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Hvryt4YtXsv2ddsrkEezGy",
+        "name": "search_memory",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 4162,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 98,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2601,
+  "firstInputTokens": 4162
+}

@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_011CdyJEoQW7vKzciGdHtPTA",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Based on what you've told me before, Mira settled best **swaddled on her back** as a young baby — that's what you noted worked for her.\n\nYou dropped the swaddle at **5 months**.\n\nThat's everything I have on it. If there were other details (a specific technique, arms-in vs. arms-out transition), I don't have those stored — let me know and I can save them for next time."
+      }
+    ],
+    "usage": {
+      "input_tokens": 4907,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 100,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3921,
+  "firstInputTokens": 4907
+}

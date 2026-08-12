@@ -1,0 +1,28 @@
+{
+  "response": {
+    "id": "msg_011CdyEiFRiWj9bGrt718ZVo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Give Rae a warning before you leave — not a surprise. At 26 months, big feelings still outpace the words to handle them, so an abrupt \"time to go\" hits like a wall.\n\nA couple of things that tend to help:\n\n- **Two warnings, spaced out** — \"five more minutes, then we go\" followed by \"two more minutes.\" It lets her brain start adjusting.\n- **One last thing** — \"one more trip down the slide, then shoes on.\" Giving her control over the ending makes the exit feel less stolen.\n- **A small closing ritual** — wave bye to the swings, count the steps to the gate. It signals *done* in a way she can understand and even look forward to.\n\nThe meltdowns usually ease as her language and transition skills catch up — this is a very normal patch at her age."
+      }
+    ],
+    "usage": {
+      "input_tokens": 2952,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 194,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

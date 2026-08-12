@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The reply correctly identifies the soccer practice, drafts the move, and ends with the required \"YES to confirm.\" format. However, it includes a redundant internal reference \"(evt-soccer-sat)\" that is implementation noise the parent doesn't need, and the opening clause restates information the parent already knows, making it slightly longer than necessary. The core job is done correctly."
+  }
+}

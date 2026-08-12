@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The answer correctly identifies Mira's bedtime (7:30 pm = 19:30) and the wind-down routine (bath, story, lights out) which matches the reference. However, the answer contains a significant fabrication: it states Mira is \"four months\" old, which is not mentioned anywhere in the reference. This invented specific detail about the child's age is contradictory information not supported by the reference material, which results in a lower score despite getting the main facts right."
+  }
+}

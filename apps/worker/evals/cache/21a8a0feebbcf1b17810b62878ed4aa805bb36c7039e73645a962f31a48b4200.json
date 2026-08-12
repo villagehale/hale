@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_011CdyJBNNHFSLopCmQovAHQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Mira's bedtime is **7:30 pm**, and her wind-down goes like this:\n\n1. **Bath**\n2. **Story**\n3. **Lights out**\n\nThat's the routine you've got saved. Simple and consistent — exactly what works well at four months, since the repetition itself is the signal to her brain that sleep is coming."
+      }
+    ],
+    "usage": {
+      "input_tokens": 4905,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 84,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 3493,
+  "firstInputTokens": 4905
+}

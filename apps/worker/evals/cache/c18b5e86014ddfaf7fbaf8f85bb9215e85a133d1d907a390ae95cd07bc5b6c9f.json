@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer states \"I don't have a record of when Mira took her first steps,\" but the reference clearly indicates that Mira took her first independent steps about 7 months ago. The assistant should have known this fact and provided the answer. Instead, it incorrectly claimed not to have this information when it was available in the reference, and it offered to save the information as if it were new. This is a clear MISS of a fact that should have been known."
+  }
+}

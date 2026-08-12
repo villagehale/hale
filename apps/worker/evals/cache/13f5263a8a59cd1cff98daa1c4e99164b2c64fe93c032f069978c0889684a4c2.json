@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The answer correctly identifies the core fact from the reference: Mira has a confirmed mild egg allergy that causes hives. The answer accurately states \"flag **egg**\" and \"confirmed mild egg allergy (mild hives), confirmed by Riverdale Pediatrics,\" which aligns with the reference statement that it was \"confirmed by your pediatric office.\" The additional practical guidance (checking labels, knowing the reaction symptoms, confirming action plans) is helpful and contextual but does not contradict or fabricate facts from the reference. The answer directly addresses the question asked and includes the essential factual information required."
+  }
+}

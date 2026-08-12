@@ -1,0 +1,46 @@
+{
+  "response": {
+    "id": "msg_011CdyHM4pFuj8XpeQNbF9ft",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check the schedule and nearby options at the same time."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01Bhn3bktv1uvMrh9zmSDxoh",
+        "name": "lookup_week",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01DtCg1NNkmUsAWN8ABxo91A",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 4488,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 69,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

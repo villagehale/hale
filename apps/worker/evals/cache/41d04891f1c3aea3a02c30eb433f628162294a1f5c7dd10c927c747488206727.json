@@ -1,0 +1,30 @@
+{
+  "response": {
+    "id": "msg_011CdyJPnRipwm2nZaGuKexL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Yes — flag her **egg allergy**. It's confirmed by Riverdale Pediatrics and causes mild hives on contact.\n\nA few things worth passing on to the caregiver:\n\n- **No egg in any form** — that includes baked goods, pasta, and sauces that often contain egg.\n- Tell them what a reaction looks like: mild hives (skin redness/bumps), typically appearing shortly after exposure.\n- Make sure they know to call you immediately if it happens, and clarify whether you want them to contact Riverdale Pediatrics directly (evenings preferred for booking, but they'd call in an emergency).\n\nIf you haven't already, it's worth asking Riverdale Pediatrics whether Mira should have an antihistamine on hand for the caregiver to use — that's a conversation for them to advise on, not me."
+      }
+    ],
+    "usage": {
+      "input_tokens": 26004,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 194,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 8607,
+  "firstInputTokens": 26004
+}

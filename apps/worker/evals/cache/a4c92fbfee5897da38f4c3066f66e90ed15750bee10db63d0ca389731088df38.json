@@ -1,0 +1,48 @@
+{
+  "response": {
+    "id": "msg_011CdyJNXayEf7VDuqxrYGv6",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check your calendar and village activities at the same time to find Mira's Saturday class."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_019Xpgq5SNShBMLoFE2LD63Q",
+        "name": "calendar_lookup",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01CvsVeQJJ99a6njLJcc1dnQ",
+        "name": "search_village",
+        "input": {},
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 4150,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 77,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  },
+  "latencyMs": 2407,
+  "firstInputTokens": 4150
+}
