@@ -6,6 +6,7 @@ import { companionForChild, deriveStage } from '@hale/types';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { formatCalendarDayLabel } from '~/lib/format/datetime';
+import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
 import { toVillageCandidateView } from '~/lib/village/mappers';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
@@ -161,7 +162,7 @@ export function searchVillageTool(database: Database): RegisteredTool {
   });
 }
 
-export function buildAskHaleTools(database: Database): RegisteredTool[] {
+export function buildAskHaleTools(database: Database, now: Date = new Date()): RegisteredTool[] {
   const getChildProfile = defineTool({
     name: 'get_child_profile',
     description:
@@ -264,43 +265,34 @@ export function buildAskHaleTools(database: Database): RegisteredTool[] {
   const saveMemory = defineTool({
     name: 'save_memory',
     description:
-      "Persist a durable fact the parent STATED about THIS family (a settled routine, a stated preference, a logistic), so Hale recalls it next turn. Upserts on (factType, factKey). Never store inferences — only what the parent actually said.",
+      "Persist a durable fact the parent STATED about THIS family (a settled routine, a stated preference, a logistic), so Hale recalls it next turn. Upserts on (factType, factKey). Never store inferences — only what the parent actually said. `confidence` is how sure you are the parent actually SAID this: 1 when they stated it in these words, lower when you are reading an implication. Below 0.7 is refused — do not file a hunch.",
     inputSchema: z.object({
       factType: memoryFactType,
       factKey: z.string().min(1),
       factValue: z.unknown(),
+      confidence: z.number().min(0).max(1),
     }),
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
-      await database
-        .update(schema.familyMemoryFacts)
-        .set({ validUntil: new Date() })
-        .where(
-          and(
-            eq(schema.familyMemoryFacts.familyId, ctx.familyId),
-            eq(schema.familyMemoryFacts.factType, input.factType),
-            eq(schema.familyMemoryFacts.factKey, input.factKey),
-            isNull(schema.familyMemoryFacts.validUntil),
-          ),
-        );
-
-      const inserted = await database
-        .insert(schema.familyMemoryFacts)
-        .values({
-          familyId: ctx.familyId,
-          factType: input.factType,
-          factKey: input.factKey,
-          factValue: input.factValue,
-          confidence: 1,
-          inferredBy: 'ask-hale',
-        })
-        .returning({ id: schema.familyMemoryFacts.id });
-
-      const factId = inserted[0]?.id;
-      if (!factId) {
-        throw new Error('save_memory: family_memory_facts insert returned no row');
+      // The same floor the inferencer is held to. A fact the coach only half-heard
+      // outranks nothing — under MEM-1 confidence now decides what Hale recalls at
+      // all, so a hunch filed at certainty would evict something the parent said.
+      if (input.confidence < CONFIDENCE_FLOOR) {
+        return { saved: false as const, reason: 'below_confidence_floor' };
       }
+
+      const { factId } = await writeFact(database, {
+        familyId: ctx.familyId,
+        childId: null,
+        factType: input.factType,
+        factKey: input.factKey,
+        factValue: input.factValue,
+        confidence: input.confidence,
+        inferredBy: 'ask-hale',
+        // The parent said it in this turn, so the turn clock IS the event time.
+        validFrom: now,
+      });
       return { saved: true as const, factId };
     },
   });

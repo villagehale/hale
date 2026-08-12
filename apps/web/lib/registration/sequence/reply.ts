@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
+import { writeFact } from '~/lib/memory/facts';
 import { resolveFamilyOpen } from '~/lib/registration/match-registration-windows';
 import { renderCheckInReply } from './copy.js';
 import {
@@ -285,7 +286,10 @@ export async function recordRegistrationOutcome(
     // fact about a household's autumn, and it is family-scoped rather than child-scoped
     // because a municipal window is registered for as a household — the shortlist may
     // have covered two siblings and one row cannot honestly be attributed to one.
-    await tx.insert(schema.familyMemoryFacts).values({
+    // Supersede rather than append: a corrected outcome for the same window is the
+    // newer truth, and two live rows for one window would be two answers to the same
+    // question.
+    await writeFact(tx, {
       familyId: input.familyId,
       childId: null,
       factType: 'logistic',
@@ -297,7 +301,9 @@ export async function recordRegistrationOutcome(
         cycleLabel: input.windowRef.cycleLabel,
         waitlistPosition: input.position,
       },
+      confidence: 1,
       inferredBy: REGISTRATION_FACT_WRITER,
+      validFrom: input.now,
     });
   });
 }

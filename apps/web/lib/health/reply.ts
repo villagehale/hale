@@ -3,6 +3,7 @@ import { and, desc, eq, isNull, like } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import { normalizeKeyword } from '~/lib/channel/intake/keywords';
 import { draftInlineAction } from '~/lib/coach/inline-action';
+import { writeFact } from '~/lib/memory/facts';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { checkpointById, parseCheckpointRef } from './checkpoints';
 import { checkpointToldKeyPrefix, loadToldCheckpointRefs } from './told';
@@ -200,13 +201,18 @@ export async function recordCheckpointDone(
       targetId: input.familyId,
       after: { checkpointId: input.checkpointId },
     });
-    await tx.insert(schema.familyMemoryFacts).values({
+    // A parent can answer "done" to the same checkpoint twice. Superseding rather
+    // than appending keeps one live suppression row per checkpoint — which is what
+    // the read below counts, and what the unique index will accept.
+    await writeFact(tx, {
       familyId: input.familyId,
       childId: input.childId,
       factType: 'logistic',
       factKey: `${HEALTH_FACT_KEY_PREFIX}${input.ref}`,
       factValue: { checkpointId: input.checkpointId, status: 'done' },
+      confidence: 1,
       inferredBy: HEALTH_FACT_WRITER,
+      validFrom: new Date(),
     });
   });
 }

@@ -251,7 +251,7 @@ importers:
         version: 2.0.0(next@15.5.18(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
       drizzle-orm:
         specifier: ^0.38.3
-        version: 0.38.4(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3)
+        version: 0.38.4(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3)
       jose:
         specifier: ^5.10.0
         version: 5.10.0
@@ -295,6 +295,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
       '@opentelemetry/context-async-hooks':
         specifier: ^2.8.0
         version: 2.8.0(@opentelemetry/api@1.9.1)
@@ -351,7 +354,7 @@ importers:
         version: link:../../packages/types
       drizzle-orm:
         specifier: ^0.38.3
-        version: 0.38.4(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3)
+        version: 0.38.4(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3)
       pg-boss:
         specifier: ^10.1.6
         version: 10.4.2
@@ -371,6 +374,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.4
+        version: 0.5.4
       '@types/node':
         specifier: ^22.10.5
         version: 22.19.19
@@ -407,7 +413,7 @@ importers:
     dependencies:
       drizzle-orm:
         specifier: ^0.38.3
-        version: 0.38.4(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3)
+        version: 0.38.4(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3)
       postgres:
         specifier: ^3.4.5
         version: 3.4.9
@@ -920,6 +926,9 @@ packages:
   '@egjs/hammerjs@2.0.17':
     resolution: {integrity: sha512-XQsZgjm2EcVUiZQf11UBJQfmZeEmOW8DpI1gsFeln6w0ae0ii4dMQEQ0kjl6DspdWX1aGY1/loyXnP0JS06e/A==}
     engines: {node: '>=0.8.0'}
+
+  '@electric-sql/pglite@0.5.4':
+    resolution: {integrity: sha512-yYZUyyXrHU7tPlCjwZQJ6hIG9DscdCCn7Uk0mYKwC1FeHX286AbcmFveMiRBEak8e9iPupjsoVImN3yJZVed2g==}
 
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
@@ -6951,6 +6960,8 @@ snapshots:
     dependencies:
       '@types/hammerjs': 2.0.46
 
+  '@electric-sql/pglite@0.5.4': {}
+
   '@emnapi/core@1.11.1':
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
@@ -9379,8 +9390,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.38.4(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3):
+  drizzle-orm@0.38.4(@electric-sql/pglite@0.5.4)(@opentelemetry/api@1.9.1)(@types/react@19.2.15)(pg@8.21.0)(postgres@3.4.9)(react@19.2.3):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.4
       '@opentelemetry/api': 1.9.1
       '@types/react': 19.2.15
       pg: 8.21.0
