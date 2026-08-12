@@ -39,6 +39,18 @@ import { buildConnectorTools } from './connector-tools';
 const MEMORY_RESULT_LIMIT = 15;
 
 /**
+ * The childId stand-in used in every `inputExamples` entry.
+ *
+ * Rule #1, and it is not a style preference: `input_examples` rides in the tool
+ * definition, which the API compiles into a grammar and caches for up to 24h
+ * SEPARATELY from message content — outside the protections prompts and
+ * responses get. A real childId (or name, address, or school) in an example
+ * would be family data living in that cache. So examples are always invented,
+ * and this all-zero v4 uuid is unmistakably a placeholder rather than a row.
+ */
+export const EXAMPLE_CHILD_ID = '00000000-0000-4000-8000-000000000000';
+
+/**
  * The family's children currently in the teenager stage, derived LIVE from DOB
  * (never stored) — the source-side teen filter shared by the child-naming-less
  * reads (`search_memory`, `search_village`) so a teen's row can't slip past the
@@ -110,6 +122,9 @@ export function searchVillageTool(database: Database): RegisteredTool {
     description:
       "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1).",
     inputSchema: z.object({ query: z.string().optional() }),
+    // Invented values only — examples are compiled into a cached grammar that sits
+    // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
+    inputExamples: [{ query: 'swim' }, {}],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
@@ -168,6 +183,10 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
     description:
       "Read one of THIS family's children by id: derived stage, age in months, and stage-appropriate developmental guidance. A teenager's profile is refused by the child-content guard (rule #1).",
     inputSchema: z.object({ childId: z.string() }),
+    // The only source of a childId is the context this run was given — no tool in
+    // the allowlist returns one, so the example exists to stop the model
+    // composing a plausible uuid (rule #1: invented placeholder, never a row).
+    inputExamples: [{ childId: EXAMPLE_CHILD_ID }],
     monetary: false,
     touchesChildContent: true,
     handler: async (input, ctx) => {
@@ -209,6 +228,10 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
       query: z.string().min(1),
       factType: memoryFactType.optional(),
     }),
+    inputExamples: [
+      { query: 'bedtime' },
+      { query: 'allergy', factType: 'medical' },
+    ],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {
@@ -272,6 +295,10 @@ export function buildAskHaleTools(database: Database, now: Date = new Date()): R
       factValue: z.unknown(),
       confidence: z.number().min(0).max(1),
     }),
+    inputExamples: [
+      { factType: 'routine', factKey: 'bedtime', factValue: '7:30pm, bath then two books' },
+      { factType: 'logistic', factKey: 'daycare_pickup_owner', factValue: 'the other parent' },
+    ],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx) => {

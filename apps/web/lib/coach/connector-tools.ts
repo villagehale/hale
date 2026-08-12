@@ -165,6 +165,10 @@ export function buildConnectorTools(
     description:
       "Search the SIGNED-IN PARENT's connected Google Drive by file name and return the top matches as name + type + last-modified + a link to open. Read-only, file NAMES and links only — never file contents. If Drive isn't connected, say so and point them to Settings.",
     inputSchema: z.object({ query: z.string().min(1).max(256) }),
+    // A NAME fragment, not Drive query syntax — the handler wraps it in
+    // `name contains '...'`, so an operator here matches nothing. Invented
+    // values only: examples are cached outside message protections (rule #1).
+    inputExamples: [{ query: 'permission form' }, { query: 'swim registration' }],
     monetary: false,
     touchesChildContent: false,
     handler: async (input, ctx): Promise<ConnectorToolResult> => {
