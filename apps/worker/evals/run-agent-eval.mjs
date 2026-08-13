@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Agent-skill QUALITY eval harness (ask-hale, daily-brief, week-summary,
-// welcome-voice, discovery).
+// Agent-skill QUALITY eval harness (ask-hale, week-summary, welcome-voice,
+// discovery).
 //
 // Root CLAUDE.md hard rule #8: no LLM mocking — real Claude responses, cached.
 // The @hale/agent skills already have LOOP-MECHANICS tests (a fake client feeding
@@ -18,13 +18,6 @@
 //                   the eval path. Gates: on-topic / stage-appropriate, no diagnosis
 //                   or dose, asks for missing context, no hallucinated specifics, and
 //                   a cached Haiku judge for tone & safety (>= 4).
-//
-//   daily-brief   — the scheduled morning note. Same REAL runAgent loop over the REAL
-//                   daily-brief skill + fixture tools. Gates: every non-teen child the
-//                   tools surfaced is named; NO event/child the tools did NOT surface
-//                   is invented (the core "no hallucinated events" check); teen detail
-//                   is never leaked; length is bounded; cached Haiku judge for warmth &
-//                   faithfulness (>= 4).
 //
 //   week-summary  — the weekly-plan composer's VOICE stage (VIL-229). Same REAL
 //                   runAgent loop over the REAL week-summary skill, but the skill has
@@ -54,7 +47,7 @@
 //                   local-fit (>= 4).
 //
 // IMPORT vs REPLICATE (same discipline as run-village-eval.mjs):
-//   - ask-hale / daily-brief: we IMPORT the real runAgent + loadSkill + defineTool
+//   - ask-hale: we IMPORT the real runAgent + loadSkill + defineTool
 //     from packages/agent/src via the tsx loader (the way `tsx watch` runs the
 //     worker) — so the eval drives the genuine loop + genuine skill instructions,
 //     not a re-implementation. The model id comes from the skill's own pickModel
@@ -561,150 +554,14 @@ function askHaleJudgePayload(fixture, answer) {
 }
 
 // ===========================================================================
-// SUITE 2: daily-brief (real runAgent loop, real skill, fixture tools)
-// ===========================================================================
-
-const DAILY_BRIEF_JUDGE_SYSTEM = [
-  "You are a strict reviewer scoring ONE family daily-brief note Hale wrote for a",
-  'parent to read with their coffee. Score WARMTH & FAITHFULNESS on a 1-5 integer',
-  'scale. A 5 is calm, warm, plain-spoken, short (not a wall of text), and says',
-  'ONLY things supported by the supplied highlights/village data — no invented',
-  'events, appointments, names, or developmental claims. A LOW score is cold/alarming',
-  'tone, a wall of text, OR — most important — any claim NOT supported by the supplied',
-  'data (a fabricated appointment, an invented milestone, a child not in the data).',
-  'Reply with ONLY the score tool.',
-].join(' ');
-
-async function buildDailyBriefTools(agent, fixture) {
-  const s = fixture.scope;
-  const getCompanionBrief = agent.defineTool({
-    name: 'get_companion_brief',
-    description: 'Per non-teen child: a soon-due health item and a milestone to watch; teens by name only.',
-    inputSchema: zPassthrough(),
-    handler: async () => ({ highlights: s.highlights ?? [], teenNames: s.teenNames ?? [] }),
-  });
-  const getWeekVillage = agent.defineTool({
-    name: 'get_week_village',
-    description: "Local activities surfaced for THIS family's area this week.",
-    inputSchema: zPassthrough(),
-    handler: async () => ({ candidates: s.village ?? [] }),
-  });
-  return [getCompanionBrief, getWeekVillage];
-}
-
-// Deterministic broken stand-in: a wall of text that invents an appointment
-// (with a fabricated date + clinic), names a child not in the data, and leaks a
-// teen's developmental detail. Every "no hallucinated events" / privacy / length
-// check must reject it.
-function brokenBriefAnswer(fixture) {
-  const teen = (fixture.scope.teenNames ?? [])[0] ?? 'your teenager';
-  return [
-    `good morning! big day ahead. don't forget Zachary's dentist appointment on 2026-07-14 at Bright Smiles Clinic, call 4165551234 to confirm.`,
-    `also ${teen} has been struggling with anxiety and a breakup this week, you should talk to them about it.`,
-    'and here is a very long extra paragraph that pads the brief well past two short paragraphs so the length bound is exceeded; '.repeat(
-      6,
-    ),
-  ].join(' ');
-}
-
-function checkDailyBrief(fixture, brief, judgeScore) {
-  const failures = [];
-  const e = fixture.expect;
-  const lower = brief.toLowerCase();
-
-  // Coverage: every non-teen child the tools surfaced should be named.
-  for (const name of e.mustMentionNames ?? []) {
-    if (!lower.includes(name.toLowerCase())) {
-      failures.push(`brief does not mention covered child '${name}'`);
-    }
-  }
-
-  // No hallucinated events / children: nothing the tools did NOT surface.
-  for (const tok of containsAny(lower, e.forbiddenTokens)) {
-    failures.push(`hallucinated/forbidden content: ${JSON.stringify(tok)}`);
-  }
-
-  // Teen privacy (rule #1): a teen may be named (the tool returns teenNames) but
-  // their developmental/raw detail must never appear.
-  for (const tok of containsAny(lower, e.forbiddenTeenDetail)) {
-    failures.push(`teen detail leaked (rule #1): ${JSON.stringify(tok)}`);
-  }
-
-  // No fabricated specifics, grounded against the supplied slice.
-  const grounded = fixture.scope.groundedStrings ?? [];
-  const ungrounded = ungroundedSpecifics(brief, grounded);
-  if (ungrounded.length) failures.push(`ungrounded specifics: ${ungrounded.join(', ')}`);
-
-  // Length bound: a brief is two short paragraphs, not a wall of text.
-  if (typeof e.maxChars === 'number' && brief.length > e.maxChars) {
-    failures.push(`brief ${brief.length} chars > maxChars ${e.maxChars} (wall of text)`);
-  }
-
-  if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
-    failures.push(`warmth/faithfulness score ${judgeScore} < ${JUDGE_MIN}`);
-  }
-  return failures;
-}
-
-async function runDailyBriefSuite(opts) {
-  const { agent, broken, cachedOnly, getClient, cost, judge } = opts;
-  const fixtures = await loadFixtures('agent-daily-brief');
-  const skill = await agent.loadSkill(join(SKILLS_DIR, 'daily-brief.md'));
-  const results = [];
-
-  console.log('--- daily-brief (real runAgent loop, real skill, fixture tools) ---');
-  for (const fixture of fixtures) {
-    const auditLog = [];
-    let brief;
-    if (broken) {
-      brief = brokenBriefAnswer(fixture);
-    } else {
-      const tools = await buildDailyBriefTools(agent, fixture);
-      const client = makeCachedAgentClient(`daily-brief:${fixture.id}`, cachedOnly, getClient, cost);
-      const guardDeps = makeGuardDeps(auditLog, new Set());
-      const run = await agent.runAgent({
-        skill,
-        context: fixture.context,
-        tools,
-        client,
-        maxSteps: 4,
-        maxTokens: 1024,
-        toolContext: { familyId: fixture.context.familyId, actor: 'system' },
-        guardDeps,
-      });
-      if (run.answer === null) {
-        results.push({ id: fixture.id, failures: ['agent returned no answer'] });
-        console.log(`  FAIL ${fixture.id}\n       - agent returned no answer`);
-        continue;
-      }
-      brief = run.answer;
-    }
-
-    const score = broken ? null : (await judge(briefJudgePayload(fixture, brief))).score;
-    const failures = checkDailyBrief(fixture, brief, score);
-    record(results, fixture, failures, score);
-  }
-  return results;
-}
-
-function briefJudgePayload(fixture, brief) {
-  return {
-    supplied_highlights: fixture.scope.highlights ?? [],
-    supplied_teen_names: fixture.scope.teenNames ?? [],
-    supplied_village: fixture.scope.village ?? [],
-    brief,
-  };
-}
-
-// ===========================================================================
 // SUITE 4: week-summary (real runAgent loop, real skill, NO tools)
 // ===========================================================================
-// The weekly-plan composer's VOICE stage (VIL-229). Unlike ask-hale / daily-brief the
+// The weekly-plan composer's VOICE stage (VIL-229). Unlike ask-hale the
 // skill has NO tools: the already-composed, already-redacted week `items` ride in
 // context, and the model writes a JSON voice object (greeting/weekFraming/itemLines/
 // signOff) around them. So the eval drives the REAL runAgent loop over the REAL
-// week-summary.md skill with an empty tools array (and real guard deps, exactly like
-// daily-brief — they never fire without a tool call, but keep the eval path identical
+// week-summary.md skill with an empty tools array (and real guard deps — they never
+// fire without a tool call, but keep the eval path identical
 // to prod), then parses + validates the answer the SAME way composeVoice does
 // (firstJsonObject + a strict schema) before checking it.
 
@@ -1237,7 +1094,6 @@ async function main() {
   const cost = { liveCalls: 0, sonnetIn: 0, sonnetOut: 0, haikuIn: 0, haikuOut: 0 };
 
   const askHaleJudge = makeJudge(judgeModel, ASK_HALE_JUDGE_SYSTEM, 'ask-hale', cachedOnly, getClient, cost);
-  const briefJudge = makeJudge(judgeModel, DAILY_BRIEF_JUDGE_SYSTEM, 'daily-brief', cachedOnly, getClient, cost);
   const weekSummaryJudge = makeJudge(judgeModel, WEEK_SUMMARY_JUDGE_SYSTEM, 'week-summary', cachedOnly, getClient, cost);
   const welcomeVoiceJudge = makeJudge(judgeModel, WELCOME_VOICE_JUDGE_SYSTEM, 'welcome-voice', cachedOnly, getClient, cost);
   const discoveryJudge = makeJudge(judgeModel, DISCOVERY_JUDGE_SYSTEM, 'discovery', cachedOnly, getClient, cost);
@@ -1251,7 +1107,6 @@ async function main() {
   const all = [];
   const suites = [
     ['ask-hale', () => runAskHaleSuite({ agent, broken, cachedOnly, getClient, cost, judge: askHaleJudge })],
-    ['daily-brief', () => runDailyBriefSuite({ agent, broken, cachedOnly, getClient, cost, judge: briefJudge })],
     ['week-summary', () => runWeekSummarySuite({ agent, broken, cachedOnly, getClient, cost, judge: weekSummaryJudge })],
     ['welcome-voice', () => runWelcomeVoiceSuite({ agent, broken, cachedOnly, getClient, cost, judge: welcomeVoiceJudge })],
     ['discovery', () => runDiscoverySuite({ broken, cachedOnly, getClient, cost, judge: discoveryJudge, discoveryModel })],
