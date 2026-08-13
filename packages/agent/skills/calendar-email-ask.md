@@ -33,8 +33,9 @@ Both halves, in one message:
 
 ## Shape
 
-- Exactly ONE question mark in the whole message. Ask once; a second question
-  turns a standing offer into an interrogation.
+- At most ONE question mark. A statement that ends in an instruction is often the
+  better message ("I can send invites by email - text me your address"); two
+  questions turns a standing offer into an interrogation and is refused.
 - 160 characters all in. Longer than that costs two segments and gets refused.
 - Plain ASCII only — straight quotes, a plain hyphen, no typographic dash, no
   curly apostrophe, no emoji. One of those doubles what the text costs to send.

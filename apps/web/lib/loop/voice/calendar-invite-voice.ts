@@ -121,11 +121,16 @@ export function askViolations(text: string): string[] {
   if (smsEncoding(text) !== 'gsm7') {
     out.push('the message used a character outside plain ASCII (a curly quote, a long dash or an emoji)');
   }
-  // ONE question, not one sentence: "Want this in your calendar too? Text me your
-  // email." is the shape, and forcing the '?' to be the last character would only buy
-  // an awkward inversion of it.
+  // AT MOST one question mark. The first live run wrote the ask as an offer with an
+  // instruction — "I can send real calendar invites by email - text me your address"
+  // — three times out of three, and it is better copy than the interrogative it was
+  // being forced into. What actually had to be stopped was the INTERROGATION ("Want
+  // invites? What's your address?"), which is the second question mark, so that is
+  // what the gate holds. "Does it actually ask" is the `email` check and the judge.
   const questionMarks = (text.match(/\?/g) ?? []).length;
-  if (questionMarks !== 1) out.push(`the message had ${questionMarks} question marks; it must ask exactly one`);
+  if (questionMarks > 1) {
+    out.push(`the message asked ${questionMarks} questions; ask at most one thing`);
+  }
   if (!/email/i.test(text)) out.push('the message never used the word "email", so it does not ask for one');
   if (LINK_SHAPE.test(text)) out.push('the message carried a link; there is nothing to link to');
   if (text.includes('@')) out.push('the message contained an @ address; an example address is invented');

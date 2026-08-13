@@ -66,15 +66,23 @@ describe('askViolations — what may never be texted', () => {
     expect(askViolations(GOOD_ASK)).toEqual([]);
   });
 
+  /** The shape the model actually reaches for, and the reason the gate counts a
+   * SECOND question rather than requiring a first (calibrated on the live run). */
+  it('passes an offer that asks without a question mark at all', () => {
+    expect(
+      askViolations("I can send real calendar invites by email - text me your address and I'll use it."),
+    ).toEqual([]);
+  });
+
   it.each([
     ['', 'empty'],
     ['a'.repeat(MAX_ASK_CHARS + 1), 'characters'],
-    ['Want your email? I can send invites — say the word?', 'question marks'],
+    ['Want your email? I can send invites — say the word?', 'questions'],
     ["Want this in your calendar? Text me your email — I'll send invites there.", 'plain ASCII'],
     ['Text me your address and I will send invites there.', 'email'],
     ['Want invites by email? See https://villagehale.com', 'link'],
     ['Want invites by email, like you@example.com?', '@ address'],
-    ['Want invites by email? It takes 2 seconds?', 'question marks'],
+    ['Want invites by email? It takes 2 seconds?', 'questions'],
     ['Want invites by email in 2 seconds?', 'digit'],
   ])('refuses %j', (text, expected) => {
     const violations = askViolations(text);
@@ -147,7 +155,7 @@ describe('createCalendarVoice — retry, then defer', () => {
 
   it('hands a violation back and takes the fixed second attempt', async () => {
     const { client, turns } = scriptedClient([
-      { text: 'Want invites by email? Check https://villagehale.com/settings?' },
+      { text: 'Want invites by email? Check https://villagehale.com/settings' },
       { text: GOOD_ASK },
     ]);
 

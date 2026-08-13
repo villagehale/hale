@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message successfully performs both required halves: it offers to send real calendar invites by email (\"I can send real calendar invites by email\") and asks for the address (\"just text me your address\"). It uses plain, first-person language without greeting, pressure, urgency, or explanation of why it helps. It has a question mark equivalent in structure (though phrased as a statement with direct request). The tone is quiet and can be easily ignored. It doesn't promise anything beyond invites, doesn't point to apps/websites/settings, and doesn't include hype or exclamation marks. It's concise and appropriately informal for SMS."
+  }
+}

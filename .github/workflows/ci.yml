@@ -91,6 +91,9 @@ jobs:
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice
 
+      - name: Calendar invite + email-ask composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:calendar-voice
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 

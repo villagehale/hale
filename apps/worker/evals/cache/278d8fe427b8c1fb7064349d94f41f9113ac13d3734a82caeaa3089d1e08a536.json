@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures against the rubric: points at a website/settings page (villagehale.com/settings); includes pressure and a deadline (24 hours); uses a greeting (\"Hi there!\"); includes an exclamation mark and hype; doesn't ask for the address in a plain way - instead directs to a settings page; explains the benefit (\"Want invites?\") rather than stating what they'll get; more than two clauses. This is a high-pressure sales-style message, not the quiet, plain, first-person request specified. The reference shows the correct approach: direct ask without pressure, no greeting, no app/website reference, no deadline."
+  }
+}
