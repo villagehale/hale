@@ -28,7 +28,7 @@ describe('kickDrain', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    delete process.env.CRON_SECRET;
+    Reflect.deleteProperty(process.env, 'CRON_SECRET');
   });
 
   /**
@@ -95,7 +95,7 @@ describe('kickDrain', () => {
   });
 
   it('logs a reason when no cron secret is configured', async () => {
-    delete process.env.CRON_SECRET;
+    Reflect.deleteProperty(process.env, 'CRON_SECRET');
 
     await kickDrain(ORIGIN);
 
