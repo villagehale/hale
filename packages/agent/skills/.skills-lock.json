@@ -91,6 +91,10 @@
     "file": "triage-child-event.md",
     "sha256": "da61a03c350cead4b23749a00ae1c688612298a387dcbef9ca0356447256b497"
   },
+  "turn-apology.md": {
+    "file": "turn-apology.md",
+    "sha256": "50661d5b2f81d374eefed9521013ab0305ccf2152e2a76bc094520668057cffd"
+  },
   "verify-registration-window.md": {
     "file": "verify-registration-window.md",
     "sha256": "08b916a61b81d255b60910d50f2f3277fbdbc7d00a939f6356b7d864e673d1a7"
