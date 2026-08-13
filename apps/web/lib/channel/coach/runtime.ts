@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
 import {
   type AgentClient,
   type GuardDeps,
@@ -82,6 +83,8 @@ export interface ChannelRunRecord {
   promptTokens: number;
   completionTokens: number;
   costUsd: number;
+  /** Any turn of the loop read from the prompt cache (MEM-9 telemetry). */
+  promptCacheHit: boolean;
   langfuseTraceId: string | null;
 }
 
@@ -224,6 +227,7 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             costUsd:
               (result.usage.promptTokens * SONNET_RATE.inputPerMTok) / PER_MTOK +
               (result.usage.completionTokens * SONNET_RATE.outputPerMTok) / PER_MTOK,
+            promptCacheHit: result.usage.cacheReadTokens > 0,
             langfuseTraceId: trace.traceId,
           });
 
@@ -256,7 +260,7 @@ function anthropicClient(): AgentClient {
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  defaultClient ??= new Anthropic({ apiKey });
+  defaultClient ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
   return defaultClient;
 }
 
@@ -294,6 +298,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         completionTokens: run.completionTokens,
         costUsd: run.costUsd,
         latencyMs: run.latencyMs,
+        promptCacheHit: run.promptCacheHit,
         status: run.status,
         langfuseTraceId: run.langfuseTraceId,
       });

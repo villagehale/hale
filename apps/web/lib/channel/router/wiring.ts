@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { HOT_SMS_CLIENT_OPTIONS } from '~/lib/pipeline/client';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
@@ -235,7 +236,7 @@ function screenClient(): AgentClient {
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  screenAnthropic ??= new Anthropic({ apiKey });
+  screenAnthropic ??= new Anthropic({ apiKey, ...HOT_SMS_CLIENT_OPTIONS });
   return screenAnthropic;
 }
 

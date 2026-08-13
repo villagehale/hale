@@ -47,6 +47,8 @@ export interface RecordAgentRunInput {
   completionTokens: number;
   costUsd: number;
   latencyMs?: number;
+  /** True when any turn of the run read from the prompt cache (MEM-9 telemetry). */
+  promptCacheHit?: boolean;
   /** 'completed' for a successful run, 'failed' when the agent threw (rule #8). */
   status: 'completed' | 'failed';
   langfuseTraceId?: string | null;
@@ -71,6 +73,7 @@ export async function recordAgentRun(
       completionTokens: input.completionTokens,
       costUsd: input.costUsd.toFixed(6),
       latencyMs: input.latencyMs,
+      promptCacheHit: input.promptCacheHit,
       langfuseTraceId: input.langfuseTraceId,
       completedAt: new Date(),
       status: input.status,

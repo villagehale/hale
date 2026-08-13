@@ -40,7 +40,7 @@ function answering(answer: string | null, hitMaxSteps = false): ChannelCoachPort
     answer,
     steps: 1,
     hitMaxSteps,
-    usage: { promptTokens: 100, completionTokens: 20 },
+    usage: { promptTokens: 100, cacheReadTokens: 0, completionTokens: 20 },
   });
 }
 
