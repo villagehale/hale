@@ -65,13 +65,28 @@ export interface SmokeAlarmClaim {
 const MAX_CAUSE_DEPTH = 5;
 
 /**
+ * What kind of failure a turn was — the ONE question the router's catch asks, and the
+ * only classification of a failed turn anywhere in the channel.
+ *
+ * `defect` is the honest name for everything the positive list below does not
+ * recognise: our own request shape rejected, a tool that threw, a zod crash, a dead
+ * query, a plain bug. The model API was REACHABLE for every one of them, and that is
+ * what the router acts on — it is the difference between a turn worth re-running later
+ * and a turn worth apologising for now, in Hale's own words, because there is a model up
+ * to write them.
+ */
+export type TurnFailure = 'model_unreachable' | 'defect';
+
+/**
  * The two error shapes that mean the request never reached a model, and nothing else.
  *
  * A POSITIVE list — the opposite calibration from `classifyProviderFailure` in
  * monitoring/provider-health.ts, deliberately. That one sorts everything unrecognised
  * into `transient` so an unknown fault can never cancel a whole send window, which is
  * right for it and exactly wrong here: the same default would make every unrecognised
- * bug ring a siren at a parent. So an error this cannot identify is NOT an outage.
+ * bug ring a siren at a parent — and, since the defer arc, hold a parent's text in a
+ * retry queue for two hours over a bug that will fail identically every time. So an
+ * error this cannot identify is NOT an outage.
  *
  * 429 is absent for the same reason: a rate limit is our own burst, not the provider
  * being gone. Both shapes below are thrown only after the SDK has spent its own retries.
@@ -85,17 +100,26 @@ function isTransportFailure(err: unknown): boolean {
   return typeof status === 'number' && status >= 500;
 }
 
-/** Whether the error the router's catch received says the model API was unreachable —
- * looking through the wrappers the turn put around it on the way up. */
-export function modelIsUnreachable(err: unknown): boolean {
+/**
+ * Read a failed turn — looking through the wrappers it put around the real error on the
+ * way up (the coach rethrows the provider error inside a `ChannelTurnFailed`).
+ */
+export function classifyTurnFailure(err: unknown): TurnFailure {
   let current: unknown = err;
   for (let depth = 0; depth < MAX_CAUSE_DEPTH && current !== null && current !== undefined; depth += 1) {
     if (isTransportFailure(current)) {
-      return true;
+      return 'model_unreachable';
     }
     current = (current as { cause?: unknown }).cause;
   }
-  return false;
+  return 'defect';
+}
+
+/** The alarm's own reading, in the boolean it branches on. Derived rather than
+ * re-implemented: the siren and the router's three-way must never be able to disagree
+ * about whether the provider was there. */
+export function modelIsUnreachable(err: unknown): boolean {
+  return classifyTurnFailure(err) === 'model_unreachable';
 }
 
 export interface SmokeAlarmInput {

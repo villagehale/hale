@@ -5,6 +5,7 @@ import { ChannelTurnFailed } from './coach-runtime';
 import {
   type SmokeAlarmClaim,
   type SmokeAlarmOutcome,
+  classifyTurnFailure,
   considerSmokeAlarm,
   modelIsUnreachable,
 } from './smoke-alarm';
@@ -142,6 +143,53 @@ describe('what counts as the model being unreachable', () => {
     const b = new Error('b', { cause: a });
     (a as { cause?: unknown }).cause = b;
     expect(modelIsUnreachable(a)).toBe(false);
+  });
+});
+
+/**
+ * The same reading, widened for the defer arc: the router does not ask "is this an
+ * outage" and then guess at the rest — it asks what KIND of failure this is, and gets
+ * one of exactly two answers. `defect` is the honest name for everything the positive
+ * list does not recognise: our own request shape, a tool that threw, a dead query, a
+ * bug. The model API was reachable for all of them, which is what makes composing an
+ * apology possible on that branch and pointless on the other.
+ */
+describe('classifying a failed turn', () => {
+  it.each([
+    ['a connection error', new Anthropic.APIConnectionError({ message: 'Connection error.' })],
+    ['529 overloaded', apiError(529, 'Overloaded')],
+    ['502 from a proxy', apiError(502, 'Bad gateway')],
+  ])('%s is model_unreachable, through the coach wrapper too', (_name, err) => {
+    expect(classifyTurnFailure(err)).toBe('model_unreachable');
+    expect(classifyTurnFailure(asCoachSees(err))).toBe('model_unreachable');
+  });
+
+  it.each([
+    ['a 400 from our own request shape', apiError(400, 'invalid request')],
+    ['a 429 burst of our own making', apiError(429, 'rate limited')],
+    ['a zod crash', new Error('Invalid input: expected string')],
+    ['a dead query', new Error('connection terminated unexpectedly')],
+    ['nothing at all', undefined],
+  ])('%s is a defect, through the coach wrapper too', (_name, err) => {
+    expect(classifyTurnFailure(err)).toBe('defect');
+    expect(classifyTurnFailure(asCoachSees(err))).toBe('defect');
+  });
+
+  /** One classifier, one home (#427's own instruction). The boolean the alarm reads and
+   * the three-way the router branches on must never be able to disagree — so the
+   * boolean IS the widened reading, not a second copy of the rules. */
+  it('is the same reading modelIsUnreachable answers', () => {
+    const cases: unknown[] = [
+      new Anthropic.APIConnectionError({ message: 'Connection error.' }),
+      apiError(503, 'Service unavailable'),
+      apiError(401, 'invalid x-api-key'),
+      new Error('ANTHROPIC_API_KEY is not set'),
+      asCoachSees(apiError(500, 'Internal server error')),
+      undefined,
+    ];
+    for (const err of cases) {
+      expect(modelIsUnreachable(err)).toBe(classifyTurnFailure(err) === 'model_unreachable');
+    }
   });
 });
 
