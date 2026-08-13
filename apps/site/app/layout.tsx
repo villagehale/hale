@@ -1,33 +1,36 @@
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
-import { Instrument_Sans, JetBrains_Mono, Source_Serif_4 } from 'next/font/google';
+import localFont from 'next/font/local';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
 import { f14LandingEnabled } from '~/lib/flags/landing';
 import './globals.css';
 
-const instrumentSans = Instrument_Sans({
-  subsets: ['latin'],
+// Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
+// fetched these from fonts.gstatic.com AT BUILD TIME, and a Google CDN outage failed
+// three deploys on 2026-08-12 — including branches that touched no site file. A build
+// must not depend on a third party serving a font.
+const instrumentSans = localFont({
+  src: [{ path: './fonts/instrument-sans-latin-wght-normal.woff2', weight: '400 700', style: 'normal' }],
   variable: '--font-sans',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
 });
 
-const sourceSerif = Source_Serif_4({
-  subsets: ['latin'],
+const sourceSerif = localFont({
+  src: [
+    { path: './fonts/source-serif-4-latin-wght-normal.woff2', weight: '400 700', style: 'normal' },
+    { path: './fonts/source-serif-4-latin-wght-italic.woff2', weight: '400 700', style: 'italic' },
+  ],
   variable: '--font-serif',
   display: 'swap',
-  style: ['normal', 'italic'],
-  weight: ['500', '600'],
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
+const jetbrainsMono = localFont({
+  // Only the 400 weight renders (the footer pronunciation); the site's other
+  // mono spots resolve to the serif accent.
+  src: [{ path: './fonts/jetbrains-mono-latin-wght-normal.woff2', weight: '400', style: 'normal' }],
   variable: '--font-mono',
   display: 'swap',
-  // Only the 400 weight renders (the footer pronunciation); the site's other
-  // mono spots resolve to the serif accent, so 500/600 shipped unused.
-  weight: ['400'],
 });
 
 // Metadata follows the landing flag (D21): the same deploy that turns on the
