@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import { twilioInboundDeps } from '~/lib/channel/twilio/deps';
 import { handleTwilioInboundRequest } from '~/lib/channel/twilio/inbound';
+import { INBOUND_TURN_QUEUES } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
 
 // Node runtime: the handler reaches pg-boss (raw pg + prepared statements), node:crypto
@@ -25,9 +26,14 @@ export async function POST(req: Request): Promise<Response> {
     // around `enqueue` rather than dropped after the response on purpose: a forged
     // request, a STOP, and an intake turn all queue nothing, so none of them can
     // provoke a drain.
+    //
+    // RETURNED, not fired: after() keeps this instance alive only while the callback is
+    // pending, and a callback that returns nothing can be frozen with the kick's request
+    // still unsent (kick-drain.ts). The slice is the inbound queue alone, so what we wait
+    // on is this parent's turn and nothing else's backlog.
     enqueue: async (job) => {
       await deps.enqueue(job);
-      after(() => kickDrain(origin));
+      after(() => kickDrain(origin, INBOUND_TURN_QUEUES));
     },
   });
 }
