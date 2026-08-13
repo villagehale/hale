@@ -1,26 +1,26 @@
 import type { Metadata, Viewport } from 'next';
-import { Instrument_Sans, Source_Serif_4 } from 'next/font/google';
+import localFont from 'next/font/local';
 import { AppPromo } from '~/components/hale/app-promo';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { THEME_STORAGE_KEY } from '~/lib/theme';
 import './globals.css';
 
 // Body / UI face — Instrument Sans (design handoff §2.2). Exposed as --font-sans,
-// which globals.css maps to --font-body.
-const instrumentSans = Instrument_Sans({
-  subsets: ['latin'],
+// which globals.css maps to --font-body. Self-hosted variable font (app/fonts/,
+// Fontsource-packaged, OFL): next/font/google fetched at BUILD time and a Google CDN
+// outage failed three deploys on 2026-08-12, so builds no longer depend on it.
+const instrumentSans = localFont({
+  src: [{ path: './fonts/instrument-sans-latin-wght-normal.woff2', weight: '400 700', style: 'normal' }],
   variable: '--font-sans',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
 });
 
 // Display / headings face — Source Serif 4, used for hero H1s, page titles, and the
 // "Hale" wordmark only (globals.css maps it to --font-display).
-const sourceSerif = Source_Serif_4({
-  subsets: ['latin'],
+const sourceSerif = localFont({
+  src: [{ path: './fonts/source-serif-4-latin-wght-normal.woff2', weight: '400 700', style: 'normal' }],
   variable: '--font-serif',
   display: 'swap',
-  weight: ['500', '600'],
 });
 
 // Hale Shore is a two-family system: numbers, dates and payloads render in
