@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) assumes the event happened well (\"Hope the 4pm session was amazing\"); (2) uses emoji and exclamation marks (greeting/hype); (3) asks a second question beyond the initial check-in (\"How did she do?\"); (4) offers to do something next (book the next one); (5) includes invented specifics (4pm time, website link); (6) uses pronoun assumption about the child (\"she do\"); (7) adds padding with link after the question. A proper message would simply ask \"How did the Ari swim meet go?\" with pressure explicitly taken off, nothing more."
+  }
+}

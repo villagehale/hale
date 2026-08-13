@@ -74,7 +74,6 @@ const SMS_COPY_SOURCES = [
   'lib/party/guest-copy.ts',
   'lib/party/tally.ts',
   'lib/village/intros/copy.ts',
-  'lib/channel/followup/copy.ts',
   'lib/format/labels.ts',
   // Not copy itself, but SPLICED into copy: the intake consent ask now carries the
   // privacy URL from here, so a typographic character in a policy path would ride out

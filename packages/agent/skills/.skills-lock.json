@@ -27,6 +27,10 @@
     "file": "extract-child-event.md",
     "sha256": "99be20c3915b05a6a6aeab67dffd877c0769b42655beba75bb317509e96b046b"
   },
+  "followup-voice.md": {
+    "file": "followup-voice.md",
+    "sha256": "ad7765f27e403391d4f10b5e69d221e34412e6f41e752ed91045bc8891df3dd5"
+  },
   "general-answer.md": {
     "file": "general-answer.md",
     "sha256": "e190c9fecad22fd6f15a95b6c5b47e43cc48c3cf9982536766ef2dfe5cc48e26"

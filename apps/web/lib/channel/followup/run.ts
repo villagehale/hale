@@ -1,3 +1,5 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { dedupeActive } from '~/lib/channel/ledger';
@@ -13,7 +15,13 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isPrivateEvent } from '~/lib/loop/templates/reminder/core';
 import type { ReminderChild } from '~/lib/loop/templates/reminder/payload';
 import { discoverableUserIds } from '~/lib/village/intros/consent';
-import { INTRO_FOLLOWUP_ASK, activityFollowupAsk } from './copy';
+import { inboundSince, mentionsActivity, mentionsIntro } from './screen';
+import {
+  type ComposeDeferral,
+  type FollowupVoice,
+  type FollowupVoiceRequest,
+  createFollowupVoice,
+} from './voice';
 
 /**
  * THE FOLLOW-UP ASK — Hale checks back on the things it set up.
@@ -70,29 +78,37 @@ export function followupAsksAllowlist(): Set<string> {
 }
 
 /**
- * How long after the introduction email the check-in goes out, and how late it may still
- * go.
+ * THE WINDOWS — how soon a follow-up may go, and how late it may still be worth sending.
  *
- * Three days is the founder's number and it is the right one: soon enough that "did you
- * connect" is a live question, late enough that a weekend has had a chance to happen.
+ * Three days after the introduction email: soon enough that "did you connect" is a live
+ * question, late enough that a weekend has had a chance to happen. Five is where it stops
+ * being a check-in and starts being an audit of something the family has moved on from.
  *
- * The CEILING is the part that matters structurally. Without it, the first tick after
- * this ships would text every family that has ever been introduced, however long ago,
- * because none of them carries a claim yet — a query-derived feature's version of a
- * migration backfire. Ten days also gives the daily rail a week of slack to defer into
- * before the moment has simply passed.
+ * A day after a placed activity, so the ask lands the morning after rather than while the
+ * family is still in the car; four, because the ask has to survive quiet hours, the
+ * one-a-day rail, and however many recomposes the voice needs, and every one of those can
+ * cost it a tick.
+ *
+ * THE CEILINGS ARE STRUCTURAL, not editorial. Without one, the first tick after this
+ * ships would text every family ever introduced, however long ago, because none of them
+ * carries a claim yet — a query-derived feature's version of a migration backfire.
  */
 export const INTRO_FOLLOWUP_MIN_AGE_DAYS = 3;
-export const INTRO_FOLLOWUP_MAX_AGE_DAYS = 10;
+export const INTRO_FOLLOWUP_MAX_AGE_DAYS = 5;
+export const ACTIVITY_FOLLOWUP_MIN_AGE_DAYS = 1;
+export const ACTIVITY_FOLLOWUP_MAX_AGE_DAYS = 4;
 
 /**
- * The window after a placed activity's start time. One day, so the ask lands the morning
- * after rather than while the family is still in the car; two, so a tick lost to quiet
- * hours or to the day's intro follow-up gets exactly one more chance before the question
- * is stale. Same backfill reasoning as the ceiling above.
+ * How far PAST its ceiling a row is still selected, so that aging out is something the
+ * sweep observes rather than something that happens to it.
+ *
+ * A row that simply stopped matching would be a follow-up Hale decided not to send and
+ * never said so — the silent skip rule #11 exists to forbid. One hour is one tick of the
+ * cron this rides, so a row lands in the grace band on exactly one sweep and is counted
+ * as `window_passed` exactly once. A tick that does not run loses the COUNT, never the
+ * behaviour: the ask was already never going out.
  */
-export const ACTIVITY_FOLLOWUP_MIN_AGE_DAYS = 1;
-export const ACTIVITY_FOLLOWUP_MAX_AGE_DAYS = 2;
+const WINDOW_GRACE_HOURS = 1;
 
 const DAY_MS = 24 * 3_600_000;
 
@@ -105,23 +121,35 @@ const MAX_FAMILIES_PER_RUN = 200;
 const SIDES_PER_INTRO = 2;
 
 /**
- * The band of `closed_at` values an intro follow-up is due for, expressed as instants so
- * the SQL predicate and the intent share one arithmetic. `latest` is the NEWEST row still
- * old enough to ask about; `earliest` is the OLDEST still recent enough to be worth it.
+ * The band of anchor instants a follow-up is due for, expressed as instants so the SQL
+ * predicate and the intent share one arithmetic.
+ *
+ * `latest` is the NEWEST anchor old enough to ask about and `earliest` the OLDEST still
+ * worth asking about, so an eligible row's anchor sits between them. `floor` is how far
+ * back the QUERY reaches — one grace tick past `earliest` — and a row between `floor` and
+ * `earliest` is one that has just aged out: selected so it can be counted, never sent.
  */
-export function introFollowupWindow(now: Date): { earliest: Date; latest: Date } {
+export interface FollowupWindow {
+  floor: Date;
+  earliest: Date;
+  latest: Date;
+}
+
+function windowOf(now: Date, minAgeDays: number, maxAgeDays: number): FollowupWindow {
+  const earliest = new Date(now.getTime() - maxAgeDays * DAY_MS);
   return {
-    earliest: new Date(now.getTime() - INTRO_FOLLOWUP_MAX_AGE_DAYS * DAY_MS),
-    latest: new Date(now.getTime() - INTRO_FOLLOWUP_MIN_AGE_DAYS * DAY_MS),
+    floor: new Date(earliest.getTime() - WINDOW_GRACE_HOURS * 3_600_000),
+    earliest,
+    latest: new Date(now.getTime() - minAgeDays * DAY_MS),
   };
 }
 
-/** The same band over a placement's `starts_at`. */
-export function activityFollowupWindow(now: Date): { earliest: Date; latest: Date } {
-  return {
-    earliest: new Date(now.getTime() - ACTIVITY_FOLLOWUP_MAX_AGE_DAYS * DAY_MS),
-    latest: new Date(now.getTime() - ACTIVITY_FOLLOWUP_MIN_AGE_DAYS * DAY_MS),
-  };
+export function introFollowupWindow(now: Date): FollowupWindow {
+  return windowOf(now, INTRO_FOLLOWUP_MIN_AGE_DAYS, INTRO_FOLLOWUP_MAX_AGE_DAYS);
+}
+
+export function activityFollowupWindow(now: Date): FollowupWindow {
+  return windowOf(now, ACTIVITY_FOLLOWUP_MIN_AGE_DAYS, ACTIVITY_FOLLOWUP_MAX_AGE_DAYS);
 }
 
 export interface FollowupFamily {
@@ -134,6 +162,9 @@ export interface DueIntro {
   proposalId: string;
   familyAId: string;
   familyBId: string;
+  /** When the introduction email went — the window anchor, and the instant the
+   * told-anywhere screen reads a family's own words forward from. */
+  introducedAt: Date;
 }
 
 /** A Hale-placed calendar item whose start time has passed. Carries exactly the fields
@@ -158,8 +189,13 @@ export interface DueActivity {
 export type FollowupSkipReason =
   | 'opted_out'
   | 'already_claimed'
+  /** The parent already told us, in their own words, since it happened. */
+  | 'already_discussed'
   | 'private_item'
-  | 'out_of_scope';
+  | 'out_of_scope'
+  /** Never asked before the moment passed. The one outcome here that is a small failure
+   * rather than a correct refusal, which is exactly why it is counted. */
+  | 'window_passed';
 
 export interface FollowupAudit {
   familyId: string;
@@ -179,6 +215,9 @@ export interface FollowupSweepDeps {
   discoverableUserIds(database: Database, userIds: readonly string[]): Promise<Set<string>>;
   loadDueActivities(database: Database, familyId: string, now: Date): Promise<DueActivity[]>;
   loadChildren(database: Database, familyId: string): Promise<ReminderChild[]>;
+  /** The family's own inbound messages since an instant, lowercased — what the
+   * told-anywhere screen reads. */
+  loadInboundSince(database: Database, familyId: string, since: Date): Promise<string[]>;
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -197,6 +236,10 @@ export interface FollowupSweepDeps {
   /** REQUIRED (rule #11). A sweep that can decide to ask and quietly fail to ask is a
    * sweep whose counters lie. */
   transport: ChannelTransport;
+  /** REQUIRED, and the ONLY source of the words in a follow-up. There is no fixed line
+   * behind it (founder doctrine: no preset bodies), so a sweep without a voice does not
+   * send a duller message — it sends nothing, visibly. */
+  voice: FollowupVoice;
 }
 
 export interface FollowupSweepResult {
@@ -204,6 +247,14 @@ export interface FollowupSweepResult {
   enabled: boolean;
   introAsked: number;
   activityAsked: number;
+  /**
+   * Asks the voice could not compose this tick. Its own field rather than a `skipped`
+   * entry because it is the only outcome here that is neither a refusal nor a send: the
+   * claim is unspent, the window is still open, and the next tick tries again. Counting
+   * it beside the two send counters is what makes "how often does Hale have nothing to
+   * say" a number somebody can watch.
+   */
+  composeDeferred: number;
   held: Record<ProactiveHoldReason, number>;
   skipped: Record<FollowupSkipReason, number>;
   failed: number;
@@ -214,8 +265,16 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
     enabled,
     introAsked: 0,
     activityAsked: 0,
+    composeDeferred: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
-    skipped: { opted_out: 0, already_claimed: 0, private_item: 0, out_of_scope: 0 },
+    skipped: {
+      opted_out: 0,
+      already_claimed: 0,
+      already_discussed: 0,
+      private_item: 0,
+      out_of_scope: 0,
+      window_passed: 0,
+    },
     failed: 0,
   };
 }
@@ -223,18 +282,29 @@ function emptyResult(enabled: boolean): FollowupSweepResult {
 type SendOutcome =
   | { status: 'sent' }
   | { status: 'held'; reason: ProactiveHoldReason }
-  | { status: 'already_claimed' };
+  | { status: 'already_claimed' }
+  | { status: 'already_discussed' }
+  | { status: 'compose_deferred'; reason: ComposeDeferral };
 
 /**
- * The ONE way this feature reaches a phone: claim, gate, resolve, send, ledger.
+ * The ONE way this feature reaches a phone. Five preconditions, in this order, and the
+ * order is the design — each step is cheaper than the one after it and decisive on its
+ * own, so nothing expensive is ever spent on a message that was never going out:
  *
- * THE CLAIM CHECK RUNS FIRST, which is where this departs from the intro sweep's order,
- * and the departure is deliberate. "Have we already asked?" is a fact about the MESSAGE
- * and can only ever prevent a send, while the gate's questions are about the FAMILY and
- * cost four reads. Asking the cheap, decisive one first also keeps the counters
- * truthful: with a one-per-family-per-day budget, a gate-first order would report an
- * already-sent follow-up as `frequency_cap` — the message's own prior send blocking
- * itself — and hide the fact that idempotency, not policy, is what stopped it.
+ *   1. CLAIMED?    one indexed read      — have we already asked this exact thing?
+ *   2. DISCUSSED?  one scan of what they said — did they already tell us?
+ *   3. ALLOWED?    the outbound gate's four reads about the family
+ *   4. COMPOSED?   the model call, the only step that costs money
+ *   5. SEND + LEDGER
+ *
+ * THE CLAIM CHECK RUNS FIRST, where the intro sweep runs its gate first, and the
+ * departure is deliberate: with a one-per-family-per-day budget, a gate-first order
+ * reports an already-sent follow-up as `frequency_cap` — the message's own prior send
+ * blocking itself — and hides that idempotency, not policy, is what stopped it.
+ *
+ * THE COMPOSE RUNS LAST, and a deferral from it writes NOTHING. That is the whole
+ * contract behind having no canned fallback: the claim stays unspent, the window stays
+ * open, and the next tick composes again.
  */
 async function sendFollowup(
   database: Database,
@@ -242,13 +312,17 @@ async function sendFollowup(
   input: {
     familyId: string;
     parentUserId: string;
-    body: string;
+    ask: FollowupVoiceRequest;
+    /** Lazy on purpose: a claimed message must not pay for a scan of the family's
+     * messages to find out it was already claimed. */
+    alreadyDiscussed: () => Promise<boolean>;
     templateKey: string;
     dedupeKey: string;
     now: Date;
   },
 ): Promise<SendOutcome> {
   if (await deps.dedupeActive(database, input.dedupeKey)) return { status: 'already_claimed' };
+  if (await input.alreadyDiscussed()) return { status: 'already_discussed' };
 
   const verdict = await assertProactiveSendAllowed(
     {
@@ -261,6 +335,11 @@ async function sendFollowup(
   );
   if (!verdict.allowed) return { status: 'held', reason: verdict.reason };
 
+  const composed = await deps.voice.compose(input.ask);
+  if (composed.status === 'deferred') {
+    return { status: 'compose_deferred', reason: composed.reason };
+  }
+
   const to = await deps.resolveSendablePhone(database, input.parentUserId);
   if (!to) {
     // The gate just said this parent has a live channel, so there IS one — a missing
@@ -268,7 +347,7 @@ async function sendFollowup(
     throw new Error(`followup asks: no send target for parent ${input.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body: input.body });
+  const { providerMessageId } = await deps.transport.send({ to, body: composed.body });
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -282,15 +361,19 @@ async function sendFollowup(
 
 /** Fold one send's outcome into the run's counters. Returns whether it went. */
 function tally(result: FollowupSweepResult, outcome: SendOutcome): boolean {
-  if (outcome.status === 'held') {
-    result.held[outcome.reason] += 1;
-    return false;
+  switch (outcome.status) {
+    case 'sent':
+      return true;
+    case 'held':
+      result.held[outcome.reason] += 1;
+      return false;
+    case 'compose_deferred':
+      result.composeDeferred += 1;
+      return false;
+    default:
+      result.skipped[outcome.status] += 1;
+      return false;
   }
-  if (outcome.status === 'already_claimed') {
-    result.skipped.already_claimed += 1;
-    return false;
-  }
-  return true;
 }
 
 /**
@@ -318,9 +401,15 @@ async function runIntroFollowups(
 
   const parentIds = [...byId.values()].map((family) => family.parentUserId);
   const discoverable = await deps.discoverableUserIds(database, parentIds);
+  const window = introFollowupWindow(now);
 
   for (const intro of due) {
     try {
+      if (intro.introducedAt < window.earliest) {
+        result.skipped.window_passed += SIDES_PER_INTRO;
+        continue;
+      }
+
       const familyA = byId.get(intro.familyAId);
       const familyB = byId.get(intro.familyBId);
       if (!familyA || !familyB) {
@@ -341,7 +430,11 @@ async function runIntroFollowups(
         const outcome = await sendFollowup(database, deps, {
           familyId: side.family.familyId,
           parentUserId: side.family.parentUserId,
-          body: INTRO_FOLLOWUP_ASK,
+          ask: { kind: 'intro' },
+          alreadyDiscussed: async () =>
+            mentionsIntro(
+              await deps.loadInboundSince(database, side.family.familyId, intro.introducedAt),
+            ),
           templateKey: 'followup:intro',
           dedupeKey: `followup:intro:${intro.proposalId}:${side.key}`,
           now,
@@ -390,6 +483,8 @@ async function runActivityFollowups(
   result: FollowupSweepResult,
   now: Date,
 ): Promise<void> {
+  const window = activityFollowupWindow(now);
+
   for (const family of families) {
     try {
       const due = await deps.loadDueActivities(database, family.familyId, now);
@@ -397,6 +492,11 @@ async function runActivityFollowups(
       const children = await deps.loadChildren(database, family.familyId);
 
       for (const event of due) {
+        if (event.startsAt < window.earliest) {
+          result.skipped.window_passed += 1;
+          continue;
+        }
+
         const isPrivate = isPrivateEvent(
           {
             eventRef: event.eventId,
@@ -416,7 +516,16 @@ async function runActivityFollowups(
         const outcome = await sendFollowup(database, deps, {
           familyId: family.familyId,
           parentUserId: family.parentUserId,
-          body: activityFollowupAsk(event.title),
+          ask: { kind: 'activity', activity: event.title },
+          // Anchored at the event's own start, so the scan asks "did they say anything
+          // about this SINCE it happened" — a mention from before it is a plan, not a
+          // report, and suppressing on one would drop the follow-up for every activity
+          // the family had ever discussed.
+          alreadyDiscussed: async () =>
+            mentionsActivity(
+              await deps.loadInboundSince(database, family.familyId, event.startsAt),
+              event.title,
+            ),
           templateKey: 'followup:activity',
           dedupeKey: `followup:activity:${event.eventId}`,
           now,
@@ -500,22 +609,30 @@ async function selectFollowupFamilies(database: Database): Promise<FollowupFamil
  * is no separate timestamp to keep in step with it.
  */
 async function readDueIntros(database: Database, now: Date): Promise<DueIntro[]> {
-  const { earliest, latest } = introFollowupWindow(now);
+  const { floor, latest } = introFollowupWindow(now);
   const rows = await database
     .select({
       proposalId: schema.villageIntroProposals.id,
       familyAId: schema.villageIntroProposals.familyAId,
       familyBId: schema.villageIntroProposals.familyBId,
+      introducedAt: schema.villageIntroProposals.closedAt,
     })
     .from(schema.villageIntroProposals)
     .where(
       and(
         eq(schema.villageIntroProposals.status, 'both_accepted'),
-        gte(schema.villageIntroProposals.closedAt, earliest),
+        // From the GRACE floor, not the window's own edge: the stage classifies the
+        // just-expired rows itself so aging out is counted rather than silent.
+        gte(schema.villageIntroProposals.closedAt, floor),
         lte(schema.villageIntroProposals.closedAt, latest),
       ),
     );
-  return rows;
+  // `closed_at` is nullable in the schema but never null on a `both_accepted` row — the
+  // intro sweep stamps both in one call. The filter keeps the type honest rather than
+  // asserting past it.
+  return rows.flatMap((row) =>
+    row.introducedAt === null ? [] : [{ ...row, introducedAt: row.introducedAt }],
+  );
 }
 
 /**
@@ -536,7 +653,7 @@ async function readDueActivities(
   familyId: string,
   now: Date,
 ): Promise<DueActivity[]> {
-  const { earliest, latest } = activityFollowupWindow(now);
+  const { floor, latest } = activityFollowupWindow(now);
   return database
     .select({
       eventId: schema.familyEvents.id,
@@ -552,7 +669,7 @@ async function readDueActivities(
         eq(schema.familyEvents.familyId, familyId),
         eq(schema.familyEvents.source, 'placement'),
         isNull(schema.familyEvents.deletedAt),
-        gte(schema.familyEvents.startsAt, earliest),
+        gte(schema.familyEvents.startsAt, floor),
         lte(schema.familyEvents.startsAt, latest),
       ),
     )
@@ -574,6 +691,24 @@ async function readFollowupChildren(
     .where(eq(schema.children.familyId, familyId));
 }
 
+let followupAnthropic: Anthropic | undefined;
+
+/**
+ * The voice's client, resolved LAZILY — a function, not a value, for the reason the
+ * router's screen client is: these deps are built on EVERY hourly tick, and the vast
+ * majority of ticks have nothing due and never reach a model. A client constructed at
+ * wiring time would turn a missing ANTHROPIC_API_KEY into a broken cron rather than the
+ * honest `client_unavailable` deferral.
+ */
+function followupVoiceClient(): AgentClient {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
+  }
+  followupAnthropic ??= new Anthropic({ apiKey });
+  return followupAnthropic;
+}
+
 export function defaultFollowupSweepDeps(): FollowupSweepDeps {
   return {
     selectFamilies: (database) => selectFollowupFamilies(database),
@@ -581,6 +716,7 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
     discoverableUserIds,
     loadDueActivities: readDueActivities,
     loadChildren: readFollowupChildren,
+    loadInboundSince: inboundSince,
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
@@ -607,5 +743,6 @@ export function defaultFollowupSweepDeps(): FollowupSweepDeps {
       await database.insert(schema.auditLog).values(row);
     },
     transport: createTwilioTransport(),
+    voice: createFollowupVoice(followupVoiceClient),
   };
 }
