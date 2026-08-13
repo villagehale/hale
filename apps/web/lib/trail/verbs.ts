@@ -154,6 +154,7 @@ export const AUDIT_VERBS = [
   'push_sent',
   'email_reply_received',
   'email_unsubscribe_received',
+  'parent_email_captured',
   'channel_sms.calendar_drafted',
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
@@ -427,6 +428,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
   push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
   email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },
+  // VIL-249: the parent texted an address back, and Hale saved it as the one it
+  // emails calendar invites to. 'done' because it is a write to their account, not
+  // a message — the trail should show it beside the other things that changed.
+  parent_email_captured: {
+    sentence: 'you gave Hale an email address for calendar invites',
+    family: 'done',
+  },
   email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },
   'channel_sms.calendar_drafted': {
     sentence: 'your text became a calendar change, waiting on your yes',
