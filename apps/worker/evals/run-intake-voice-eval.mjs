@@ -35,6 +35,7 @@ import {
   readModelIds,
   totalUsd,
 } from './lib/harness.mjs';
+import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 import { INTAKE_VOICE_FIXTURES, MAX_ACK_CHARS } from './intake-voice-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -87,6 +88,23 @@ const VOICE_MIN = 3;
  * here that could mislead a family rather than merely underwhelm them.
  */
 const MIN_USABLE_RATE = 0.75;
+
+/**
+ * How many distinct OPENINGS the eight shipped acks must show between them.
+ *
+ * A parent gets this turn once, so the harm here is not a family reading the same
+ * sentence twice — it is that the turn is a stored string with an API bill. The
+ * 2026-08-13 tone audit found all eight acks opening "Got it - ", copied off the skill's
+ * own illustrative sentences: eight different families, eight different things said to
+ * Hale, one template. Half the corpus showing a different opening is a low bar that a
+ * skill offering a real range clears easily and a skill offering one shape cannot.
+ *
+ * BOTH ENDS, at the same floor. The first live re-record against an opener-only gate came
+ * back with six of eight acks ENDING "- got it" instead: the same template, mirrored, and
+ * green. A gate on one end of a sentence only ever moves the template to the other.
+ */
+const MIN_DISTINCT_OPENERS = 4;
+const MIN_DISTINCT_CLOSERS = 4;
 
 // Mirrors apps/web/lib/channel/intake/intake-voice.ts exactly.
 const ACK_TOOL_SCHEMA = {
@@ -253,6 +271,7 @@ async function main() {
   const cost = makeCost();
 
   const skill = await agent.loadSkill(SKILL_PATH);
+  const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   // The Sonnet tier, NOT the shared Haiku judge the other suites use. This corpus is
   // eight one-line sentences whose differences are stylistic, and the Haiku judge scored
@@ -301,21 +320,42 @@ async function main() {
         ? null
         : (await judge(fixture.id, { facts: fixture.context, ack })).score;
     const quality = ack && unusable.length === 0 ? qualityFailures(fixture, ack) : [];
-    results.push({ fixture, ack, score, unusable, quality });
+    results.push({ fixture, ack, score, unusable, quality, variation: [] });
+  }
+
+  // The variation gate runs over the acks that would SHIP, for the same reason the
+  // quality checks do: an ack the shell already threw away was never a parent's message,
+  // and counting it would let a rejected outlier stand in for variety.
+  const shipped = results.filter((r) => r.ack && r.unusable.length === 0);
+  const variation = variationGate({
+    items: shipped.map((r) => ({ id: r.fixture.id, text: r.ack })),
+    samples,
+    minDistinctOpeners: MIN_DISTINCT_OPENERS,
+    minDistinctClosers: MIN_DISTINCT_CLOSERS,
+    // TWO words, not the helper's default three. The third word at either end of an
+    // intake ack is almost always a child's name, so a three-word edge is distinct for
+    // eight different families by construction and would have scored the audit's 8/8
+    // "Got it - " collapse as eight distinct openings. Two words is where the template
+    // lives.
+    edgeWords: 2,
+  });
+  for (const result of shipped) {
+    result.variation = variation.failuresById[result.fixture.id] ?? [];
   }
 
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- compose ---');
   for (const result of results) {
-    const shipped = result.unusable.length === 0;
-    const ok = shipped && result.quality.length === 0;
-    const label = ok ? 'PASS' : shipped ? 'FAIL' : 'FELL BACK';
+    const wouldShip = result.unusable.length === 0;
+    const ok = wouldShip && result.quality.length === 0 && result.variation.length === 0;
+    const label = ok ? 'PASS' : wouldShip ? 'FAIL' : 'FELL BACK';
     console.log(
       `${label}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}`,
     );
     if (result.ack && !broken) console.log(`        "${result.ack}"`);
     for (const reason of result.unusable) console.log(`        - ${reason}`);
     for (const failure of result.quality) console.log(`        - ${failure}`);
+    for (const failure of result.variation) console.log(`        - ${failure}`);
   }
 
   const usable = results.filter((r) => r.unusable.length === 0);
@@ -340,6 +380,7 @@ async function main() {
   console.log(`  of which: over ${MAX_ACK_CHARS} chars      ${tooLong.length}`);
   console.log(`  of which: outside GSM-7      ${nonGsm7.length}`);
   console.log(`shipped acks failing recall:   ${qualityFails.length}  (0 required)`);
+  for (const line of variationLines(variation)) console.log(line);
   console.log(`mean voice score (shipped):    ${meanScore.toFixed(2)}  (mean >= ${VOICE_MIN} required)`);
   if (lengths.length) {
     console.log(
@@ -356,6 +397,7 @@ async function main() {
     fabricating.length === 0 &&
     usableRate >= MIN_USABLE_RATE &&
     qualityFails.length === 0 &&
+    variation.passed &&
     meanScore >= VOICE_MIN;
 
   console.log('\n--- gate ---');

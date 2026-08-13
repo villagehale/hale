@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The reply names the event, the venue, the current time, and the requested new time — all traceable to the week. It ends with the exact required confirmation prompt \"YES to confirm.\" No greeting, no sign-off, no markdown, one question only. Draft is non-empty and the reply matches the contract exactly."
+  }
+}

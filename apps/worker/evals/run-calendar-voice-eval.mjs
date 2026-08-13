@@ -47,6 +47,7 @@ import {
   recall,
   totalUsd,
 } from './lib/harness.mjs';
+import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -96,8 +97,22 @@ function askViolations(text, smsEncoding) {
   return out;
 }
 
+/**
+ * A subject line that opens in lower case. `summary` is written to sit inside a sentence,
+ * so a REDACTED one begins lower ("an appointment", "your daughter") and dropping it
+ * straight into the subject puts "an appointment - Mon, Aug 3 at 4:15 PM" in a parent's
+ * inbox — the one surface where redaction is most visible to a co-parent, reading like a
+ * fragment (2026-08-13 tone audit). The skill's answer is a capitalised word in FRONT of
+ * the summary, never an edit to the summary itself, which stays verbatim.
+ */
+function opensLowercase(subject) {
+  const first = subject.trim().charAt(0);
+  return first !== '' && first === first.toLowerCase() && first !== first.toUpperCase();
+}
+
 function noteViolations(note, context, findInventedFacts) {
   const out = [];
+  if (opensLowercase(note.subject)) out.push('subject_opens_lowercase');
   if (!note.subject.includes(context.summary)) out.push('subject_drops_summary');
   if (!note.body.includes(context.summary)) out.push('body_drops_summary');
   if (!note.body.includes(context.when)) out.push('body_drops_when');
@@ -174,6 +189,8 @@ async function main() {
   const { findInventedFacts } = await tsImport(FACTS_LINT_SRC, import.meta.url);
   const askSkill = await agent.loadSkill(ASK_SKILL);
   const noteSkill = await agent.loadSkill(NOTE_SKILL);
+  const askSamples = await skillSampleSentences(ASK_SKILL);
+  const noteSamples = await skillSampleSentences(NOTE_SKILL);
   const askModel = agent.pickModel(askSkill.meta.task);
   const noteModel = agent.pickModel(noteSkill.meta.task);
   const judgeModel = await readJudgeModel();
@@ -186,6 +203,9 @@ async function main() {
   console.log(`corpus: ${ASK_FIXTURES.length} asks + ${NOTE_FIXTURES.length} notes\n`);
 
   const results = [];
+  /** The note BODIES, kept for the variation gate — subjects are `summary` + `when`
+   * verbatim by contract and are not the model's to vary. */
+  const noteBodies = [];
 
   for (const fixture of ASK_FIXTURES) {
     const userMessage = JSON.stringify(fixture.turn);
@@ -253,8 +273,52 @@ async function main() {
       watchFor: fixture.watchFor,
     });
     if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    noteBodies.push({ id: fixture.id, text: note.body });
     results.push({ surface: 'note', id: fixture.id, rendered: `${note.subject} | ${note.body}`, failures });
   }
+
+  // The variation gate, run over each surface separately.
+  //
+  // THE ASK is gated on PARROTING but not on pairwise similarity, and the split is not a
+  // convenience. What the 2026-08-13 audit actually found was that all six cached asks
+  // were the skill's own quoted sample with a few words moved — a composer that has
+  // stopped composing, and the thing the parrot check exists for. The REFERENCE_ASK joins
+  // the samples for the same reason welcome-voice's fallback lines do: reproducing the
+  // hand-written line this stage replaced is the most expensive possible way to send it.
+  //
+  // Pairwise AND the opener floor are both left off, for one reason that applies to both:
+  // these three fixtures are not three messages. They are ONE standing ask — sent once
+  // ever per household — plus two recompose retries of that same ask, so they are
+  // supposed to say the same thing, and scoring them against each other would measure the
+  // corpus rather than the composer. No family ever sees two. The scores are still
+  // printed, because a corpus drifting toward identical is worth seeing even where it is
+  // not a failure.
+  //
+  // THE NOTES are compared body-to-body only. Their subjects are mostly `summary` and
+  // `when` verbatim by contract, so two subjects for the same event are SUPPOSED to be
+  // near-identical and gating them would measure the fixtures.
+  const askItems = results
+    .filter((r) => r.surface === 'ask')
+    .map((r) => ({ id: r.id, text: r.rendered }));
+  const askVariation = variationGate({
+    items: askItems,
+    samples: [...askSamples, REFERENCE_ASK],
+    maxSimilarity: 1.01,
+  });
+  const noteVariation = variationGate({
+    items: noteBodies,
+    samples: noteSamples,
+    minDistinctOpeners: 2,
+  });
+  for (const [surface, report] of [
+    ['ask', askVariation],
+    ['note', noteVariation],
+  ]) {
+    for (const [id, failures] of Object.entries(report.failuresById)) {
+      results.find((r) => r.surface === surface && r.id === id)?.failures.push(...failures);
+    }
+  }
+  const openersShort = noteVariation.distinctOpeners < 2;
 
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- drafts ---');
@@ -281,6 +345,10 @@ async function main() {
   console.log(`GATE FAILURES:           ${gateFails.length}  (0 required - a gated-out draft is a message never sent)`);
   console.log(`containment misses:      ${containment.length}  (0 required - the redacted summary + time must survive verbatim)`);
   console.log(`invented specifics:      ${invented.length}  (0 required - rule #1)`);
+  for (const line of variationLines(askVariation, { pairGated: false })) {
+    console.log(`${line}  [asks]`);
+  }
+  for (const line of variationLines(noteVariation)) console.log(`${line}  [note bodies]`);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
 
   console.log('\n--- cost telemetry ---');
@@ -288,7 +356,7 @@ async function main() {
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
 
-  const allPass = results.every((r) => r.failures.length === 0);
+  const allPass = results.every((r) => r.failures.length === 0) && !openersShort;
 
   console.log('\n--- gate ---');
   if (!broken) {

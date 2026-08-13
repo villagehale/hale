@@ -46,6 +46,7 @@ import {
   recall,
   totalUsd,
 } from './lib/harness.mjs';
+import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -69,6 +70,30 @@ function generalAnswerUserMessage(text) {
 
 const MAX_TOKENS = 256;
 
+/**
+ * The fixtures whose honest answer is "I cannot see that" — the ONLY part of this corpus
+ * where two answers being alike is a defect rather than the point. Named here rather than
+ * inferred from `forbiddenPatterns`, so adding a live-data fixture is a deliberate act.
+ */
+const LIVE_DATA_FIXTURES = new Set([
+  'weather-tomorrow',
+  'leafs-last-night',
+  'gas-price-now',
+  'tsx-today',
+]);
+
+/**
+ * Four deflects, at least two different ways of saying it.
+ *
+ * Two rather than three, and the reason is measured rather than modest: across five live
+ * re-records the count landed 3, 2, 3, 2, 2 with the same skill, so a floor of three
+ * gates on the draw. Two still has teeth against the thing the audit actually found —
+ * "I can't see live {forecasts/scores/prices/market data} from here" across all four,
+ * which is ONE opener — and the sharper instrument on this corpus is the pairwise
+ * similarity check, which has run 0.34-0.53 against a 0.75 ceiling.
+ */
+const MIN_DISTINCT_DEFLECT_OPENERS = 2;
+
 // ── the composer's sendable() gates, replicated from answer.ts ──────────────
 
 const MAX_ANSWER_CHARS = 300;
@@ -79,8 +104,25 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 // this class, scoring identical redirects a 2 one round and a pass the next. The
 // skill's one allowed use of the verb is first-person indicative ("I do check the
 // forecast when it changes what to do with a weekend"), which none of these match.
+// `and check` / `then check` are deliberately NOT here: they are how ordinary advice
+// reads ("I'd go 11 minutes for a medium egg and check it if you're unsure"), and adding
+// them failed a perfectly good answer about boiling an egg. The verb is not the errand —
+// the DESTINATION is, which is what APP_POINTER below is for.
 const REDIRECT_SHAPE =
-  /(^|[.!?-]\s)check\b|\b(i'd|i would|you can|you could|you'd have to|so|please) check\b|\bcall ahead\b|\bstop by\b/i;
+  /(^|[.!?-]\s)check\b|\b(i'd|i would|you can|you could|you'd have to|you'd want to|so|please) check\b|\bcall ahead\b|\bstop by\b|\bwhen you'?re there\b/i;
+
+/**
+ * The skill's "never point at the app" rule, held the way turn-apology holds the same
+ * rule (router/apology.ts APP_POINTER). REDIRECT_SHAPE catches the imperative verb; this
+ * catches the destination, which is how "Worth checking the app or the pump when you're
+ * there" slipped past a gate that only knew the word "check" — "checking" is not "check",
+ * and the judge was left as the only thing standing between that answer and a green run.
+ *
+ * Scoped to apps and sites, NOT to every proper noun: naming who usually broadcasts a
+ * match is something Hale KNOWS and the skill explicitly allows it.
+ */
+const APP_POINTER =
+  /\b((?:the|your|their) (?:\w+ )?apps?|in-app|the website|the site|your dashboard|villagehale)\b/i;
 
 /** Mirrors `plainText` in apps/web/lib/channel/coach/reply.ts (behind `~/`, so replicated). */
 const GSM7_SUBSTITUTIONS = [
@@ -107,6 +149,21 @@ function flatten(text) {
     out = out.replace(pattern, replacement);
   }
   return out.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * A present-tense officeholder claim with no as-of hedge attached — the shape that let a
+ * two-years-stale prime minister ship green. Only fires when the answer actually makes
+ * the claim, so declining to name anyone is untouched, and the hedge list lives on the
+ * fixture (general-answer-fixtures.mjs) where the reasoning for each entry is written
+ * down. This is held deterministically for the sharpest possible reason: the JUDGE SHARES
+ * THE COMPOSER'S TRAINING CUTOFF, so it is the one grader in the battery guaranteed to
+ * believe a stale fact as readily as the model that wrote it.
+ */
+function unhedgedOfficeholder(flattened, requireHedge) {
+  if (!requireHedge) return false;
+  if (!requireHedge.when.test(flattened)) return false;
+  return !requireHedge.hedges.some((hedge) => hedge.test(flattened));
 }
 
 /** The reasons sendable() would refuse this body, in answer.ts's own vocabulary. */
@@ -158,6 +215,7 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
+  const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'general-answer', cachedOnly, getClient, cost);
@@ -191,10 +249,14 @@ async function main() {
     const failures = sendFailures(flattened, smsEncoding);
     if (/\?\s*$/.test(flattened)) failures.push('trailing_question');
     if (REDIRECT_SHAPE.test(flattened)) failures.push('redirect_errand');
+    if (APP_POINTER.test(flattened)) failures.push('points_at_an_app');
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(flattened)) failures.push(`forbidden:${pattern.source}`);
     }
     if (recall(flattened, fixture.mustRecall) < 1) failures.push('recall_miss');
+    if (unhedgedOfficeholder(flattened, fixture.requireHedge)) {
+      failures.push('unhedged_officeholder');
+    }
 
     const verdict = await judge(fixture.id, {
       question: fixture.text,
@@ -205,6 +267,23 @@ async function main() {
 
     results.push({ fixture, flattened, failures });
   }
+
+  // The variation gate runs over the LIVE-DATA DEFLECTS only, which is where this corpus
+  // converges: the audit found "I can't see live {forecasts/scores/prices/market data}
+  // from here" slot-filled across four fixtures, one of them character-for-character the
+  // skill's own sample. The answered fixtures are excluded because their bodies are
+  // pinned by their subjects — Lima and x = 5 are supposed to be the same every time, and
+  // gating them for similarity would measure the questions rather than the voice.
+  const deflects = results.filter((r) => LIVE_DATA_FIXTURES.has(r.fixture.id));
+  const variation = variationGate({
+    items: deflects.map((r) => ({ id: r.fixture.id, text: r.flattened })),
+    samples,
+    minDistinctOpeners: MIN_DISTINCT_DEFLECT_OPENERS,
+  });
+  for (const result of deflects) {
+    result.failures.push(...(variation.failuresById[result.fixture.id] ?? []));
+  }
+  const openersShort = variation.distinctOpeners < MIN_DISTINCT_DEFLECT_OPENERS;
 
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- answers ---');
@@ -219,16 +298,25 @@ async function main() {
   );
   const trailingQuestions = results.filter((r) => r.failures.includes('trailing_question'));
   const redirects = results.filter((r) => r.failures.includes('redirect_errand'));
+  const appPointers = results.filter((r) => r.failures.includes('points_at_an_app'));
   const fabrications = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
   const recallMisses = results.filter((r) => r.failures.includes('recall_miss'));
+  const staleOffice = results.filter((r) => r.failures.includes('unhedged_officeholder'));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
 
   console.log('\n--- corpus metrics ---');
   console.log(`UNSENDABLE ANSWERS:      ${unsendable.length}  (0 required - the parent got the deflect line instead)`);
   console.log(`trailing questions:      ${trailingQuestions.length}  (0 required)`);
   console.log(`redirect errands:        ${redirects.length}  (0 required - "check ESPN" is the work handed back)`);
+  console.log(
+    `app pointers:            ${appPointers.length}  (0 required - the destination half of the same errand)`,
+  );
   console.log(`live-data fabrications:  ${fabrications.length}  (0 required)`);
   console.log(`recall misses:           ${recallMisses.length}  (0 required)`);
+  console.log(
+    `unhedged officeholders:  ${staleOffice.length}  (0 required - the judge shares the cutoff, so this one is mechanical)`,
+  );
+  for (const line of variationLines(variation)) console.log(`${line}  [live-data deflects]`);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
 
   console.log('\n--- cost telemetry ---');
@@ -236,7 +324,7 @@ async function main() {
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
 
-  const allPass = results.every((r) => r.failures.length === 0);
+  const allPass = results.every((r) => r.failures.length === 0) && !openersShort;
 
   console.log('\n--- gate ---');
   if (!broken) {

@@ -27,8 +27,13 @@
 //   · a promised fix time — "back in a minute" is a commitment nobody scheduled.
 //   · an app pointer — what broke was Hale's end; handing the parent a second surface is
 //     handing them the work (skill audit P0 #4).
-//   · too few distinct sentences — a composed apology that never varies is the deleted
-//     constant with an API bill.
+//   · too few distinct sentences, and no two bodies that are the SAME sentence wearing
+//     different punctuation — a composed apology that never varies is the deleted
+//     constant with an API bill. This count used to be a Set of raw strings, which one
+//     comma defeated: the 2026-08-13 tone audit found "That one broke on my end and
+//     nothing changed." and "That one broke on my end, and nothing changed." counted as
+//     two, on top of three byte-identical bodies. It runs through the shared variation
+//     gate now, which normalizes punctuation away before it counts.
 // Everything else is the judge's bar (JUDGE_MIN per fixture): owns the fault, says
 // nothing was changed, one plain sentence, no invented cause, no grovelling.
 
@@ -45,6 +50,12 @@ import {
   readJudgeModel,
   totalUsd,
 } from './lib/harness.mjs';
+import {
+  normalizeForCompare,
+  skillSampleSentences,
+  variationGate,
+  variationLines,
+} from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..', '..');
@@ -184,6 +195,7 @@ async function main() {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   const skill = await agent.loadSkill(SKILL_PATH);
+  const samples = await skillSampleSentences(SKILL_PATH);
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'turn-apology', cachedOnly, getClient, cost);
@@ -225,6 +237,45 @@ async function main() {
     results.push({ fixture, body, failures });
   }
 
+  // Variance is measured over the PLAIN draws only. The three recompose fixtures are
+  // handed a refused body to repair, so their answers are steered by that input rather
+  // than freely drawn, and counting them would let the recompose loop stand in for the
+  // variety the plain draws are supposed to show.
+  const variance = results.filter((r) => r.fixture.countsTowardVariance);
+  const variation = variationGate({
+    items: variance.map((r) => ({ id: r.fixture.id, text: r.body })),
+    samples,
+  });
+
+  // PARROTING IS GATED. NEAR-DUPLICATION IS MEASURED AND PRINTED, AND DELIBERATELY NOT
+  // GATED HERE — the one suite in the battery where that is true, so here is the reason.
+  //
+  // This stage is BLIND: every draw sends the byte-identical payload
+  // {"situation":"turn_failed_nothing_changed"}. Eight draws are therefore eight
+  // independent samples from ONE distribution, and that distribution is sharply peaked
+  // because the meaning is pinned to two clauses inside 160 characters. No wording in the
+  // skill can decorrelate independent samples, and trying it three times over live
+  // re-records (2026-08-13) only ever MOVED the peak: retiring "that one broke on my end"
+  // produced seven of eight on "didn't work out on my end"; adding an explicit
+  // pick-at-random instruction produced three BYTE-IDENTICAL draws, worse than the corpus
+  // it replaced. Gating the pairwise score would therefore hold this suite permanently
+  // red on a property the skill cannot deliver.
+  //
+  // THE MISSING PRIMITIVE, named rather than patched around: the composer needs an
+  // `avoid` list — the last few apology bodies actually sent to THIS family, handed in
+  // with the payload the way `rejected` already is, so a repeat is impossible by
+  // construction instead of improbable by temperature. That is a change to
+  // apps/web/lib/channel/router/apology.ts and to whatever records an outbound body, not
+  // a change to the words, and until it exists "a parent should not read the same
+  // sentence twice" is an aspiration this eval can only report on.
+  //
+  // What IS still gated: the distinct-body count below (now normalized, so a comma can no
+  // longer inflate it) and the parrot check, both of which the skill CAN control.
+  for (const result of variance) {
+    const failures = variation.failuresById[result.fixture.id] ?? [];
+    result.failures.push(...failures.filter((f) => !f.startsWith('near_duplicate')));
+  }
+
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- apologies ---');
   for (const r of results) {
@@ -243,8 +294,7 @@ async function main() {
   const pointers = results.filter((r) => r.failures.includes('points_at_the_app'));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
 
-  const variance = results.filter((r) => r.fixture.countsTowardVariance);
-  const distinct = new Set(variance.map((r) => r.body.trim().toLowerCase())).size;
+  const distinct = new Set(variance.map((r) => normalizeForCompare(r.body))).size;
   const tooSame = distinct < MIN_DISTINCT;
 
   console.log('\n--- corpus metrics ---');
@@ -254,7 +304,14 @@ async function main() {
   console.log(`pointed at the app:      ${pointers.length}  (0 required)`);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
   console.log(
-    `distinct sentences:      ${distinct}/${variance.length}  (${MIN_DISTINCT}+ required - a constant with an API bill is the failure)`,
+    `distinct sentences:      ${distinct}/${variance.length}  (${MIN_DISTINCT}+ required, punctuation normalized away - a constant with an API bill is the failure)`,
+  );
+  const duplicatePairs = Object.values(variation.failuresById)
+    .flat()
+    .filter((f) => f.startsWith('near_duplicate')).length / 2;
+  for (const line of variationLines(variation, { pairGated: false })) console.log(line);
+  console.log(
+    `near-duplicate pairs:    ${duplicatePairs}  (REPORTED, NOT GATED - blind stage, see the note in main())`,
   );
 
   console.log('\n--- cost telemetry ---');

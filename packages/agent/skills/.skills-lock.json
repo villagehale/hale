@@ -5,11 +5,11 @@
   },
   "calendar-email-ask.md": {
     "file": "calendar-email-ask.md",
-    "sha256": "faccf45eb59249ff484ea230f393c18299c73bb533723377aaa999ba63509cf5"
+    "sha256": "9631c857dc1ad44cd892ef948aff8bc87010eff6ab52c4cc1d3e82f76c5b75d0"
   },
   "calendar-invite-note.md": {
     "file": "calendar-invite-note.md",
-    "sha256": "4cc15618c74bb06f16d3ea213aed028af6415fb0be1a0c8db50eb5d71e3c5c56"
+    "sha256": "8ff7ac05f207b124e36708d1ea874001a3d95dd87d8a768f2abdefe914550978"
   },
   "classify-event.md": {
     "file": "classify-event.md",
@@ -17,7 +17,7 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "e93d6dab02e9e4ab60b3462b9fa81af930bbf5f30b19418de65453108f1fa054"
+    "sha256": "74d2db3d2c04f32dccfd88f68d7f6c37a834a1cb0b8d9bf0153a2e8658835d96"
   },
   "coach-plan-note.md": {
     "file": "coach-plan-note.md",
@@ -45,7 +45,7 @@
   },
   "general-answer.md": {
     "file": "general-answer.md",
-    "sha256": "e190c9fecad22fd6f15a95b6c5b47e43cc48c3cf9982536766ef2dfe5cc48e26"
+    "sha256": "7078d30dfe7924a3eddfe9385ba533a7acf0f9714ba9485af2aced4443428b33"
   },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
@@ -61,7 +61,7 @@
   },
   "intake-voice.md": {
     "file": "intake-voice.md",
-    "sha256": "8614211ced33c27f861c816b3a4bd060d908e58cba5ed529b60419d577dccc99"
+    "sha256": "b9385d0652291a5b3f9f35c5e59fbcb91cd8345d47cc4b4b1e287c128930207f"
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
@@ -89,7 +89,7 @@
   },
   "reminder-voice.md": {
     "file": "reminder-voice.md",
-    "sha256": "5f615fe10ab15c420a76cfbb13bc53c8abd463b63f7e7b2795176a04e61ab6a6"
+    "sha256": "815632c1ee462406c2ae6485c1e1079b240cdca62621fd873b52ca607be75617"
   },
   "reply-intent.md": {
     "file": "reply-intent.md",
@@ -109,10 +109,10 @@
   },
   "week-summary.md": {
     "file": "week-summary.md",
-    "sha256": "31516403c39dfcbdb17e9dd6ad1ea4a4eb84dfe052b61cba5f8002a17123b803"
+    "sha256": "bceb5d8fc6a0d5146363ea67efcd581a6410c381797bee9464a9b389b4521fb9"
   },
   "welcome-voice.md": {
     "file": "welcome-voice.md",
-    "sha256": "ac4d96725da949f8181f4849ac25e32b2a8ab1e1e8085b84a3e470af6de994fa"
+    "sha256": "6157201032643cc876df70c4e36835c021da322c7ce7b6168ff8222d5203bd1c"
   }
 }

@@ -71,6 +71,7 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { tsImport } from 'tsx/esm/api';
 import { z } from 'zod';
+import { skillSampleSentences, variationGate, variationLines } from './lib/variation.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_ROOT = join(HERE, '..');
@@ -578,7 +579,10 @@ const WEEK_SUMMARY_JUDGE_SYSTEM = [
   'You are a strict reviewer scoring the VOICE object (greeting, weekFraming,',
   'itemLines, signOff) Hale wrote to sit atop a family\'s already-composed upcoming-',
   'week plan. Score CALM & FAITHFULNESS on a 1-5 integer scale. A 5 is warm, calm,',
-  'lowercase-friendly, keeps weekFraming to one/two sentences naming only the one or',
+  'written in ordinary SENTENCE CASE (every sentence starting with a capital, the',
+  'greeting and sign-off included — a lowercase dialect is a different voice from the',
+  'one every other Hale surface writes in, and it is marked down here), keeps',
+  'weekFraming to one/two sentences naming only the one or',
   'two most notable SUPPLIED items, any itemLines are brief framings (never restating',
   'a time/date), and — on an empty item list — weekFraming simply says the week is',
   'quiet. A LOW score is alarming or cold tone, opening with "Great news!"/"Exciting!",',
@@ -645,6 +649,21 @@ function checkWeekVoice(fixture, voice, judgeScore) {
   // Calm voice: never open with a hype phrase.
   if (e.mustStayCalm && (BANNED_SUMMARY_OPENER.test(greeting) || BANNED_SUMMARY_OPENER.test(weekFraming))) {
     failures.push(`banned hype opener: ${JSON.stringify((greeting || weekFraming).slice(0, 24))}`);
+  }
+
+  // Sentence case, held mechanically. The judge used to be told a 5 was
+  // "lowercase-friendly", which sanctioned by rubric the one Hale surface with its own
+  // typography (2026-08-13 tone audit) — so this is checked rather than graded, the way
+  // every other decidable voice property in this battery is.
+  for (const [field, value] of [
+    ['greeting', greeting],
+    ['weekFraming', weekFraming],
+    ['signOff', signOff],
+  ]) {
+    const first = String(value).trim().charAt(0);
+    if (first !== '' && first === first.toLowerCase() && first !== first.toUpperCase()) {
+      failures.push(`${field} opens lower case: ${JSON.stringify(String(value).slice(0, 32))}`);
+    }
   }
 
   // No fabricated specifics: any email / $ / long-digit token must be grounded in an
@@ -747,8 +766,8 @@ const WELCOME_VOICE_JUDGE_SYSTEM = [
   'detail NOT supplied, or naming a child. Reply with ONLY the score tool.',
 ].join(' ');
 
-// Deterministic broken stand-in: hypes, invents a place/stage never supplied, and
-// tacks on a time + link neither of which this skill is ever given.
+// Deterministic broken stand-in: hypes, invents a place/stage never supplied, tacks on a
+// time + link neither of which this skill is ever given, and speaks as a company.
 function brokenWelcomeVoiceAnswer() {
   return {
     greeting: 'Congratulations!!! Welcome to the Hale family!!!',
@@ -757,6 +776,47 @@ function brokenWelcomeVoiceAnswer() {
     closingNote: 'reply any time',
   };
 }
+
+/**
+ * The BRAND REGISTER, held deterministically. This is the first message a family ever
+ * gets from Hale, and every surface after it — every SMS, every apology, every coach
+ * reply — speaks as one person in the first person singular. The 2026-08-13 tone audit
+ * found this one email speaking as "we" in three of six cached draws and describing
+ * itself in the third person ("Hale is here to be the village around your family") in
+ * six of six, which is a company writing rather than the person the family is about to
+ * start texting.
+ *
+ * Held as a pattern rather than left to the judge for the reason general-answer holds its
+ * redirect shapes that way: a judge scoring warmth reliably forgives a pronoun, and this
+ * one is absolute.
+ *
+ * The bare pronouns are the whole list on purpose. An apostrophe is a non-word character,
+ * so `\bwe\b` already matches inside "we're", "we've" and "we'll" — while spelling those
+ * contractions out with an optional apostrophe (`we'?ll`) matches "well" and (`we'?re`)
+ * matches "were", which is how the first version of this check failed a perfectly good
+ * welcome line for the word "well".
+ */
+const BRAND_PLURAL = /\b(?:we|us|our|ours)\b/i;
+const THIRD_PERSON_SELF = /\bHale(?:'s)?\s+(?:is|was|has|can|will|does|helps|brings)\b/i;
+
+/**
+ * The DETERMINISTIC copy this voice stage replaces, from apps/web/lib/onboarding/
+ * welcome-email.ts (`villageLine()` and `REPLY_LINE`) — replicated here rather than
+ * imported for the reason the other web-side evals replicate: that module sits behind the
+ * app's `~/` alias, which the tsx loader cannot resolve.
+ *
+ * They are fed to the variation gate as parrot samples, because a composed line that
+ * reproduces the fallback is the most expensive way possible to send the fallback. They
+ * are deliberately NOT quoted in the skill: the first draft of the fix showed them there
+ * under "never write these" and the model copied one at 0.91 containment on the very next
+ * live draw, which is the #429 lesson a second time — a sentence in front of a model is a
+ * sentence it can reach for, whatever the surrounding label says.
+ */
+const WELCOME_FALLBACK_LINES = [
+  "i'm so glad you're here",
+  'hale is the village around your family the people places and quiet help that make raising kids a little lighter',
+  'reply any time a real person reads these',
+].map((line) => line.replace(/[^a-z0-9 ]/g, ''));
 
 function checkWelcomeVoice(fixture, voice, judgeScore) {
   const failures = [];
@@ -777,6 +837,15 @@ function checkWelcomeVoice(fixture, voice, judgeScore) {
 
   const allText = [greeting, villageLine, closingNote].join(' ');
   const lower = allText.toLowerCase();
+
+  const brandPlural = allText.match(BRAND_PLURAL);
+  if (brandPlural) {
+    failures.push(`speaks as a company: ${JSON.stringify(brandPlural[0])} (one person, "I")`);
+  }
+  const thirdPerson = allText.match(THIRD_PERSON_SELF);
+  if (thirdPerson) {
+    failures.push(`describes itself in the third person: ${JSON.stringify(thirdPerson[0])}`);
+  }
 
   if (typeof e.maxChars === 'number' && allText.length > e.maxChars) {
     failures.push(`voice ${allText.length} chars > maxChars ${e.maxChars} (not short + warm)`);
@@ -817,8 +886,14 @@ function checkWelcomeVoice(fixture, voice, judgeScore) {
 async function runWelcomeVoiceSuite(opts) {
   const { agent, broken, cachedOnly, getClient, cost, judge } = opts;
   const fixtures = await loadFixtures('agent-welcome-voice');
-  const skill = await agent.loadSkill(join(SKILLS_DIR, 'welcome-voice.md'));
+  const skillPath = join(SKILLS_DIR, 'welcome-voice.md');
+  const skill = await agent.loadSkill(skillPath);
+  const samples = await skillSampleSentences(skillPath);
   const results = [];
+  /** Per-fixture voices, kept so the variation gate can run across the corpus once every
+   * fixture has been composed. Each FIELD is compared only against the same field in the
+   * other fixtures — a greeting and a sign-off are not each other's duplicates. */
+  const composed = [];
 
   console.log('--- welcome-voice (real runAgent loop, real skill, no tools) ---');
   for (const fixture of fixtures) {
@@ -859,7 +934,41 @@ async function runWelcomeVoiceSuite(opts) {
 
     const score = broken || !voice ? null : (await judge(welcomeVoiceJudgePayload(fixture, voice))).score;
     const failures = checkWelcomeVoice(fixture, voice, score);
+    if (voice) composed.push({ id: fixture.id, voice });
     record(results, fixture, failures, score);
+  }
+
+  for (const field of ['greeting', 'villageLine', 'closingNote']) {
+    const items = composed.map((c) => ({ id: c.id, text: c.voice[field] }));
+    const report = variationGate({
+      items,
+      samples: [...samples, ...WELCOME_FALLBACK_LINES],
+      // The greeting is "Hi {firstName}," by mandate, so its opening is fixed by the
+      // skill and an opener floor there would gate on the shell rather than the voice.
+      // The other two carry the whole burden of sounding written-for-you.
+      minDistinctOpeners: field === 'greeting' ? null : 2,
+      // AND its convergence is not gateable at the corpus threshold, which is worth
+      // saying out loud rather than leaving as an unexplained number. A greeting here is
+      // a mandated "Hi {name}," plus about five words; three of those differing only in
+      // the name sit at 0.80 Dice no matter how differently they are written, so 0.75
+      // would fail this field permanently and 0.95 only catches a greeting that has
+      // stopped varying at all. What actually protects this field is the parrot check
+      // (it may not reproduce the deterministic line) and the brand-register check.
+      maxSimilarity: field === 'greeting' ? 0.95 : undefined,
+    });
+    for (const line of variationLines(report)) console.log(`  ${field}: ${line}`);
+    if (report.passed) continue;
+    for (const [id, failures] of Object.entries(report.failuresById)) {
+      results.push({ id: `${id}:${field}`, failures });
+      console.log(`  FAIL ${id} (${field})`);
+      console.log(`       > "${items.find((i) => i.id === id)?.text}"`);
+      for (const f of failures) console.log(`       - ${f}`);
+    }
+    if (report.minDistinctOpeners !== null && report.distinctOpeners < report.minDistinctOpeners) {
+      const failure = `only ${report.distinctOpeners} distinct ${field} openings across the corpus (>= ${report.minDistinctOpeners} required)`;
+      results.push({ id: `corpus:${field}`, failures: [failure] });
+      console.log(`  FAIL corpus (${field})\n       - ${failure}`);
+    }
   }
   return results;
 }

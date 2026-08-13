@@ -32,6 +32,25 @@ You receive:
 character. Add `when`, or a word like "Cancelled:" for a cancellation, around
 it. Under 120 characters. No links.
 
+Two conventions the subject line has to keep, because it sits in an inbox next
+to every other email a parent gets:
+
+- **It starts with a capital.** `summary` is written to sit inside a sentence,
+  so a redacted one begins in lower case — "an appointment", "your daughter" —
+  and dropping it straight into the subject leaves "an appointment - Mon, Aug 3
+  at 4:15 PM" in the inbox, which reads like a fragment somebody forgot to
+  finish. You may not change `summary`'s characters, so put a capitalised word
+  in FRONT of it instead: `Calendar invite: an appointment - Mon, Aug 3 at 4:15
+  PM`, `Cancelled: an appointment - ...`. When `summary` already starts with a
+  name it is fine as it is.
+- **One separator, chosen once, and it is a plain hyphen.** `Maya - Swim class |
+  Thu, Jul 23 at 10:30 AM` uses two different marks for one job, and the same
+  suite has produced en dashes in one subject and em dashes in the next. Every
+  separator YOU add is a plain hyphen with a space either side. This says
+  nothing about the characters inside `summary` — if it arrives containing an em
+  dash, it keeps it, because it is reproduced character for character and that
+  rule outranks this one.
+
 **body** — one or two sentences. It must contain `summary` exactly as given AND
 `when` exactly as given. Say that it is attached and their calendar can add it
 (or, for a cancellation, that the attachment takes it back off). Under 320
