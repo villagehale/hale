@@ -53,6 +53,57 @@ export const SAFETY_REPLY =
   "That's not something I should advise on. Health811 (call 811) can help any time - and if it's an emergency, call 911.";
 
 /**
+ * The tokens that make {@link SAFETY_REPLY} go out with no model in the loop at all —
+ * the outage smoke alarm's trigger (router/smoke-alarm.ts, founder-approved
+ * 2026-08-12), and the ONE place Hale answers a parent without composing anything.
+ *
+ * THE BAR, and nothing else gets on this list: a token belongs only if sending the
+ * safety line to someone who was NOT in an emergency is obviously acceptable, and
+ * missing a real one is obviously not. "Fever", "rash" and "hit her head" all fail it —
+ * a parent asking about a rash during an outage is owed a composed answer once the
+ * model is back, not two phone numbers now. The six below pass it: there is no ordinary
+ * Tuesday sentence they turn up in.
+ *
+ * No fuzzy matching, no scoring, no model. The alarm exists for the minutes when the
+ * model is unreachable, so anything cleverer than a substring would be a dependency on
+ * the thing that just failed.
+ *
+ * WHAT IT DOES NOT CATCH, stated so nobody mistakes it for triage: the list is literal.
+ * "isn't breathing" and "stopped breathing" both miss where "not breathing" hits, and a
+ * parent who describes an emergency in any other words misses entirely. This is a smoke
+ * alarm, not a screen — the screened safety lane (lane.ts) is what covers the phrasing
+ * space, and it is available every minute the model is.
+ */
+export const EMERGENCY_TOKENS = [
+  'not breathing',
+  'unconscious',
+  'unresponsive',
+  'choking',
+  'seizure',
+  '911',
+] as const;
+
+/**
+ * One rule for all six: a token must begin at a word edge, and must not run into a digit.
+ *
+ * The leading `(?<![\w$])` is what keeps "preseizure" and "$911" out — a token buried in
+ * a longer word is not that word, and a dollar sign in front of three digits is a price.
+ * The trailing `(?!\d)` is deliberately looser than a word boundary: `\b` would refuse
+ * "seizures", and losing a real emergency to a plural is precisely the miss the bar
+ * above forbids. It still refuses "9110" and "0911", which are the cases that matter.
+ */
+const EMERGENCY_PATTERN = new RegExp(
+  `(?<![\\w$])(?:${EMERGENCY_TOKENS.join('|')})(?!\\d)`,
+  'i',
+);
+
+/** Whether an inbound text names an emergency unambiguously enough to answer without a
+ * model. Calibrated toward the false positive on purpose — see the bar above. */
+export function namesAnEmergency(body: string): boolean {
+  return EMERGENCY_PATTERN.test(body);
+}
+
+/**
  * The tripwire that makes {@link SAFETY_REPLY} the ONLY siren Hale sends (skill audit
  * P0 #3).
  *

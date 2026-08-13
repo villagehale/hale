@@ -30,6 +30,7 @@ import {
   realAckTimer,
   routeChannelMessage,
 } from './route';
+import type { SmokeAlarmClaim } from './smoke-alarm';
 
 /**
  * VIL-220 · C1 — the production wiring. The one place the router meets real tables, a
@@ -215,6 +216,54 @@ function defaultOffDomainLane(database: Database) {
   return productionOffDomainLane(database, screenClient);
 }
 
+/**
+ * The audit action the smoke alarm writes. A DATA value: it is what a PIPEDA access
+ * request renders and what the dedupe reads back, so it is never renamed with the code.
+ */
+export const SMOKE_ALARM_ACTION = 'smoke_alarm_fired';
+
+/**
+ * The smoke alarm's memory, in audit_log — no new table and no migration.
+ *
+ * Rule #6 already requires an immutable row for the act, so the row that RECORDS the
+ * alarm is the same row that stops a queue re-drive from ringing it again. `familyId` is
+ * in the read as well as the message id: it is the leading column of the only index this
+ * table has, and the router's own rule-#1 habit of scoping every lookup to the family
+ * the job claims.
+ *
+ * The write is the alarm's second audit row, not its only one — `sendReply` has already
+ * written `sms_reply_sent` for the text itself. This one records the DECISION, which is
+ * the reviewable thing: Hale answered a parent without composing anything.
+ */
+export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
+  return {
+    alreadyFired: async ({ familyId, channelMessageId }) => {
+      const [row] = await database
+        .select({ id: schema.auditLog.id })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.actionTaken, SMOKE_ALARM_ACTION),
+            eq(schema.auditLog.targetTable, 'channel_messages'),
+            eq(schema.auditLog.targetId, channelMessageId),
+          ),
+        )
+        .limit(1);
+      return row !== undefined;
+    },
+    recordFired: async ({ familyId, parentUserId, channelMessageId }) => {
+      await database.insert(schema.auditLog).values({
+        familyId,
+        actor: parentUserId,
+        actionTaken: SMOKE_ALARM_ACTION,
+        targetTable: 'channel_messages',
+        targetId: channelMessageId,
+      });
+    },
+  };
+}
+
 export function channelRouterDeps(database: Database): ChannelRouterDeps {
   return {
     database,
@@ -222,6 +271,7 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     transport: createTwilioTransport(),
     handlers: defaultHandlers(),
     offDomain: defaultOffDomainLane(database),
+    smokeAlarm: auditSmokeAlarmClaim(database),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),

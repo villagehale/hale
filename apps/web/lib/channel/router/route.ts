@@ -10,6 +10,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
 import { ACK_REPLY, FLOOD_REPLY, failureReply, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
+import { type SmokeAlarmClaim, considerSmokeAlarm } from './smoke-alarm';
 
 /**
  * VIL-220 · C1 — the inbound router: the consumer of A3's `channel.message.received`.
@@ -135,6 +136,10 @@ export interface ChannelRouterDeps {
    * that cannot run says so by returning `in_domain` with a named fallback. */
   offDomain: OffDomainLane;
   coach: ChannelCoachRuntime;
+  /** The outage smoke alarm's memory (smoke-alarm.ts). Non-nullable (rule #11): "no
+   * alarm wired" is not a state this router has — the alarm's own outcome enum is where
+   * a quiet alarm says why it stayed quiet. */
+  smokeAlarm: SmokeAlarmClaim;
   limiter: RateLimiter;
   ackTimer(ms: number): AckTimer;
   now(): Date;
@@ -154,7 +159,12 @@ export type RouterStatus =
   /** The off-domain lane answered it with a fixed line; no coach turn was spent. */
   | 'deflected'
   | 'agent_replied'
-  | 'agent_failed';
+  | 'agent_failed'
+  /** The turn broke because the provider was unreachable AND the text named an
+   * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
+   * A distinct status from `agent_failed` because it is the one outcome where a failed
+   * turn still answered the question the parent actually asked. */
+  | 'smoke_alarm_fired';
 
 export interface RouterResult {
   status: RouterStatus;
@@ -341,16 +351,44 @@ async function runAgentTurn(
     // approve. Saying "nothing was changed" would be false AND would orphan them — see
     // coach-runtime.ts (VIL-260).
     const drafted = draftsFromFailure(err);
+    // THE SMOKE ALARM (smoke-alarm.ts), consulted before the honesty line and only ever
+    // from here. During a provider outage the off-domain screen fails open, so the lane
+    // that owns the 811/911 sentence never got to classify — and the line below is what
+    // a parent standing over a child who is not breathing would otherwise receive. Every
+    // other failed turn falls straight through it, including this one when the provider
+    // was reachable.
+    const smokeAlarm = await considerSmokeAlarm({
+      claim: deps.smokeAlarm,
+      err,
+      body: args.turn.body,
+      familyId: args.job.family_id,
+      parentUserId: args.job.parent_user_id,
+      channelMessageId: args.job.channel_message_id,
+      say: args.say,
+    });
     // The error object may carry a provider payload, so only its class and message are
-    // kept — never the turn body (rule #1).
+    // kept — never the turn body (rule #1). The alarm's outcome rides along so a quiet
+    // alarm during an outage is legible as a decision rather than as nothing (rule #11).
     deps.log.error(
       {
         channelMessageId: args.job.channel_message_id,
         err: err instanceof Error ? err.message : 'unknown',
         draftedThisTurn: drafted.length,
+        smokeAlarm,
       },
       'channel router: agent turn failed',
     );
+    if (smokeAlarm === 'fired') {
+      // No draft notice appended, deliberately. The alarm answers a parent who should be
+      // dialling, and the drafts are still in the approvals queue for the next turn to
+      // surface — a count of pending changes is not what that message is for.
+      return done(deps, args.job, {
+        status: 'smoke_alarm_fired',
+        handler: null,
+        conversationId: args.conversationId,
+        lane: null,
+      });
+    }
     await args.say(drafted.length > 0 ? partialFailureReply(drafted.length) : failureReply());
     return done(deps, args.job, {
       status: 'agent_failed',
