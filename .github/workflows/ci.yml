@@ -97,6 +97,9 @@ jobs:
       - name: Calendar invite + email-ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:calendar-voice
 
+      - name: Identity ask composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:identity-ask
+
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 

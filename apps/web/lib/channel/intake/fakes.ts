@@ -1,4 +1,9 @@
 import { type Database, schema } from '@hale/db';
+import type {
+  IdentityAskOutcome,
+  IdentityAskRequest,
+  IdentityAskVoice,
+} from '~/lib/channel/identity/ask-voice';
 import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAck, IntakeAckComposer } from './intake-voice';
@@ -72,6 +77,23 @@ export const fakeAckComposer: IntakeAckComposer = {
     };
   },
 };
+
+/**
+ * A scripted identity-ask composer. Its body is deliberately not a sentence — the machine
+ * tests here assert MECHANICS (was the ask appended, was the ledger row stamped so the
+ * capture can find it, does a deferral still send a whole acknowledgment), and a
+ * plausible-looking canned line would invite them to assert on wording instead. What Hale
+ * actually says is the gates' job (ask-voice.test.ts) and the eval's (rule #8).
+ */
+export class FakeIdentityAsk implements IdentityAskVoice {
+  readonly calls: IdentityAskRequest[] = [];
+  constructor(private readonly outcome: IdentityAskOutcome = { status: 'composed', body: 'ASK' }) {}
+
+  async compose(request: IdentityAskRequest): Promise<IdentityAskOutcome> {
+    this.calls.push(request);
+    return this.outcome;
+  }
+}
 
 export interface RecordedWrite {
   op: 'insert' | 'update';

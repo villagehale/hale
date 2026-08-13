@@ -5,6 +5,7 @@ import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine'
 import {
   type FakeDb,
   FakeExtractor,
+  FakeIdentityAsk,
   FakeIntentReader,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
@@ -106,6 +107,7 @@ async function runIntakeRadar(): Promise<Intake> {
     resolveCenter: async () => null,
     discoveryTrigger: () => {},
     ackComposer: createIntakeAckComposer(null),
+    identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
   };

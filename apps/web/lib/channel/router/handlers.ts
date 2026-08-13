@@ -4,6 +4,10 @@ import {
   handleEmailCaptureReply,
 } from '~/lib/channel/email-capture/reply';
 import {
+  type NameCaptureDeps,
+  handleNameCaptureReply,
+} from '~/lib/channel/identity/name-reply';
+import {
   type SequenceReplyDeps,
   handleSequenceReply,
 } from '~/lib/registration/sequence/reply';
@@ -137,6 +141,43 @@ export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandle
     name: 'email_capture',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const outcome = await handleEmailCaptureReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+        },
+        deps,
+      );
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
+
+/**
+ * The name a parent texts back after Hale asked what to call them.
+ *
+ * LAST, and the position is as deliberate as the address capture's is. This is the
+ * BROADEST shape check in the chain — a bare word — so it has to claim after everything
+ * that matches a specific one. "Done" is a health outcome, "yes" is a plan acceptance and
+ * "we got in" is a registration result, and each of those handlers gets first refusal on
+ * its own vocabulary; only a message none of them recognised can be somebody's name.
+ * Ordering it any earlier would mean a family with an open name ask could not answer a
+ * health nudge without being renamed for it.
+ *
+ * Three conditions have to hold together before a word is written to an account: it is
+ * name-shaped (see soleGivenName — no digits, no address, at most three words, not an
+ * ordinary reply), Hale actually asked this family, and there is no name on file yet. The
+ * write itself carries the third as `name IS NULL` in its own WHERE, so the answer to a
+ * race is settled by Postgres rather than by the order two texts arrived in.
+ */
+export function nameCaptureHandler(deps: NameCaptureDeps): DeterministicHandler {
+  return {
+    name: 'name_capture',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handleNameCaptureReply(
         database,
         {
           familyId: ctx.familyId,

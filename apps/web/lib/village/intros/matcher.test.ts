@@ -17,8 +17,6 @@ function family(overrides: Partial<IntroCandidateFamily> & { familyId: string })
   return {
     parentUserId: `user-${overrides.familyId}`,
     fsa: 'M4K',
-    parentEmail: 'parent@example.com',
-    parentName: 'Sam Lee',
     // Born 2024-02-11 -> 30 months at NOW -> toddler.
     children: [{ id: `child-${overrides.familyId}`, dateOfBirth: '2024-02-11' }],
     ...overrides,
@@ -146,17 +144,6 @@ describe('matchIntroPairs', () => {
     expect(result.skipped).toEqual([]);
   });
 
-  it('skips a family with no parent email, and says so by name', () => {
-    const result = matchIntroPairs({
-      families: [family({ familyId: AAA }), family({ familyId: BBB, parentEmail: null })],
-      familiesWithOpenProposal: new Set(),
-      pairedBefore: new Set(),
-      now: NOW,
-    });
-    expect(result.pairings).toEqual([]);
-    expect(result.skipped).toEqual([{ familyId: BBB, reason: 'no_parent_email' }]);
-  });
-
   it('skips a family whose area is not an FSA, and says so by name', () => {
     const result = matchIntroPairs({
       families: [family({ familyId: AAA }), family({ familyId: BBB, fsa: 'Toronto' })],
@@ -168,15 +155,23 @@ describe('matchIntroPairs', () => {
     expect(result.skipped).toEqual([{ familyId: BBB, reason: 'no_fsa' }]);
   });
 
-  it('skips a family with no display name - an intro cannot greet a nameless parent', () => {
+  /**
+   * The regression that stalled two real families. Both had arrived by text, so neither
+   * had a name or an address on file, and the matcher used to refuse the pair outright —
+   * which meant they were each asked "want an introduction?", both said yes, and nothing
+   * ever happened to either of them. Neither fact is a matching input: the card is worded
+   * from the recipient's OWN child and a stage word. They belong to the handoff, where
+   * Hale can ask for them.
+   */
+  it('pairs two families that have no parent name and no email - identity is the handoff\'s business', () => {
     const result = matchIntroPairs({
-      families: [family({ familyId: AAA }), family({ familyId: BBB, parentName: null })],
+      families: [family({ familyId: AAA }), family({ familyId: BBB })],
       familiesWithOpenProposal: new Set(),
       pairedBefore: new Set(),
       now: NOW,
     });
-    expect(result.pairings).toEqual([]);
-    expect(result.skipped).toEqual([{ familyId: BBB, reason: 'no_parent_name' }]);
+    expect(result.pairings).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
   });
 
   it('skips a family whose only child is a teenager', () => {

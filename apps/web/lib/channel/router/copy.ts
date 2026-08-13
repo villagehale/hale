@@ -164,10 +164,36 @@ export function emailCapturedReply(inviteSent: boolean): string {
     : 'Got it - invites will go there from now on.';
 }
 
+/**
+ * The capture ack when the address was asked for by the INTROS sweep rather than a
+ * placement. Same write, different thing waiting on it, so a different receipt: a parent
+ * who gave Hale an address to be introduced to another family and hears "invites will go
+ * there from now on" has been answered about something they did not ask about.
+ *
+ * It promises the introduction, not its delivery. The sweep is what sends it, on its next
+ * tick — so "I'll make that introduction" is true when this is sent and "it's on its way"
+ * would not be.
+ */
+export const EMAIL_CAPTURED_FOR_INTRO_REPLY =
+  "Got it - I'll make that introduction and use this address from now on.";
+
 /** The address belongs to another Hale account. Named rather than swallowed: silently
  * ignoring it would leave the parent waiting for invites that can never arrive. */
 export const EMAIL_ALREADY_TAKEN_REPLY =
   "That address is already on another Hale account - text me a different one and I'll use that.";
+
+/**
+ * The name capture ack.
+ *
+ * It does NOT say the name back. Reading a parent's own name to them is the shape of a
+ * form confirming a field, and if the recognizer took the wrong word out of their message
+ * the echo makes Hale look like it misheard twice. What it says is what changed, which is
+ * the only thing a receipt owes.
+ *
+ * Like the address ack, the QUESTION it answers is composed per send and is not here
+ * (lib/channel/identity/ask-voice.ts); this half is the router's receipt for a write.
+ */
+export const NAME_CAPTURED_REPLY = "Thanks - I'll use that from now on.";
 
 export function nothingPendingReply(): string {
   return `Nothing's waiting on your approval right now. Everything I've set up is here: ${appLink()}`;

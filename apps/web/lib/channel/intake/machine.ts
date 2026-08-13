@@ -25,6 +25,9 @@ import {
   defaultDiscoveryTrigger,
 } from '~/lib/onboarding/trigger-discovery';
 import { optOutGuestRemindersOnStop } from '~/lib/party/store';
+import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
+import { parentNeedsName } from '~/lib/channel/identity/name-reply';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
   AMBIGUOUS_CLARIFY,
@@ -89,6 +92,11 @@ export interface IntakeDeps {
    * (rule #11): it owns its own deterministic fallback and always returns a whole
    * message, so "no composer" would be a silently colder intake with nothing logged. */
   ackComposer: IntakeAckComposer;
+  /** Writes the question on the end of the consent acknowledgment — what to call this
+   * parent. Required, never nullable (rule #11): withholding it would be a silently
+   * nameless family, which is the exact hole this closed. Its own DEFERRAL is the named
+   * absence, and it is allowed — see {@link assentAck}. */
+  identityAsk: IdentityAskVoice;
   limiter: RateLimiter;
   /** Places this family near the free civic sessions already on file, INLINE — pure DB
    * work over rows the civic sweep wrote days ago, so it is fast enough to run before
@@ -119,7 +127,10 @@ export type IntakeOutcome =
   /** Something Hale will not invent is still missing after the one follow-up. */
   | { status: 'details_blocked'; missing: IntakeGap[] }
   | { status: 'provisioned'; familyId: string }
-  | { status: 'watch_recorded'; intent: ReplyIntent; granted: boolean }
+  /** `nameAsked` names what the acknowledgment actually carried: false is either a
+   * parent Hale already knows the name of or a composer that deferred, and both are
+   * states an operator reading this outcome needs to be able to tell from a send. */
+  | { status: 'watch_recorded'; intent: ReplyIntent; granted: boolean; nameAsked: boolean }
   | { status: 'clarified' }
   | { status: 'stopped' }
   | { status: 'helped' }
@@ -239,6 +250,11 @@ async function sendAndRecord(
   body: string,
   deps: IntakeDeps,
   transcript: TranscriptEntry[],
+  /** Stamped on the ledger row when this message is a QUESTION something later has to
+   * recognise the answer to. Intake's messages are otherwise anonymous — the transcript
+   * is the record — but a capture handler cannot read a transcript, so the one turn that
+   * asks for the parent's name carries a key the name capture can query for. */
+  templateKey?: string,
 ): Promise<{ transcript: TranscriptEntry[]; channelMessageId: string | null }> {
   const { providerMessageId } = await deps.transport.send({ to: ctx.phoneE164, body });
   const entry: TranscriptEntry = {
@@ -248,7 +264,7 @@ async function sendAndRecord(
     at: ctx.now.toISOString(),
   };
   if (ctx.session.familyId && ctx.session.userId) {
-    const id = await writeChannelMessage(database, ctx.session, entry, ctx.now);
+    const id = await writeChannelMessage(database, ctx.session, entry, ctx.now, templateKey);
     return { transcript, channelMessageId: id };
   }
   return { transcript: [...transcript, entry], channelMessageId: null };
@@ -282,6 +298,7 @@ async function writeChannelMessage(
   session: IntakeSession,
   entry: TranscriptEntry,
   now: Date,
+  templateKey?: string,
 ): Promise<string> {
   const familyId = session.familyId as string;
   const parentUserId = session.userId as string;
@@ -293,6 +310,7 @@ async function writeChannelMessage(
       channel: 'sms',
       direction: entry.direction,
       category: 'intake',
+      templateKey: templateKey ?? null,
       providerMessageId: entry.providerId,
       status: entry.direction === 'in' ? 'delivered' : 'sent',
       // Verbatim bodies for INBOUND only — an outbound is reconstructable from the
@@ -669,14 +687,54 @@ async function handleWatchReply(
     now,
   );
 
-  await sendAndRecord(database, ctx, granted ? ASSENT_ACK : DECLINE_ACK, deps, recorded.transcript);
+  const ack = granted ? await assentAck(database, session, deps) : { body: DECLINE_ACK, asked: false };
+  await sendAndRecord(
+    database,
+    ctx,
+    ack.body,
+    deps,
+    recorded.transcript,
+    ack.asked ? PARENT_NAME_ASK_TEMPLATE_KEY : undefined,
+  );
   await saveSession(
     database,
     session,
     { state: 'complete', closedAt: now, lastProviderId: inbound.providerId },
     now,
   );
-  return { status: 'watch_recorded', intent: reading.intent, granted };
+  return { status: 'watch_recorded', intent: reading.intent, granted, nameAsked: ack.asked };
+}
+
+/**
+ * The consent acknowledgment, with the name ask on the end of it when Hale has no name
+ * for this parent.
+ *
+ * ONE MESSAGE, ONE QUESTION. The ask is APPENDED rather than sent as a second text: a
+ * parent who has just agreed to something and gets two texts back has been answered by a
+ * system, and the composer's budget (MAX_TAIL_ASK_CHARS) is set so the joined body is
+ * still a single segment.
+ *
+ * THE ASK IS ALLOWED TO FAIL. A deferred compose returns the acknowledgment alone, which
+ * is a whole and correct message — the parent is covered, they were told so, and Hale
+ * simply does not learn their name on this turn. The intros gap-fill asks again later if
+ * it ever actually needs one, so a model outage here costs nothing that is not recovered
+ * (rule #11: the absence is named in the outcome and logged by the composer).
+ */
+async function assentAck(
+  database: Database,
+  session: IntakeSession,
+  deps: IntakeDeps,
+): Promise<{ body: string; asked: boolean }> {
+  // Asked only when there is genuinely nothing on file. Intake always creates a nameless
+  // user, but the same phone can resolve to an existing account, and asking a parent
+  // their name when Hale already knows it is the tell of a system that does not read.
+  if (!(await parentNeedsName(database, session.userId as string))) {
+    return { body: ASSENT_ACK, asked: false };
+  }
+
+  const ask = await deps.identityAsk.compose({ reason: 'getting_started', missing: ['name'] });
+  if (ask.status !== 'composed') return { body: ASSENT_ACK, asked: false };
+  return { body: `${ASSENT_ACK} ${ask.body}`, asked: true };
 }
 
 async function handleKeyword(
