@@ -7,7 +7,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
 import { removeDocument } from '~/lib/docs/storage';
-import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { type AuthIdentity, requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import { writeUserPreferences } from '~/lib/settings/user-preferences';
 import { type PlanTier, type UnitSystem, parseIntents } from '@hale/types';
@@ -52,13 +52,21 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   const interests = parseInterests(input.interests);
 
   if (!familyId) {
+    // Unreachable rather than defended: a text-onboarded session has a family from the
+    // moment it exists, and a web session has an address. Neither state can arrive here,
+    // so an absent identity is a broken invariant, not a case to handle (rule #1 — never
+    // provision a family under a fabricated identity).
+    const { provisioningIdentity } = ctx;
+    if (!provisioningIdentity) {
+      throw new Error('addChildAction: no family and no email address to provision one under');
+    }
     await database.transaction((tx) =>
-      provisionAndWriteChildren(tx as unknown as Database, identity, [
+      provisionAndWriteChildren(tx as unknown as Database, provisioningIdentity, [
         {
           name: validated.child.name,
           lastName: validated.child.lastName,
@@ -72,7 +80,7 @@ export async function addChildAction(input: ChildInput): Promise<AddChildResult>
     return { status: 'added' };
   }
 
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
   await database.transaction(async (tx) => {
     const inserted = await tx
       .insert(schema.children)
@@ -123,12 +131,12 @@ export async function editChildAction(
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
   const interests = parseInterests(input.interests);
 
   const updated = await database.transaction(async (tx) => {
@@ -215,12 +223,12 @@ export async function removeChildAction(childId: string): Promise<RemoveChildRes
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   const removed = await database.transaction(async (tx) => {
     // Scope the delete to the caller's family (rule #1): a childId from another
@@ -283,12 +291,12 @@ export async function setLocationAction(input: LocationInput): Promise<SetLocati
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   await database.transaction(async (tx) => {
     const existing = await tx
@@ -385,12 +393,12 @@ export async function setPlanAction(planTier: string): Promise<SetPlanResult> {
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   await database.transaction(async (tx) => {
     const existing = await tx
@@ -439,12 +447,12 @@ export async function setIntentsAction(rawIntents: string[]): Promise<SetIntents
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   await database.transaction(async (tx) => {
     const existing = await tx
@@ -491,12 +499,12 @@ export async function setParentNameAction(rawName: string): Promise<SetParentNam
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   await database.transaction(async (tx) => {
     const existing = await tx
@@ -545,12 +553,12 @@ export async function setPreferencesAction(
     return { status: ctx.status };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   await writeUserPreferences(userId, familyId, { units, weekStartDay }, database);
 
@@ -559,7 +567,18 @@ export async function setPreferencesAction(
 }
 
 type MutationContext =
-  | { status: 'ready'; database: Database; identity: AuthIdentity }
+  | {
+      status: 'ready';
+      database: Database;
+      externalAuthId: string;
+      /**
+       * Only `addChildAction`'s provision-a-new-family branch needs this, and only
+       * because that branch may have to CREATE the users row. Null for a session with
+       * no address — a family that arrived by text, which by construction already has
+       * a family and so never reaches that branch.
+       */
+      provisioningIdentity: AuthIdentity | null;
+    }
   | { status: 'preview' }
   | { status: 'unauthenticated' };
 
@@ -579,13 +598,15 @@ async function mutationContext(): Promise<MutationContext> {
   }
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const email = session?.user?.email;
-  if (!externalAuthId || !email) {
+  if (!externalAuthId) {
     return { status: 'unauthenticated' };
   }
+  const email = session.user?.email;
+  const name = session.user?.name ?? null;
   return {
     status: 'ready',
     database: defaultDb(),
-    identity: { externalAuthId, email, name: session.user?.name ?? null },
+    externalAuthId,
+    provisioningIdentity: email ? { externalAuthId, email, name } : null,
   };
 }

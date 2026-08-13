@@ -10,13 +10,13 @@ import { loadPushNotificationPrefs, setPushNotificationPref } from './push-notif
 const authMock = vi.fn();
 const authConfiguredMock = vi.fn();
 const resolveFamilyMock = vi.fn();
-const ensureUserRowMock = vi.fn();
+const requireUserIdMock = vi.fn();
 
 vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/auth-config', () => ({ authConfigured: () => authConfiguredMock() }));
 vi.mock('~/lib/family', () => ({
   resolveFamilyForUser: (...a: unknown[]) => resolveFamilyMock(...a),
-  ensureUserRow: (...a: unknown[]) => ensureUserRowMock(...a),
+  requireUserIdForUser: (...a: unknown[]) => requireUserIdMock(...a),
 }));
 
 interface Capture {
@@ -60,7 +60,7 @@ beforeEach(() => {
   authMock.mockReset();
   authConfiguredMock.mockReset().mockReturnValue(true);
   resolveFamilyMock.mockReset().mockResolvedValue('fam-1');
-  ensureUserRowMock.mockReset().mockResolvedValue('user-1');
+  requireUserIdMock.mockReset().mockResolvedValue('user-1');
   vi.stubEnv('DATABASE_URL', 'postgres://test');
 });
 afterEach(() => {

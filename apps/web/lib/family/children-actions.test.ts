@@ -2,7 +2,7 @@ import { schema } from '@hale/db';
 import { revalidatePath } from 'next/cache';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { removeDocument } from '~/lib/docs/storage';
-import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import { provisionAndWriteChildren } from '~/lib/onboarding/persist';
 import {
   addChildAction,
@@ -27,7 +27,7 @@ vi.mock('~/lib/db', () => ({ db: () => fakeDbHandle }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('~/lib/family', async () => {
   const actual = await vi.importActual<typeof import('~/lib/family')>('~/lib/family');
-  return { ...actual, resolveFamilyForUser: vi.fn(), ensureUserRow: vi.fn() };
+  return { ...actual, resolveFamilyForUser: vi.fn(), requireUserIdForUser: vi.fn() };
 });
 vi.mock('~/lib/onboarding/persist', () => ({ provisionAndWriteChildren: vi.fn() }));
 // Removing a child must also drop its private-bucket avatar object; the storage
@@ -112,7 +112,7 @@ beforeEach(() => {
   configureAuth(true);
   authMock.mockResolvedValue({ user: { id: GOOGLE_ID, email: 'avery@example.com', name: 'Avery' } });
   vi.mocked(resolveFamilyForUser).mockResolvedValue(FAMILY_ID);
-  vi.mocked(ensureUserRow).mockResolvedValue(USER_ID);
+  vi.mocked(requireUserIdForUser).mockResolvedValue(USER_ID);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
