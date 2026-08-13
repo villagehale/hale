@@ -6,10 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * engine does NOTHING — no DB handle resolved, no agent run, no spend. Only a
  * legitimate cron call (correct bearer) reaches the run orchestrator. The run
  * orchestrators themselves are stubbed here (their behaviour is covered by the
- * digest/discovery/inference unit tests); this asserts the gate.
+ * discovery/inference unit tests); this asserts the gate.
  */
 
-const runDigestCronMock = vi.fn();
 const runDiscoveryCronMock = vi.fn();
 const runInferenceCronMock = vi.fn();
 const runPushRemindersCronMock = vi.fn();
@@ -27,9 +26,6 @@ vi.mock('~/lib/cron/kick-drain', () => ({ kickDrain: vi.fn() }));
 vi.mock('next/server', async (importActual) => ({
   ...(await importActual<typeof import('next/server')>()),
   after: (fn: () => void) => fn(),
-}));
-vi.mock('~/lib/cron/digest', () => ({
-  runDigestCron: (...a: unknown[]) => runDigestCronMock(...a),
 }));
 vi.mock('~/lib/cron/discovery', () => ({
   runDiscoveryCron: (...a: unknown[]) => runDiscoveryCronMock(...a),
@@ -60,7 +56,6 @@ function request(authHeader?: string): Request {
 }
 
 const ROUTES = [
-  { name: 'digest', path: '~/app/api/cron/digest/route', mock: runDigestCronMock },
   { name: 'discovery', path: '~/app/api/cron/discovery/route', mock: runDiscoveryCronMock },
   { name: 'inference', path: '~/app/api/cron/inference/route', mock: runInferenceCronMock },
   {
@@ -80,7 +75,6 @@ const ROUTES = [
 describe.each(ROUTES)('GET /api/cron/$name — cron-secret gate', ({ path, mock }) => {
   beforeEach(() => {
     vi.resetModules();
-    runDigestCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runDiscoveryCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runInferenceCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });
     runPushRemindersCronMock.mockReset().mockResolvedValue({ processed: 0, results: [] });

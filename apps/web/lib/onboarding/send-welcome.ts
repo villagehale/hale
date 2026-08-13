@@ -16,7 +16,7 @@ import {
 
 /**
  * The idempotent welcome send, run once when a family completes onboarding. It is
- * transactional (sent regardless of DIGEST_SEND_ENABLED), but still carries the
+ * transactional (never held behind a send kill-switch), but still carries the
  * CASL footer + a working unsubscribe like every Hale email.
  *
  * Idempotency lives in the send ledger: a 'welcome' row in email_sends means the

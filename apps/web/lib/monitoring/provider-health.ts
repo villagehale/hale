@@ -44,7 +44,6 @@ export type ProviderHealth =
 
 /** The LLM cron windows this pre-flight guards. */
 export type SendWindow =
-  | 'daily_brief'
   | 'weekly_plan'
   | 'nudge_sweep'
   | 'memory_inference'
@@ -217,7 +216,6 @@ export function providerIncidentKind(key: string): string {
 // ── the alert ────────────────────────────────────────────────────────────────
 
 const WINDOW_HEADLINE: Record<SendWindow, string> = {
-  daily_brief: "this morning's briefs did not send.",
   weekly_plan: "this hour's weekly-plan compose did not run.",
   nudge_sweep: "this hour's nudge sweep did not run.",
   memory_inference: "last night's memory inference did not run.",
@@ -225,7 +223,6 @@ const WINDOW_HEADLINE: Record<SendWindow, string> = {
 };
 
 const WINDOW_LABEL: Record<SendWindow, string> = {
-  daily_brief: 'daily brief',
   weekly_plan: 'weekly plan',
   nudge_sweep: 'nudge sweep',
   memory_inference: 'memory inference',

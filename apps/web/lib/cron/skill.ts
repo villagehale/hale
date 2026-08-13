@@ -20,10 +20,6 @@ export async function loadCronSkill(name: string): Promise<Skill> {
   return skill;
 }
 
-export function loadDailyBriefSkill(): Promise<Skill> {
-  return loadCronSkill('daily-brief');
-}
-
 export function loadInferMemorySkill(): Promise<Skill> {
   return loadCronSkill('infer-memory');
 }

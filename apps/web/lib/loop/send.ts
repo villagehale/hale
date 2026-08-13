@@ -24,7 +24,7 @@ import { getQueue } from '~/lib/queue';
  * weekly_plan template — this job only selects, assembles, and enqueues.
  *
  * Compose-not-send: the whole SEND stays dark behind LOOP_SEND_ENABLED (default
- * OFF, mirroring digest's DIGEST_SEND_ENABLED). When off, the job still selects +
+ * OFF). When off, the job still selects +
  * assembles (so the pipeline is exercised) but enqueues nothing — the founder flips
  * the flag when the loop is ready to reach real families.
  */

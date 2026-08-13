@@ -82,7 +82,6 @@ const OUTBOUND_FILES = [
   ['lib/loop/ics-invite.ts', 'an ICS invite is delivered to arbitrary attendees'],
   ['lib/loop/compose.ts', 'the loop composer bakes the artifact every outbound send reads'],
   ['lib/loop/assistant-events.ts', 'the assistant projection feeds the MCP read path'],
-  ['lib/cron/digest-tools.ts', 'the daily digest is an email, not a session'],
   ['lib/cron/push-reminders.ts', 'a push notification lands on a lock screen'],
   ['lib/cron/inference-tools.ts', 'memory distillation feeds prompts, not a parent'],
   ['lib/telemetry/mask.ts', 'trace masking is the last backstop before Langfuse'],

@@ -4,10 +4,10 @@ import { createResendTransport } from '~/lib/channel/resend-transport';
 import { BUSINESS_ADDRESS, SENDER_NAME, appBaseUrl } from '~/lib/cron/email-compliance';
 
 /**
- * The one-time welcome email, sent when a family finishes onboarding. Unlike the
- * daily brief this is TRANSACTIONAL — it is not held behind DIGEST_SEND_ENABLED,
- * and it comes from the warm aloha@ identity rather than the digest sender. The
- * Resend client is injected so the send is testable without a live account.
+ * The one-time welcome email, sent when a family finishes onboarding. It is
+ * TRANSACTIONAL — never held behind a send kill-switch — and it comes from the
+ * warm aloha@ identity. The Resend client is injected so the send is testable
+ * without a live account.
  *
  * Privacy (rule #1): the recipient address and the parent's first name are the
  * only PII in the message; both ride in the send, never the logs. The family copy

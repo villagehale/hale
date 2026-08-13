@@ -12,7 +12,6 @@ import { asc, isNotNull, or, sql } from 'drizzle-orm';
  * staleness predicate for discovery). Raising a cap is a one-line edit here.
  */
 export const MAX_FAMILIES_PER_RUN = {
-  digest: 100,
   discovery: 50,
   inference: 100,
   pushReminders: 100,

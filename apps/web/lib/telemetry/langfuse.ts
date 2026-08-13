@@ -36,7 +36,6 @@ export const langfuseSpanProcessor = new LangfuseSpanProcessor({
 /** The trace name per agent path — descriptive, filterable (Langfuse baseline). */
 export type AgentTraceName =
   | 'ask-hale'
-  | 'daily-brief'
   | 'infer-memory'
   | 'discovery'
   | 'rank-recommendations'
