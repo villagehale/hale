@@ -86,11 +86,11 @@ const COACHING = [
   },
   {
     step: 'I offer the whole plan.',
-    body: 'Say yes and it arrives as two or three texts: nights 1–3, then 4–7, then what changes. Minutes and counts, not principles.',
+    body: 'Say yes and it arrives as two or three texts — the real method by name, whether that’s Ferber’s check-in tables, the three-day potty protocol, or Health Canada’s allergen introduction. Minutes and counts, not principles.',
   },
   {
-    step: 'Three days later, I ask how it went.',
-    body: 'I set that reminder myself when I send the plan, so remembering to report back was never your job.',
+    step: 'A few days later, I ask how it went.',
+    body: 'I name the day in the plan and set that reminder myself, so remembering to report back was never your job.',
   },
 ] as const;
 
