@@ -278,6 +278,10 @@ export interface DueCommitment {
   id: string;
   familyId: string;
   topic: string | null;
+  /** The outbound row that carried the promise. The sweep reads the RECIPIENT back off
+   * it: the parent who was texted is the one owed the follow-up, and a household read
+   * would text a co-parent about a plan they never asked for. */
+  createdFrom: string;
   dueAt: Date;
 }
 
@@ -299,6 +303,7 @@ export async function loadDueCommitments(
       id: schema.agentCommitments.id,
       familyId: schema.agentCommitments.familyId,
       topic: schema.agentCommitments.topic,
+      createdFrom: schema.agentCommitments.createdFrom,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

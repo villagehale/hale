@@ -48,7 +48,12 @@ import { isWithinQuietHours } from '~/lib/loop/prefs';
  * registration window is a request for a specific, finite ladder of messages about that
  * window. That single fact is what earns it both exemptions below.
  */
-export type ProactiveSendKind = 'nudge' | 'registration_sequence' | 'village_intro' | 'followup';
+export type ProactiveSendKind =
+  | 'nudge'
+  | 'registration_sequence'
+  | 'village_intro'
+  | 'followup'
+  | 'plan_check_in';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -100,6 +105,13 @@ export const PROACTIVE_CAP: Record<
   // single slot and the activity ask is held here, honestly, as `frequency_cap`, and
   // comes back tomorrow. No tie-break code, no priority field.
   followup: { max: 1, windowHours: 24 },
+  // The three-day follow-up on a full coaching plan. Like the registration ladder it is
+  // SUBSCRIBED — the parent asked a question, was offered the plan, and said yes — but
+  // unlike that ladder its volume is a function of how much COACHING a family does, and
+  // a household that asks four questions in a week is exactly the household that must
+  // not get four unprompted follow-ups. Two is the rail: enough that two live plans can
+  // both be followed up, few enough that a bug in the sweep stops after a nuisance.
+  plan_check_in: { max: 2, windowHours: 24 * 7 },
 };
 
 /**
@@ -124,6 +136,10 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // A question about something that already happened is the least urgent message Hale
   // sends. If it cannot go before 21:00 it goes tomorrow, or not at all.
   followup: false,
+  // "How did the first few nights go?" is worth exactly as much tomorrow morning. It is
+  // also the message most likely to be composed at a bad hour, since a plan sent at 9pm
+  // comes due at 9pm — so the quiet-hours floor is doing real work here.
+  plan_check_in: false,
 };
 
 /**
@@ -138,12 +154,13 @@ export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
  * its own per kind, so one class's volume can never consume another's budget. */
 const PROACTIVE_CATEGORY: Record<
   ProactiveSendKind,
-  'nudge' | 'registration_sequence' | 'village_intro' | 'followup'
+  'nudge' | 'registration_sequence' | 'village_intro' | 'followup' | 'plan_check_in'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
   village_intro: 'village_intro',
   followup: 'followup',
+  plan_check_in: 'plan_check_in',
 };
 
 export interface OutboundGatePorts {

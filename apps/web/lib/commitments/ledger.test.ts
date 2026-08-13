@@ -336,13 +336,13 @@ describe('loadOpenCommitment', () => {
 describe('loadDueCommitments', () => {
   it('hands the sweep the families whose promise has come due', async () => {
     const database = readingDb([
-      { id: 'c-1', familyId: 'fam-1', topic: 'sleep', dueAt: NOW },
-      { id: 'c-2', familyId: 'fam-2', topic: 'solids', dueAt: NOW },
+      { id: 'c-1', familyId: 'fam-1', topic: 'sleep', createdFrom: 'msg-1', dueAt: NOW },
+      { id: 'c-2', familyId: 'fam-2', topic: 'solids', createdFrom: 'msg-2', dueAt: NOW },
     ]);
 
     expect(await loadDueCommitments(database, 'plan_check_in', NOW, 50)).toEqual([
-      { id: 'c-1', familyId: 'fam-1', topic: 'sleep', dueAt: NOW },
-      { id: 'c-2', familyId: 'fam-2', topic: 'solids', dueAt: NOW },
+      { id: 'c-1', familyId: 'fam-1', topic: 'sleep', createdFrom: 'msg-1', dueAt: NOW },
+      { id: 'c-2', familyId: 'fam-2', topic: 'solids', createdFrom: 'msg-2', dueAt: NOW },
     ]);
   });
 });

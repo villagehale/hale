@@ -4,6 +4,7 @@ import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
+import { runPlanCheckInSweep } from '~/lib/channel/plan/check-in';
 import { runVillageIntroSweep } from '~/lib/village/intros/run';
 
 // Node runtime: the sweep reaches the voice client and the channel seam, neither of
@@ -47,7 +48,11 @@ export async function GET(req: Request) {
     const summary = await runNudgeCron(db());
     const villageIntros = await runVillageIntroSweep(db());
     const followups = await runFollowupSweep(db());
-    return NextResponse.json({ ok: true, ...summary, villageIntros, followups }, { status: 200 });
+    const planCheckIns = await runPlanCheckInSweep(db());
+    return NextResponse.json(
+      { ok: true, ...summary, villageIntros, followups, planCheckIns },
+      { status: 200 },
+    );
   } finally {
     await flushTelemetry();
   }
