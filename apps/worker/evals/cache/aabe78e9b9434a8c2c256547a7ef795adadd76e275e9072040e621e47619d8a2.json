@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Two questions (\"How did she do?\" + \"Want me to book the next one?\") when watchFor explicitly requires exactly one question; (2) Assumes it happened and went well (\"Hope the 4pm session was amazing\"); (3) Invented specifics (time \"4pm\", pronoun \"she\"); (4) Offers to do something next (book the next session); (5) Points at a link (www.example.com); (6) Greeting, emoji, and exclamation mark (\"Hi there!\", \"😊\"); (7) Padding after the question. This violates nearly every principle of the 5-point standard."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: (1) Assumes it happened well (\"Hope...was amazing\"); (2) Second question plus request (\"How did she do? Want me to book the next one?\"); (3) Invented specific time (\"4pm session\"); (4) Asks to do something next (book the next session); (5) Invented specific detail about a child (pronoun \"she\"); (6) Provides a link; (7) Uses emoji and greeting (\"Hi there!\" and \"😊\"); (8) Includes padding and multiple sentences. This violates nearly every criterion for a 5-score message."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message violates multiple critical requirements: (1) assumes the activity happened and went well (\"Hope the 4pm session was amazing\"); (2) invents specific details not provided (4pm time, \"she\" pronoun/relationship); (3) adds a second action—offering to book the next session; (4) includes a link to an app/website; (5) uses greeting, emoji, and exclamation marks; (6) asks a follow-up question beyond the warm check-in. The watchFor specifies this should be the plainest case—one warm question with pressure taken off—which this message is not."
+  }
+}

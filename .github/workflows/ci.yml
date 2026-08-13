@@ -88,6 +88,9 @@ jobs:
       - name: General-answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:general-answer
 
+      - name: Follow-up ask composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:followup-voice
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { runFollowupSweep } from '~/lib/channel/followup/run';
 import { runNudgeCron } from '~/lib/channel/nudge/run';
 import { requireCronSecret } from '~/lib/cron/auth';
 import { db } from '~/lib/db';
@@ -31,6 +32,12 @@ export const maxDuration = 300;
  * cross-household introductions. It runs SECOND and independently: the nudge sweep has
  * already committed its own work before this starts, so an intro failure cannot undo a
  * nudge, and each family-level error inside either sweep is caught by that sweep.
+ *
+ * THE FOLLOW-UP SWEEP rides here for the same reason and runs LAST, which is also its
+ * priority. It is the only stage that asks about something already over, so it is the
+ * one whose deferral costs a family nothing — and running after the others means a
+ * household that has just been handed a nudge or an intro card is not also asked how
+ * last week went. It carries its own dark-launch flag (FOLLOWUP_ASKS_ENABLED).
  */
 export async function GET(req: Request) {
   const denied = requireCronSecret(req);
@@ -39,7 +46,8 @@ export async function GET(req: Request) {
   try {
     const summary = await runNudgeCron(db());
     const villageIntros = await runVillageIntroSweep(db());
-    return NextResponse.json({ ok: true, ...summary, villageIntros }, { status: 200 });
+    const followups = await runFollowupSweep(db());
+    return NextResponse.json({ ok: true, ...summary, villageIntros, followups }, { status: 200 });
   } finally {
     await flushTelemetry();
   }

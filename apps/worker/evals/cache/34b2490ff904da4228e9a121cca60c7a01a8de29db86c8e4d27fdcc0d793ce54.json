@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Multiple critical issues: (1) Assumed a specific time (\"4pm session\") - invented detail not provided; (2) Assumed it went well (\"Hope...was amazing\") rather than genuine open question; (3) Offered to do something next (\"Want me to book the next one?\") - a second action beyond checking; (4) Included a link/app reference (www.example.com); (5) Included emoji and exclamation mark/hype language; (6) Invented a pronoun/child detail (\"How did she do?\"). The message violates nearly every guideline for a warm, pressure-free check-in."
+  }
+}
