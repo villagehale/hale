@@ -15,7 +15,6 @@ import {
   type LegResult,
   dispatchLoopMessage,
 } from '~/lib/channel/dispatch';
-import { CALENDAR_EMAIL_ASK } from '~/lib/channel/router/copy';
 import type { Channel, ChannelKind, LoopMessage, TemplateRenderer } from '~/lib/channel/types';
 import { buildDispatchPorts } from '~/lib/channel/wiring';
 import { unsubscribeUrl } from '~/lib/cron/email-compliance';
@@ -24,7 +23,9 @@ import {
   CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
   CALENDAR_INVITE_TEMPLATE_KEY,
   type CalendarInvitePayload,
+  inviteWhenLabel,
 } from '~/lib/loop/templates/calendar-invite';
+import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 
 /**
  * VIL-249 · M13 — the production fan-out: a placement's iTIP object, delivered.
@@ -68,6 +69,10 @@ export interface CalendarInviteDeps {
    * 'channel_unavailable', not an absent dependency here. */
   channels: Partial<Record<ChannelKind, Channel>>;
   renderer: TemplateRenderer;
+  /** Writes the two surfaces a person reads: the ask, and the invite's subject + note.
+   * Non-nullable (rule #11) — there is no preset copy to fall back to, so a composer
+   * that cannot produce a sendable draft DEFERS by name rather than being absent. */
+  voice: CalendarVoice;
   now?: () => Date;
 }
 
@@ -186,6 +191,7 @@ interface InviteJob {
 async function inviteOneParent(
   database: Database,
   ports: DispatchPorts,
+  voice: CalendarVoice,
   job: InviteJob,
   parent: InvitedParent & { email: string },
   now: Date,
@@ -216,11 +222,30 @@ async function inviteOneParent(
     };
   }
 
+  // The words are the model's, over the redacted descriptor and nothing else; the
+  // containment gate holds both to it. No sendable draft ⇒ no email at all, named —
+  // there is no preset body to send instead (founder, 2026-08-12).
+  const when = inviteWhenLabel(composed.startsAt, parent.timezone);
+  const note = await voice.composeNote({
+    summary: composed.summary,
+    when,
+    method: composed.method === 'CANCEL' ? 'cancelled' : 'added',
+  });
+  if (note.status === 'deferred') {
+    return {
+      parentUserId: parent.userId,
+      channel: 'email',
+      outcome: 'compose_deferred',
+      reason: note.reason,
+    };
+  }
+
   const payload: CalendarInvitePayload = {
     summary: composed.summary,
-    startsAt: composed.startsAt.toISOString(),
-    timeZone: parent.timezone,
+    when,
     method: composed.method,
+    subject: note.subject,
+    body: note.body,
     unsubscribeUrl: unsubscribe,
     attachment: inviteAttachment(composed),
   };
@@ -297,6 +322,23 @@ async function settleEmailAskClaim(
 }
 
 /**
+ * Hand the claim back after a defer: the row stays as the honest record of an attempt
+ * that sent nothing, and the key it was holding is released (the dedupe key is the
+ * claim, so nulling it is what lets the next placement ask).
+ */
+async function releaseEmailAskClaim(
+  database: Database,
+  claimId: string,
+  reason: string,
+): Promise<void> {
+  await database
+    .update(schema.channelMessages)
+    .set({ status: 'failed', errorCode: 'compose_deferred', dedupeKey: null })
+    .where(eq(schema.channelMessages.id, claimId));
+  console.error({ claimId, reason }, 'calendar invite: the email ask deferred — claim released');
+}
+
+/**
  * Ask the family for an address, at most once ever. The target is the primary parent
  * (the head of the invited list) — whether they can actually be texted is the
  * dispatch's question, not a second consent reader's.
@@ -304,14 +346,25 @@ async function settleEmailAskClaim(
 async function askForEmail(
   database: Database,
   ports: DispatchPorts,
+  voice: CalendarVoice,
   familyId: string,
   parents: InvitedParent[],
 ): Promise<CalendarInviteAskOutcome> {
   const target = parents[0];
   if (!target) return 'no_parent_to_ask';
 
+  // Claim BEFORE composing: the claim is what stops two concurrent placements both
+  // texting this family, and paying for two drafts to discover that is the wrong order.
   const claimId = await claimEmailAsk(database, familyId, target.userId);
   if (!claimId) return 'already_asked';
+
+  const ask = await voice.composeAsk();
+  if (ask.status === 'deferred') {
+    // Give the claim back. A family that was never texted has not been asked, so the
+    // next placement gets to try again — the same rule a suppression follows.
+    await releaseEmailAskClaim(database, claimId, ask.reason);
+    return 'compose_deferred';
+  }
 
   const message: LoopMessage = {
     templateKey: CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
@@ -320,7 +373,7 @@ async function askForEmail(
     category: 'approval',
     urgency: 'normal',
     channel: 'sms',
-    payload: { text: CALENDAR_EMAIL_ASK },
+    payload: { text: ask.text },
   };
   const { legs } = await dispatchLoopMessage(message, {
     ...ports,
@@ -365,6 +418,7 @@ export function createCalendarInviteSender(
             ? await inviteOneParent(
                 database,
                 ports,
+                deps.voice,
                 {
                   familyId: request.familyId,
                   familyEventId: request.familyEventId,
@@ -381,7 +435,9 @@ export function createCalendarInviteSender(
       // CANCEL there is nothing to add, and "want this in your real calendar?" about
       // a cancellation is a question with no good answer.
       const needsAsk = request.method === 'REQUEST' && parents.every((parent) => !parent.email);
-      const ask = needsAsk ? await askForEmail(database, ports, request.familyId, parents) : 'not_needed';
+      const ask = needsAsk
+        ? await askForEmail(database, ports, deps.voice, request.familyId, parents)
+        : 'not_needed';
 
       return { status: 'reported', parents: outcomes, ask };
     },
@@ -416,6 +472,7 @@ export async function sendPendingInvite(
   return inviteOneParent(
     database,
     ports,
+    deps.voice,
     { familyId: input.familyId, familyEventId, method: 'REQUEST' },
     { ...parent, email: parent.email },
     clock(),

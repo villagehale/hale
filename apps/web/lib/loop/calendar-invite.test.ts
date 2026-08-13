@@ -2,11 +2,11 @@ import { schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeChannel } from '~/lib/channel/fakes';
-import { CALENDAR_EMAIL_ASK } from '~/lib/channel/router/copy';
 import type { Channel, ChannelKind } from '~/lib/channel/types';
 import { encryptString } from '~/lib/crypto/string-cipher';
 import { type TestDb, createTestDb, seedChild, seedFamily } from '~/lib/testing/pglite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
+import type { CalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { createCalendarInviteSender, emailAskDedupeKey, sendPendingInvite } from './calendar-invite';
 
 /**
@@ -27,15 +27,39 @@ const PHONE = '+16475550123';
 let db: TestDb;
 let email: ReturnType<typeof fakeChannel>;
 let sms: ReturnType<typeof fakeChannel>;
+let voice: CalendarVoice;
+
+/**
+ * The composer, scripted. What the model actually writes is measured against real
+ * cached Claude in apps/worker/evals/run-calendar-voice-eval.mjs (rule #8); these
+ * tests are about what the fan-out DOES with a draft — including the one that never
+ * arrives. The scripted note reproduces the summary and the time the way the
+ * containment gate requires, so the strings here are what a gated draft looks like.
+ */
+function scriptedVoice(over: Partial<CalendarVoice> = {}): CalendarVoice {
+  return {
+    composeAsk: async () => ({ status: 'composed', text: SCRIPTED_ASK, attempts: 1 }),
+    composeNote: async (context) => ({
+      status: 'composed',
+      subject: `${context.summary} is on your calendar`,
+      body: `${context.summary} is set for ${context.when}. The invite is attached.`,
+      attempts: 1,
+    }),
+    ...over,
+  };
+}
+
+const SCRIPTED_ASK = 'Want this in your real calendar? Text me your email and I will send invites there.';
 
 function channels(): Partial<Record<ChannelKind, Channel>> {
   return { email, sms };
 }
 
-function sender() {
+function sender(over: Partial<CalendarVoice> = {}) {
   return createCalendarInviteSender(db.database, {
     channels: channels(),
     renderer: loopTemplateRenderer,
+    voice: Object.keys(over).length > 0 ? scriptedVoice(over) : voice,
     now: () => NOON,
   });
 }
@@ -124,6 +148,7 @@ beforeEach(async () => {
   db = await createTestDb();
   email = fakeChannel('email', { status: 'sent', providerMessageId: 'resend-1' });
   sms = fakeChannel('sms', { status: 'sent', providerMessageId: 'twilio-1' });
+  voice = scriptedVoice();
   vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
 });
@@ -300,6 +325,56 @@ describe('the invite a placement sends', () => {
   });
 });
 
+describe('a composer that cannot produce a sendable draft', () => {
+  it('sends no invite and names compose_deferred — never a preset body', async () => {
+    const { familyId, parentUserId } = await seedFamily(db.database);
+    const familyEventId = await seedPlacement(familyId);
+
+    const report = await sender({
+      composeNote: async () => ({ status: 'deferred', reason: 'carried a link', attempts: 3 }),
+    }).send({ familyId, familyEventId, method: 'REQUEST' });
+
+    expect(report).toMatchObject({
+      parents: [
+        { parentUserId, channel: 'email', outcome: 'compose_deferred', reason: 'carried a link' },
+      ],
+    });
+    expect(email.calls).toHaveLength(0);
+    expect(await ledger(familyId, 'calendar_invite')).toHaveLength(0);
+  });
+
+  it('leaves the once-ever ask claim UNCONSUMED, so the next placement asks again', async () => {
+    const seeded = await seedFamily(db.database);
+    await clearEmail(seeded.parentUserId);
+    await enrollSms(seeded.familyId, seeded.parentUserId);
+
+    const deferred = await sender({
+      composeAsk: async () => ({ status: 'deferred', reason: 'the message had 2 question marks', attempts: 3 }),
+    }).send({
+      familyId: seeded.familyId,
+      familyEventId: await seedPlacement(seeded.familyId),
+      method: 'REQUEST',
+    });
+    expect(deferred).toMatchObject({ ask: 'compose_deferred' });
+    expect(sms.calls).toHaveLength(0);
+
+    // The claim row records the attempt but holds no key...
+    const afterDefer = await ledger(seeded.familyId, 'calendar_email_ask');
+    expect(afterDefer).toHaveLength(1);
+    expect(afterDefer[0]).toMatchObject({ status: 'failed', errorCode: 'compose_deferred' });
+    expect(afterDefer[0]?.dedupeKey).toBeNull();
+
+    // ...so the next placement composes again and this time the family is asked.
+    const second = await sender().send({
+      familyId: seeded.familyId,
+      familyEventId: await seedPlacement(seeded.familyId, { title: 'Library story time' }),
+      method: 'REQUEST',
+    });
+    expect(second).toMatchObject({ ask: 'sent' });
+    expect(sms.calls).toHaveLength(1);
+  });
+});
+
 describe('the one-time ask for an address', () => {
   async function smsFamily() {
     const seeded = await seedFamily(db.database);
@@ -322,7 +397,7 @@ describe('the one-time ask for an address', () => {
       parents: [expect.objectContaining({ outcome: 'no_email_on_file' })],
       ask: 'sent',
     });
-    expect(sms.calls[0]?.rendered).toEqual({ kind: 'sms', text: CALENDAR_EMAIL_ASK });
+    expect(sms.calls[0]?.rendered).toEqual({ kind: 'sms', text: SCRIPTED_ASK });
   });
 
   it('never asks a second time, however many placements follow', async () => {
@@ -406,7 +481,7 @@ describe('sendPendingInvite — the catch-up after an address arrives', () => {
     const outcome = await sendPendingInvite(
       db.database,
       { familyId, parentUserId },
-      { channels: channels(), renderer: loopTemplateRenderer, now: () => NOON },
+      { channels: channels(), renderer: loopTemplateRenderer, voice, now: () => NOON },
     );
 
     expect(outcome).toMatchObject({ outcome: 'sent' });
@@ -419,7 +494,7 @@ describe('sendPendingInvite — the catch-up after an address arrives', () => {
     const outcome = await sendPendingInvite(
       db.database,
       { familyId, parentUserId },
-      { channels: channels(), renderer: loopTemplateRenderer, now: () => NOON },
+      { channels: channels(), renderer: loopTemplateRenderer, voice, now: () => NOON },
     );
 
     expect(outcome).toEqual({ outcome: 'nothing_pending' });

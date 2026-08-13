@@ -7,6 +7,7 @@ import { productionChannels } from '~/lib/channel/adapters/production';
 import { sendPendingInvite } from '~/lib/loop/calendar-invite';
 import { CALENDAR_EMAIL_ASK_TEMPLATE_KEY } from '~/lib/loop/templates/calendar-invite';
 import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
+import { productionCalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 
 /**
  * VIL-249 · M13 — the answer to Hale's one question about email.
@@ -195,6 +196,7 @@ export function defaultEmailCaptureDeps(): EmailCaptureDeps {
       const outcome = await sendPendingInvite(database, input, {
         channels: productionChannels(database),
         renderer: loopTemplateRenderer,
+        voice: productionCalendarVoice(),
       });
       return outcome.outcome === 'sent';
     },

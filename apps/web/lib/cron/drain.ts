@@ -366,6 +366,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
   const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
+  const { productionCalendarVoice } = await import('~/lib/loop/voice/calendar-invite-voice');
 
   const channels = productionChannels(db());
 
@@ -376,6 +377,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const calendarInvites = createCalendarInviteSender(db(), {
     channels,
     renderer: loopTemplateRenderer,
+    voice: productionCalendarVoice(),
   });
 
   const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });

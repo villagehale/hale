@@ -100,20 +100,17 @@ export function declinedReceipt(actionType: string): string {
 export const UNDONE_RECEIPT = "Undone - I've taken that back off your calendar.";
 
 /**
- * The one-time ask for an address, and the line that answers it (VIL-249).
+ * The ack for a captured address (VIL-249).
  *
- * The ASK is not sent by the router — a placement sends it, through the dispatch —
- * but it lives here beside its ACK because the two are one exchange: a parent reads
- * the question, texts an address, and reads the answer, and copy that drifts apart
- * reads as two different voices. It is also the only place both lines are swept for
- * GSM-7 (sms-copy-encoding.test.ts).
+ * The QUESTION it answers is not here and is not fixed: a placement asks for the
+ * address through the dispatch, in words a model composes per send (founder,
+ * 2026-08-12 — no preset message bodies; see lib/loop/voice/calendar-invite-voice.ts).
+ * This half is the router's own receipt for a write that either happened or did not,
+ * which is the class of line the router still authors.
  *
- * It asks ONCE per family, ever (the ledger claim in lib/loop/calendar-invite.ts).
- * A family that ignores it keeps every placement Hale makes; they simply keep it in
- * Hale rather than in their own calendar, which the ask says plainly.
+ * The address is asked for ONCE per family, ever (the ledger claim in
+ * lib/loop/calendar-invite.ts).
  */
-export const CALENDAR_EMAIL_ASK =
-  "Want this in your real calendar too? Text me your email and I'll send invites there from now on.";
 
 /** The capture ack. It promises only what happened: the address is stored, and the
  * invite that was waiting is on its way when there was one. */

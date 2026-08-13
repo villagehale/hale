@@ -84,6 +84,9 @@ export type CalendarInviteOutcome =
   | 'not_configured'
   /** Dispatch policy refused the leg (pref / consent / cap / quiet hours). */
   | 'suppressed'
+  /** No sendable draft after the composer's retry budget — nothing was sent, and
+   * nothing preset was sent in its place (founder: no preset message bodies). */
+  | 'compose_deferred'
   | 'send_failed'
   /** The placement row could not be read back (gone, or another family's). */
   | 'event_not_found';
@@ -102,6 +105,9 @@ export type CalendarInviteAskOutcome =
   | 'sent'
   | 'already_asked'
   | 'suppressed'
+  /** The composer produced nothing sendable; the once-ever claim stays UNCONSUMED, so
+   * the next placement asks again. */
+  | 'compose_deferred'
   | 'not_configured'
   | 'send_failed'
   | 'no_parent_to_ask';
