@@ -1,12 +1,15 @@
+import type { Municipality } from '@hale/db';
 import { FAMILY_STAGES, type FamilyStage, deriveStage } from '@hale/types';
+import { fsasForMunicipality, municipalitiesForFsa } from '~/lib/registration/fsa-municipalities';
 
 /**
  * Village intros v1 — WHO gets paired with whom. Pure: no database, no clock of its
  * own, no sends. Everything this decides is decided from its arguments, so every rule
  * below is a test rather than an integration.
  *
- * MATCH QUALITY v1 IS TWO FACTS: the same forward sortation area, and an overlapping
- * child stage band. That is deliberately thin. A richer score (interests, schedules,
+ * MATCH QUALITY v1 IS TWO FACTS: the same locality — see {@link matchAreaKey} for how
+ * wide that is — and an overlapping child stage band. That is deliberately thin. A
+ * richer score (interests, schedules,
  * how chatty a parent is) needs data Hale would have to infer about families who never
  * asked to be scored, and the first version of a cross-household disclosure is the
  * wrong place to start inferring. Two families a walk apart with children the same age
@@ -39,6 +42,59 @@ export function normalizeFsa(areaOrPostal: string | null): string | null {
   const compact = areaOrPostal.replace(/\s+/g, '');
   const head = compact.slice(0, 3);
   return FSA_PATTERN.test(head) ? head.toUpperCase() : null;
+}
+
+/**
+ * The municipality an FSA can be attributed to with confidence, or null when it cannot —
+ * which is the answer for most of Canada and the answer this feature is built to be safe
+ * under.
+ *
+ * TORONTO IS DELIBERATELY NULL. Every M FSA is the City of Toronto, so widening to the
+ * municipality would put three million people in one bucket and turn "a Hale family near
+ * you" into "a Hale family in your city" — the same collapse the city-fallback refusal in
+ * {@link normalizeFsa} exists to prevent, arriving by a different door. Toronto stays
+ * FSA-exact, and an FSA is the right grain there: M4K alone is a walkable neighbourhood.
+ *
+ * A STRADDLING FSA IS ALSO NULL. Thornhill's L3T and L4J are recorded as spanning Markham
+ * and Vaughan because the boundary runs down Yonge Street and postal walks are not
+ * published at parcel level. "Probably Markham" is a guess, and a guess is not a radius.
+ */
+function confidentMunicipality(fsa: string): Municipality | null {
+  if (fsa.startsWith('M')) return null;
+  const municipalities = municipalitiesForFsa(fsa);
+  return municipalities.length === 1 ? (municipalities[0] as Municipality) : null;
+}
+
+/**
+ * The locality two families must SHARE to be paired: their municipality where the FSA
+ * resolves to exactly one, otherwise the FSA itself.
+ *
+ * FSA-exact was too narrow in the 905, where one small town is several FSAs — Halton
+ * Hills is Georgetown (L7G) and Acton (L7J), Richmond Hill is four, Markham eight — and
+ * two families in one town with children the same age are neighbours in every sense a
+ * parent cares about. Unmapped FSAs fall back to today's exact behaviour rather than to a
+ * neighbouring town: an unknown postal code is not evidence of anything.
+ *
+ * The returned key is compared, never parsed. A municipality slug (`halton_hills`) cannot
+ * collide with an FSA (`L7G`) — different alphabet, different shape.
+ *
+ * Expects an FSA already through {@link normalizeFsa}.
+ */
+export function matchAreaKey(fsa: string): string {
+  return confidentMunicipality(fsa) ?? fsa;
+}
+
+/**
+ * Every FSA inside a pair's match area — the radius an activity anchor may sit in, which
+ * widens exactly as pairing does. A Halton Hills pair can be anchored on a storytime in
+ * either Georgetown or Acton; a Toronto pair only on one in its own FSA.
+ *
+ * Always contains `fsa` itself: the reverse index is built from the same table that
+ * attributed it, so a mapped FSA is always in its own municipality's list.
+ */
+export function matchAreaFsas(fsa: string): readonly string[] {
+  const municipality = confidentMunicipality(fsa);
+  return municipality === null ? [fsa] : fsasForMunicipality(municipality);
 }
 
 export interface IntroCandidateChild {
@@ -100,6 +156,9 @@ export interface IntroPairing {
   familyBId: string;
   familyAChildId: string;
   familyBChildId: string;
+  /** Family A's own FSA — where the pair is anchored, NOT a claim that both households
+   * are in it. Across a municipality the two sides sit in different FSAs, and the wider
+   * area is recoverable from this one through {@link matchAreaKey}. */
   fsa: string;
   stage: FamilyStage;
 }
@@ -136,6 +195,8 @@ export function pairKey(familyIdA: string, familyIdB: string): string {
 
 interface Ready {
   familyId: string;
+  /** This family's OWN FSA, kept alongside the area it was bucketed into: the pair
+   * records a real FSA, and across a municipality the two sides differ. */
   fsa: string;
   /** Anchor children grouped by band, each already in oldest-first order. */
   byStage: Map<FamilyStage, AnchorChild[]>;
@@ -144,18 +205,18 @@ interface Ready {
 /**
  * The pairs to create this run, plus every family that was considered and left out.
  *
- * ONE NEW PROPOSAL PER FAMILY PER RUN, and one open proposal at a time. In an FSA with
- * three opted-in families that is one pair now and the third family next week — which
- * is the right shape even at scale, because an intro is a thing a parent does, not a
- * feed they scroll.
+ * ONE NEW PROPOSAL PER FAMILY PER RUN, and one open proposal at a time. In a locality
+ * with three opted-in families that is one pair now and the third family next week —
+ * which is the right shape even at scale, because an intro is a thing a parent does, not
+ * a feed they scroll.
  *
- * Deterministic throughout: FSAs and families are walked in sorted order, bands in
+ * Deterministic throughout: areas and families are walked in sorted order, bands in
  * childhood order, children oldest-first. The same input produces the same pairing, so
  * a re-run of the sweep cannot shuffle who gets matched with whom.
  */
 export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsResult {
   const skipped: IntroSkip[] = [];
-  const byFsa = new Map<string, Ready[]>();
+  const byArea = new Map<string, Ready[]>();
 
   for (const family of [...input.families].sort((a, b) => a.familyId.localeCompare(b.familyId))) {
     const fsa = normalizeFsa(family.fsa);
@@ -197,16 +258,17 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
       });
     }
 
-    const bucket = byFsa.get(fsa);
+    const area = matchAreaKey(fsa);
+    const bucket = byArea.get(area);
     if (bucket) bucket.push({ familyId: family.familyId, fsa, byStage });
-    else byFsa.set(fsa, [{ familyId: family.familyId, fsa, byStage }]);
+    else byArea.set(area, [{ familyId: family.familyId, fsa, byStage }]);
   }
 
   const pairings: IntroPairing[] = [];
   const taken = new Set<string>();
 
-  for (const fsa of [...byFsa.keys()].sort()) {
-    const pool = byFsa.get(fsa) as Ready[];
+  for (const area of [...byArea.keys()].sort()) {
+    const pool = byArea.get(area) as Ready[];
     for (let i = 0; i < pool.length; i += 1) {
       const left = pool[i] as Ready;
       if (taken.has(left.familyId)) continue;
@@ -225,7 +287,7 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
           familyBId: b.familyId,
           familyAChildId: (a.byStage.get(stage) as AnchorChild[])[0]?.id as string,
           familyBChildId: (b.byStage.get(stage) as AnchorChild[])[0]?.id as string,
-          fsa,
+          fsa: a.fsa,
           stage,
         });
         taken.add(left.familyId);

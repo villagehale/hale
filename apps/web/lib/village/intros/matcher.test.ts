@@ -266,3 +266,98 @@ describe('matchIntroPairs', () => {
     );
   });
 });
+
+/**
+ * The match radius (2026-08-12). FSA-exact was too narrow outside Toronto: Halton Hills
+ * is L7G (Georgetown) plus L7J (Acton), two FSAs of one small town whose families share
+ * one recreation department and one set of school-holiday camps. Toronto is the opposite
+ * case — one municipality of three million — so it stays FSA-exact.
+ *
+ * WHAT DID NOT CHANGE: the coarse card. This decides who may be PAIRED, never what is
+ * disclosed; no card, email or audit row names an area either way.
+ */
+describe('matchIntroPairs across a municipality', () => {
+  function pairOf(fsaA: string, fsaB: string) {
+    return matchIntroPairs({
+      families: [family({ familyId: AAA, fsa: fsaA }), family({ familyId: BBB, fsa: fsaB })],
+      familiesWithOpenProposal: new Set(),
+      pairedBefore: new Set(),
+      now: NOW,
+    }).pairings;
+  }
+
+  it('pairs Georgetown with Acton - two FSAs, one Halton Hills', () => {
+    expect(pairOf('L7G', 'L7J')).toEqual([
+      expect.objectContaining({ familyAId: AAA, familyBId: BBB, stage: 'toddler' }),
+    ]);
+  });
+
+  it('stores family A’s own FSA on the pair, not the municipality', () => {
+    // The proposal row's `fsa` column is a real FSA and stays one. It records where the
+    // pair was anchored; it is not a claim that both households live in it.
+    expect(pairOf('L7G', 'L7J')[0]?.fsa).toBe('L7G');
+    expect(pairOf('L7J', 'L7G')[0]?.fsa).toBe('L7J');
+  });
+
+  it('keeps Toronto FSA-exact - one M bucket would be a city of three million', () => {
+    expect(pairOf('M4K', 'M4J')).toEqual([]);
+    expect(pairOf('M4K', 'M4K')).toHaveLength(1);
+  });
+
+  it('does not pair across two municipalities that merely border each other', () => {
+    // L7G is Halton Hills, L6H is Oakville. Adjacent towns are not one radius.
+    expect(pairOf('L7G', 'L6H')).toEqual([]);
+  });
+
+  it('fails closed on an unmapped FSA: exact-FSA only, never a guessed town', () => {
+    // K1A is Ottawa - outside the covered set entirely. It may still match itself, which
+    // is exactly today's behaviour; what it may never do is widen to a municipality.
+    expect(pairOf('K1A', 'K1A')).toHaveLength(1);
+    expect(pairOf('K1A', 'K1B')).toEqual([]);
+  });
+
+  it('fails closed when only one side of the pair is mapped', () => {
+    expect(pairOf('L7G', 'K1A')).toEqual([]);
+  });
+
+  it('fails closed on an FSA that straddles two municipalities', () => {
+    // L3T is Thornhill, split down Yonge Street between Markham and Vaughan and recorded
+    // as both. "Probably Markham" is a guess, and a guess is not a radius: L3T matches
+    // only L3T. L3R is Markham proper.
+    expect(pairOf('L3T', 'L3R')).toEqual([]);
+    expect(pairOf('L3T', 'L4J')).toEqual([]);
+    expect(pairOf('L3T', 'L3T')).toHaveLength(1);
+  });
+
+  it('still refuses a city-fallback area by name, whatever the radius', () => {
+    // `families.area_coarse` falls back to the CITY, and "Toronto" is not a locality
+    // match at any grain (#410, non-negotiable 3).
+    const result = matchIntroPairs({
+      families: [
+        family({ familyId: AAA, fsa: 'Toronto' }),
+        family({ familyId: BBB, fsa: 'Toronto' }),
+      ],
+      familiesWithOpenProposal: new Set(),
+      pairedBefore: new Set(),
+      now: NOW,
+    });
+    expect(result.pairings).toEqual([]);
+    expect(result.skipped).toEqual([
+      { familyId: AAA, reason: 'no_fsa' },
+      { familyId: BBB, reason: 'no_fsa' },
+    ]);
+  });
+
+  it('still requires an overlapping stage band across the wider radius', () => {
+    const result = matchIntroPairs({
+      families: [
+        family({ familyId: AAA, fsa: 'L7G', children: [{ id: 'baby', dateOfBirth: '2026-05-11' }] }),
+        family({ familyId: BBB, fsa: 'L7J', children: [{ id: 'big', dateOfBirth: '2018-01-01' }] }),
+      ],
+      familiesWithOpenProposal: new Set(),
+      pairedBefore: new Set(),
+      now: NOW,
+    });
+    expect(result.pairings).toEqual([]);
+  });
+});
