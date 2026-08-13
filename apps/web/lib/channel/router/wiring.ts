@@ -277,6 +277,25 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
 export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
 export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
 
+/** The table both rows point at, named ONCE. The reader's predicate and the writers'
+ * values are the same three strings; a fourth copy of any of them is how a gate stops
+ * matching the rows it is supposed to find. */
+const TURN_LEDGER_TARGET = 'channel_messages';
+
+/**
+ * How far back the stage read looks.
+ *
+ * The ONLY index on audit_log is (family_id, occurred_at), and this read now runs on
+ * every inbound text rather than only on a failed turn during an outage. Bounding the
+ * time makes it a range scan over one family's recent rows instead of a filter over
+ * their whole history.
+ *
+ * A week is far past the point where the answer could change: pg-boss exhausts this
+ * queue's retries in one to two hours (channel/config.ts), so a turn older than that is
+ * not going to be re-driven at all.
+ */
+const TURN_LEDGER_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * The router's memory of its own attempts, in audit_log — no new table and no migration,
  * for the reason the alarm's claim gives: rule #6 already requires an immutable row for
@@ -300,7 +319,7 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
       familyId: input.familyId,
       actor: input.parentUserId,
       actionTaken,
-      targetTable: 'channel_messages',
+      targetTable: TURN_LEDGER_TARGET,
       targetId: input.channelMessageId,
     });
   };
@@ -313,7 +332,8 @@ export function auditTurnLedger(database: Database): InboundTurnLedger {
         .where(
           and(
             eq(schema.auditLog.familyId, familyId),
-            eq(schema.auditLog.targetTable, 'channel_messages'),
+            gte(schema.auditLog.occurredAt, new Date(Date.now() - TURN_LEDGER_LOOKBACK_MS)),
+            eq(schema.auditLog.targetTable, TURN_LEDGER_TARGET),
             eq(schema.auditLog.targetId, channelMessageId),
             inArray(schema.auditLog.actionTaken, [TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION]),
           ),
