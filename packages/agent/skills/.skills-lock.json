@@ -15,10 +15,6 @@
     "file": "curate-shortlist.md",
     "sha256": "44f794b974575b8d8b8a85fe44adfba0756abb1bdcf32df75d1a1cd072f47e72"
   },
-  "daily-brief.md": {
-    "file": "daily-brief.md",
-    "sha256": "bdb947b6c6500863493df3bdd923607b34db2e1d189fc1c21ebb321bf1da44ae"
-  },
   "draft-action.md": {
     "file": "draft-action.md",
     "sha256": "69121b9f0356e3270342e86a20ede454a53712a00292e3c336c4135c48addaab"

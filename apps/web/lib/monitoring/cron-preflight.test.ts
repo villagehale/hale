@@ -26,7 +26,6 @@ vi.mock('~/lib/loop/queries', () => ({
 }));
 
 import { runNudgeCron } from '~/lib/channel/nudge/run';
-import { runDigestCron } from '~/lib/cron/digest';
 import { runInferenceCron } from '~/lib/cron/inference';
 import { runWeekPlanCron } from '~/lib/loop/cron';
 
@@ -153,27 +152,6 @@ afterEach(() => {
 function assertNoFamilyWork(capture: DbCapture): void {
   expect(capture.insertedTables.filter((table) => table !== schema.rateLimits)).toEqual([]);
 }
-
-describe('the daily-brief window (the 12:00Z cron that failed on 2026-08-01)', () => {
-  it('aborts before composing a single brief and names the billing cause', async () => {
-    const { database, capture } = fakeDb();
-    const { client, create } = brokeClient();
-
-    const result = await runDigestCron(
-      database,
-      { client, email: { sendDigest: vi.fn() } as never },
-      NOW,
-    );
-
-    expect(result.aborted?.failure).toBe('billing');
-    expect(result.aborted?.skipped).toBe(1);
-    expect(result.processed).toBe(0);
-    expect(result.results).toEqual([]);
-    // ONE model call: the probe. Not one per family.
-    expect(create).toHaveBeenCalledTimes(1);
-    assertNoFamilyWork(capture);
-  });
-});
 
 describe('the memory-inference window (the 06:00Z cron that failed on 2026-08-01)', () => {
   it('aborts before inferring for a single family', async () => {

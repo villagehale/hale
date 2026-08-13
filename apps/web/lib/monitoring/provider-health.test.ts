@@ -144,7 +144,7 @@ describe('providerIncidentKey', () => {
   it('keys one incident per failure class, and the run spike separately', () => {
     const billing = providerIncidentKey({
       kind: 'preflight',
-      window: 'daily_brief',
+      window: 'nudge_sweep',
       failure: 'billing',
       detail: 'x',
     });
@@ -158,7 +158,7 @@ describe('providerIncidentKey', () => {
     });
     const auth = providerIncidentKey({
       kind: 'preflight',
-      window: 'daily_brief',
+      window: 'nudge_sweep',
       failure: 'auth',
       detail: 'x',
     });
@@ -182,15 +182,15 @@ describe('formatProviderAlert', () => {
     const { subject, text } = formatProviderAlert(
       {
         kind: 'preflight',
-        window: 'daily_brief',
+        window: 'weekly_plan',
         failure: 'billing',
         detail: 'Your credit balance is too low to access the Anthropic API.',
       },
       AT,
     );
 
-    expect(subject).toBe('Hale ops: daily brief did not send — Anthropic billing');
-    expect(text).toContain("this morning's briefs did not send.");
+    expect(subject).toBe('Hale ops: weekly plan did not send — Anthropic billing');
+    expect(text).toContain("this hour's weekly-plan compose did not run.");
     expect(text).toContain('credit balance is too low');
     expect(text).toContain('2026-08-01T12:00:00.000Z');
     // The honest part: nothing was composed and nothing was charged.
@@ -290,7 +290,7 @@ function deps(over: Partial<ProviderHealthDeps> = {}): ProviderHealthDeps {
 
 const BILLING_INCIDENT: ProviderIncident = {
   kind: 'preflight',
-  window: 'daily_brief',
+  window: 'weekly_plan',
   failure: 'billing',
   detail: 'Your credit balance is too low.',
 };
@@ -338,7 +338,7 @@ describe('providerPreflight', () => {
       probe: vi.fn(async () => ({ ok: false, failure: 'billing', detail: 'no credit' }) as const),
     });
 
-    const result = await providerPreflight({} as Database, 'daily_brief', client, NOW, d);
+    const result = await providerPreflight({} as Database, 'weekly_plan', client, NOW, d);
 
     expect(result).toEqual({
       proceed: false,
@@ -352,7 +352,7 @@ describe('providerPreflight', () => {
       probe: vi.fn(async () => ({ ok: false, failure: 'transient', detail: '529' }) as const),
     });
 
-    const result = await providerPreflight({} as Database, 'daily_brief', client, NOW, d);
+    const result = await providerPreflight({} as Database, 'weekly_plan', client, NOW, d);
 
     expect(result.proceed).toBe(true);
     expect(d.sender.send).not.toHaveBeenCalled();

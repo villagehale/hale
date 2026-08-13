@@ -86,12 +86,12 @@ describe('traceAgentRun', () => {
     });
 
     // The work still runs (uninstrumented) and its result is returned — no throw.
-    const result = await traceAgentRun({ name: 'daily-brief' }, async (trace) => {
+    const result = await traceAgentRun({ name: 'ask-hale' }, async (trace) => {
       expect(trace.traceId).toBeNull();
-      return 'brief';
+      return 'answer';
     });
 
-    expect(result).toBe('brief');
+    expect(result).toBe('answer');
   });
 
   it('swallows a generation-recording error without failing the run', async () => {

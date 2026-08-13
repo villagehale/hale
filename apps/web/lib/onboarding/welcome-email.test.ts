@@ -8,8 +8,8 @@ import {
   stagePhrase,
 } from './welcome-email';
 
-// The welcome email is transactional, so unlike the daily brief it is NOT held
-// behind DIGEST_SEND_ENABLED and uses the warm aloha@ sender. We drive the
+// The welcome email is transactional, so it is NOT held behind any send
+// kill-switch and uses the warm aloha@ sender. We drive the
 // provider through a fake Resend client (mocking the HTTP send is fine; the LLM
 // is not involved here) and assert the wire payload: the from-identity, the
 // recipient, the CASL footer (business address + unsubscribe), the three next

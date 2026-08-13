@@ -67,7 +67,7 @@ jobs:
       - name: Week-summary eval (cached-only)
         run: pnpm --filter @hale/worker eval:week-summary
 
-      - name: Agent suites eval (ask-hale/daily-brief/discovery, cached-only)
+      - name: Agent suites eval (ask-hale/discovery, cached-only)
         run: pnpm --filter @hale/worker eval:agents
 
       - name: Village search intent eval (cached-only)
