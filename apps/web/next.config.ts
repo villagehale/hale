@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
-import { PRIVACY_URL, TERMS_URL } from './lib/legal-links';
+import { MARKETING_SITE_URL, PRIVACY_URL, TERMS_URL } from './lib/legal-links';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
@@ -20,6 +20,16 @@ const config: NextConfig = {
     return [
       { source: '/terms', destination: TERMS_URL, permanent: true },
       { source: '/privacy', destination: PRIVACY_URL, permanent: true },
+      // F14: the web onboarding wizard is deleted, not disabled. Its output was a
+      // family with no phone number, and Hale cannot run a week for a family it
+      // cannot text — so joining starts on the marketing site, which says exactly
+      // that. Permanent and kept FOREVER for the same reason as the two above: the
+      // live "Get started" buttons on the marketing site, already-sent emails and a
+      // year of bookmarks all still point here, and none of them can be rewritten.
+      // Both spellings are listed rather than relying on `:path*` to match zero
+      // segments — the bare route is the one every old link actually uses.
+      { source: '/onboarding', destination: MARKETING_SITE_URL, permanent: true },
+      { source: '/onboarding/:path*', destination: MARKETING_SITE_URL, permanent: true },
     ];
   },
   transpilePackages: ['@hale/db', '@hale/types', '@hale/tools-contracts', '@hale/agent', '@hale/worker'],

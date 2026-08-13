@@ -2,16 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The middleware is wrapped by Auth.js's auth(); mock NextAuth so auth() just
 // returns the callback, letting the test drive the middleware body directly with a
-// fake request. authConfigured/invite-gate are stubbed to isolate the bridge glue
+// fake request. authConfigured is stubbed to isolate the bridge glue
 // (the bridge DECISION itself is covered in bearer-bridge.test).
 vi.mock('next-auth', () => ({
   default: () => ({ auth: (cb: unknown) => cb }),
 }));
 vi.mock('~/auth.config', () => ({ authConfig: {} }));
 vi.mock('~/lib/auth-config', () => ({ authConfigured: () => true }));
-vi.mock('~/lib/onboarding/invite-gate', () => ({
-  inviteGateDecision: () => ({ kind: 'pass' }),
-}));
 
 const SECURE_COOKIE = '__Secure-authjs.session-token';
 

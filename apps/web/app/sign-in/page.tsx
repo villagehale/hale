@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { signIn } from '~/auth';
 import { AuthShell } from '~/components/hale/auth-shell';
 import { ClaimByPhoneForm } from '~/components/hale/claim-by-phone-form';
@@ -93,10 +92,11 @@ export default async function SignInPage({ searchParams }: PageProps) {
       {magicLinkForm}
 
       {/* The join funnel left the app with /onboarding (F14): joining starts on the
-          marketing site, which explains that Hale is a number you text. */}
-      <Link href={MARKETING_SITE_URL} className="btn-ghost self-start">
+          marketing site, which explains that Hale is a number you text. A plain
+          anchor, like every other off-app link here — it leaves the router's world. */}
+      <a href={MARKETING_SITE_URL} className="btn-ghost self-start">
         New here? Join the village &rarr;
-      </Link>
+      </a>
     </AuthShell>
   );
 }

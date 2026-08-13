@@ -5,7 +5,6 @@ import { authConfigured } from '~/lib/auth-config';
 import { bridgeBearerToSessionCookie } from '~/lib/auth/bearer-bridge';
 import { isProtectedPath } from '~/lib/auth/protected-routes';
 import { receiptsIaEnabled } from '~/lib/flags/receipts-ia';
-import { inviteGateDecision } from '~/lib/onboarding/invite-gate';
 
 // The middleware runs on the Edge runtime, so it builds `auth` from the Edge-safe
 // base config (Google + identity callbacks) — NOT from ~/auth, whose Credentials
@@ -13,9 +12,6 @@ import { inviteGateDecision } from '~/lib/onboarding/invite-gate';
 // the Edge bundle can't load. Credentials sign-in runs in the Node API route,
 // never here; the middleware only reads the already-signed session JWT.
 const { auth } = NextAuth(authConfig);
-
-const INVITE_COOKIE = 'hale_invite';
-const MARKETING_FALLBACK = 'https://villagehale.com';
 
 // auth() wraps the middleware so req.auth carries the Auth.js session. An
 // unauthenticated request to a protected route is redirected to /sign-in.
@@ -51,34 +47,9 @@ export default auth((req) => {
     return NextResponse.next({ request: { headers } });
   }
 
-  // Beta invite gate (closed-beta only; flip BETA_INVITE_ONLY=false at launch).
-  // Lives here, not in the page, because Server Components can't set cookies.
-  // No DB — the gate is a shared code; the per-user provisioning check is in the
-  // (authed) layout, which can query the database.
-  if (pathname === '/onboarding' || pathname.startsWith('/onboarding/')) {
-    const decision = inviteGateDecision({
-      inviteOnly: process.env.BETA_INVITE_ONLY !== 'false',
-      code: process.env.BETA_INVITE_CODE,
-      param: req.nextUrl.searchParams.get('invite'),
-      cookie: req.cookies.get(INVITE_COOKIE)?.value,
-    });
-    if (decision.kind === 'deny') {
-      return NextResponse.redirect(
-        new URL(process.env.NEXT_PUBLIC_MARKETING_URL ?? MARKETING_FALLBACK),
-      );
-    }
-    if (decision.kind === 'grant') {
-      const res = NextResponse.next();
-      res.cookies.set(INVITE_COOKIE, process.env.BETA_INVITE_CODE as string, {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7,
-      });
-      return res;
-    }
-    return NextResponse.next();
-  }
+  // (The beta invite gate stood here. It gated exactly one path — /onboarding — and
+  // that route is deleted (F14), so the gate had nothing left to admit anyone to.
+  // BETA_INVITE_ONLY / BETA_INVITE_CODE are now read by nothing.)
 
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
