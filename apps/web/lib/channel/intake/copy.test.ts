@@ -104,10 +104,19 @@ describe('the consent moment', () => {
     expect(WATCH_OFFER).toContain('https://www.villagehale.com/privacy');
   });
 
-  it('confirms coverage, names the STOP escape, and opens the first real question', () => {
+  it('confirms coverage and names the STOP escape, asking nothing itself', () => {
     expect(ASSENT_ACK).toBe(
-      "Done - you're covered. I only text when something actually matters, and STOP always works. While I dig in: what part of the week wears you out the most?",
+      "Done - you're covered. I only text when something actually matters, and STOP always works.",
     );
+  });
+
+  /**
+   * The turn\'s one question is the composed identity ask the machine appends, so this
+   * half must carry none of its own. Two questions in one text is a parent choosing which
+   * to answer, and the one that would lose is the one Hale cannot proceed without.
+   */
+  it('ends without a question, leaving the turn\'s single ask to the composed one', () => {
+    expect(ASSENT_ACK).not.toContain('?');
   });
 
   it('takes a no without friction and leaves the door open', () => {

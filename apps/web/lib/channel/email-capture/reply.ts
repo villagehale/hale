@@ -1,8 +1,13 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { parseEmailAddress } from '~/lib/channel/email/address';
+import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
-import { EMAIL_ALREADY_TAKEN_REPLY, emailCapturedReply } from '~/lib/channel/router/copy';
+import {
+  EMAIL_ALREADY_TAKEN_REPLY,
+  EMAIL_CAPTURED_FOR_INTRO_REPLY,
+  emailCapturedReply,
+} from '~/lib/channel/router/copy';
 import { productionChannels } from '~/lib/channel/adapters/production';
 import { sendPendingInvite } from '~/lib/loop/calendar-invite';
 import { CALENDAR_EMAIL_ASK_TEMPLATE_KEY } from '~/lib/loop/templates/calendar-invite';
@@ -51,10 +56,21 @@ export interface EmailCaptureInput {
  * bare boolean the caller has to interpret. */
 export type EmailCaptureWrite = 'stored' | 'address_taken' | 'already_has_email';
 
+/**
+ * WHICH question this address is answering — the placement's, or the intros sweep's.
+ *
+ * It replaced a boolean when the sweep became a second asker. The two asks want different
+ * receipts (one is about calendar invites, the other about an introduction the parent
+ * already said yes to), and "was asked at all" cannot tell them apart — so a family with
+ * both asks behind them would have got whichever sentence the code happened to hardcode.
+ */
+export type EmailAskSource = 'calendar' | 'intro';
+
 export interface EmailCaptureDeps {
-  /** Did Hale actually ASK this family for an address? Only a delivered ask makes an
-   * inbound address an answer rather than a stray line for the coach. */
-  wasAsked(database: Database, familyId: string): Promise<boolean>;
+  /** The MOST RECENT delivered ask for an address, or null when Hale never asked. Only a
+   * delivered ask makes an inbound address an answer rather than a stray line for the
+   * coach; the most recent one is the question the parent is answering. */
+  wasAsked(database: Database, familyId: string): Promise<EmailAskSource | null>;
   /** Store the address on the parent's account, audited (rule #6). */
   capture(
     database: Database,
@@ -109,7 +125,8 @@ export async function handleEmailCaptureReply(
   const address = soleEmailAddress(input.body);
   if (!address) return { status: 'declined_to_claim' };
 
-  if (!(await deps.wasAsked(database, input.familyId))) return { status: 'declined_to_claim' };
+  const asked = await deps.wasAsked(database, input.familyId);
+  if (asked === null) return { status: 'declined_to_claim' };
 
   const written = await deps.capture(database, {
     familyId: input.familyId,
@@ -121,29 +138,50 @@ export async function handleEmailCaptureReply(
     return { status: 'address_taken', reply: EMAIL_ALREADY_TAKEN_REPLY };
   }
 
+  // Attempted whichever ask this answered: a family can have a placement waiting AND an
+  // introduction waiting, and the address that just arrived unblocks both. Only the
+  // RECEIPT is chosen by the question asked, because that is the one the parent is
+  // holding — the intros sweep sends its own email on its next tick.
   const invited = await deps.sendPendingInvite(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
   });
-  return { status: 'captured', reply: emailCapturedReply(invited) };
+  return {
+    status: 'captured',
+    reply: asked === 'intro' ? EMAIL_CAPTURED_FOR_INTRO_REPLY : emailCapturedReply(invited),
+  };
 }
 
 // ── The production wiring ────────────────────────────────────────────────────
 
-/** A delivered ask — the question this handler is the answer to. */
-async function askWasDelivered(database: Database, familyId: string): Promise<boolean> {
-  const rows = await database
-    .select({ id: schema.channelMessages.id })
+/**
+ * The most recent delivered ask for an address, or null when Hale never asked.
+ *
+ * ORDERED, not just filtered. Both askers can have texted this family, and the parent is
+ * answering the one they can still see — so the receipt has to follow the latest ask
+ * rather than whichever row the index happened to return first.
+ */
+async function askWasDelivered(
+  database: Database,
+  familyId: string,
+): Promise<EmailAskSource | null> {
+  const [row] = await database
+    .select({ templateKey: schema.channelMessages.templateKey })
     .from(schema.channelMessages)
     .where(
       and(
         eq(schema.channelMessages.familyId, familyId),
-        eq(schema.channelMessages.templateKey, CALENDAR_EMAIL_ASK_TEMPLATE_KEY),
+        inArray(schema.channelMessages.templateKey, [
+          CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
+          INTRO_IDENTITY_ASK_TEMPLATE_KEY,
+        ]),
         inArray(schema.channelMessages.status, ['sent', 'delivered']),
       ),
     )
+    .orderBy(desc(schema.channelMessages.sentAt))
     .limit(1);
-  return rows.length > 0;
+  if (!row) return null;
+  return row.templateKey === INTRO_IDENTITY_ASK_TEMPLATE_KEY ? 'intro' : 'calendar';
 }
 
 /**

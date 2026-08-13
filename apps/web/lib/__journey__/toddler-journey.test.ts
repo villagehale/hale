@@ -19,6 +19,7 @@ import type { IntakeCollected } from '~/lib/channel/intake/extract';
 import {
   type FakeDb,
   FakeExtractor,
+  FakeIdentityAsk,
   FakeIntentReader,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
@@ -461,6 +462,7 @@ async function runToddlerJourney(): Promise<Journey> {
     // fallback path (`null` client renders the deterministic follow-up and names the
     // reason), so the journey reads the words a family actually gets when voice is off.
     ackComposer: createIntakeAckComposer(null),
+    identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,
   };

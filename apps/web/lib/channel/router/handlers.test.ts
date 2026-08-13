@@ -366,7 +366,7 @@ describe('the village intro lane and the lanes behind it', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, health, coach_plan, registration', async () => {
+  it('is village_intro, approval, email_capture, health, coach_plan, registration, name_capture', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
@@ -375,7 +375,23 @@ describe('the shipped order', () => {
       'health',
       'coach_plan',
       'registration',
+      'name_capture',
     ]);
+  });
+
+  /**
+   * The name capture is LAST, and this pins it rather than trusting the array above to be
+   * read carefully. It claims a bare word, which is the broadest shape in the chain, so
+   * every handler that matches a SPECIFIC word has to get first refusal: "done" is a
+   * health outcome and "we got in" is a registration result, and a family with an open
+   * name ask must be able to answer one without being renamed for it.
+   */
+  it('puts the name capture behind every handler that matches a specific word', async () => {
+    const { defaultHandlers } = await import('./wiring');
+    const names = defaultHandlers().map((h) => h.name);
+    expect(names.at(-1)).toBe('name_capture');
+    expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('registration'));
+    expect(names.indexOf('name_capture')).toBeGreaterThan(names.indexOf('health'));
   });
 
   /**

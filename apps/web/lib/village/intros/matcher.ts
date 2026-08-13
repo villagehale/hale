@@ -108,16 +108,6 @@ export interface IntroCandidateFamily {
   /** As stored — `families.area_coarse` or the postal code. Normalized here, not by the
    * caller, so no caller can pass a city in by mistake. */
   fsa: string | null;
-  /** The address the intro email would reach this family at. Null is a real, common
-   * state (an SMS-only family that never signed in) and it is why v1 matches only
-   * families that HAVE one: the handoff is an email, and half a handoff is worse than
-   * none. */
-  parentEmail: string | null;
-  /** The parent's display name. Also nullable — `users.name` is not required, and an
-   * SMS-intake family may never have typed one. An introduction whose greeting cannot
-   * name one of the two parents is not an introduction, so it is its OWN skip reason
-   * rather than being folded in with the missing address. */
-  parentName: string | null;
   children: readonly IntroCandidateChild[];
 }
 
@@ -143,13 +133,24 @@ export function eligibleAnchorChildren(
   return eligible;
 }
 
-/** Why a family that opted in still was not paired. An enum, never free text: it is
- * counted and logged, so it must be safe to emit and stable to aggregate on. */
-export type IntroSkipReason =
-  | 'no_fsa'
-  | 'no_parent_email'
-  | 'no_parent_name'
-  | 'no_matchable_child';
+/**
+ * Why a family that opted in still was not paired. An enum, never free text: it is
+ * counted and logged, so it must be safe to emit and stable to aggregate on.
+ *
+ * A MISSING EMAIL OR NAME IS NO LONGER ONE OF THESE, and removing them is the fix rather
+ * than a relaxation of it. Both used to be checked here, which put a HANDOFF-time
+ * requirement at MATCH time — the one place in the loop where it could only ever be a
+ * silent skip. The lived consequence: two families near each other were each texted "want
+ * me to introduce you?", both replied YES INTROS, and then nothing happened to either of
+ * them, ever, because neither had an address Hale had ever asked for. A counter ticked in
+ * a cron log and two parents were left waiting.
+ *
+ * The card needs neither fact — see {@link coarseCard}, which takes a stage word and the
+ * recipient's own child. Only the handoff does, and the handoff is a moment Hale is
+ * talking to both parents anyway, so it can just ASK (run.ts, requestIdentity). Checking
+ * at the point where a question is possible is what turns a dead end into a conversation.
+ */
+export type IntroSkipReason = 'no_fsa' | 'no_matchable_child';
 
 export interface IntroPairing {
   familyAId: string;
@@ -222,14 +223,6 @@ export function matchIntroPairs(input: MatchIntroPairsInput): MatchIntroPairsRes
     const fsa = normalizeFsa(family.fsa);
     if (fsa === null) {
       skipped.push({ familyId: family.familyId, reason: 'no_fsa' });
-      continue;
-    }
-    if (!family.parentEmail) {
-      skipped.push({ familyId: family.familyId, reason: 'no_parent_email' });
-      continue;
-    }
-    if (!family.parentName?.trim()) {
-      skipped.push({ familyId: family.familyId, reason: 'no_parent_name' });
       continue;
     }
     const anchors = eligibleAnchorChildren(family.children, input.now);

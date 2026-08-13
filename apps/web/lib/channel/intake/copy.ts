@@ -158,12 +158,30 @@ export function followUp(summary: string, missing: readonly IntakeGap[]): string
  */
 export const WATCH_OFFER = `Want me to keep an eye on all of this for you? (how I handle your family's info: ${PRIVACY_URL})`;
 
-/** The yes. Names the restraint (only when it matters), keeps the CASL escape hatch
- * visible, and spends its last clause opening the conversation that outlives intake —
- * the answer arrives after the session closes and is handed to the coach (see the
- * `no_open_conversation` seam in machine.ts / twilio/inbound.ts). */
+/**
+ * The yes. Names the restraint (only when it matters) and keeps the CASL escape hatch
+ * visible. Fixed, because both of those are promises and a promise a model paraphrased
+ * is a promise nobody made.
+ *
+ * IT NO LONGER ENDS IN A QUESTION, and that is this turn's one question budget being
+ * spent somewhere better. It used to close on "what part of the week wears you out the
+ * most?" — an opener whose answer went to the coach. The turn now closes on the identity
+ * ask instead (machine.ts appends it), because Hale had no other moment to ask a texting
+ * family what to call them: intake writes `users.name = null` and, until this changed,
+ * nothing in the SMS product ever filled it in. A nameless parent is one the introduction
+ * email cannot greet, which is exactly where the intros handoff was stalling.
+ *
+ * The two cannot stack. One message asks one question, and an ack carrying both is a
+ * parent choosing which to answer — so the opener is the one that gave way: a parent who
+ * texts their name back has still started the conversation that outlives intake, and it
+ * arrives after the session closes and is handed to the coach exactly as before (the
+ * `no_open_conversation` seam in machine.ts / twilio/inbound.ts).
+ *
+ * The appended ask is COMPOSED and may defer, so this sentence has to be whole on its
+ * own — which it is. A deferred ask costs the name, never the acknowledgment.
+ */
 export const ASSENT_ACK =
-  "Done - you're covered. I only text when something actually matters, and STOP always works. While I dig in: what part of the week wears you out the most?";
+  "Done - you're covered. I only text when something actually matters, and STOP always works.";
 export const DECLINE_ACK =
   'No problem - text me whenever you like. The dates and finds are here when you want them.';
 export const AMBIGUOUS_CLARIFY =

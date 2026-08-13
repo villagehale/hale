@@ -10,6 +10,12 @@ import {
   assertProactiveSendAllowed,
   buildOutboundGatePorts,
 } from '~/lib/channel/outbound-gate';
+import {
+  type IdentityAskVoice,
+  type IdentityGap,
+  productionIdentityAskVoice,
+} from '~/lib/channel/identity/ask-voice';
+import { INTRO_IDENTITY_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
@@ -184,6 +190,9 @@ export interface IntroSweepDeps {
     closed: boolean,
     now: Date,
   ): Promise<void>;
+  /** Restart the pair's window. Called only when a gap-fill ask actually went out, so a
+   * pair can never be held open by a question nobody was asked. */
+  setExpiry(database: Database, proposalId: string, expiresAt: Date, now: Date): Promise<void>;
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive(database: Database, dedupeKey: string): Promise<boolean>;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -204,7 +213,28 @@ export interface IntroSweepDeps {
    * told yes, audited as disclosed-to, and never hear from each other. */
   transport: ChannelTransport;
   email: IntroEmailSender;
+  /** The words of the gap-fill ask. REQUIRED (rule #11): a sweep that can discover it is
+   * missing an address and has no way to ask for one is the stall this feature shipped
+   * with. Its own DEFERRAL is the named absence — nothing sent, nothing recorded, asked
+   * again next tick. */
+  identityAsk: IdentityAskVoice;
 }
+
+/**
+ * Why a completed pair has not been introduced yet — one name per missing fact.
+ *
+ * Rule #11: a pair sitting at `both_accepted` with nothing sent has to be countable, and
+ * countable as the RIGHT thing. "Waiting on an address" and "the email bounced" are
+ * different operational stories with different fixes, and folding the first into
+ * `introFailed` would have hidden the only bug this feature has actually had in the
+ * bucket labelled for a different one.
+ */
+export type IntroWaitReason = 'awaiting_email' | 'awaiting_name';
+
+const WAIT_REASON: Record<IdentityGap, IntroWaitReason> = {
+  email: 'awaiting_email',
+  name: 'awaiting_name',
+};
 
 export interface IntroSweepResult {
   /** False when neither the flag nor the allowlist armed the sweep. */
@@ -215,6 +245,11 @@ export interface IntroSweepResult {
   introduced: number;
   /** Both sides said yes and the email did not go. The pair stays open on purpose. */
   introFailed: number;
+  /** SIDES still owing Hale a fact before their introduction can be written. Counted
+   * every tick they are owed, not once when asked — this is a level, not an event. */
+  waiting: Record<IntroWaitReason, number>;
+  /** Gap-fill asks that actually reached a phone this tick. */
+  identityAsked: number;
   closed: number;
   held: Record<ProactiveHoldReason, number>;
   skipped: Record<IntroSkipReason, number>;
@@ -229,9 +264,11 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     carded: 0,
     introduced: 0,
     introFailed: 0,
+    waiting: { awaiting_email: 0, awaiting_name: 0 },
+    identityAsked: 0,
     closed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
-    skipped: { no_fsa: 0, no_parent_email: 0, no_parent_name: 0, no_matchable_child: 0 },
+    skipped: { no_fsa: 0, no_matchable_child: 0 },
     failed: 0,
   };
 }
@@ -249,11 +286,18 @@ interface SendOutcome {
 }
 
 /**
- * The ONE way this feature reaches a phone: gate, dedupe, resolve, send, ledger.
+ * The ONE way this feature reaches a phone: gate, dedupe, resolve, compose, send, ledger.
  *
  * Every intro text goes through here, so the four gate checks and the idempotency key
  * cannot be forgotten by one call site. `dedupeKey` is the message's natural identity,
  * which is what lets an hourly cron fire twice in a slot and send once.
+ *
+ * `body` MAY BE A THUNK, and the order is why. The fixed sentences pass a string; the one
+ * composed message passes a function, which is called only after the gate and the dedupe
+ * have both passed — so Hale never pays for a draft that quiet hours or an already-sent
+ * key was going to discard. A thunk that returns null is a composer that deferred: nothing
+ * is sent, nothing is recorded, and the unspent dedupe key is what makes the next tick a
+ * retry rather than a duplicate.
  */
 async function sendIntroSms(
   database: Database,
@@ -261,7 +305,7 @@ async function sendIntroSms(
   input: {
     familyId: string;
     parentUserId: string;
-    body: string;
+    body: string | (() => Promise<string | null>);
     templateKey: string;
     dedupeKey: string;
     now: Date;
@@ -280,6 +324,9 @@ async function sendIntroSms(
 
   if (await deps.dedupeActive(database, input.dedupeKey)) return { sent: false };
 
+  const body = typeof input.body === 'string' ? input.body : await input.body();
+  if (body === null) return { sent: false };
+
   const to = await deps.resolveSendablePhone(database, input.parentUserId);
   if (!to) {
     // The gate just said this parent has a live channel, so there IS one — a missing
@@ -287,7 +334,7 @@ async function sendIntroSms(
     throw new Error(`village intros: no send target for parent ${input.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body: input.body });
+  const { providerMessageId } = await deps.transport.send({ to, body });
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,
@@ -385,8 +432,6 @@ async function runMatchPhase(
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       fsa: family.areaCoarse,
-      parentEmail: family.parentEmail,
-      parentName: family.parentName,
       children: await deps.loadChildren(database, family.familyId),
     })),
   );
@@ -551,7 +596,16 @@ async function cardUnaskedSides(
   }
 }
 
-/** Both sides said yes: send the one email, audit BOTH families, close the pair. */
+/**
+ * Both sides said yes. Send the one email, audit BOTH families, close the pair — or, when
+ * Hale cannot name or reach one of them yet, ASK that side and hold the pair open.
+ *
+ * THE GAP IS ASKED ABOUT, NOT SKIPPED. This is where the identity requirement lives now
+ * (see IntroSkipReason on why it moved here from the matcher): the handoff is the first
+ * and only moment the facts are actually needed, and it is a moment when both parents
+ * have just said yes to something — which makes it the one moment asking for an address
+ * reads as follow-through rather than data collection.
+ */
 async function introduce(
   database: Database,
   deps: IntroSweepDeps,
@@ -562,17 +616,34 @@ async function introduce(
 ): Promise<void> {
   const familyA = byId.get(proposal.familyAId);
   const familyB = byId.get(proposal.familyBId);
-  if (!familyA?.parentEmail || !familyA.parentName || !familyB?.parentEmail || !familyB.parentName) {
-    // The matcher only pairs families that HAVE both, so losing one between the pairing
-    // and the handoff is a real state change, not a shape to design around: the pair
-    // stays open and visible rather than closing as if it had been introduced.
+  if (!familyA || !familyB) {
+    // A family that has left the sweep's own selection between the card and the handoff —
+    // deleted, unsubscribed, or dropped past the per-run cap. Nothing here can ask it
+    // anything, so this is the one identity failure that is not a question: LOUD, counted,
+    // and the pair left open rather than closed as if it had been introduced.
     result.introFailed += 1;
+    console.error(
+      {
+        proposalId: proposal.id,
+        missingSide: familyA ? proposal.familyBId : proposal.familyAId,
+      },
+      'village intros: a paired family is no longer in the sweep - introduction cannot be made',
+    );
+    return;
+  }
+
+  const nameA = familyA.parentName;
+  const nameB = familyB.parentName;
+  const emailA = familyA.parentEmail;
+  const emailB = familyB.parentEmail;
+  if (!nameA?.trim() || !nameB?.trim() || !emailA || !emailB) {
+    await awaitIdentity(database, deps, proposal, byId, result, now);
     return;
   }
 
   const outcome = await deps.email.send({
-    parentA: { firstName: introFirstName(familyA.parentName), email: familyA.parentEmail },
-    parentB: { firstName: introFirstName(familyB.parentName), email: familyB.parentEmail },
+    parentA: { firstName: introFirstName(nameA), email: emailA },
+    parentB: { firstName: introFirstName(nameB), email: emailB },
     stage: proposal.stage,
     anchorTitle: proposal.anchorTitle,
   });
@@ -616,6 +687,106 @@ async function introduce(
 
   await deps.setStatus(database, proposal.id, 'both_accepted', true, now);
   result.introduced += 1;
+}
+
+/** What Hale is missing before it can write the introduction email for a side. */
+function identityGaps(family: IntroSweepFamily): IdentityGap[] {
+  const missing: IdentityGap[] = [];
+  if (!family.parentName?.trim()) missing.push('name');
+  if (!family.parentEmail) missing.push('email');
+  return missing;
+}
+
+/**
+ * Both sides said yes and Hale is short a name or an address. Ask the side that owes one,
+ * once, and leave the pair open for a tick that can finish it.
+ *
+ * THE PAIR IS NOT CANCELLED AND NOT CLOSED. Two parents have each said yes twice; closing
+ * on a fact Hale never asked them for would be Hale losing its own paperwork and calling
+ * it a decision. It waits in a state that is derived rather than stored — `both_accepted`
+ * with `closed_at` null and a fact still missing — which is why there is no new status
+ * value and no migration: the absence of the fact IS the state, so there is nothing that
+ * can drift out of sync with it.
+ *
+ * ONE ASK PER SIDE, EVER, held by the dedupe key. A side missing BOTH facts gets ONE
+ * message naming both, for the reason intake's single follow-up asks for both of its gaps
+ * at once: it is the only ask there will be, and two texts about two halves of the same
+ * question is how a parent starts ignoring both.
+ *
+ * THE WINDOW RESTARTS AT THE ASK. The pair's original seven days measured how long a CARD
+ * waits for an answer, and that question has been answered — a pair that both-accepted on
+ * day six would otherwise be asked for an address and closed out hours later, which is
+ * Hale answering its own message. So the ask sets a fresh window of the same length, and a
+ * pair whose window runs out with the fact still missing soft-closes through the ordinary
+ * expiry path like any other pair that did not happen. A composer that defers extends
+ * nothing, so a model that is down for a week cannot hold a pair open forever.
+ */
+async function awaitIdentity(
+  database: Database,
+  deps: IntroSweepDeps,
+  proposal: SweepProposal,
+  byId: ReadonlyMap<string, IntroSweepFamily>,
+  result: IntroSweepResult,
+  now: Date,
+): Promise<void> {
+  if (proposal.expiresAt <= now) {
+    // The ask went unanswered for its whole window (or never composed). Same one sentence
+    // every dead pair gets, and the REASON lands in the audit row rather than the text.
+    await softClose(database, deps, proposal, 'expired', byId, result, now);
+    return;
+  }
+
+  for (const side of sidesOf(proposal)) {
+    // Both sides resolved in introduce() before this was called, so a miss here is
+    // impossible rather than a state to handle.
+    const family = byId.get(side.self.familyId) as IntroSweepFamily;
+    const missing = identityGaps(family);
+    if (missing.length === 0) continue;
+    for (const gap of missing) result.waiting[WAIT_REASON[gap]] += 1;
+
+    const outcome = await sendIntroSms(database, deps, {
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      body: () => composeIdentityAsk(deps, missing),
+      templateKey: INTRO_IDENTITY_ASK_TEMPLATE_KEY,
+      dedupeKey: `village_intro:identity:${proposal.id}:${side.key}`,
+      now,
+    });
+    if (outcome.held) {
+      result.held[outcome.held] += 1;
+      continue;
+    }
+    if (!outcome.sent) continue;
+
+    result.identityAsked += 1;
+    await deps.setExpiry(
+      database,
+      proposal.id,
+      new Date(now.getTime() + INTRO_EXPIRY_DAYS * 24 * 3_600_000),
+      now,
+    );
+    await deps.audit(database, {
+      familyId: family.familyId,
+      actor: 'system',
+      actionTaken: 'village_intro_identity_asked',
+      targetTable: 'village_intro_proposals',
+      targetId: proposal.id,
+      // The GAP, never the value: this row says Hale asked for an address, not what any
+      // address is. The counterpart is not named either — the parent was not told one.
+      after: { missing },
+    });
+  }
+}
+
+/** The gap-fill ask's words. Composed, never preset (founder, 2026-08-12) — and a
+ * deferral returns null, which {@link sendIntroSms} turns into "nothing sent, nothing
+ * recorded, ask again next tick". */
+async function composeIdentityAsk(
+  deps: IntroSweepDeps,
+  missing: readonly IdentityGap[],
+): Promise<string | null> {
+  const ask = await deps.identityAsk.compose({ reason: 'introduction', missing });
+  return ask.status === 'composed' ? ask.body : null;
 }
 
 /**
@@ -913,6 +1084,12 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
         .set({ status, ...(closed ? { closedAt: now } : {}), updatedAt: now })
         .where(eq(schema.villageIntroProposals.id, proposalId));
     },
+    setExpiry: async (database, proposalId, expiresAt, now) => {
+      await database
+        .update(schema.villageIntroProposals)
+        .set({ expiresAt, updatedAt: now })
+        .where(eq(schema.villageIntroProposals.id, proposalId));
+    },
     buildGate: buildOutboundGatePorts,
     dedupeActive: (database, dedupeKey) => dedupeActive(dedupeKey, database),
     resolveSendablePhone,
@@ -940,5 +1117,6 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     },
     transport: createTwilioTransport(),
     email: createIntroEmailSender(),
+    identityAsk: productionIdentityAskVoice(),
   };
 }

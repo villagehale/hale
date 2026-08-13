@@ -47,6 +47,10 @@
     "file": "general-answer.md",
     "sha256": "7078d30dfe7924a3eddfe9385ba533a7acf0f9714ba9485af2aced4443428b33"
   },
+  "identity-ask.md": {
+    "file": "identity-ask.md",
+    "sha256": "c3d5b900b78bb414b3403097ba27cc39894cb426d4e548573a18fc6597abe25b"
+  },
   "inbound-lane.md": {
     "file": "inbound-lane.md",
     "sha256": "df50c6656961046aa82068a468d9f1cc6d90d308ca3cdf1cae60da3320e653d9"

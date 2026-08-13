@@ -21,10 +21,12 @@ import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
+import { defaultNameCaptureDeps } from '~/lib/channel/identity/name-reply';
 import {
   approvalHandler,
   emailCaptureHandler,
   healthReplyHandler,
+  nameCaptureHandler,
   planReplyHandler,
   sequenceReplyHandler,
   villageIntroHandler,
@@ -209,7 +211,8 @@ function refused(error: string): SpineOutcome {
 
 /**
  * The handler chain, in the order it runs — narrow claimers before broad ones. See
- * handlers.ts for why "yes" resolves the way it does and why registration is last.
+ * handlers.ts for why "yes" resolves the way it does, why registration is late, and why
+ * the name capture is the one thing behind it.
  */
 export function defaultHandlers(): DeterministicHandler[] {
   return [
@@ -219,6 +222,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     healthReplyHandler(defaultHealthReplyDeps()),
     planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
+    nameCaptureHandler(defaultNameCaptureDeps()),
   ];
 }
 

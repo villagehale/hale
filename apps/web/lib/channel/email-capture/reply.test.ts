@@ -62,7 +62,7 @@ describe('handleEmailCaptureReply', () => {
     const captured: string[] = [];
     const invites: string[] = [];
     const base: EmailCaptureDeps = {
-      wasAsked: async () => true,
+      wasAsked: async () => 'calendar',
       capture: async (_db, input) => {
         captured.push(input.address);
         return overrides.write ?? 'stored';
@@ -100,7 +100,7 @@ describe('handleEmailCaptureReply', () => {
   });
 
   it('falls through when Hale never asked this family for an address', async () => {
-    const { deps: d, captured } = deps({ wasAsked: async () => false });
+    const { deps: d, captured } = deps({ wasAsked: async () => null });
 
     expect(await handleEmailCaptureReply(DB, turn('dana@example.com'), d)).toEqual({
       status: 'declined_to_claim',
@@ -169,11 +169,11 @@ describe('the production store (real Postgres)', () => {
     const { familyId, parentUserId } = await seedFamily(db.database);
     const { wasAsked } = defaultEmailCaptureDeps();
 
-    expect(await wasAsked(db.database, familyId)).toBe(false);
+    expect(await wasAsked(db.database, familyId)).toBeNull();
     await ask(familyId, parentUserId, 'suppressed_consent');
-    expect(await wasAsked(db.database, familyId)).toBe(false);
+    expect(await wasAsked(db.database, familyId)).toBeNull();
     await ask(familyId, parentUserId, 'sent');
-    expect(await wasAsked(db.database, familyId)).toBe(true);
+    expect(await wasAsked(db.database, familyId)).toBe('calendar');
   });
 
   it('writes the address onto the account with an audit row (rule #6)', async () => {

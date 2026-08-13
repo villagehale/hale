@@ -155,6 +155,7 @@ export const AUDIT_VERBS = [
   'email_reply_received',
   'email_unsubscribe_received',
   'parent_email_captured',
+  'parent_name_captured',
   'channel_sms.calendar_drafted',
   // ── proactive nudges + the watch offer ──────────────────────────────────
   'proactive_nudge_sent',
@@ -249,6 +250,7 @@ export const AUDIT_VERBS = [
   'village_intro_card_sent',
   'village_intro_accepted',
   'village_intro_declined',
+  'village_intro_identity_asked',
   'village_intro_disclosed',
   'village_intro_closed',
   // ── claiming the receipts room, and Hale asking how it went ─────────────
@@ -437,6 +439,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you gave Hale an email address for calendar invites',
     family: 'done',
   },
+  // The parent texted back what to call them. 'done' for the same reason the address
+  // is: it is a write to their account rather than a message, so the trail should show
+  // it beside the other things that changed.
+  parent_name_captured: { sentence: 'you told Hale what to call you', family: 'done' },
   email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },
   'channel_sms.calendar_drafted': {
     sentence: 'your text became a calendar change, waiting on your yes',
@@ -631,6 +637,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   village_intro_card_sent: { sentence: 'Hale asked you about an introduction', family: 'awaiting' },
   village_intro_accepted: { sentence: 'you said yes to an introduction', family: 'done' },
   village_intro_declined: { sentence: 'you said no to an introduction', family: 'done' },
+  // Both sides said yes and Hale was short a detail about YOU — nothing about the other
+  // family, and nothing shared. 'awaiting' because the introduction is still owed.
+  village_intro_identity_asked: {
+    sentence: 'Hale asked you for a detail it needed to make an introduction',
+    family: 'awaiting',
+  },
   village_intro_disclosed: {
     // The one row here that means information actually crossed households. Like the
     // teen safety line above, it says so outright rather than "completed an intro".

@@ -15,6 +15,7 @@ import {
 } from './copy';
 import {
   FakeExtractor,
+  FakeIdentityAsk,
   FakeIntentReader,
   type FakeDb,
   fakeAckComposer,
@@ -59,20 +60,24 @@ function harness(options: {
   intents?: IntentReading[];
   limiter?: FakeRateLimiter;
   resolveCenter?: IntakeDeps['resolveCenter'];
+  identityAsk?: FakeIdentityAsk;
 }): {
   fake: FakeDb;
   transport: FakeTransport;
   deps: IntakeDeps;
+  identityAsk: FakeIdentityAsk;
   /** Every seeding/compose step, in the order the machine ran them. */
   steps: string[];
 } {
   const fake = makeFakeDb();
   const transport = new FakeTransport();
   const steps: string[] = [];
+  const identityAsk = options.identityAsk ?? new FakeIdentityAsk();
   return {
     fake,
     transport,
     steps,
+    identityAsk,
     deps: {
       transport,
       extractor: new FakeExtractor(options.extractions ?? [MAYA_AND_LEO]),
@@ -84,6 +89,7 @@ function harness(options: {
         },
       },
       ackComposer: fakeAckComposer,
+      identityAsk,
       seedCivic: async (_db, familyId, areaCoarse, center) => {
         const placed = center === null ? 'unplaced' : `${center.lat},${center.lng}`;
         steps.push(`civic:${familyId ? 'family' : 'none'}:${areaCoarse}:${placed}`);
@@ -171,13 +177,18 @@ describe('intake · happy path', () => {
     expect(transport.bodies().at(-1)).toContain(WATCH_OFFER);
 
     const answered = await text(fake, transport, deps, 'yes please');
-    expect(answered).toEqual({ status: 'watch_recorded', intent: 'assent', granted: true });
-    expect(transport.bodies().at(-1)).toBe(ASSENT_ACK);
+    expect(answered).toEqual({
+      status: 'watch_recorded',
+      intent: 'assent',
+      granted: true,
+      nameAsked: true,
+    });
+    expect(transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
   });
 
   /**
-   * ASSENT_ACK ends on a real question ("what part of the week wears you out the most?")
-   * and then CLOSES the session — so the answer to it always lands after intake is over.
+   * The consent turn ends on a real question - the composed identity ask - and then
+   * CLOSES the session, so the answer to it always lands after intake is over.
    * That is deliberate, not a gap: the reply belongs to the coach, and the machine's job
    * is to decline it cleanly so A3 can record it and queue it (twilio/inbound.ts
    * handOffToConversation). The bug this guards against is the machine answering it
@@ -189,16 +200,95 @@ describe('intake · happy path', () => {
     await text(fake, transport, deps, 'hi');
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     await text(fake, transport, deps, 'yes please');
-    expect(transport.bodies().at(-1)).toBe(ASSENT_ACK);
+    // The ack, plus the composed identity ask appended to it — the turn's one question.
+    expect(transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
     const sentDuringIntake = transport.bodies().length;
 
-    // The parent answers the question ASSENT_ACK just asked. The session is complete.
+    // The parent answers the question the consent turn just asked. The session is
+    // complete, so the machine must not answer it itself.
     const answer = await text(fake, transport, deps, 'bedtime, honestly. it takes two hours');
 
     expect(answer).toEqual({ status: 'ignored', reason: 'no_open_conversation' });
     // Nothing was sent back HERE — the reply is the coach's turn to take, and a second
     // intake message would be Hale talking over its own question.
     expect(transport.bodies()).toHaveLength(sentDuringIntake);
+  });
+
+  /**
+   * THE NAME ASK. Nothing in the SMS product ever collected a parent's own name — intake
+   * writes `users.name = null` and the only writers are the mobile onboarding body and the
+   * authed web settings form — so a text-born family stayed nameless forever, which is
+   * what the introduction email could not greet.
+   */
+  describe('the identity ask on the consent turn', () => {
+    async function consent(h: ReturnType<typeof harness>) {
+      await text(h.fake, h.transport, h.deps, 'hi');
+      await text(h.fake, h.transport, h.deps, 'Maya is 4, Leo is 1. M5V 2T6');
+      return text(h.fake, h.transport, h.deps, 'yes please');
+    }
+
+    it('asks for a name once, appended to the acknowledgment as the turn\'s one question', async () => {
+      const h = harness({ intents: [assent('yes please')] });
+
+      await consent(h);
+
+      expect(h.identityAsk.calls).toEqual([{ reason: 'getting_started', missing: ['name'] }]);
+      expect(h.transport.bodies().at(-1)).toBe(`${ASSENT_ACK} ASK`);
+      // ONE text, not two: a parent who has just agreed to something and gets two replies
+      // has been answered by a system.
+      expect(h.transport.bodies().filter((b) => b.startsWith('Done -'))).toHaveLength(1);
+    });
+
+    /**
+     * The stamp is the whole reason the answer is findable. Intake's messages are
+     * otherwise anonymous — the transcript is their record — and a capture handler running
+     * on a later, separate turn cannot read a transcript.
+     */
+    it('stamps the ledger row so the name capture can find the question', async () => {
+      const h = harness({ intents: [assent('yes please')] });
+
+      await consent(h);
+
+      const asks = inserts(h.fake, schema.channelMessages).filter(
+        (row) => row.templateKey === 'parent_name_ask',
+      );
+      expect(asks).toHaveLength(1);
+      expect(asks[0]).toMatchObject({ direction: 'out', status: 'sent' });
+    });
+
+    /**
+     * A deferral costs the name, never the acknowledgment. The parent is covered and was
+     * told so; the intros gap-fill asks again later if it ever actually needs one.
+     */
+    it('sends a whole acknowledgment with no question when the composer defers', async () => {
+      const h = harness({
+        intents: [assent('yes please')],
+        identityAsk: new FakeIdentityAsk({ status: 'deferred', reason: 'model_failed' }),
+      });
+
+      const answered = await consent(h);
+
+      expect(answered).toEqual({
+        status: 'watch_recorded',
+        intent: 'assent',
+        granted: true,
+        nameAsked: false,
+      });
+      expect(h.transport.bodies().at(-1)).toBe(ASSENT_ACK);
+      // Nothing was stamped, so no stray word is captured as a name later.
+      expect(
+        inserts(h.fake, schema.channelMessages).filter((r) => r.templateKey === 'parent_name_ask'),
+      ).toEqual([]);
+    });
+
+    it('never asks a parent who declined the watch - there is no turn to ask on', async () => {
+      const h = harness({ intents: [{ intent: 'decline', verbatim: 'no thanks', interpretation: 'declined' }] });
+
+      await consent(h);
+
+      expect(h.identityAsk.calls).toEqual([]);
+      expect(h.transport.bodies().at(-1)).toBe(DECLINE_ACK);
+    });
   });
 
   it('records the consent evidence BEFORE the family is flipped to sms_active', async () => {
@@ -238,7 +328,12 @@ describe('intake · happy path', () => {
     await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
     const result = await text(fake, transport, deps, 'no thanks');
 
-    expect(result).toEqual({ status: 'watch_recorded', intent: 'decline', granted: false });
+    expect(result).toEqual({
+      status: 'watch_recorded',
+      intent: 'decline',
+      granted: false,
+      nameAsked: false,
+    });
     expect(transport.bodies().at(-1)).toBe(DECLINE_ACK);
     const watch = inserts(fake, schema.consentRecords).find(
       (c) => c.consentType === 'proactive_watch',
@@ -590,7 +685,12 @@ describe('intake · ambiguity', () => {
     expect(transport.bodies().at(-1)).toBe(AMBIGUOUS_CLARIFY);
 
     const resolved = await text(fake, transport, deps, 'hmm');
-    expect(resolved).toEqual({ status: 'watch_recorded', intent: 'ambiguous', granted: false });
+    expect(resolved).toEqual({
+      status: 'watch_recorded',
+      intent: 'ambiguous',
+      granted: false,
+      nameAsked: false,
+    });
     // Only ONE clarification, ever.
     expect(transport.bodies().filter((b) => b === AMBIGUOUS_CLARIFY)).toHaveLength(1);
 
@@ -642,6 +742,7 @@ describe('intake · CASL keywords', () => {
       intentReader,
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
+      identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => NOW.getTime()),
       now: NOW,
     };
