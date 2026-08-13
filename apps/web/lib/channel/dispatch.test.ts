@@ -315,3 +315,39 @@ describe('X1 (VIL-227) taxonomy — one ledger row ⇒ exactly one analytics eve
     expect(captures).toHaveLength(0);
   });
 });
+
+/**
+ * VIL-249 — a message pinned to ONE channel. An ICS invite exists only as an email
+ * (its whole payload is a text/calendar attachment), so it must reach a parent whose
+ * exchange channel is SMS, and it must not be mirrored to a push that can carry no
+ * attachment.
+ */
+describe('a channel-pinned message', () => {
+  it('dispatches on the pinned channel rather than the parent’s loop channel', async () => {
+    const email = fakeChannel('email');
+    const sms = fakeChannel('sms');
+    const { ports, ledger } = makePorts({
+      prefs: { loopChannel: 'sms' },
+      channels: { email, sms },
+    });
+
+    const result = await dispatchLoopMessage(message({ channel: 'email', category: 'approval' }), ports);
+
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
+    expect(sms.calls).toHaveLength(0);
+    expect(ledger.map((r) => r.channel)).toEqual(['email']);
+  });
+
+  it('sends no push mirror, even with a live push token', async () => {
+    const push = fakeChannel('push');
+    const { ports } = makePorts({
+      hasLivePushToken: async () => true,
+      channels: { email: fakeChannel('email'), push },
+    });
+
+    const result = await dispatchLoopMessage(message({ channel: 'email', category: 'approval' }), ports);
+
+    expect(result.legs).toEqual([{ channel: 'email', outcome: 'sent' }]);
+    expect(push.calls).toHaveLength(0);
+  });
+});

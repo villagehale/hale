@@ -140,8 +140,11 @@ export async function dispatchLoopMessage(
   ]);
 
   // Legs: the exchange channel + push when a live token exists (mirror, not fallback).
-  const legs: ChannelKind[] = [prefs.loopChannel];
-  if (hasLivePush) {
+  // A channel-PINNED message (msg.channel — the ICS invite) has exactly one leg: its
+  // content exists on that channel alone, so neither re-routing nor mirroring it is a
+  // delivery of the same thing. See LoopMessage.channel.
+  const legs: ChannelKind[] = [msg.channel ?? prefs.loopChannel];
+  if (hasLivePush && !msg.channel) {
     legs.push('push');
   }
 

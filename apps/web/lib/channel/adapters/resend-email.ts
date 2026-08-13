@@ -53,6 +53,7 @@ export function createResendEmailChannel(deps: ResendEmailChannelDeps): Channel 
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
+        attachments: rendered.attachments,
       });
 
       if (error) {
