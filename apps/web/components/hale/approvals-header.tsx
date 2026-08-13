@@ -8,6 +8,9 @@ import { Mascot } from '~/components/hale/mascot';
  * visible — Hale only ever drafts; the parent decides); with nothing pending it
  * IS the empty state (§4.8 "All caught up"), a calm mascot panel that still
  * points to the record of what Hale has handled, so it never dead-ends.
+ *
+ * The empty state does NOT tell a parent to wait here for the ask. Hale asks in
+ * the thread (D1, messaging-first); this page is where the answer is recorded.
  */
 export function ApprovalsHeader({ pendingCount }: { pendingCount: number }) {
   if (pendingCount === 0) {
@@ -16,8 +19,8 @@ export function ApprovalsHeader({ pendingCount }: { pendingCount: number }) {
         <Mascot pose="swim" size={104} className="mx-auto" />
         <p className="font-display text-[1.5rem] lg:text-[1.875rem] text-ink">All caught up</p>
         <p className="meta text-ink-2 max-w-xl mx-auto">
-          Nothing waiting for your approval. When Hale drafts something, it parks it here for your
-          yes. It never acts on its own.
+          Nothing waiting for your approval. When Hale drafts something it asks you in your thread —
+          this page is the record. It never acts on its own.
         </p>
         <div className="pt-2">
           <Link href="/trail" className="link">

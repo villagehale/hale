@@ -16,7 +16,10 @@ import type { LoadLoopPrefsResult } from '~/lib/settings/loop-prefs';
  * quiet hours, child-name privacy, weekly send time — each control tied to a real
  * column (a fabricated field is a type error, rule #1). Optimistic saves through
  * the audited server action; a failed write rolls the control back with a visible
- * note, never a silent lie. SMS renders disabled until the channel launches.
+ * note, never a silent lie.
+ *
+ * Text is offered when the parent has a LIVE sms channel and held back only when
+ * they do not — it is the product's primary channel, not a coming-soon one.
  */
 
 const NOT_READY_NOTE: Record<Exclude<LoadLoopPrefsResult['status'], 'ready'>, string> = {
@@ -47,7 +50,7 @@ export function LoopPrefs({ result }: { result: LoadLoopPrefsResult }) {
   if (result.status !== 'ready') {
     return <p className="text-spruce leading-relaxed max-w-md">{NOT_READY_NOTE[result.status]}</p>;
   }
-  return <LoopForm initial={result.prefs} />;
+  return <LoopForm initial={result.prefs} smsEnrolled={result.smsEnrolled} />;
 }
 
 /** Roll a FAILED save back to its pre-optimistic value — but ONLY that field, applied
@@ -62,7 +65,10 @@ export function rollbackPref(
   return { ...current, [field]: previous[field] };
 }
 
-function LoopForm({ initial }: { initial: LoopPrefsView }) {
+function LoopForm({
+  initial,
+  smsEnrolled,
+}: { initial: LoopPrefsView; smsEnrolled: boolean }) {
   const [prefs, setPrefs] = useState<LoopPrefsView>(initial);
   const [note, setNote] = useState<string | null>(null);
 
@@ -91,10 +97,15 @@ function LoopForm({ initial }: { initial: LoopPrefsView }) {
       {/* Exchange channel */}
       <div className="flex flex-col gap-y-2">
         <span className="font-medium text-spruce">How your loop reaches you</span>
-        <p className="meta">The two-way channel for replying to adjust. Push also lands in the app.</p>
+        <p className="meta">
+          The two-way channel for replying to adjust. If you use the app, push mirrors it there
+          too.
+        </p>
         <div className="field-group mt-1" role="radiogroup" aria-label="Loop channel">
           {(['email', 'sms'] as LoopChannel[]).map((channel) => {
-            const smsLocked = channel === 'sms';
+            // Held back only for a family with no live channel to send to — never as a
+            // blanket "coming soon" (texting is how most families reach Hale).
+            const smsLocked = channel === 'sms' && !smsEnrolled;
             const on = prefs.loopChannel === channel;
             return (
               <label
@@ -110,7 +121,7 @@ function LoopForm({ initial }: { initial: LoopPrefsView }) {
                 />
                 <span className="text-spruce">{channel === 'email' ? 'Email' : 'Text'}</span>
                 {smsLocked ? (
-                  <span className="meta">Text arrives when SMS launches</span>
+                  <span className="meta">Text Hale first to use this</span>
                 ) : null}
               </label>
             );

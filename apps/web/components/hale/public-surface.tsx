@@ -120,7 +120,7 @@ export function PublicActivityCard({
  */
 export function JoinCta({
   heading = 'see what families near you are doing.',
-  sub = 'Hale finds the genuinely good local things to do, matched to your child, across every stage of childhood — and the families near you say which are worth it. Your family’s data stays in Canada.',
+  sub = 'Hale is a quiet chief of staff for your family — it watches the registration windows and the things that fill in minutes, and texts you when one matters. The families near you say which are worth it. Your family’s data stays in Canada.',
 }: {
   heading?: string;
   sub?: string;

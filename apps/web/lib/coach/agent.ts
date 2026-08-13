@@ -22,7 +22,7 @@ import {
   appendMessage,
   createConversation,
   loadTranscriptWithAttachments,
-  resolveConversationForFamily,
+  resolveConversationForParent,
   resolveOrCreateNoteConversation,
 } from './conversation';
 import { buildGuardDeps } from './guards';
@@ -122,9 +122,11 @@ export async function askHale(
 ): Promise<AskHaleResult> {
   // A note reply resolves-or-creates that note's ONE persistent thread (idempotent,
   // family-scoped, keyed on noteKey) so a re-open continues the same conversation.
-  // Otherwise continue the caller's thread only if it exists AND belongs to their
-  // family (rule #1); an unknown or cross-family id starts a fresh thread rather
-  // than leaking into another family's conversation.
+  // Otherwise continue the caller's thread only if it exists AND is theirs to open
+  // (rule #1); an unknown id, another family's, or a CO-PARENT's text thread starts a
+  // fresh thread rather than leaking. The parent scope matters on this write path as
+  // much as on the reads: continuing someone else's text thread would both replay
+  // their transcript into the model context and append this parent's turn to it.
   let conversationId: string;
   if (input.noteKey) {
     conversationId = await resolveOrCreateNoteConversation(
@@ -134,7 +136,12 @@ export async function askHale(
     );
   } else {
     const existing = input.conversationId
-      ? await resolveConversationForFamily(input.conversationId, input.familyId, database)
+      ? await resolveConversationForParent(
+          input.conversationId,
+          input.familyId,
+          input.actor,
+          database,
+        )
       : null;
     conversationId = existing ?? (await createConversation(input.familyId, database));
   }

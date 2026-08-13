@@ -52,7 +52,7 @@ describe('AppPromoSheet markup', () => {
     const html = renderToStaticMarkup(
       createElement(AppPromoSheet, { url: URL, onContinue: () => {} }),
     );
-    expect(html).toContain('Hale is better in the app');
+    expect(html).toContain('Hale also has an app');
     expect(html).toContain(`href="${URL}"`);
     expect(html).toContain('Open app');
     expect(html).toContain('Continue in browser');

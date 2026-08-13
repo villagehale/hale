@@ -78,10 +78,11 @@ export function AppPromoSheet({ url, onContinue }: { url: string; onContinue: ()
       >
         <LogoMark size={56} className="apppromo-logo" />
         <p id="apppromo-title" className="apppromo-title">
-          Hale is better in the app
+          Hale also has an app
         </p>
         <p className="apppromo-sub">
-          Faster logging, notifications for approvals, and your village on the go.
+          Hale reaches you by text either way. The app carries your approvals and the record of
+          what it has handled.
         </p>
         <a href={url} className="apppromo-primary">
           Open app

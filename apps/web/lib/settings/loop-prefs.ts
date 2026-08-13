@@ -1,6 +1,7 @@
 import type { Database } from '@hale/db';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
+import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { db as defaultDb } from '~/lib/db';
 import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
 import {
@@ -28,7 +29,17 @@ import {
 export type { LoopPrefUpdate };
 
 export type LoadLoopPrefsResult =
-  | { status: 'ready'; prefs: LoopPrefsView }
+  | {
+      status: 'ready';
+      prefs: LoopPrefsView;
+      /**
+       * Whether this parent has a LIVE sms channel — the active `parent_channels`
+       * row, read the same way the outbound gate reads it, never a consent-ledger
+       * query (an append-only withdrawal leaves stale `granted=true` rows behind).
+       * The Text option is offered only when picking it would actually work.
+       */
+      smsEnrolled: boolean;
+    }
   | { status: 'preview' }
   | { status: 'unauthenticated' }
   | { status: 'not_found' };
@@ -45,8 +56,11 @@ export async function loadLoopNotificationPrefs(): Promise<LoadLoopPrefsResult> 
   if (ctx.status !== 'ready') {
     return { status: ctx.status };
   }
-  const prefs = await loadLoopPrefsView(ctx.userId, ctx.database);
-  return { status: 'ready', prefs };
+  const [prefs, smsState] = await Promise.all([
+    loadLoopPrefsView(ctx.userId, ctx.database),
+    loadSmsChannelState(ctx.database, ctx.userId),
+  ]);
+  return { status: 'ready', prefs, smsEnrolled: smsState.enrolled };
 }
 
 export async function setLoopPref(update: LoopPrefUpdate): Promise<SetLoopPrefResult> {

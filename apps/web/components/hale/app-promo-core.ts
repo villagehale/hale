@@ -1,5 +1,5 @@
 /**
- * The <768px "Hale is better in the app" hand-off (design handoff §5), split from
+ * The <768px "Hale also has an app" hand-off (design handoff §5), split from
  * the React component so the phase decision is unit-testable directly (the repo's
  * render idiom is static markup with no jsdom, so the matchMedia/sessionStorage
  * behaviour is proven here as pure logic, not through a live DOM). The component

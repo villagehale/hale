@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { type Database, schema } from '@hale/db';
 import { eraseConversation, softDeleteMessage } from './conversation-delete';
+import { channelSmsNoteKey } from './note-key';
 
 /**
  * Deleting Ask Hale history is family-scoped + audited (rules #1, #6) and SOFT:
@@ -27,7 +28,7 @@ const NOW = new Date('2026-07-03T12:00:00.000Z');
  * storage paths whose bytes were removed.
  */
 function fakeDb(
-  scopeRows: Array<{ id: string }>,
+  scopeRows: Array<{ id: string; noteKey?: string | null }>,
   stamped: Array<{ id: string }>,
   attachmentRows: Array<{ id: string; storagePath: string }> = [],
 ) {
@@ -228,5 +229,76 @@ describe('eraseConversation', () => {
 
     expect(erased).toBe(0);
     expect(spies.values).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The per-parent text thread is private WITHIN a household (note-key.ts): two
+ * co-parents hold two phones, and one parent's texts are not the other's to read —
+ * or to destroy. Family scope alone cannot enforce that, because co-parents share a
+ * family. These hold the DESTRUCTIVE paths to the same doctrine as the reads.
+ */
+describe('cross-parent isolation on delete (rule #1)', () => {
+  const PARENT_A = '77777777-7777-4777-8777-777777777777';
+  const A_SMS_KEY = channelSmsNoteKey(PARENT_A);
+
+  it("refuses to erase the OTHER parent's text thread — returns null, no write", async () => {
+    // ACTOR_USER_ID is parent B; the thread is parent A's. Same family, so the
+    // family guard passes — only the per-parent check can stop this.
+    const { db, spies } = fakeDb([{ id: CONVERSATION_ID, noteKey: A_SMS_KEY }], [{ id: MESSAGE_ID }]);
+
+    const erased = await eraseConversation(db, {
+      conversationId: CONVERSATION_ID,
+      familyId: FAMILY_ID,
+      actorUserId: ACTOR_USER_ID,
+      now: NOW,
+    });
+
+    expect(erased).toBeNull();
+    expect(spies.set).not.toHaveBeenCalled();
+    expect(spies.values).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete a single turn of the OTHER parent's text thread", async () => {
+    const { db, spies } = fakeDb([{ id: MESSAGE_ID, noteKey: A_SMS_KEY }], [{ id: MESSAGE_ID }]);
+
+    const ok = await softDeleteMessage(db, {
+      messageId: MESSAGE_ID,
+      familyId: FAMILY_ID,
+      actorUserId: ACTOR_USER_ID,
+      now: NOW,
+    });
+
+    expect(ok).toBe(false);
+    expect(spies.set).not.toHaveBeenCalled();
+    expect(spies.values).not.toHaveBeenCalled();
+  });
+
+  it('still lets a parent erase their OWN text thread', async () => {
+    const ownKey = channelSmsNoteKey(ACTOR_USER_ID);
+    const { db, spies } = fakeDb([{ id: CONVERSATION_ID, noteKey: ownKey }], [{ id: MESSAGE_ID }]);
+
+    const erased = await eraseConversation(db, {
+      conversationId: CONVERSATION_ID,
+      familyId: FAMILY_ID,
+      actorUserId: ACTOR_USER_ID,
+      now: NOW,
+    });
+
+    expect(erased).toBe(1);
+    expect(spies.set).toHaveBeenCalledWith({ deletedAt: NOW });
+  });
+
+  it('still lets either parent erase a shared, note-anchored thread', async () => {
+    const { db } = fakeDb([{ id: CONVERSATION_ID, noteKey: 'action-abc' }], [{ id: MESSAGE_ID }]);
+
+    const erased = await eraseConversation(db, {
+      conversationId: CONVERSATION_ID,
+      familyId: FAMILY_ID,
+      actorUserId: ACTOR_USER_ID,
+      now: NOW,
+    });
+
+    expect(erased).toBe(1);
   });
 });

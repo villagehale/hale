@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
 import { applyAttachmentMarkers } from './attachment-blocks.js';
+import { isConversationVisibleToParent } from './note-key.js';
 
 /**
  * Conversation persistence for multi-turn Ask Hale. A conversation is a
@@ -114,18 +115,26 @@ export async function resolveOrCreateNoteConversation(
 }
 
 /**
- * Resolves a conversation id to one OWNED by `familyId`. Returns the id when it
- * exists and belongs to the family; null otherwise (unknown id, or — the rule #1
- * case — a thread belonging to a different family). The caller starts a new
- * thread rather than leaking across families.
+ * Resolves a conversation id to one this PARENT may open. Returns the id when it
+ * exists, belongs to `familyId`, AND is not another parent's text thread; null
+ * otherwise. The caller starts a new thread rather than leaking into someone else's.
+ *
+ * Two scopes, because family alone is not enough (rule #1). Family keeps other
+ * households out. The per-parent check keeps a co-parent out of the one namespace
+ * that is private WITHIN a household — the SMS thread, which note-key.ts keys per
+ * parent precisely so two phones never merge into one transcript. Everything else
+ * (general Ask, note-anchored replies) is family-shared and resolves for either
+ * parent. This is the single reader for "may I open this thread?", so a caller
+ * cannot check one scope and forget the other.
  */
-export async function resolveConversationForFamily(
+export async function resolveConversationForParent(
   conversationId: string,
   familyId: string,
+  viewerUserId: string | null,
   database: Database,
 ): Promise<string | null> {
   const rows = await database
-    .select({ id: schema.conversations.id })
+    .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })
     .from(schema.conversations)
     .where(
       and(
@@ -135,7 +144,9 @@ export async function resolveConversationForFamily(
     )
     .limit(1);
 
-  return rows[0]?.id ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return isConversationVisibleToParent(row.noteKey, viewerUserId) ? row.id : null;
 }
 
 /**

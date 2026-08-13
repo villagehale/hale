@@ -1,21 +1,28 @@
 import { type Database, schema } from '@hale/db';
-import { asc, eq } from 'drizzle-orm';
+import { type SQL, and, asc, eq, isNull, notLike, or } from 'drizzle-orm';
 import { db as defaultDb } from '~/lib/db';
-import { currentFamilyId } from '~/lib/family';
+import { currentFamilyId, currentUserId } from '~/lib/family';
 import {
   type TimelineMessage,
   loadTimeline,
-  resolveConversationForFamily,
+  resolveConversationForParent,
 } from './conversation';
-import { CHANNEL_SMS_THREAD_TITLE, isChannelSmsNoteKey } from './note-key';
+import {
+  CHANNEL_SMS_NOTE_KEY_LIKE,
+  CHANNEL_SMS_THREAD_TITLE,
+  channelSmsNoteKey,
+  isChannelSmsNoteKey,
+} from './note-key';
 
 /**
  * Ask-session history reads: the family's conversation list (the Ask rail) and one
- * conversation's transcript (reopen). Read-only and family-scoped (rule #1) — every
- * read is keyed on the caller's OWN family, so a thread is never listed or opened for
- * another family. Web RSC imports listConversations / getConversationTranscript
- * directly (it already holds the resolved family + db); the mobile routes call the
- * loadConversations / loadConversationTranscript wrappers, which resolve the family
+ * conversation's transcript (reopen). Read-only and scoped on TWO axes (rule #1) —
+ * the caller's own family, so a thread is never listed or opened for another family,
+ * AND the asking parent, so one co-parent never sees the other's text thread (which
+ * note-key.ts keys per parent for exactly that reason). Web RSC imports
+ * listConversations / getConversationTranscript directly (it already holds the
+ * resolved family + db); the mobile routes call the loadConversations /
+ * loadConversationTranscript wrappers, which resolve both the family and the parent
  * from the session first, mirroring loadMessages.
  *
  * Continuation is unchanged: /api/coach already reopens a conversation by
@@ -33,6 +40,22 @@ export interface ConversationSummary {
   lastMessageAt: string;
   /** Count of live (non-soft-deleted) turns. */
   messageCount: number;
+}
+
+/**
+ * The SQL half of the per-parent scope: keep the threads that are genuinely
+ * family-shared (general Ask, note-anchored) plus the viewer's OWN text thread, and
+ * drop every other parent's. Applied in the QUERY, not after it, so a co-parent's raw
+ * texts are never fetched into this process at all (rule #1). Null viewer → neither
+ * arm matches a text thread, so all of them drop: fails closed.
+ */
+function visibleToParent(viewerUserId: string | null): SQL | undefined {
+  const shared = or(
+    isNull(schema.conversations.noteKey),
+    notLike(schema.conversations.noteKey, CHANNEL_SMS_NOTE_KEY_LIKE),
+  );
+  if (!viewerUserId) return shared;
+  return or(shared, eq(schema.conversations.noteKey, channelSmsNoteKey(viewerUserId)));
 }
 
 /** Upper bound on a derived list title, ellipsis included. */
@@ -61,15 +84,17 @@ interface HistoryRow {
 }
 
 /**
- * Lists a family's conversations, newest-active first. `title` is the first live
- * user turn (truncated); soft-deleted turns are excluded from the count, the title,
- * and the sort stamp; a conversation with no live turn is dropped. Family-scoped
- * (rule #1): only conversations owned by `familyId` are ever read. Rows arrive in
+ * Lists the conversations THIS parent may see, newest-active first. `title` is the
+ * first live user turn (truncated); soft-deleted turns are excluded from the count,
+ * the title, and the sort stamp; a conversation with no live turn is dropped. Scoped
+ * (rule #1) to `familyId` AND to `viewerUserId` — another parent's text thread is
+ * excluded by the query itself, so its turns are never even fetched. Rows arrive in
  * createdAt order, so each conversation's first/last live turn falls out of a single
  * pass.
  */
 export async function listConversations(
   familyId: string,
+  viewerUserId: string | null,
   database: Database,
 ): Promise<ConversationSummary[]> {
   const rows: HistoryRow[] = await database
@@ -83,7 +108,7 @@ export async function listConversations(
     })
     .from(schema.messages)
     .innerJoin(schema.conversations, eq(schema.messages.conversationId, schema.conversations.id))
-    .where(eq(schema.conversations.familyId, familyId))
+    .where(and(eq(schema.conversations.familyId, familyId), visibleToParent(viewerUserId)))
     .orderBy(asc(schema.messages.createdAt));
 
   const byConversation = new Map<
@@ -122,17 +147,23 @@ export async function listConversations(
 }
 
 /**
- * Loads one conversation's ordered transcript, or null when it is unknown or owned
- * by another family. Ownership is verified against `familyId` BEFORE any message is
- * read (rule #1: a foreign thread never leaks — the caller gets a 404). Soft-deleted
- * turns are excluded by loadTimeline.
+ * Loads one conversation's ordered transcript, or null when it is unknown, owned by
+ * another family, or the other parent's text thread. Both scopes are verified BEFORE
+ * any message is read (rule #1: a thread that is not the caller's never leaks — they
+ * get a 404). Soft-deleted turns are excluded by loadTimeline.
  */
 export async function getConversationTranscript(
   familyId: string,
+  viewerUserId: string | null,
   conversationId: string,
   database: Database,
 ): Promise<TimelineMessage[] | null> {
-  const owned = await resolveConversationForFamily(conversationId, familyId, database);
+  const owned = await resolveConversationForParent(
+    conversationId,
+    familyId,
+    viewerUserId,
+    database,
+  );
   if (!owned) {
     return null;
   }
@@ -147,8 +178,9 @@ export async function getConversationTranscript(
 export function loadConversations(): Promise<ConversationSummary[]> {
   if (!process.env.DATABASE_URL) return Promise.resolve([]);
   const database = defaultDb();
-  return currentFamilyId(database).then((familyId) =>
-    familyId ? listConversations(familyId, database) : [],
+  return Promise.all([currentFamilyId(database), currentUserId(database)]).then(
+    ([familyId, viewerUserId]) =>
+      familyId ? listConversations(familyId, viewerUserId, database) : [],
   );
 }
 
@@ -162,7 +194,10 @@ export function loadConversationTranscript(
 ): Promise<TimelineMessage[] | null> {
   if (!process.env.DATABASE_URL) return Promise.resolve(null);
   const database = defaultDb();
-  return currentFamilyId(database).then((familyId) =>
-    familyId ? getConversationTranscript(familyId, conversationId, database) : null,
+  return Promise.all([currentFamilyId(database), currentUserId(database)]).then(
+    ([familyId, viewerUserId]) =>
+      familyId
+        ? getConversationTranscript(familyId, viewerUserId, conversationId, database)
+        : null,
   );
 }

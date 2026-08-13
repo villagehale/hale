@@ -6,7 +6,10 @@ import { CHANNEL_SMS_THREAD_TITLE, channelSmsNoteKey } from './note-key';
 // history.ts pulls in ~/lib/family (→ ~/auth → next-auth) for its session-scoped
 // wrappers; stub it so importing the module under test doesn't drag in the auth
 // chain. These tests drive the family-explicit reads directly with an injected db.
-vi.mock('~/lib/family', () => ({ currentFamilyId: async () => null }));
+vi.mock('~/lib/family', () => ({
+  currentFamilyId: async () => null,
+  currentUserId: async () => null,
+}));
 
 /**
  * Ask-session history reads (the listing + reopen backend). Both reads are
@@ -19,6 +22,9 @@ vi.mock('~/lib/family', () => ({ currentFamilyId: async () => null }));
 
 const FAMILY_A = '11111111-1111-4111-8111-111111111111';
 const FAMILY_B = '99999999-9999-4999-8999-999999999999';
+/** Two parents in ONE family (family A) — co-parents, each with their own phone. */
+const PARENT_A = '77777777-7777-4777-8777-777777777777';
+const PARENT_B = '88888888-8888-4888-8888-888888888888';
 const CONV1 = '22222222-2222-4222-8222-222222222222';
 const CONV2 = '33333333-3333-4333-8333-333333333333';
 const CONV3 = '44444444-4444-4444-8444-444444444444';
@@ -32,12 +38,17 @@ interface MessageRow {
   content: string;
   createdAt: Date;
   deletedAt: Date | null;
+  /** Only the two-parent scoping fixtures set this; the family-scope clause is
+   * evaluated against it, so a row without one is treated as the asking family's. */
+  familyId?: string;
 }
 
 /**
  * Fake db for listConversations: `select().from(messages).innerJoin(conversations)
  * .where(clause).orderBy()`. Captures the where clause so the family scope can be
- * asserted at the value level (rule #1 isolation).
+ * asserted at the value level, and HONORS it (via clauseMatches) so the per-parent
+ * SMS filter is exercised for real — dropping that filter lets another parent's text
+ * thread survive the evaluation and leak into the list (rule #1).
  */
 function listFakeDb(rows: MessageRow[], capture?: { where?: unknown }): Database {
   const db = {
@@ -48,7 +59,12 @@ function listFakeDb(rows: MessageRow[], capture?: { where?: unknown }): Database
           innerJoin: () => ({
             where: (clause: unknown) => {
               if (capture) capture.where = clause;
-              return { orderBy: async () => rows };
+              return {
+                orderBy: async () =>
+                  rows.filter((r) =>
+                    clauseMatches(clause, { ...r, familyId: r.familyId ?? FAMILY_A }),
+                  ),
+              };
             },
           }),
         };
@@ -87,21 +103,25 @@ interface TimelineRow {
   deletedAt: Date | null;
 }
 
-/** Drizzle snake_case column name → the field it maps to on a TimelineRow. */
-const COLUMN_FIELD: Record<string, keyof TimelineRow> = {
+/** Drizzle snake_case column name → the field it maps to on a fixture row. */
+const COLUMN_FIELD: Record<string, string> = {
   conversation_id: 'conversationId',
   deleted_at: 'deletedAt',
+  family_id: 'familyId',
+  note_key: 'noteKey',
 };
 
 /**
- * Minimal evaluator for the where clause loadTimeline emits —
- * `and(eq(conversation_id, …), isNull(deleted_at))`. Lets the transcript fake HONOR
- * the clause instead of ignoring it: if the deleted_at filter is dropped in prod code,
- * a soft-deleted row survives this evaluation and leaks into the transcript, failing
- * the exclusion test. Handles the three constructs that clause uses (=, is null, and),
- * and throws on anything unrecognized so a silent no-op can't creep back in.
+ * Minimal evaluator for the where clauses these reads emit — loadTimeline's
+ * `and(eq(conversation_id, …), isNull(deleted_at))` and the list's
+ * `and(eq(family_id, …), or(isNull(note_key), notLike(note_key, …), eq(note_key, …)))`.
+ * Lets a fake HONOR the clause instead of ignoring it: if a filter is dropped in prod
+ * code, the row it should have excluded survives this evaluation and leaks into the
+ * result, failing the test. Handles only the constructs those clauses use (=, is null,
+ * not like, and, or), and throws on anything unrecognized so a silent no-op can't
+ * creep back in.
  */
-function clauseMatches(node: unknown, row: TimelineRow): boolean {
+function clauseMatches(node: unknown, row: Record<string, unknown>): boolean {
   const chunks = (node as { queryChunks?: unknown[] })?.queryChunks;
   if (!Array.isArray(chunks)) throw new Error('clauseMatches: not a SQL clause');
 
@@ -119,6 +139,9 @@ function clauseMatches(node: unknown, row: TimelineRow): boolean {
       subClauses.push(chunk);
     } else if (ctor === 'Param') {
       param = chunk as { value: unknown };
+    } else if (typeof chunk === 'string') {
+      // notLike binds its pattern as a raw string chunk rather than a Param.
+      param = { value: chunk };
     } else if (typeof (chunk as { name?: unknown }).name === 'string' && 'table' in (chunk as object)) {
       column = (chunk as { name: string }).name;
     }
@@ -127,8 +150,14 @@ function clauseMatches(node: unknown, row: TimelineRow): boolean {
   if (column) {
     const field = COLUMN_FIELD[column];
     if (!field) throw new Error(`clauseMatches: unmapped column ${column}`);
-    if (ops.includes('is null')) return row[field] == null;
-    if (ops.includes('=')) return row[field] === param?.value;
+    const value = row[field];
+    if (ops.includes('is null')) return value == null;
+    if (ops.includes('not like')) {
+      if (value == null) return false; // SQL: NOT LIKE on NULL is NULL, not true.
+      const prefix = String(param?.value).replace(/%$/, '');
+      return !String(value).startsWith(prefix);
+    }
+    if (ops.includes('=')) return value === param?.value;
     throw new Error(`clauseMatches: unsupported comparison on ${column}`);
   }
 
@@ -146,7 +175,7 @@ function clauseMatches(node: unknown, row: TimelineRow): boolean {
  * reach the transcript.
  */
 function transcriptFakeDb(
-  ownershipRows: Array<{ id: string }>,
+  ownershipRows: Array<{ id: string; noteKey: string | null }>,
   messageRows: TimelineRow[],
   probe?: { readMessages?: boolean },
 ): Database {
@@ -161,7 +190,7 @@ function transcriptFakeDb(
             where: (clause: unknown) => ({
               orderBy: async () => {
                 if (probe) probe.readMessages = true;
-                return messageRows.filter((r) => clauseMatches(clause, r));
+                return messageRows.filter((r) => clauseMatches(clause, { ...r }));
               },
             }),
           };
@@ -181,7 +210,7 @@ describe('cross-family isolation (rule #1)', () => {
     const probe: { readMessages?: boolean } = {};
     const db = transcriptFakeDb([], [], probe);
 
-    const transcript = await getConversationTranscript(FAMILY_A, CONV_B, db);
+    const transcript = await getConversationTranscript(FAMILY_A, PARENT_A, CONV_B, db);
 
     expect(transcript).toBeNull();
     expect(probe.readMessages).toBeUndefined();
@@ -191,11 +220,104 @@ describe('cross-family isolation (rule #1)', () => {
     const capture: { where?: unknown } = {};
     const db = listFakeDb([], capture);
 
-    await listConversations(FAMILY_A, db);
+    await listConversations(FAMILY_A, PARENT_A, db);
 
     const params = paramValues(capture.where);
     expect(params).toContain(FAMILY_A);
     expect(params).not.toContain(FAMILY_B);
+  });
+});
+
+/**
+ * Cross-PARENT isolation inside ONE family (rule #1). The text thread is keyed per
+ * parent by design (see note-key.ts): two co-parents hold two phones, and merging
+ * their texts would show each of them the other's messages — a disclosure neither
+ * consented to. Family scope alone does not enforce that, because co-parents share a
+ * family; these are the tests that hold the reads to the key's own doctrine.
+ */
+describe('cross-parent isolation inside one family (rule #1)', () => {
+  const t = (hhmm: string) => new Date(`2026-06-17T${hhmm}:00Z`);
+  const A_KEY = channelSmsNoteKey(PARENT_A);
+  const B_KEY = channelSmsNoteKey(PARENT_B);
+
+  /** One family, three threads: each parent's own text thread + a shared Ask thread. */
+  const twoParentRows = (): MessageRow[] => [
+    { conversationId: CONV1, noteKey: A_KEY, role: 'user', content: 'I think I need to see someone about my drinking', createdAt: t('08:00'), deletedAt: null },
+    { conversationId: CONV2, noteKey: B_KEY, role: 'user', content: 'can you find a dentist for Mia', createdAt: t('09:00'), deletedAt: null },
+    { conversationId: CONV3, noteKey: null, role: 'user', content: 'When do we start solids?', createdAt: t('10:00'), deletedAt: null },
+  ];
+
+  it("does not list the OTHER parent's text thread", async () => {
+    const forB = await listConversations(FAMILY_A, PARENT_B, listFakeDb(twoParentRows()));
+
+    // B sees their own text thread and the shared Ask thread — never A's.
+    expect(forB.map((s) => s.id).sort()).toEqual([CONV2, CONV3].sort());
+    expect(forB.map((s) => s.noteKey)).not.toContain(A_KEY);
+  });
+
+  it("never fetches the other parent's turns at all — the exclusion is in the query", async () => {
+    // The fake honors the where clause, so a row surviving it means prod SQL would
+    // have returned that row: A's raw text would reach the web process, not just the
+    // rendered list. Assert on the clause itself so the filter can't regress to JS.
+    const capture: { where?: unknown } = {};
+    await listConversations(FAMILY_A, PARENT_B, listFakeDb(twoParentRows(), capture));
+
+    const params = paramValues(capture.where);
+    expect(params).toContain(B_KEY);
+    expect(params).not.toContain(A_KEY);
+  });
+
+  it('still lists the parent their OWN text thread', async () => {
+    const forA = await listConversations(FAMILY_A, PARENT_A, listFakeDb(twoParentRows()));
+
+    expect(forA.map((s) => s.id).sort()).toEqual([CONV1, CONV3].sort());
+    expect(forA.find((s) => s.id === CONV1)?.title).toBe(CHANNEL_SMS_THREAD_TITLE);
+  });
+
+  it('hides every text thread from an unknown viewer — fails closed, not open', async () => {
+    // No mirrored users row / dev preview: null viewer. The shared Ask thread stays,
+    // both text threads go.
+    const forNobody = await listConversations(FAMILY_A, null, listFakeDb(twoParentRows()));
+
+    expect(forNobody.map((s) => s.id)).toEqual([CONV3]);
+  });
+
+  it("returns null for the other parent's text thread — and never reads its messages", async () => {
+    // B opens A's thread by id (it was listed for them before this fix, so the id is
+    // guessable/bookmarkable). Ownership resolution must reject it BEFORE loadTimeline.
+    const probe: { readMessages?: boolean } = {};
+    const db = transcriptFakeDb([{ id: CONV1, noteKey: A_KEY }], [], probe);
+
+    const transcript = await getConversationTranscript(FAMILY_A, PARENT_B, CONV1, db);
+
+    expect(transcript).toBeNull();
+    expect(probe.readMessages).toBeUndefined();
+  });
+
+  it('opens the parent their OWN text thread', async () => {
+    const at = new Date('2026-06-17T08:00:00Z');
+    const db = transcriptFakeDb(
+      [{ id: CONV1, noteKey: A_KEY }],
+      [{ id: 'm0', conversationId: CONV1, role: 'user', content: 'a private thing A texted', childId: null, topic: null, createdAt: at, deletedAt: null }],
+    );
+
+    const transcript = await getConversationTranscript(FAMILY_A, PARENT_A, CONV1, db);
+
+    expect(transcript?.map((m) => m.id)).toEqual(['m0']);
+  });
+
+  it('still opens a note-anchored thread for EITHER parent — only the SMS namespace narrows', async () => {
+    // A reply thread on a Hale note is genuinely family-shared; this fix must not
+    // quietly turn every thread into a private one.
+    const at = new Date('2026-06-17T11:00:00Z');
+    const db = transcriptFakeDb(
+      [{ id: CONV2, noteKey: 'action-abc' }],
+      [{ id: 'm9', conversationId: CONV2, role: 'user', content: 'what does this brief mean?', childId: null, topic: null, createdAt: at, deletedAt: null }],
+    );
+
+    const transcript = await getConversationTranscript(FAMILY_A, PARENT_B, CONV2, db);
+
+    expect(transcript?.map((m) => m.id)).toEqual(['m9']);
   });
 });
 
@@ -218,14 +340,14 @@ describe('listConversations', () => {
   }
 
   it('orders by last live message time (desc) and excludes empty conversations', async () => {
-    const summaries = await listConversations(FAMILY_A, listFakeDb(rows()));
+    const summaries = await listConversations(FAMILY_A, PARENT_A, listFakeDb(rows()));
 
     // conv2 (last live 11:06) before conv1 (last live 10:01); conv3 (all deleted) gone.
     expect(summaries.map((s) => s.id)).toEqual([CONV2, CONV1]);
   });
 
   it('titles a conversation from its first LIVE user turn — never the assistant reply, never a soft-deleted turn', async () => {
-    const summaries = await listConversations(FAMILY_A, listFakeDb(rows()));
+    const summaries = await listConversations(FAMILY_A, PARENT_A, listFakeDb(rows()));
     const byId = new Map(summaries.map((s) => [s.id, s]));
 
     // conv1: the short user question verbatim (not the assistant's "Around six months…").
@@ -247,20 +369,20 @@ describe('listConversations', () => {
       { conversationId: CONV4, noteKey: null, role: 'user', content: 'And what about naps?', createdAt: at('08:03'), deletedAt: null },
     ];
 
-    const summaries = await listConversations(FAMILY_A, listFakeDb(assistantFirstLive));
+    const summaries = await listConversations(FAMILY_A, PARENT_A, listFakeDb(assistantFirstLive));
 
     expect(summaries.find((s) => s.id === CONV4)?.title).toBe('And what about naps?');
   });
 
   it('truncates a long title to a bounded length with a trailing ellipsis', async () => {
-    const conv2 = (await listConversations(FAMILY_A, listFakeDb(rows()))).find((s) => s.id === CONV2);
+    const conv2 = (await listConversations(FAMILY_A, PARENT_A, listFakeDb(rows()))).find((s) => s.id === CONV2);
 
     expect(conv2?.title.length).toBeLessThanOrEqual(48);
     expect(conv2?.title.endsWith('…')).toBe(true);
   });
 
   it('counts only live turns and stamps lastMessageAt from the last live turn', async () => {
-    const summaries = await listConversations(FAMILY_A, listFakeDb(rows()));
+    const summaries = await listConversations(FAMILY_A, PARENT_A, listFakeDb(rows()));
     const byId = new Map(summaries.map((s) => [s.id, s]));
 
     // conv2: 3 turns, one soft-deleted → 2 counted; last live turn is 11:06.
@@ -272,7 +394,7 @@ describe('listConversations', () => {
   });
 
   it('returns an empty list when the family has no conversations', async () => {
-    expect(await listConversations(FAMILY_A, listFakeDb([]))).toEqual([]);
+    expect(await listConversations(FAMILY_A, PARENT_A, listFakeDb([]))).toEqual([]);
   });
 });
 
@@ -284,7 +406,7 @@ describe('listConversations', () => {
  */
 describe('listConversations — the SMS thread', () => {
   const t = (hhmm: string) => new Date(`2026-06-17T${hhmm}:00Z`);
-  const SMS_KEY = channelSmsNoteKey('77777777-7777-4777-8777-777777777777');
+  const SMS_KEY = channelSmsNoteKey(PARENT_A);
 
   const smsRows = (): MessageRow[] => [
     { conversationId: CONV4, noteKey: SMS_KEY, role: 'user', content: 'hi', createdAt: t('08:00'), deletedAt: null },
@@ -293,7 +415,7 @@ describe('listConversations — the SMS thread', () => {
   ];
 
   it('titles the text thread by its namespace, not by whatever was texted first', async () => {
-    const summaries = await listConversations(FAMILY_A, listFakeDb(smsRows()));
+    const summaries = await listConversations(FAMILY_A, PARENT_A, listFakeDb(smsRows()));
     const byId = new Map(summaries.map((s) => [s.id, s]));
 
     expect(byId.get(CONV4)?.title).toBe(CHANNEL_SMS_THREAD_TITLE);
@@ -303,7 +425,7 @@ describe('listConversations — the SMS thread', () => {
   });
 
   it('lists the text thread alongside app threads — the receipt surface is the same list', async () => {
-    const summaries = await listConversations(FAMILY_A, listFakeDb(smsRows()));
+    const summaries = await listConversations(FAMILY_A, PARENT_A, listFakeDb(smsRows()));
     expect(summaries.map((s) => s.id)).toEqual([CONV1, CONV4]);
     expect(summaries.find((s) => s.id === CONV4)?.messageCount).toBe(2);
   });
@@ -314,14 +436,14 @@ describe('getConversationTranscript', () => {
     const t0 = new Date('2026-06-17T10:00:00Z');
     const t1 = new Date('2026-06-17T10:01:00Z');
     const db = transcriptFakeDb(
-      [{ id: CONV1 }],
+      [{ id: CONV1, noteKey: null }],
       [
         { id: 'm0', conversationId: CONV1, role: 'user', content: 'when do I start solids?', childId: 'child-1', topic: 'feeding', createdAt: t0, deletedAt: null },
         { id: 'm1', conversationId: CONV1, role: 'assistant', content: 'around six months.', childId: 'child-1', topic: 'feeding', createdAt: t1, deletedAt: null },
       ],
     );
 
-    const transcript = await getConversationTranscript(FAMILY_A, CONV1, db);
+    const transcript = await getConversationTranscript(FAMILY_A, PARENT_A, CONV1, db);
 
     expect(transcript).toEqual([
       { id: 'm0', role: 'user', content: 'when do I start solids?', childId: 'child-1', topic: 'feeding', createdAt: t0.toISOString() },
@@ -338,7 +460,7 @@ describe('getConversationTranscript', () => {
     const t1 = new Date('2026-06-17T10:01:00Z');
     const t2 = new Date('2026-06-17T10:02:00Z');
     const db = transcriptFakeDb(
-      [{ id: CONV1 }],
+      [{ id: CONV1, noteKey: null }],
       [
         { id: 'm0', conversationId: CONV1, role: 'user', content: 'first live question', childId: null, topic: null, createdAt: t0, deletedAt: null },
         { id: 'm1', conversationId: CONV1, role: 'assistant', content: 'reply the parent deleted', childId: null, topic: null, createdAt: t1, deletedAt: new Date('2026-06-17T10:05:00Z') },
@@ -346,7 +468,7 @@ describe('getConversationTranscript', () => {
       ],
     );
 
-    const transcript = await getConversationTranscript(FAMILY_A, CONV1, db);
+    const transcript = await getConversationTranscript(FAMILY_A, PARENT_A, CONV1, db);
 
     expect(transcript?.map((m) => m.id)).toEqual(['m0', 'm2']);
   });
