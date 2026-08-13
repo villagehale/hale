@@ -8,6 +8,7 @@ import { findRevokedChannelOwner } from '~/lib/channel/intake/channel-state';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import type { InboundMessage } from '~/lib/channel/intake/transport';
+import { isParentRole } from '~/lib/channel/role-scope';
 import { twilioConfig } from './config';
 import { mediaUnsupportedReply } from './copy';
 import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './signature';
@@ -185,8 +186,6 @@ async function replyMediaUnsupported(
  * Nothing re-drives it inside the request: a retry arriving seconds later cannot tell a
  * dead attempt from one still in flight, and the reconciler can, because it uses age.
  */
-const PARENT_ROLES: readonly string[] = ['primary_parent', 'co_parent'];
-
 async function handOffToConversation(
   deps: TwilioInboundDeps,
   inbound: InboundMessage,
@@ -208,7 +207,7 @@ async function handOffToConversation(
   const member = members.find(
     (row) => row.userId === owner.userId && row.familyId === owner.familyId,
   );
-  if (!member || !PARENT_ROLES.includes(member.role)) {
+  if (!member || !isParentRole(member.role)) {
     return 'not_a_parent';
   }
 

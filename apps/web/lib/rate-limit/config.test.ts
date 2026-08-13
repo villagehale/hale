@@ -83,6 +83,10 @@ describe('RATE_LIMITS — generous enough to stay invisible', () => {
       'avatar-upload',
       'sms-otp-send',
       'sms-otp-verify',
+      // The same per-message SMS spend as sms-otp-send, reached from the signed-OUT
+      // side (claiming an account by its number), so it carries the same hour budget —
+      // signing out must not buy a fresh allowance.
+      'claim-phone-send',
       'sms-inbound',
       'email-inbound',
       'sms-agent-turn',

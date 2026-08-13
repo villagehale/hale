@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from '~/auth.config';
+import { authorizeClaimByPhone } from '~/lib/auth/claim-phone-authorize';
 import { authenticateCredential } from '~/lib/auth/credentials';
 import { consumeMagicLinkToken } from '~/lib/auth/magic-link';
 import { authRateLimited } from '~/lib/auth/rate-limit';
@@ -78,6 +79,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
         return { id: result.identity.id, email: result.identity.email };
       },
+    }),
+    Credentials({
+      // The phone door (F14): a family that arrived by TEXT proving it holds the number
+      // its account is already keyed to. Unlike the two providers above, this one does
+      // NOT mint or find-or-create an identity — the account exists, and authorize
+      // returns the external_auth_id it already has, so signing in by phone can never
+      // fork a second account off the same family.
+      id: 'claim-phone',
+      credentials: {
+        phone: { label: 'Phone', type: 'tel' },
+        code: { label: 'Code', type: 'text' },
+      },
+      // The whole check (flag, per-IP throttle, OTP verify, both gates) lives in the
+      // wrapper so this chokepoint is testable without standing up NextAuth.
+      authorize: (raw) => authorizeClaimByPhone(raw),
     }),
   ],
 });
