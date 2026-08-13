@@ -87,10 +87,22 @@ export function deriveDateOfBirth(
  * is referred to the way the parent referred to them. */
 function describeChild(child: ExtractedChild): string {
   const years = child.ageMonths === null ? null : Math.floor(child.ageMonths / 12);
+  // Under a year the years floor is 0, and "Maya (0)" reads back an age nobody said —
+  // on a line that is also handed to the composer as a grounded fact. A parent who
+  // narrowed to months gets their own unit back, the same way the unnamed branch below
+  // says "your baby" rather than "your 0-year-old".
+  if (child.name && child.ageMonths !== null && years === 0) {
+    return `${child.name} (${monthsLabel(child.ageMonths)})`;
+  }
   if (child.name && years !== null) return `${child.name} (${years})`;
   if (child.name) return child.name;
   if (years !== null) return years === 0 ? 'your baby' : `your ${years}-year-old`;
   return 'your little one';
+}
+
+function monthsLabel(months: number): string {
+  if (months === 0) return 'newborn';
+  return months === 1 ? '1 month' : `${months} months`;
 }
 
 /** The "Got it — {summary}." echo in the one follow-up: proof we read their message,

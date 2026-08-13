@@ -172,6 +172,31 @@ export function isLoopEmailType(emailType: EmailType): boolean {
 }
 
 /**
+ * What the confirmation page calls the stream a parent just left. One label per type,
+ * compile-enforced, because the page must name the stream that ACTUALLY stopped: a
+ * parent who opted out of reminders and is told the daily brief stopped has been given
+ * a wrong statement at a CASL decision moment — and `daily_digest` is retired, so for
+ * five of the six that statement also named a stream that no longer exists.
+ *
+ * `daily_digest` keeps its label for the links already in old inboxes. `verification`
+ * cannot reach the page at all (it is not in EMAIL_TYPES, so processUnsubscribe refuses
+ * it), but the map stays exhaustive over the enum so a new stream cannot ship unlabelled.
+ */
+const STREAM_LABELS: Record<EmailType, string> = {
+  daily_digest: 'daily brief emails',
+  welcome: 'welcome emails',
+  verification: 'verification emails',
+  weekly_plan: 'weekly plan emails',
+  reminder: 'reminder emails',
+  approval: 'calendar invite emails',
+  alert: 'alert emails',
+};
+
+export function unsubscribeStreamLabel(emailType: EmailType): string {
+  return STREAM_LABELS[emailType];
+}
+
+/**
  * Verifies an unsubscribe link's signature and, if valid, records the opt-out.
  * Fails closed: a missing/garbage param, an unknown stream, or a signature that
  * doesn't verify returns 'invalid' and writes NOTHING — a forged link can never

@@ -178,7 +178,6 @@ function bodyText(content: WelcomeContent): string {
     `2. Add your first activity to your week: ${LINKS.home}`,
     `3. Invite a parent you trust: ${LINKS.family}`,
     closingLine(content),
-    '— the team at Hale',
   ].join('\n\n');
 }
 
@@ -234,9 +233,6 @@ function renderHtml(content: WelcomeContent, unsubscribeUrl: string): string {
     )}</p>`,
     `<p style="margin:8px 0 0;color:${SLATE};font-size:16px;line-height:1.65;">${escapeHtml(
       closingLine(content),
-    )}</p>`,
-    `<p style="margin:8px 0 0;color:${SLATE};font-size:16px;line-height:1.65;">${escapeHtml(
-      '— the team at Hale',
     )}</p>`,
   ].join('');
 

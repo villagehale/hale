@@ -17,7 +17,7 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
 import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
-import type { ApprovalSpine, PendingAction } from './approval';
+import type { ApprovalSpine, PendingAction, SpineOutcome, SpineRefusal } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import {
@@ -173,17 +173,38 @@ export function defaultApprovalSpine(): ApprovalSpine {
     approve: async (database, args) => {
       const queue = await getQueue();
       const result = await approveDraftedAction(database, queue, args);
-      return result.status === 202;
+      return result.status === 202 ? { ok: true } : refused(result.error);
     },
     decline: async (database, args) => {
       const result = await declineDraftedAction(database, args);
-      return result.status === 200;
+      return result.status === 200 ? { ok: true } : refused(result.error);
     },
     undo: async (database, args) => {
       const result = await reverseExecutedCalendarAction(database, args);
-      return result.status === 200;
+      return result.status === 200 ? { ok: true } : refused(result.error);
     },
   };
+}
+
+/**
+ * The route's own error keys, translated into the states a parent can be told about.
+ *
+ * Only the four that describe a REAL state a parent can act on (or stop acting on) are
+ * named; a 404/403, or any key not listed, is a row that vanished or was never ours —
+ * genuinely a breakage, and the one case the failure template still answers honestly.
+ * Unmapped-by-default rather than unmapped-by-omission: a new error key gets the safe
+ * "something went wrong" line until someone writes it a sentence.
+ */
+const SPINE_REFUSALS: Record<string, SpineRefusal> = {
+  action_not_awaiting_approval: 'already_resolved',
+  action_not_reviewer_approved: 'not_reviewer_approved',
+  undo_window_expired: 'undo_window_expired',
+  action_not_reversible: 'not_reversible',
+  no_reversal_handle: 'not_reversible',
+};
+
+function refused(error: string): SpineOutcome {
+  return { ok: false, reason: SPINE_REFUSALS[error] ?? 'unavailable' };
 }
 
 /**

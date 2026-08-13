@@ -172,7 +172,7 @@ describe('renderNudgeDeterministically', () => {
     expect(message).toContain('Library story time');
     expect(message).toContain('Riverdale Library');
     expect(message).toContain('Saturday');
-    expect(message).toContain('the weekend forecast is wet');
+    expect(message).toContain('The weekend forecast is wet');
     expect(message).toContain('Maya');
   });
 
@@ -181,6 +181,15 @@ describe('renderNudgeDeterministically', () => {
     expect(message).toContain('Splash pad');
     expect(message).not.toContain(' at ');
     expect(message).not.toContain(' for ');
+  });
+
+  it('starts the sentence with a capital — the weather fact is a mid-sentence phrase', () => {
+    // weatherFact is authored as a clause ('the weekend forecast is wet'), and the swap
+    // render puts it FIRST. Uncapitalized it is the only Hale text that opens lowercase.
+    for (const nudge of [SWAP, BARE_SWAP]) {
+      const first = renderNudgeDeterministically(nudge).charAt(0);
+      expect(first).toBe(first.toUpperCase());
+    }
   });
 
   it('never writes the opt-out line — the shell appends it exactly once', () => {

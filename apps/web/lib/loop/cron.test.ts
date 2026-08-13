@@ -40,6 +40,17 @@ function fakeGather(): WeekPlanDeps['gather'] {
   }));
 }
 
+/** The placement mint, faked: it is the DB+reviewer seam, and what this file tests is
+ * that the compose path CALLS it with the week it just composed. */
+function fakeMint(result: Awaited<ReturnType<WeekPlanDeps['mint']>> = { minted: ['act-1'], skipped: 0 }) {
+  const calls: Parameters<WeekPlanDeps['mint']>[0][] = [];
+  const mint: WeekPlanDeps['mint'] = async (input) => {
+    calls.push(input);
+    return result;
+  };
+  return { mint, calls };
+}
+
 function fakeDb() {
   const audits: Array<Record<string, unknown>> = [];
   const db = {
@@ -71,7 +82,7 @@ describe('runWeekPlanForFamily', () => {
     const gather = fakeGather();
     const { db } = fakeDb();
 
-    const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather }, NOW);
+    const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather, mint: fakeMint().mint }, NOW);
 
     expect(result).toEqual({ familyId: FAMILY, status: 'skipped_existing', weekStart: WEEK_START });
     expect(gather).not.toHaveBeenCalled();
@@ -84,7 +95,7 @@ describe('runWeekPlanForFamily', () => {
     const gather = fakeGather();
     const { db, audits } = fakeDb();
 
-    const result = await runWeekPlanForFamily(FAMILY, db, { client: null, gather }, NOW);
+    const result = await runWeekPlanForFamily(FAMILY, db, { client: null, gather, mint: fakeMint().mint }, NOW);
 
     expect(result).toMatchObject({ status: 'composed', weekStart: WEEK_START, itemCount: 1, voiced: false });
     expect(composeWeekVoice).not.toHaveBeenCalled();
@@ -97,12 +108,55 @@ describe('runWeekPlanForFamily', () => {
     expect(audits[0]).toMatchObject({ familyId: FAMILY, actor: 'system', actionTaken: 'compose_week_plan', targetTable: 'week_plans', targetId: 'wp-1' });
   });
 
+  it('mints the composed week\'s calendar drafts, keyed on the week it just wrote', async () => {
+    // The ask the SMS sends counts these rows ("N drafted for your calendar - reply
+    // YES"), so a plan composed without them promises approvals that do not exist.
+    asMock(hasWeekPlan).mockResolvedValue(false);
+    asMock(composeWeekVoice).mockResolvedValue({ voice: null, degraded: false });
+    const { db } = fakeDb();
+    const { mint, calls } = fakeMint({ minted: ['act-1'], skipped: 0 });
+
+    const result = await runWeekPlanForFamily(
+      FAMILY,
+      db,
+      { client: {} as never, gather: fakeGather(), mint },
+      NOW,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      familyId: FAMILY,
+      weekStart: WEEK_START,
+      timeZone: 'America/Toronto',
+      actor: 'system',
+    });
+    // The items it mints from are the ones it just persisted — one shared array.
+    expect(calls[0]?.items).toHaveLength(1);
+    expect(result).toMatchObject({ status: 'composed', drafted: 1 });
+  });
+
+  it('NAMES the absence of a reviewer rather than reporting zero drafts (rule #11)', async () => {
+    asMock(hasWeekPlan).mockResolvedValue(false);
+    asMock(composeWeekVoice).mockResolvedValue({ voice: null, degraded: false });
+    const { db } = fakeDb();
+
+    const result = await runWeekPlanForFamily(
+      FAMILY,
+      db,
+      { client: {} as never, gather: fakeGather(), mint: fakeMint('no_reviewer').mint },
+      NOW,
+    );
+
+    // A truthful-looking 0 would be indistinguishable from "this week needed none".
+    expect(result).toMatchObject({ status: 'composed', drafted: 'no_reviewer' });
+  });
+
   it('persists the voice + its framing as summary when the voice stage succeeds', async () => {
     asMock(hasWeekPlan).mockResolvedValue(false);
     asMock(composeWeekVoice).mockResolvedValue({ voice: VOICE, degraded: false });
     const { db } = fakeDb();
 
-    const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather: fakeGather() }, NOW);
+    const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather: fakeGather(), mint: fakeMint().mint }, NOW);
 
     expect(result).toMatchObject({ status: 'composed', voiced: true });
     expect(upsertWeekPlan).toHaveBeenCalledWith(
@@ -117,7 +171,7 @@ describe('runWeekPlanForFamily', () => {
     asMock(composeWeekVoice).mockResolvedValue({ voice: null, degraded: true });
     const { db } = fakeDb();
 
-    const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather: fakeGather() }, NOW);
+    const result = await runWeekPlanForFamily(FAMILY, db, { client: {} as never, gather: fakeGather(), mint: fakeMint().mint }, NOW);
 
     expect(result).toMatchObject({ status: 'composed', voiced: false });
     expect(upsertWeekPlan).toHaveBeenCalledWith(db, expect.objectContaining({ summary: null, voice: null }));

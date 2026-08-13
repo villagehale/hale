@@ -404,7 +404,7 @@ describe('the legs', () => {
       },
     ]);
     // The body the family read is the sentence the row is holding Hale to.
-    expect(h.transport.bodies()[0]).toContain('I will send your plan the evening before.');
+    expect(h.transport.bodies()[0]).toContain("I'll send your plan the evening before.");
   });
 
   it('promises nothing to a household it is still asking to approve', async () => {
@@ -413,9 +413,9 @@ describe('the legs', () => {
 
     await runRegistrationSequenceCron(db(), h.deps, HEADS_UP_TICK);
 
-    // The same leg, a different sentence: this one invites an approval. Recording a debt
-    // against it would report a broken promise Hale never made.
-    expect(h.transport.bodies()[0]).toContain('Open Hale to approve the shortlist');
+    // The same leg, a different sentence: this one invites an approval, in the thread.
+    // Recording a debt against it would report a broken promise Hale never made.
+    expect(h.transport.bodies()[0]).toContain("Reply YES and I'll run the morning with you.");
     expect(h.promised).toEqual([]);
   });
 

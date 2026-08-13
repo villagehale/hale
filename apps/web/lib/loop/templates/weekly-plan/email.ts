@@ -7,6 +7,7 @@ import {
   dayAbbrev,
   headerNames,
   leveledWhat,
+  needsYourOkHeading,
   partitionByNeed,
   provenanceLabel,
   timeLabel,
@@ -114,7 +115,7 @@ function pendingSection(
   now: Date,
   voiceLine: VoiceLineFn,
 ): string {
-  const heading = `<p style="margin:0 0 6px;color:${NAVY};font-family:${SANS};font-size:14px;font-weight:700;letter-spacing:0.01em;">${escapeHtml(`${pending.length} need your OK`)}</p>`;
+  const heading = `<p style="margin:0 0 6px;color:${NAVY};font-family:${SANS};font-size:14px;font-weight:700;letter-spacing:0.01em;">${escapeHtml(needsYourOkHeading(pending.length))}</p>`;
   const lines = pending.map((i) => itemLine(i, children, level, now, true, voiceLine)).join('');
   return `<tr><td style="padding:2px 0 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${WASH};border-left:3px solid ${AMBER};border-radius:10px;padding:16px 18px;">${heading}${lines}</td></tr></table></td></tr>`;
 }
@@ -176,7 +177,7 @@ function renderText(
     lines.push(QUIET_LINE, '');
   }
   if (pending.length > 0) {
-    lines.push(`${pending.length} need your OK`);
+    lines.push(needsYourOkHeading(pending.length));
     for (const item of pending) {
       lines.push(
         `  ${whenPrefix(item, true)}${leveledWhat(item, payload.children, level, now)} (${provenanceLabel(item.kind)})`,

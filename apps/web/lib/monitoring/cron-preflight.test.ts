@@ -176,7 +176,7 @@ describe('the weekly-plan compose window', () => {
 
     const result = await runWeekPlanCron(
       database,
-      { client, gather: gather as never },
+      { client, gather: gather as never, mint: async () => ({ minted: [], skipped: 0 }) },
       COMPOSE_SLOT,
     );
 
@@ -195,7 +195,7 @@ describe('the weekly-plan compose window', () => {
 
     const result = await runWeekPlanCron(
       database,
-      { client: null, gather: gather as never },
+      { client: null, gather: gather as never, mint: async () => ({ minted: [], skipped: 0 }) },
       COMPOSE_SLOT,
     );
 

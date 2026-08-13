@@ -40,7 +40,10 @@ export function scopeConfirm(name: string, role: CaregiverRole): string {
  */
 export function inviteBody(inviterName: string | null, role: CaregiverRole): string {
   const who = inviterName ? `${inviterName} added you` : 'A parent added you';
-  return `Hi - I'm Hale, the assistant that keeps their family's week straight. ${who} as ${ROLE_LABEL[role]}. If you say yes I'll text you ${GETS_YOU}. ${NEVER} Reply YES to accept. Reply STOP anytime.`;
+  // The inviter is named FIRST so "their family" has someone to point at. The other
+  // order put the pronoun a whole sentence ahead of its referent, and in the anonymous
+  // branch ahead of nothing at all — on the first message a stranger ever gets.
+  return `Hi - ${who} as ${ROLE_LABEL[role]}. I'm Hale, the assistant that keeps their family's week straight. If you say yes I'll text you ${GETS_YOU}. ${NEVER} Reply YES to accept. Reply STOP anytime.`;
 }
 
 /** Said to the parent once the invite is on its way. */

@@ -33,6 +33,13 @@ describe('trailVerb — every verb the app writes maps to a human sentence', () 
     expect(family).not.toBe('neutral');
   });
 
+  it('says one text of a plan, because that is what one row is', () => {
+    // sendInOrder writes one row per MESSAGE of a plan (compose enforces 2-3 per plan),
+    // so "Hale sent you a coaching plan" three times reads as three plans.
+    expect(trailVerb('coach_plan_message_sent').sentence).not.toContain('sent you a coaching plan');
+    expect(trailVerb('coach_plan_message_sent').sentence).toContain('coaching plan');
+  });
+
   it('reads as a warm human sentence for a representative verb', () => {
     expect(trailVerb('action.executed').sentence).toBe('carried out the action');
     expect(trailVerb('action.reviewer.rejected').sentence).toBe(

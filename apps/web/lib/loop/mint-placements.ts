@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { dedupHashFor, recordVerdict } from '~/lib/pipeline/record';
 import { reviewAction } from '~/lib/pipeline/review';
 import { zonedLocalInstant } from '~/lib/plan/spine';
+import { needsCalendarDraft } from './templates/weekly-plan/core';
 
 /**
  * Mints held `calendar_add` drafts from a composed week plan (VIL-219 / B3).
@@ -56,8 +57,10 @@ export async function mintCalendarDraftsForWeekPlan(
   let skipped = 0;
 
   for (const item of input.items) {
-    if (item.needs !== 'calendar_add' || item.startsAt === null) {
-      // Only dated items become placements; a null day can't be a calendar entry.
+    // Only dated items become placements; a null day can't be a calendar entry. The
+    // predicate is shared with the renderers so the Sunday ask counts exactly the rows
+    // this loop creates (templates/weekly-plan/core.ts).
+    if (!needsCalendarDraft(item)) {
       continue;
     }
 

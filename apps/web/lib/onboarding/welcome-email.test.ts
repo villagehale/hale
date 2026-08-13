@@ -209,6 +209,21 @@ describe('createWelcomeEmailSender', () => {
     expect(payload.text).not.toContain('Hi Barton,');
   });
 
+  it('never signs off as a team — the first message a family gets is from one person', async () => {
+    // One person, one voice: every SMS surface and every composed line is first-person
+    // Hale. A brand sign-off makes the welcome the only message from a company, and it
+    // is the FIRST thing a family reads.
+    const { client, send } = fakeResend();
+    const sender = createWelcomeEmailSender(client);
+
+    await sender.sendWelcome('parent@example.com', content(), UNSUB_URL);
+
+    const payload = send.mock.calls[0]?.[0] as SendPayload;
+    for (const part of [payload.html, payload.text]) {
+      expect(part).not.toContain('the team at Hale');
+    }
+  });
+
   it('reports not-accepted (does not throw) when the provider returns an error', async () => {
     const send = vi.fn(async () => ({ data: null, error: { message: 'rejected' } }));
     const sender = createWelcomeEmailSender({ emails: { send } } as never);

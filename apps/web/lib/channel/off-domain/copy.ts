@@ -32,6 +32,19 @@
  * question yesterday would be told a different policy today; an honest "I could not get
  * to it" survives both. It offers the one action that might work, so it is not a dead
  * end, and it names no queue, no count and no app.
+ *
+ * FOUNDER REVIEW (tone audit, 2026-08-13). This line predates the 2026-08-12 no-preset
+ * doctrine and is the one surviving twin of the failure constant the apology arc retired
+ * (router/apology.ts) — its triggers are the same DEFECT class (a skill that would not
+ * load, a body the gates refused, a single failed call), and "Try me again in a minute"
+ * is a shape apology.ts's own promised_a_time gate would refuse. NOT converted tonight
+ * because the honest conversion is compose-or-DEFER, and gate 4 (route.ts) has no defer:
+ * the deferral machinery — recordDeferred plus the TurnDeferred throw the re-drive reads
+ * — lives inside runAgentTurn's catch, which the off-domain screen returns before. That
+ * is a build, not a seam reuse. Options for the founder: (a) lift the defer out of
+ * runAgentTurn so any gate can use it, then compose here; (b) declare this line an
+ * allowed class; (c) leave the defect path answering with the composed apology and no
+ * defer underneath it.
  */
 export const ANSWER_UNAVAILABLE_REPLY =
   "Sorry - I couldn't get to that one just now. Try me again in a minute.";

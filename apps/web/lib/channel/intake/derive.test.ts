@@ -174,6 +174,20 @@ describe('summarizeChildren', () => {
     );
   });
 
+  it('echoes a NAMED infant in the unit the parent used, never a floored "(0)"', () => {
+    // "Maya, 6 months" floors to 0 years; "Maya (0)" is the one summary that reads back
+    // an age the parent never said — and it is also handed to the composer as a fact.
+    expect(summarizeChildren([{ name: 'Maya', ageMonths: 6, agePrecision: 'months' }])).toBe(
+      'Maya (6 months)',
+    );
+    expect(summarizeChildren([{ name: 'Ada', ageMonths: 1, agePrecision: 'months' }])).toBe(
+      'Ada (1 month)',
+    );
+    expect(summarizeChildren([{ name: 'Nils', ageMonths: 0, agePrecision: 'months' }])).toBe(
+      'Nils (newborn)',
+    );
+  });
+
   it('names a child whose age we were never told without inventing one', () => {
     expect(
       summarizeChildren([

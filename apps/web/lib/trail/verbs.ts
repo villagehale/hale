@@ -620,8 +620,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   // One row per message of a plan, so the trail shows what actually reached the phone
-  // rather than "a plan was sent" over three texts that may not all have landed.
-  coach_plan_message_sent: { sentence: 'Hale sent you a coaching plan', family: 'note' },
+  // rather than "a plan was sent" over three texts that may not all have landed. The
+  // sentence has to say MESSAGE for the same reason: a plan is 2-3 texts (compose.ts),
+  // and "Hale sent you a coaching plan" three times over reads as three plans.
+  coach_plan_message_sent: { sentence: 'Hale texted you part of a coaching plan', family: 'note' },
   coach_plan_check_in_sent: {
     sentence: 'Hale checked in on your plan',
     family: 'note',

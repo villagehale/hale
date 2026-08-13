@@ -78,9 +78,16 @@ describe('renderSequenceLeg', () => {
     expect(body).toContain('Max');
   });
 
-  it('asks a pending family to approve the shortlist and does not ask an opted-in one', () => {
-    expect(renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' })).toContain('approve');
-    expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('approve');
+  it('asks a pending family for the approval IN THE THREAD, never in the app', () => {
+    // Doctrine: approvals happen in-thread (channel/router/copy.ts). The shortlist is an
+    // ordinary drafted_for_approval row, so a texted YES approves it through the same
+    // spine the app button calls — pointing at the app buys the parent nothing and is
+    // the dead end the F14 voice rules refuse.
+    const pending = renderSequenceLeg('heads_up', { ...LEG_INPUT, optIn: 'pending' });
+    expect(pending).toContain('Reply YES');
+    expect(pending).not.toContain('Open Hale');
+    expect(pending.toLowerCase()).not.toContain('the app');
+    expect(renderSequenceLeg('heads_up', LEG_INPUT)).not.toContain('Reply YES');
   });
 
   it('hedges the heads-up when the match rests on a spoken-age tolerance', () => {

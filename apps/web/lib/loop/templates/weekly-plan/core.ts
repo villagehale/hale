@@ -148,6 +148,34 @@ export function pendingCount(items: readonly WeekPlanItem[]): number {
   return items.filter((i) => i.needs !== 'none').length;
 }
 
+/**
+ * Whether an item becomes a HELD calendar draft — the single predicate the mint
+ * (lib/loop/mint-placements.ts) and the SMS approval ask both read.
+ *
+ * They share it because they used to disagree: the ask counted every item that asked
+ * anything (a "decision" suggestion, an undated month-coarse checkup) and then told the
+ * parent one word would put all of them on the calendar, while the mint drafts only the
+ * DATED placement items. A day with no date is not a calendar entry, and a suggestion is
+ * not an approval — so the count and the instruction were about different sets of rows.
+ */
+export function needsCalendarDraft(
+  item: WeekPlanItem,
+): item is WeekPlanItem & { startsAt: string } {
+  return item.needs === 'calendar_add' && item.startsAt !== null;
+}
+
+/** The heading over the items that ask something of the parent. It counts the rows
+ * LISTED under it (which is why it is not the drafts count the SMS ask carries), and it
+ * agrees with itself: one item "needs" your OK. */
+export function needsYourOkHeading(pending: number): string {
+  return `${pending} need${pending === 1 ? 's' : ''} your OK`;
+}
+
+/** How many of the week's items are waiting as drafts for the parent's one-word OK. */
+export function draftedCount(items: readonly WeekPlanItem[]): number {
+  return items.filter(needsCalendarDraft).length;
+}
+
 /** Split a plan into the two things a parent reads it for: what still needs their
  * OK (a booking, a decision) and what is already handled (on the calendar). This is
  * the structural spine of the email + /plan card — the plan is two sections, not one

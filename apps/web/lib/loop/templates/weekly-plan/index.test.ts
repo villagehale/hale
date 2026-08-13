@@ -146,9 +146,10 @@ describe('SMS — segment budget + GSM-7 output', () => {
 
     expect(smsSegments(text)).toBeLessThanOrEqual(3);
     expect(isGsm7(text)).toBe(true);
-    // Whatever gives way, the ask never does — it is the only actionable line.
-    // Three calendar_add items plus one decision = 4.
-    expect(text).toContain('4 need your OK');
+    // Whatever gives way, the ask never does — it is the only actionable line. Three
+    // dated calendar_add items are drafted; the fourth pending item is a decision,
+    // which no YES can answer, so it is not in the count the ask carries.
+    expect(text).toContain('3 drafted for your calendar');
   });
 
   it('keeps accented names readable through the GSM-7 fold', () => {
@@ -164,9 +165,59 @@ describe('SMS — segment budget + GSM-7 output', () => {
   it('opens with the possessive header and the reply invitation', () => {
     const text = sms(fullWeek, 'first_name');
     expect(text.startsWith("Hale: Maya & Liam's week")).toBe(true);
-    // 4 items need the parent's OK.
-    expect(text).toContain('4 need your OK');
     expect(text).toContain('reply YES');
+  });
+
+  /**
+   * The ask is a CONSENT instruction, so its count has to be the number of rows a YES
+   * can actually resolve — the drafts the mint holds (dated `calendar_add` items), not
+   * every item that asks something. fullWeek has four pending items but only two of
+   * them become drafts: the undated checkup cannot be a calendar entry and the picnic
+   * is a suggestion, and neither is approvable by text.
+   */
+  it('counts the DRAFTS a YES can answer, not every item that wants attention', () => {
+    const text = sms(fullWeek, 'first_name');
+    expect(text).toContain('2 drafted for your calendar');
+    expect(text).not.toContain('4 ');
+  });
+
+  it('promises one-word approval only when ONE draft is waiting', () => {
+    const one = payload({
+      children: [maya],
+      items: [item({ title: 'Swim class', startsAt: '2026-07-21T16:30', needs: 'calendar_add' })],
+    });
+    const text = sms(one, 'first_name');
+    expect(text).toContain('1 drafted for your calendar');
+    // Singular: "1 need your OK ... add them" was wrong twice in one sentence.
+    expect(text).not.toContain('need your OK');
+    expect(text).not.toContain('them');
+    expect(text).toMatch(/reply YES to add it/i);
+  });
+
+  it('says a two-draft YES is answered one at a time — the router asks which', () => {
+    // resolveApproval auto-approves a bare YES at exactly ONE pending row and otherwise
+    // returns the numbered "Which one?" list, so "reply YES to add both" is a grammar
+    // the router refuses. The ordinals are NOT quoted here on purpose: the pending list
+    // is family-wide and oldest-first, so this week's drafts are not at positions 1..n.
+    const text = sms(fullWeek, 'first_name');
+    expect(text).toMatch(/reply YES and I'll take them one at a time/i);
+    expect(text).not.toMatch(/YES 1|YES 2/);
+    expect(text).not.toContain('both');
+  });
+
+  it('asks for nothing when the week has things to decide but nothing to approve', () => {
+    // A suggestion and an undated checkup: real pending items, zero approvable rows.
+    const undecidable = payload({
+      children: [maya],
+      items: [
+        healthAppt,
+        item({ kind: 'suggestion', title: 'Family picnic', startsAt: '2026-07-25', needs: 'decision' }),
+      ],
+    });
+    const text = sms(undecidable, 'first_name');
+    expect(text).not.toContain('reply YES');
+    expect(text).not.toContain('drafted for your calendar');
+    expect(text).not.toContain('All on your calendar.');
   });
 });
 
@@ -337,6 +388,24 @@ describe('VIL-229 voice — email uses voice fields, facts stay deterministic', 
     const html = email(payload({ children: [maya], items: [healthAppt], summary: 'quiet week note' }), 'first_name').html;
     expect(html).toContain('quiet week note');
     expect(html.toLowerCase()).toContain('reply to this email to adjust');
+  });
+});
+
+describe('the pending heading agrees with itself in the singular', () => {
+  const one = payload({
+    children: [maya],
+    items: [item({ title: 'Swim class', startsAt: '2026-07-21T16:30', needs: 'calendar_add' })],
+  });
+
+  it('says "1 needs your OK" on the email and the push, never "1 need"', () => {
+    expect(email(one, 'first_name').html).toContain('1 needs your OK');
+    expect(email(one, 'first_name').text).toContain('1 needs your OK');
+    expect(push(one, 'first_name').body).toContain('1 needs your OK');
+  });
+
+  it('keeps the plural for more than one', () => {
+    expect(email(fullWeek, 'first_name').html).toContain('4 need your OK');
+    expect(push(fullWeek, 'first_name').body).toContain('4 need your OK');
   });
 });
 

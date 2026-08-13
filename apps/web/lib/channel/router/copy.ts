@@ -1,5 +1,6 @@
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { actionTypeLabel } from '~/lib/format/labels';
+import type { SpineRefusal } from './approval';
 import { MAX_LISTED_APPROVALS } from './fast-path';
 
 /**
@@ -36,6 +37,34 @@ export function failureReply(): string {
 }
 
 /**
+ * STATE RECEIPTS — what the parent hears when the approvals spine REFUSES.
+ *
+ * This is the count-receipt doctrine extended one step: a receipt may be a template
+ * when what it carries is a fact about real rows the router just read, and the state a
+ * mutator refused on is exactly that. (The founder reviews this class extension; the
+ * count-carrying receipts above are its existing half.)
+ *
+ * They exist because these four refusals used to answer with {@link failureReply}, and
+ * all three of its promises were false on this path: nothing went wrong on Hale's end,
+ * something HAD changed in the already-answered case (the co-parent answered it), and
+ * "try me again in a minute" invites a retry that fails identically — for 24 hours, in
+ * the undo case. Keyed by reason so a new refusal cannot ship without its sentence.
+ */
+const CONFLICT_REPLIES: Record<SpineRefusal, string> = {
+  already_resolved: 'Already handled - nothing waiting on you.',
+  not_reviewer_approved: "That one hasn't cleared my own checks, so I can't put it through yet.",
+  undo_window_expired: "That one's past its undo window.",
+  not_reversible: "That one isn't something I can take back.",
+  // The genuine breakage: the row vanished mid-turn or came back belonging to another
+  // family. Nothing changed and a retry really might work, so the failure line is true.
+  unavailable: failureReply(),
+};
+
+export function conflictReply(reason: SpineRefusal): string {
+  return CONFLICT_REPLIES[reason];
+}
+
+/**
  * The same honesty for a turn that broke AFTER it drafted (VIL-260).
  *
  * The drafts are real rows in the approvals queue, so "nothing was changed" would be a
@@ -47,16 +76,31 @@ export function failureReply(): string {
  * Plain ASCII, no typographic dash: this is the longest line the router sends, and one
  * em dash flips the whole message to UCS-2 (70 characters a segment) and turns a
  * one-segment reply into three. The coach skill states the same rule for the same reason.
+ *
+ * It stays a BARE "reply YES" at two or more, deliberately. An ordinal here would be the
+ * more precise-looking instruction and the more dangerous one: {@link whichOneReply} is
+ * the only place an ordinal may be printed, because it and the resolver read the same
+ * family-wide, oldest-first array in the same call. This line cannot see that array, so
+ * "YES 1" from here would point at whatever is oldest — which, with anything else
+ * already pending, is not the change it just drafted. A bare YES round-trips through the
+ * numbered list instead: one extra message, and the right row.
  */
 export function partialFailureReply(draftCount: number): string {
   const noun = draftCount === 1 ? '1 change' : `${draftCount} changes`;
-  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or NO to drop it.`;
+  const them = draftCount === 1 ? 'it' : 'them';
+  return `I couldn't finish that, but I drafted ${noun} waiting for your OK. Reply YES to confirm, or NO to drop ${them}.`;
 }
 
 /**
  * The ack sent when a turn outruns its budget. It is a real message in the thread, so
  * it promises only that Hale is working — a parent who hears "on it" and then nothing
  * has been lied to, which is why the failure template always follows a failed turn.
+ *
+ * FOUNDER REVIEW (tone audit, 2026-08-13): this and {@link FLOOD_REPLY} are fixed bodies
+ * under the 2026-08-12 no-preset doctrine. Proposed class: FLOW-CONTROL RECEIPT — neither
+ * answers the parent's question; each reports the state of the CONVERSATION (a turn is
+ * still running, the queue is behind) and is followed by the real reply. Composing them
+ * would also spend a model call on the two paths that are already slow or rate-limited.
  */
 export const ACK_REPLY = 'On it - one sec.';
 
