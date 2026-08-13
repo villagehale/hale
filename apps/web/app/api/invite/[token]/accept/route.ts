@@ -37,6 +37,11 @@ export async function POST(_req: Request, context: RouteContext) {
   }
 
   const email = session.user?.email;
+  // KEPT deliberately, unlike the settings write-gates F14 relaxed to id-based: here the
+  // address is not a gate but the RECIPIENT MATCH — acceptFamilyInvite answers
+  // `wrong_recipient` off it, so dropping this would let anyone accept anyone's invite.
+  // A phone-claimed family has no address and so cannot accept an emailed invite; they
+  // join through the caregiver/co-parent text path instead. Do not "fix" this.
   if (!email) {
     return NextResponse.json({ error: 'no_email_for_caller' }, { status: 403 });
   }
