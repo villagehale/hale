@@ -104,6 +104,22 @@ describe('executeApprovedAction', () => {
     expect(deps.recordGate).not.toHaveBeenCalled();
   });
 
+  it('hands the executor the caller\u2019s calendar-invite sender (VIL-249)', async () => {
+    // The sender lives in apps/web; this path is the one that carries it down to the
+    // executor, so a placement approved by text emails its invite instead of naming
+    // an unbound sender.
+    const calendarInvites = {
+      send: async () => ({ status: 'not_configured' }) as const,
+    };
+    const deps = { ...makeDeps(), calendarInvites } as never as Parameters<
+      typeof executeApprovedAction
+    >[1] & { execute: ReturnType<typeof vi.fn> };
+
+    await executeApprovedAction({ actionId: ACTION, familyId: FAMILY, approvedBy: APPROVER }, deps);
+
+    expect(deps.execute.mock.calls[0]?.[4]).toBe(calendarInvites);
+  });
+
   it('drops (no execution) when the action is not in drafted_for_approval', async () => {
     const deps = makeDeps({
       action: {

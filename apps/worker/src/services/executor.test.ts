@@ -1,7 +1,14 @@
 import type { ApprovedAction } from '@hale/types';
 import { mintApprovedAction } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ExecutorDeps, resendSend, runExecutor } from './executor.js';
+import {
+  type CalendarInviteReport,
+  type CalendarInviteRequest,
+  type ExecutorDeps,
+  resendSend,
+  runExecutor,
+  unwiredCalendarInvites,
+} from './executor.js';
 
 const resendSendMock = vi.fn();
 vi.mock('resend', () => ({
@@ -69,6 +76,15 @@ function makeClaimStore() {
     addToCalendar: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
     moveCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
     cancelCalendarEvent: vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'unset' })),
+    sendCalendarInvites: {
+      send: vi.fn(
+        async (): Promise<CalendarInviteReport> => ({
+          status: 'reported',
+          parents: [],
+          ask: 'not_needed',
+        }),
+      ),
+    },
     calendar: {
       createEvent: vi.fn(async () => ({ providerEventId: 'unset' })),
       updateEvent: vi.fn(async () => ({ providerEventId: 'unset' })),
@@ -366,6 +382,7 @@ describe('runExecutor — calendar placements (VIL-219, internal-write)', () => 
       kind: 'calendar_placed',
       outcome: 'written',
       reversalHandle: 'fe-123',
+      invites: { status: 'reported', parents: [], ask: 'not_needed' },
     });
     expect(result.reversalHandle).toBeUndefined();
     expect(result.reversible).toBe(true);
@@ -495,5 +512,125 @@ describe('resendSend — Resend transport', () => {
     await expect(resendSend({ to: 'a@b.com', subject: 's', body: 'b' })).rejects.toThrow(
       'Resend send failed (validation_error): bad sender',
     );
+  });
+});
+
+/**
+ * VIL-249 — the invite the placement owes the family. A placed event that never
+ * left Hale's own tables is not on anyone's real calendar, so the send is part of
+ * the placement's job; what it must NEVER be is silent. Every outcome is named in
+ * the execution detail (rule #11), and none of them can fail the placement, which
+ * has already happened by the time the invite is attempted.
+ */
+describe('runExecutor — the calendar invite each placement sends (VIL-249)', () => {
+  const ADD = {
+    title: 'Swim class',
+    startsAt: '2026-07-10T14:00:00Z',
+    endsAt: '2026-07-10T14:45:00Z',
+  };
+
+  function inviteSender(report: CalendarInviteReport) {
+    const requests: CalendarInviteRequest[] = [];
+    return {
+      requests,
+      sender: {
+        send: async (request: CalendarInviteRequest) => {
+          requests.push(request);
+          return report;
+        },
+      },
+    };
+  }
+
+  const TWO_PARENTS: CalendarInviteReport = {
+    status: 'reported',
+    parents: [
+      { parentUserId: 'p-1', channel: 'email', outcome: 'sent' },
+      { parentUserId: 'p-2', channel: 'email', outcome: 'no_email_on_file' },
+    ],
+    ask: 'not_needed',
+  };
+
+  it('invites on calendar_add, addressed to the row that was just written', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-77' }));
+    const { requests, sender } = inviteSender(TWO_PARENTS);
+    deps.sendCalendarInvites = sender;
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD) },
+      deps,
+    );
+
+    expect(requests).toEqual([
+      { familyId, actionId, familyEventId: 'fe-77', method: 'REQUEST' },
+    ]);
+    expect(result.detail).toMatchObject({ kind: 'calendar_placed', invites: TWO_PARENTS });
+  });
+
+  it('re-invites on calendar_move (a REQUEST at a higher revision supersedes in place)', async () => {
+    const { deps } = makeClaimStore();
+    deps.moveCalendarEvent = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-9' }));
+    const { requests, sender } = inviteSender(TWO_PARENTS);
+    deps.sendCalendarInvites = sender;
+
+    await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_move', { ...ADD, reversalHandle: 'fe-9' }) },
+      deps,
+    );
+
+    expect(requests).toEqual([{ familyId, actionId, familyEventId: 'fe-9', method: 'REQUEST' }]);
+  });
+
+  it('WITHDRAWS on calendar_cancel — the iTIP CANCEL, not another invite', async () => {
+    const { deps } = makeClaimStore();
+    deps.cancelCalendarEvent = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-5' }));
+    const { requests, sender } = inviteSender({ status: 'reported', parents: [], ask: 'not_needed' });
+    deps.sendCalendarInvites = sender;
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_cancel', { reversalHandle: 'fe-5' }) },
+      deps,
+    );
+
+    expect(requests).toEqual([{ familyId, actionId, familyEventId: 'fe-5', method: 'CANCEL' }]);
+    expect(result.detail).toMatchObject({ kind: 'calendar_cancelled' });
+  });
+
+  it('names an unbound sender as not_configured rather than reporting a clean placement', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-1' }));
+    deps.sendCalendarInvites = unwiredCalendarInvites;
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD) },
+      deps,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.detail).toMatchObject({ invites: { status: 'not_configured' } });
+  });
+
+  it('keeps the placement when the invite send throws, and names the failure', async () => {
+    const { deps } = makeClaimStore();
+    deps.addToCalendar = vi.fn(async () => ({ outcome: 'written' as const, familyEventId: 'fe-2' }));
+    deps.sendCalendarInvites = {
+      send: async () => {
+        throw new Error('dispatch exploded');
+      },
+    };
+
+    const result = await runExecutor(
+      { familyId, approved: approvedPlacement('calendar_add', ADD) },
+      deps,
+    );
+
+    // The event IS on family_events; only the invite is missing, and it says so.
+    expect(result.ok).toBe(true);
+    expect(result.detail).toMatchObject({
+      kind: 'calendar_placed',
+      reversalHandle: 'fe-2',
+      invites: { status: 'errored', message: 'dispatch exploded' },
+    });
   });
 });
