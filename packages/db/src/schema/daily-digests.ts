@@ -56,12 +56,14 @@ export interface DigestPerChildBreakdown {
 }
 
 /**
- * One per-family-per-day digest summary the web app renders. The worker's
- * runDailyDigest computes the day's action tallies and writes a row here; the
- * unique (family_id, digest_date) index makes a re-run upsert the same row
- * rather than duplicate it (digests are recomputed idempotently per day).
+ * One per-family-per-day digest summary. NOTHING WRITES THIS TABLE ANY MORE: the
+ * daily brief was retired in favour of the weekly Monday brief + event-driven
+ * interrupts, and its writers were deleted. The table and its historical rows are
+ * retained deliberately (hard rule #9 — migrations are additive), and the Messages
+ * inbox still READS them so a parent keeps their old briefs. Drop it in a later
+ * deprecation cycle, not ad hoc.
  *
- * Counts mirror the action user-visible states runDailyDigest buckets:
+ * Counts mirror the action user-visible states the retired digest bucketed:
  *   handled    — actions Hale executed autonomously
  *   awaiting   — actions drafted, waiting on a parent's approval
  *   needsYou   — actions that need a human (reviewer flagged / failed)
