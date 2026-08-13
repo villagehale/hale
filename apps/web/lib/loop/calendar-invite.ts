@@ -80,7 +80,7 @@ interface InvitedParent {
 
 /** The parents an invite is addressed to, primary first (the ask targets the head of
  * this list). */
-export async function loadInvitedParents(
+async function loadInvitedParents(
   database: Database,
   familyId: string,
 ): Promise<InvitedParent[]> {
@@ -104,7 +104,7 @@ export async function loadInvitedParents(
 
 /** The most recent placement still standing — what a parent who has just handed over
  * their address is owed an invite for. */
-export async function latestPlacedEventId(
+async function latestPlacedEventId(
   database: Database,
   familyId: string,
 ): Promise<string | null> {
