@@ -1,5 +1,5 @@
 import { type AgentCommitment, type Database, schema } from '@hale/db';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte } from 'drizzle-orm';
 
 /**
  * MEM-10 · THE OPEN-LOOPS LEDGER — Hale's own promises, as data.
@@ -40,7 +40,17 @@ export type CommitmentKind = AgentCommitment['commitmentKind'];
  * string is the ledger's only account of a debt that stopped being owed without anyone
  * delivering on it.
  */
-export type CommitmentCancelReason = 'shortlist_declined' | 'channel_revoked';
+export type CommitmentCancelReason =
+  | 'shortlist_declined'
+  | 'channel_revoked'
+  /**
+   * A newer offer of the same kind replaced this one. The only reason in this list a
+   * production path spends today, and it exists because the partial unique index makes
+   * superseding the ONLY way to offer twice: without it a family who ignored one plan
+   * offer could never be offered another, forever, and the second offer's insert would
+   * conflict in silence.
+   */
+  | 'plan_offer_superseded';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -81,6 +91,9 @@ export async function recordCommitment(
     kind: CommitmentKind;
     /** The promise in one short, parent-safe sentence (rule #1). */
     summary: string;
+    /** WHICH plan, for the kinds that have a subject — a `PlanTopic`, never free text.
+     * Omitted by the kinds that do not (see the column's own note). */
+    topic?: string | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -99,6 +112,7 @@ export async function recordCommitment(
         familyId: input.familyId,
         commitmentKind: input.kind,
         summary: input.summary,
+        topic: input.topic ?? null,
         dueAt: input.dueAt,
         createdFrom: input.channelMessageId,
       })
@@ -215,6 +229,78 @@ export interface OpenCommitment {
   dueAt: Date;
   /** Past its due time and still open — the state the family can feel. */
   overdue: boolean;
+}
+
+/**
+ * THE open promise of one kind for one family, or null.
+ *
+ * Singular by construction, not by `.limit(1)`: the partial unique index permits at
+ * most one, which is the property the whole offer→YES flow rests on. A `.limit(1)`
+ * would read the same way today and would quietly pick a winner if the index were ever
+ * dropped, so the query does not sort — if two rows ever come back, that is a broken
+ * invariant and it is better seen than smoothed over.
+ */
+export async function loadOpenCommitment(
+  database: Database,
+  familyId: string,
+  kind: CommitmentKind,
+): Promise<{ id: string; summary: string; topic: string | null; dueAt: Date } | null> {
+  const rows = await database
+    .select({
+      id: schema.agentCommitments.id,
+      summary: schema.agentCommitments.summary,
+      topic: schema.agentCommitments.topic,
+      dueAt: schema.agentCommitments.dueAt,
+    })
+    .from(schema.agentCommitments)
+    .where(
+      and(
+        eq(schema.agentCommitments.familyId, familyId),
+        eq(schema.agentCommitments.commitmentKind, kind),
+        openPredicate(),
+      ),
+    );
+  return rows[0] ?? null;
+}
+
+/** One promise, anywhere, that has come due — the shape a sweep acts on. */
+export interface DueCommitment {
+  id: string;
+  familyId: string;
+  topic: string | null;
+  dueAt: Date;
+}
+
+/**
+ * Every family's open promise of `kind` whose time has come, oldest first.
+ *
+ * The cross-family read the check-in sweep runs each hour. It selects on the SAME
+ * open predicate the index is partial on, so an hourly scan touches only the handful
+ * of rows still outstanding rather than the whole history of Hale's promises.
+ */
+export async function loadDueCommitments(
+  database: Database,
+  kind: CommitmentKind,
+  now: Date,
+  limit: number,
+): Promise<DueCommitment[]> {
+  return database
+    .select({
+      id: schema.agentCommitments.id,
+      familyId: schema.agentCommitments.familyId,
+      topic: schema.agentCommitments.topic,
+      dueAt: schema.agentCommitments.dueAt,
+    })
+    .from(schema.agentCommitments)
+    .where(
+      and(
+        eq(schema.agentCommitments.commitmentKind, kind),
+        lte(schema.agentCommitments.dueAt, now),
+        openPredicate(),
+      ),
+    )
+    .orderBy(asc(schema.agentCommitments.dueAt))
+    .limit(limit);
 }
 
 /**

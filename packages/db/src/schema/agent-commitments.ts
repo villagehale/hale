@@ -46,6 +46,23 @@ export const agentCommitments = pgTable(
     /** The promise in one short, parent-safe sentence. Rule #1: no child detail beyond
      * what the thread that made the promise already carried. */
     summary: text('summary').notNull(),
+    /**
+     * WHICH plan, for the kinds that have one — a member of the closed `PlanTopic`
+     * vocabulary ('sleep', 'solids', 'potty', …) and never free text, never a parent's
+     * words. Rule #1 holds because this is a CATEGORY, not content.
+     *
+     * Nullable because the first two kinds do not have a subject: there is exactly one
+     * first find and one registration plan a family can be owed, so `commitment_kind`
+     * alone names them. `plan_offer` is the first kind whose FULFILMENT needs a
+     * parameter — a bare "YES" three days later has to resolve to the plan Hale
+     * actually offered, and the check-in three days after that has to say which plan it
+     * is asking about.
+     *
+     * Deliberately NOT recovered from `created_from`: that column is provenance only
+     * (see its note), and making a sweep join back through a ledger row to learn a
+     * category word would give the topic two homes that can disagree.
+     */
+    topic: text('topic'),
     /** When the promise stops being kept-in-time and starts being late. */
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
