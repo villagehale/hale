@@ -248,6 +248,11 @@ export const AUDIT_VERBS = [
   'village_intro_declined',
   'village_intro_disclosed',
   'village_intro_closed',
+  // ── claiming the receipts room, and Hale asking how it went ─────────────
+  'account_claimed_by_phone',
+  'followup_intro_asked',
+  'followup_activity_asked',
+  'smoke_alarm_fired',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -614,6 +619,23 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'done',
   },
   village_intro_closed: { sentence: 'an introduction was closed', family: 'note' },
+  // ── claiming the receipts room, and Hale asking how it went ─────────────
+  account_claimed_by_phone: {
+    sentence: 'you signed in with a code texted to your phone',
+    family: 'done',
+  },
+  followup_intro_asked: { sentence: 'Hale asked how your introduction went', family: 'note' },
+  followup_activity_asked: {
+    sentence: 'Hale asked how something on your calendar went',
+    family: 'note',
+  },
+  smoke_alarm_fired: {
+    // Something urgent arrived while Hale could not reach its model, so a fixed
+    // safety line went out instead of an answer. 'problem', not 'done': the parent
+    // was texted, but they were not actually helped, and the trail should say so.
+    sentence: 'Hale could not reach its model, so it sent you a fixed safety message',
+    family: 'problem',
+  },
 };
 
 const NEUTRAL: Verb = { sentence: 'recorded an update', family: 'neutral' };
