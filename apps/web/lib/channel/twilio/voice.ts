@@ -51,12 +51,19 @@ import { isValidTwilioSignature, parseTwilioParams, twilioWebhookUrl } from './s
  * holds the number now.
  */
 
-/** Amazon Polly's neural en-US female — warm, natural, and the safest widely-supported
+/**
+ * Amazon Polly's neural en-US female — warm, natural, and the safest widely-supported
  * choice on Twilio. A founder voice-pick lands as its own change; there is deliberately
  * no configuration surface for it, because one caller-facing voice is the product
- * decision and a knob would only let it drift. */
+ * decision and a knob would only let it drift.
+ *
+ * NO `language` attribute, deliberately. A Polly voice already carries its language, and
+ * Twilio's `<Say>` reference warns that "combinations of voice and language not listed as
+ * available may result in an error and `<Say>` instruction failure" — an attribute that
+ * can only ever fail the one thing this feature exists to guarantee is an attribute worth
+ * not having.
+ */
 const SAY_VOICE = 'Polly.Joanna-Neural';
-const SAY_LANGUAGE = 'en-US';
 
 /** The template behind the enrolled caller's text, recorded on the ledger row so the
  * body itself never has to be (rule #1). */
@@ -357,7 +364,7 @@ function escapeXml(text: string): string {
 /** One spoken line, then the line goes down. No `<Gather>`, no recording, no voicemail:
  * v0 collects nothing by voice, so there is nothing to consent to or retain. */
 export function voiceTwiml(spoken: string): Response {
-  const body = `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="${SAY_VOICE}" language="${SAY_LANGUAGE}">${escapeXml(spoken)}</Say><Hangup/></Response>`;
+  const body = `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="${SAY_VOICE}">${escapeXml(spoken)}</Say><Hangup/></Response>`;
   return new Response(body, {
     status: 200,
     headers: { 'content-type': 'text/xml; charset=utf-8' },

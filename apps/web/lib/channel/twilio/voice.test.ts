@@ -243,10 +243,13 @@ describe('a stranger calls', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('text/xml; charset=utf-8');
-    expect(twiml).toContain('<Say voice="Polly.Joanna-Neural" language="en-US">');
+    expect(twiml).toContain('<Say voice="Polly.Joanna-Neural">');
     expect(twiml).toContain(VOICE_GREETING);
     expect(twiml).toContain('<Hangup/>');
     expect(twiml.indexOf('<Say')).toBeLessThan(twiml.indexOf('<Hangup/>'));
+    // No `language`: a Polly voice carries its own, and Twilio fails the whole <Say> on
+    // a voice/language pairing it does not recognise.
+    expect(twiml).not.toContain('language=');
   });
 
   it('texts them the cold-start opener, and asks intake’s question verbatim', async () => {
