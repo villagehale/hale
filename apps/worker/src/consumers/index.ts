@@ -2,7 +2,6 @@ import type PgBoss from 'pg-boss';
 import { approvedActionPayloadSchema, ingestedEventPayloadSchema } from '@hale/tools-contracts';
 import { logger } from '../logger.js';
 import { executeApprovedAction, runOrchestrator } from '../orchestrator/index.js';
-import { runDailyDigest } from '../services/daily-digest.js';
 import { runVillageDiscovery } from '../services/village-discovery.js';
 
 interface IngestedEventDeps {
@@ -84,12 +83,6 @@ export async function registerConsumers(boss: PgBoss): Promise<void> {
     await handleApprovedAction(job.id, job.data);
   });
 
-  // Daily digest generator.
-  await boss.work('digest.daily.due', async ([job]) => {
-    if (!job) return;
-    await runDailyDigest(job.data as Parameters<typeof runDailyDigest>[0]);
-  });
-
   // Scheduled village discovery: per-family local-activity discovery + routine.
   await boss.work('village.discovery.due', async ([job]) => {
     if (!job) return;
@@ -97,6 +90,6 @@ export async function registerConsumers(boss: PgBoss): Promise<void> {
   });
 
   logger.info(
-    'consumers registered: events.ingested, actions.approved, digest.daily.due, village.discovery.due',
+    'consumers registered: events.ingested, actions.approved, village.discovery.due',
   );
 }

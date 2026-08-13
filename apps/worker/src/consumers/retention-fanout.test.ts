@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  handleDigestFanout,
-  handleDiscoveryFanout,
-  localIsoDate,
-  weekMonday,
-} from './retention-fanout.js';
+import { handleDiscoveryFanout, localIsoDate, weekMonday } from './retention-fanout.js';
 
 const FAMILY_IDS = [
   '11111111-1111-4111-8111-111111111111',
@@ -46,30 +41,6 @@ describe('localIsoDate / weekMonday (America/Toronto)', () => {
   });
 });
 
-describe('handleDigestFanout', () => {
-  it('enqueues one digest.daily.due per active family with today’s digestDate', async () => {
-    const deps = makeDeps(FAMILY_IDS, new Date('2026-06-17T16:00:00.000Z'));
-
-    await handleDigestFanout(deps);
-
-    expect(deps.boss.send).toHaveBeenCalledTimes(3);
-    for (const familyId of FAMILY_IDS) {
-      expect(deps.boss.send).toHaveBeenCalledWith('digest.daily.due', {
-        familyId,
-        digestDate: '2026-06-17',
-      });
-    }
-  });
-
-  it('enqueues nothing when there are no active families', async () => {
-    const deps = makeDeps([], new Date('2026-06-17T16:00:00.000Z'));
-
-    await handleDigestFanout(deps);
-
-    expect(deps.boss.send).not.toHaveBeenCalled();
-  });
-});
-
 describe('handleDiscoveryFanout', () => {
   it('enqueues one village.discovery.due per active family with the week’s Monday', async () => {
     const deps = makeDeps(FAMILY_IDS, new Date('2026-06-17T16:00:00.000Z'));
@@ -83,5 +54,13 @@ describe('handleDiscoveryFanout', () => {
         weekOf: '2026-06-15',
       });
     }
+  });
+
+  it('enqueues nothing when there are no active families', async () => {
+    const deps = makeDeps([], new Date('2026-06-17T16:00:00.000Z'));
+
+    await handleDiscoveryFanout(deps);
+
+    expect(deps.boss.send).not.toHaveBeenCalled();
   });
 });
