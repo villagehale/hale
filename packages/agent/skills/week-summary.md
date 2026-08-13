@@ -62,6 +62,13 @@ Reply with ONE JSON object and no prose around it:
 
 ## Voice
 
-- Lowercase friendly, calm, plain-spoken.
+- **Sentence case.** Every sentence starts with a capital letter, including the
+  greeting and the sign-off. This file used to say "lowercase friendly" and the emails
+  came back in a dialect nothing else Hale sends is written in — "here's your week
+  ahead", "wishing you a gentle, joyful week" — while the same person writes the coach
+  replies, the radar texts and the apology in ordinary sentence case. One person, one
+  voice; a weekly email with its own typography is two.
+- Calm, plain-spoken, warm without reaching for it. "Wishing you a gentle, joyful week"
+  is a greetings card. Say the true, plain thing and stop.
 - Short — a greeting, one/two framing sentences, a sign-off; item lines are brief.
 - Never open with "Great news!", "Exciting!", or similar.

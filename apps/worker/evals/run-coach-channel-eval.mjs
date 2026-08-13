@@ -39,10 +39,22 @@
 //
 // That is not a softened bar, it is a correctly placed one. Across six calibration runs
 // the same reply drew a 5 and a 2 from the same judge, and one low score came back with
-// no reason attached at all. A per-item hard gate on a grader that noisy does not
-// measure the agent; it measures the grader, and it would have to be re-tuned on every
-// model bump. The mean still moves on a real regression — chatty replies drag several
-// scores down together — while a single eccentric grade cannot fail CI on its own.
+// no reason attached at all. A per-item hard gate AT THE MEAN'S LEVEL on a grader that
+// noisy does not measure the agent; it measures the grader, and it would have to be
+// re-tuned on every model bump. The mean still moves on a real regression — chatty
+// replies drag several scores down together — while a single eccentric grade cannot fail
+// CI on its own.
+//
+// THE MEAN ALONE WAS NOT ENOUGH, THOUGH, and the 2026-08-13 tone audit is what proved it:
+// a reply that named the child's GOAL as the problem ("the usual culprit is Remy learning
+// to fall back asleep independently" — the culprit is that he has not) and a reply that
+// answered a completely French text in English both shipped green, each scored 2 by the
+// judge, both averaged away by fourteen good replies. So there is now a per-fixture FLOOR
+// as well, set at 3 rather than 4. That is the level the noise argument above actually
+// supports: the flapping is at the 4/5 boundary, where the judge is deciding how good a
+// good reply is, while a 2 is what it hands to replies with something real wrong with
+// them. A floor of 3 cannot be tripped by a grader having an off day about tone, and it
+// cannot be averaged away either.
 //
 // AN HONEST GAP, stated where it will be read. The coaching fixtures are NOT gated on
 // `offer_full_plan` being called, even though the offer is the arc this eval belongs to.
@@ -117,6 +129,10 @@ const MAX_TOKENS = 400;
 const MAX_REPLY_SEGMENTS = 2;
 /** Mirrors MAX_DRAFTS_PER_TURN in apps/web/lib/channel/coach/tools.ts. */
 const MAX_DRAFTS_PER_TURN = 2;
+/** The per-fixture voice FLOOR that sits alongside the corpus mean. See the header for
+ * why it is 3 and not JUDGE_MIN: 3 is below the noisy 4/5 boundary and above the score
+ * the judge reserves for replies with something actually wrong with them. */
+const MIN_PER_FIXTURE_VOICE = 3;
 /**
  * THE APP IS NOT AN ANSWER (founder, launch day: "we should never point to the app in
  * the chat"). Hale texted a parent "You can also add anything manually in the app:
@@ -849,6 +865,16 @@ function checkFixture(fixture, reply, calls, auditLog) {
     }
   }
 
+  // Answered in the parent's own language. Deterministic rather than left to the judge
+  // for the reason the other voice properties are: the corpus-mean gate scored the
+  // English-reply-to-a-French-text at 2/5 and passed the run anyway (2026-08-13 audit),
+  // and "is this sentence in French" is a fact, not a judgement.
+  if (expect.replyLanguage && !expect.replyLanguage.anyOf.some((word) => word.test(reply))) {
+    failures.push(
+      `answered in English a parent who wrote in ${expect.replyLanguage.label} (no ${expect.replyLanguage.label} function word in the reply)`,
+    );
+  }
+
   // A draft that happened must be described as PENDING. "Moved" / "cancelled" /
   // "done" would tell a parent something happened that has not (rule #4).
   if (drafts.length > 0 && /\b(i (?:have )?(?:moved|cancelled|canceled)|all set|done)\b/i.test(reply)) {
@@ -1189,7 +1215,11 @@ async function main() {
   const overBudget = answered.filter((r) => smsSegments(r.reply) > MAX_REPLY_SEGMENTS);
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const voiceOk = !broken && scores.length > 0 && meanScore >= JUDGE_MIN;
+  const belowFloor = results.filter(
+    (r) => typeof r.score === 'number' && r.score < MIN_PER_FIXTURE_VOICE,
+  );
+  const voiceOk =
+    !broken && scores.length > 0 && meanScore >= JUDGE_MIN && belowFloor.length === 0;
   const segments = answered.map((r) => smsSegments(r.reply));
   const accuracy = passes.length / results.length;
 
@@ -1207,12 +1237,23 @@ async function main() {
   );
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
   console.log(
-    `mean voice score:             ${meanScore.toFixed(2)}  (corpus mean >= ${JUDGE_MIN}; per-fixture scores are reported, not gated)`,
+    `mean voice score:             ${meanScore.toFixed(2)}  (corpus mean >= ${JUDGE_MIN})`,
+  );
+  console.log(
+    `voice below ${MIN_PER_FIXTURE_VOICE} on any fixture:   ${belowFloor.length}  (0 required — the floor the mean cannot average away)`,
   );
   const belowBar = results.filter((r) => typeof r.score === 'number' && r.score < JUDGE_MIN);
   if (belowBar.length > 0) {
     console.log(
-      `below the bar individually:   ${belowBar.map((r) => r.fixture.id).join(', ')}  (not a failure — see the header)`,
+      `between ${MIN_PER_FIXTURE_VOICE} and ${JUDGE_MIN}:                  ${belowBar
+        .filter((r) => r.score >= MIN_PER_FIXTURE_VOICE)
+        .map((r) => r.fixture.id)
+        .join(', ')}  (not a failure on its own — see the header)`,
+    );
+  }
+  if (belowFloor.length > 0) {
+    console.log(
+      `BELOW THE FLOOR:              ${belowFloor.map((r) => `${r.fixture.id} (${r.score})`).join(', ')}`,
     );
   }
   if (segments.length) {

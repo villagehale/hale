@@ -344,11 +344,40 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'french-adjacent',
     text: 'deplace la natation de jeudi a 17h45 stp',
-    note: 'A bilingual household texting the way one actually does — accents stripped.',
+    note: "A francophone household texting the way one actually does — accents stripped by the keyboard. This is a COMPLETE French sentence, not English with French words in it, and the reply has to come back in French: Hale's compliance baseline is Canada, and a household that gets an English answer to every French text has learned this number is not for them. The 2026-08-13 tone audit caught the English reply here and the corpus-mean voice gate let it pass at 2/5.",
     expect: {
       mustCall: ['lookup_week'],
       mustDraft: ['calendar_move'],
       onlyTargets: ['evt-swim-thu'],
+      // The reply must be French — asserted on FUNCTION WORDS, which is the part of a
+      // language a sentence cannot avoid. Content words would be a weaker test: "natation"
+      // and "jeudi" could survive into an otherwise-English reply as quoted fragments,
+      // and quoting the parent's nouns back is exactly what an English reply does.
+      replyLanguage: {
+        label: 'French',
+        anyOf: [
+          /\bje\b/i,
+          /\bà\b/i,
+          /\bde\b/i,
+          /\bpour\b/i,
+          /\best\b/i,
+          /\bton\b/i,
+          /\bta\b/i,
+          /\ble\b/i,
+          /\bla\b/i,
+          /\bles\b/i,
+          /\bdéplac/i,
+          /\bconfirm(?:er|é)\b/i,
+          /\bveux\b/i,
+          /\bd'accord\b/i,
+        ],
+      },
+      // The literal token C1's fast-path matches (lib/channel/affirmative.ts). It is an
+      // English closed vocabulary with no French entries — "oui" resolves to `unclear` —
+      // so a French reply that asks for OUI would collect an answer the approval spine
+      // silently drops, and the parent's swim lesson never moves. The word stays YES even
+      // when the sentence around it does not.
+      mustMention: ['yes'],
     },
   },
   {
