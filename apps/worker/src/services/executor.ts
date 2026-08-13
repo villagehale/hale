@@ -67,7 +67,6 @@ export type CalendarInviteMethod = 'REQUEST' | 'CANCEL';
 
 export interface CalendarInviteRequest {
   familyId: string;
-  actionId: string;
   /** The family_events row the placement just wrote / moved / soft-deleted. */
   familyEventId: string;
   method: CalendarInviteMethod;
@@ -513,12 +512,7 @@ async function inviteFor(
   familyEventId: string,
   method: CalendarInviteMethod,
 ): Promise<CalendarInviteReport> {
-  const request: CalendarInviteRequest = {
-    familyId: input.familyId,
-    actionId: input.approved.id,
-    familyEventId,
-    method,
-  };
+  const request: CalendarInviteRequest = { familyId: input.familyId, familyEventId, method };
   try {
     return await deps.sendCalendarInvites.send(request);
   } catch (err) {

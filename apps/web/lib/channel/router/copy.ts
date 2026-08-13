@@ -99,6 +99,35 @@ export function declinedReceipt(actionType: string): string {
 
 export const UNDONE_RECEIPT = "Undone - I've taken that back off your calendar.";
 
+/**
+ * The one-time ask for an address, and the line that answers it (VIL-249).
+ *
+ * The ASK is not sent by the router — a placement sends it, through the dispatch —
+ * but it lives here beside its ACK because the two are one exchange: a parent reads
+ * the question, texts an address, and reads the answer, and copy that drifts apart
+ * reads as two different voices. It is also the only place both lines are swept for
+ * GSM-7 (sms-copy-encoding.test.ts).
+ *
+ * It asks ONCE per family, ever (the ledger claim in lib/loop/calendar-invite.ts).
+ * A family that ignores it keeps every placement Hale makes; they simply keep it in
+ * Hale rather than in their own calendar, which the ask says plainly.
+ */
+export const CALENDAR_EMAIL_ASK =
+  "Want this in your real calendar too? Text me your email and I'll send invites there from now on.";
+
+/** The capture ack. It promises only what happened: the address is stored, and the
+ * invite that was waiting is on its way when there was one. */
+export function emailCapturedReply(inviteSent: boolean): string {
+  return inviteSent
+    ? "Got it - invites will go there from now on. The last one's on its way."
+    : 'Got it - invites will go there from now on.';
+}
+
+/** The address belongs to another Hale account. Named rather than swallowed: silently
+ * ignoring it would leave the parent waiting for invites that can never arrive. */
+export const EMAIL_ALREADY_TAKEN_REPLY =
+  "That address is already on another Hale account - text me a different one and I'll use that.";
+
 export function nothingPendingReply(): string {
   return `Nothing's waiting on your approval right now. Everything I've set up is here: ${appLink()}`;
 }

@@ -562,9 +562,7 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
       deps,
     );
 
-    expect(requests).toEqual([
-      { familyId, actionId, familyEventId: 'fe-77', method: 'REQUEST' },
-    ]);
+    expect(requests).toEqual([{ familyId, familyEventId: 'fe-77', method: 'REQUEST' }]);
     expect(result.detail).toMatchObject({ kind: 'calendar_placed', invites: TWO_PARENTS });
   });
 
@@ -579,7 +577,7 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
       deps,
     );
 
-    expect(requests).toEqual([{ familyId, actionId, familyEventId: 'fe-9', method: 'REQUEST' }]);
+    expect(requests).toEqual([{ familyId, familyEventId: 'fe-9', method: 'REQUEST' }]);
   });
 
   it('WITHDRAWS on calendar_cancel — the iTIP CANCEL, not another invite', async () => {
@@ -593,7 +591,7 @@ describe('runExecutor — the calendar invite each placement sends (VIL-249)', (
       deps,
     );
 
-    expect(requests).toEqual([{ familyId, actionId, familyEventId: 'fe-5', method: 'CANCEL' }]);
+    expect(requests).toEqual([{ familyId, familyEventId: 'fe-5', method: 'CANCEL' }]);
     expect(result.detail).toMatchObject({ kind: 'calendar_cancelled' });
   });
 

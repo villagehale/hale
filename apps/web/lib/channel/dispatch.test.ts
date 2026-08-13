@@ -222,7 +222,11 @@ describe('provider outcomes', () => {
       },
     });
     const result = await dispatchLoopMessage(message(), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'failed' }]);
+    // The reason rides the leg so a caller can tell a refused address from an
+    // unconfigured channel without re-reading the ledger row.
+    expect(result.legs).toEqual([
+      { channel: 'email', outcome: 'failed', reason: 'invalid_recipient' },
+    ]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'invalid_recipient' });
   });
 
@@ -244,7 +248,9 @@ describe('provider outcomes', () => {
   it('records a failed row (channel_unavailable) when no adapter is wired for a leg', async () => {
     const { ports, ledger } = makePorts({ channels: {} });
     const result = await dispatchLoopMessage(message(), ports);
-    expect(result.legs).toEqual([{ channel: 'email', outcome: 'failed' }]);
+    expect(result.legs).toEqual([
+      { channel: 'email', outcome: 'failed', reason: 'channel_unavailable' },
+    ]);
     expect(ledger[0]).toMatchObject({ status: 'failed', errorCode: 'channel_unavailable' });
   });
 });

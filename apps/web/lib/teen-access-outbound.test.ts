@@ -80,6 +80,7 @@ const OUTBOUND_TREES: Array<[string, string, string[]?]> = [
 const OUTBOUND_FILES = [
   ['lib/loop/ics-feed.ts', 'an ICS feed is subscribed to by whoever holds the URL'],
   ['lib/loop/ics-invite.ts', 'an ICS invite is delivered to arbitrary attendees'],
+  ['lib/loop/calendar-invite.ts', 'the invite fan-out emails an attachment to every parent'],
   ['lib/loop/compose.ts', 'the loop composer bakes the artifact every outbound send reads'],
   ['lib/loop/assistant-events.ts', 'the assistant projection feeds the MCP read path'],
   ['lib/cron/push-reminders.ts', 'a push notification lands on a lock screen'],
