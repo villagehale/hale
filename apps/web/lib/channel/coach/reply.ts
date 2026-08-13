@@ -77,10 +77,24 @@ export function redactTeenNames(
   let out = text;
   for (const child of children) {
     if (resolveChildNameLevel(child.dateOfBirth, 'first_name', now) !== 'generic') continue;
-    const pattern = new RegExp(`\\b${escapeRegExp(child.name)}\\b`, 'gi');
-    out = out.replace(pattern, renderChildName(child, 'generic'));
+    const generic = renderChildName(child, 'generic');
+    out = out.replace(nameAnywhere(child.name), (_match, before: string) => `${before}${generic}`);
   }
   return out;
+}
+
+/**
+ * The name as a whole word, bounded by anything that is not a letter or a digit.
+ *
+ * NOT `\b`: that boundary is defined on [A-Za-z0-9_], so it reads the é in "Chloé" as a
+ * boundary character and then demands a word character after it — which a following
+ * space is not. Chloé, Émile and Zoé went out to the carrier verbatim while Nora was
+ * redacted, in a product whose compliance baseline is Quebec. The property-based
+ * boundary holds in both directions for every alphabet: a sibling named Léana keeps her
+ * name when Léa is the teen. (party/card.ts redacts host copy with the same shape.)
+ */
+function nameAnywhere(name: string): RegExp {
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{N}])`, 'giu');
 }
 
 function escapeRegExp(value: string): string {
@@ -198,6 +212,9 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
   // this is the backstop for when it does both, because the visible cost is the same
   // sentence arriving twice.
   const answer = dropDuplicateOffer(redacted, offer);
+  // Nothing but the offer left: the model answered with the offer and nothing else, so
+  // the offer IS the reply. Joining an empty answer to it would send a leading space.
+  if (answer === '') return offer;
   const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, offer);
   return `${fitted} ${offer}`;
 }

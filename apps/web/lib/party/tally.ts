@@ -73,7 +73,8 @@ export function renderTally(tally: RsvpTally): string {
     return 'No RSVPs yet.';
   }
 
-  const parts = [`${tally.yesHeads} coming (${tally.yesGuests} replies)`];
+  const replies = tally.yesGuests === 1 ? 'reply' : 'replies';
+  const parts = [`${tally.yesHeads} coming (${tally.yesGuests} ${replies})`];
   if (tally.maybeGuests > 0) {
     parts.push(`${tally.maybeHeads} maybe`);
   }

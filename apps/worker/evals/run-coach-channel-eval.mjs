@@ -270,7 +270,10 @@ function childrenFor(fixture) {
 function redactTeenNames(text, children, now) {
   let out = text;
   for (const child of teenChildren(children, now)) {
-    out = out.replace(new RegExp(`\\b${child.name}\\b`, 'gi'), 'your kid');
+    // Bounded by non-letters rather than \b, which is ASCII-only and let an accented
+    // name (Chloé, Émile) through — see the runtime's nameAnywhere().
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${child.name}(?![\\p{L}\\p{N}])`, 'giu');
+    out = out.replace(pattern, (_match, before) => `${before}your kid`);
   }
   return out;
 }

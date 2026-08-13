@@ -27,8 +27,11 @@ const GSM7_BASIC = new Set(
     .split(''),
 );
 
-/** The GSM 03.38 extension table. Each of these costs TWO septets (escape + char). */
-const GSM7_EXTENDED = new Set(['^', '{', '}', '\\', '[', '~', ']', '|', '€']);
+/** The GSM 03.38 extension table. Each of these costs TWO septets (escape + char).
+ * Form feed (0x1B 0x0A) belongs here — a second copy of this table in the weekly-plan
+ * template carried it while this one did not, so the two readers of "what is GSM-safe"
+ * disagreed. This is now the only copy. */
+const GSM7_EXTENDED = new Set(['\f', '^', '{', '}', '\\', '[', '~', ']', '|', '€']);
 
 export type SmsEncoding = 'gsm7' | 'ucs2';
 
@@ -44,6 +47,12 @@ export function smsEncoding(text: string): SmsEncoding {
     if (!GSM7_BASIC.has(char) && !GSM7_EXTENDED.has(char)) return 'ucs2';
   }
   return 'gsm7';
+}
+
+/** Whether a carrier can carry this body in GSM-7 at all — the question the SMS
+ * templates ask before they fold their copy. */
+export function isGsm7(text: string): boolean {
+  return smsEncoding(text) === 'gsm7';
 }
 
 /** Billable units in this body: septets under GSM-7 (extension characters count two),
@@ -66,4 +75,23 @@ export function smsSegments(text: string): number {
   if (units <= single) return 1;
   const part = encoding === 'gsm7' ? GSM7_CONCAT_PART : UCS2_CONCAT_PART;
   return Math.ceil(units / part);
+}
+
+/** What this body costs, in the currency its own encoding is billed in. */
+export function smsUnits(text: string): number {
+  return billableUnits(text, smsEncoding(text));
+}
+
+/**
+ * The most units a body of THIS body's encoding fits in `segments` — the exact ceiling
+ * `smsSegments` enforces, in the same currency `smsUnits` counts.
+ *
+ * A budget stated in characters is a different budget for a UCS-2 body than for a
+ * GSM-7 one (67 per part against 153), so anything that reports how far over the line
+ * a message is has to ask which line applies to it.
+ */
+export function smsUnitsBudget(text: string, segments: number): number {
+  const gsm7 = smsEncoding(text) === 'gsm7';
+  if (segments <= 1) return gsm7 ? GSM7_SINGLE_MAX : UCS2_SINGLE_MAX;
+  return segments * (gsm7 ? GSM7_CONCAT_PART : UCS2_CONCAT_PART);
 }

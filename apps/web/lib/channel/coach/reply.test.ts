@@ -42,6 +42,28 @@ describe('redactTeenNames', () => {
 
     expect(redactTeenNames('Kit has practice.', [almost], NOW)).toBe('Kit has practice.');
   });
+
+  it('redacts a name whose first or last letter is accented', () => {
+    const chloe = { name: 'Chloé', gender: 'girl', dateOfBirth: '2010-03-04' };
+    const emile = { name: 'Émile', gender: 'boy', dateOfBirth: '2010-03-04' };
+
+    expect(redactTeenNames('Chloé has practice Thursday.', [chloe], NOW)).toBe(
+      'your kid has practice Thursday.',
+    );
+    expect(redactTeenNames('Practice is with Chloé.', [chloe], NOW)).toBe(
+      'Practice is with your kid.',
+    );
+    expect(redactTeenNames('Émile is out.', [emile], NOW)).toBe('your kid is out.');
+  });
+
+  it('still stops at the whole name when the boundary is an accented letter', () => {
+    const lea = { name: 'Léa', gender: 'girl', dateOfBirth: '2010-03-04' };
+    const leana = { name: 'Léana', gender: 'girl', dateOfBirth: '2021-03-04' };
+
+    expect(redactTeenNames('Léana is with Léa on Thursday.', [lea, leana], NOW)).toBe(
+      'Léana is with your kid on Thursday.',
+    );
+  });
 });
 
 describe('toSmsReply', () => {
@@ -228,5 +250,15 @@ describe('the plan offer line', () => {
     );
 
     expect(reply.match(/Want the full plan\?/g)).toHaveLength(1);
+  });
+
+  it('sends the offer alone, unpadded, when the whole answer WAS the offer', () => {
+    const reply = toSmsReply(OFFER_LINE, {
+      children: [child],
+      now: new Date('2026-08-12T12:00:00.000Z'),
+      planOffer: OFFER_LINE,
+    });
+
+    expect(reply).toBe(OFFER_LINE);
   });
 });
