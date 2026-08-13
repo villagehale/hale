@@ -272,9 +272,10 @@ describe('flag-on landing (parenting coaching — the answer, the plan, the chec
   it('tells the three coaching beats the SMS coach and coach-plan skill actually ship', () => {
     expect(text).toContain('You ask');
     expect(text).toContain('I offer the whole plan');
-    // PLAN_CHECK_IN_DAYS = 3, and the plan skill forbids "let me know how it goes"
-    // precisely because Hale schedules this itself.
-    expect(text).toContain('Three days later');
+    // #430: the check-in day is model-chosen (checkInDays 2-5) and PROMISED in the
+    // plan's own text, so the landing claims the promise, not a fixed count.
+    expect(text).toContain('I name the day in the plan');
+    expect(text).not.toContain('Three days later');
   });
 
   it('names the seven plannable topics and no others', () => {
@@ -291,12 +292,13 @@ describe('flag-on landing (parenting coaching — the answer, the plan, the chec
     }
   });
 
-  it('claims no named method, because the shipped plan never names one', () => {
-    // coach-plan.md grounds a plan in the age companion and says what is COMMON and
-    // what families TRY. It does not instruct the model to attribute a method, and
-    // the SMS coach cites nothing — the named frameworks live only on /answers.
-    for (const method of ['Ferber', 'graduated check-in', 'three-day', '3-day', 'Health Canada']) {
-      expect(text).not.toContain(method);
+  it('names the methods the shipped plan actually attributes', () => {
+    // #430: plans ground on the source-verified playbooks and must name the method
+    // (packages/types/src/coaching-playbooks.ts; the eval's fabrication gate holds
+    // the composer to the playbook). The landing may therefore say the names — and
+    // only the three the playbooks carry.
+    for (const method of ['Ferber', 'three-day', 'Health Canada']) {
+      expect(text).toContain(method);
     }
   });
 
