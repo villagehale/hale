@@ -133,6 +133,20 @@ export function planCheckInSummary(topic: PlanTopic): string {
 }
 
 /**
+ * The offer sentence itself — reviewed copy, appended by code, never composed.
+ *
+ * It started as a line the skill asked the model to write, and the eval caught why that
+ * could not hold: a coaching answer plus this sentence runs past the two-segment budget,
+ * and the post-processor trims from the END. Parents were getting "Want the full plan?"
+ * with the half that says the magic word cut off — an offer with no way to accept it.
+ *
+ * Appending it here makes that unexpressible. The answer is fitted to the budget MINUS
+ * this line, so the offer cannot be what gets dropped; whatever has to give is a clause
+ * of background, which is the right thing to lose because the plan carries it anyway.
+ */
+export const PLAN_OFFER_LINE = "Want the full plan? Reply YES and I'll send it.";
+
+/**
  * How long a bare YES still means "send the plan".
  *
  * Two days, because a bare affirmative is a word with several possible owners and its

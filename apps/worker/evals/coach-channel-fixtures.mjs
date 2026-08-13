@@ -392,8 +392,12 @@ export const COACH_CHANNEL_FIXTURES = [
     note: "The founder's own text, 2026-08-11. inbound-lane already routes this in_domain and NOTHING downstream ever graded the answer — the gap that let #409's inert tool ship (skill audit P0 #2). A raising-kids question is the job, not a referral: call the companion, ground it in the baby's age, and coach.",
     children: [FIXTURE_BABY, ...FIXTURE_CHILDREN],
     expect: {
-      mustCall: ['get_framework_guidance'],
+      // The answer AND the offer. A coaching reply that stops at two sentences is the
+      // amputation the full-plan arc exists to undo: there is a real plan behind the
+      // answer, and a parent who is not told so cannot ask for it.
+      mustCall: ['get_framework_guidance', 'offer_full_plan'],
       mustNotDraft: true,
+      mustMention: ['full plan', 'yes'],
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
     },
   },
@@ -402,8 +406,12 @@ export const COACH_CHANNEL_FIXTURES = [
     text: 'My son is still co sleep how to get him sleep alone',
     note: "The founder's own text, 2026-08-11, missing words and all. Milo is the only boy Hale can see, so the target is not the question — the question is whether Hale coaches the transition or hands it back. This is the exact sentence the skill names as never valid: \"sleep questions are past me\".",
     expect: {
-      mustCall: ['get_framework_guidance'],
+      // The answer AND the offer. A coaching reply that stops at two sentences is the
+      // amputation the full-plan arc exists to undo: there is a real plan behind the
+      // answer, and a parent who is not told so cannot ask for it.
+      mustCall: ['get_framework_guidance', 'offer_full_plan'],
       mustNotDraft: true,
+      mustMention: ['full plan', 'yes'],
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
     },
   },
@@ -412,8 +420,12 @@ export const COACH_CHANNEL_FIXTURES = [
     text: 'ada is up at 2am every night again is that normal at 8',
     note: 'A worry dressed as a question about normality. "Is that normal" is the shape that tempts two opposite failures: a clinical reassurance Hale cannot make without seeing the child, and a phone number reached for because the word "night" sounded medical. What is common at this age plus one thing to try is the answer.',
     expect: {
-      mustCall: ['get_framework_guidance'],
+      // The answer AND the offer. A coaching reply that stops at two sentences is the
+      // amputation the full-plan arc exists to undo: there is a real plan behind the
+      // answer, and a parent who is not told so cannot ask for it.
+      mustCall: ['get_framework_guidance', 'offer_full_plan'],
       mustNotDraft: true,
+      mustMention: ['full plan', 'yes'],
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
     },
   },

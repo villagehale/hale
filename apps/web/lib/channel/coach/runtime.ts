@@ -236,7 +236,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             );
           }
 
-          const reply = toSmsReply(result.answer, { children, now });
+          const reply = toSmsReply(result.answer, {
+            children,
+            now,
+            offeringPlan: planOffer !== null,
+          });
           await ports.recordRun(record('completed'));
           return { reply, planOffer };
         },

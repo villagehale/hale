@@ -264,25 +264,47 @@ function redactTeenNames(text, children, now) {
   return out;
 }
 
-function fitToBudget(body, max) {
-  if (smsSegments(body) <= max) return body;
-  const parts = body.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+function sentences(body) {
+  return body.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+}
+
+function fitToBudget(body, max, suffix = '') {
+  const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
+  if (smsSegments(withSuffix(body)) <= max) return body;
+  const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
   return null;
 }
 
-function toSmsReply(raw, children) {
+/** Mirrors `PLAN_OFFER_LINE` in apps/web/lib/channel/plan/topics.ts. Appended by CODE,
+ * not written by the model: a coaching answer plus this sentence runs past two segments
+ * and the trim takes from the end, so asking the model for it shipped parents "Want the
+ * full plan?" with the half naming the magic word cut off. */
+const PLAN_OFFER_LINE = "Want the full plan? Reply YES and I'll send it.";
+
+function dropModelWrittenOffer(body) {
+  const parts = sentences(body);
+  while (parts.length > 1 && /want the full plan|reply yes/i.test(parts[parts.length - 1] ?? '')) {
+    parts.pop();
+  }
+  return parts.join(' ');
+}
+
+function toSmsReply(raw, children, offeringPlan = false) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
-  return fitToBudget(redactTeenNames(flattened, children, NOW), MAX_REPLY_SEGMENTS);
+  const redacted = redactTeenNames(flattened, children, NOW);
+  if (!offeringPlan) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  const fitted = fitToBudget(dropModelWrittenOffer(redacted), MAX_REPLY_SEGMENTS, PLAN_OFFER_LINE);
+  return `${fitted} ${PLAN_OFFER_LINE}`;
 }
 
 // ── replicated: apps/web/lib/channel/coach/tools.ts buildChannelCoachTools ──
@@ -416,7 +438,22 @@ function buildFixtureTools(agent, calls, village) {
     },
   });
 
-  return [lookupWeek, proposeMove, proposeCancel, proposeAdd, searchVillage];
+  // Replicated from apps/web/lib/channel/plan/offer.ts `offerFullPlanTool` — behind the
+  // `~/` alias (it imports the commitments ledger), so it cannot be imported here. The
+  // description and the topic enum are copied verbatim, because those two ARE what the
+  // model reads when it decides whether this turn is a plannable one.
+  const offerFullPlan = agent.defineTool({
+    name: 'offer_full_plan',
+    description:
+      "Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, day-by-day version of the answer you just gave. Call it AFTER you have already answered their question, then close your message by offering the plan and asking for a YES. It sends nothing on its own. Pass `childId` only when the parent's question was about one particular child and you have their id.",
+    inputSchema: passthrough(),
+    handler: async (input) => {
+      record('offer_full_plan', { topic: input.topic });
+      return { offered: true, topic: input.topic };
+    },
+  });
+
+  return [lookupWeek, proposeMove, proposeCancel, proposeAdd, searchVillage, offerFullPlan];
 }
 
 /**
@@ -770,7 +807,15 @@ function checkFixture(fixture, reply, calls, auditLog) {
   const questions = (reply.match(/\?/g) ?? []).length;
   if (questions > 1) failures.push(`${questions} questions in one message (at most one)`);
 
-  const sentenceCount = reply.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0).length;
+  // Counted on what the MODEL wrote. The plan offer is two fixed sentences that Hale
+  // appends after the trim, so charging them to this budget would leave a coaching turn
+  // one sentence to answer in — measuring the appended line instead of the prose the
+  // gate exists to hold. The QUESTION count above deliberately still sees it: "one
+  // question per message" is about what lands on the phone, and the offer is that one.
+  const authored = reply.endsWith(PLAN_OFFER_LINE)
+    ? reply.slice(0, -PLAN_OFFER_LINE.length).trim()
+    : reply;
+  const sentenceCount = sentences(authored).length;
   if (sentenceCount > MAX_SENTENCES) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
   }
@@ -861,6 +906,12 @@ const JUDGE_SYSTEM = [
   'buries the answer.',
   '1 = wrong: claims a change HAS been made when it was only drafted, invents a detail, or',
   'relays something it was told not to.',
+  'ONE EXCEPTION on endings: a raising-kids question is answered with the advice and',
+  'then a FIXED line Hale appends itself - "Want the full plan? Reply YES and I\'ll send',
+  'it." That is the product working, not a dangling question or an invitation to chatter:',
+  'a complete plan really does follow a YES. Never mark a reply down for carrying it, and',
+  'judge the ADVICE in front of it as the whole answer - it is deliberately one short',
+  'beat, because the depth is in the plan being offered.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -952,7 +1003,11 @@ async function main() {
         results.push({ fixture, reply: null, score: null, failures: ['agent returned no answer'] });
         continue;
       }
-      reply = toSmsReply(run.answer, children);
+      reply = toSmsReply(
+        run.answer,
+        children,
+        calls.some((call) => call.tool === 'offer_full_plan'),
+      );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
       toolResults = auditLog.map((entry) => entry.after);

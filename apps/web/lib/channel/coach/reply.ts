@@ -1,4 +1,5 @@
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
+import { PLAN_OFFER_LINE } from '~/lib/channel/plan/topics';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
@@ -47,6 +48,10 @@ export interface ReplyChild {
 export interface SmsReplyArgs {
   children: readonly ReplyChild[];
   now?: Date;
+  /** The turn called `offer_full_plan`, so the reviewed offer line is appended and the
+   * answer is fitted around it. See {@link PLAN_OFFER_LINE} for why the model is not
+   * asked to write it. */
+  offeringPlan?: boolean;
 }
 
 /**
@@ -132,19 +137,22 @@ function sentences(text: string): string[] {
  * audit P0 #4). Nothing replaces it. A parent who texted is owed a text back, and the
  * sentence they get is the one carrying the answer.
  */
-function fitToBudget(body: string, max: number): string {
-  if (smsSegments(body) <= max) return body;
+function fitToBudget(body: string, max: number, suffix = ''): string {
+  // The suffix is measured with the body, never after it: a reviewed line appended to a
+  // reply that was already at the ceiling is how the budget gets quietly exceeded.
+  const withSuffix = (text: string) => (suffix === '' ? text : `${text} ${suffix}`);
+  if (smsSegments(withSuffix(body)) <= max) return body;
 
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
 
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
 
   // Not even the first word fits: a model returning one unbroken 300-character token,
@@ -176,5 +184,22 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     console.error('channel coach: model composed a safety referral; sent the fixed line');
     return SAFETY_REPLY;
   }
-  return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  if (args.offeringPlan !== true) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+
+  // The skill tells the model not to write the offer; this is the backstop for when it
+  // does anyway, because the visible cost is the sentence arriving twice.
+  const answer = dropModelWrittenOffer(redacted);
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, PLAN_OFFER_LINE);
+  return `${fitted} ${PLAN_OFFER_LINE}`;
+}
+
+/** Drop a trailing sentence in which the model made the offer itself. Matched on the
+ * phrase the skill puts in its mouth, and only at the END, so a reply that legitimately
+ * uses the words mid-sentence is left alone. */
+function dropModelWrittenOffer(body: string): string {
+  const parts = sentences(body);
+  while (parts.length > 1 && /want the full plan|reply yes/i.test(parts[parts.length - 1] ?? '')) {
+    parts.pop();
+  }
+  return parts.join(' ');
 }

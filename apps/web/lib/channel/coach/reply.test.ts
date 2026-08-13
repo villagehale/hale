@@ -177,3 +177,53 @@ describe('the fixed safety reply is the only siren that leaves the coach', () =>
     expect(send(raw)).toBe(raw);
   });
 });
+
+describe('the plan offer line', () => {
+  const child = { name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-01' };
+
+  it('is appended by code, so the model never has to spend budget on it', () => {
+    const reply = toSmsReply('Try a gradual fade over two weeks.', {
+      children: [child],
+      now: new Date('2026-08-12T12:00:00.000Z'),
+      offeringPlan: true,
+    });
+
+    expect(reply).toBe(
+      "Try a gradual fade over two weeks. Want the full plan? Reply YES and I'll send it.",
+    );
+  });
+
+  it('trims the ANSWER to make room, never the offer', () => {
+    // The bug this exists to prevent: a coaching answer plus the offer runs past two
+    // segments, the trim takes from the end, and the parent gets "Want the full plan?"
+    // with the half that says the magic word cut off — an offer they cannot accept.
+    const long = `${'A gradual fade works well here. '.repeat(9)}One last background clause.`;
+
+    const reply = toSmsReply(long, {
+      children: [child],
+      now: new Date('2026-08-12T12:00:00.000Z'),
+      offeringPlan: true,
+    });
+
+    expect(reply.endsWith("Want the full plan? Reply YES and I'll send it.")).toBe(true);
+    expect(smsSegments(reply)).toBeLessThanOrEqual(MAX_REPLY_SEGMENTS);
+  });
+
+  it('does not append when the turn offered nothing', () => {
+    const reply = toSmsReply('Cancel Thursday swim? YES to confirm.', {
+      children: [child],
+      now: new Date('2026-08-12T12:00:00.000Z'),
+    });
+
+    expect(reply).toBe('Cancel Thursday swim? YES to confirm.');
+  });
+
+  it('sends the offer once when the model wrote it too', () => {
+    const reply = toSmsReply(
+      "Try a gradual fade over two weeks. Want the full plan? Reply YES and I'll send it.",
+      { children: [child], now: new Date('2026-08-12T12:00:00.000Z'), offeringPlan: true },
+    );
+
+    expect(reply.match(/Want the full plan\?/g)).toHaveLength(1);
+  });
+});

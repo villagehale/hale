@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The parent asked for four cancellations. Hale's draft cap is 2, so it correctly drafts the first two (Mon swim and Thu swim), names both with their times, asks for YES to confirm, and tells Sam it will handle the rest after — exactly the right handling of a cap overflow. No app referral, no invented details, no markdown, one question, stops cleanly."
+  }
+}
