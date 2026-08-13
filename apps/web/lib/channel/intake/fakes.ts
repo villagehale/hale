@@ -145,32 +145,63 @@ export function makeFakeDb(): FakeDb {
   };
 
   /**
-   * The ONE unique index this fake models: channel_messages(provider_message_id) WHERE
-   * direction = 'in'. It has to be modelled here because it is the whole mechanism of
-   * the inbound hand-off claim — the winner of the insert is the request that enqueues
-   * — and a fake that let both concurrent retries insert would pass a test the deployed
-   * webhook fails.
+   * The unique indexes this fake models. Each one is here because it is a CLAIM — the
+   * winner of the insert is the request that gets to act — and a fake that let both
+   * racers insert would pass a test the deployed code fails.
+   *
+   *   1. channel_messages(provider_message_id) WHERE direction = 'in' — the inbound
+   *      hand-off: the winner is the request that enqueues for C1.
+   *   2. sms_intake_sessions(phone_hash) WHERE closed_at IS NULL — one open conversation
+   *      per number: the winner is the door (text, or the voice front door) that speaks
+   *      first.
+   *   3. channel_messages(dedupe_key) WHERE dedupe_key IS NOT NULL — at-most-once per
+   *      logical message: the winner is the only attempt that reaches a provider.
    *
    * Faithful in BOTH directions: a conflicting insert that declared
    * `onConflictDoNothing` resolves to no rows, and one that did NOT raises the unique
    * violation real Postgres would. Otherwise a caller could drop the conflict clause
    * and still go green here while 23505-ing in production.
    */
-  const conflictsOnProviderId = (table: unknown, value: Record<string, unknown>): boolean =>
-    table === schema.channelMessages &&
-    value.direction === 'in' &&
-    typeof value.providerMessageId === 'string' &&
-    (store.get(table) ?? []).some(
-      (row) => row.direction === 'in' && row.providerMessageId === value.providerMessageId,
-    );
+  const conflictingIndex = (
+    table: unknown,
+    value: Record<string, unknown>,
+  ): string | null => {
+    const existing = store.get(table) ?? [];
+    if (
+      table === schema.channelMessages &&
+      value.direction === 'in' &&
+      typeof value.providerMessageId === 'string' &&
+      existing.some(
+        (row) => row.direction === 'in' && row.providerMessageId === value.providerMessageId,
+      )
+    ) {
+      return 'channel_messages_inbound_provider_msg_uniq';
+    }
+    if (
+      table === schema.channelMessages &&
+      typeof value.dedupeKey === 'string' &&
+      existing.some((row) => row.dedupeKey === value.dedupeKey)
+    ) {
+      return 'channel_messages_dedupe_key_uniq';
+    }
+    if (
+      table === schema.smsIntakeSessions &&
+      existing.some(
+        (row) =>
+          row.phoneHash === value.phoneHash &&
+          (row.closedAt === null || row.closedAt === undefined),
+      )
+    ) {
+      return 'sms_intake_sessions_phone_open_idx';
+    }
+    return null;
+  };
 
   /** A conflicting insert: `onConflictDoNothing` swallows it, any other terminal throws. */
-  const conflictChain = () => {
+  const conflictChain = (constraint: string) => {
     const violation = () =>
       Promise.reject(
-        new Error(
-          'duplicate key value violates unique constraint "channel_messages_inbound_provider_msg_uniq"',
-        ),
+        new Error(`duplicate key value violates unique constraint "${constraint}"`),
       );
     const chain: Record<string, unknown> = {
       onConflictDoNothing: () => thenable([]),
@@ -188,8 +219,9 @@ export function makeFakeDb(): FakeDb {
       const chain = thenable([]);
       chain.values = (payload: Record<string, unknown> | Record<string, unknown>[]) => {
         const list = Array.isArray(payload) ? payload : [payload];
-        if (list.some((value) => conflictsOnProviderId(table, value))) {
-          return conflictChain();
+        const constraint = list.map((value) => conflictingIndex(table, value)).find(Boolean);
+        if (constraint) {
+          return conflictChain(constraint);
         }
         const stored = store.get(table) ?? [];
         const inserted: Record<string, unknown>[] = [];

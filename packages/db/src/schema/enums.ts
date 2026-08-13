@@ -315,6 +315,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // budget on an intro question and then read the nudge cap as spent by messages the
   // nudge sweep never sent.
   'village_intro',
+  // The voice front door · the one text Hale sends because somebody CALLED the number.
+  // Its own category because the reason the message exists is not visible anywhere else
+  // in the row: a PIPEDA right-to-access read has to be able to say "this text exists
+  // because you phoned us", and a support question about a stray SMS is answered by the
+  // category alone. It is also the only outbound class whose trigger was a different
+  // channel, so no cap and no quiet-hours rule governs it — it is a direct answer to a
+  // call the parent is still on.
+  'voice',
 ]);
 
 /**

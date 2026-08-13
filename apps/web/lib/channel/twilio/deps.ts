@@ -17,6 +17,7 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import type { ChannelMessageReceivedJob, TwilioInboundDeps } from './inbound';
 import { createTwilioTransport } from './transport';
+import type { TwilioVoiceDeps } from './voice';
 
 /**
  * VIL-214 · A3 — the production wiring for the inbound webhook. The one place the
@@ -174,6 +175,16 @@ export function twilioInboundDeps(): TwilioInboundDeps {
     database: db(),
     intake: buildIntakeDeps,
     enqueue: enqueueChannelMessageReceived,
+    log: console,
+  };
+}
+
+/** The voice front door's wiring. Only a database and the SMS leg — the call itself is
+ * answered with a static document, so no model and no queue is involved. */
+export function twilioVoiceDeps(): TwilioVoiceDeps {
+  return {
+    database: db(),
+    transport: () => createTwilioTransport(),
     log: console,
   };
 }
