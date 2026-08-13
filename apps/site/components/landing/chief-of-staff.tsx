@@ -230,10 +230,14 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
               </li>
             ))}
           </ul>
+          {/* The second sentence's phone half depends on claim-by-phone shipping first —
+              see the merge-order note in landing-f14.test.ts. A texted family has no
+              email address, so "sign in" was untrue for them until that flow exists. */}
           <p className="mt-6 text-slate-green" style={{ lineHeight: 1.6 }}>
             Receipts for everything: every message names exactly what I did. Say yes to a date and
-            it arrives as a calendar invite — a real event, at whatever address you give me — and I
-            keep the full record of who, what and when.
+            it arrives as a calendar invite — a real event, at whatever address you give me. The
+            full record — who, what, when — is yours any time: ask me in the thread, or sign in with
+            your phone number.
           </p>
         </div>
       </section>

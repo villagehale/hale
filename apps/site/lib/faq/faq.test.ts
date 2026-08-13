@@ -61,6 +61,15 @@ describe('the FAQ served under the F14 landing', () => {
     expect(all).toContain('never diagnoses and never names a dose');
   });
 
+  it('offers the record by a door a texting family has (claim-by-phone must ship first)', () => {
+    // Same merge-order dependency as the landing's receipts line: web sign-in is
+    // Google + magic link today, and a texted family has no email address.
+    const answers = f14()
+      .map((item) => item.answer)
+      .join(' ');
+    expect(answers).toContain('sign in with your phone number');
+  });
+
   it('carries the Canadian residency and teen-redaction posture (hard rule #1)', () => {
     const answers = f14()
       .map((item) => item.answer)

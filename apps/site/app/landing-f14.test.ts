@@ -204,12 +204,19 @@ describe('flag-on landing (sections, in the Surfaces Plan order)', () => {
     expect(text).not.toContain('Silence is the normal state');
   });
 
-  it('promises the record without promising an account a texting family cannot open', () => {
-    // A text-provisioned family is users.email NULL + external_auth_id sms:<hash>
-    // (lib/channel/intake/provision.ts) — there is no account for them to sign into,
-    // so "the full record waits in your account" was false for the page's own reader.
+  it('offers the record by both doors a texting family actually has', () => {
+    // The old line ("the full record waits in your account") was false for this page's
+    // own reader: a text-provisioned family is users.email NULL + external_auth_id
+    // sms:<hash> (lib/channel/intake/provision.ts), and web sign-in is Google + magic
+    // link, so there was no account for them to open.
+    //
+    // ⚠️ MERGE ORDER: the phone half of this promise is true only once claim-by-phone
+    // ("Sign in with your phone" → OTP → session for the existing SMS identity) is
+    // live. It is NOT on main as of this commit. Do not flip NEXT_PUBLIC_F14_LANDING
+    // until it is, or this line re-becomes the falsehood it replaced.
     expect(text).not.toContain('waits in your account');
-    expect(text).toContain('I keep the full record');
+    expect(text).toContain('ask me in the thread');
+    expect(text).toContain('sign in with your phone number');
   });
 
   it('names the calendar invite as the receipt an approval actually produces', () => {

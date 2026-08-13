@@ -113,7 +113,7 @@ const F14_FAQ: readonly FaqItem[] = [
   {
     question: 'Do I need to use the website?',
     answer:
-      'No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. Families who signed up on the web have a receipts page for approvals and history; families who arrived by text simply have the thread.',
+      'No. Everything happens in the text thread, and Hale will never send you to a website to finish a job you texted it to do. The full record of what Hale has done is yours whenever you want it — ask for it in the thread, or sign in with your phone number and read it there.',
   },
   {
     question: 'Is Hale available outside Canada?',
