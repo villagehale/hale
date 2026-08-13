@@ -364,37 +364,10 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const { dispatchLoopMessage } = await import('~/lib/channel/dispatch');
   const { buildDispatchPorts } = await import('~/lib/channel/wiring');
   const { loopTemplateRenderer } = await import('~/lib/loop/templates/registry');
-  const { createResendEmailChannel } = await import('~/lib/channel/adapters/resend-email');
-  const { createExpoPushChannelAdapter } = await import('~/lib/channel/adapters/expo-push');
-  const { createTwilioSmsChannel } = await import('~/lib/channel/adapters/twilio-sms');
-  const { resolveSendablePhone } = await import('~/lib/channels/sms-consent-core');
-  const { createExpoPushChannel } = await import('~/lib/push/channel');
-  const { createExpoPushClient } = await import('~/lib/push/expo-client');
+  const { productionChannels } = await import('~/lib/channel/adapters/production');
   const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
-  const { schema } = await import('@hale/db');
-  const { eq } = await import('drizzle-orm');
 
-  const channels = {
-    email: createResendEmailChannel({
-      resolveEmail: async (userId: string) => {
-        const rows = await db()
-          .select({ email: schema.users.email })
-          .from(schema.users)
-          .where(eq(schema.users.id, userId))
-          .limit(1);
-        return rows[0]?.email ?? null;
-      },
-    }),
-    push: createExpoPushChannelAdapter({
-      push: createExpoPushChannel({ database: db(), client: createExpoPushClient() }),
-    }),
-    // The ONE send-side reader (VIL-262): it carries the verified + non-revoked
-    // predicate itself, so the SMS leg fails closed on its own rather than on the
-    // dispatch having run the consent check first.
-    sms: createTwilioSmsChannel({
-      resolveTarget: (userId: string) => resolveSendablePhone(db(), userId),
-    }),
-  };
+  const channels = productionChannels(db());
 
   // VIL-249 — the executor's invite port, bound to the SAME adapters the loop sends
   // through. Both execution paths get it: an approved placement (actions.approved) and

@@ -365,11 +365,12 @@ describe('the village intro lane and the lanes behind it', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, then approval, then health, then registration', async () => {
+  it('is village_intro, approval, email_capture, health, registration', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
       'approval',
+      'email_capture',
       'health',
       'registration',
     ]);

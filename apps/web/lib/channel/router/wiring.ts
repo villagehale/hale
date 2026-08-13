@@ -17,8 +17,10 @@ import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import type { ApprovalSpine, PendingAction } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
 import {
   approvalHandler,
+  emailCaptureHandler,
   healthReplyHandler,
   sequenceReplyHandler,
   villageIntroHandler,
@@ -187,6 +189,7 @@ export function defaultHandlers(): DeterministicHandler[] {
   return [
     villageIntroHandler(defaultVillageIntroReplyDeps()),
     approvalHandler(defaultApprovalSpine()),
+    emailCaptureHandler(defaultEmailCaptureDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
   ];
