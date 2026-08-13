@@ -1,5 +1,5 @@
 import { type Database, schema } from '@hale/db';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import type { IntakeCollected } from './extract';
@@ -112,11 +112,23 @@ export async function loadOpenSession(
   };
 }
 
-/** Open a session for a number we have never heard from. */
-export async function createSession(
+/**
+ * Try to open a session for this number — and hand back null when one is already open.
+ *
+ * The INSERT is the claim. `sms_intake_sessions_phone_open_idx` is unique on the phone
+ * hash where `closed_at IS NULL`, so exactly one caller can win a conversation with a
+ * given number, and winning it is what confers the right to speak first. A
+ * select-then-insert guard is a guard both racers walk through, and the two doors onto
+ * intake can now fire at the same moment: a parent who texts while their own call is
+ * still being answered would otherwise be greeted twice.
+ *
+ * Null is a first-class answer, not a failure — see {@link createSession} for the caller
+ * that treats it as one.
+ */
+export async function claimIntakeSession(
   database: Database,
   input: { phoneE164: string; state: IntakeState; sourceCode: string | null },
-): Promise<IntakeSession> {
+): Promise<IntakeSession | null> {
   const phoneHash = phoneBlindIndex(input.phoneE164);
   const [row] = await database
     .insert(schema.smsIntakeSessions)
@@ -127,10 +139,12 @@ export async function createSession(
       sourceCode: input.sourceCode,
       dataEncrypted: encodeData({ collected: EMPTY_COLLECTED, transcript: [] }),
     })
+    .onConflictDoNothing({
+      target: schema.smsIntakeSessions.phoneHash,
+      where: sql`${schema.smsIntakeSessions.closedAt} IS NULL`,
+    })
     .returning({ id: schema.smsIntakeSessions.id });
-  if (!row) {
-    throw new Error('createSession: sms_intake_sessions insert returned no row');
-  }
+  if (!row) return null;
   return {
     id: row.id,
     phoneHash,
@@ -145,6 +159,21 @@ export async function createSession(
     userId: null,
     lastProviderId: null,
   };
+}
+
+/** Open a session for a number we have never heard from. The machine has already read
+ * `loadOpenSession` and found nothing, so a lost claim here is a genuine race with the
+ * other door — and there is no sane way to continue this turn, because the greeting it
+ * was about to send belongs to whoever won. */
+export async function createSession(
+  database: Database,
+  input: { phoneE164: string; state: IntakeState; sourceCode: string | null },
+): Promise<IntakeSession> {
+  const session = await claimIntakeSession(database, input);
+  if (!session) {
+    throw new Error('createSession: sms_intake_sessions insert returned no row');
+  }
+  return session;
 }
 
 export interface SessionPatch {

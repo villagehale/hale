@@ -96,8 +96,22 @@ export function greeting(venue: string | null): string {
   if (venue) {
     return `Hi, I'm Hale - an AI that quietly runs the family week for parents around here. You found me at the ${venue}, so I already know the area. Kids' names and ages, and I'll get to work.`;
   }
-  return "Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
+  return `Hi, I'm Hale - an AI that quietly runs the family week. Registration dates, weekend plans, the stuff that slips. ${COLD_START_ASK}`;
 }
+
+/**
+ * The ONE thing Hale asks a stranger for, extracted from {@link greeting} because a
+ * second door onto intake now exists: somebody who CALLS the number is texted an opener
+ * by the voice front door (lib/channel/twilio/voice.ts), and their reply lands in this
+ * same machine.
+ *
+ * Shared rather than re-worded on purpose. Two openers asking for the same two facts in
+ * two voices is how a product starts sounding like two products — and the reply parser
+ * behind both is one extractor, so an ask that drifts is an ask the machine is no longer
+ * tuned for.
+ */
+export const COLD_START_ASK =
+  "Tell me your kids' names and ages, plus your postal code - and I'll get to work.";
 
 /**
  * What intake still needs before a family can be set up. Both are hard requirements
