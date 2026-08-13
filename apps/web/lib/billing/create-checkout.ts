@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { BillingPeriod } from '@hale/types';
-import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
 import type { StripeCheckoutClient } from './stripe-client.js';
 
@@ -22,18 +22,26 @@ export async function createBillingCheckout(input: {
   tier: PaidTier;
   period: BillingPeriod;
   priceId: string;
-  identity: AuthIdentity;
+  externalAuthId: string;
+  /**
+   * Prefills the Stripe page, and is allowed to be absent. A family that arrived by
+   * text has no address on file (`users.email` is NULL by construction), and refusing
+   * checkout over that would lock every phone-born family out of paying forever —
+   * Stripe collects one on its own page instead, which is where a billing address
+   * belongs anyway.
+   */
+  customerEmail: string | null;
   database: Database;
   client: StripeCheckoutClient;
   origin: string;
 }): Promise<CreateBillingCheckoutResult> {
-  const { tier, period, priceId, identity, database, client, origin } = input;
+  const { tier, period, priceId, externalAuthId, customerEmail, database, client, origin } = input;
 
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   const { url } = await client.createCheckoutSession({
     priceId,
@@ -42,7 +50,7 @@ export async function createBillingCheckout(input: {
     period,
     successUrl: `${origin}/settings?checkout=success#billing`,
     cancelUrl: `${origin}/settings?checkout=cancelled#billing`,
-    customerEmail: identity.email,
+    customerEmail,
   });
 
   await database.insert(schema.auditLog).values({

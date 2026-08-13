@@ -115,6 +115,12 @@ export async function completeOnboarding(
   const session = await auth();
   const externalAuthId = session?.user?.id;
   const email = session?.user?.email;
+  // KEPT deliberately, unlike the settings write-gates F14 relaxed to id-based: this
+  // path provisions a BRAND-NEW family, so it is the one place `ensureUserRow` can
+  // genuinely have to CREATE the users row — and creating one needs an address. The
+  // relaxed gates all resolve an existing family first, which proves the row already
+  // exists; this one cannot. A phone-claimed session never reaches here (it has a
+  // family from the moment it exists). Do not "fix" this.
   if (!externalAuthId || !email) {
     return { status: 'preview' };
   }

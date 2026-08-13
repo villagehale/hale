@@ -202,6 +202,32 @@ export async function resolveUserIdForUser(
   return rows[0]?.id ?? null;
 }
 
+/**
+ * The internal id of a user whose row is ALREADY known to exist, by external auth id.
+ *
+ * Every caller of this reaches it AFTER a successful `resolveFamilyForUser`, and that
+ * lookup is an inner join starting FROM the users table — so a non-null familyId is
+ * already proof of the row. This is the same question `ensureUserRow` answers, minus
+ * the create path those callers cannot reach, which is what lets a session with no
+ * email address (a family that arrived by text — `users.email` is NULL by construction)
+ * write its own settings. Nothing about identity ever depended on the address; the
+ * mirror-create did.
+ *
+ * Absent means an invariant broke between the two lookups, so it THROWS rather than
+ * returning null for eleven call sites to branch on — the same call `ensureUserRow`
+ * makes when its own upsert leaves no row (rule #1: never fabricate an id).
+ */
+export async function requireUserIdForUser(
+  externalAuthId: string,
+  database: Database,
+): Promise<string> {
+  const userId = await resolveUserIdForUser(externalAuthId, database);
+  if (!userId) {
+    throw new Error('requireUserIdForUser: no users row for a caller that resolved a family');
+  }
+  return userId;
+}
+
 /** The identity Auth.js hands us for a signed-in parent, mirrored into `users`. */
 export interface AuthIdentity {
   /** The Google account id (OAuth `sub`), stored as users.external_auth_id. */

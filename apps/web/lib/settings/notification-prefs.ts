@@ -3,7 +3,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { hasOptedOut, recordOptIn, recordOptOut } from '~/lib/cron/email-compliance';
 import { db as defaultDb } from '~/lib/db';
-import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 
 /**
  * The notification preferences behind the Settings page. Today the one stream a
@@ -106,8 +106,7 @@ async function prefContext(): Promise<PrefContext> {
   }
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const email = session?.user?.email;
-  if (!externalAuthId || !email) {
+  if (!externalAuthId) {
     return { status: 'unauthenticated' };
   }
 
@@ -116,9 +115,6 @@ async function prefContext(): Promise<PrefContext> {
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(
-    { externalAuthId, email, name: session.user?.name ?? null },
-    database,
-  );
+  const userId = await requireUserIdForUser(externalAuthId, database);
   return { status: 'ready', database, userId, familyId };
 }

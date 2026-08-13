@@ -3,7 +3,7 @@ import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { db as defaultDb } from '~/lib/db';
-import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import {
   type LoopPrefUpdate,
   type LoopPrefsView,
@@ -93,8 +93,7 @@ async function loopPrefContext(): Promise<LoopPrefContext> {
   }
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const email = session?.user?.email;
-  if (!externalAuthId || !email) {
+  if (!externalAuthId) {
     return { status: 'unauthenticated' };
   }
 
@@ -103,9 +102,6 @@ async function loopPrefContext(): Promise<LoopPrefContext> {
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(
-    { externalAuthId, email, name: session.user?.name ?? null },
-    database,
-  );
+  const userId = await requireUserIdForUser(externalAuthId, database);
   return { status: 'ready', database, userId, familyId };
 }

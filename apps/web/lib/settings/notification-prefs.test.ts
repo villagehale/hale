@@ -1,7 +1,7 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hasOptedOut, recordOptIn, recordOptOut } from '~/lib/cron/email-compliance';
-import { ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import { loadNotificationPrefs, setNotificationPrefAction } from './notification-prefs.js';
 
 // The notification-prefs lib resolves the caller's family from the session (never a
@@ -14,7 +14,7 @@ vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/db', () => ({ db: () => fakeDbHandle }));
 vi.mock('~/lib/family', async () => {
   const actual = await vi.importActual<typeof import('~/lib/family')>('~/lib/family');
-  return { ...actual, resolveFamilyForUser: vi.fn(), ensureUserRow: vi.fn() };
+  return { ...actual, resolveFamilyForUser: vi.fn(), requireUserIdForUser: vi.fn() };
 });
 vi.mock('~/lib/cron/email-compliance', () => ({
   hasOptedOut: vi.fn(),
@@ -51,7 +51,7 @@ describe('notification-prefs', () => {
     tx.insert.mockClear();
     fakeDbHandle.transaction.mockClear();
     vi.mocked(resolveFamilyForUser).mockReset().mockResolvedValue(FAMILY_ID);
-    vi.mocked(ensureUserRow).mockReset().mockResolvedValue(USER_ID);
+    vi.mocked(requireUserIdForUser).mockReset().mockResolvedValue(USER_ID);
     vi.mocked(hasOptedOut).mockReset();
     vi.mocked(recordOptIn).mockReset().mockResolvedValue(undefined);
     vi.mocked(recordOptOut).mockReset().mockResolvedValue(true);

@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '~/auth';
 import { authConfigured } from '~/lib/auth-config';
 import { db as defaultDb } from '~/lib/db';
-import { type AuthIdentity, ensureUserRow, resolveFamilyForUser } from '~/lib/family';
+import { requireUserIdForUser, resolveFamilyForUser } from '~/lib/family';
 import {
   type PlanInput,
   type PlanValidationError,
@@ -46,12 +46,12 @@ export async function createPlan(input: PlanInput): Promise<CreatePlanResult> {
     return { status: 'preview' };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   const result = await insertPlanForFamily(database, { familyId, userId, plan: validated.plan });
   if (result.status === 'foreign_child') {
@@ -73,12 +73,12 @@ export async function deletePlan(planId: string): Promise<DeletePlanResult> {
     return { status: 'preview' };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   const deleted = await database.transaction(async (tx) => {
     // Scope the delete to the caller's family (rule #1): a planId from another
@@ -132,12 +132,12 @@ export async function completePlan(planId: string): Promise<CompletePlanResult> 
     return { status: 'preview' };
   }
 
-  const { database, identity } = ctx;
-  const familyId = await resolveFamilyForUser(identity.externalAuthId, database);
+  const { database, externalAuthId } = ctx;
+  const familyId = await resolveFamilyForUser(externalAuthId, database);
   if (!familyId) {
     return { status: 'not_found' };
   }
-  const userId = await ensureUserRow(identity, database);
+  const userId = await requireUserIdForUser(externalAuthId, database);
 
   const result = await completePlanForFamily(database, {
     familyId,
@@ -154,7 +154,7 @@ export async function completePlan(planId: string): Promise<CompletePlanResult> 
 }
 
 type MutationContext =
-  | { status: 'ready'; database: Database; identity: AuthIdentity }
+  | { status: 'ready'; database: Database; externalAuthId: string }
   | { status: 'preview' };
 
 async function mutationContext(): Promise<MutationContext> {
@@ -163,13 +163,8 @@ async function mutationContext(): Promise<MutationContext> {
   }
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const email = session?.user?.email;
-  if (!externalAuthId || !email) {
+  if (!externalAuthId) {
     return { status: 'preview' };
   }
-  return {
-    status: 'ready',
-    database: defaultDb(),
-    identity: { externalAuthId, email, name: session.user?.name ?? null },
-  };
+  return { status: 'ready', database: defaultDb(), externalAuthId };
 }

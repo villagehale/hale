@@ -29,10 +29,11 @@ const PERIODS: ReadonlySet<string> = new Set<BillingPeriod>(['monthly', 'annual'
 export async function POST(req: Request): Promise<Response> {
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const email = session?.user?.email;
-  if (!externalAuthId || !email) {
+  if (!externalAuthId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
+  // Absent for a family that arrived by text; Stripe asks for one on its own page.
+  const customerEmail = session?.user?.email ?? null;
 
   const body = (await req.json().catch(() => null)) as {
     tier?: unknown;
@@ -69,7 +70,8 @@ export async function POST(req: Request): Promise<Response> {
       tier: tier as PaidTier,
       period: period as BillingPeriod,
       priceId,
-      identity: { externalAuthId, email, name: session.user?.name ?? null },
+      externalAuthId,
+      customerEmail,
       database: defaultDb(),
       client,
       origin,
