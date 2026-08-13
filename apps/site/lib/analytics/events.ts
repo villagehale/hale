@@ -21,7 +21,11 @@ export type AnalyticsEvent =
   | 'waitlist_signup'
   // The /text entry page (VIL-240), carrying the QR card's venue code as `source`
   // — which physical spot actually starts conversations.
-  | 'text_entry_viewed';
+  | 'text_entry_viewed'
+  // The chief-of-staff landing's only conversion: tapping through to the SMS
+  // composer. Property-free like the other landing CTAs — the href it sits on is
+  // an sms: deep link, so the safest thing to send alongside it is nothing.
+  | 'landing_cta_text';
 
 /** A coarse, non-identifying property value. No objects, no arrays — only primitives. */
 export type EventProperty = string | number | boolean;

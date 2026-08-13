@@ -2,22 +2,23 @@
 
 import { Minus, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { FAQ } from '~/lib/faq';
+import type { FaqItem } from '~/lib/faq';
 
 /**
- * The canonical product FAQ accordion on /faq. Items come from the same lib/faq
- * source that derives the route's FAQPage schema. Every answer is verified against
- * Hale's real privacy policy and product rules — no overclaiming. Single-open: the
- * first item is open by default; the open answer expands via a 0fr → 1fr grid
- * transition (static under prefers-reduced-motion).
+ * The canonical product FAQ accordion on /faq. Items are handed in by the route so
+ * the same lib/faq source derives both these panels and the FAQPage schema — and so
+ * the landing-flag branch that chooses between the two lists stays on the server.
+ * Every answer is verified against Hale's real privacy policy and product rules — no
+ * overclaiming. Single-open: the first item is open by default; the open answer
+ * expands via a 0fr → 1fr grid transition (static under prefers-reduced-motion).
  */
 
-export function ProductFaqAccordion() {
+export function ProductFaqAccordion({ items }: { items: readonly FaqItem[] }) {
   const [open, setOpen] = useState(0);
 
   return (
     <div>
-      {FAQ.map((item, i) => {
+      {items.map((item, i) => {
         const isOpen = open === i;
         const panelId = `faq-panel-${i}`;
         const buttonId = `faq-button-${i}`;

@@ -63,8 +63,14 @@ describe('flag-on landing (hero)', () => {
   it('leads with the persona hero, verbatim', () => {
     expect(html).toContain('Hi, I’m Hale — your family’s quiet chief of staff.');
     expect(html).toContain(
-      'I keep watch over your week — registrations, programs, school paperwork, weather — and text you before things matter.',
+      'I keep watch over your week — registrations, programs, checkups, weather — and text you before things matter.',
     );
+  });
+
+  it('names only watched things that exist — no school paperwork Hale cannot see', () => {
+    // The health timeline (checkups, immunizations) and the weather read are real;
+    // there is no school-paperwork ingestion anywhere in the product.
+    expect(html).not.toContain('school paperwork');
   });
 
   it('has exactly one h1', () => {
@@ -148,6 +154,36 @@ describe('flag-on landing (sections, in the Surfaces Plan order)', () => {
     expect(text).toContain('15 municipalities');
   });
 
+  it('pins the municipality count to the Municipality union it hand-copies', () => {
+    // apps/site cannot import @hale/db, so the city list in chief-of-staff.tsx is a
+    // hand-kept copy of the `Municipality` union in
+    // packages/db/src/schema/registration-windows.ts. When a city is added there,
+    // this count fails and the copy gets updated with it — otherwise the page would
+    // quietly under-claim the coverage the radar actually has.
+    expect([...html.matchAll(/class="pill pill-apricot"/g)]).toHaveLength(15);
+  });
+
+  it('watches only what registration-windows-data.ts actually holds', () => {
+    // The seeded camp rows are the fall cycles and the winter-break/holiday camps.
+    // There is not one March-break or summer row, and no PA-day or school-closure
+    // feed exists anywhere in the product.
+    expect(text).toContain('Swim lessons');
+    expect(text).toContain('Camps');
+    expect(text).toContain('winter-break');
+    for (const invented of ['March break', 'PA day', 'PA days', 'closures']) {
+      expect(text).not.toContain(invented);
+    }
+    expect(text).not.toMatch(/summer/i);
+  });
+
+  it('states the waitlist clock as the range the data holds, not one town’s 36 hours', () => {
+    // waitlistResponseHours across the seed: 24 (Vaughan ×2), 36 (Toronto only),
+    // 48 (Markham, Halton Hills, Oakville), null everywhere else. "The 36 hours"
+    // promised every family the one value a single row carries.
+    expect(text).toContain('Waitlist clocks');
+    expect(text).not.toContain('The 36 hours');
+  });
+
   it('tells the three texts and the suggest → prepare → handle ladder with receipts', () => {
     expect(text).toContain('You say hi');
     expect(text).toContain('I send your family’s radar');
@@ -158,9 +194,42 @@ describe('flag-on landing (sections, in the Surfaces Plan order)', () => {
     expect(text.toLowerCase()).toContain('receipts');
   });
 
-  it('covers the village and the co-parent, and keeps the roles honest', () => {
+  it('describes the real cadence — a Monday brief and the open-day ladder, not pure silence', () => {
+    // loop_prefs defaults: weekly_plan_send_time 08:00 on users.week_start_day (1 =
+    // Monday). The registration sequence adds heads_up (7 days out), battle_plan
+    // (the evening before) and go (15 min prior). "Silence is the normal state"
+    // described a product that never texts first, which this one does.
+    expect(text).toContain('Monday morning');
+    expect(text).toContain('the evening before');
+    expect(text).not.toContain('Silence is the normal state');
+  });
+
+  it('offers the record by both doors a texting family actually has', () => {
+    // The old line ("the full record waits in your account") was false for this page's
+    // own reader: a text-provisioned family is users.email NULL + external_auth_id
+    // sms:<hash> (lib/channel/intake/provision.ts), and web sign-in is Google + magic
+    // link, so there was no account for them to open.
+    //
+    // ⚠️ MERGE ORDER: the phone half of this promise is true only once claim-by-phone
+    // ("Sign in with your phone" → OTP → session for the existing SMS identity) is
+    // live. It is NOT on main as of this commit. Do not flip NEXT_PUBLIC_F14_LANDING
+    // until it is, or this line re-becomes the falsehood it replaced.
+    expect(text).not.toContain('waits in your account');
+    expect(text).toContain('ask me in the thread');
+    expect(text).toContain('sign in with your phone number');
+  });
+
+  it('names the calendar invite as the receipt an approval actually produces', () => {
+    expect(text).toContain('calendar');
+    expect(text.toLowerCase()).toContain('invite');
+  });
+
+  it('covers the caregivers and the co-parent, and keeps the roles honest', () => {
     expect(text).toContain('just the schedule');
     expect(text).toContain('co-parent');
+    // "Village" is reserved for the family-to-family intros product; this section
+    // is about scoped caregiver access.
+    expect(text).toContain('Your helpers');
   });
 
   it('makes the privacy claim Canadian and links the policy page', () => {
@@ -184,12 +253,70 @@ describe('flag-on landing (sections, in the Surfaces Plan order)', () => {
       'quiet chief of staff',
       'What I watch',
       'How I work',
-      'Your village',
+      'When you ask me something',
+      'Your helpers',
       'the Canadian way',
       'Founding families',
     ].map((marker) => text.indexOf(marker));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
+
+describe('flag-on landing (parenting coaching — the answer, the plan, the check-in)', () => {
+  const text = renderOn()
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  it('tells the three coaching beats the SMS coach and coach-plan skill actually ship', () => {
+    expect(text).toContain('You ask');
+    expect(text).toContain('I offer the whole plan');
+    // PLAN_CHECK_IN_DAYS = 3, and the plan skill forbids "let me know how it goes"
+    // precisely because Hale schedules this itself.
+    expect(text).toContain('Three days later');
+  });
+
+  it('names the seven plannable topics and no others', () => {
+    for (const topic of [
+      'Sleep',
+      'starting solids',
+      'potty training',
+      'picky eating',
+      'tantrums',
+      'screen time',
+      'routines',
+    ]) {
+      expect(text).toContain(topic);
+    }
+  });
+
+  it('claims no named method, because the shipped plan never names one', () => {
+    // coach-plan.md grounds a plan in the age companion and says what is COMMON and
+    // what families TRY. It does not instruct the model to attribute a method, and
+    // the SMS coach cites nothing — the named frameworks live only on /answers.
+    for (const method of ['Ferber', 'graduated check-in', 'three-day', '3-day', 'Health Canada']) {
+      expect(text).not.toContain(method);
+    }
+  });
+
+  it('carries the medical boundary the skill enforces, with no outcome promise', () => {
+    expect(text).toContain('doctor');
+    for (const promise of ['guaranteed', 'will fix', 'in three nights', 'cure']) {
+      expect(text).not.toContain(promise);
+    }
+  });
+});
+
+describe('flag-on landing (structured data)', () => {
+  it('emits its own JSON-LD graph — the flag-branched copy was never rendered', () => {
+    // siteJsonLd() has branched on the flag since the launch-day review, but only
+    // VillageLanding ever rendered the script tag, so the F14 homepage shipped with
+    // no structured data at all and the chief-of-staff branch was dead code.
+    const html = renderOn();
+    expect(html).toContain('application/ld+json');
+    expect(html).toContain('A number your family texts');
+    expect(html).not.toContain('passive household assistant');
   });
 });
 

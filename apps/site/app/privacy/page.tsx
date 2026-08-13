@@ -253,7 +253,8 @@ export default function PrivacyPage() {
             or email. Region per <code>NEXT_PUBLIC_POSTHOG_HOST</code>.
           </li>
           <li>
-            <strong>Resend</strong> — delivery of transactional and digest emails (United States).
+            <strong>Resend</strong> — delivery of transactional and weekly-brief emails (United
+            States).
           </li>
           <li>
             <strong>Twilio</strong> — delivery of text messages, where you choose to use Hale over
@@ -395,7 +396,8 @@ export default function PrivacyPage() {
       <LegalSectionBlock id="casl" title="Email and electronic messages (CASL)">
         <p>
           We send you email that is necessary to run your account — such as security notices and the
-          updates and digests you ask Hale to prepare. If we ever send commercial electronic
+          weekly brief and other updates you ask Hale to prepare. If we ever send commercial
+          electronic
           messages, we do so only with your consent, we identify ourselves, and every such message
           includes a clear, working way to unsubscribe. You can opt out of non-essential messages at
           any time without affecting your account.
