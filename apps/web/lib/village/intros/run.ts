@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import type { FamilyStage } from '@hale/types';
-import { and, asc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { dedupeActive } from '~/lib/channel/ledger';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
@@ -23,6 +23,8 @@ import {
 import { type IntroEmailSender, createIntroEmailSender, introFirstName } from './email';
 import {
   type IntroSkipReason,
+  matchAreaFsas,
+  matchAreaKey,
   matchIntroPairs,
   normalizeFsa,
   pairKey,
@@ -154,7 +156,9 @@ export interface IntroSweepDeps {
   loadPairedBefore(database: Database): Promise<Set<string>>;
   loadAnchorSession(
     database: Database,
-    fsa: string,
+    /** Every FSA the pair's match area covers — one for a Toronto or unmapped pair, the
+     * whole municipality for the rest. Never empty. */
+    fsas: readonly string[],
     now: Date,
   ): Promise<{ id: string; title: string; startsAt: Date } | null>;
   createProposal(
@@ -303,10 +307,13 @@ async function runAskPhase(
   result: IntroSweepResult,
   now: Date,
 ): Promise<void> {
-  const byFsa = new Map<string, number>();
+  const byArea = new Map<string, number>();
   for (const family of families) {
     const fsa = normalizeFsa(family.areaCoarse);
-    if (fsa) byFsa.set(fsa, (byFsa.get(fsa) ?? 0) + 1);
+    if (fsa) {
+      const area = matchAreaKey(fsa);
+      byArea.set(area, (byArea.get(area) ?? 0) + 1);
+    }
   }
 
   const asked = await deps.askedUserIds(
@@ -316,9 +323,11 @@ async function runAskPhase(
 
   for (const family of families) {
     const fsa = normalizeFsa(family.areaCoarse);
-    // Alone in their FSA: there is nobody to introduce them to, so the question would
-    // be an unprompted text about a thing that cannot happen.
-    if (!fsa || (byFsa.get(fsa) ?? 0) < 2) continue;
+    // Alone in their locality: there is nobody to introduce them to, so the question
+    // would be an unprompted text about a thing that cannot happen. The count has to
+    // read the SAME radius the matcher pairs on, or a Georgetown family with an Acton
+    // neighbour is never asked and the widening is dead where it was needed.
+    if (!fsa || (byArea.get(matchAreaKey(fsa)) ?? 0) < 2) continue;
     if (asked.has(family.parentUserId)) continue;
 
     try {
@@ -393,7 +402,7 @@ async function runMatchPhase(
   const expiresAt = new Date(now.getTime() + INTRO_EXPIRY_DAYS * 24 * 3_600_000);
   for (const pairing of match.pairings) {
     try {
-      const anchor = await deps.loadAnchorSession(database, pairing.fsa, now);
+      const anchor = await deps.loadAnchorSession(database, matchAreaFsas(pairing.fsa), now);
       const proposalId = await deps.createProposal(database, {
         ...pairing,
         civicSessionId: anchor?.id ?? null,
@@ -770,7 +779,8 @@ async function readPairedBefore(database: Database): Promise<Set<string>> {
 }
 
 /**
- * The soonest free civic session in this FSA that both families could plausibly be at.
+ * The soonest free civic session inside the pair's match area that both families could
+ * plausibly be at.
  *
  * Occurrence rows only. A weekly EarlyON slot has no date of its own — expanding it
  * into one is the civic projection's job, and an anchor that names a day Hale computed
@@ -782,7 +792,7 @@ async function readPairedBefore(database: Database): Promise<Set<string>> {
  */
 async function readAnchorSession(
   database: Database,
-  fsa: string,
+  fsas: readonly string[],
   now: Date,
 ): Promise<{ id: string; title: string; startsAt: Date } | null> {
   const horizon = new Date(now.getTime() + ANCHOR_HORIZON_DAYS * 24 * 3_600_000);
@@ -802,7 +812,7 @@ async function readAnchorSession(
         gte(schema.civicSessions.confidence, MIN_SURFACE_CONFIDENCE),
         gte(schema.civicSessions.startsAt, now),
         lte(schema.civicSessions.startsAt, horizon),
-        eq(sql`upper(left(replace(${schema.civicVenues.postalCode}, ' ', ''), 3))`, fsa),
+        inArray(sql`upper(left(replace(${schema.civicVenues.postalCode}, ' ', ''), 3))`, [...fsas]),
       ),
     )
     .orderBy(asc(schema.civicSessions.startsAt))
