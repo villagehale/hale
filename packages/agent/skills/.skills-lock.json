@@ -17,7 +17,15 @@
   },
   "coach-channel-sms.md": {
     "file": "coach-channel-sms.md",
-    "sha256": "a6a30080e676e32afce6ddcf93748a51efb14808fb5724dac2d4cf6664083cda"
+    "sha256": "e93d6dab02e9e4ab60b3462b9fa81af930bbf5f30b19418de65453108f1fa054"
+  },
+  "coach-plan-note.md": {
+    "file": "coach-plan-note.md",
+    "sha256": "6a2d08cba7a9806e816e433cf7e07efa70754375ef6b241c12d0f365b15a8b8c"
+  },
+  "coach-plan.md": {
+    "file": "coach-plan.md",
+    "sha256": "51c69fa3664adb0ea2d497f226813437cf155be00399c059688e729266c70190"
   },
   "curate-shortlist.md": {
     "file": "curate-shortlist.md",

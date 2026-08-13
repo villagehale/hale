@@ -16,8 +16,10 @@ import { recordAgentRun } from '~/lib/agent-run';
 import {
   type ChannelCoachRuntime,
   type ChannelTurn,
+  type ChannelTurnResult,
   ChannelTurnFailed,
 } from '~/lib/channel/router/coach-runtime';
+import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
@@ -97,8 +99,13 @@ export interface ChannelCoachPorts {
    * find them in the answer, and it is the only consumer. */
   loadChildren(familyId: string): Promise<ReplyChild[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
-   * it already committed rather than claiming nothing happened (VIL-260). */
-  buildTools(turn: ChannelTurn, onDraft: (actionId: string) => void): RegisteredTool[];
+   * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
+   * with the full plan the turn offered, which the router writes down after the send. */
+  buildTools(
+    turn: ChannelTurn,
+    onDraft: (actionId: string) => void,
+    onOffer: (offer: PlanOffer) => void,
+  ): RegisteredTool[];
   guardDeps: GuardDeps;
   /**
    * The Anthropic client the loop drives, resolved LAZILY — a function, not a value.
@@ -117,11 +124,16 @@ export interface ChannelCoachPorts {
 
 export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRuntime {
   return {
-    async respond(turn: ChannelTurn): Promise<{ reply: string }> {
+    async respond(turn: ChannelTurn): Promise<ChannelTurnResult> {
       // This turn's own ledger of committed drafts. Every exit that is not an answer
       // carries it out (see `failed` below) — a draft is a row the parent can approve,
       // so a failure that hid it would leave them holding an action they never heard of.
       const draftedActionIds: string[] = [];
+      // The plan this turn offered, if it offered one. LAST CALL WINS rather than a
+      // list: the skill allows exactly one question per message, so a second offer in
+      // one turn is a model that changed its mind mid-compose, and the offer the parent
+      // can actually see is the one in the sentence it ended up writing.
+      let planOffer: PlanOffer | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -169,7 +181,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
           const startedAt = Date.now();
           // A fresh tool set per turn: the two-draft cap is a closure inside it, so a
           // reused set would spend this text's budget on the last one's.
-          const tools = ports.buildTools(turn, (actionId) => draftedActionIds.push(actionId));
+          const tools = ports.buildTools(
+            turn,
+            (actionId) => draftedActionIds.push(actionId),
+            (offer) => {
+              planOffer = offer;
+            },
+          );
           // A tool that throws, a provider that times out, a step that runs long: the
           // loop can break anywhere, and by then the drafts it made are already rows.
           // Re-thrown rather than handled — the router owns what a parent is told.
@@ -218,9 +236,13 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             );
           }
 
-          const reply = toSmsReply(result.answer, { children, now });
+          const reply = toSmsReply(result.answer, {
+            children,
+            now,
+            planOffer: (planOffer as PlanOffer | null)?.sentence,
+          });
           await ports.recordRun(record('completed'));
-          return { reply };
+          return { reply, planOffer };
         },
       );
     },
@@ -251,13 +273,14 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
-    buildTools: (turn, onDraft) =>
+    buildTools: (turn, onDraft, onOffer) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database),
         draftPort: productionChannelDraftPort(database, anthropicClient(), turn.now),
         villageTool: searchVillageTool(database),
         onDraft,
+        onOffer,
         now: turn.now,
       }),
     guardDeps: buildGuardDeps(database),

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "Sam asked for four cancellations. The draft cap is 2, so Hale correctly drafted the first two (Mon swim and Thu swim), named them with their times, ended with \"YES to confirm\" (the exact consent trigger), and explicitly told Sam it will handle soccer and Wednesday next. It does not itemise the overflow, does not send Sam to the app, and does not pretend all four are done. The Wednesday item is a private calendar item — Hale doesn't know what it is, but it correctly treats it as something to queue rather than naming or refusing it. Shape is exactly right: one question, the YES word present, no greeting or sign-off, no markdown."
+  }
+}

@@ -15,6 +15,8 @@ import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
+import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
+import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
@@ -22,6 +24,7 @@ import {
   approvalHandler,
   emailCaptureHandler,
   healthReplyHandler,
+  planReplyHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -193,6 +196,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
+    planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
   ];
 }
@@ -361,6 +365,10 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),
+    // The offer half of the full-plan arc. Bound here rather than inside the coach
+    // runtime because the row is minted against the SENT message, and the router is the
+    // only thing that knows which row that was.
+    recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     limiter: new PostgresRateLimiter(database),
     ackTimer: realAckTimer,
     now: () => new Date(),

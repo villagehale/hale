@@ -4,6 +4,8 @@ import {
   aggregateCommitmentDebt,
   cancelCommitment,
   fulfillCommitment,
+  loadDueCommitments,
+  loadOpenCommitment,
   loadOpenCommitments,
   recordCommitment,
 } from './ledger';
@@ -67,10 +69,11 @@ function updatingDb(behaviour: { matched?: string[]; rejects?: boolean } = {}) {
 }
 
 /** A handle whose one select returns exactly these rows, awaited with or without an
- * `orderBy` — the real query builder is thenable at both points. */
+ * `orderBy` and a `limit` — the real query builder is thenable at all three points. */
 function readingDb(rows: unknown[]) {
   const result = {
-    orderBy: async () => rows,
+    orderBy: () => result,
+    limit: () => result,
     // biome-ignore lint/suspicious/noThenProperty: test double of a thenable query builder
     then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
       Promise.resolve(rows).then(res, rej),
@@ -98,10 +101,30 @@ describe('recordCommitment', () => {
         familyId: FAMILY,
         commitmentKind: 'first_find',
         summary: 'Your first weekend find lands in a day or two.',
+        topic: null,
+        subjectChildId: null,
         dueAt: DUE,
         createdFrom: 'msg-1',
       },
     ]);
+  });
+
+  it('carries the topic for the kinds whose fulfilment needs one', async () => {
+    const { database, values } = insertingDb();
+
+    // A bare YES two days later has to resolve to the plan Hale actually offered, and
+    // the check-in after that has to say which plan it is asking about. The subject is
+    // a closed-vocabulary category, so it is safe to persist beside a family id.
+    await recordCommitment(database, {
+      familyId: FAMILY,
+      kind: 'plan_offer',
+      summary: 'Offered the full sleep plan - waiting on a yes.',
+      topic: 'sleep',
+      dueAt: DUE,
+      channelMessageId: 'msg-1',
+    });
+
+    expect(values[0]).toMatchObject({ commitmentKind: 'plan_offer', topic: 'sleep' });
   });
 
   it('refuses to mint a debt for a message that never left the building', async () => {
@@ -278,6 +301,48 @@ describe('loadOpenCommitments', () => {
         dueAt: new Date('2026-08-20T14:00:00.000Z'),
         overdue: false,
       },
+    ]);
+  });
+});
+
+describe('loadOpenCommitment', () => {
+  it('returns the one open promise of a kind, with the subject its fulfilment needs', async () => {
+    const database = readingDb([
+      {
+        id: 'c-1',
+        summary: 'Offered the full sleep plan - waiting on a yes.',
+        topic: 'sleep',
+        subjectChildId: 'child-1',
+        dueAt: DUE,
+      },
+    ]);
+
+    expect(await loadOpenCommitment(database, FAMILY, 'plan_offer')).toEqual({
+      id: 'c-1',
+      summary: 'Offered the full sleep plan - waiting on a yes.',
+      topic: 'sleep',
+      subjectChildId: 'child-1',
+      dueAt: DUE,
+    });
+  });
+
+  it('reads no open promise as null rather than as a default one', async () => {
+    // The overwhelmingly common case on every inbound text, and the reason the YES
+    // handler can decline in one query: nothing is open, so nothing is claimed.
+    expect(await loadOpenCommitment(readingDb([]), FAMILY, 'plan_offer')).toBeNull();
+  });
+});
+
+describe('loadDueCommitments', () => {
+  it('hands the sweep the families whose promise has come due', async () => {
+    const database = readingDb([
+      { id: 'c-1', familyId: 'fam-1', topic: 'sleep', createdFrom: 'msg-1', dueAt: NOW },
+      { id: 'c-2', familyId: 'fam-2', topic: 'solids', createdFrom: 'msg-2', dueAt: NOW },
+    ]);
+
+    expect(await loadDueCommitments(database, 'plan_check_in', NOW, 50)).toEqual([
+      { id: 'c-1', familyId: 'fam-1', topic: 'sleep', createdFrom: 'msg-1', dueAt: NOW },
+      { id: 'c-2', familyId: 'fam-2', topic: 'solids', createdFrom: 'msg-2', dueAt: NOW },
     ]);
   });
 });

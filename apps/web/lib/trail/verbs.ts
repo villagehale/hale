@@ -244,6 +244,8 @@ export const AUDIT_VERBS = [
   'village_intro_discoverability_revoked',
   'village_intro_ask_sent',
   'village_intro_proposed',
+  'coach_plan_message_sent',
+  'coach_plan_check_in_sent',
   'village_intro_card_sent',
   'village_intro_accepted',
   'village_intro_declined',
@@ -615,6 +617,13 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   village_intro_proposed: {
     sentence: 'Hale found another family to introduce you to',
+    family: 'note',
+  },
+  // One row per message of a plan, so the trail shows what actually reached the phone
+  // rather than "a plan was sent" over three texts that may not all have landed.
+  coach_plan_message_sent: { sentence: 'Hale sent you a coaching plan', family: 'note' },
+  coach_plan_check_in_sent: {
+    sentence: 'Hale checked in on your plan',
     family: 'note',
   },
   village_intro_card_sent: { sentence: 'Hale asked you about an introduction', family: 'awaiting' },

@@ -1,3 +1,4 @@
+import type { PlanOffer } from '~/lib/channel/plan/offer';
 import { capabilityReply } from './copy';
 
 /**
@@ -36,8 +37,22 @@ export interface ChannelTurn {
   now: Date;
 }
 
+/**
+ * What one turn produced: the reply, and — when the coach offered a full coaching plan
+ * — the offer the router must write down once the reply has actually been sent.
+ *
+ * The offer rides OUT rather than being written by the tool because the ledger row is
+ * minted against the outbound message that carried it, and that message does not exist
+ * until the router sends it. Null is the ordinary case and means exactly one thing:
+ * this turn promised nothing.
+ */
+export interface ChannelTurnResult {
+  reply: string;
+  planOffer: PlanOffer | null;
+}
+
 export interface ChannelCoachRuntime {
-  respond(turn: ChannelTurn): Promise<{ reply: string }>;
+  respond(turn: ChannelTurn): Promise<ChannelTurnResult>;
 }
 
 /**
@@ -78,7 +93,7 @@ export function draftsFromFailure(err: unknown): readonly string[] {
 export function capabilityStubRuntime(): ChannelCoachRuntime {
   return {
     async respond() {
-      return { reply: capabilityReply() };
+      return { reply: capabilityReply(), planOffer: null };
     },
   };
 }

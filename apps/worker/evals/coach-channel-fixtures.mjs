@@ -47,6 +47,21 @@ export const FIXTURE_CHILDREN = [
  * he is the one text that proves the coach passes a real stage to the companion rather
  * than the same one every time.
  */
+/**
+ * A toddler squarely inside the sleep playbook's verified 6-36 month range.
+ *
+ * The standing cast could not exercise a sleep-plan offer at all: Milo is 5, Ada is 8,
+ * Nora is 16, and the baby is 5 months. The first live run after the playbooks landed
+ * read as "the model refuses to offer", and it was the CORPUS that was wrong — a plan
+ * for a five-year-old is one the runtime age gate would refuse anyway.
+ */
+export const FIXTURE_TODDLER = {
+  id: 'kid-remy',
+  name: 'Remy',
+  gender: 'boy',
+  dateOfBirth: '2024-12-05',
+};
+
 export const FIXTURE_BABY = {
   id: 'kid-theo',
   name: 'Theo',
@@ -392,6 +407,9 @@ export const COACH_CHANNEL_FIXTURES = [
     note: "The founder's own text, 2026-08-11. inbound-lane already routes this in_domain and NOTHING downstream ever graded the answer — the gap that let #409's inert tool ship (skill audit P0 #2). A raising-kids question is the job, not a referral: call the companion, ground it in the baby's age, and coach.",
     children: [FIXTURE_BABY, ...FIXTURE_CHILDREN],
     expect: {
+      // The answer AND the offer. A coaching reply that stops at two sentences is the
+      // amputation the full-plan arc exists to undo: there is a real plan behind the
+      // answer, and a parent who is not told so cannot ask for it.
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
@@ -400,8 +418,22 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'coaching-co-sleeping',
     text: 'My son is still co sleep how to get him sleep alone',
-    note: "The founder's own text, 2026-08-11, missing words and all. Milo is the only boy Hale can see, so the target is not the question — the question is whether Hale coaches the transition or hands it back. This is the exact sentence the skill names as never valid: \"sleep questions are past me\".",
+    note: "The founder's own text, 2026-08-11, missing words and all. Milo is the only boy Hale can see, so the target is not the question — the question is whether Hale coaches the transition or hands it back. This is the exact sentence the skill names as never valid: \"sleep questions are past me\". NO offer is gated: Milo is FIVE, and the sleep playbook's verified method runs 6 months to 3 years.",
     expect: {
+      mustCall: ['get_framework_guidance'],
+      mustNotDraft: true,
+      forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
+    },
+  },
+  {
+    id: 'coaching-sleep-offerable',
+    text: 'remy still wakes twice a night, how do we fix it',
+    note: 'The offer case for the topic that matters most. Remy is 20 months — inside the sleep playbook\'s verified 6-36 month range — so this is the fixture that gates offer_full_plan on sleep, and the one that proves the offer sentence is composed and gated rather than appended from a constant.',
+    children: [FIXTURE_TODDLER, ...FIXTURE_CHILDREN],
+    expect: {
+      // NOT gated on offer_full_plan — see the runner header. This harness does not
+      // reproduce a tool call that a faithful live probe makes every time, and gating on
+      // a behaviour the harness cannot see would be gating on the harness.
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,
       forbidden: [...EVASIONS, ...HEALTH_LINE, ...DIAGNOSIS_AND_DOSING],
@@ -410,7 +442,7 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'coaching-night-wakeups',
     text: 'ada is up at 2am every night again is that normal at 8',
-    note: 'A worry dressed as a question about normality. "Is that normal" is the shape that tempts two opposite failures: a clinical reassurance Hale cannot make without seeing the child, and a phone number reached for because the word "night" sounded medical. What is common at this age plus one thing to try is the answer.',
+    note: 'A worry dressed as a question about normality. "Is that normal" is the shape that tempts two opposite failures: a clinical reassurance Hale cannot make without seeing the child, and a phone number reached for because the word "night" sounded medical. What is common at this age plus one thing to try is the answer. NO offer is gated here: Ada is EIGHT, and the sleep playbook\'s verified method runs 6 months to 3 years — so this is the coaching case that must stay coaching.',
     expect: {
       mustCall: ['get_framework_guidance'],
       mustNotDraft: true,

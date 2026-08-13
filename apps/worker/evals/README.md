@@ -376,6 +376,60 @@ human could not classify either. Pinning one sample of a coin flip would make th
 behaviour the skill does not have; the stakes are bounded because nothing is public until the host
 replies YES.
 
+# Coaching plan composer eval harness (full plans — what a YES actually delivers)
+
+The ONE model call behind "Want the full plan? Reply YES and I'll send it." Run from
+`apps/worker`:
+
+```
+node --env-file=../../.env evals/run-coach-plan-eval.mjs            # live, then caches
+node --env-file=../../.env evals/run-coach-plan-eval.mjs --broken   # calibration: must FAIL
+node evals/run-coach-plan-eval.mjs --cached-only                    # CI: replay only
+node evals/run-coach-plan-eval.mjs --cached-only --show             # print each plan
+```
+
+CI command (free): **`pnpm --filter @hale/worker eval:coach-plan`**.
+
+Same REPLICATE-not-import convention as the general-answer harness: `compose.ts` sits behind the
+web `~/` alias. Three things ARE imported live — the skill and model routing (so a skill edit or a
+re-tiering re-keys the cache), `smsSegments`, and the REAL `frameworkGuidanceTool`, because the
+grounding the composer gets in production IS that tool's output and a hand-written copy of it
+would let a plan cite content the tool never returned.
+
+What differs from every other composer harness: the property under test is SEQUENCE. The
+coach-channel eval already grades the two-sentence answer; this grades what arrives after a parent
+asks for the whole thing, and the failure mode is not a fabrication — it is a pamphlet.
+
+- **5 fixtures**, each at an age where the plan is genuinely different one year either side:
+  solids at 6mo, a co-sleeping transition at 2y, potty at 2.5y, a 3am waking at 18mo, a picky
+  eater at 4y. Potty is there specifically to catch a composer that labels every plan in nights.
+- **The all-or-nothing gate**: `sendablePlan()` refuses the WHOLE plan if any message fails, so a
+  single over-budget stage means the parent got an apology. Mirrored here message by message.
+- **Sequenced**: at least two messages must carry a stage label (`Nights 1-3`, `Week 1`,
+  `Day 1-2`, `After that`). Prose with no named stages is the two-sentence answer at length.
+- **Concrete**: every DOING stage must carry a quantity that is not part of its own label — the
+  label is stripped first, so a plan made of headings cannot pass. The LAST message is exempt
+  because the skill makes it a description of signals rather than an instruction.
+- Plus: no dosing shape, no 811/911 (a guidance topic is not an emergency), no links, no markdown,
+  at most one message may mention a clinician.
+- **Plan judge** (cached Sonnet, ≥ 4/5, `watchFor` per fixture): could a parent start tonight, is
+  it aimed at THIS age and THIS question, warm rather than clinical, grounded in the companion
+  content. Explicitly told not to reward length.
+
+Result (live, claude-opus-4-8 compose / claude-sonnet-4-6 judge): 5/5 fixtures pass, 0 unsendable,
+0 unsequenced, 0 vague, mean plan score **5.00**. Live populate cost **$0.4471 USD** (10 calls).
+Calibrated with `--broken` (a legally-SHAPED two-message plan of pure generality carrying a dose,
+a siren, a link and markdown) — rejected by the sequence, concreteness, dosing, siren, link,
+markdown and fixture-token gates on 5/5, 0 API calls. The broken plan is deliberately the right
+shape: a calibration that failed on the message count would leave every later gate unproven.
+
+**Two real bugs came out of the first live run**, neither of which a cached run could have found:
+the model returned `messages` as a JSON-encoded string (production's `z.array` would have thrown
+the plan away as `model_failed`), and one plan's third message came back at four segments, which
+the all-or-nothing composer turns into a total refusal. The first was fixed at the contract
+(three named string fields, `third` optional — a `string` field has no second representation to
+choose between), the second in the skill (the hard character number, and what going over costs).
+
 # VIL-143 launch evals (memory-cost curve + model-per-role matrix)
 
 Two evals that answer the launch questions the per-agent evals above don't: (1) does the coach stay cheap + accurate as

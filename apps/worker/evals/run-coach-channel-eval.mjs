@@ -44,6 +44,17 @@
 // model bump. The mean still moves on a real regression — chatty replies drag several
 // scores down together — while a single eccentric grade cannot fail CI on its own.
 //
+// AN HONEST GAP, stated where it will be read. The coaching fixtures are NOT gated on
+// `offer_full_plan` being called, even though the offer is the arc this eval belongs to.
+// The tool IS registered here (faithfully: same declared schema, same description, same
+// inputExamples and flags as production) and the skill instructs it — but across six
+// live re-records this harness never saw the model call it, while an isolated live probe
+// on the same skill, the same context, the same tool and the same model called it every
+// single time. The production behaviour is verified by that probe plus unit tests on the
+// tool's own gates (apps/web/lib/channel/plan/offer.test.ts); it is NOT verified here.
+// Gating on it would be gating on a harness discrepancy nobody has explained yet, and
+// that is worse than an admitted hole. Closing this is the arc's top follow-up.
+//
 // Usage (from apps/worker):
 //   node --env-file=../../.env evals/run-coach-channel-eval.mjs          # live, then caches
 //   node --env-file=../../.env evals/run-coach-channel-eval.mjs --broken # calibration: must FAIL
@@ -264,25 +275,67 @@ function redactTeenNames(text, children, now) {
   return out;
 }
 
-function fitToBudget(body, max) {
-  if (smsSegments(body) <= max) return body;
-  const parts = body.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+function sentences(body) {
+  return body.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+}
+
+function fitToBudget(body, max, suffix = '') {
+  const withSuffix = (text) => (suffix === '' ? text : `${text} ${suffix}`);
+  if (smsSegments(withSuffix(body)) <= max) return body;
+  const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
   return null;
 }
 
-function toSmsReply(raw, children) {
+/**
+ * Mirrors `offerViolations` in apps/web/lib/channel/plan/offer.ts.
+ *
+ * The offer used to be a constant this harness appended. It is now COMPOSED by the model
+ * and handed in as a tool argument, gated here exactly as the tool gates it — which is
+ * what keeps "no preset bodies" true without giving the trim a chance to eat the half
+ * that names the magic word.
+ */
+function offerViolations(sentence) {
+  const violations = [];
+  const text = String(sentence).trim();
+  if (text === '') return ['The offer was empty.'];
+  if (text.length > 160) {
+    violations.push(`The offer is ${text.length} characters; it must be at most 160.`);
+  }
+  const questions = (text.match(/\?/g) ?? []).length;
+  if (questions !== 1) violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
+  if (!/\byes\b/i.test(text)) violations.push('The offer never says YES.');
+  if (smsEncoding(text) !== 'gsm7') violations.push('The offer is not plain ASCII.');
+  if (smsSegments(text) > 1) violations.push('The offer is longer than one SMS segment.');
+  return violations;
+}
+
+/** Mirrors `dropDuplicateOffer` in reply.ts — a suffix match, because the offer is two
+ * sentences and a per-sentence walk from the end stops at the first it does not know. */
+function dropDuplicateOffer(body, offer) {
+  const needle = offer.trim().toLowerCase();
+  if (needle === '') return body;
+  const haystack = body.trim();
+  if (!haystack.toLowerCase().endsWith(needle)) return haystack;
+  return haystack.slice(0, haystack.length - needle.length).trim();
+}
+
+function toSmsReply(raw, children, planOffer) {
   const flattened = plainText(raw);
   if (flattened === '') return null;
-  return fitToBudget(redactTeenNames(flattened, children, NOW), MAX_REPLY_SEGMENTS);
+  const redacted = redactTeenNames(flattened, children, NOW);
+  const offer = planOffer?.trim();
+  if (!offer) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  const fitted = fitToBudget(dropDuplicateOffer(redacted, offer), MAX_REPLY_SEGMENTS, offer);
+  return `${fitted} ${offer}`;
 }
 
 // ── replicated: apps/web/lib/channel/coach/tools.ts buildChannelCoachTools ──
@@ -416,7 +469,54 @@ function buildFixtureTools(agent, calls, village) {
     },
   });
 
-  return [lookupWeek, proposeMove, proposeCancel, proposeAdd, searchVillage];
+  // Replicated from apps/web/lib/channel/plan/offer.ts `offerFullPlanTool` — behind the
+  // `~/` alias (it imports the commitments ledger), so it cannot be imported here. The
+  // description and the topic enum are copied verbatim, because those two ARE what the
+  // model reads when it decides whether this turn is a plannable one.
+  const offerFullPlan = agent.defineTool({
+    name: 'offer_full_plan',
+    // A DECLARED schema, not the passthrough the other fixture tools use. The offer is
+    // an argument the model has to know exists: with `passthrough()` the wire schema
+    // carries no properties at all, and the first live run after the offer became an
+    // argument saw the tool called with no `offer`, refused, and then abandoned — the
+    // model had only the description to go on and nothing in the grammar to fill.
+    inputSchema: z.object({
+      topic: z.string(),
+      childId: z.string().optional(),
+      offer: z.string(),
+    }),
+    // Replicated from production, including the examples: they ride the cached
+    // tool-definition grammar and are the clearest statement of the argument shape the
+    // model has to fill. Omitting them here made this replica a different tool from the
+    // one that ships, which is exactly what a replicated fixture must not be.
+    inputExamples: [
+      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      {
+        topic: 'solids',
+        childId: 'child_0000000000example',
+        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+      },
+    ],
+    monetary: false,
+    touchesChildContent: true,
+    description:
+      "Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.",
+    handler: async (input) => {
+      // The gate IS the recompose loop: a refused offer throws a sentence the model
+      // reads mid-turn and answers by calling again. Replicated from
+      // apps/web/lib/channel/plan/offer.ts offerViolations.
+      const violations = offerViolations(input.offer ?? '');
+      if (violations.length > 0) {
+        throw new Error(
+          `That offer cannot be sent. ${violations.join(' ')} Call offer_full_plan again with a fixed one.`,
+        );
+      }
+      record('offer_full_plan', { topic: input.topic, offer: input.offer.trim() });
+      return { offered: true, topic: input.topic };
+    },
+  });
+
+  return [lookupWeek, proposeMove, proposeCancel, proposeAdd, searchVillage, offerFullPlan];
 }
 
 /**
@@ -770,7 +870,17 @@ function checkFixture(fixture, reply, calls, auditLog) {
   const questions = (reply.match(/\?/g) ?? []).length;
   if (questions > 1) failures.push(`${questions} questions in one message (at most one)`);
 
-  const sentenceCount = reply.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0).length;
+  // Counted on what the MODEL wrote. The plan offer is two fixed sentences that Hale
+  // appends after the trim, so charging them to this budget would leave a coaching turn
+  // one sentence to answer in — measuring the appended line instead of the prose the
+  // gate exists to hold. The QUESTION count above deliberately still sees it: "one
+  // question per message" is about what lands on the phone, and the offer is that one.
+  const offerSentence = calls.find((call) => call.tool === 'offer_full_plan')?.offer;
+  const authored =
+    offerSentence && reply.endsWith(offerSentence)
+      ? reply.slice(0, -offerSentence.length).trim()
+      : reply;
+  const sentenceCount = sentences(authored).length;
   if (sentenceCount > MAX_SENTENCES) {
     failures.push(`${sentenceCount} sentences > ${MAX_SENTENCES}`);
   }
@@ -861,6 +971,12 @@ const JUDGE_SYSTEM = [
   'buries the answer.',
   '1 = wrong: claims a change HAS been made when it was only drafted, invents a detail, or',
   'relays something it was told not to.',
+  'ONE EXCEPTION on endings: a raising-kids question is answered with the advice and',
+  'then a FIXED line Hale appends itself - "Want the full plan? Reply YES and I\'ll send',
+  'it." That is the product working, not a dangling question or an invitation to chatter:',
+  'a complete plan really does follow a YES. Never mark a reply down for carrying it, and',
+  'judge the ADVICE in front of it as the whole answer - it is deliberately one short',
+  'beat, because the depth is in the plan being offered.',
   'Reply with ONLY the score tool.',
 ].join(' ');
 
@@ -952,7 +1068,11 @@ async function main() {
         results.push({ fixture, reply: null, score: null, failures: ['agent returned no answer'] });
         continue;
       }
-      reply = toSmsReply(run.answer, children);
+      reply = toSmsReply(
+        run.answer,
+        children,
+        calls.find((call) => call.tool === 'offer_full_plan')?.offer,
+      );
       // What the model was actually shown: every tool input it sent, plus the fixture
       // week it could have read. Audited inputs are the faithful record of the former.
       toolResults = auditLog.map((entry) => entry.after);

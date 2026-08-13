@@ -7,6 +7,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
 import { ACK_REPLY, FLOOD_REPLY, partialFailureReply } from './copy';
@@ -77,9 +78,20 @@ export interface InboundContext {
   phoneE164: string | null;
 }
 
-/** One turn as a deterministic handler sees it — the same shape the coach gets, so a
- * handler and the agent reason over identical inputs. */
-export interface HandlerContext extends ChannelTurn {}
+/**
+ * One turn as a deterministic handler sees it — the same shape the coach gets, plus the
+ * one thing a handler needs and the agent does not.
+ *
+ * `phoneE164` is here because a handler is allowed to answer for itself (`reply: null`),
+ * and the full-plan handler is the first one that does: a plan is two or three ordered
+ * messages, which the router's one-body `reply` contract cannot express. Handing the
+ * number down is what stops that handler re-running `resolveSendablePhone` and reaching
+ * a DIFFERENT answer than the gate the router already passed one function up. Non-null
+ * by construction — the router does not reach the handlers without one.
+ */
+export interface HandlerContext extends ChannelTurn {
+  phoneE164: string;
+}
 
 export type { ChannelCoachRuntime, ChannelTurn };
 
@@ -151,6 +163,21 @@ export interface ChannelRouterDeps {
    * for the same reason the off-domain composer is: a composer that cannot run says so
    * by name, and this router has no preset sentence to fall back on. */
   apology: TurnApology;
+  /**
+   * Write down a full-plan offer the coach just made, against the message that carried
+   * it. Non-nullable (rule #11): an offer sentence a parent can read with no ledger row
+   * behind it is a question Hale cannot answer, so "no writer wired" is not a state
+   * this router has.
+   */
+  recordPlanOffer(
+    database: Database,
+    input: {
+      familyId: string;
+      offer: PlanOffer;
+      channelMessageId: string | null;
+      now: Date;
+    },
+  ): Promise<unknown>;
   limiter: RateLimiter;
   ackTimer(ms: number): AckTimer;
   now(): Date;
@@ -318,6 +345,7 @@ export async function routeChannelMessage(
     parentUserId: job.parent_user_id,
     conversationId,
     body: context.body,
+    phoneE164,
     now,
   };
 
@@ -415,10 +443,15 @@ async function runAgentTurn(
   args: {
     job: ChannelMessageReceivedJob;
     turn: HandlerContext;
-    /** The ack: sent, never claimed. */
-    say: (body: string) => Promise<void>;
-    /** The turn's answer: sent, then claimed. */
-    answer: (body: string) => Promise<void>;
+    /** The ack: sent, never claimed. Its ledger id is discarded — an ack promises
+     * nothing, so nothing is ever minted against it. */
+    say: (body: string) => Promise<unknown>;
+    /**
+     * The turn's answer: sent, then claimed. Hands back the `channel_messages` id,
+     * because a promise is minted against the message that CARRIED it (the MEM-10
+     * send-time discipline) and this is the only place that knows which row that was.
+     */
+    answer: (body: string) => Promise<string>;
     /** Whether the transport has already accepted this turn's answer. */
     hasAnswered: () => boolean;
     conversationId: string;
@@ -441,8 +474,21 @@ async function runAgentTurn(
   }
 
   try {
-    const { reply } = await pending;
-    await args.answer(reply);
+    const { reply, planOffer } = await pending;
+    const channelMessageId = await args.answer(reply);
+    // AFTER the send, against the row that carried it — the MEM-10 send-time discipline
+    // (lib/commitments/ledger.ts). A turn that composed an offer and then failed to
+    // deliver it promised nobody anything, and must not leave a debt behind. The writer
+    // never throws: the parent already has the message, so an exception here would buy a
+    // carrier retry and a duplicate reply.
+    if (planOffer) {
+      await deps.recordPlanOffer(deps.database, {
+        familyId: args.turn.familyId,
+        offer: planOffer,
+        channelMessageId,
+        now: args.turn.now,
+      });
+    }
     return done(deps, args.job, {
       status: 'agent_replied',
       handler: null,
@@ -517,7 +563,7 @@ async function disposeOfFailedTurn(
   args: {
     job: ChannelMessageReceivedJob;
     turn: HandlerContext;
-    answer: (body: string) => Promise<void>;
+    answer: (body: string) => Promise<string>;
     hasAnswered: () => boolean;
   },
   err: unknown,
@@ -544,8 +590,13 @@ async function disposeOfFailedTurn(
       parentUserId: args.job.parent_user_id,
       channelMessageId: args.job.channel_message_id,
       // The alarm's send IS this text's answer — the one the parent acts on and the one
-      // a re-drive must never repeat — so it claims the turn like every other.
-      say: args.answer,
+      // a re-drive must never repeat — so it claims the turn like every other. Adapted
+      // rather than passed straight through because `answer` now hands back the ledger
+      // row id (a promise is minted against the message that carried it), and the alarm
+      // has no use for one: it sends a fixed line and is done.
+      say: async (body) => {
+        await args.answer(body);
+      },
     });
     if (smokeAlarm === 'fired') {
       // No draft notice appended, deliberately. The alarm answers a parent who should be
@@ -600,6 +651,9 @@ async function disposeOfFailedTurn(
  * before the send would suppress a text the parent never got; but every write between
  * the transport accepting and the claim landing is a window in which a crash makes the
  * re-drive answer a second time, so there are none. The ack passes no claim at all.
+ * Returns the ledger row's id, because a promise is minted against the message that
+ * CARRIED it (the MEM-10 send-time discipline) and this is the only place that knows
+ * which row that was.
  */
 async function sendReply(
   deps: ChannelRouterDeps,
@@ -610,7 +664,7 @@ async function sendReply(
     conversationId: string | null;
     claim?: () => Promise<void>;
   },
-): Promise<void> {
+): Promise<string> {
   const { providerMessageId } = await deps.transport.send({ to: args.to, body: args.body });
   if (args.claim) await args.claim();
 
@@ -645,6 +699,7 @@ async function sendReply(
   if (args.conversationId) {
     await appendMessage(args.conversationId, 'assistant', args.body, deps.database);
   }
+  return channelMessageId;
 }
 
 /** One structured line per routed message: ids and outcome enums, never a body. The

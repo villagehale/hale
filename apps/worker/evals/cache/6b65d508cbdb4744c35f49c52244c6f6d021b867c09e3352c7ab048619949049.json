@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The cancel draft is correctly handled — names the event with time and place, ends with YES to confirm. The Saturday offerable is correctly forwarded whole (name, place, day) from the verified list. The only small blemish is \"free drop-in, all ages\" — that detail isn't in the offerable data and is minor invention/padding, and the reply is slightly longer than it needs to be. Everything else is correct: no app referral, no unverified finds, draft cap respected, no sign-off."
+  }
+}

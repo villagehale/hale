@@ -331,6 +331,12 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // sharing 'village_intro' would put the ACTIVITY follow-up inside the intro loop's
   // budget, where a placement has no business being counted.
   'followup',
+  // The coach's three-day plan check-in — the one text that asks how a full coaching
+  // plan actually went. Its own category for the same reason as the two above, plus a
+  // sharper one: it is the only proactive class whose volume is a function of how much
+  // COACHING a family does, so counting it as 'nudge' would let a curious parent's
+  // questions silently spend the weekly budget for the thing Hale noticed on its own.
+  'plan_check_in',
 ]);
 
 /**
@@ -395,4 +401,13 @@ export const reminderStatusEnum = pgEnum('reminder_status', [
 export const agentCommitmentKindEnum = pgEnum('agent_commitment_kind', [
   'first_find',
   'registration_plan',
+  // "Want the full plan? Reply YES and I'll send it." — an offer Hale made and is
+  // holding an answer for. It is a promise like the other two: the parent has been
+  // told a plan exists, and one that never arrives is a debt whether or not they
+  // answered. Being a ledger row rather than a flag is also what makes the YES
+  // deterministic — the handler reads the same table the digest counts.
+  'plan_offer',
+  // The promise the plan itself makes: Hale said it would come back, so it owes a
+  // check-in. Minted at plan-send time and due three days later.
+  'plan_check_in',
 ]);

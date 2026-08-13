@@ -8,6 +8,7 @@ import {
   handleSequenceReply,
 } from '~/lib/registration/sequence/reply';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
@@ -176,6 +177,61 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
         default:
           return { claimed: false };
       }
+    },
+  };
+}
+
+/**
+ * The full coaching plan a parent said YES to.
+ *
+ * PLACED DIRECTLY AFTER HEALTH, which puts it third among the three handlers that can
+ * claim a bare affirmative, and the ordering rule is the one stated at the top of this
+ * file extended by one step: among handlers that recognise the SAME word, the one whose
+ * wrong answer costs most goes first.
+ *
+ *   · APPROVALS still own a bare YES whenever a draft is pending, and that stays true.
+ *     A mis-fired approval executes something the parent cannot see and needs an undo.
+ *     So when a draft AND a plan offer are both open, YES means the draft — the known
+ *     rule, and the same trade the health handler already lives under.
+ *   · HEALTH is next: a mis-read "yes" there drafts an appointment or files paperwork
+ *     as handled, which silences a records reminder for months.
+ *   · A PLAN is last, because its wrong answer is the cheapest of the three — three
+ *     texts of parenting advice a parent did not ask for right now. It also claims the
+ *     narrowest slice of the word: only when an offer is OPEN and less than two days
+ *     old (see plan/reply.ts on why the claim expires at all).
+ *
+ * It is the first handler that ANSWERS FOR ITSELF, and the only one that never hands
+ * the router a body at all. A plan is two or three ordered messages, which the
+ * verdict's single `reply` cannot express — so it sends through its own ordered loop
+ * and returns `reply: null`, the contract's existing shape for a handler that has
+ * already spoken. There is no fallback line either: a turn that cannot compose
+ * something sendable throws {@link PlanDeferred} and the drain redrives it, because a
+ * plan that lands late beats an apology that lands on time.
+ */
+export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
+  return {
+    name: 'coach_plan',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handlePlanYes(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          conversationId: ctx.conversationId,
+          body: ctx.body,
+          phoneE164: ctx.phoneE164,
+          now: ctx.now,
+        },
+        deps,
+      );
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      // Every other outcome ends the turn with nothing left for the router to say. The
+      // plan (or the age-gate refusal) has already gone out through this handler's own
+      // ordered send; `not_delivered` means the wire ate it, and a second body there
+      // would be an apology arriving after messages that may yet land. There is no
+      // preset line on this path at all — a turn with nothing sendable THROWS
+      // (PlanDeferred) so the drain redrives it.
+      return { claimed: true, outcome: outcome.status, reply: null };
     },
   };
 }

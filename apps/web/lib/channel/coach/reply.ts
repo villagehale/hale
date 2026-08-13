@@ -47,6 +47,18 @@ export interface ReplyChild {
 export interface SmsReplyArgs {
   children: readonly ReplyChild[];
   now?: Date;
+  /**
+   * The offer sentence this turn registered through `offer_full_plan`, already gated by
+   * that tool, or absent when the turn offered nothing.
+   *
+   * It is appended AFTER the answer is fitted, which is the whole reason it travels
+   * separately: the model wrote both halves, but only this one may not be trimmed. A
+   * coaching answer plus an offer runs past the two-segment ceiling, the trim takes from
+   * the end, and parents were getting "Want the full plan?" with the half naming the
+   * magic word cut off. Fitting the ANSWER around a protected offer inverts that, and
+   * what gives way is a clause of background the plan carries anyway.
+   */
+  planOffer?: string;
 }
 
 /**
@@ -132,19 +144,22 @@ function sentences(text: string): string[] {
  * audit P0 #4). Nothing replaces it. A parent who texted is owed a text back, and the
  * sentence they get is the one carrying the answer.
  */
-function fitToBudget(body: string, max: number): string {
-  if (smsSegments(body) <= max) return body;
+function fitToBudget(body: string, max: number, suffix = ''): string {
+  // The suffix is measured with the body, never after it: a reviewed line appended to a
+  // reply that was already at the ceiling is how the budget gets quietly exceeded.
+  const withSuffix = (text: string) => (suffix === '' ? text : `${text} ${suffix}`);
+  if (smsSegments(withSuffix(body)) <= max) return body;
 
   const parts = sentences(body);
   for (let count = parts.length - 1; count >= 1; count -= 1) {
     const candidate = parts.slice(0, count).join(' ');
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
 
   const words = (parts[0] ?? body).split(' ');
   for (let count = words.length - 1; count >= 1; count -= 1) {
     const candidate = `${words.slice(0, count).join(' ')}...`;
-    if (smsSegments(candidate) <= max) return candidate;
+    if (smsSegments(withSuffix(candidate)) <= max) return candidate;
   }
 
   // Not even the first word fits: a model returning one unbroken 300-character token,
@@ -176,5 +191,29 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     console.error('channel coach: model composed a safety referral; sent the fixed line');
     return SAFETY_REPLY;
   }
-  return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  const offer = args.planOffer?.trim();
+  if (offer === undefined || offer === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+
+  // The tool told the model to hand the offer in rather than write it into the answer;
+  // this is the backstop for when it does both, because the visible cost is the same
+  // sentence arriving twice.
+  const answer = dropDuplicateOffer(redacted, offer);
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, offer);
+  return `${fitted} ${offer}`;
+}
+
+/**
+ * Drop the offer when the model also wrote it into the answer.
+ *
+ * Matched as a SUFFIX of the whole body rather than sentence by sentence, because the
+ * offer is itself two sentences ("Want the full plan? Reply YES and I'll send it.") and
+ * a per-sentence walk from the end stops at the first one it does not recognise. Only
+ * at the end, so an answer that legitimately uses those words mid-sentence is untouched.
+ */
+function dropDuplicateOffer(body: string, offer: string): string {
+  const needle = offer.trim().toLowerCase();
+  if (needle === '') return body;
+  const haystack = body.trim();
+  if (!haystack.toLowerCase().endsWith(needle)) return haystack;
+  return haystack.slice(0, haystack.length - needle.length).trim();
 }

@@ -10,6 +10,7 @@ import {
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { f14Allowlist, f14Enabled } from '~/lib/channel/f14';
 import { fulfillCommitment } from '~/lib/commitments/ledger';
 import {
   type OutboundGatePorts,
@@ -58,8 +59,16 @@ import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice';
  * exactly 'true' or the family is named in {@link F14_ALLOWLIST_ENV}.
  */
 
-export const F14_ENABLED_ENV = 'F14_ENABLED';
-export const F14_ALLOWLIST_ENV = 'F14_FAMILY_ALLOWLIST';
+/** F14's dark-launch gate now lives in `~/lib/channel/f14` — it gates four surfaces,
+ * not just this sweep, and a module that only wants the boolean should not have to
+ * import a whole cron to get it. Re-exported so this module's callers are unchanged. */
+export {
+  F14_ALLOWLIST_ENV,
+  F14_ENABLED_ENV,
+  f14Allowlist,
+  f14Enabled,
+  f14EnabledFor,
+} from '~/lib/channel/f14';
 
 /**
  * The local hour a nudge may land in. Mid-morning: late enough that the house is
@@ -80,30 +89,6 @@ const WEATHER_DAYS = 8;
 /** Filter first, then cap — a cap-then-filter would starve every family past the
  * oldest N of their slot forever. */
 const MAX_NUDGE_FAMILIES_PER_RUN = 100;
-
-/**
- * The dark-launch gate. STRICT equality on the literal 'true': `vercel env add` from a
- * piped `echo` stores a TRAILING NEWLINE, so a value that prints as `true` is really
- * `'true\n'` — a truthiness check would read that as ON and ship an unprompted SMS
- * campaign nobody armed. Strict comparison fails closed on exactly that shape.
- */
-export function f14Enabled(): boolean {
-  return process.env[F14_ENABLED_ENV] === 'true';
-}
-
-/** The comma-separated family ids allowed through while the flag is off. */
-export function f14Allowlist(): Set<string> {
-  return new Set(
-    (process.env[F14_ALLOWLIST_ENV] ?? '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter((id) => id.length > 0),
-  );
-}
-
-export function f14EnabledFor(familyId: string): boolean {
-  return f14Enabled() || f14Allowlist().has(familyId);
-}
 
 /** Whether `now` sits in this family's local send hour. */
 export function isNudgeSlot(now: Date, timeZone: string): boolean {
