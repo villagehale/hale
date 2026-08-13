@@ -8,17 +8,20 @@ import type { EntryTone } from '~/components/hale/tone';
  * to a NEUTRAL sentence + the `neutral` family — never the de-dotted token, never a
  * mislabelled tone.
  *
- * Source of truth for the inventory: the `actionTaken` strings written across
- * apps/worker/src/services/memory-writer.ts (classify → drop, draft, review,
- * execute, surface, entitlement/autonomy gates, village recorders, per-stage
- * checkpoints), the web draft pipeline's apps/web/lib/pipeline/record.ts (which
- * writes the reviewer verdict as `action.reviewed.${verdict.kind}` — a distinct
- * token shape from the worker's `action.reviewer.${column}`), plus
- * apps/web/lib/plan/plan-core.ts (`plan_created`). Templated tokens
- * (`action.reviewer.${verdict}`, `action.reviewed.${kind}`,
- * `event.dropped.${reason}`, `action.gated.${reason}`, `event.stage.${stage}`)
- * are enumerated to their concrete values so the map is exhaustive rather than a
- * prefix guess.
+ * Source of truth for the inventory: every `actionTaken` string written anywhere in
+ * apps/web, apps/worker and packages. Templated tokens (`action.reviewer.${verdict}`,
+ * `action.reviewed.${kind}`, `event.dropped.${reason}`, `action.gated.${reason}`,
+ * `event.stage.${stage}`, `quick_log_${type}`, `document_*_${kind}`, …) are
+ * enumerated to their concrete values so the map is exhaustive rather than a prefix
+ * guess.
+ *
+ * That inventory is not maintained by hand and hope: verbs-drift.test.ts scans the
+ * source for every audit write and fails when one is missing from AUDIT_VERBS. It
+ * exists because 93 verbs — the entire SMS/voice/email surface, caregiver invites,
+ * connected assistants, the document vault, village introductions, the registration
+ * radar, and the executor's own calendar writes — were all silently falling to the
+ * NEUTRAL fallback at once: a messaging-first product describing its own work to
+ * parents as "recorded an update".
  */
 
 /**
@@ -137,6 +140,119 @@ export const AUDIT_VERBS = [
   'teen_content_access.assented',
   'teen_content_access.safety_escalation',
   'teen_content_access.revoked',
+  // ── the messaging product itself (SMS / voice / email / push) ───────────
+  'channel_sms_enrolled',
+  'channel_sms_revoked',
+  'sms_reply_received',
+  'sms_reply_sent',
+  'sms_intake_inbound',
+  'sms_intake_outbound',
+  'sms_intake_provisioned',
+  'voice_call_received',
+  'voice_callback_sent',
+  'channel_sent',
+  'push_sent',
+  'email_reply_received',
+  'email_unsubscribe_received',
+  'channel_sms.calendar_drafted',
+  // ── proactive nudges + the watch offer ──────────────────────────────────
+  'proactive_nudge_sent',
+  'proactive_nudge_skipped',
+  'proactive_watch_granted',
+  'proactive_watch_declined',
+  // ── caregiver invites ───────────────────────────────────────────────────
+  'caregiver_invite_started',
+  'caregiver_access_granted',
+  'caregiver_invite_accepted',
+  'caregiver_invite_expired',
+  'caregiver_invite_superseded',
+  'caregiver_invite_withdrawn',
+  'caregiver_invite_refused',
+  'caregiver_sms_inbound',
+  'caregiver_sms_outbound',
+  // ── the executor's own writes (internal-writes.ts) ──────────────────────
+  'action.routine_pinned',
+  'action.routine_pinned.skipped_duplicate',
+  'action.digest_noted',
+  'action.digest_noted.skipped_duplicate',
+  'action.calendar_placed',
+  'action.calendar_placed.skipped_duplicate',
+  'action.calendar_moved',
+  'action.calendar_moved.skipped_duplicate',
+  'action.calendar_cancelled',
+  'action.calendar_cancelled.skipped_duplicate',
+  // ── decline + undo ──────────────────────────────────────────────────────
+  'action.declined_by_human',
+  'action.calendar_placement_reverted',
+  'action.reverted_by_human',
+  // The sixth ActionGateReason; the other five were curated, this one was not.
+  'action.gated.autonomy_not_opted_in',
+  // ── the weekly loop + calendar subscription ─────────────────────────────
+  'compose_week_plan',
+  'week_plan.calendar_drafted',
+  'ics_feed_shared',
+  'ics_feed_revoked',
+  'notification_pref_updated',
+  // ── connected assistants (MCP) ──────────────────────────────────────────
+  'mcp.authorization_approved',
+  'mcp.grant_issued',
+  'mcp.grant_revoked',
+  'mcp.tool_called',
+  // ── files: chat attachments + the document vault ────────────────────────
+  'chat_attachment_uploaded',
+  'chat_attachment_swept',
+  'chat_attachment_view_url',
+  'document_uploaded_health',
+  'document_uploaded_insurance',
+  'document_uploaded_other',
+  'document_view_url_health',
+  'document_view_url_insurance',
+  'document_view_url_other',
+  'document_deleted_health',
+  'document_deleted_insurance',
+  'document_deleted_other',
+  // ── children + companion ────────────────────────────────────────────────
+  'child_avatar_set',
+  'child_avatar_removed',
+  'quick_log_diaper',
+  'quick_log_measurement',
+  'health_checkpoint_marked_done',
+  // ── connectors, settings, billing ───────────────────────────────────────
+  'integration_connected',
+  'integration_revoked',
+  'user_preferences_updated',
+  'billing_checkout_started',
+  // ── parties ─────────────────────────────────────────────────────────────
+  'party_invite_created',
+  'party_invite_cancelled',
+  'party_rsvp_submitted',
+  'party_guest_message_sent',
+  // ── the registration radar ──────────────────────────────────────────────
+  'registration_shortlist_drafted',
+  'registration_sequence_leg_sent',
+  'registration_outcome_recorded',
+  // ── village areas, saves, civic sweep ───────────────────────────────────
+  'village_area_added',
+  'village_area_activated',
+  'village_area_removed',
+  'village_candidate_saved',
+  'village_candidate_unsaved',
+  'civic.candidates.projected',
+  // ── village introductions (cross-household — rule #1) ───────────────────
+  'village_intro_discoverability_granted',
+  'village_intro_discoverability_revoked',
+  'village_intro_ask_sent',
+  'village_intro_proposed',
+  'village_intro_card_sent',
+  'village_intro_accepted',
+  'village_intro_declined',
+  'village_intro_disclosed',
+  'village_intro_closed',
+  // ── claiming the receipts room, and Hale asking how it went ─────────────
+  'account_claimed_by_phone',
+  'followup_intro_asked',
+  'followup_activity_asked',
+  'smoke_alarm_fired',
 ] as const;
 
 export type AuditVerb = (typeof AUDIT_VERBS)[number];
@@ -291,6 +407,234 @@ const VERBS: Record<AuditVerb, Verb> = {
   'teen_content_access.revoked': {
     sentence: 'access to your teenager’s content was closed',
     family: 'done',
+  },
+  // ── the messaging product itself ────────────────────────────────────────
+  // Hale lives in SMS; these are the most common rows a real family will have.
+  // They were the whole reason the trail read as "Hale recorded an update".
+  channel_sms_enrolled: { sentence: 'your phone was set up to text with Hale', family: 'done' },
+  channel_sms_revoked: { sentence: 'you turned off texting with Hale', family: 'done' },
+  sms_reply_received: { sentence: 'you texted Hale', family: 'note' },
+  sms_reply_sent: { sentence: 'Hale texted you back', family: 'note' },
+  sms_intake_inbound: { sentence: 'you texted Hale while getting set up', family: 'note' },
+  sms_intake_outbound: { sentence: 'Hale texted you while getting set up', family: 'note' },
+  sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
+  voice_call_received: {
+    // Hale keeps no audio and no transcript — only that a call arrived.
+    sentence: 'a call came in to Hale’s number',
+    family: 'note',
+  },
+  voice_callback_sent: { sentence: 'Hale texted you back after your call', family: 'note' },
+  channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  push_sent: { sentence: 'Hale sent you a notification', family: 'done' },
+  email_reply_received: { sentence: 'you replied to one of Hale’s emails', family: 'note' },
+  email_unsubscribe_received: { sentence: 'you unsubscribed from an email', family: 'done' },
+  'channel_sms.calendar_drafted': {
+    sentence: 'your text became a calendar change, waiting on your yes',
+    family: 'awaiting',
+  },
+  // ── proactive nudges + the watch offer ──────────────────────────────────
+  proactive_nudge_sent: { sentence: 'Hale texted you something worth knowing', family: 'done' },
+  proactive_nudge_skipped: {
+    // The quiet-operator promise, made visible: a deliberate silence is a real
+    // outcome, and a parent should be able to see Hale choosing not to interrupt.
+    sentence: 'Hale had nothing worth interrupting you for',
+    family: 'note',
+  },
+  proactive_watch_granted: { sentence: 'you let Hale watch for things to flag', family: 'done' },
+  proactive_watch_declined: {
+    sentence: 'you asked Hale not to watch for things to flag',
+    family: 'done',
+  },
+  // ── caregiver invites ───────────────────────────────────────────────────
+  caregiver_invite_started: { sentence: 'you asked Hale to invite a caregiver', family: 'note' },
+  caregiver_access_granted: {
+    sentence: 'you confirmed what a caregiver may see',
+    family: 'done',
+  },
+  caregiver_invite_accepted: {
+    sentence: 'a caregiver accepted and joined your family',
+    family: 'done',
+  },
+  caregiver_invite_expired: {
+    sentence: 'a caregiver invite expired unanswered',
+    family: 'note',
+  },
+  caregiver_invite_superseded: {
+    sentence: 'you replaced an earlier caregiver invite',
+    family: 'note',
+  },
+  caregiver_invite_withdrawn: { sentence: 'you withdrew a caregiver invite', family: 'done' },
+  caregiver_invite_refused: { sentence: 'a caregiver declined your invite', family: 'note' },
+  caregiver_sms_inbound: { sentence: 'a caregiver texted Hale', family: 'note' },
+  caregiver_sms_outbound: { sentence: 'Hale texted a caregiver', family: 'note' },
+  // ── what the executor actually did ──────────────────────────────────────
+  'action.routine_pinned': { sentence: 'pinned an activity to your week', family: 'done' },
+  'action.routine_pinned.skipped_duplicate': {
+    sentence: 'skipped pinning something already on your week',
+    family: 'note',
+  },
+  // Deliberately not "added to your digest": that daily digest no longer exists.
+  // What the write really does is keep an undated note.
+  'action.digest_noted': { sentence: 'kept a note about something, undated', family: 'note' },
+  'action.digest_noted.skipped_duplicate': {
+    sentence: 'skipped a note it had already made',
+    family: 'note',
+  },
+  'action.calendar_placed': { sentence: 'put something on your calendar', family: 'done' },
+  'action.calendar_placed.skipped_duplicate': {
+    sentence: 'skipped a calendar entry it had already made',
+    family: 'note',
+  },
+  'action.calendar_moved': { sentence: 'moved something on your calendar', family: 'done' },
+  'action.calendar_moved.skipped_duplicate': {
+    sentence: 'skipped a calendar change it had already made',
+    family: 'note',
+  },
+  'action.calendar_cancelled': { sentence: 'took something off your calendar', family: 'done' },
+  'action.calendar_cancelled.skipped_duplicate': {
+    sentence: 'skipped a cancellation it had already made',
+    family: 'note',
+  },
+  // ── decline + undo ──────────────────────────────────────────────────────
+  'action.declined_by_human': { sentence: 'you dismissed a draft', family: 'done' },
+  'action.calendar_placement_reverted': {
+    sentence: 'you undid a calendar entry Hale had made',
+    family: 'done',
+  },
+  'action.reverted_by_human': { sentence: 'you reversed a completed action', family: 'done' },
+  'action.gated.autonomy_not_opted_in': {
+    sentence: 'held for your approval — you haven’t let Hale do this on its own',
+    family: 'awaiting',
+  },
+  // ── the weekly loop + calendar subscription ─────────────────────────────
+  compose_week_plan: { sentence: 'put together your week', family: 'done' },
+  'week_plan.calendar_drafted': {
+    sentence: 'drafted a calendar entry from your week, waiting on your yes',
+    family: 'awaiting',
+  },
+  ics_feed_shared: { sentence: 'you turned on your calendar subscription', family: 'done' },
+  ics_feed_revoked: { sentence: 'you turned off your calendar subscription', family: 'done' },
+  notification_pref_updated: { sentence: 'you changed how Hale reaches you', family: 'done' },
+  // ── connected assistants (MCP) ──────────────────────────────────────────
+  // An MCP client is a THIRD PARTY reading family data. These sentences name that
+  // plainly rather than calling it an integration (rule #1).
+  'mcp.authorization_approved': {
+    sentence: 'you approved an outside assistant’s request to connect',
+    family: 'done',
+  },
+  'mcp.grant_issued': {
+    sentence: 'an outside assistant was connected to your family’s data',
+    family: 'done',
+  },
+  'mcp.grant_revoked': { sentence: 'you disconnected an outside assistant', family: 'done' },
+  'mcp.tool_called': {
+    // The outcome (allowed / denied / rate-limited) lives in the row's detail, so the
+    // sentence says a request was MADE rather than claiming data was handed over.
+    sentence: 'a connected assistant made a request for your family’s data',
+    family: 'note',
+  },
+  // ── files: chat attachments + the document vault ────────────────────────
+  chat_attachment_uploaded: {
+    sentence: 'you added a file to a conversation with Hale',
+    family: 'done',
+  },
+  chat_attachment_swept: { sentence: 'cleared away a file that was never sent', family: 'note' },
+  chat_attachment_view_url: { sentence: 'a file you uploaded was opened', family: 'note' },
+  document_uploaded_health: { sentence: 'you added a health document', family: 'done' },
+  document_uploaded_insurance: { sentence: 'you added an insurance document', family: 'done' },
+  document_uploaded_other: { sentence: 'you added a document', family: 'done' },
+  document_view_url_health: { sentence: 'a health document was opened', family: 'note' },
+  document_view_url_insurance: { sentence: 'an insurance document was opened', family: 'note' },
+  document_view_url_other: { sentence: 'a document was opened', family: 'note' },
+  document_deleted_health: { sentence: 'you removed a health document', family: 'done' },
+  document_deleted_insurance: { sentence: 'you removed an insurance document', family: 'done' },
+  document_deleted_other: { sentence: 'you removed a document', family: 'done' },
+  // ── children + companion ────────────────────────────────────────────────
+  child_avatar_set: { sentence: 'you set a photo for a child', family: 'done' },
+  child_avatar_removed: { sentence: 'you removed a child’s photo', family: 'done' },
+  quick_log_diaper: { sentence: 'you logged a diaper change', family: 'done' },
+  quick_log_measurement: { sentence: 'you logged a measurement', family: 'done' },
+  health_checkpoint_marked_done: {
+    sentence: 'you confirmed a health checkpoint is done',
+    family: 'done',
+  },
+  // ── connectors, settings, billing ───────────────────────────────────────
+  integration_connected: { sentence: 'you connected an account to Hale', family: 'done' },
+  integration_revoked: { sentence: 'you disconnected an account', family: 'done' },
+  user_preferences_updated: { sentence: 'you updated your preferences', family: 'done' },
+  // Started, not finished: the row is written before checkout completes.
+  billing_checkout_started: { sentence: 'you started an upgrade', family: 'note' },
+  // ── parties ─────────────────────────────────────────────────────────────
+  party_invite_created: { sentence: 'you made a party invite link', family: 'done' },
+  party_invite_cancelled: { sentence: 'you cancelled a party invite', family: 'done' },
+  party_rsvp_submitted: { sentence: 'a guest replied to your party invite', family: 'done' },
+  party_guest_message_sent: { sentence: 'Hale texted a party guest', family: 'note' },
+  // ── the registration radar ──────────────────────────────────────────────
+  registration_shortlist_drafted: {
+    sentence: 'Hale put together a registration shortlist',
+    family: 'note',
+  },
+  registration_sequence_leg_sent: {
+    sentence: 'Hale nudged you about a registration window',
+    family: 'done',
+  },
+  registration_outcome_recorded: {
+    sentence: 'you told Hale how a registration went',
+    family: 'done',
+  },
+  // ── village areas, saves, civic sweep ───────────────────────────────────
+  village_area_added: { sentence: 'you added a place for Hale to look in', family: 'done' },
+  village_area_activated: { sentence: 'you changed where Hale looks', family: 'done' },
+  village_area_removed: { sentence: 'you removed a place Hale was looking in', family: 'done' },
+  village_candidate_saved: { sentence: 'you saved a village suggestion', family: 'done' },
+  village_candidate_unsaved: { sentence: 'you removed a saved suggestion', family: 'done' },
+  'civic.candidates.projected': {
+    sentence: 'found activities in your city’s listings',
+    family: 'note',
+  },
+  // ── village introductions (cross-household — rule #1) ───────────────────
+  village_intro_discoverability_granted: {
+    sentence: 'you let Hale introduce your family to others',
+    family: 'done',
+  },
+  village_intro_discoverability_revoked: {
+    sentence: 'you turned off introductions to other families',
+    family: 'done',
+  },
+  village_intro_ask_sent: {
+    sentence: 'Hale asked whether you’d like introductions',
+    family: 'note',
+  },
+  village_intro_proposed: {
+    sentence: 'Hale found another family to introduce you to',
+    family: 'note',
+  },
+  village_intro_card_sent: { sentence: 'Hale asked you about an introduction', family: 'awaiting' },
+  village_intro_accepted: { sentence: 'you said yes to an introduction', family: 'done' },
+  village_intro_declined: { sentence: 'you said no to an introduction', family: 'done' },
+  village_intro_disclosed: {
+    // The one row here that means information actually crossed households. Like the
+    // teen safety line above, it says so outright rather than "completed an intro".
+    sentence: 'both families said yes, so your contact details were shared',
+    family: 'done',
+  },
+  village_intro_closed: { sentence: 'an introduction was closed', family: 'note' },
+  // ── claiming the receipts room, and Hale asking how it went ─────────────
+  account_claimed_by_phone: {
+    sentence: 'you signed in with a code texted to your phone',
+    family: 'done',
+  },
+  followup_intro_asked: { sentence: 'Hale asked how your introduction went', family: 'note' },
+  followup_activity_asked: {
+    sentence: 'Hale asked how something on your calendar went',
+    family: 'note',
+  },
+  smoke_alarm_fired: {
+    // Something urgent arrived while Hale could not reach its model, so a fixed
+    // safety line went out instead of an answer. 'problem', not 'done': the parent
+    // was texted, but they were not actually helped, and the trail should say so.
+    sentence: 'Hale could not reach its model, so it sent you a fixed safety message',
+    family: 'problem',
   },
 };
 

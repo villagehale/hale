@@ -2,9 +2,13 @@ import { MessagesMasterDetail } from '~/components/hale/messages-master-detail';
 import { loadMessages } from '~/lib/messages/queries';
 
 /**
- * Messages — "Hale's notes to you": the family's daily digests + the action
- * lifecycle a parent should see (a draft awaiting their yes, something Hale did,
- * something that needs them), newest first. Mirrors the mobile Messages screen.
+ * Messages — the record of the action lifecycle a parent should see (a draft
+ * awaiting their yes, something Hale did, something that needs them), newest
+ * first. Mirrors the mobile Messages screen.
+ *
+ * It also still renders any daily-brief rows a family accumulated, but that brief
+ * is no longer composed, so the empty state must not promise one — a parent
+ * arriving today would wait for something that is never coming.
  *
  * Presented as a master–detail (design handoff §4.6/§4.8): a note list beside the
  * selected note. Read-only. A drafted note is the only one that leads somewhere —
@@ -25,7 +29,7 @@ export default async function MessagesPage() {
             Nothing new from Hale yet.
           </p>
           <p className="meta mt-4 text-ink-2">
-            your daily brief and anything Hale drafts or handles will land here.
+            anything Hale drafts or handles will land here.
           </p>
         </section>
       )}

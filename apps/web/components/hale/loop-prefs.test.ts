@@ -1,10 +1,12 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 // The component imports the audited server action (→ next-auth, unresolvable under
 // vitest); stub it so importing the pure rollback helper resolves.
 vi.mock('~/lib/settings/loop-prefs-actions', () => ({ setLoopPrefAction: vi.fn() }));
 
-import { rollbackPref } from '~/components/hale/loop-prefs';
+import { LoopPrefs, rollbackPref } from '~/components/hale/loop-prefs';
 import { DEFAULT_LOOP_PREFS, type LoopPrefsView } from '~/lib/loop/prefs';
 
 const view = (over: Partial<LoopPrefsView> = {}): LoopPrefsView => ({
@@ -33,5 +35,35 @@ describe('rollbackPref — revert only the failed field, functionally', () => {
     const rolled = rollbackPref(current, previousBeforeA, 'catWeeklyPlan');
     expect(rolled.catWeeklyPlan).toBe(true); // A's failed toggle reverted
     expect(rolled.catReminder).toBe(false); // B's concurrent success kept
+  });
+});
+
+/**
+ * The Text option told every family "Text arrives when SMS launches" — hardcoded,
+ * regardless of the family's actual channel. SMS is the product's PRIMARY live
+ * channel (D1), so for a family already texting Hale that note was simply false,
+ * and the control they most wanted was greyed out. The option now follows the live
+ * `parent_channels` row: offered when texting actually works, honestly held back
+ * when it does not.
+ */
+describe('the Text loop channel follows the real SMS channel', () => {
+  const ready = (smsEnrolled: boolean) =>
+    renderToStaticMarkup(
+      createElement(LoopPrefs, {
+        result: { status: 'ready' as const, prefs: DEFAULT_LOOP_PREFS, smsEnrolled },
+      }),
+    );
+
+  it('offers Text as a real choice to a family with a live SMS channel', () => {
+    const html = ready(true);
+    // The Text radio is the second one; with SMS live neither radio may be disabled.
+    expect(html).not.toContain('disabled');
+    expect(html).not.toContain('when SMS launches');
+  });
+
+  it('still holds Text back — and says why — for a family with no SMS channel', () => {
+    const html = ready(false);
+    expect(html).toContain('disabled');
+    expect(html).toContain('Text Hale first');
   });
 });

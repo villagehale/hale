@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { removeDocument } from '../docs/storage.js';
+import { isConversationVisibleToParent } from './note-key.js';
 
 /**
  * Deletion of Ask Hale history, family-scoped + audited (rules #1, #6). A parent
@@ -19,10 +20,13 @@ import { removeDocument } from '../docs/storage.js';
  * whole erase back (row survives → retryable) and a stored object can never outlive
  * the conversation that referenced it.
  *
- * Family scope (rule #1): a turn/conversation is only ever mutable through its
- * OWNING family. The guard joins message → conversation → family, so a turn under
- * another family's conversation matches nothing and the call returns false with no
- * write — a parent can never delete another family's history.
+ * Scope (rule #1): a turn/conversation is only ever mutable through its OWNING
+ * family. The guard joins message → conversation → family, so a turn under another
+ * family's conversation matches nothing and the call returns false with no write —
+ * a parent can never delete another family's history. Family is necessary but not
+ * sufficient: co-parents share one, so the guard ALSO refuses the other parent's
+ * text thread, which is keyed per parent precisely because it is not shared. One
+ * parent must not be able to destroy the other's texts any more than read them.
  */
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -70,7 +74,7 @@ export async function softDeleteMessage(
   const now = args.now ?? new Date();
 
   return database.transaction(async (tx) => {
-    if (!(await messageBelongsToFamily(tx, messageId, familyId))) {
+    if (!(await messageIsDeletableByParent(tx, messageId, familyId, actorUserId))) {
       return false;
     }
 
@@ -118,7 +122,7 @@ export async function eraseConversation(
   const now = args.now ?? new Date();
 
   return database.transaction(async (tx) => {
-    if (!(await conversationBelongsToFamily(tx, conversationId, familyId))) {
+    if (!(await conversationIsErasableByParent(tx, conversationId, familyId, actorUserId))) {
       return null;
     }
 
@@ -158,33 +162,37 @@ export async function eraseConversation(
   });
 }
 
-/** True when the message's conversation belongs to the family (rule #1). */
-async function messageBelongsToFamily(
+/** True when the turn's conversation is this parent's to delete from (rule #1). */
+async function messageIsDeletableByParent(
   tx: Tx,
   messageId: string,
   familyId: string,
+  actorUserId: string,
 ): Promise<boolean> {
   const rows = await tx
-    .select({ id: schema.messages.id })
+    .select({ id: schema.messages.id, noteKey: schema.conversations.noteKey })
     .from(schema.messages)
     .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
     .where(and(eq(schema.messages.id, messageId), eq(schema.conversations.familyId, familyId)))
     .limit(1);
-  return rows.length > 0;
+  const row = rows[0];
+  return row !== undefined && isConversationVisibleToParent(row.noteKey, actorUserId);
 }
 
-/** True when the conversation belongs to the family (rule #1). */
-async function conversationBelongsToFamily(
+/** True when the conversation is this parent's to erase (rule #1). */
+async function conversationIsErasableByParent(
   tx: Tx,
   conversationId: string,
   familyId: string,
+  actorUserId: string,
 ): Promise<boolean> {
   const rows = await tx
-    .select({ id: schema.conversations.id })
+    .select({ id: schema.conversations.id, noteKey: schema.conversations.noteKey })
     .from(schema.conversations)
     .where(
       and(eq(schema.conversations.id, conversationId), eq(schema.conversations.familyId, familyId)),
     )
     .limit(1);
-  return rows.length > 0;
+  const row = rows[0];
+  return row !== undefined && isConversationVisibleToParent(row.noteKey, actorUserId);
 }

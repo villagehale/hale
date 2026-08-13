@@ -33,6 +33,30 @@ export function isChannelSmsNoteKey(noteKey: string | null): boolean {
   return noteKey?.startsWith(CHANNEL_SMS_NOTE_KEY_PREFIX) ?? false;
 }
 
+/** LIKE pattern matching every parent's text thread — lets a read exclude the ones
+ * that are not the viewer's IN SQL, so another parent's texts are never even fetched. */
+export const CHANNEL_SMS_NOTE_KEY_LIKE = `${CHANNEL_SMS_NOTE_KEY_PREFIX}%`;
+
+/**
+ * Whether the thread carrying `noteKey` is THIS parent's to read — the enforcement
+ * side of the per-parent scoping above. Family scope is necessary but NOT sufficient:
+ * co-parents share a family, so a family-only read hands parent B parent A's texts,
+ * the disclosure neither consented to (rule #1).
+ *
+ * Every other thread (the general Ask thread, a note-anchored reply) is genuinely
+ * family-shared and stays visible. Only the per-parent SMS namespace narrows.
+ *
+ * Fails CLOSED on an unknown viewer (null — dev preview, or a session with no mirrored
+ * users row): no text thread is visible rather than all of them.
+ */
+export function isConversationVisibleToParent(
+  noteKey: string | null,
+  viewerUserId: string | null,
+): boolean {
+  if (!isChannelSmsNoteKey(noteKey)) return true;
+  return viewerUserId !== null && noteKey === channelSmsNoteKey(viewerUserId);
+}
+
 /**
  * What the Ask history calls this thread. A text thread runs for months, so its first
  * user turn ("hi") is an accident of when the parent started rather than a subject —
