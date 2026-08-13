@@ -81,6 +81,24 @@ export function isCaregiverRole(role: FamilyRole): role is CaregiverRole {
   return (CAREGIVER_ROLES as readonly FamilyRole[]).includes(role);
 }
 
+/**
+ * The roles that ARE the household's parents. A POSITIVE list, and the inverse of
+ * `isCaregiverRole` only by accident: that predicate is false for the legacy `extended`
+ * and `service` buckets, the two the matrix above deliberately gives an EMPTY scope so
+ * they fail closed. A negative check ("not a caregiver") would let those through.
+ *
+ * Callers ask this when the question is not "how much may they see" but "may this
+ * person act AS the household" — answering an inbound as the parent of record
+ * (twilio/inbound.ts), or claiming the account by proving they hold its number
+ * (lib/auth/claim-by-phone.ts). One list, because two copies of it is how one gets a
+ * fix the other doesn't.
+ */
+export const PARENT_ROLES: readonly FamilyRole[] = ['primary_parent', 'co_parent'];
+
+export function isParentRole(role: string): boolean {
+  return (PARENT_ROLES as readonly string[]).includes(role);
+}
+
 /** A parent sees their own household. Teen content reaches them under rule #1's own
  * redaction (category/summary, raw only under a logged time-limited grant) — that is
  * a separate, finer gate applied at compose time; the ROLE does not withhold it. */
