@@ -1,6 +1,8 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
+import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
@@ -9,6 +11,7 @@ import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import { ChannelTurnFailed } from './coach-runtime';
+import type { SmokeAlarmClaim } from './smoke-alarm';
 import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
@@ -117,6 +120,26 @@ const IN_DOMAIN: OffDomainVerdict = { status: 'in_domain', fallback: null };
 /** A timer that never fires — the fast-turn case. */
 const neverFires = (): AckTimer => ({ elapsed: new Promise<void>(() => {}), cancel: () => {} });
 
+/**
+ * The outage alarm's memory, in memory. Injected rather than read from the fake db
+ * because the fake does not evaluate `where` clauses — a claim read through it would
+ * match the reply-sent audit rows this same turn writes and go green on nothing.
+ */
+function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: string[] } {
+  const claim = {
+    fired: [] as string[],
+    reads: [] as string[],
+    async alreadyFired({ channelMessageId }: { channelMessageId: string }) {
+      claim.reads.push(channelMessageId);
+      return claim.fired.includes(channelMessageId);
+    },
+    async recordFired(input: { channelMessageId: string }) {
+      claim.fired.push(input.channelMessageId);
+    },
+  };
+  return claim;
+}
+
 interface Harness {
   deps: ChannelRouterDeps;
   fake: FakeDb;
@@ -132,6 +155,7 @@ function harness(
     limiter?: FakeRateLimiter;
     ackTimer?: () => AckTimer;
     offDomain?: OffDomainLane;
+    smokeAlarm?: SmokeAlarmClaim;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -159,6 +183,7 @@ function harness(
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
+      smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       ackTimer: options.ackTimer ?? neverFires,
       now: () => NOW,
@@ -715,6 +740,190 @@ describe('failure honesty', () => {
 
       expect(h.transport.bodies()).toEqual([failureReply()]);
     });
+  });
+});
+
+// ── the outage smoke alarm ───────────────────────────────────────────────────
+
+/**
+ * The ONE thing Hale says without a model, and only when there is no model to say it
+ * with (founder-approved 2026-08-12).
+ *
+ * The hole it covers is specific and it is not the obvious one. The off-domain screen
+ * FAILS OPEN (screen.ts openTheGate) — so during an Anthropic outage the deterministic
+ * `safety_critical` lane never gets to classify anything, and "she's not breathing"
+ * falls through to a coach that is also down. What that parent gets today is
+ * failureReply(): "Something went wrong on my end - nothing was changed." The outage
+ * disables the exact path built for that message, and this is what stands in its place.
+ *
+ * It is deliberately not a fallback for the LLM. Both conditions are required, the list
+ * of tokens is short and fixed, and every other failed turn keeps the honesty line it
+ * has always had.
+ */
+describe('the outage smoke alarm', () => {
+  const EMERGENCY = 'she is not breathing what do I do';
+
+  /** How an Anthropic outage actually arrives: the coach wraps the provider error and
+   * rethrows (channel/coach/runtime.ts), so the router's catch sees the wrapper. */
+  function outageCoach(): ChannelCoachRuntime {
+    return {
+      respond: async () => {
+        throw new ChannelTurnFailed('channel coach: agent loop failed', {
+          cause: new Anthropic.APIConnectionError({ message: 'Connection error.' }),
+          draftedActionIds: [],
+        });
+      },
+    };
+  }
+
+  it('sends the fixed safety line, verbatim, instead of the honesty template', async () => {
+    const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
+    expect(h.transport.bodies()[0]).toBe(SAFETY_REPLY);
+    expect(h.transport.bodies()).not.toContain(failureReply());
+  });
+
+  /** It is a reply like any other: ledgered, audited (rule #6), and in the thread the
+   * parent can read back. A siren that skipped the books would be the one message Hale
+   * sent that nothing recorded. */
+  it('ledgers, audits and threads it like every other reply', async () => {
+    const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
+
+    await routeChannelMessage(h.deps, job());
+
+    const out = ledgerRows(h.fake).filter((r) => r.direction === 'out');
+    expect(out).toHaveLength(1);
+    expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('sms_reply_sent');
+    const assistant = messageRows(h.fake).filter((r) => r.role === 'assistant');
+    expect(assistant.map((r) => r.content)).toEqual([SAFETY_REPLY]);
+  });
+
+  it('records the alarm against the inbound message so a queue retry cannot re-ring it', async () => {
+    const claim = fakeSmokeAlarmClaim();
+    const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
+
+    const first = await routeChannelMessage(h.deps, job());
+    expect(first.status).toBe('smoke_alarm_fired');
+    expect(claim.fired).toEqual([job().channel_message_id]);
+
+    // The SAME message, re-driven: at-least-once delivery means the drain can hand this
+    // job back after a mid-turn crash (lib/cron/drain.ts). The alarm is a one-time
+    // event per text, so the second pass falls back to the ordinary honest line.
+    const retry = await routeChannelMessage(h.deps, job());
+    expect(retry.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([SAFETY_REPLY, failureReply()]);
+    expect(claim.fired).toHaveLength(1);
+  });
+
+  /** A different text during the same outage is a different emergency. The claim is
+   * per inbound message, not per family. */
+  it('still rings for the parent\'s next text', async () => {
+    const claim = fakeSmokeAlarmClaim();
+    const h = harness({ context: { body: EMERGENCY }, coach: outageCoach(), smokeAlarm: claim });
+
+    await routeChannelMessage(h.deps, job());
+    const second = await routeChannelMessage(
+      h.deps,
+      job({ channel_message_id: '44444444-4444-4444-8444-444444444444' }),
+    );
+
+    expect(second.status).toBe('smoke_alarm_fired');
+    expect(h.transport.bodies()).toEqual([SAFETY_REPLY, SAFETY_REPLY]);
+  });
+
+  // ── the non-triggers ───────────────────────────────────────────────────────
+
+  it('is never consulted while the model is answering', async () => {
+    const claim = fakeSmokeAlarmClaim();
+    const coach = fakeCoach('Splash pad opens at 10.');
+    const h = harness({ context: { body: EMERGENCY }, coach, smokeAlarm: claim });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(claim.reads).toEqual([]);
+    expect(claim.fired).toEqual([]);
+    expect(h.transport.bodies()).toEqual(['Splash pad opens at 10.']);
+    expect(h.transport.bodies()).not.toContain(SAFETY_REPLY);
+  });
+
+  it('leaves an ordinary text during an outage exactly as it was', async () => {
+    const claim = fakeSmokeAlarmClaim();
+    const h = harness({
+      context: { body: 'anything indoors this weekend?' },
+      coach: outageCoach(),
+      smokeAlarm: claim,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([failureReply()]);
+    expect(claim.fired).toEqual([]);
+  });
+
+  /** A turn that ran out of steps, or broke on a tool, or hit a bug: the model was
+   * reachable the whole time. A siren here would be the alarm becoming a general
+   * fallback for the LLM, which is the one thing it must never be. */
+  it('leaves a non-outage failure alone even on the worst possible text', async () => {
+    const claim = fakeSmokeAlarmClaim();
+    const h = harness({
+      context: { body: EMERGENCY },
+      coach: {
+        respond: async () => {
+          throw new ChannelTurnFailed('channel coach: agent hit maxSteps without an answer', {
+            draftedActionIds: [],
+          });
+        },
+      },
+      smokeAlarm: claim,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('agent_failed');
+    expect(h.transport.bodies()).toEqual([failureReply()]);
+    expect(claim.fired).toEqual([]);
+  });
+
+  /** The lane that deflects a screened symptom is upstream of the coach and untouched:
+   * when the screen CAN run, the safety line comes from there and the alarm is never
+   * reached. Same words, different door, and the outcome says which. */
+  it('does not displace the screened safety deflection', async () => {
+    const claim = fakeSmokeAlarmClaim();
+    const h = harness({
+      context: { body: EMERGENCY },
+      offDomain: fakeLane({
+        status: 'deflected',
+        lane: 'safety_critical',
+        category: 'other',
+        reply: SAFETY_REPLY,
+        replySource: 'fixed',
+        signal: 'recorded',
+      }),
+      coach: outageCoach(),
+      smokeAlarm: claim,
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('deflected');
+    expect(claim.reads).toEqual([]);
+    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
+  });
+
+  it('names the outcome on the failure log without carrying the body (rule #1, #11)', async () => {
+    const h = harness({ context: { body: EMERGENCY }, coach: outageCoach() });
+
+    await routeChannelMessage(h.deps, job());
+
+    const dump = JSON.stringify(h.logs);
+    expect(dump).toContain('smoke_alarm_fired');
+    expect(dump).not.toContain('not breathing');
   });
 });
 
