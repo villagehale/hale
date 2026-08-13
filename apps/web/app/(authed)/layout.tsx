@@ -38,13 +38,17 @@ export default async function AuthedLayout({ children }: { children: React.React
     redirect('/sign-in');
   }
 
-  // A signed-in user with no family hasn't finished onboarding (provisioning
-  // creates the users/families rows). Route them there instead of an empty app —
-  // a bare Google sign-in alone never writes a DB row.
+  // A signed-in user with no family has no app to be shown — provisioning is what
+  // writes the users/families rows, and a bare Google sign-in never does. That used
+  // to mean "send them to the wizard to finish"; since F14 deleted the wizard it
+  // means the account is one no front door produces any more (an old test login, a
+  // half-finished web signup). /sign-in is the honest landing: under the flag it is
+  // the phone door that CAN reach a real family, and it renders rather than
+  // redirecting, so this cannot become a loop.
   if (authEnabled && session?.user?.id) {
     const familyId = await resolveFamilyForUser(session.user.id, db());
     if (!familyId) {
-      redirect('/onboarding');
+      redirect('/sign-in');
     }
     // Day-grain retention substrate; after() so the paint never waits on it.
     after(() => markFamilyActiveToday(db(), familyId));
