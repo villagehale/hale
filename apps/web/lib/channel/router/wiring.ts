@@ -32,7 +32,6 @@ import {
   type ChannelRouterDeps,
   type DeterministicHandler,
   type InboundContext,
-  realAckTimer,
   routeChannelMessage,
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
@@ -391,7 +390,6 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     // only thing that knows which row that was.
     recordPlanOffer: (db, input) => recordPlanOffer(db, input, defaultPlanOfferPorts()),
     limiter: new PostgresRateLimiter(database),
-    ackTimer: realAckTimer,
     now: () => new Date(),
     log: console,
   };

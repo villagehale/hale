@@ -423,9 +423,8 @@ export async function drainHotQueues(
   const slice = options.queues;
   for (const step of DRAIN_PLAN) {
     if (slice && !slice.includes(step.queue)) continue;
-    const stepDeadlineMs = step.budgetMs
-      ? Math.min(startedMs + step.budgetMs, deadlineMs)
-      : deadlineMs;
+    const budgetMs = 'budgetMs' in step ? step.budgetMs : undefined;
+    const stepDeadlineMs = budgetMs ? Math.min(startedMs + budgetMs, deadlineMs) : deadlineMs;
     await drainQueue(deps, step.queue, step.process, stepDeadlineMs, summary);
   }
 
