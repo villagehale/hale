@@ -106,7 +106,7 @@ export async function signUpAction(
     await signIn('credentials', {
       email,
       password,
-      redirectTo: '/onboarding?step=setup',
+      redirectTo: '/home',
     });
   }
 
@@ -239,9 +239,9 @@ export async function resetPasswordAction(
   await signIn('credentials', {
     email: result.identity.email,
     password,
-    redirectTo: '/onboarding?step=setup',
+    redirectTo: '/home',
   });
-  redirect('/onboarding?step=setup');
+  redirect('/home');
 }
 
 export type VerifyState = { status: 'idle' } | { status: 'ok' } | { status: 'error' };

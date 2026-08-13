@@ -8,7 +8,6 @@ import { IntentChips } from '~/components/hale/intent-chips';
 import { TurtleLoader } from '~/components/hale/turtle-loader';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { PRIVACY_URL } from '~/lib/legal-links';
-import { writeIntakeDraft } from '~/lib/onboarding/intake-storage';
 
 /**
  * The PRE-AUTH "see what Hale finds for you" intake + sample (rule #1).
@@ -19,11 +18,11 @@ import { writeIntakeDraft } from '~/lib/onboarding/intake-storage';
  * It posts those three coarse fields to /api/preview, which runs the real
  * discovery model and persists NOTHING, and renders the returned sample.
  *
- * On "save + set up", it writes the coarse intake to the SAME sessionStorage
- * draft onboarding already hydrates from (intake-storage.ts), then hands off to
- * /sign-in?callbackUrl=/onboarding — so the area + intents (+ the stage hint)
- * pre-fill onboarding, but the sensitive fields (exact DOB, full address) are
- * still entered and consented post-auth, behind the signup wall.
+ * "Set up your family" hands off to /sign-in and carries NOTHING with it. It used to
+ * stash the coarse intake in a sessionStorage draft for the web onboarding wizard to
+ * hydrate from; F14 deleted that wizard, so the draft had no reader left and the write
+ * went with it rather than storing a visitor's area and interests for a purpose that
+ * no longer exists (rule #1).
  */
 
 /** The real stages, labelled as friendly age ranges for an anonymous visitor.
@@ -108,20 +107,6 @@ export function PreviewIntake() {
     } catch {
       setResult({ kind: 'error' });
     }
-  }
-
-  /** Carry ONLY the coarse intake into onboarding's draft (rule #1): the coarse
-   * area, the chosen intents, and the stage hint. No DOB, no name, no precise
-   * address — those are entered and consented post-auth in Phase C. */
-  function saveAndSetUp() {
-    writeIntakeDraft({
-      childNames: [],
-      city: area.trim(),
-      intents,
-      planTier: 'free',
-      tosAccepted: false,
-      stage: stage ?? undefined,
-    });
   }
 
   return (
@@ -220,7 +205,7 @@ export function PreviewIntake() {
       ) : null}
 
       {result.kind === 'ready' ? (
-        <PreviewResult activities={result.activities} area={area.trim()} onSetUp={saveAndSetUp} />
+        <PreviewResult activities={result.activities} area={area.trim()} />
       ) : null}
 
       {result.kind === 'teen' ? (
@@ -231,11 +216,7 @@ export function PreviewIntake() {
             the logistics and holds their privacy (you see the kind of thing, never their
             messages). Sign in to set up your family and I&rsquo;ll tailor it for them.
           </p>
-          <Link
-            href="/sign-in?callbackUrl=/onboarding"
-            className="btn-primary self-start"
-            onClick={saveAndSetUp}
-          >
+          <Link href="/sign-in" className="btn-primary self-start">
             Set up your family
             <ArrowRight size={18} strokeWidth={2} aria-hidden="true" />
           </Link>
@@ -254,11 +235,9 @@ export function PreviewIntake() {
 function PreviewResult({
   activities,
   area,
-  onSetUp,
 }: {
   activities: PreviewActivity[];
   area: string;
-  onSetUp: () => void;
 }) {
   if (activities.length === 0) {
     return (
@@ -268,9 +247,8 @@ function PreviewResult({
           sharper the more your village grows. Set up your family and I&rsquo;ll keep looking.
         </p>
         <Link
-          href="/sign-in?callbackUrl=/onboarding"
+          href="/sign-in"
           className="btn-primary self-start"
-          onClick={onSetUp}
         >
           Set up your family
           <ArrowRight size={18} strokeWidth={2} aria-hidden="true" />
@@ -326,9 +304,8 @@ function PreviewResult({
             your area and what you&rsquo;re after over, so there&rsquo;s less to re-type.
           </p>
           <Link
-            href="/sign-in?callbackUrl=/onboarding"
+            href="/sign-in"
             className="btn-primary self-start"
-            onClick={onSetUp}
           >
             Save this + set up your family
             <ArrowRight size={18} strokeWidth={2} aria-hidden="true" />

@@ -54,12 +54,15 @@ beforeEach(() => {
 });
 
 describe('authed layout — the post-auth family gate', () => {
-  it('redirects a signed-in parent with NO family into onboarding', async () => {
+  it('sends a signed-in parent with NO family back to the door', async () => {
     auth.mockResolvedValue({ user: { id: 'google-sub-new' } });
     resolveFamilyForUser.mockResolvedValue(null);
 
-    await expect(run()).rejects.toThrow('REDIRECT:/onboarding');
-    expect(redirect).toHaveBeenCalledWith('/onboarding');
+    // Was /onboarding until F14 deleted the wizard. /sign-in is now the only place
+    // that can lead to a real family (the phone door), and it RENDERS rather than
+    // redirecting, so this hand-back cannot become a loop.
+    await expect(run()).rejects.toThrow('REDIRECT:/sign-in');
+    expect(redirect).toHaveBeenCalledWith('/sign-in');
   });
 
   it('lets a returning parent WITH a family pass through to the app', async () => {
