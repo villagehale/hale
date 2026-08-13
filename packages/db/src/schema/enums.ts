@@ -323,6 +323,14 @@ export const channelMessageCategoryEnum = pgEnum('channel_message_category', [
   // channel, so no cap and no quiet-hours rule governs it — it is a direct answer to a
   // call the parent is still on.
   'voice',
+  // The follow-up ask · Hale checking back after something it set up actually happened
+  // — an introduction three days ago, an activity it placed yesterday. Its own category
+  // for the reason every class above has one: the gate COUNTS a category, and this class
+  // carries the rail that matters most to it (at most one follow-up per family per day).
+  // Sharing 'nudge' would spend a family's weekly nudge budget on a check-in, and
+  // sharing 'village_intro' would put the ACTIVITY follow-up inside the intro loop's
+  // budget, where a placement has no business being counted.
+  'followup',
 ]);
 
 /**

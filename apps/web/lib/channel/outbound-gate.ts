@@ -48,7 +48,7 @@ import { isWithinQuietHours } from '~/lib/loop/prefs';
  * registration window is a request for a specific, finite ladder of messages about that
  * window. That single fact is what earns it both exemptions below.
  */
-export type ProactiveSendKind = 'nudge' | 'registration_sequence' | 'village_intro';
+export type ProactiveSendKind = 'nudge' | 'registration_sequence' | 'village_intro' | 'followup';
 
 /** Why a proactive send is being held. Enum, never free text — it is counted (X1) and
  * logged, so it must be safe to emit and stable to aggregate on. */
@@ -90,6 +90,16 @@ export const PROACTIVE_CAP: Record<
   // would text every family in an FSA about each other, unprompted, about other
   // people's children. Three a week is the most that bug can cost before it stops.
   village_intro: { max: 3, windowHours: 24 * 7 },
+  // The follow-up ask. ONE PER FAMILY PER DAY, and this entry IS that rule rather than a
+  // counter guarding it: the gate already answers "at most N of this class per family per
+  // window", which is exactly what the rail says, so expressing it anywhere else would be
+  // a second implementation of a policy that already has one.
+  //
+  // It also settles precedence for free. Both kinds of follow-up are due on the same
+  // sweep tick sometimes, and the intro one runs first — so its send consumes the day's
+  // single slot and the activity ask is held here, honestly, as `frequency_cap`, and
+  // comes back tomorrow. No tie-break code, no priority field.
+  followup: { max: 1, windowHours: 24 },
 };
 
 /**
@@ -111,6 +121,9 @@ const URGENCY_ALLOWED: Record<ProactiveSendKind, boolean> = {
   // Nothing about an introduction is worthless an hour later. It waits seven days for
   // an answer; it can wait until 08:00.
   village_intro: false,
+  // A question about something that already happened is the least urgent message Hale
+  // sends. If it cannot go before 21:00 it goes tomorrow, or not at all.
+  followup: false,
 };
 
 /**
@@ -125,11 +138,12 @@ export const PROACTIVE_QUIET_HOURS = { start: '21:00', end: '08:00' } as const;
  * its own per kind, so one class's volume can never consume another's budget. */
 const PROACTIVE_CATEGORY: Record<
   ProactiveSendKind,
-  'nudge' | 'registration_sequence' | 'village_intro'
+  'nudge' | 'registration_sequence' | 'village_intro' | 'followup'
 > = {
   nudge: 'nudge',
   registration_sequence: 'registration_sequence',
   village_intro: 'village_intro',
+  followup: 'followup',
 };
 
 export interface OutboundGatePorts {
