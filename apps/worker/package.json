@@ -30,6 +30,7 @@
     "eval:intake-voice": "node evals/run-intake-voice-eval.mjs --cached-only",
     "eval:inbound-lane": "node evals/run-inbound-lane-eval.mjs --cached-only",
     "eval:general-answer": "node evals/run-general-answer-eval.mjs --cached-only",
+    "eval:turn-apology": "node evals/run-turn-apology-eval.mjs --cached-only",
     "eval:followup-voice": "node evals/run-followup-voice-eval.mjs --cached-only",
     "eval:calendar-voice": "node evals/run-calendar-voice-eval.mjs --cached-only",
     "eval:radar": "node evals/run-radar-eval.mjs --cached-only",

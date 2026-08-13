@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This message does both required things perfectly. It owns the failure clearly (\"broke on my end\") without naming a technical cause, and it explicitly states nothing was changed. The language is direct, informal, and reads like a competent friend—short words, first person, no fuss. It avoids all the disqualifiers: no technical cause named, no apologies, no incident language, no grovelling, no suggestion the request is queued or will be retried, no errand handed to the parent, no greeting or emoji. One clean sentence."
+  }
+}

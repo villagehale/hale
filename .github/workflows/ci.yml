@@ -88,6 +88,9 @@ jobs:
       - name: General-answer composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:general-answer
 
+      - name: Turn-apology composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:turn-apology
+
       - name: Follow-up ask composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:followup-voice
 

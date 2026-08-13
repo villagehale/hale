@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on multiple critical fronts. It uses incident language (\"technical error\") instead of owning the fault in first person; it implies the request is still waiting and will be retried (when it should say nothing changed); it names a technical cause it cannot know; it includes a link to the app, a retry instruction with a time (\"try again in 5 minutes\"), and a question mark. It also has a greeting emoji and sounds like support-desk language, not a competent friend. It violates nearly every requirement."
+  }
+}

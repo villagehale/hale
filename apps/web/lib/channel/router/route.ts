@@ -7,7 +7,7 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { type ApologyFallback, type TurnApology } from './apology';
+import type { ApologyFallback, TurnApology } from './apology';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
 import { ACK_REPLY, FLOOD_REPLY, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';

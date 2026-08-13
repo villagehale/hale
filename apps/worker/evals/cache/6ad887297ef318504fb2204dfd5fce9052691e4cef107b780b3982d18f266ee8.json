@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on multiple critical fronts. It uses incident/support-desk language (\"technical error\"), includes an emoji (expressly forbidden), names an actual technical cause it cannot know, suggests the request is still running (\"still waiting\"), hands the parent an errand (\"please check the app\", \"try again\"), points to an app URL, gives a fix time (\"in 5 minutes\"), and ends with a question (\"ok?\"). It does not own the fault in first person (\"we hit\" is passive and vague), and it implies part of it is still processing rather than stating clearly nothing was changed. It reads like corporate support desk language, not a competent friend who dropped something."
+  }
+}

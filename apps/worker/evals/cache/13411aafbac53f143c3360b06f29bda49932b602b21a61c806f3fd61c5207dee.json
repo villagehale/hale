@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on multiple critical fronts. It names a technical cause it cannot know (\"technical error\"), uses incident language (\"error\"), includes grovelling (emoji), says the request is still queued/running (\"still waiting\"), hands the parent an errand (\"check the app\", \"try again\"), includes a greeting tone (\"ok?\"), contains a digit (\"5 minutes\"), and never actually states that nothing was changed. It violates nearly every principle of the intended meaning and Hale's voice."
+  }
+}

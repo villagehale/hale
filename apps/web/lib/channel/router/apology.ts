@@ -54,13 +54,37 @@ const LINK_SHAPE = /https?:\/\/|www\./i;
 const INTERNAL_TERMINATOR = /[.!?]["')\]]?\s+\S/;
 
 /**
+ * The FALSEST thing this stage can say, and the reason it is checked rather than trusted:
+ * a live draw wrote "your request is still waiting for me to try again" before the skill
+ * forbade it (run-turn-apology-eval.mjs). On the branch that reaches this composer the
+ * turn is OVER — nothing is queued, nothing is running in the background, and nobody
+ * picks it up — so a parent told otherwise sits waiting for a message that never comes.
+ *
+ * "Try me again whenever" is the PARENT retrying and stays legal; every shape below is
+ * Hale claiming it will.
+ */
+const PROMISED_RETRY =
+  /\b(i'?ll (try|retry|have another|give it another|get to it|let you know|fix|sort)|me to (try|run|do|have) (it |that )?again|still (waiting|queued|pending|in progress|on it)|will (be )?(retr|re-?run|pick))/i;
+
+/** A time nobody scheduled. Same falsehood one step softer — Hale does not know when, or
+ * whether, this is fixed. */
+const PROMISED_TIME =
+  /\b(shortly|momentarily|in a (minute|moment|sec|second|bit|jiffy)|any (minute|moment) now|as soon as|right back)\b/i;
+
+/** The doctrine's standing rule (skill audit P0 #4): nothing Hale texts points at the
+ * app. The link gate catches a URL; this catches the sentence that does the same job
+ * without one. */
+const APP_POINTER = /\b(the app|in-app|your dashboard|the website|villagehale)\b/i;
+
+/**
  * Why a composed body may not be sent. All mechanical, all fed back to the model
  * verbatim on the next attempt.
  *
- * `invented_number` is the one about MEANING rather than transport: this stage is handed
- * no facts at all, so any digit in the body is an error code, a duration or a count the
- * model made up — and "try again in 5 minutes" is a promise about a fix nobody has
- * scheduled.
+ * The last four are about MEANING rather than transport, and each one is a sentence that
+ * would send perfectly well and be FALSE. This stage is handed no facts at all, so a
+ * digit is an error code or a duration the model made up; and it is reached only where
+ * the turn is finished, so a claimed retry or a promised time is a parent left waiting
+ * for a message nobody is going to send.
  */
 export type ApologyRefusal =
   | 'empty'
@@ -69,7 +93,10 @@ export type ApologyRefusal =
   | 'carries_link'
   | 'not_one_sentence'
   | 'carries_question'
-  | 'invented_number';
+  | 'invented_number'
+  | 'promised_a_retry'
+  | 'promised_a_time'
+  | 'points_at_the_app';
 
 /** Every reason this body cannot go out — all of them, not the first, so one recompose
  * can fix everything the model got wrong rather than one thing per round trip. */
@@ -82,6 +109,9 @@ export function refusals(body: string): ApologyRefusal[] {
   if (INTERNAL_TERMINATOR.test(body)) found.push('not_one_sentence');
   if (body.includes('?')) found.push('carries_question');
   if (/\d/.test(body)) found.push('invented_number');
+  if (PROMISED_RETRY.test(body)) found.push('promised_a_retry');
+  if (PROMISED_TIME.test(body)) found.push('promised_a_time');
+  if (APP_POINTER.test(body)) found.push('points_at_the_app');
   return found;
 }
 

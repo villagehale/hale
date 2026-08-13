@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on multiple critical counts. It names a technical cause (\"technical error\") when Hale cannot know one. It implies the request is still running (\"still waiting\"), contradicting that nothing was changed. It hands the parent an errand (\"try again in 5 minutes\"). It includes an app pointer, a link, and a greeting emoji. It does not own the failure as Hale's own (\"we hit\" is passive and deflecting). The tone is support-desk language, not a competent friend. It violates nearly every core requirement."
+  }
+}

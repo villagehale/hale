@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on nearly every criterion. It names a technical cause (\"technical error\") which Hale cannot know. It implies the request is still running (\"still waiting\") rather than stating nothing was changed. It includes an emoji (forbidden). It provides an app link and a retry instruction (\"try again in 5 minutes\"), handing the parent an errand. It asks a question (\"ok?\"). It uses incident language (\"We hit a technical error\") rather than owning it in first person as Hale's own fault with simple words. The message sounds like corporate support-desk language, not a competent friend who dropped something. It violates almost every requirement in the brief."
+  }
+}

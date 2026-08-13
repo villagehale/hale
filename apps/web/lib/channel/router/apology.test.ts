@@ -45,8 +45,37 @@ describe('what may not be sent as an apology', () => {
       'carries_link',
     ],
     ['an invented number', 'That one broke on my end, try again in 5 minutes.', 'invented_number'],
+    [
+      'a claimed retry',
+      'That one broke on my end and your request is still waiting for me to try again.',
+      'promised_a_retry',
+    ],
+    [
+      'a promised time',
+      'That one broke on my end, I should have it back shortly.',
+      'promised_a_time',
+    ],
+    [
+      'an app pointer with no link in it',
+      'That one broke on my end, your week is in the app.',
+      'points_at_the_app',
+    ],
   ])('refuses %s', (_name, body, reason) => {
     expect(refusals(body)).toContain(reason);
+  });
+
+  /**
+   * The three above are the ones a live draw can WRITE and the transport gates would
+   * happily send. `promised_a_retry` came from an actual sampled body
+   * (run-turn-apology-eval.mjs draw 3): on this branch the turn is over, nothing is
+   * queued, and telling a parent otherwise leaves them waiting for a message nobody will
+   * send. The parent retrying is the legal half and must survive.
+   */
+  it('leaves the parent-retries invitation alone', () => {
+    expect(refusals('That one broke on my end - nothing changed, try me again whenever.')).toEqual(
+      [],
+    );
+    expect(refusals('Something broke on my end and nothing changed on your week.')).toEqual([]);
   });
 
   it('refuses a body over one segment', () => {
