@@ -10,12 +10,12 @@ const resolveFamilyMock = vi.fn();
 const ensureUserMock = vi.fn();
 vi.mock('~/lib/family', () => ({
   resolveFamilyForUser: (...a: unknown[]) => resolveFamilyMock(...a),
-  ensureUserRow: (...a: unknown[]) => ensureUserMock(...a),
+  requireUserIdForUser: (...a: unknown[]) => ensureUserMock(...a),
 }));
 
 import { createBillingCheckout } from './create-checkout.js';
 
-const IDENTITY = { externalAuthId: 'auth-1', email: 'parent@example.com', name: 'Parent' };
+const CALLER = { externalAuthId: 'auth-1', customerEmail: 'parent@example.com' };
 
 function fakeClient(url = 'https://checkout.stripe.com/c/pay/cs_test_1'): {
   client: StripeCheckoutClient;
@@ -56,7 +56,7 @@ describe('createBillingCheckout', () => {
       tier: 'plus',
       period: 'annual',
       priceId: 'price_plus_annual',
-      identity: IDENTITY,
+      ...CALLER,
       database: db,
       client,
       origin: 'https://app.example.com',
@@ -84,7 +84,7 @@ describe('createBillingCheckout', () => {
       tier: 'family',
       period: 'monthly',
       priceId: 'price_family_monthly',
-      identity: IDENTITY,
+      ...CALLER,
       database: db,
       client,
       origin: 'https://app.example.com',
@@ -110,7 +110,7 @@ describe('createBillingCheckout', () => {
       tier: 'plus',
       period: 'monthly',
       priceId: 'price_plus_monthly',
-      identity: IDENTITY,
+      ...CALLER,
       database: db,
       client,
       origin: 'https://app.example.com',
@@ -119,5 +119,29 @@ describe('createBillingCheckout', () => {
     expect(result).toEqual({ status: 'not_found' });
     expect(calls).toEqual([]);
     expect(audits).toEqual([]);
+  });
+
+  it('lets Stripe collect the address when the caller has none (a phone-claimed family)', async () => {
+    resolveFamilyMock.mockResolvedValue('fam-9');
+    ensureUserMock.mockResolvedValue('user-9');
+    const { client, calls } = fakeClient();
+    const { db } = fakeDb();
+
+    const result = await createBillingCheckout({
+      tier: 'plus',
+      period: 'monthly',
+      priceId: 'price_plus_monthly',
+      externalAuthId: 'sms:9f2c4e1a',
+      customerEmail: null,
+      database: db,
+      client,
+      origin: 'https://app.example.com',
+    });
+
+    // A family that arrived by text has no address on file. Refusing checkout over that
+    // would lock every phone-born family out of paying forever; Stripe asks for one on
+    // its own page instead, which is where a billing address belongs anyway.
+    expect(result.status).toBe('created');
+    expect(calls[0]?.customerEmail).toBeNull();
   });
 });
