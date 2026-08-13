@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "There are two swim lessons on the schedule and the message just says \"cancel swim\" without specifying which. Hale correctly identifies both (with day, time, and no extra noise) and asks which one — exactly one question, no greeting, no sign-off, no markdown. That is the required shape for an ambiguous cancel with nothing drafted yet."
-  }
-}

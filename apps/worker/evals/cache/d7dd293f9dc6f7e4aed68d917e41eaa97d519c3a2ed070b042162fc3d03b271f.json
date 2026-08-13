@@ -1,0 +1,50 @@
+{
+  "response": {
+    "id": "msg_011CdzCsiE3knPXsuBdH18ri",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-sonnet-4-6",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "content": [
+      {
+        "type": "text",
+        "text": "Monday swim, Thursday swim, and soccer all match one event each. Wednesday has a private item that fits \"the appointment.\" I'll draft the first two now."
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01McGK5gPcLhktNmytj3zbEj",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-mon"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_014CFkancUW4ktd2XXwpnvFH",
+        "name": "propose_calendar_cancel",
+        "input": {
+          "eventId": "evt-swim-thu"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 776,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 5274,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 137,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    }
+  }
+}

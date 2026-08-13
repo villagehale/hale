@@ -63,7 +63,12 @@ describe('the shape gates', () => {
   it('names WHICH stage is over budget, because the model has to fix that one', () => {
     const violations = planViolations([GOOD[0] as string, chars(600)], GROUNDING, 3);
 
-    expect(violations.some((v) => v.includes('Message 2') && v.includes('segments'))).toBe(true);
+    // Named to the character and phrased as MOVE, because the second reader of this
+    // string is the model on the next attempt and "cut it" lost content it should have
+    // relocated.
+    expect(
+      violations.some((v) => v.includes('Message 2') && v.includes('over the') && v.includes('Move a sentence')),
+    ).toBe(true);
   });
 });
 
@@ -184,5 +189,55 @@ describe('retryUserMessage', () => {
 
   it('leaves a first attempt untouched', () => {
     expect(retryUserMessage('{"question":"x"}', [])).toBe('{"question":"x"}');
+  });
+});
+
+describe('the two gates the live run proved wrong', () => {
+  it('accepts a plan that recommends the ALTERNATIVE method, which the playbook allows', () => {
+    // The playbook's own age gate ends "toddlers in beds usually need the chair method
+    // instead", so a plan that reads the child's situation and switches is the playbook
+    // working. The first live run failed this fixture, and the gate was the bug.
+    const chair = [
+      'The chair method is the one I would use here - sit beside her bed until she is asleep.',
+      "Nights 4-7: move the chair a foot toward the door. I'll check in Friday.",
+    ];
+
+    expect(planViolations(chair, GROUNDING, 3)).toEqual([]);
+  });
+
+  it('still refuses a plan that names NEITHER method (the positive control)', () => {
+    const neither = [
+      'Start with a calm bedtime routine and be consistent about it every night.',
+      "Nights 4-7: keep going, it settles. I'll check in Friday.",
+    ];
+
+    expect(planViolations(neither, GROUNDING, 3)).toContainEqual(
+      expect.stringContaining('never names the method'),
+    );
+  });
+
+  it('allows 911 on solids, because the verified playbook itself says it', () => {
+    // Anaphylaxis IS the emergency the blanket no-siren rule was written to stop Hale
+    // INVENTING. The solids playbook's doctorTriggers open "Call 911 now, not the
+    // doctor: trouble breathing... after eating", and where the curated content says
+    // it, Hale may.
+    const solids: PlanGrounding = {
+      ...GROUNDING,
+      topic: 'solids',
+      playbook: playbookFor('solids'),
+      child: { ageMonths: 6, stage: 'newborn' },
+    };
+    const plan = [
+      'Week 1: one iron-first food a day - iron-fortified cereal or pureed meat.',
+      "Week 2: allergens one at a time. Trouble breathing after eating is a 911 situation. I'll check in Friday.",
+    ];
+
+    expect(planViolations(plan, solids, 3).filter((v) => v.includes('911'))).toEqual([]);
+  });
+
+  it('still refuses 911 on sleep, where no trigger sanctions it (the positive control)', () => {
+    const siren = [GOOD[0] as string, 'If the waking gets worse, call 911. Friday.'];
+
+    expect(planViolations(siren, GROUNDING, 3).some((v) => v.includes('911'))).toBe(true);
   });
 });

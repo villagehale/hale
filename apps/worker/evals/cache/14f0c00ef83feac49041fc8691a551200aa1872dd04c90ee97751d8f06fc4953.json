@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "There are two swim lessons on the schedule and the parent said only \"cancel swim\" without specifying which. Hale correctly identifies both (with accurate day, time, and venue from the week) and asks which one — exactly one question, no greeting, no sign-off, no markdown, no extra words. The shape is perfect."
+  }
+}

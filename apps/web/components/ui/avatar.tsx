@@ -46,7 +46,10 @@ export function Avatar({ src, initials, tone, size = 32, className }: AvatarProp
 
   if (avatarShowsImage(src, erroredSrc)) {
     return (
-      // biome-ignore lint/a11y/useAltText: decorative — the name is in adjacent text; alt="" + aria-hidden keeps the disc out of the a11y tree
+      // Decorative: the name is in adjacent text, and alt="" + aria-hidden keeps the
+      // disc out of the a11y tree. (This carried a biome-ignore for useAltText that the
+      // rule no longer needs — an unused suppression is itself an error, and it was only
+      // invisible because Biome's diagnostic cap truncated before reaching this file.)
       <img
         src={src}
         alt=""

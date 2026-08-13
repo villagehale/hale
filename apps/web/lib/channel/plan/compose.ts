@@ -45,6 +45,10 @@ import {
  */
 export const MAX_PLAN_SEGMENTS = 3;
 
+/** The same ceiling in the unit the model can count: three GSM-7 segments. Quoted back
+ * in a refusal, because "3 segments" is not something anyone can act on. */
+export const PLAN_MESSAGE_CHARS = MAX_PLAN_SEGMENTS * 153;
+
 /** The plan is two or three messages. One is the answer they already had; four is a
  * document, and a document is what the app was for. */
 export const MIN_PLAN_MESSAGES = 2;
@@ -243,8 +247,13 @@ export function planViolations(
   messages.forEach((body, index) => {
     const stage = index + 1;
     if (smsSegments(body) > MAX_PLAN_SEGMENTS) {
+      // Named to the character, and phrased as MOVE rather than CUT. The live corpus is
+      // why: on the densest fixture (the allergen protocol) three rounds of "cut it to
+      // about 400 characters" produced 476, 470, 476 — the model was right that the
+      // content was load-bearing and wrong about where it had to live. A stage that is
+      // 20 characters over has a sentence in the wrong message, not a sentence too many.
       violations.push(
-        `Message ${stage} is ${smsSegments(body)} SMS segments; the whole plan is refused over ${MAX_PLAN_SEGMENTS}. Cut it to about 400 characters.`,
+        `Message ${stage} is ${body.length} characters, ${body.length - PLAN_MESSAGE_CHARS} over the ${PLAN_MESSAGE_CHARS} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
       );
     }
     if (smsEncoding(body) !== 'gsm7') {
@@ -260,11 +269,18 @@ export function planViolations(
         `Message ${stage} names a dose. Hale never gives one, not even over the counter.`,
       );
     }
-    if (reachesForTheHealthLine(body)) {
+    if (reachesForTheHealthLine(body) && !playbookSanctionsTheHealthLine(grounding.playbook)) {
       // The siren, treated as a violation to REWRITE rather than a body to swap out.
       // This is a guidance topic — the parent asked how to do a thing — so a phone
       // number here is the model losing its nerve, and the fix is the plan it was
       // asked for, not a referral in its place.
+      //
+      // UNLESS the playbook itself says the number. Solids is the case that forced
+      // this: its verified doctorTriggers open "Call 911 now, not the doctor: trouble
+      // breathing... after eating", because anaphylaxis IS the emergency the blanket
+      // rule was written to keep Hale from inventing. Where the curated content says
+      // it, Hale may say it; everywhere else it may not. The authority is the same one
+      // that grounds every other claim in the plan.
       violations.push(
         `Message ${stage} gives a phone number (811 or 911). This is a how-to question, not an emergency: name the SITUATION worth a doctor's call instead, with no number.`,
       );
@@ -315,6 +331,13 @@ export function planViolations(
   return violations;
 }
 
+/** Whether this playbook's own verified triggers name an emergency number. Read from
+ * the curated content rather than a topic allowlist, so adding a playbook cannot
+ * silently widen where Hale is allowed to say 911. */
+function playbookSanctionsTheHealthLine(playbook: CoachingPlaybook): boolean {
+  return playbook.doctorTriggers.some((trigger) => reachesForTheHealthLine(trigger));
+}
+
 /** The first distinctive token of a creator's name, lowercased — "emma" from "Emma
  * Hubbard", "doctors bjorkman" from the parenthesised full form. Matching on the whole
  * curated string would miss every natural way a sentence introduces someone. */
@@ -323,21 +346,39 @@ function firstNameToken(name: string): string {
   return bare.startsWith('the ') ? bare.slice(4) : bare;
 }
 
-/** Whether the plan says the method's name. Matched on the distinctive word rather than
- * the whole curated label, so "the Ferber method" satisfies "Graduated check-ins (Ferber
- * method)" — the parent-facing name is a phrase, not a string id. */
+/**
+ * Whether the plan names a method the playbook actually contains.
+ *
+ * EITHER method counts, and that is not a loosening. The playbooks say when the
+ * alternative is the right call — sleep's own age gate ends "toddlers in beds usually
+ * need the chair method instead" — so a plan that reads the child's situation and
+ * recommends the alternative is the playbook working, not a plan ducking its method.
+ * What is forbidden is naming NEITHER.
+ *
+ * Matched on distinctive tokens rather than the whole curated label, because the
+ * parent-facing name is a phrase and not a string id: "the Ferber method" has to satisfy
+ * "Graduated check-ins (Ferber method)", and "the iron-first approach" has to satisfy
+ * "Iron-first solids with early-and-often allergen introduction".
+ */
 export function namesTheMethod(text: string, playbook: CoachingPlaybook): boolean {
   const haystack = text.toLowerCase();
-  return methodTokens(playbook).some((token) => haystack.includes(token));
+  return [
+    ...methodTokens(playbook.primaryMethod.name),
+    ...methodTokens(playbook.alternativeMethod.name),
+  ].some((token) => haystack.includes(token));
 }
 
-function methodTokens(playbook: CoachingPlaybook): string[] {
-  const name = playbook.primaryMethod.name.toLowerCase();
+function methodTokens(rawName: string): string[] {
+  const name = rawName.toLowerCase();
   const tokens = [name];
   const parenthesised = name.match(/\(([^)]+)\)/)?.[1];
   if (parenthesised) tokens.push(parenthesised);
   const leading = name.split('(')[0]?.trim();
   if (leading) tokens.push(leading);
+  // The head word, when it is distinctive enough to be one: "iron-first", "graduated",
+  // "3-day". Four characters keeps "the" and "a" out of it.
+  const head = leading?.split(/\s+/)[0];
+  if (head && head.length >= 4) tokens.push(head);
   return tokens;
 }
 

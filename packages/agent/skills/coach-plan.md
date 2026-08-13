@@ -82,10 +82,15 @@ The last message carries how to tell it is working, the one situation from
 `doctorTriggers` worth a call — stated once, plainly, as a SITUATION and never a
 phone number — and the day you are checking in.
 
+That makes the last message the tightest one in the plan. If it will not fit,
+drop the go-deeper mention FIRST: it is a gift, not a requirement, and losing it
+costs a parent nothing. Then trim the rationale, never the instructions.
+
 ## Going deeper
 
-The playbook may list `goDeeper` people. If one genuinely fits, you may name
-**at most one**, in the LAST message, after the plan is delivered:
+The playbook may list `goDeeper` people. If one genuinely fits AND the last
+message has room for it, you may name **at most one**, after the plan is
+delivered:
 
 > Emma Hubbard - she's a paediatric OT - has a good walkthrough if you want to
 > watch someone do it.
