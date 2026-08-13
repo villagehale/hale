@@ -15,11 +15,10 @@ import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
-import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
+import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
 import {
-  type AckTimer,
   type ChannelCoachRuntime,
   type ChannelRouterDeps,
   type DeterministicHandler,
@@ -132,7 +131,6 @@ function fakeLane(verdict: OffDomainVerdict): OffDomainLane & {
 const IN_DOMAIN: OffDomainVerdict = { status: 'in_domain', fallback: null };
 
 /** A timer that never fires — the fast-turn case. */
-const neverFires = (): AckTimer => ({ elapsed: new Promise<void>(() => {}), cancel: () => {} });
 
 /**
  * The outage alarm's memory, in memory. Injected rather than read from the fake db
@@ -229,7 +227,6 @@ function harness(
     handlers?: DeterministicHandler[];
     coach?: ChannelCoachRuntime;
     limiter?: RateLimiter;
-    ackTimer?: () => AckTimer;
     offDomain?: OffDomainLane;
     smokeAlarm?: SmokeAlarmClaim;
     turns?: ReturnType<typeof fakeTurnLedger>;
@@ -270,7 +267,6 @@ function harness(
       turns,
       apology: options.apology ?? fakeApology(),
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
-      ackTimer: options.ackTimer ?? neverFires,
       now: () => NOW,
       log: {
         info: (...args: unknown[]) => logs.push(args),
@@ -788,7 +784,7 @@ describe('an offered full plan', () => {
 
 // ── slow turns and failures ──────────────────────────────────────────────────
 
-describe('the ack turn', () => {
+describe('slow turns', () => {
   /** A deferred coach + an already-elapsed timer is the only deterministic way to
    * describe "the agent is taking too long" without sleeping in a test. */
   function deferredCoach(): ChannelCoachRuntime & { release: (reply: string) => void } {
@@ -802,34 +798,20 @@ describe('the ack turn', () => {
     };
   }
 
-  it('sends "on it" first, then the real answer', async () => {
+  it('a slow turn sends exactly one message: the answer', async () => {
+    // The ack died 2026-08-13 (founder decision): silence, then the answer. The
+    // positive control is the released reply itself — this test cannot pass vacuously.
     const coach = deferredCoach();
     const h = harness({
       coach,
-      ackTimer: () => ({ elapsed: Promise.resolve(), cancel: () => {} }),
     });
 
     const run = routeChannelMessage(h.deps, job());
-    await vi.waitFor(() => expect(h.transport.bodies()).toEqual([ACK_REPLY]));
+    expect(h.transport.bodies()).toEqual([]);
     coach.release('Saturday is dry — the splash pad is open.');
 
     expect((await run).status).toBe('agent_replied');
-    expect(h.transport.bodies()).toEqual([
-      ACK_REPLY,
-      'Saturday is dry — the splash pad is open.',
-    ]);
-  });
-
-  it('cancels the timer when the turn is fast — no stray ack', async () => {
-    let cancelled = false;
-    const h = harness({
-      ackTimer: () => ({ elapsed: new Promise<void>(() => {}), cancel: () => { cancelled = true; } }),
-    });
-
-    await routeChannelMessage(h.deps, job());
-
-    expect(cancelled).toBe(true);
-    expect(h.transport.bodies()).toEqual(['coach says hi']);
+    expect(h.transport.bodies()).toEqual(['Saturday is dry — the splash pad is open.']);
   });
 });
 
@@ -879,7 +861,6 @@ describe('failure honesty', () => {
   it('still answers after an ack has already gone out', async () => {
     const h = harness({
       coach: throwingCoach,
-      ackTimer: () => ({ elapsed: Promise.resolve(), cancel: () => {} }),
     });
     await routeChannelMessage(h.deps, job());
 
@@ -1169,21 +1150,20 @@ describe('a re-driven turn never answers twice', () => {
   });
 
   /**
-   * The ack is NOT an answer. A parent told "on it" during an outage is still owed the
-   * reply, so the turn defers with the ack already sent and the claim still unwritten —
-   * and the re-drive that finally works answers them for real.
+   * An outage turn sends NOTHING (the ack is gone), defers with the claim unwritten,
+   * and the re-drive that finally works answers for real.
    */
-  it('does not let the ack claim the turn', async () => {
+  it('an outage turn defers in silence, claiming nothing', async () => {
     const turns = fakeTurnLedger();
     let reject!: (err: unknown) => void;
     const h = harness({
       turns,
       coach: { respond: () => new Promise<ChannelTurnResult>((_, r) => { reject = r; }) },
-      ackTimer: () => ({ elapsed: Promise.resolve(), cancel: () => {} }),
     });
 
     const run = routeChannelMessage(h.deps, job());
-    await vi.waitFor(() => expect(h.transport.bodies()).toEqual([ACK_REPLY]));
+    // respond() is only invoked once the router reaches the coach, so wait for it.
+    await vi.waitFor(() => expect(typeof reject).toBe('function'));
     reject(
       new ChannelTurnFailed('channel coach: agent loop failed', {
         cause: new Anthropic.APIConnectionError({ message: 'Connection error.' }),
@@ -1192,7 +1172,7 @@ describe('a re-driven turn never answers twice', () => {
     );
 
     await expect(run).rejects.toBeInstanceOf(TurnDeferred);
-    expect(h.transport.bodies()).toEqual([ACK_REPLY]);
+    expect(h.transport.bodies()).toEqual([]);
     expect(turns.answered).toEqual([]);
     expect(turns.deferred).toEqual([job().channel_message_id]);
   });

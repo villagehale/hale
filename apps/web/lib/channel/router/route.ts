@@ -10,7 +10,7 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
-import { ACK_REPLY, FLOOD_REPLY, partialFailureReply } from './copy';
+import { FLOOD_REPLY, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
 import type { InboundTurnLedger } from './turn-ledger';
@@ -114,29 +114,6 @@ export interface DeterministicHandler {
   handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict>;
 }
 
-/** A cancellable delay, injected so the ack path is testable without real time. */
-export interface AckTimer {
-  readonly elapsed: Promise<void>;
-  cancel(): void;
-}
-
-/** How long a turn may run before the parent is told it is still running. Under
- * Twilio's own patience and well under the 30s the ticket budgets for a full reply. */
-export const ACK_AFTER_MS = 5_000;
-
-export function realAckTimer(ms: number): AckTimer {
-  let handle: ReturnType<typeof setTimeout> | undefined;
-  const elapsed = new Promise<void>((resolve) => {
-    handle = setTimeout(resolve, ms);
-  });
-  return {
-    elapsed,
-    cancel: () => {
-      if (handle) clearTimeout(handle);
-    },
-  };
-}
-
 export interface ChannelRouterDeps {
   database: Database;
   loadContext(
@@ -179,7 +156,6 @@ export interface ChannelRouterDeps {
     },
   ): Promise<unknown>;
   limiter: RateLimiter;
-  ackTimer(ms: number): AckTimer;
   now(): Date;
   log: Pick<Console, 'info' | 'error'>;
 }
@@ -349,11 +325,6 @@ export async function routeChannelMessage(
     now,
   };
 
-  /** A message that does NOT end the turn — the ack, and only the ack. A parent who has
-   * been told "on it" is still owed an answer, so this one claims nothing. */
-  const say = (body: string) =>
-    sendReply(deps, { to: phoneE164, body, job, conversationId });
-
   /** The turn's ANSWER: sent, then claimed, so a re-drive can never send a second one. */
   const answer = (body: string) =>
     sendReply(deps, { to: phoneE164, body, job, conversationId, claim: claimAnswer });
@@ -410,7 +381,6 @@ export async function routeChannelMessage(
   return runAgentTurn(deps, {
     job,
     turn,
-    say,
     answer,
     hasAnswered: () => answered,
     conversationId,
@@ -430,22 +400,21 @@ function isOutsiderWeMayAnswer(role: FamilyRole | null): boolean {
 }
 
 /**
- * The agent half. Two things it must never do: leave the parent with silence, or leave
- * them with an ack and nothing after it.
+ * The agent half. ONE message goes out per turn, and it is the answer.
  *
- * The ack is raced against the turn rather than scheduled after it, so a fast turn
- * sends exactly one message and a slow one sends "on it" while the work continues. The
- * timer is always cancelled — a stray ack arriving after the answer would read as Hale
- * starting over.
+ * There used to be an "On it - one sec." raced against a five-second timer. It is gone
+ * (founder decision, 2026-08-13): silence, then the answer. Two texts for one question
+ * is worse on a phone than a pause — and the coach itself had started promising parents
+ * it would stop sending the thing, which deterministic code then went on sending. An
+ * agent must not be wired to break its own promises, so the wiring is what was removed.
+ * The real fix for a slow turn is upstream anyway: the pickup delay (cron/kick-drain.ts)
+ * and the unbounded model call, not a message about waiting.
  */
 async function runAgentTurn(
   deps: ChannelRouterDeps,
   args: {
     job: ChannelMessageReceivedJob;
     turn: HandlerContext;
-    /** The ack: sent, never claimed. Its ledger id is discarded — an ack promises
-     * nothing, so nothing is ever minted against it. */
-    say: (body: string) => Promise<unknown>;
     /**
      * The turn's answer: sent, then claimed. Hands back the `channel_messages` id,
      * because a promise is minted against the message that CARRIED it (the MEM-10
@@ -457,24 +426,8 @@ async function runAgentTurn(
     conversationId: string;
   },
 ): Promise<RouterResult> {
-  const timer = deps.ackTimer(ACK_AFTER_MS);
-  const pending = deps.coach.respond(args.turn);
-  // Settled either way: the race only asks "is this taking a while", and a REJECTED
-  // turn is not slow — it is finished, and the failure line below is its answer.
-  const settled = pending.then(
-    () => 'settled' as const,
-    () => 'settled' as const,
-  );
-
   try {
-    const first = await Promise.race([settled, timer.elapsed.then(() => 'slow' as const)]);
-    if (first === 'slow') await args.say(ACK_REPLY);
-  } finally {
-    timer.cancel();
-  }
-
-  try {
-    const { reply, planOffer } = await pending;
+    const { reply, planOffer } = await deps.coach.respond(args.turn);
     const channelMessageId = await args.answer(reply);
     // AFTER the send, against the row that carried it — the MEM-10 send-time discipline
     // (lib/commitments/ledger.ts). A turn that composed an offer and then failed to

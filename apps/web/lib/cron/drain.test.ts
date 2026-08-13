@@ -4,7 +4,14 @@ import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
   TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
-import { type DrainBoss, type DrainDeps, HOT_QUEUE_EXPIRE_SECONDS, drainHotQueues } from './drain';
+import {
+  DRAINABLE_QUEUES,
+  type DrainBoss,
+  type DrainDeps,
+  HOT_QUEUE_EXPIRE_SECONDS,
+  INBOUND_TURN_QUEUES,
+  drainHotQueues,
+} from './drain';
 
 /**
  * Drain-loop control flow with a FAKE pg-boss + FAKE orchestrator handlers
@@ -630,5 +637,97 @@ describe('channel.message.received', () => {
     expect(failed(INBOUND)).toEqual(['i3']);
     expect(completed(INBOUND)).toEqual([]);
     expect(summary.failed).toBe(1);
+  });
+});
+
+/**
+ * THE SLICE — what makes a kicked drain a hot path rather than a whole tick.
+ *
+ * A parent's text used to be picked up by a run that drained `channel.send` first under
+ * a two-minute budget, so their question waited behind briefs and reminders that had
+ * nothing to do with them. The inbound kick now asks for its own queue and only its own
+ * queue; the cron keeps asking for everything.
+ */
+describe('drainHotQueues — queue slice', () => {
+  it('fetches only the named queue when a slice is given', async () => {
+    const { boss } = makeFakeBoss({});
+
+    await drainHotQueues(makeDeps(boss), { queues: INBOUND_TURN_QUEUES });
+
+    const fetched = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
+    expect(fetched).toEqual([INBOUND]);
+  });
+
+  /**
+   * The point of the slice, stated as the failure it prevents: a send queue that never
+   * empties owns the first 120s of every full run, and the parent's turn is behind it.
+   * Under the inbound slice that queue is not even fetched, so the turn runs at once.
+   */
+  it('answers the inbound turn immediately even while the send queue is saturated', async () => {
+    const { boss } = makeFakeBoss({});
+    let clock = 0;
+    (boss.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (name: string) => {
+      if (name === CHANNEL) return [{ id: `c${clock}`, data: validChannelSend() }];
+      if (name === INBOUND) {
+        return [
+          {
+            id: 'i1',
+            data: {
+              family_id: FAMILY,
+              parent_user_id: PARENT,
+              channel_message_id: '33333333-3333-4333-8333-333333333333',
+              provider_message_id: 'SM1',
+              received_at: new Date().toISOString(),
+            },
+          },
+        ];
+      }
+      return [];
+    });
+    const pickedUpAt: number[] = [];
+    const deps: DrainDeps = {
+      ...makeDeps(boss, {
+        channelSend: vi.fn(async () => {
+          clock += 10_000;
+        }),
+        channelMessage: vi.fn(async () => {
+          pickedUpAt.push(clock);
+          clock += 700_000;
+        }),
+      }),
+      now: () => clock,
+    };
+
+    await drainHotQueues(deps, { queues: INBOUND_TURN_QUEUES });
+
+    expect(pickedUpAt[0]).toBe(0);
+  });
+
+  /** Every queue still gets DECLARED — the dead-letter target is a foreign key onto the
+   * queue table, so a partial declaration is how the inbound queue fails to exist. */
+  it('declares every queue even when draining one', async () => {
+    const { boss, created } = makeFakeBoss({});
+
+    await drainHotQueues(makeDeps(boss), { queues: INBOUND_TURN_QUEUES });
+
+    expect(created.map((call) => call.name)).toEqual(
+      expect.arrayContaining([EVENTS, ACTIONS, RERANK, CHANNEL, INBOUND, DEAD]),
+    );
+  });
+
+  it('drains every queue when no slice is given', async () => {
+    const { boss } = makeFakeBoss({});
+
+    await drainHotQueues(makeDeps(boss));
+
+    const fetched = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
+    expect(fetched).toEqual(DRAINABLE_QUEUES);
+  });
+
+  /** The route validates a caller's slice against this list, so a name that is not a real
+   * queue is a 400 rather than a run that drains nothing and reports success. */
+  it('names the inbound queue in the drainable set', () => {
+    expect(DRAINABLE_QUEUES).toContain(INBOUND);
+    expect(INBOUND_TURN_QUEUES).toEqual([INBOUND]);
   });
 });

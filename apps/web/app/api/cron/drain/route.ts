@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireCronSecret } from '~/lib/cron/auth';
-import { runDrainCron } from '~/lib/cron/drain';
+import { DRAINABLE_QUEUES, runDrainCron } from '~/lib/cron/drain';
 import { flushTelemetry } from '~/lib/telemetry/langfuse';
 
 // Node runtime: the drain instantiates pg-boss (prepared statements, raw pg) and
@@ -21,13 +21,28 @@ export const maxDuration = 800;
  * `Authorization: Bearer <CRON_SECRET>` gets 401 and the drain does NOTHING —
  * no pg-boss connection, no orchestrator run, no spend. Only a legitimate cron
  * call (or the internal after() kick, which carries the same secret) drains.
+ *
+ * `?queues=a,b` restricts the run to a slice of the drain plan. The inbound kick uses it
+ * so a parent's text is picked up on its own rather than behind the outbound and LLM
+ * queues that share the tick; the cron passes nothing and drains everything. Concurrent
+ * runs are safe — pg-boss hands each job to exactly one fetcher.
+ *
+ * An unrecognised queue name is a 400 rather than a run that drains nothing and reports
+ * success: a typo in a caller's slice would otherwise look exactly like an empty queue.
  */
 export async function GET(req: Request) {
   const denied = requireCronSecret(req);
   if (denied) return denied;
 
+  const requested = new URL(req.url).searchParams.get('queues');
+  const queues = requested ? requested.split(',') : undefined;
+  const unknown = queues?.filter((queue) => !DRAINABLE_QUEUES.includes(queue));
+  if (unknown?.length) {
+    return NextResponse.json({ error: 'unknown_queues', unknown }, { status: 400 });
+  }
+
   try {
-    const summary = await runDrainCron();
+    const summary = await runDrainCron({ queues });
     return NextResponse.json({ ok: true, ...summary }, { status: 200 });
   } catch (err) {
     // Surface the failure instead of letting it 500 silently: log to the

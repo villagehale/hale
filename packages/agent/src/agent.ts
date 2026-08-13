@@ -63,6 +63,10 @@ export interface RunAgentArgs {
 export interface AgentUsage {
   promptTokens: number;
   completionTokens: number;
+  /** Tokens served from the prompt cache across the loop — zero means every turn
+   * paid full price, which is the signal the cache_control breakpoint is not
+   * landing (MEM-9). */
+  cacheReadTokens: number;
 }
 
 export interface RunAgentResult {
@@ -433,6 +437,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
   ];
 
   let promptTokens = 0;
+  let cacheReadTokens = 0;
   let completionTokens = 0;
   let steps = 0;
 
@@ -447,6 +452,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     });
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
     completionTokens += response.usage.output_tokens;
+    cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -457,7 +463,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
-        usage: { promptTokens, completionTokens },
+        usage: { promptTokens, completionTokens, cacheReadTokens },
       };
     }
 
@@ -468,7 +474,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     answer: null,
     steps,
     hitMaxSteps: true,
-    usage: { promptTokens, completionTokens },
+    usage: { promptTokens, completionTokens, cacheReadTokens },
   };
 }
 
@@ -491,6 +497,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
   ];
 
   let promptTokens = 0;
+  let cacheReadTokens = 0;
   let completionTokens = 0;
   let steps = 0;
 
@@ -514,6 +521,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     const response = await stream.finalMessage();
     promptTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
     completionTokens += response.usage.output_tokens;
+    cacheReadTokens += response.usage.cache_read_input_tokens ?? 0;
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -524,7 +532,7 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
         answer: textFrom(response.content),
         steps,
         hitMaxSteps: false,
-        usage: { promptTokens, completionTokens },
+        usage: { promptTokens, completionTokens, cacheReadTokens },
       };
     }
 
@@ -541,6 +549,6 @@ export async function runAgentStreaming(args: RunAgentStreamingArgs): Promise<Ru
     answer: null,
     steps,
     hitMaxSteps: true,
-    usage: { promptTokens, completionTokens },
+    usage: { promptTokens, completionTokens, cacheReadTokens },
   };
 }

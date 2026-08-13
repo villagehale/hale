@@ -92,17 +92,14 @@ export function partialFailureReply(draftCount: number): string {
 }
 
 /**
- * The ack sent when a turn outruns its budget. It is a real message in the thread, so
- * it promises only that Hale is working — a parent who hears "on it" and then nothing
- * has been lied to, which is why the failure template always follows a failed turn.
+ * There was an ACK_REPLY here — "On it - one sec.", raced against a five-second timer.
+ * Deleted 2026-08-13 (founder decision): silence, then the answer. Two texts for one
+ * question is worse on a phone than a pause, and the coach had begun promising parents it
+ * would stop sending it — a promise the deterministic timer then broke on its behalf.
  *
- * FOUNDER REVIEW (tone audit, 2026-08-13): this and {@link FLOOD_REPLY} are fixed bodies
- * under the 2026-08-12 no-preset doctrine. Proposed class: FLOW-CONTROL RECEIPT — neither
- * answers the parent's question; each reports the state of the CONVERSATION (a turn is
- * still running, the queue is behind) and is followed by the real reply. Composing them
- * would also spend a model call on the two paths that are already slow or rate-limited.
+ * {@link FLOOD_REPLY} stays. It is a different job: it answers a parent whose hour is
+ * spent, and nothing else is coming.
  */
-export const ACK_REPLY = 'On it - one sec.';
 
 /**
  * Flood control's answer. It is deliberately warm and gives no number: a parent who is

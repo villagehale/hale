@@ -319,10 +319,70 @@ async function drainQueue(
 }
 
 /**
- * The injectable core: drain both hot queues under the run's deps. Exposed for
- * tests; the route calls runDrainCron, which builds the real pg-boss deps.
+ * The queues one run drains, IN ORDER, with the slice each may spend.
+ *
+ * Outbound sends FIRST, under their own slice. These jobs carry a message Hale has
+ * ALREADY decided to send — a weekly brief, a reminder — so every second they wait is
+ * pure delay on a decision that is finished. They used to drain last, behind two
+ * LLM-bound queues sharing one deadline, which meant an inference backlog withheld a
+ * composed message for the whole tick and the summary said nothing about it. The slice
+ * is what keeps the reordering honest in both directions: a stuck send queue hands the
+ * rest of the tick back rather than becoming the new starvation.
+ *
+ * Inbound turns next. It is the queue with a parent holding a phone waiting on it, and
+ * it must precede actions.approved: a texted "YES" enqueues its approval from inside
+ * the turn, so approvals drained first would always miss it by a full tick. Then the
+ * turns that ran out of retries, right behind the ones that have not — a log line and
+ * nothing else, but an unread dead-letter queue is a silent drop, which is the one thing
+ * rule #11 does not allow.
  */
-export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
+const DRAIN_PLAN = [
+  { queue: CHANNEL_SEND_QUEUE, process: processChannelSendJob, budgetMs: CHANNEL_SEND_BUDGET_MS },
+  { queue: CHANNEL_MESSAGE_RECEIVED_QUEUE, process: processChannelMessageJob },
+  { queue: CHANNEL_MESSAGE_RECEIVED_DLQ, process: processExpiredTurnJob },
+  { queue: EVENTS_QUEUE, process: processIngestedJob },
+  { queue: ACTIONS_QUEUE, process: processApprovedJob },
+  { queue: RERANK_QUEUE, process: processRerankJob },
+] as const satisfies ReadonlyArray<{
+  queue: string;
+  process: (deps: DrainDeps, job: { id: string; data: unknown }) => Promise<'processed' | 'dropped'>;
+  budgetMs?: number;
+}>;
+
+/** Every queue a run may be asked for. A name outside this set is a caller bug, and the
+ * route refuses it rather than draining nothing and reporting success. */
+export const DRAINABLE_QUEUES: readonly string[] = DRAIN_PLAN.map((step) => step.queue);
+
+/**
+ * THE HOT PATH — the only queue a parent's text has to travel to be answered.
+ *
+ * `channel.send` is deliberately NOT in it. The router replies straight through the
+ * transport (channel/router/route.ts sendReply), so the outbound queue is not on the
+ * reply path at all; asking for it would put a parent's question behind a brief-and-
+ * reminder backlog for no benefit. Everything else the turn produces — an approval the
+ * parent texted YES to, a signal to classify — is not what they are waiting on, and the
+ * every-minute cron reaps it.
+ */
+export const INBOUND_TURN_QUEUES: readonly string[] = [CHANNEL_MESSAGE_RECEIVED_QUEUE];
+
+export interface DrainOptions {
+  /** Restrict the run to this slice of {@link DRAINABLE_QUEUES}; omitted drains all. */
+  queues?: readonly string[];
+}
+
+/**
+ * The injectable core: drain the hot queues under the run's deps. Exposed for
+ * tests; the route calls runDrainCron, which builds the real pg-boss deps.
+ *
+ * Every queue is DECLARED on every run even when only a slice is drained — the
+ * declarations are idempotent (`ON CONFLICT DO NOTHING`) and the dead-letter target is a
+ * foreign key onto the queue table, so a partial declaration is the one way to leave the
+ * inbound queue unable to be created at all.
+ */
+export async function drainHotQueues(
+  deps: DrainDeps,
+  options: DrainOptions = {},
+): Promise<DrainSummary> {
   await deps.boss.createQueue(EVENTS_QUEUE, {
     name: EVENTS_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
@@ -360,45 +420,15 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
   const deadlineMs = startedMs + WALL_CLOCK_BUDGET_MS;
   const summary: DrainSummary = { processed: 0, failed: 0, dropped: 0 };
 
-  // Outbound sends FIRST, under their own slice. These jobs carry a message Hale has
-  // ALREADY decided to send — a weekly brief, a reminder — so every second they wait is
-  // pure delay on a decision that is finished. They used to drain last, behind two
-  // LLM-bound queues sharing one deadline, which meant an inference backlog withheld a
-  // composed message for the whole tick and the summary said nothing about it. The slice
-  // is what keeps the reordering honest in both directions: a stuck send queue hands the
-  // rest of the tick back rather than becoming the new starvation.
-  await drainQueue(
-    deps,
-    CHANNEL_SEND_QUEUE,
-    processChannelSendJob,
-    Math.min(startedMs + CHANNEL_SEND_BUDGET_MS, deadlineMs),
-    summary,
-  );
-  // Inbound turns next. It is the queue with a parent holding a phone waiting on it, and
-  // it must precede actions.approved: a texted "YES" enqueues its approval from inside
-  // the turn, so approvals drained first would always miss it by a full tick.
-  await drainQueue(
-    deps,
-    CHANNEL_MESSAGE_RECEIVED_QUEUE,
-    processChannelMessageJob,
-    deadlineMs,
-    summary,
-  );
-  // The turns that ran out of retries, right behind the ones that have not. It is a log
-  // line and nothing else — but an unread dead-letter queue is a silent drop, which is
-  // the one thing rule #11 does not allow.
-  await drainQueue(
-    deps,
-    CHANNEL_MESSAGE_RECEIVED_DLQ,
-    processExpiredTurnJob,
-    deadlineMs,
-    summary,
-  );
-  await drainQueue(deps, EVENTS_QUEUE, processIngestedJob, deadlineMs, summary);
-  await drainQueue(deps, ACTIONS_QUEUE, processApprovedJob, deadlineMs, summary);
-  await drainQueue(deps, RERANK_QUEUE, processRerankJob, deadlineMs, summary);
+  const slice = options.queues;
+  for (const step of DRAIN_PLAN) {
+    if (slice && !slice.includes(step.queue)) continue;
+    const budgetMs = 'budgetMs' in step ? step.budgetMs : undefined;
+    const stepDeadlineMs = budgetMs ? Math.min(startedMs + budgetMs, deadlineMs) : deadlineMs;
+    await drainQueue(deps, step.queue, step.process, stepDeadlineMs, summary);
+  }
 
-  deps.log.info({ ...summary }, 'drain: run complete');
+  deps.log.info({ ...summary, queues: slice ?? 'all' }, 'drain: run complete');
   return summary;
 }
 
@@ -410,7 +440,7 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
  * background maintenance loop in the drain function; the separate
  * queue-maintenance cron owns boss.maintain().
  */
-export async function runDrainCron(): Promise<DrainSummary> {
+export async function runDrainCron(options: DrainOptions = {}): Promise<DrainSummary> {
   const connectionString = process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error('DATABASE_DIRECT_URL or DATABASE_URL must be set to drain the queue');
@@ -448,23 +478,26 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });
   await boss.start();
   try {
-    return await drainHotQueues({
-      boss: boss as unknown as DrainBoss,
-      handlers: {
-        runOrchestrator: (job) => runOrchestrator(job, { calendarInvites }),
-        executeApprovedAction: (input) =>
-          executeApprovedAction(input, { ...defaultExecuteApprovedDeps(), calendarInvites }),
-        rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
-        channelSend: (message) =>
-          dispatchLoopMessage(
-            message,
-            buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
-          ).then(() => undefined),
-        channelMessage: (job) => routeInboundChannelMessage(db(), job),
+    return await drainHotQueues(
+      {
+        boss: boss as unknown as DrainBoss,
+        handlers: {
+          runOrchestrator: (job) => runOrchestrator(job, { calendarInvites }),
+          executeApprovedAction: (input) =>
+            executeApprovedAction(input, { ...defaultExecuteApprovedDeps(), calendarInvites }),
+          rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
+          channelSend: (message) =>
+            dispatchLoopMessage(
+              message,
+              buildDispatchPorts(db(), { channels, renderer: loopTemplateRenderer }),
+            ).then(() => undefined),
+          channelMessage: (job) => routeInboundChannelMessage(db(), job),
+        },
+        log: console,
+        now: () => Date.now(),
       },
-      log: console,
-      now: () => Date.now(),
-    });
+      options,
+    );
   } finally {
     await boss.stop({ graceful: true });
   }
