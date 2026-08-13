@@ -1,6 +1,6 @@
 import type { Database } from '@hale/db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/nudge/run';
+import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { type PlanCheckInDeps, runPlanCheckInSweep } from './check-in';
 

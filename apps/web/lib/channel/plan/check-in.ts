@@ -2,7 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { dedupeActive } from '~/lib/channel/ledger';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
-import { f14Enabled, f14Allowlist } from '~/lib/channel/nudge/run';
+import { f14Enabled, f14Allowlist } from '~/lib/channel/f14';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
