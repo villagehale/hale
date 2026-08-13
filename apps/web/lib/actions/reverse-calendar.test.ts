@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from './reverse-calendar.js';
+import {
+  UNDO_WINDOW_HOURS,
+  type WithdrawInvites,
+  reverseExecutedCalendarAction,
+} from './reverse-calendar.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_FAMILY = '22222222-2222-4222-8222-222222222222';
@@ -55,8 +59,8 @@ function fakeDb(row: ActionRow | null) {
 
 /** The withdrawal, stubbed. Every test that reaches the committed path injects one:
  * the real sender would go looking for the family's parents (VIL-249). */
-function noWithdrawal() {
-  return async () => ({ status: 'reported', parents: [], ask: 'not_needed' }) as const;
+function noWithdrawal(): WithdrawInvites {
+  return async () => ({ status: 'reported', parents: [], ask: 'not_needed' });
 }
 
 function executedAdd(overrides: Partial<ActionRow> = {}): ActionRow {

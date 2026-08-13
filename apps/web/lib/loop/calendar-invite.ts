@@ -148,6 +148,16 @@ function isSuppression(status: string): boolean {
   return status.startsWith('suppressed_');
 }
 
+/** A 'failed' leg whose reason is a channel with no way to send at all — unwired
+ * infrastructure, not a refused address. `channel_unavailable` is the dispatch's own
+ * word for "no adapter for this leg"; the other three are the adapters' skips. */
+const UNCONFIGURED_REASONS: ReadonlySet<string> = new Set([
+  'channel_unavailable',
+  'not_configured',
+  'no_address',
+  'disabled',
+]);
+
 function outcomeFromLeg(leg: LegResult | undefined): {
   outcome: CalendarInviteOutcome;
   reason?: string;
@@ -156,10 +166,10 @@ function outcomeFromLeg(leg: LegResult | undefined): {
   if (leg.outcome === 'sent') return { outcome: 'sent' };
   if (leg.outcome === 'deduped') return { outcome: 'already_sent' };
   if (isSuppression(leg.outcome)) return { outcome: 'suppressed', reason: leg.outcome };
-  // A 'failed' leg is either the channel saying it has no way to send (a skip the
-  // dispatch records as its reason) or a provider refusal. They are different
-  // problems: one is unwired infrastructure, the other is a bad address.
-  if (leg.reason === 'not_configured' || leg.reason === 'disabled' || leg.reason === 'no_address') {
+  // A 'failed' leg is either the channel saying it has no way to send or a provider
+  // refusal. They are different problems: one is unwired infrastructure, the other is
+  // a bad address, and folding them together would hide whichever is real.
+  if (leg.reason && UNCONFIGURED_REASONS.has(leg.reason)) {
     return { outcome: 'not_configured', reason: leg.reason };
   }
   return { outcome: 'send_failed', reason: leg.reason };
@@ -321,6 +331,7 @@ async function askForEmail(
   if (!leg) return 'send_failed';
   if (leg.outcome === 'sent') return 'sent';
   if (isSuppression(leg.outcome)) return 'suppressed';
+  if (leg.reason && UNCONFIGURED_REASONS.has(leg.reason)) return 'not_configured';
   return 'send_failed';
 }
 

@@ -102,6 +102,7 @@ export type CalendarInviteAskOutcome =
   | 'sent'
   | 'already_asked'
   | 'suppressed'
+  | 'not_configured'
   | 'send_failed'
   | 'no_parent_to_ask';
 

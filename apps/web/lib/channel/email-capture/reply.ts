@@ -196,7 +196,7 @@ export function defaultEmailCaptureDeps(): EmailCaptureDeps {
         channels: productionChannels(database),
         renderer: loopTemplateRenderer,
       });
-      return 'outcome' in outcome && outcome.outcome === 'sent';
+      return outcome.outcome === 'sent';
     },
   };
 }
