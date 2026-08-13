@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on nearly every critical dimension. It names a technical cause (\"technical error\") when Hale cannot know one. It implies the request is still queued and running (\"still waiting\"), directly violating the requirement to say nothing was changed. It includes a link to the app, a retry instruction (\"try again in 5 minutes\"), and an emoji—all flagged as automatic disqualifiers. It uses support-desk language (\"error\") and grovelling (\"Oops!\"). It reads like a generic bot, not a competent friend owning a mistake. It completely misses the core meaning: owning the failure as Hale's own and plainly stating nothing changed."
+  }
+}

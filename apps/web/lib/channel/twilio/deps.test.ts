@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
+  CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
-import { type MessageQueue, sendChannelMessageReceived } from './deps';
+import { type MessageQueue, type QueueOptions, sendChannelMessageReceived } from './deps';
 import type { ChannelMessageReceivedJob } from './inbound';
 
 /**
@@ -29,6 +31,10 @@ interface Sent {
   options?: { expireInSeconds?: number; singletonKey?: string; id?: string };
 }
 
+/** Every option the queue was declared with, so a test can assert the retry policy and
+ * the dead-letter target as well as the ones A3 shipped. */
+type QueueCall = QueueOptions & { name: string };
+
 /**
  * A pg-boss stand-in that models the ONE behaviour the producer has to get right:
  * `send` inserts ON CONFLICT DO NOTHING keyed on the job id, so a repeat of a job that
@@ -40,15 +46,15 @@ function fakeQueue(
   options: { accepts?: boolean } = {},
 ): MessageQueue & {
   sent: Sent[];
-  created: Array<{ name: string; policy?: string; expireInSeconds?: number }>;
-  updated: Array<{ name: string; policy?: string }>;
+  created: QueueCall[];
+  updated: QueueCall[];
   existing: Set<string>;
   lookups: string[];
 } {
   const accepts = options.accepts ?? true;
   const sent: Sent[] = [];
-  const created: Array<{ name: string; policy?: string; expireInSeconds?: number }> = [];
-  const updated: Array<{ name: string; policy?: string }> = [];
+  const created: QueueCall[] = [];
+  const updated: QueueCall[] = [];
   const existing = new Set<string>();
   const lookups: string[] = [];
   return {
@@ -58,10 +64,10 @@ function fakeQueue(
     existing,
     lookups,
     async createQueue(name, opts) {
-      created.push({ name, policy: opts?.policy, expireInSeconds: opts?.expireInSeconds });
+      created.push({ ...opts, name });
     },
     async updateQueue(name, opts) {
-      updated.push({ name, policy: opts?.policy });
+      updated.push({ ...opts, name });
     },
     async send(name, data, opts) {
       sent.push({ name, data, options: opts });
@@ -139,11 +145,50 @@ describe('sendChannelMessageReceived', () => {
     await sendChannelMessageReceived(queue, job());
 
     expect(CHANNEL_MESSAGE_RECEIVED_POLICY).toBe('singleton');
-    expect(queue.created).toContainEqual({
-      name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
-      policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
-      expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
-    });
+    expect(queue.created).toContainEqual(
+      expect.objectContaining({
+        name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+        policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
+        expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+      }),
+    );
+  });
+
+  /**
+   * The defer arc's other half. The router throws an unreachable-model turn back at the
+   * queue, so whether the parent ever gets their answer is decided HERE — pg-boss's
+   * default is two retries with no delay at all, which would burn all three attempts
+   * inside the same outage second and then drop the text.
+   */
+  it('gives the queue the retry policy the defer arc runs on', async () => {
+    const queue = fakeQueue();
+    await sendChannelMessageReceived(queue, job());
+
+    expect(queue.created).toContainEqual(
+      expect.objectContaining({
+        name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+        ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+        deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
+      }),
+    );
+    expect(CHANNEL_MESSAGE_RECEIVED_RETRY.retryBackoff).toBe(true);
+    expect(CHANNEL_MESSAGE_RECEIVED_RETRY.retryLimit).toBeGreaterThan(2);
+  });
+
+  /**
+   * The dead-letter queue must EXIST before the main queue can name it — pg-boss's
+   * `dead_letter` column is a foreign key onto `queue(name)`, so the pair in the wrong
+   * order is a constraint violation on the first text after deploy.
+   */
+  it('creates the dead-letter queue before the queue that points at it', async () => {
+    const queue = fakeQueue();
+    await sendChannelMessageReceived(queue, job());
+
+    const names = queue.created.map((c) => c.name);
+    expect(names.indexOf(CHANNEL_MESSAGE_RECEIVED_DLQ)).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf(CHANNEL_MESSAGE_RECEIVED_DLQ)).toBeLessThan(
+      names.indexOf(CHANNEL_MESSAGE_RECEIVED_QUEUE),
+    );
   });
 
   /**
@@ -156,10 +201,27 @@ describe('sendChannelMessageReceived', () => {
     const queue = fakeQueue();
     await sendChannelMessageReceived(queue, job());
 
-    expect(queue.updated).toContainEqual({
-      name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
-      policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
-    });
+    expect(queue.updated).toContainEqual(
+      expect.objectContaining({
+        name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+        policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
+      }),
+    );
+  });
+
+  /** Same landmine, same fix: the queue is already live on production with pg-boss's
+   * default retry policy, and createQueue alone cannot change it. */
+  it('CONVERGES the retry policy of a queue that already exists', async () => {
+    const queue = fakeQueue();
+    await sendChannelMessageReceived(queue, job());
+
+    expect(queue.updated).toContainEqual(
+      expect.objectContaining({
+        name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
+        ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+        deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
+      }),
+    );
   });
 
   it('carries pointers only — never the text itself', async () => {

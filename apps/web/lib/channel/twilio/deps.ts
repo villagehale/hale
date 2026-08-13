@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import {
+  CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
+  CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
@@ -57,6 +59,12 @@ export interface QueueOptions {
   name?: string;
   expireInSeconds?: number;
   policy?: string;
+  /** The defer arc's ceiling, declared on the QUEUE so it converges on an environment
+   * where the queue already exists (see the pair below). */
+  retryLimit?: number;
+  retryDelay?: number;
+  retryBackoff?: boolean;
+  deadLetter?: string;
 }
 
 export interface MessageQueue {
@@ -132,24 +140,34 @@ async function sendAndConfirm(
 }
 
 /**
- * Enqueue one conversation turn for C1, ensuring the queue exists AND carries the
- * policy the key needs.
+ * Enqueue one conversation turn for C1, ensuring the queue exists AND carries the policy
+ * the key needs, the retry ceiling the defer arc runs on, and somewhere to put a turn
+ * that runs out of both.
  *
  * Both statements are required, and `updateQueue` is the one that is easy to miss.
- * pg-boss's `create_queue` ends in ON CONFLICT DO NOTHING, so it cannot change the
- * policy of a queue that already exists — and A3 already shipped this queue, which
- * means production may well hold a `standard` row that would silently ignore every
- * singleton key we send it. `updateQueue` converges it, and is a no-op UPDATE when the
- * row is absent, so the pair is correct from either starting state.
+ * pg-boss's `create_queue` ends in ON CONFLICT DO NOTHING, so it cannot change anything
+ * about a queue that already exists — and A3 already shipped this queue, which means
+ * production holds a row with the wrong policy AND pg-boss's default retry (two
+ * attempts, no delay, three seconds of "waiting out" an outage). `updateQueue` converges
+ * it, and is a no-op UPDATE when the row is absent, so the pair is correct from either
+ * starting state.
+ *
+ * The dead-letter queue is created FIRST because `job.dead_letter` is a foreign key onto
+ * `queue(name)`: naming a queue that does not exist yet is a constraint violation, not a
+ * warning.
  */
 export async function sendChannelMessageReceived(
   queue: MessageQueue,
   job: ChannelMessageReceivedJob,
 ): Promise<void> {
+  await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_DLQ, { name: CHANNEL_MESSAGE_RECEIVED_DLQ });
+
   const options: QueueOptions = {
     name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
+    ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+    deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
   };
   await queue.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);
   await queue.updateQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, options);

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This message does both required things perfectly. It owns the failure cleanly (\"That one broke on my end\") using the exact intended phrasing, and it clearly states nothing was changed (\"nothing's changed on your account\"). It's one sentence, short words, first-person, no fuss. It names no technical cause, makes no promises, gives no errand to the parent, and reads like a competent friend who dropped something. It matches the watchFor requirements exactly."
+  }
+}

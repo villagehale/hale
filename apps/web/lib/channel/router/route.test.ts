@@ -10,8 +10,11 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
+import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import { ChannelTurnFailed } from './coach-runtime';
+import type { ApologyOutcome, TurnApology } from './apology';
 import type { SmokeAlarmClaim } from './smoke-alarm';
+import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
 import { AGENT_TURNS_PER_HOUR } from './flood';
@@ -21,6 +24,7 @@ import {
   type ChannelRouterDeps,
   type DeterministicHandler,
   type InboundContext,
+  TurnDeferred,
   routeChannelMessage,
 } from './route';
 
@@ -49,6 +53,16 @@ function job(overrides: Partial<ChannelMessageReceivedJob> = {}): ChannelMessage
     received_at: NOW.toISOString(),
     ...overrides,
   };
+}
+
+/** One text per call. The loops below mean "N different texts from the same parent",
+ * and since the turn ledger keys on the inbound message id, reusing one id would mean
+ * one text re-driven N times — which is a different scenario entirely. */
+function nthJob(n: number): ChannelMessageReceivedJob {
+  return job({
+    channel_message_id: `33333333-3333-4333-8333-${String(n).padStart(12, '0')}`,
+    provider_message_id: `SM${n}`,
+  });
 }
 
 /** A handler that claims every message, so "did the router stop here?" is observable. */
@@ -140,11 +154,73 @@ function fakeSmokeAlarmClaim(): SmokeAlarmClaim & { fired: string[]; reads: stri
   return claim;
 }
 
+/**
+ * The router's memory of its own attempts, in memory. Injected for the same reason the
+ * alarm's claim is: the fake db does not evaluate `where` clauses, so a stage read
+ * through it would match the audit rows this very turn writes.
+ */
+function fakeTurnLedger(): InboundTurnLedger & {
+  answered: string[];
+  deferred: string[];
+  reads: string[];
+} {
+  const ledger = {
+    answered: [] as string[],
+    deferred: [] as string[],
+    reads: [] as string[],
+    async stageOf({ channelMessageId }: { channelMessageId: string }): Promise<TurnStage> {
+      ledger.reads.push(channelMessageId);
+      if (ledger.answered.includes(channelMessageId)) return 'answered';
+      if (ledger.deferred.includes(channelMessageId)) return 'deferred';
+      return 'fresh';
+    },
+    async recordAnswered(input: { channelMessageId: string }) {
+      ledger.answered.push(input.channelMessageId);
+    },
+    async recordDeferred(input: { channelMessageId: string }) {
+      ledger.deferred.push(input.channelMessageId);
+    },
+  };
+  return ledger;
+}
+
+/** A limiter that only counts. The real fake keeps its window state private, and what
+ * the re-drive tests need to see is how many times the budget was CHARGED. */
+function countingLimiter(): RateLimiter & { checks: number } {
+  const limiter = {
+    checks: 0,
+    async check() {
+      limiter.checks += 1;
+      return { allowed: true, retryAfterSec: 3600 };
+    },
+  };
+  return limiter;
+}
+
+/** The sentence a real model writes on the defect branch. Its WORDS are the composer's
+ * (apology.ts) and its quality is an eval (run-turn-apology-eval.mjs); what these tests
+ * pin is that whatever it wrote is what the parent gets. */
+const APOLOGY = 'That one broke on my end - nothing changed on your side.';
+
+function fakeApology(
+  outcome: ApologyOutcome = { status: 'composed', reply: APOLOGY },
+): TurnApology & { calls: number } {
+  const apology = {
+    calls: 0,
+    async compose() {
+      apology.calls += 1;
+      return outcome;
+    },
+  };
+  return apology;
+}
+
 interface Harness {
   deps: ChannelRouterDeps;
   fake: FakeDb;
   transport: FakeTransport;
   logs: unknown[];
+  turns: ReturnType<typeof fakeTurnLedger>;
 }
 
 function harness(
@@ -152,10 +228,12 @@ function harness(
     context?: Partial<InboundContext> | null;
     handlers?: DeterministicHandler[];
     coach?: ChannelCoachRuntime;
-    limiter?: FakeRateLimiter;
+    limiter?: RateLimiter;
     ackTimer?: () => AckTimer;
     offDomain?: OffDomainLane;
     smokeAlarm?: SmokeAlarmClaim;
+    turns?: ReturnType<typeof fakeTurnLedger>;
+    apology?: TurnApology;
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -172,10 +250,13 @@ function harness(
           ...options.context,
         };
 
+  const turns = options.turns ?? fakeTurnLedger();
+
   return {
     fake,
     transport,
     logs,
+    turns,
     deps: {
       database: fake.db,
       loadContext: async () => context,
@@ -184,6 +265,8 @@ function harness(
       coach: options.coach ?? fakeCoach(),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
+      turns,
+      apology: options.apology ?? fakeApology(),
       limiter: options.limiter ?? new FakeRateLimiter(() => NOW.getTime()),
       ackTimer: options.ackTimer ?? neverFires,
       now: () => NOW,
@@ -216,8 +299,8 @@ describe('threading', () => {
 
   it('lands a second text in the SAME conversation', async () => {
     const h = harness();
-    const first = await routeChannelMessage(h.deps, job({ provider_message_id: 'SM1' }));
-    const second = await routeChannelMessage(h.deps, job({ provider_message_id: 'SM2' }));
+    const first = await routeChannelMessage(h.deps, nthJob(1));
+    const second = await routeChannelMessage(h.deps, nthJob(2));
 
     expect(second.conversationId).toBe(first.conversationId);
     expect(conversationRows(h.fake)).toHaveLength(1);
@@ -408,11 +491,11 @@ describe('the off-domain lane', () => {
     const lane = fakeLane(ANSWERED);
     const h = harness({ offDomain: lane, limiter });
     for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
-      await routeChannelMessage(h.deps, job());
+      await routeChannelMessage(h.deps, nthJob(i));
     }
     const consultedBefore = lane.calls;
 
-    const overflow = await routeChannelMessage(h.deps, job());
+    const overflow = await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
 
     expect(overflow.status).toBe('flood_held');
     expect(lane.calls).toBe(consultedBefore);
@@ -566,10 +649,10 @@ describe('flood control', () => {
     const h = harness({ coach, limiter });
 
     for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
-      expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+      expect((await routeChannelMessage(h.deps, nthJob(i))).status).toBe('agent_replied');
     }
 
-    const overflow = await routeChannelMessage(h.deps, job());
+    const overflow = await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
     expect(overflow.status).toBe('flood_held');
     expect(coach.calls).toBe(AGENT_TURNS_PER_HOUR);
     expect(h.transport.bodies().at(-1)).toBe(FLOOD_REPLY);
@@ -585,7 +668,7 @@ describe('flood control', () => {
     const coach = fakeCoach();
     const h = harness({ coach, limiter });
     for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
-      await routeChannelMessage(h.deps, job());
+      await routeChannelMessage(h.deps, nthJob(i));
     }
 
     const claiming = claimingHandler('approval', 'Approved — add to your calendar.');
@@ -605,11 +688,11 @@ describe('flood control', () => {
     const limiter = flooded();
     const h = harness({ limiter });
     for (let i = 0; i < AGENT_TURNS_PER_HOUR; i += 1) {
-      await routeChannelMessage(h.deps, job());
+      await routeChannelMessage(h.deps, nthJob(i));
     }
     const before = messageRows(h.fake).length;
 
-    await routeChannelMessage(h.deps, job());
+    await routeChannelMessage(h.deps, nthJob(AGENT_TURNS_PER_HOUR));
     expect(messageRows(h.fake).length).toBeGreaterThan(before);
   });
 });
@@ -661,20 +744,38 @@ describe('the ack turn', () => {
   });
 });
 
+/**
+ * A turn that broke on a BUG, with the provider up the whole time — the `defect` branch.
+ *
+ * The twelve-word constant that used to answer every one of these is gone from this path
+ * (founder doctrine, 2026-08-12: no preset bodies). What goes out is composed by a model
+ * that is demonstrably reachable, because that is exactly what `defect` means: the coach
+ * broke on something that was not the provider being absent.
+ */
 describe('failure honesty', () => {
   const throwingCoach: ChannelCoachRuntime = {
     respond: async () => {
-      throw new Error('anthropic timeout');
+      throw new Error('cannot read properties of undefined');
     },
   };
 
-  it('says nothing was changed and points at the app', async () => {
-    const h = harness({ coach: throwingCoach });
+  it('sends the composed apology, not a stock sentence', async () => {
+    const apology = fakeApology();
+    const h = harness({ coach: throwingCoach, apology });
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('agent_failed');
-    expect(h.transport.bodies()).toEqual([failureReply()]);
-    expect(failureReply()).toMatch(/nothing was changed/i);
+    expect(apology.calls).toBe(1);
+    expect(h.transport.bodies()).toEqual([APOLOGY]);
+  });
+
+  /** The line this replaced. Its own module still exports it for the approvals conflict
+   * path, so the guarantee has to be about the FAILED TURN, not about the function. */
+  it('never recites the old preset on a failed turn', async () => {
+    const h = harness({ coach: throwingCoach });
+    await routeChannelMessage(h.deps, job());
+
+    expect(h.transport.bodies()).not.toContain(failureReply());
   });
 
   it('never leaves the parent with silence OR a fabricated success', async () => {
@@ -683,17 +784,42 @@ describe('failure honesty', () => {
 
     const assistantTurns = messageRows(h.fake).filter((r) => r.role === 'assistant');
     expect(assistantTurns).toHaveLength(1);
-    expect(assistantTurns[0]?.content).toBe(failureReply());
+    expect(assistantTurns[0]?.content).toBe(APOLOGY);
   });
 
-  it('still sends the honest line after an ack has already gone out', async () => {
+  it('still answers after an ack has already gone out', async () => {
     const h = harness({
       coach: throwingCoach,
       ackTimer: () => ({ elapsed: Promise.resolve(), cancel: () => {} }),
     });
     await routeChannelMessage(h.deps, job());
 
-    expect(h.transport.bodies().at(-1)).toBe(failureReply());
+    expect(h.transport.bodies().at(-1)).toBe(APOLOGY);
+  });
+
+  /**
+   * The composer is the LAST thing that can speak, so a composer that cannot speak must
+   * not leave the parent with a stock sentence — there isn't one any more. The turn goes
+   * back to the queue instead, and the re-drive may well not need an apology at all.
+   */
+  it.each([
+    ['the model went down mid-apology', { status: 'unreachable' } as const, 'model_unreachable'],
+    [
+      'the gates refused every attempt',
+      { status: 'unavailable', reason: 'gate_exhausted' } as const,
+      'gate_exhausted',
+    ],
+    [
+      'no client to compose with',
+      { status: 'unavailable', reason: 'client_unavailable' } as const,
+      'client_unavailable',
+    ],
+  ])('defers the turn when %s', async (_name, outcome, reason) => {
+    const h = harness({ coach: throwingCoach, apology: fakeApology(outcome) });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.bodies()).toEqual([]);
+    expect(JSON.stringify(h.logs)).toContain(reason);
   });
 
   /**
@@ -714,13 +840,22 @@ describe('failure honesty', () => {
       };
     }
 
+    /**
+     * The one templated line left on this path, and deliberately: it is a RECEIPT for
+     * rows that exist, not an apology. It carries a count and the YES/NO grammar that
+     * resolves against those rows, which is the same reason approvedReceipt and
+     * whichOneReply are templates the coach never touches — a model that miscounts here
+     * points a parent's "yes" at the wrong action.
+     */
     it('names the drafts that are waiting instead of claiming nothing changed', async () => {
-      const h = harness({ coach: draftingThenFailingCoach(2) });
+      const apology = fakeApology();
+      const h = harness({ coach: draftingThenFailingCoach(2), apology });
 
       const result = await routeChannelMessage(h.deps, job());
 
       expect(result.status).toBe('agent_failed');
       expect(h.transport.bodies()).toEqual([partialFailureReply(2)]);
+      expect(apology.calls).toBe(0);
       expect(partialFailureReply(2)).toMatch(/2 changes/);
       expect(partialFailureReply(2)).not.toMatch(/nothing was changed/i);
       expect(partialFailureReply(1)).toMatch(/1 change\b/);
@@ -734,12 +869,243 @@ describe('failure honesty', () => {
       expect(smsSegments(partialFailureReply(2))).toBe(1);
     });
 
-    it('keeps the plain honest line when the turn drafted nothing', async () => {
-      const h = harness({ coach: draftingThenFailingCoach(0) });
+    it('composes the apology when the turn drafted nothing', async () => {
+      const apology = fakeApology();
+      const h = harness({ coach: draftingThenFailingCoach(0), apology });
       await routeChannelMessage(h.deps, job());
 
-      expect(h.transport.bodies()).toEqual([failureReply()]);
+      expect(h.transport.bodies()).toEqual([APOLOGY]);
+      expect(apology.calls).toBe(1);
     });
+  });
+});
+
+// ── defer and re-drive ───────────────────────────────────────────────────────
+
+/**
+ * THE ARC. When the model API is unreachable, the parent gets NOTHING now and the real
+ * composed reply when it comes back — rather than an apology that is punctual, canned,
+ * and about a question Hale never read.
+ *
+ * The mechanism is the queue's, not this module's: the turn is thrown back so the drain
+ * fails rather than completes the job (lib/cron/drain.ts), and pg-boss re-drives it with
+ * exponential backoff up to a bounded ceiling (lib/channel/config.ts). What is asserted
+ * here is the router's half — that it says nothing, throws, and does not spend the
+ * parent's budget or thread twice on the way.
+ */
+describe('deferring a turn the provider cannot answer', () => {
+  function outageCoach(): ChannelCoachRuntime {
+    return {
+      respond: async () => {
+        throw new ChannelTurnFailed('channel coach: agent loop failed', {
+          cause: new Anthropic.APIConnectionError({ message: 'Connection error.' }),
+          draftedActionIds: [],
+        });
+      },
+    };
+  }
+
+  it('sends nothing and hands the job back to the queue', async () => {
+    const apology = fakeApology();
+    const h = harness({ coach: outageCoach(), apology });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
+
+    expect(h.transport.sent).toEqual([]);
+    expect(messageRows(h.fake).filter((r) => r.role === 'assistant')).toEqual([]);
+    // No apology is even attempted: there is no model up to write one.
+    expect(apology.calls).toBe(0);
+  });
+
+  it('names the deferral on the log without carrying the body (rule #1, #11)', async () => {
+    const secret = 'Mia has a therapy appointment on Thursday';
+    const h = harness({ context: { body: secret }, coach: outageCoach() });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+
+    const dump = JSON.stringify(h.logs);
+    expect(dump).toContain('model_unreachable');
+    expect(dump).not.toContain(secret);
+  });
+
+  it('records the deferral so the re-drive knows what it already paid for', async () => {
+    const h = harness({ coach: outageCoach() });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+
+    expect(h.turns.deferred).toEqual([job().channel_message_id]);
+    expect(h.turns.answered).toEqual([]);
+  });
+
+  /**
+   * The parent's words go into the thread ONCE, however many times the outage hands the
+   * turn back. Nine copies of the same question is a transcript that lies to the coach
+   * that reads it on the attempt that finally works.
+   */
+  it('does not thread the parent\'s message again on a re-drive', async () => {
+    const turns = fakeTurnLedger();
+    const h = harness({ coach: outageCoach(), turns });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+
+    expect(messageRows(h.fake).filter((r) => r.role === 'user')).toHaveLength(1);
+  });
+
+  /**
+   * Nor does it spend the hourly agent budget again. `limiter.check` COUNTS as it
+   * decides, so a turn deferred eight times would eat almost half a parent's hour — and
+   * the reply they were waiting for would arrive as the flood line.
+   */
+  it('does not spend the hourly budget again on a re-drive', async () => {
+    const limiter = countingLimiter();
+    const h = harness({ coach: outageCoach(), limiter });
+
+    for (let i = 0; i < 3; i += 1) {
+      await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+    }
+
+    expect(limiter.checks).toBe(1);
+  });
+
+  /**
+   * The screen, by contrast, DOES run again — deliberately. It fails open during an
+   * outage (off-domain/screen.ts), so the deterministic safety lane never got to
+   * classify; re-running the whole pipeline is what lets that classification self-heal
+   * the moment the provider comes back.
+   */
+  it('re-runs the off-domain screen on the re-drive so safety classification self-heals', async () => {
+    const lane = fakeLane(IN_DOMAIN);
+    const h = harness({ coach: outageCoach(), offDomain: lane });
+
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+    await expect(routeChannelMessage(h.deps, job())).rejects.toThrow();
+
+    expect(lane.calls).toBe(2);
+  });
+
+  /** The re-drive that finally lands: the model is back, the coach answers, and what the
+   * parent gets is the real reply to the text they sent two hours ago. */
+  it('answers for real once the provider returns', async () => {
+    const turns = fakeTurnLedger();
+    const down = harness({ coach: outageCoach(), turns });
+    await expect(routeChannelMessage(down.deps, job())).rejects.toThrow();
+
+    const up = harness({ coach: fakeCoach('Saturday is dry - the splash pad is open.'), turns });
+    const result = await routeChannelMessage(up.deps, job());
+
+    expect(result.status).toBe('agent_replied');
+    expect(up.transport.bodies()).toEqual(['Saturday is dry - the splash pad is open.']);
+  });
+});
+
+// ── at most one answer per text ──────────────────────────────────────────────
+
+/**
+ * At-least-once TURNS, at-most-once ANSWERS.
+ *
+ * The drain hands the same job back after any crash, and the defer arc means it does so
+ * routinely rather than rarely. Every path out of this router therefore claims the
+ * answer the instant the transport accepts it, and the claim is read before anything
+ * else happens.
+ */
+describe('a re-driven turn never answers twice', () => {
+  it('does nothing at all when this text has already been answered', async () => {
+    const turns = fakeTurnLedger();
+    const coach = fakeCoach('Splash pad opens at 10.');
+    const first = harness({ coach, turns });
+
+    expect((await routeChannelMessage(first.deps, job())).status).toBe('agent_replied');
+
+    const second = harness({ coach, turns });
+    const result = await routeChannelMessage(second.deps, job());
+
+    expect(result.status).toBe('already_answered');
+    expect(second.transport.sent).toEqual([]);
+    expect(coach.calls).toBe(1);
+    expect(messageRows(second.fake)).toEqual([]);
+  });
+
+  /**
+   * The hazard the claim exists for, played out: the turn answers, then dies on a
+   * bookkeeping write. Without the claim it answers AGAIN in the same turn (the catch
+   * would compose an apology for a text the parent already has) and AGAIN on the
+   * re-drive — three of Hale's messages for one of theirs.
+   *
+   * The claim is written between the transport accepting and the first record for
+   * exactly this reason: the send is the irreversible act, and everything after it is
+   * bookkeeping that a missing row makes reconcilable rather than a second text, which
+   * nothing makes reconcilable. The gap is logged rather than swallowed.
+   */
+  it('sends exactly one reply when the turn crashes AFTER the send', async () => {
+    const turns = fakeTurnLedger();
+    const coach = fakeCoach('Splash pad opens at 10.');
+
+    const crashed = harness({ coach, turns });
+    // The audit row (rule #6) is written AFTER the transport has accepted the reply, so
+    // a failure there is a turn that has already texted the parent.
+    const realDb = crashed.deps.database;
+    const realInsert = realDb.insert.bind(realDb);
+    crashed.deps.database = new Proxy(realDb, {
+      get(target, prop, receiver) {
+        if (prop !== 'insert') return Reflect.get(target, prop, receiver);
+        return (table: Parameters<typeof realInsert>[0]) => {
+          if (table === schema.auditLog) throw new Error('audit insert failed');
+          return realInsert(table);
+        };
+      },
+    });
+
+    await routeChannelMessage(crashed.deps, job());
+    expect(crashed.transport.bodies()).toEqual(['Splash pad opens at 10.']);
+    expect(JSON.stringify(crashed.logs)).toContain('brokeAfterAnswering');
+
+    const redriven = harness({ coach, turns });
+    const result = await routeChannelMessage(redriven.deps, job());
+
+    expect(result.status).toBe('already_answered');
+    expect(redriven.transport.sent).toEqual([]);
+  });
+
+  it('claims the caregiver line too — it is an answer like any other', async () => {
+    const turns = fakeTurnLedger();
+    const first = harness({ context: { role: 'nanny' }, turns });
+    expect((await routeChannelMessage(first.deps, job())).status).toBe('not_a_parent');
+    expect(first.transport.sent).toHaveLength(1);
+
+    const second = harness({ context: { role: 'nanny' }, turns });
+    expect((await routeChannelMessage(second.deps, job())).status).toBe('already_answered');
+    expect(second.transport.sent).toEqual([]);
+  });
+
+  /**
+   * The ack is NOT an answer. A parent told "on it" during an outage is still owed the
+   * reply, so the turn defers with the ack already sent and the claim still unwritten —
+   * and the re-drive that finally works answers them for real.
+   */
+  it('does not let the ack claim the turn', async () => {
+    const turns = fakeTurnLedger();
+    let reject!: (err: unknown) => void;
+    const h = harness({
+      turns,
+      coach: { respond: () => new Promise<{ reply: string }>((_, r) => { reject = r; }) },
+      ackTimer: () => ({ elapsed: Promise.resolve(), cancel: () => {} }),
+    });
+
+    const run = routeChannelMessage(h.deps, job());
+    await vi.waitFor(() => expect(h.transport.bodies()).toEqual([ACK_REPLY]));
+    reject(
+      new ChannelTurnFailed('channel coach: agent loop failed', {
+        cause: new Anthropic.APIConnectionError({ message: 'Connection error.' }),
+        draftedActionIds: [],
+      }),
+    );
+
+    await expect(run).rejects.toBeInstanceOf(TurnDeferred);
+    expect(h.transport.bodies()).toEqual([ACK_REPLY]);
+    expect(turns.answered).toEqual([]);
+    expect(turns.deferred).toEqual([job().channel_message_id]);
   });
 });
 
@@ -811,11 +1177,13 @@ describe('the outage smoke alarm', () => {
     expect(claim.fired).toEqual([job().channel_message_id]);
 
     // The SAME message, re-driven: at-least-once delivery means the drain can hand this
-    // job back after a mid-turn crash (lib/cron/drain.ts). The alarm is a one-time
-    // event per text, so the second pass falls back to the ordinary honest line.
+    // job back after a mid-turn crash (lib/cron/drain.ts), and the defer arc means it
+    // does so routinely. The alarm's own claim is now the SECOND line of defence — the
+    // turn ledger stops the re-drive before the coach is ever woken, because the safety
+    // line was this text's answer.
     const retry = await routeChannelMessage(h.deps, job());
-    expect(retry.status).toBe('agent_failed');
-    expect(h.transport.bodies()).toEqual([SAFETY_REPLY, failureReply()]);
+    expect(retry.status).toBe('already_answered');
+    expect(h.transport.bodies()).toEqual([SAFETY_REPLY]);
     expect(claim.fired).toHaveLength(1);
   });
 
@@ -851,7 +1219,10 @@ describe('the outage smoke alarm', () => {
     expect(h.transport.bodies()).not.toContain(SAFETY_REPLY);
   });
 
-  it('leaves an ordinary text during an outage exactly as it was', async () => {
+  /** An ordinary text during the same outage. The alarm stays quiet — and, since the
+   * defer arc, so does everything else: that parent is owed a real answer, and the queue
+   * is holding their turn until there is a model to write one. */
+  it('leaves an ordinary text during an outage to the defer arc', async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({
       context: { body: 'anything indoors this weekend?' },
@@ -859,16 +1230,16 @@ describe('the outage smoke alarm', () => {
       smokeAlarm: claim,
     });
 
-    const result = await routeChannelMessage(h.deps, job());
+    await expect(routeChannelMessage(h.deps, job())).rejects.toBeInstanceOf(TurnDeferred);
 
-    expect(result.status).toBe('agent_failed');
-    expect(h.transport.bodies()).toEqual([failureReply()]);
+    expect(h.transport.sent).toEqual([]);
     expect(claim.fired).toEqual([]);
   });
 
   /** A turn that ran out of steps, or broke on a tool, or hit a bug: the model was
    * reachable the whole time. A siren here would be the alarm becoming a general
-   * fallback for the LLM, which is the one thing it must never be. */
+   * fallback for the LLM, which is the one thing it must never be — and because the
+   * provider IS up, the apology is composed rather than deferred. */
   it('leaves a non-outage failure alone even on the worst possible text', async () => {
     const claim = fakeSmokeAlarmClaim();
     const h = harness({
@@ -886,7 +1257,7 @@ describe('the outage smoke alarm', () => {
     const result = await routeChannelMessage(h.deps, job());
 
     expect(result.status).toBe('agent_failed');
-    expect(h.transport.bodies()).toEqual([failureReply()]);
+    expect(h.transport.bodies()).toEqual([APOLOGY]);
     expect(claim.fired).toEqual([]);
   });
 
@@ -981,6 +1352,28 @@ describe('logs carry no bodies', () => {
     await routeChannelMessage(h.deps, job());
 
     expect(JSON.stringify(h.logs)).not.toContain(secret);
+  });
+
+  /** The apology composer is BLIND (apology.ts): it never receives the parent's words,
+   * so no bug in it can put them back on the wire. Asserted through the router because
+   * this is the seam where the words are in scope and could be passed by mistake. */
+  it('never hands the parent\'s words to the apology composer', async () => {
+    const secret = 'Mia has a therapy appointment on Thursday';
+    const seen: unknown[] = [];
+    const h = harness({
+      context: { body: secret },
+      coach: { respond: async () => { throw new Error('boom'); } },
+      apology: {
+        compose: async (...args: unknown[]) => {
+          seen.push(args);
+          return { status: 'composed' as const, reply: APOLOGY };
+        },
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(JSON.stringify(seen)).not.toContain('Mia');
   });
 });
 

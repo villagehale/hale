@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on multiple critical counts. It names a technical cause (\"technical error\") that Hale cannot know, violates the core instruction by handing the parent an errand (\"please check the app\" and \"try again in 5 minutes\"), includes incident/support-desk language (\"technical error\"), contains an emoji (which is explicitly forbidden), and—most importantly per watchFor—provides a link and app pointer when the failure was on Hale's end. The parent should not be sent anywhere to check or retry; they should hear that nothing changed on Hale's side in plain, direct language. This reads like corporate support language, not a competent friend owning a mistake."
+  }
+}

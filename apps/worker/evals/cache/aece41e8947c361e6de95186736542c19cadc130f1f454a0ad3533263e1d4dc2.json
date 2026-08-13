@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on multiple critical counts. It names a technical cause (\"technical error\") which Hale cannot know. It uses incident language (\"error\") and an apology word. It implies the request is still running (\"still waiting\") when it must be explicit that nothing changed. It hands the parent an errand (\"check the app\", \"try again\"). It includes a greeting emoji, a link, and retry promises. Most fundamentally, it never states that nothing was changed—the core requirement alongside owning the failure. The watchFor note indicates the original had two sentences with the right meaning but poor form; this version has dropped the crucial statement that nothing changed, trading one structural problem for a worse semantic one."
+  }
+}

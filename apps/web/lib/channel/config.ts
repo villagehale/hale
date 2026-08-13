@@ -46,3 +46,50 @@ export const CHANNEL_MESSAGE_RECEIVED_QUEUE = 'channel.message.received';
  * path for the sake of one string.
  */
 export const CHANNEL_MESSAGE_RECEIVED_POLICY = 'singleton';
+
+/**
+ * THE DEFER CEILING — how long Hale will hold a parent's text waiting for a model.
+ *
+ * The router throws a turn back when the provider is unreachable (router/route.ts
+ * TurnDeferred), so the retry policy is no longer queue plumbing: it IS the product
+ * decision about how late an answer may be before it stops being worth sending.
+ *
+ * pg-boss's backoff (its failJobs plan) schedules the nth retry uniformly in
+ * `[delay·2^(n-1), delay·2^n)` seconds. With 15s and 8 retries that is roughly:
+ *
+ *   15-30s · 30-60s · 1-2m · 2-4m · 4-8m · 8-16m · 16-32m · 32-64m
+ *
+ * — a total window of about one to two hours, with the first four attempts inside the
+ * first ten minutes, which is where the overwhelming majority of provider outages end.
+ * The drain runs every minute, so the backoff and not the cron is what sets the pace.
+ *
+ * PAST THE CEILING THE PARENT IS NEVER ANSWERED, and that is the founder's chosen
+ * trade rather than an oversight: an apology arriving two hours after a question is
+ * worse than silence, because it is a notification that tells them nothing and asks them
+ * to remember what they wanted. The job dead-letters instead of vanishing, so the
+ * abandoned turn is a row you can count (see {@link CHANNEL_MESSAGE_RECEIVED_DLQ}).
+ *
+ * These sit on the QUEUE rather than on each send, which is how the policy converges on
+ * an environment where the queue already exists — see channel/twilio/deps.ts, where
+ * createQueue + updateQueue are run as a pair for exactly that reason.
+ */
+export const CHANNEL_MESSAGE_RECEIVED_RETRY = {
+  retryLimit: 8,
+  retryDelay: 15,
+  retryBackoff: true,
+} as const;
+
+/**
+ * Where a turn goes when the ceiling is reached — pg-boss's own dead-letter queue, so
+ * the ceiling is a NAMED outcome rather than a job that quietly stops existing (rule
+ * #11). The drain consumes it, logs `turn_expired_unanswered`, and sends nothing.
+ *
+ * It covers every terminal path, not just the one the drain watches: a job that expires
+ * mid-flight because the function died is failed by pg-boss's own timeout sweep, which
+ * runs through the same plan and lands in the same place.
+ */
+export const CHANNEL_MESSAGE_RECEIVED_DLQ = 'channel.message.received.dead';
+
+/** The log outcome for a turn that ran out of retries. A DATA value: it is what
+ * telemetry counts, so it is never renamed with the code. */
+export const TURN_EXPIRED_UNANSWERED = 'turn_expired_unanswered';

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "This message fails on nearly all counts. It names a technical cause (\"technical error\") which Hale cannot know. It implies the request is still running (\"still waiting\"), contradicting the requirement to say nothing was changed. It includes a link to the app, a retry instruction to the parent (\"try again in 5 minutes\"), a greeting with emoji, and a question mark. It uses incident/support-desk language (\"technical error\"). It does not own the failure as Hale's own in first person. It violates almost every requirement in the watchFor notes."
+  }
+}

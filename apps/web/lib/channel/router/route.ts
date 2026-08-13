@@ -7,10 +7,12 @@ import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
+import type { ApologyFallback, TurnApology } from './apology';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
-import { ACK_REPLY, FLOOD_REPLY, failureReply, partialFailureReply } from './copy';
+import { ACK_REPLY, FLOOD_REPLY, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
-import { type SmokeAlarmClaim, considerSmokeAlarm } from './smoke-alarm';
+import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
+import type { InboundTurnLedger } from './turn-ledger';
 
 /**
  * VIL-220 · C1 — the inbound router: the consumer of A3's `channel.message.received`.
@@ -140,10 +142,48 @@ export interface ChannelRouterDeps {
    * alarm wired" is not a state this router has — the alarm's own outcome enum is where
    * a quiet alarm says why it stayed quiet. */
   smokeAlarm: SmokeAlarmClaim;
+  /** How far this inbound already got (turn-ledger.ts). Non-nullable (rule #11): a
+   * router that could not tell a re-drive from a first attempt would answer some texts
+   * twice and thread others nine times, and "we didn't wire the ledger" is not a state
+   * this router may be in. */
+  turns: InboundTurnLedger;
+  /** The words a broken turn gets, composed (apology.ts). Non-nullable (rule #11) and
+   * for the same reason the off-domain composer is: a composer that cannot run says so
+   * by name, and this router has no preset sentence to fall back on. */
+  apology: TurnApology;
   limiter: RateLimiter;
   ackTimer(ms: number): AckTimer;
   now(): Date;
   log: Pick<Console, 'info' | 'error'>;
+}
+
+/** Why a turn went back to the queue instead of answering. `model_unreachable` is the
+ * arc's own reason; the rest are the composer's, and they mean Hale had nothing
+ * sendable to say rather than nobody to say it. */
+export type TurnDeferralReason = 'model_unreachable' | ApologyFallback;
+
+/**
+ * The turn is not finished, and the parent gets NOTHING right now.
+ *
+ * Thrown so the drain FAILS rather than completes the job (lib/cron/drain.ts), which is
+ * what puts it back on `channel.message.received` for pg-boss to re-drive with backoff.
+ * The whole pipeline runs again on the next attempt — including the off-domain screen,
+ * so the deterministic safety lane it fails open past during an outage gets its chance
+ * the moment the provider returns.
+ *
+ * The founder's trade, stated plainly: a real answer two hours late beats a canned one
+ * on time. At the retry ceiling the job dead-letters and the parent is never answered at
+ * all, which is the deliberate other half of that trade — see the ceiling in
+ * lib/cron/drain.ts.
+ */
+export class TurnDeferred extends Error {
+  readonly reason: TurnDeferralReason;
+
+  constructor(reason: TurnDeferralReason, cause: unknown) {
+    super(`channel router: turn deferred (${reason})`, { cause });
+    this.name = 'TurnDeferred';
+    this.reason = reason;
+  }
 }
 
 export type RouterStatus =
@@ -160,6 +200,9 @@ export type RouterStatus =
   | 'deflected'
   | 'agent_replied'
   | 'agent_failed'
+  /** This text already has Hale's answer, and the queue handed it back anyway. The turn
+   * stops before anything is threaded, spent or sent (turn-ledger.ts). */
+  | 'already_answered'
   /** The turn broke because the provider was unreachable AND the text named an
    * emergency: the fixed safety line went out with no model in the loop (smoke-alarm.ts).
    * A distinct status from `agent_failed` because it is the one outcome where a failed
@@ -181,6 +224,26 @@ export async function routeChannelMessage(
   job: ChannelMessageReceivedJob,
 ): Promise<RouterResult> {
   const now = deps.now();
+
+  // GATE 0 — have we been here before? The drain is at-least-once and the defer arc
+  // makes re-drives routine, so this is the first question, before a row is written or a
+  // token spent. `answered` ends the turn on the spot; `deferred` says the two
+  // CONSUMING steps below (the thread write and the hourly budget) are already paid for
+  // and must not be paid again. See turn-ledger.ts for why those two and not the rest.
+  const stage = await deps.turns.stageOf({
+    familyId: job.family_id,
+    channelMessageId: job.channel_message_id,
+  });
+  if (stage === 'answered') {
+    return done(deps, job, {
+      status: 'already_answered',
+      handler: null,
+      conversationId: null,
+      lane: null,
+    });
+  }
+  const redriven = stage === 'deferred';
+
   const context = await deps.loadContext(deps.database, job);
   if (!context) {
     return done(deps, job, {
@@ -190,6 +253,19 @@ export async function routeChannelMessage(
       lane: null,
     });
   }
+
+  // Flipped in the same breath as the durable claim (see sendReply), so a failure
+  // AFTER the transport accepted the answer cannot make this turn answer a second time
+  // on its way out. The durable claim stops the next ATTEMPT; this stops this one.
+  let answered = false;
+  const claimAnswer = async () => {
+    answered = true;
+    await deps.turns.recordAnswered({
+      familyId: job.family_id,
+      parentUserId: job.parent_user_id,
+      channelMessageId: job.channel_message_id,
+    });
+  };
 
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can
   // never appear in the parents' Ask history.
@@ -203,6 +279,7 @@ export async function routeChannelMessage(
         body: scopedReply(context.primaryParentName),
         job,
         conversationId: null,
+        claim: claimAnswer,
       });
     }
     return done(deps, job, {
@@ -230,7 +307,11 @@ export async function routeChannelMessage(
     channelSmsNoteKey(job.parent_user_id),
     deps.database,
   );
-  await appendMessage(conversationId, 'user', context.body, deps.database);
+  // Once per TEXT, not once per attempt. A deferred turn already put these words in the
+  // thread, and the coach re-reads that thread on the attempt that finally works.
+  if (!redriven) {
+    await appendMessage(conversationId, 'user', context.body, deps.database);
+  }
 
   const turn: HandlerContext = {
     familyId: job.family_id,
@@ -240,14 +321,20 @@ export async function routeChannelMessage(
     now,
   };
 
+  /** A message that does NOT end the turn — the ack, and only the ack. A parent who has
+   * been told "on it" is still owed an answer, so this one claims nothing. */
   const say = (body: string) =>
     sendReply(deps, { to: phoneE164, body, job, conversationId });
+
+  /** The turn's ANSWER: sent, then claimed, so a re-drive can never send a second one. */
+  const answer = (body: string) =>
+    sendReply(deps, { to: phoneE164, body, job, conversationId, claim: claimAnswer });
 
   // GATE 2 — the deterministic handlers, in order. First claim ends the turn.
   for (const handler of deps.handlers) {
     const verdict = await handler.handle(deps.database, turn);
     if (!verdict.claimed) continue;
-    if (verdict.reply !== null) await say(verdict.reply);
+    if (verdict.reply !== null) await answer(verdict.reply);
     return done(deps, job, {
       status: 'handled',
       handler: handler.name,
@@ -257,15 +344,19 @@ export async function routeChannelMessage(
   }
 
   // GATE 3 — can we afford to think. Counted only here, so a deterministic answer never
-  // spends a parent's hourly budget.
-  const decision = await deps.limiter.check(
-    job.parent_user_id,
-    AGENT_TURN_ROUTE,
-    AGENT_TURN_LIMIT,
-  );
-  if (!decision.allowed) {
-    await say(FLOOD_REPLY);
-    return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
+  // spends a parent's hourly budget — and counted once per TEXT, because `check` COUNTS
+  // as it decides: a turn deferred through an outage would otherwise come back over a
+  // limit it spent on itself, and be answered with the flood line.
+  if (!redriven) {
+    const decision = await deps.limiter.check(
+      job.parent_user_id,
+      AGENT_TURN_ROUTE,
+      AGENT_TURN_LIMIT,
+    );
+    if (!decision.allowed) {
+      await answer(FLOOD_REPLY);
+      return done(deps, job, { status: 'flood_held', handler: null, conversationId, lane: null });
+    }
   }
 
   // GATE 4 — the family's week, or the world. The screen reads the LEDGER body (the same
@@ -279,7 +370,7 @@ export async function routeChannelMessage(
     text: context.body,
   });
   if (verdict.status === 'deflected') {
-    await say(verdict.reply);
+    await answer(verdict.reply);
     return done(deps, job, {
       status: 'deflected',
       handler: null,
@@ -288,7 +379,14 @@ export async function routeChannelMessage(
     });
   }
 
-  return runAgentTurn(deps, { job, turn, say, conversationId });
+  return runAgentTurn(deps, {
+    job,
+    turn,
+    say,
+    answer,
+    hasAnswered: () => answered,
+    conversationId,
+  });
 }
 
 /**
@@ -317,7 +415,12 @@ async function runAgentTurn(
   args: {
     job: ChannelMessageReceivedJob;
     turn: HandlerContext;
+    /** The ack: sent, never claimed. */
     say: (body: string) => Promise<void>;
+    /** The turn's answer: sent, then claimed. */
+    answer: (body: string) => Promise<void>;
+    /** Whether the transport has already accepted this turn's answer. */
+    hasAnswered: () => boolean;
     conversationId: string;
   },
 ): Promise<RouterResult> {
@@ -339,7 +442,7 @@ async function runAgentTurn(
 
   try {
     const { reply } = await pending;
-    await args.say(reply);
+    await args.answer(reply);
     return done(deps, args.job, {
       status: 'agent_replied',
       handler: null,
@@ -351,12 +454,88 @@ async function runAgentTurn(
     // approve. Saying "nothing was changed" would be false AND would orphan them — see
     // coach-runtime.ts (VIL-260).
     const drafted = draftsFromFailure(err);
-    // THE SMOKE ALARM (smoke-alarm.ts), consulted before the honesty line and only ever
-    // from here. During a provider outage the off-domain screen fails open, so the lane
-    // that owns the 811/911 sentence never got to classify — and the line below is what
-    // a parent standing over a child who is not breathing would otherwise receive. Every
-    // other failed turn falls straight through it, including this one when the provider
-    // was reachable.
+    const disposition = await disposeOfFailedTurn(deps, args, err, drafted);
+    // The error object may carry a provider payload, so only its class and message are
+    // kept — never the turn body (rule #1). The disposition rides along so a turn that
+    // said nothing is legible as a decision rather than as nothing (rule #11).
+    deps.log.error(
+      {
+        channelMessageId: args.job.channel_message_id,
+        err: err instanceof Error ? err.message : 'unknown',
+        draftedThisTurn: drafted.length,
+        ...disposition.log,
+      },
+      'channel router: agent turn failed',
+    );
+
+    if (disposition.outcome === 'deferred') {
+      await deps.turns.recordDeferred({
+        familyId: args.job.family_id,
+        parentUserId: args.job.parent_user_id,
+        channelMessageId: args.job.channel_message_id,
+      });
+      throw new TurnDeferred(disposition.reason, err);
+    }
+    if (disposition.reply !== null) await args.answer(disposition.reply);
+    return done(deps, args.job, {
+      status: disposition.outcome,
+      handler: null,
+      conversationId: args.conversationId,
+      lane: null,
+    });
+  }
+}
+
+/**
+ * What a broken turn does next. Three answers, and which one it is turns entirely on
+ * whether there was a model in the loop at all ({@link classifyTurnFailure}).
+ *
+ * MODEL UNREACHABLE. Nothing gets composed, because there is nothing to compose with.
+ * The emergency branch is consulted first and unchanged (#427): a text naming an
+ * unambiguous emergency gets the one fixed line, because a parent standing over a child
+ * who is not breathing cannot wait on a provider. Everything else is DEFERRED — the
+ * parent hears nothing now and gets the real reply when the model returns, which is the
+ * founder's stated trade against a punctual canned sentence.
+ *
+ * DEFECT. The provider was reachable the whole time — our own request shape, a tool, a
+ * query, a bug. So the sentence is COMPOSED (apology.ts) rather than recited, and the
+ * twelve-word constant that used to answer every one of these is gone from this path.
+ * A composer that cannot produce a sendable sentence defers too: there is no preset left
+ * underneath it, and the re-drive may not need an apology at all.
+ *
+ * The ONE templated line still reachable from here is the drafts receipt, and it is not
+ * an apology — it carries a count and the YES/NO grammar that resolves against real rows
+ * (copy.ts partialFailureReply), the same reason every other receipt in this router is a
+ * template the model never touches.
+ */
+type FailedTurnDisposition =
+  | { outcome: 'smoke_alarm_fired' | 'agent_failed'; reply: string | null; log: object }
+  | { outcome: 'deferred'; reason: TurnDeferralReason; log: object };
+
+async function disposeOfFailedTurn(
+  deps: ChannelRouterDeps,
+  args: {
+    job: ChannelMessageReceivedJob;
+    turn: HandlerContext;
+    answer: (body: string) => Promise<void>;
+    hasAnswered: () => boolean;
+  },
+  err: unknown,
+  drafted: readonly string[],
+): Promise<FailedTurnDisposition> {
+  // The turn already texted the parent and then broke on its own bookkeeping. They have
+  // their answer; a second message about it would be Hale talking to itself. Nothing to
+  // defer either — the durable claim is already written, so a re-drive stops at the
+  // door.
+  if (args.hasAnswered()) {
+    return { outcome: 'agent_failed', reply: null, log: { brokeAfterAnswering: true } };
+  }
+
+  if (classifyTurnFailure(err) === 'model_unreachable') {
+    // THE SMOKE ALARM (smoke-alarm.ts), consulted first and only ever from here. During
+    // a provider outage the off-domain screen fails open, so the lane that owns the
+    // 811/911 sentence never got to classify — and deferring is what that parent would
+    // otherwise get: silence, for hours, standing over a child who is not breathing.
     const smokeAlarm = await considerSmokeAlarm({
       claim: deps.smokeAlarm,
       err,
@@ -364,39 +543,37 @@ async function runAgentTurn(
       familyId: args.job.family_id,
       parentUserId: args.job.parent_user_id,
       channelMessageId: args.job.channel_message_id,
-      say: args.say,
+      // The alarm's send IS this text's answer — the one the parent acts on and the one
+      // a re-drive must never repeat — so it claims the turn like every other.
+      say: args.answer,
     });
-    // The error object may carry a provider payload, so only its class and message are
-    // kept — never the turn body (rule #1). The alarm's outcome rides along so a quiet
-    // alarm during an outage is legible as a decision rather than as nothing (rule #11).
-    deps.log.error(
-      {
-        channelMessageId: args.job.channel_message_id,
-        err: err instanceof Error ? err.message : 'unknown',
-        draftedThisTurn: drafted.length,
-        smokeAlarm,
-      },
-      'channel router: agent turn failed',
-    );
     if (smokeAlarm === 'fired') {
       // No draft notice appended, deliberately. The alarm answers a parent who should be
       // dialling, and the drafts are still in the approvals queue for the next turn to
       // surface — a count of pending changes is not what that message is for.
-      return done(deps, args.job, {
-        status: 'smoke_alarm_fired',
-        handler: null,
-        conversationId: args.conversationId,
-        lane: null,
-      });
+      return { outcome: 'smoke_alarm_fired', reply: null, log: { smokeAlarm } };
     }
-    await args.say(drafted.length > 0 ? partialFailureReply(drafted.length) : failureReply());
-    return done(deps, args.job, {
-      status: 'agent_failed',
-      handler: null,
-      conversationId: args.conversationId,
-      lane: null,
-    });
+    return {
+      outcome: 'deferred',
+      reason: 'model_unreachable',
+      log: { smokeAlarm, deferred: 'model_unreachable' },
+    };
   }
+
+  if (drafted.length > 0) {
+    return { outcome: 'agent_failed', reply: partialFailureReply(drafted.length), log: {} };
+  }
+
+  const apology = await deps.apology.compose();
+  if (apology.status === 'composed') {
+    return { outcome: 'agent_failed', reply: apology.reply, log: { apology: 'composed' } };
+  }
+  // The model went down BETWEEN the coach breaking on a bug and the apology being
+  // written. That is no longer a defect — it is an outage, and it takes the outage's
+  // route.
+  const reason: TurnDeferralReason =
+    apology.status === 'unreachable' ? 'model_unreachable' : apology.reason;
+  return { outcome: 'deferred', reason, log: { deferred: reason } };
 }
 
 /**
@@ -417,6 +594,12 @@ async function runAgentTurn(
  * the thread lie to the parent about what Hale said; a sent message whose ledger row
  * failed is visible as a provider row we can reconcile. The audit row (rule #6) is
  * written with the ledger row it describes.
+ *
+ * `claim` is the ANSWER claim (turn-ledger.ts) and runs FIRST of the four records, which
+ * is the tightest the ordering rule allows. Send-then-claim, because a claim written
+ * before the send would suppress a text the parent never got; but every write between
+ * the transport accepting and the claim landing is a window in which a crash makes the
+ * re-drive answer a second time, so there are none. The ack passes no claim at all.
  */
 async function sendReply(
   deps: ChannelRouterDeps,
@@ -425,9 +608,11 @@ async function sendReply(
     body: string;
     job: ChannelMessageReceivedJob;
     conversationId: string | null;
+    claim?: () => Promise<void>;
   },
 ): Promise<void> {
   const { providerMessageId } = await deps.transport.send({ to: args.to, body: args.body });
+  if (args.claim) await args.claim();
 
   const [row] = await deps.database
     .insert(schema.channelMessages)
