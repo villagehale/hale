@@ -1,3 +1,4 @@
+import type { ResendAttachment } from '~/lib/channel/resend-transport';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 
 /**
@@ -46,13 +47,22 @@ export interface LoopMessage {
   relatedActionId?: string;
   relatedConversationId?: string;
   deepLink?: string;
+  /**
+   * Pins the exchange leg to ONE channel instead of the parent's loop_channel, and
+   * suppresses the push mirror with it (VIL-249). For the one message class whose
+   * content exists on a single channel: a calendar invite IS a text/calendar
+   * attachment, so re-routing it to SMS would deliver an empty sentence and mirroring
+   * it to push would announce an email the parent is already holding. Everything
+   * else leaves this unset and gets the founder's mirror model.
+   */
+  channel?: ChannelKind;
 }
 
 /** Channel-specific rendered content. A2 fixes the shape; the real renderers live
  * with the templates. The SMS renderer must be segment-aware and never carry
  * health details or a child name above the family's privacy level (A5). */
 export type RenderedContent =
-  | { kind: 'email'; subject: string; html: string; text: string }
+  | { kind: 'email'; subject: string; html: string; text: string; attachments?: ResendAttachment[] }
   | { kind: 'sms'; text: string }
   | { kind: 'push'; title: string; body: string; data?: Record<string, unknown> };
 

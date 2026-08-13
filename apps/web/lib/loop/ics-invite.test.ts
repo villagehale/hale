@@ -1,14 +1,14 @@
 import { schema } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import type { ResendTransport } from '~/lib/channel/resend-transport';
 import {
   type InviteEventRow,
+  composeEventInvite,
   eventInviteToken,
   eventInviteUrl,
   icsSequence,
+  inviteAttachment,
   loadEventInvite,
   mintEventInviteLink,
-  sendEventInvite,
   toInviteEvent,
 } from './ics-invite.js';
 
@@ -17,7 +17,8 @@ import {
  * here against fakes (no DB, no provider): the redaction is the SAME outbound treatment
  * the reminder channels apply (teen age gate + sensitive genericization + the parent's
  * name dial), the token is a one-way handle that dies with the family's feed token, and
- * the email leg carries the invite as a text/calendar attachment.
+ * the composed email leg is a text/calendar part whose envelope cannot out-reveal it.
+ * The SEND of that part is the dispatch's (calendar-invite.test.ts).
  */
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
@@ -87,27 +88,6 @@ function fakeDb(tables: {
   });
   const select = vi.fn(() => ({ from }));
   return { db: { select } as never, select, from };
-}
-
-function fakeTransport(result: { id: string | null; error: { name: string; message: string } | null }) {
-  const send = vi.fn<ResendTransport['send']>(async () => result);
-  return { transport: { send } as ResendTransport, send };
-}
-
-type FakeSend = ReturnType<typeof fakeTransport>['send'];
-
-/** The one message the fake transport was handed. */
-function sentMessage(send: FakeSend) {
-  const msg = send.mock.calls[0]?.[0];
-  if (!msg) throw new Error('the transport was never called');
-  return msg;
-}
-
-/** Decode the base64 attachment content back to the raw ICS text. */
-function attachedIcs(send: FakeSend): string {
-  const attachment = sentMessage(send).attachments?.[0];
-  if (!attachment) throw new Error('no attachment on the sent message');
-  return Buffer.from(attachment.content, 'base64').toString('utf8');
 }
 
 describe('toInviteEvent — the invite carries the channel’s own redaction (rule #1)', () => {
@@ -255,114 +235,91 @@ describe('icsSequence — the revision derived from the event’s immutable audi
   });
 });
 
-describe('sendEventInvite — the email leg', () => {
+describe('composeEventInvite — the email leg\u2019s bytes', () => {
   const input = {
     familyId: FAMILY_ID,
     familyEventId: EVENT_ID,
     parentUserId: PARENT_ID,
     to: 'parent@example.com',
-    subject: 'Swim class is on your calendar',
-    text: 'Added Swim class — accept to put it on your calendar.',
     note: 'Added from your week plan.',
   };
 
-  it('attaches the invite as text/calendar; method=REQUEST and keeps the caller’s visible body', async () => {
+  it('composes a REQUEST addressed to the recipient, and becomes a text/calendar part', async () => {
     const { db } = fakeDb({
       events: [row()],
       audit: [{ value: 1 }],
       prefs: [{ childNameLevel: 'first_name' }],
     });
-    const { transport, send } = fakeTransport({ id: 'resend-1', error: null });
 
-    const result = await sendEventInvite(input, { database: db, transport, now: NOW });
+    const result = await composeEventInvite(input, { database: db, now: NOW });
 
-    expect(result).toEqual({ status: 'sent', providerMessageId: 'resend-1', sequence: 1 });
-    const msg = sentMessage(send);
-    expect(msg.to).toBe('parent@example.com');
-    expect(msg.subject).toBe(input.subject);
-    expect(msg.text).toBe(input.text);
-    expect(msg.attachments?.[0]?.filename).toBe('invite.ics');
-    expect(msg.attachments?.[0]?.contentType).toBe('text/calendar; charset=utf-8; method=REQUEST');
+    if (result.status !== 'composed') throw new Error(`expected composed, got ${result.status}`);
+    expect(result.sequence).toBe(1);
+    expect(result.method).toBe('REQUEST');
+    expect(result.summary).toBe('Maya — Swim class');
+    expect(result.ics).toContain('METHOD:REQUEST');
+    expect(result.ics).toContain('SUMMARY:Maya — Swim class');
+    expect(result.ics).toContain('ATTENDEE');
+    expect(result.ics).toContain('mailto:parent@example.com');
+    expect(result.ics).toContain('ORGANIZER;CN=Hale:mailto:aloha@villagehale.com');
 
-    const ics = attachedIcs(send);
-    expect(ics).toContain('METHOD:REQUEST');
-    expect(ics).toContain('SUMMARY:Maya — Swim class');
-    expect(ics).toContain('ATTENDEE');
-    expect(ics).toContain('mailto:parent@example.com');
-    expect(ics).toContain('ORGANIZER;CN=Hale:mailto:aloha@villagehale.com');
+    const part = inviteAttachment(result);
+    expect(part.filename).toBe('invite.ics');
+    expect(part.contentType).toBe('text/calendar; charset=utf-8; method=REQUEST');
+    expect(Buffer.from(part.content, 'base64').toString('utf8')).toBe(result.ics);
   });
 
-  it('honors the recipient parent’s dial and the teen floor above it', async () => {
+  it('honors the recipient parent\u2019s dial and the teen floor above it', async () => {
     const { db } = fakeDb({
       events: [row({ childDob: TEEN_DOB })],
       prefs: [{ childNameLevel: 'first_name' }],
     });
-    const { transport, send } = fakeTransport({ id: 'resend-2', error: null });
 
-    await sendEventInvite(input, { database: db, transport, now: NOW });
+    const result = await composeEventInvite(input, { database: db, now: NOW });
 
-    const ics = attachedIcs(send);
-    expect(ics).toContain('SUMMARY:an appointment');
-    expect(ics).not.toContain('Maya');
-    expect(ics).not.toContain('LOCATION:');
-    expect(ics).not.toContain('DESCRIPTION:');
+    if (result.status !== 'composed') throw new Error(`expected composed, got ${result.status}`);
+    // The SUMMARY the caller builds a subject line from is redacted too, so the
+    // envelope cannot out-reveal the attachment.
+    expect(result.summary).toBe('an appointment');
+    expect(result.ics).toContain('SUMMARY:an appointment');
+    expect(result.ics).not.toContain('Maya');
+    expect(result.ics).not.toContain('LOCATION:');
+    expect(result.ics).not.toContain('DESCRIPTION:');
   });
 
-  it('sends a CANCEL for a soft-deleted event at a sequence above the last invite', async () => {
+  it('composes a CANCEL for a soft-deleted event at a sequence above the last invite', async () => {
     const { db } = fakeDb({
       events: [row({ deletedAt: new Date('2026-07-21T09:00:00.000Z') })],
       audit: [{ value: 2 }],
       prefs: [{ childNameLevel: 'generic' }],
     });
-    const { transport, send } = fakeTransport({ id: 'resend-3', error: null });
 
-    const result = await sendEventInvite({ ...input, method: 'CANCEL' }, {
-      database: db,
-      transport,
-      now: NOW,
-    });
+    const result = await composeEventInvite({ ...input, method: 'CANCEL' }, { database: db, now: NOW });
 
-    expect(result).toEqual({ status: 'sent', providerMessageId: 'resend-3', sequence: 3 });
-    const ics = attachedIcs(send);
-    expect(ics).toContain('METHOD:CANCEL');
-    expect(ics).toContain('STATUS:CANCELLED');
-    expect(ics).toContain('SEQUENCE:3');
+    if (result.status !== 'composed') throw new Error(`expected composed, got ${result.status}`);
+    expect(result.sequence).toBe(3);
+    expect(result.ics).toContain('METHOD:CANCEL');
+    expect(result.ics).toContain('STATUS:CANCELLED');
+    expect(result.ics).toContain('SEQUENCE:3');
+    expect(inviteAttachment(result).contentType).toBe('text/calendar; charset=utf-8; method=CANCEL');
   });
 
-  it('never sends a REQUEST for an event that is gone, and never reaches the provider', async () => {
+  it('never composes a REQUEST for an event that is gone', async () => {
     const { db } = fakeDb({ events: [] });
-    const { transport, send } = fakeTransport({ id: null, error: null });
-
-    expect(await sendEventInvite(input, { database: db, transport, now: NOW })).toEqual({
+    expect(await composeEventInvite(input, { database: db, now: NOW })).toEqual({
       status: 'not_found',
     });
-    expect(send).not.toHaveBeenCalled();
   });
 
   it('refuses an event that resolves to another family (family scope, rule #1)', async () => {
     // The row exists, but under a different family than the caller claims.
     const { db } = fakeDb({ events: [row()], prefs: [{ childNameLevel: 'first_name' }] });
-    const { transport, send } = fakeTransport({ id: 'resend-4', error: null });
 
-    const result = await sendEventInvite(
+    const result = await composeEventInvite(
       { ...input, familyId: '99999999-9999-4999-8999-999999999999' },
-      { database: db, transport, now: NOW },
+      { database: db, now: NOW },
     );
 
     expect(result).toEqual({ status: 'not_found' });
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('surfaces a provider failure as a typed error rather than a silent success', async () => {
-    const { db } = fakeDb({ events: [row()], prefs: [{ childNameLevel: 'generic' }] });
-    const { transport } = fakeTransport({
-      id: null,
-      error: { name: 'rate_limit_exceeded', message: 'Too many requests' },
-    });
-
-    expect(await sendEventInvite(input, { database: db, transport, now: NOW })).toEqual({
-      status: 'error',
-      message: 'Too many requests',
-    });
   });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: greeting (\"Hi there!\"), pressure with urgency (\"within 24 hours\"), deadline (\"?\"), pointing at a website/settings page (https://villagehale.com/settings), asking for email in the wrong way (via a link, not by text), and hype/interrogative tone (\"Want invites?\"). The core ask is obfuscated and doesn't clearly state \"text your address back\" or frame it as a standing offer. Does not meet the basic requirement of asking them to TEXT their address."
+  }
+}

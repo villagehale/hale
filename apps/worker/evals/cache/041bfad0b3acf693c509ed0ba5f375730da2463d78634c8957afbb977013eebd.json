@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical violations: (1) The subject and body describe a dentist appointment at 9:45 AM, which contradicts the given summary \"Maya — Swim class\" and when \"Thu, Jul 23 at 10:30 AM\"; (2) Invents details not in the summary or when: \"the dentist\" (place/detail expansion), \"Bring a health card\" (what to bring), \"check https://villagehale.com\" (instruction to go somewhere); (3) References a second time (9:45 AM vs the given 10:30 AM); (4) More than two sentences."
+  }
+}

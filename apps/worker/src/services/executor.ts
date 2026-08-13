@@ -49,6 +49,99 @@ export interface InternalWriteInput {
   notes: string | null;
 }
 
+// ─── The calendar invite a placement owes the family (VIL-249) ───────────────
+
+/**
+ * A placement that stops at `family_events` is on HALE's calendar, not the
+ * family's. The invite is what closes that gap: an iTIP object emailed to each
+ * parent, which their client offers to add. A fresh or re-timed event INVITES; a
+ * cancelled one WITHDRAWS the invite already sent.
+ *
+ * The sender itself lives in apps/web (the ICS composer and the A2 dispatch that
+ * owns quiet hours, consent, the ledger and the audit row) and is INJECTED here,
+ * because the worker sits below web in the dependency order and must not reach up
+ * into it. A process that has not bound one gets {@link unwiredCalendarInvites},
+ * which says so in the execution detail rather than quietly placing nothing.
+ */
+export type CalendarInviteMethod = 'REQUEST' | 'CANCEL';
+
+export interface CalendarInviteRequest {
+  familyId: string;
+  /** The family_events row the placement just wrote / moved / soft-deleted. */
+  familyEventId: string;
+  method: CalendarInviteMethod;
+}
+
+/** What became of ONE parent's invite. Every value is a distinguishable end state:
+ * rule #11 — a send that did not happen is never folded into placement success. */
+export type CalendarInviteOutcome =
+  | 'sent'
+  /** This exact revision already went out (a re-drive of the same placement). */
+  | 'already_sent'
+  /** No address to send to — the gap the just-in-time ask exists to close. */
+  | 'no_email_on_file'
+  /** No email provider wired in this environment. */
+  | 'not_configured'
+  /** Dispatch policy refused the leg (pref / consent / cap / quiet hours). */
+  | 'suppressed'
+  /** No sendable draft after the composer's retry budget — nothing was sent, and
+   * nothing preset was sent in its place (founder: no preset message bodies). */
+  | 'compose_deferred'
+  | 'send_failed'
+  /** The placement row could not be read back (gone, or another family's). */
+  | 'event_not_found';
+
+export interface CalendarInviteParentOutcome {
+  parentUserId: string;
+  channel: 'email';
+  outcome: CalendarInviteOutcome;
+  /** The dispatch's own ledger status behind a 'suppressed' or 'send_failed'. */
+  reason?: string;
+}
+
+/** Whether Hale asked this family for an email address, and why not when it didn't. */
+export type CalendarInviteAskOutcome =
+  | 'not_needed'
+  | 'sent'
+  | 'already_asked'
+  | 'suppressed'
+  /** The composer produced nothing sendable; the once-ever claim stays UNCONSUMED, so
+   * the next placement asks again. */
+  | 'compose_deferred'
+  | 'not_configured'
+  | 'send_failed'
+  | 'no_parent_to_ask';
+
+export type CalendarInviteReport =
+  /** No sender bound in this process — nothing was composed and nothing was sent. */
+  | { status: 'not_configured' }
+  /** The sender threw. The placement stands; the invite is the named residue. */
+  | { status: 'errored'; message: string }
+  | {
+      status: 'reported';
+      parents: CalendarInviteParentOutcome[];
+      ask: CalendarInviteAskOutcome;
+    };
+
+export interface CalendarInviteSender {
+  send(request: CalendarInviteRequest): Promise<CalendarInviteReport>;
+}
+
+/**
+ * The sender a process that never bound one gets. It is not a no-op: it logs, and
+ * it returns the named 'not_configured' report that lands in the execution detail —
+ * so "this family got no invite" is a fact on the action row, not a silence.
+ */
+export const unwiredCalendarInvites: CalendarInviteSender = {
+  async send(request) {
+    logger.warn(
+      { familyId: request.familyId, familyEventId: request.familyEventId, method: request.method },
+      'executor: no calendar-invite sender bound — the placement stands, no invite was composed',
+    );
+    return { status: 'not_configured' };
+  },
+};
+
 export interface ExecutorDeps {
   /** Inserts the outbound_sends claim; false ⇒ already claimed ⇒ do NOT send. */
   claimOutboundSend: (actionId: string) => Promise<boolean>;
@@ -68,11 +161,16 @@ export interface ExecutorDeps {
   moveCalendarEvent: (input: CalendarMoveInput) => Promise<CalendarWriteResult>;
   /** Soft-deletes an existing placement (calendar_cancel). */
   cancelCalendarEvent: (input: CalendarCancelInput) => Promise<CalendarWriteResult>;
+  /** Emails each parent the placement's iTIP object through the A2 dispatch. */
+  sendCalendarInvites: CalendarInviteSender;
   /** Google Calendar transport (create/update). Real impl throws until OAuth exists. */
   calendar: CalendarClient;
 }
 
-function defaultDeps(): ExecutorDeps {
+/** The real, DB- and provider-bound deps. Exported so a caller that owns ONE of
+ * them (the orchestrator, which is handed the web dispatch's invite sender) can
+ * override just that one without re-deriving the rest. */
+export function defaultExecutorDeps(): ExecutorDeps {
   return {
     claimOutboundSend: (actionId) => claimOutboundSendDb(actionId),
     confirmOutboundSend: (actionId, providerMessageId) =>
@@ -84,6 +182,7 @@ function defaultDeps(): ExecutorDeps {
     addToCalendar: (input) => addToCalendarDb(input),
     moveCalendarEvent: (input) => moveCalendarEventDb(input),
     cancelCalendarEvent: (input) => cancelCalendarEventDb(input),
+    sendCalendarInvites: unwiredCalendarInvites,
     calendar: realCalendarClient,
   };
 }
@@ -101,7 +200,7 @@ function defaultDeps(): ExecutorDeps {
  */
 export async function runExecutor(
   input: ExecutorRunInput,
-  deps: ExecutorDeps = defaultDeps(),
+  deps: ExecutorDeps = defaultExecutorDeps(),
 ): Promise<ExecutionResult> {
   logger.info(
     {
@@ -337,10 +436,16 @@ async function calendarPlacement(
       actionId: input.approved.id,
       reversalHandle: requirePayloadString(payload.reversalHandle, 'reversalHandle', actionType),
     });
+    const invites = await inviteFor(input, deps, result.familyEventId, 'CANCEL');
     return {
       ok: true,
       executedAt,
-      detail: { kind: 'calendar_cancelled', outcome: result.outcome, reversalHandle: result.familyEventId },
+      detail: {
+        kind: 'calendar_cancelled',
+        outcome: result.outcome,
+        reversalHandle: result.familyEventId,
+        invites,
+      },
       reversible: false,
     };
   }
@@ -360,12 +465,18 @@ async function calendarPlacement(
       endsAt,
       location,
     });
+    const invites = await inviteFor(input, deps, result.familyEventId, 'REQUEST');
     return {
       ok: true,
       executedAt,
       // A move is not cleanly reversible: undoing it means restoring the prior
       // time, which we don't persist. Only calendar_add is undoable (soft-delete).
-      detail: { kind: 'calendar_moved', outcome: result.outcome, reversalHandle: result.familyEventId },
+      detail: {
+        kind: 'calendar_moved',
+        outcome: result.outcome,
+        reversalHandle: result.familyEventId,
+        invites,
+      },
       reversible: false,
     };
   }
@@ -380,12 +491,44 @@ async function calendarPlacement(
     childId: typeof payload.childId === 'string' ? payload.childId : null,
     sensitive: payload.privacySensitive === true,
   });
+  const invites = await inviteFor(input, deps, result.familyEventId, 'REQUEST');
   return {
     ok: true,
     executedAt,
-    detail: { kind: 'calendar_placed', outcome: result.outcome, reversalHandle: result.familyEventId },
+    detail: {
+      kind: 'calendar_placed',
+      outcome: result.outcome,
+      reversalHandle: result.familyEventId,
+      invites,
+    },
     reversible: true,
   };
+}
+
+/**
+ * The invite leg of a placement — attempted AFTER the row is written, and unable to
+ * undo it. The event is real whatever happens here, so a sender that throws is
+ * caught and NAMED ('errored') rather than failing an execution that already
+ * succeeded: the orchestrator would otherwise mark the event 'failed' and leave a
+ * placed row nobody believes in. That is the one thing this catch is for; it
+ * narrows to a message and logs the error itself.
+ */
+async function inviteFor(
+  input: ExecutorRunInput,
+  deps: ExecutorDeps,
+  familyEventId: string,
+  method: CalendarInviteMethod,
+): Promise<CalendarInviteReport> {
+  const request: CalendarInviteRequest = { familyId: input.familyId, familyEventId, method };
+  try {
+    return await deps.sendCalendarInvites.send(request);
+  } catch (err) {
+    logger.error(
+      { familyId: input.familyId, familyEventId, method, err },
+      'executor: calendar invite send threw — placement stands, invite did not go out',
+    );
+    return { status: 'errored', message: err instanceof Error ? err.message : 'unknown invite error' };
+  }
 }
 
 function requirePayloadString(v: unknown, field: string, actionType: string): string {

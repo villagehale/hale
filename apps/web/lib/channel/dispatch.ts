@@ -104,6 +104,13 @@ export type LegOutcome = 'sent' | 'failed' | 'deduped' | SuppressionStatus;
 export interface LegResult {
   channel: ChannelKind;
   outcome: LegOutcome;
+  /**
+   * The ledger's `error_code` behind a 'failed' leg — the channel's own skip reason
+   * ('not_configured' | 'no_address' | 'disabled') or the provider's error code. A
+   * caller that must tell "nothing is wired" from "the provider refused" reads this
+   * instead of re-reading the row it just caused (VIL-249).
+   */
+  reason?: string;
 }
 
 /** A per-leg accounting the caller / X1 can aggregate (no counter subsystem exists
@@ -140,8 +147,11 @@ export async function dispatchLoopMessage(
   ]);
 
   // Legs: the exchange channel + push when a live token exists (mirror, not fallback).
-  const legs: ChannelKind[] = [prefs.loopChannel];
-  if (hasLivePush) {
+  // A channel-PINNED message (msg.channel — the ICS invite) has exactly one leg: its
+  // content exists on that channel alone, so neither re-routing nor mirroring it is a
+  // delivery of the same thing. See LoopMessage.channel.
+  const legs: ChannelKind[] = [msg.channel ?? prefs.loopChannel];
+  if (hasLivePush && !msg.channel) {
     legs.push('push');
   }
 
@@ -200,7 +210,7 @@ async function dispatchLeg(
   const adapter = ports.channels[channel];
   if (!adapter) {
     await writeLedgerRow(ports, msg, channel, 'failed', { errorCode: 'channel_unavailable' });
-    return { channel, outcome: 'failed' };
+    return { channel, outcome: 'failed', reason: 'channel_unavailable' };
   }
 
   const result = await adapter.send({ userId: msg.parentUserId, rendered });
@@ -237,7 +247,7 @@ async function dispatchLeg(
   // Permanent error OR a skip (not configured / disabled / no address).
   const errorCode = result.status === 'error' ? result.code : result.reason;
   await writeLedgerRow(ports, msg, channel, 'failed', { errorCode });
-  return { channel, outcome: 'failed' };
+  return { channel, outcome: 'failed', reason: errorCode };
 }
 
 /** The single point every terminal channel_messages write goes through: it writes

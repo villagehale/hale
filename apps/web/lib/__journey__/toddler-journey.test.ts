@@ -322,6 +322,9 @@ function stubExecutorDeps(): ExecutorDeps {
       outcome: 'written' as const,
       familyEventId: 'fe-1',
     })),
+    // The invite leg is exercised end-to-end in lib/loop/calendar-invite.test.ts; here
+    // it stands in as an unbound sender, whose report the execution detail still names.
+    sendCalendarInvites: { send: vi.fn(async () => ({ status: 'not_configured' as const })) },
     calendar: {
       createEvent: vi.fn(async () => ({ providerEventId: 'stub' })),
       updateEvent: vi.fn(async () => ({ providerEventId: 'stub' })),

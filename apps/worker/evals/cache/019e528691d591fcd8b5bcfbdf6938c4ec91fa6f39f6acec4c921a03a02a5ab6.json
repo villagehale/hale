@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple critical failures: subject says \"confirmed\" for a cancellation; body discusses a dentist appointment (not the swim class); mentions a time (9:45 AM) different from the given when (Thu, Jul 23 at 10:30 AM); adds details not in summary or when (health card, website URL); does not indicate this is a cancellation that removes the event from the calendar."
+  }
+}

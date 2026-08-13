@@ -3,6 +3,14 @@
     "file": "ask-hale.md",
     "sha256": "480cc92c95fb3fc59480ae21d05692caa83e65067262dead008711cdd0026143"
   },
+  "calendar-email-ask.md": {
+    "file": "calendar-email-ask.md",
+    "sha256": "faccf45eb59249ff484ea230f393c18299c73bb533723377aaa999ba63509cf5"
+  },
+  "calendar-invite-note.md": {
+    "file": "calendar-invite-note.md",
+    "sha256": "4cc15618c74bb06f16d3ea213aed028af6415fb0be1a0c8db50eb5d71e3c5c56"
+  },
   "classify-event.md": {
     "file": "classify-event.md",
     "sha256": "0f54e7398a8679da2ed8e8f5cbca1ca5c7fe567359c7e77f12858b41b36d2949"

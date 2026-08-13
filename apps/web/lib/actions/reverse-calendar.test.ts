@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from './reverse-calendar.js';
+import {
+  UNDO_WINDOW_HOURS,
+  type WithdrawInvites,
+  reverseExecutedCalendarAction,
+} from './reverse-calendar.js';
 
 const FAMILY_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_FAMILY = '22222222-2222-4222-8222-222222222222';
@@ -53,6 +57,12 @@ function fakeDb(row: ActionRow | null) {
   return { db: { select, transaction } as never, sets, inserts, transaction };
 }
 
+/** The withdrawal, stubbed. Every test that reaches the committed path injects one:
+ * the real sender would go looking for the family's parents (VIL-249). */
+function noWithdrawal(): WithdrawInvites {
+  return async () => ({ status: 'reported', parents: [], ask: 'not_needed' });
+}
+
 function executedAdd(overrides: Partial<ActionRow> = {}): ActionRow {
   return {
     id: ACTION_ID,
@@ -74,9 +84,14 @@ describe('reverseExecutedCalendarAction — the UNDO primitive', () => {
       familyId: FAMILY_ID,
       revertedBy: REVERTER,
       now: NOW,
+      withdrawInvites: noWithdrawal(),
     });
 
-    expect(result).toEqual({ status: 200, familyEventId: FAMILY_EVENT_ID });
+    expect(result).toEqual({
+      status: 200,
+      familyEventId: FAMILY_EVENT_ID,
+      invites: { status: 'reported', parents: [], ask: 'not_needed' },
+    });
 
     // The placement soft-delete: an update setting deleted_at.
     expect(sets).toContainEqual(expect.objectContaining({ deletedAt: NOW }));
@@ -222,5 +237,76 @@ describe('reverseExecutedCalendarAction — X1 (VIL-227) loop_undo instrumentati
 
     expect(result.status).toBe(200);
     errorSpy.mockRestore();
+  });
+});
+
+/**
+ * VIL-249 — an undo has to reach the parent's REAL calendar too.
+ *
+ * Once a placement emails an invite, "I've taken that back off your calendar" is only
+ * true if the withdrawal follows it. The soft-delete drops the event from the ICS feed
+ * and from Hale; the iTIP CANCEL is what removes the copy already sitting in the
+ * parent's own client.
+ */
+describe('reverseExecutedCalendarAction — withdrawing the invite', () => {
+  it('sends the iTIP CANCEL for the placement it just soft-deleted', async () => {
+    const { db } = fakeDb(executedAdd());
+    const withdrawn: unknown[] = [];
+
+    const result = await reverseExecutedCalendarAction(db, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      revertedBy: REVERTER,
+      now: NOW,
+      capture: vi.fn(async () => {}),
+      withdrawInvites: async (request) => {
+        withdrawn.push(request);
+        return { status: 'reported', parents: [], ask: 'not_needed' };
+      },
+    });
+
+    expect(withdrawn).toEqual([
+      { familyId: FAMILY_ID, familyEventId: FAMILY_EVENT_ID, method: 'CANCEL' },
+    ]);
+    expect(result).toEqual({
+      status: 200,
+      familyEventId: FAMILY_EVENT_ID,
+      invites: { status: 'reported', parents: [], ask: 'not_needed' },
+    });
+  });
+
+  it('withdraws nothing when the undo is refused', async () => {
+    const { db } = fakeDb(executedAdd({ userVisibleState: 'drafted_for_approval' }));
+    const withdrawInvites = vi.fn(async () => ({ status: 'not_configured' }) as const);
+
+    await reverseExecutedCalendarAction(db, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      revertedBy: REVERTER,
+      now: NOW,
+      withdrawInvites,
+    });
+
+    expect(withdrawInvites).not.toHaveBeenCalled();
+  });
+
+  it('keeps the committed undo when the withdrawal throws, and names the failure', async () => {
+    const { db } = fakeDb(executedAdd());
+
+    const result = await reverseExecutedCalendarAction(db, {
+      actionId: ACTION_ID,
+      familyId: FAMILY_ID,
+      revertedBy: REVERTER,
+      now: NOW,
+      capture: vi.fn(async () => {}),
+      withdrawInvites: async () => {
+        throw new Error('resend down');
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: 200,
+      invites: { status: 'errored', message: 'resend down' },
+    });
   });
 });

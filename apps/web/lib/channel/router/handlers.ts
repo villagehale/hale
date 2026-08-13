@@ -1,5 +1,9 @@
 import type { Database } from '@hale/db';
 import {
+  type EmailCaptureDeps,
+  handleEmailCaptureReply,
+} from '~/lib/channel/email-capture/reply';
+import {
   type SequenceReplyDeps,
   handleSequenceReply,
 } from '~/lib/registration/sequence/reply';
@@ -105,6 +109,41 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
           now: ctx.now,
         },
         spine,
+      );
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+    },
+  };
+}
+
+/**
+ * The address a parent texts back after Hale asked for one (VIL-249).
+ *
+ * THIRD, and the position is the point. It goes AFTER the approval grammar because an
+ * approval word is a decision that executes something, and no shape check may ever be
+ * what claims one — the two cannot actually collide (no approval command contains an
+ * '@'), and ordering it this way means they still cannot if either grammar widens.
+ * It goes BEFORE M8 and M7 because those match exact words — "done", "we got in" — and
+ * an address is none of them, so nothing behind it is starved. (The CASL keywords are
+ * upstream of the whole chain: A3 answers STOP/HELP/START at the webhook, and this
+ * handler re-checks for one anyway rather than assume it.)
+ *
+ * It is the narrowest thing in the chain after the intro keywords: it claims only a
+ * message that IS an address, and only for a family Hale actually asked.
+ */
+export function emailCaptureHandler(deps: EmailCaptureDeps): DeterministicHandler {
+  return {
+    name: 'email_capture',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handleEmailCaptureReply(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          body: ctx.body,
+          now: ctx.now,
+        },
+        deps,
       );
       if (outcome.status === 'declined_to_claim') return { claimed: false };
       return { claimed: true, outcome: outcome.status, reply: outcome.reply };

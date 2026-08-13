@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple violations: (1) Expands vague summary into \"the dentist\"—guessing what the appointment is; (2) Introduces a second time \"9:45 AM\" when only \"Mon, Aug 3 at 4:15 PM\" was given; (3) Adds detail not in the facts: \"bring a health card\"; (4) Adds instruction to check a website; (5) Uses exclamation mark; (6) Uses greeting \"Great news\"; (7) More than two sentences."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "This message does both halves correctly in two clauses: it offers to send calendar invites by email and asks them to text their address back. The tone is quiet, plain, and first person with no greeting, no pressure, and no explanation of why it helps Hale. It's easy to ignore. However, it falls short of a 5 because \"I can send calendar invites\" is slightly more explanatory/hype-adjacent than the tighter phrasing in the reference (\"I'll send invites there\"), and the overall construction is marginally more complex than the reference's streamlined flow."
+  }
+}

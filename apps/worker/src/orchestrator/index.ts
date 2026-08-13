@@ -25,7 +25,12 @@ import { runReviewer } from '../agents/reviewer.js';
 import type { AgentRunMetrics } from '../agents/run-metrics.js';
 import { logger } from '../logger.js';
 import { redactEventPayload } from '../redaction/redact.js';
-import { runExecutor } from '../services/executor.js';
+import {
+  type CalendarInviteSender,
+  type ExecutorDeps,
+  defaultExecutorDeps,
+  runExecutor,
+} from '../services/executor.js';
 import {
   getMemorySlice,
   hasAutonomousActionOptIn,
@@ -143,7 +148,31 @@ function classifyAcceptedVillageItem(job: IngestedEventPayload): FreshClassifica
   };
 }
 
-export async function runOrchestrator(job: IngestedEventPayload): Promise<void> {
+/**
+ * The collaborators the pipeline cannot build for itself. Today that is one: the
+ * calendar-invite sender, which lives in apps/web (the ICS composer + the A2
+ * dispatch) and is therefore bound by the web drain rather than resolved here.
+ * Unbound, the executor names its own absence in the execution detail.
+ */
+export interface OrchestratorOptions {
+  calendarInvites?: CalendarInviteSender;
+}
+
+/**
+ * The executor deps with an injected invite sender folded in. UNDEFINED when the
+ * caller has none, so the executor resolves its own defaults (including the unwired
+ * sender that names itself) rather than this module deciding for it.
+ */
+function executorDeps(calendarInvites?: CalendarInviteSender): ExecutorDeps | undefined {
+  return calendarInvites
+    ? { ...defaultExecutorDeps(), sendCalendarInvites: calendarInvites }
+    : undefined;
+}
+
+export async function runOrchestrator(
+  job: IngestedEventPayload,
+  opts: OrchestratorOptions = {},
+): Promise<void> {
   const familyId = job.family_id;
   const rawContent = JSON.stringify(job.payload);
   const dedupHash = dedupHashFor(familyId, job.source, rawContent);
@@ -175,7 +204,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
   // persisted teen_content, so an autonomous-eligible teen-content action that
   // crashed at the checkpoint is still capped on resume (never reaches executor).
   if (resume && resume.status === 'approved_pending_execute') {
-    await resumeIntoExecutor(familyId, resume.eventId, resume.teenContent);
+    await resumeIntoExecutor(familyId, resume.eventId, resume.teenContent, opts.calendarInvites);
     return;
   }
 
@@ -660,7 +689,7 @@ export async function runOrchestrator(job: IngestedEventPayload): Promise<void> 
   // FIX 1: the resumable pre-executor checkpoint. A crash after this and before
   // recordExecution leaves the event here; the redelivery re-drives the executor.
   await markEventStage(familyId, eventId, 'approved_pending_execute');
-  await executeAndRecord(familyId, eventId, actionId, approved);
+  await executeAndRecord(familyId, eventId, actionId, approved, opts.calendarInvites);
 }
 
 /**
@@ -675,9 +704,10 @@ async function executeAndRecord(
   eventId: string,
   actionId: string,
   approved: ApprovedAction,
+  calendarInvites?: CalendarInviteSender,
 ): Promise<void> {
   try {
-    const execution = await runExecutor({ familyId, approved });
+    const execution = await runExecutor({ familyId, approved }, executorDeps(calendarInvites));
     await recordExecution({ actionId, result: execution.detail, ok: execution.ok });
     await markEventStage(familyId, eventId, execution.ok ? 'actioned' : 'failed');
     logger.info({ familyId, actionId, ok: execution.ok }, 'orchestrator: action executed');
@@ -705,6 +735,7 @@ async function resumeIntoExecutor(
   familyId: string,
   eventId: string,
   teenContent: boolean,
+  calendarInvites?: CalendarInviteSender,
 ): Promise<void> {
   const existing = await loadActionForEvent(eventId);
   if (!existing) {
@@ -754,7 +785,7 @@ async function resumeIntoExecutor(
     'orchestrator: resuming approved_pending_execute into executor',
   );
   const approved = mintApprovedAction(draft, verdict, coverageSatisfiedWithResults);
-  await executeAndRecord(familyId, eventId, existing.actionId, approved);
+  await executeAndRecord(familyId, eventId, existing.actionId, approved, calendarInvites);
 }
 
 /**
@@ -764,6 +795,9 @@ async function resumeIntoExecutor(
  */
 export interface ExecuteApprovedDeps {
   loadAction: typeof loadActionForApproval;
+  /** The web-bound invite sender, threaded to the executor. Absent ⇒ the executor's
+   * own {@link unwiredCalendarInvites}, which names itself in the execution detail. */
+  calendarInvites?: CalendarInviteSender;
   loadConsent: typeof loadCrossParentConsent;
   recordApproval: typeof recordHumanApproval;
   recordGate: typeof recordActionGate;
@@ -771,7 +805,7 @@ export interface ExecuteApprovedDeps {
   log: Pick<typeof logger, 'info' | 'warn'>;
 }
 
-function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
+export function defaultExecuteApprovedDeps(): ExecuteApprovedDeps {
   return {
     loadAction: loadActionForApproval,
     loadConsent: loadCrossParentConsent,
@@ -874,5 +908,5 @@ export async function executeApprovedAction(
     { familyId, actionId, approvedBy, actionType: action.actionType },
     'actions.approved: human-approved action driving into execution',
   );
-  await deps.execute(familyId, action.eventId, actionId, approved);
+  await deps.execute(familyId, action.eventId, actionId, approved, deps.calendarInvites);
 }

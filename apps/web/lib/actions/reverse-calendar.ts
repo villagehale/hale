@@ -1,7 +1,12 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { type Database, schema } from '@hale/db';
+import type { CalendarInviteReport, CalendarInviteRequest } from '@hale/worker/executor';
 import type { ActionType } from '@hale/types';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
+import { productionChannels } from '~/lib/channel/adapters/production';
+import { createCalendarInviteSender } from '~/lib/loop/calendar-invite';
+import { loopTemplateRenderer } from '~/lib/loop/templates/registry';
+import { productionCalendarVoice } from '~/lib/loop/voice/calendar-invite-voice';
 import { UNDOABLE_ACTION_TYPES, UNDO_WINDOW_HOURS, withinUndoWindow } from './undo-window';
 
 // The window and the reversible-type set live in undo-window.ts, so the surfaces that
@@ -9,8 +14,12 @@ import { UNDOABLE_ACTION_TYPES, UNDO_WINDOW_HOURS, withinUndoWindow } from './un
 // module's existing importers reach for the constant here.
 export { UNDO_WINDOW_HOURS };
 
+/** Withdraw the invites a placement sent. Injected like `capture` so a test asserts
+ * the withdrawal without a provider; defaults to the real dispatch-backed sender. */
+export type WithdrawInvites = (request: CalendarInviteRequest) => Promise<CalendarInviteReport>;
+
 export type ReverseResult =
-  | { status: 200; familyEventId: string }
+  | { status: 200; familyEventId: string; invites: CalendarInviteReport }
   | { status: 403; error: string }
   | { status: 404; error: string }
   | { status: 409; error: string };
@@ -36,6 +45,13 @@ export type ReverseResult =
  * successful reversal, AFTER the transaction commits. `capture` is injected
  * (defaulting to the real captureServerEvent) so tests assert on it without a
  * network call, matching this codebase's other injected-analytics call sites.
+ *
+ * VIL-249 — AND it withdraws the invite. Since a placement emails an iTIP object,
+ * soft-deleting the row only takes the event off Hale's calendar and out of the ICS
+ * feed; the copy already in the parent's own client needs the CANCEL, or "I've taken
+ * that back off your calendar" is a sentence about a meeting still sitting there. It
+ * runs after the commit and cannot undo the undo: whatever happens is NAMED in the
+ * result (rule #11), never swallowed and never turned into a failed reversal.
  */
 export async function reverseExecutedCalendarAction(
   database: Database,
@@ -45,10 +61,12 @@ export async function reverseExecutedCalendarAction(
     revertedBy: string;
     now?: Date;
     capture?: typeof captureServerEvent;
+    withdrawInvites?: WithdrawInvites;
   },
 ): Promise<ReverseResult> {
   const now = args.now ?? new Date();
   const capture = args.capture ?? captureServerEvent;
+  const withdrawInvites = args.withdrawInvites ?? defaultWithdrawInvites(database);
 
   const rows = await database
     .select({
@@ -124,6 +142,16 @@ export async function reverseExecutedCalendarAction(
     });
   });
 
+  const invites = await withdrawInvites({
+    familyId: args.familyId,
+    familyEventId: handle,
+    method: 'CANCEL',
+  }).catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : 'unknown withdrawal error';
+    console.error('calendar invite withdrawal failed (undo already committed)', { message });
+    return { status: 'errored', message } as const;
+  });
+
   // X1 (VIL-227): fired only after the reversal transaction commits — an aborted
   // undo (a throw inside the tx) never emits it. Best-effort: a telemetry hiccup
   // must not turn an already-committed undo into a thrown error for the caller.
@@ -133,5 +161,17 @@ export async function reverseExecutedCalendarAction(
     });
   });
 
-  return { status: 200, familyEventId: handle };
+  return { status: 200, familyEventId: handle, invites };
+}
+
+/** The real withdrawal: the same dispatch-backed sender the executor is given, so an
+ * undo's CANCEL gets the identical consent / ledger / audit treatment as the invite it
+ * takes back. */
+function defaultWithdrawInvites(database: Database): WithdrawInvites {
+  const sender = createCalendarInviteSender(database, {
+    channels: productionChannels(database),
+    renderer: loopTemplateRenderer,
+    voice: productionCalendarVoice(),
+  });
+  return (request) => sender.send(request);
 }

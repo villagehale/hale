@@ -113,3 +113,32 @@ describe('createResendEmailChannel().send', () => {
     expect(outcome).toEqual({ status: 'error', transient: true, code: 'resend', message: 'Too many' });
   });
 });
+
+describe('attachments', () => {
+  it('forwards the rendered attachments to the transport (the ICS invite leg, VIL-249)', async () => {
+    const { transport, calls } = fakeTransport({ id: 'resend-1', error: null });
+    const attachment = {
+      filename: 'invite.ics',
+      content: Buffer.from('BEGIN:VCALENDAR', 'utf8').toString('base64'),
+      contentType: 'text/calendar; charset=utf-8; method=REQUEST',
+    };
+
+    const outcome = await createResendEmailChannel({
+      transport,
+      resolveEmail: async () => 'p@x.com',
+      configured: true,
+    }).send({ userId: USER_ID, rendered: { ...EMAIL, attachments: [attachment] } });
+
+    expect(outcome).toEqual({ status: 'sent', providerMessageId: 'resend-1' });
+    expect(calls[0]?.attachments).toEqual([attachment]);
+  });
+
+  it('sends no attachments key for ordinary content', async () => {
+    const { transport, calls } = fakeTransport({ id: 'resend-2', error: null });
+    await createResendEmailChannel({ transport, resolveEmail: async () => 'p@x.com', configured: true }).send({
+      userId: USER_ID,
+      rendered: EMAIL,
+    });
+    expect(calls[0]?.attachments).toBeUndefined();
+  });
+});

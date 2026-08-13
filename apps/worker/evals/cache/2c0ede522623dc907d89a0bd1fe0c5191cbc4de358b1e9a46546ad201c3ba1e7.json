@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "Multiple rule violations: (1) adds a duration/time detail \"9:45 AM\" not in the given `when` field which states \"9:00 AM\"; (2) includes instructions to bring something (\"Bring a health card\"); (3) includes a URL/place reference (\"https://villagehale.com\"); (4) exceeds two sentences; (5) contains hype language (\"Great news\")."
+  }
+}

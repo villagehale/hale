@@ -1,6 +1,12 @@
 import { defaultLoopRenderer } from '~/lib/channel/renderer';
 import type { ChannelKind, LoopMessage, RenderedContent, TemplateRenderer } from '~/lib/channel/types';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
+import {
+  CALENDAR_EMAIL_ASK_TEMPLATE_KEY,
+  CALENDAR_INVITE_TEMPLATE_KEY,
+  calendarEmailAskRenderer,
+  calendarInviteRenderer,
+} from './calendar-invite';
 import { reminderRenderer } from './reminder';
 import { weeklyPlanRenderer } from './weekly-plan';
 
@@ -21,6 +27,12 @@ export const loopTemplateRenderer: TemplateRenderer = {
     }
     if (message.templateKey === REMINDER_TEMPLATE_KEY) {
       return reminderRenderer.render(message, channel, nameLevel);
+    }
+    if (message.templateKey === CALENDAR_INVITE_TEMPLATE_KEY) {
+      return calendarInviteRenderer.render(message, channel, nameLevel);
+    }
+    if (message.templateKey === CALENDAR_EMAIL_ASK_TEMPLATE_KEY) {
+      return calendarEmailAskRenderer.render(message, channel, nameLevel);
     }
     return defaultLoopRenderer.render(message, channel, nameLevel);
   },
