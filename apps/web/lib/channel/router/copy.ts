@@ -80,10 +80,13 @@ export function healthDoneReply(): string {
   return "Filed - I won't raise that one again.";
 }
 
-/** Rule #4: a booking is DRAFTED and held. The copy names the hold explicitly so a
- * parent never believes an appointment exists because they texted "yes". */
+/** Rule #4: a booking is DRAFTED and held, and the verbs stay honest end-to-end.
+ * Approving executes add_to_routine - a pin on the family's week - so the copy
+ * promises the week, never the appointment (doctrine: approvals happen in-thread,
+ * and Hale does not claim a booking it cannot make; the clinic call is the
+ * parent's). */
 export function checkupDraftedReply(): string {
-  return `Drafted it for you to approve - nothing's booked until you say so: ${appLink()}`;
+  return 'Drafted - reply YES and it goes on your week. Nothing\'s booked until you call the clinic.';
 }
 
 export function approvedReceipt(actionType: string): string {

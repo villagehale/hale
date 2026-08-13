@@ -32,11 +32,12 @@ import { checkpointById } from './checkpoints';
 export const HEALTH_CLOSE = 'Done, or want a reminder next week?';
 
 /**
- * The close for a checkpoint whose task IS booking a visit. It offers a DRAFT and says
- * so: Hale does not book, and a close that implied otherwise would be the copy writing
- * a cheque rule #4 refuses to cash.
+ * The close for a checkpoint whose task IS booking a visit. It offers to put the
+ * job on the family's week — which is what approving actually executes
+ * (add_to_routine) — because Hale does not book, and a close that implied
+ * otherwise would be the copy writing a cheque rule #4 refuses to cash.
  */
-export const HEALTH_CLOSE_BOOKING = 'Done, or want me to draft a booking for you to approve?';
+export const HEALTH_CLOSE_BOOKING = 'Done, or want me to add booking it to your week?';
 
 /** Local, matching the convention in radar-voice/nudge-voice, which each keep their
  * own. Importing one of theirs would make copy and voice mutually dependent. */
