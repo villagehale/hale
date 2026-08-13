@@ -366,14 +366,31 @@ describe('the village intro lane and the lanes behind it', () => {
  * returned them in some other sequence.
  */
 describe('the shipped order', () => {
-  it('is village_intro, approval, email_capture, health, registration', async () => {
+  it('is village_intro, approval, email_capture, health, coach_plan, registration', async () => {
     const { defaultHandlers } = await import('./wiring');
     expect(defaultHandlers().map((h) => h.name)).toEqual([
       'village_intro',
       'approval',
       'email_capture',
       'health',
+      'coach_plan',
       'registration',
     ]);
+  });
+
+  /**
+   * Three handlers now recognise a bare "yes", and this pins the tie-break rather than
+   * leaving it to the array above being read the right way: among them, the one whose
+   * WRONG answer costs most claims it first. A mis-fired approval executes a calendar
+   * write; a mis-read health yes silences a records reminder for months; a mis-sent
+   * plan is three texts of advice. So the plan lane is last of the three, and a parent
+   * with a draft pending still means the draft when they type YES.
+   */
+  it('puts the plan lane behind both of the other yes-claimers', async () => {
+    const { defaultHandlers } = await import('./wiring');
+    const names = defaultHandlers().map((h) => h.name);
+
+    expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('approval'));
+    expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('health'));
   });
 });

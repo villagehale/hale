@@ -94,6 +94,8 @@ export async function recordCommitment(
     /** WHICH plan, for the kinds that have a subject — a `PlanTopic`, never free text.
      * Omitted by the kinds that do not (see the column's own note). */
     topic?: string | null;
+    /** WHOSE plan, when one child was named. Null for a household question. */
+    subjectChildId?: string | null;
     dueAt: Date;
     channelMessageId: string | null;
   },
@@ -113,6 +115,7 @@ export async function recordCommitment(
         commitmentKind: input.kind,
         summary: input.summary,
         topic: input.topic ?? null,
+        subjectChildId: input.subjectChildId ?? null,
         dueAt: input.dueAt,
         createdFrom: input.channelMessageId,
       })
@@ -244,12 +247,19 @@ export async function loadOpenCommitment(
   database: Database,
   familyId: string,
   kind: CommitmentKind,
-): Promise<{ id: string; summary: string; topic: string | null; dueAt: Date } | null> {
+): Promise<{
+  id: string;
+  summary: string;
+  topic: string | null;
+  subjectChildId: string | null;
+  dueAt: Date;
+} | null> {
   const rows = await database
     .select({
       id: schema.agentCommitments.id,
       summary: schema.agentCommitments.summary,
       topic: schema.agentCommitments.topic,
+      subjectChildId: schema.agentCommitments.subjectChildId,
       dueAt: schema.agentCommitments.dueAt,
     })
     .from(schema.agentCommitments)

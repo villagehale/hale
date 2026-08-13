@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { agentCommitmentKindEnum } from './enums.js';
+import { children } from './children.js';
 import { families } from './families.js';
 
 /**
@@ -63,6 +64,19 @@ export const agentCommitments = pgTable(
      * category word would give the topic two homes that can disagree.
      */
     topic: text('topic'),
+    /**
+     * WHOSE plan, when the question was about one child. A real foreign key, unlike
+     * `created_from`, because this id is looked UP rather than merely pointed at: the
+     * composer grounds the plan on this child's age, and getting that wrong is the
+     * difference between a plan and a plausible-sounding one.
+     *
+     * `set null` on delete: a child removed between the offer and the YES leaves a
+     * household-scoped plan, which is a worse plan and an honest one — better than a
+     * dangling id the composer would silently ground on nothing.
+     */
+    subjectChildId: uuid('subject_child_id').references(() => children.id, {
+      onDelete: 'set null',
+    }),
     /** When the promise stops being kept-in-time and starts being late. */
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
     fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),

@@ -102,6 +102,7 @@ describe('recordCommitment', () => {
         commitmentKind: 'first_find',
         summary: 'Your first weekend find lands in a day or two.',
         topic: null,
+        subjectChildId: null,
         dueAt: DUE,
         createdFrom: 'msg-1',
       },
@@ -311,6 +312,7 @@ describe('loadOpenCommitment', () => {
         id: 'c-1',
         summary: 'Offered the full sleep plan - waiting on a yes.',
         topic: 'sleep',
+        subjectChildId: 'child-1',
         dueAt: DUE,
       },
     ]);
@@ -319,6 +321,7 @@ describe('loadOpenCommitment', () => {
       id: 'c-1',
       summary: 'Offered the full sleep plan - waiting on a yes.',
       topic: 'sleep',
+      subjectChildId: 'child-1',
       dueAt: DUE,
     });
   });

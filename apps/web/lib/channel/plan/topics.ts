@@ -94,6 +94,28 @@ export function planCheckInText(topic: PlanTopic): string {
 }
 
 /**
+ * The brief a plan is written from when the thread no longer holds the parent's own
+ * question — a compacted or deleted conversation, days after the offer.
+ *
+ * Deliberately a WORSE brief rather than a refusal: the parent said yes, and a generic
+ * plan for the right topic at the right age is worth having. The caller logs every use,
+ * because a plan written from the category alone is a plan that could not be aimed.
+ */
+const PLAN_FALLBACK_QUESTION: Record<PlanTopic, string> = {
+  sleep: 'How do I get my child sleeping better through the night?',
+  solids: 'How do we start solid food?',
+  potty: 'How do we start potty training?',
+  picky_eating: 'What do we do about picky eating at meals?',
+  tantrums: 'How should we handle tantrums?',
+  screen_time: 'How much screen time, and how do we handle it?',
+  routines: 'How do we build a routine that sticks?',
+};
+
+export function planFallbackQuestion(topic: PlanTopic): string {
+  return PLAN_FALLBACK_QUESTION[topic];
+}
+
+/**
  * The ledger summary for an offer Hale is holding an answer for.
  *
  * This string is what the founder digest prints and what the coach's own context

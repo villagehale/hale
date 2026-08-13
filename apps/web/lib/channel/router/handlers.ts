@@ -8,6 +8,7 @@ import {
   handleSequenceReply,
 } from '~/lib/registration/sequence/reply';
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
+import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
@@ -175,6 +176,63 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
           return { claimed: true, outcome: outcome.status, reply: checkupDraftedReply() };
         default:
           return { claimed: false };
+      }
+    },
+  };
+}
+
+/**
+ * The full coaching plan a parent said YES to.
+ *
+ * PLACED DIRECTLY AFTER HEALTH, which puts it third among the three handlers that can
+ * claim a bare affirmative, and the ordering rule is the one stated at the top of this
+ * file extended by one step: among handlers that recognise the SAME word, the one whose
+ * wrong answer costs most goes first.
+ *
+ *   · APPROVALS still own a bare YES whenever a draft is pending, and that stays true.
+ *     A mis-fired approval executes something the parent cannot see and needs an undo.
+ *     So when a draft AND a plan offer are both open, YES means the draft — the known
+ *     rule, and the same trade the health handler already lives under.
+ *   · HEALTH is next: a mis-read "yes" there drafts an appointment or files paperwork
+ *     as handled, which silences a records reminder for months.
+ *   · A PLAN is last, because its wrong answer is the cheapest of the three — three
+ *     texts of parenting advice a parent did not ask for right now. It also claims the
+ *     narrowest slice of the word: only when an offer is OPEN and less than two days
+ *     old (see plan/reply.ts on why the claim expires at all).
+ *
+ * It is the first handler that ANSWERS FOR ITSELF. A plan is two or three ordered
+ * messages and the verdict's `reply` carries one body, so on the sent path it returns
+ * `reply: null` — the contract's existing shape for a handler that has already spoken.
+ * The two degraded paths do hand back a single line, because both are one sentence.
+ */
+export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
+  return {
+    name: 'coach_plan',
+    async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const outcome = await handlePlanYes(
+        database,
+        {
+          familyId: ctx.familyId,
+          parentUserId: ctx.parentUserId,
+          conversationId: ctx.conversationId,
+          body: ctx.body,
+          phoneE164: ctx.phoneE164,
+          now: ctx.now,
+        },
+        deps,
+      );
+      switch (outcome.status) {
+        case 'declined_to_claim':
+          return { claimed: false };
+        case 'plan_unavailable':
+        case 'safety':
+          return { claimed: true, outcome: outcome.status, reply: outcome.reply };
+        default:
+          // `plan_sent` and `not_delivered` both end the turn with nothing left to say:
+          // the plan already went, or it demonstrably could not, and a second body here
+          // would either duplicate the first message or apologise after three texts of
+          // advice already landed.
+          return { claimed: true, outcome: outcome.status, reply: null };
       }
     },
   };

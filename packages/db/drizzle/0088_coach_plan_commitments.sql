@@ -21,4 +21,12 @@ ALTER TYPE "public"."channel_message_category" ADD VALUE IF NOT EXISTS 'plan_che
 -- parent's words, so this column carries a category rather than content (rule #1).
 -- Nullable: the two original kinds have no subject — one first find, one registration
 -- plan — while a plan offer's fulfilment needs to know what was offered.
-ALTER TABLE "agent_commitments" ADD COLUMN IF NOT EXISTS "topic" text;
+ALTER TABLE "agent_commitments" ADD COLUMN IF NOT EXISTS "topic" text;--> statement-breakpoint
+
+-- WHOSE plan. A real foreign key, unlike created_from, because this id is FUNCTIONAL:
+-- the plan composer looks the child up to ground on their age, and a 6-month plan and
+-- an 18-month plan for the same topic are different plans. ON DELETE SET NULL so a
+-- child removed between the offer and the YES leaves a household-scoped plan rather
+-- than a dangling lookup.
+ALTER TABLE "agent_commitments"
+	ADD COLUMN IF NOT EXISTS "subject_child_id" uuid REFERENCES "children"("id") ON DELETE SET NULL;

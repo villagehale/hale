@@ -121,6 +121,7 @@ export async function recordPlanOffer(
     kind: 'plan_offer',
     summary: planOfferSummary(input.offer.topic),
     topic: input.offer.topic,
+    subjectChildId: input.offer.childId,
     dueAt: new Date(input.now.getTime() + PLAN_OFFER_TTL_HOURS * 3_600_000),
     channelMessageId: input.channelMessageId,
   });

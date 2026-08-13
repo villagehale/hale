@@ -96,6 +96,7 @@ describe('recordPlanOffer', () => {
         kind: 'plan_offer',
         summary: 'Offered the full starting solids plan - waiting on a yes.',
         topic: 'solids',
+        subjectChildId: null,
         dueAt: new Date(NOW.getTime() + PLAN_OFFER_TTL_HOURS * 3_600_000),
         channelMessageId: 'msg-1',
       },

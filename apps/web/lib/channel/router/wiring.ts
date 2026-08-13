@@ -16,6 +16,7 @@ import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
 import { productionChannelCoach } from '~/lib/channel/coach/runtime';
 import { defaultPlanOfferPorts, recordPlanOffer } from '~/lib/channel/plan/offer';
+import { defaultPlanReplyDeps } from '~/lib/channel/plan/reply';
 import type { ApprovalSpine, PendingAction } from './approval';
 import { defaultVillageIntroReplyDeps } from '~/lib/village/intros/reply';
 import { defaultEmailCaptureDeps } from '~/lib/channel/email-capture/reply';
@@ -23,6 +24,7 @@ import {
   approvalHandler,
   emailCaptureHandler,
   healthReplyHandler,
+  planReplyHandler,
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
@@ -194,6 +196,7 @@ export function defaultHandlers(): DeterministicHandler[] {
     approvalHandler(defaultApprovalSpine()),
     emailCaptureHandler(defaultEmailCaptureDeps()),
     healthReplyHandler(defaultHealthReplyDeps()),
+    planReplyHandler(defaultPlanReplyDeps()),
     sequenceReplyHandler(defaultSequenceReplyDeps()),
   ];
 }
