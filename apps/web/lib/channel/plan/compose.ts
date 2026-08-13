@@ -115,15 +115,50 @@ export interface PlanComposer {
   compose(grounding: PlanGrounding): Promise<PlanComposeOutcome>;
 }
 
-/** Parsed loosely for the reason screen.ts states at length: a strict schema turns an
- * injected field name into a logged ZodError (rule #1), and zod strips unknown keys. */
-const planSchema = z.object({ messages: z.array(z.string()) });
+/**
+ * THREE NAMED STRING FIELDS, not an array of them — and this is a correctness fix, not
+ * a style choice.
+ *
+ * The first live recording of this stage came back with `messages` set to a JSON-encoded
+ * STRING (`"[\"Nights 1-3: ...\", ...]"`) rather than a list. The plan inside it was
+ * good; the shape was not, and `z.array(z.string())` would have rejected it as
+ * `model_failed` — a parent who said yes getting an apology because the model chose a
+ * different representation of the same content.
+ *
+ * A field typed `string` has no second representation to choose between, so the bug is
+ * unexpressible rather than handled. The shape also carries the count: two required
+ * fields and one optional IS the two-or-three rule, held by the schema instead of by a
+ * check after the fact.
+ *
+ * Parsed loosely otherwise, for the reason screen.ts states at length: a strict schema
+ * turns an injected field name into a logged ZodError (rule #1), and zod strips unknown
+ * keys instead.
+ */
+const planSchema = z.object({
+  first: z.string(),
+  second: z.string(),
+  third: z.string().optional(),
+});
 
 const planJsonSchema = {
   type: 'object',
-  properties: { messages: { type: 'array', items: { type: 'string' } } },
-  required: ['messages'],
+  properties: {
+    first: { type: 'string', description: 'The first plan message.' },
+    second: { type: 'string', description: 'The second plan message.' },
+    third: { type: 'string', description: 'The third plan message. Omit for a two-message plan.' },
+  },
+  required: ['first', 'second'],
 } as const;
+
+/** The plan's messages, in order, from the named fields the model fills. Exported
+ * because the eval REPLICATES the request shape and must assemble it identically. */
+export function planMessages(value: {
+  first: string;
+  second: string;
+  third?: string;
+}): string[] {
+  return [value.first, value.second, ...(value.third === undefined ? [] : [value.third])];
+}
 
 /** The user-turn payload. Shared with the eval, which REPLICATES this request shape. */
 export function planUserMessage(grounding: PlanGrounding): string {
@@ -210,12 +245,13 @@ export function createPlanComposer(client: () => AgentClient): PlanComposer {
           system: skill.instructions,
           userMessage: planUserMessage(grounding),
           toolName: 'plan',
-          toolDescription: 'Return the plan as two or three text messages, in order.',
+          toolDescription:
+            'Return the plan as two or three text messages, in order: first, second, and third only if the plan needs a third stage.',
           inputJsonSchema: planJsonSchema,
           schema: planSchema,
           maxTokens: MAX_TOKENS,
         });
-        return sendablePlan(value.messages);
+        return sendablePlan(planMessages(value));
       } catch (err) {
         return unavailable('model_failed', message(err));
       }

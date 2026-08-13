@@ -109,6 +109,9 @@ jobs:
       - name: Channel coach eval (cached-only)
         run: pnpm --filter @hale/worker eval:coach-channel
 
+      - name: Coaching plan composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:coach-plan
+
       - name: Civic hours parser eval (cached-only)
         run: pnpm --filter @hale/worker eval:civic-hours
 

@@ -28,8 +28,13 @@ You receive:
 ## Output — a single JSON object, nothing else
 
 ```json
-{ "messages": ["first text", "second text", "third text"] }
+{ "first": "first text", "second": "second text", "third": "third text" }
 ```
+
+Three separate string fields. `first` and `second` are required; include `third`
+only when the plan genuinely needs a third stage, and leave it out otherwise.
+Each field is the message TEXT itself — never a list, never JSON inside the
+string.
 
 TWO or THREE messages. Never one, never four. Each one arrives on a phone as its
 own notification, so each has to make sense on its own and in any order — a
@@ -94,7 +99,10 @@ never a phone number.
   them literally.
 - Numbered or dashed steps are fine written as prose: "Night 1: down drowsy.
   Night 2: same, wait 10 minutes." Do not use list markup.
-- About 400 characters a message is the working limit; longer and it is cut.
+- 450 characters a message, HARD. Not a target - a message over it is not
+  trimmed, the WHOLE plan is refused and the parent gets an apology instead of
+  the thing they asked for. Three or four sentences is about right; if a stage
+  wants more, cut a clause rather than trusting it will fit.
 - No links, ever. No app, no website, no "read more".
 - No greeting, no sign-off, no "hope this helps", no "let me know how it goes" —
   Hale asks that itself in three days.
