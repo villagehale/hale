@@ -61,6 +61,9 @@ interface Harness {
   transport: FakeTransport;
   emails: IntroEmailRequest[];
   proposalsCreated: Array<Record<string, unknown>>;
+  /** The FSAs each anchor lookup was allowed to search — the activity radius, captured
+   * because widening it is the half of this feature the card copy cannot show. */
+  anchorSearches: Array<readonly string[]>;
   audits: Array<{ familyId: string; actionTaken: string; after: Record<string, unknown> }>;
   asked: Array<{ proposalId: string; side: 'a' | 'b' }>;
   statuses: Array<{ proposalId: string; status: string; closed: boolean }>;
@@ -81,6 +84,7 @@ function harness(overrides: {
   const transport = new FakeTransport();
   const emails: IntroEmailRequest[] = [];
   const proposalsCreated: Array<Record<string, unknown>> = [];
+  const anchorSearches: Array<readonly string[]> = [];
   const audits: Harness['audits'] = [];
   const asked: Harness['asked'] = [];
   const statuses: Harness['statuses'] = [];
@@ -108,7 +112,10 @@ function harness(overrides: {
     loadOpenProposalFamilyIds: async () =>
       new Set((overrides.proposals ?? []).flatMap((p) => [p.familyAId, p.familyBId])),
     loadPairedBefore: async () => overrides.pairedBefore ?? new Set(),
-    loadAnchorSession: async () => overrides.anchor ?? null,
+    loadAnchorSession: async (_db, fsas) => {
+      anchorSearches.push(fsas);
+      return overrides.anchor ?? null;
+    },
     createProposal: async (_db, input) => {
       proposalsCreated.push(input as unknown as Record<string, unknown>);
       return 'prop-new';
@@ -131,7 +138,7 @@ function harness(overrides: {
     email,
   };
 
-  return { deps, transport, emails, proposalsCreated, audits, asked, statuses };
+  return { deps, transport, emails, proposalsCreated, anchorSearches, audits, asked, statuses };
 }
 
 function proposal(overrides: Partial<SweepProposal> = {}): SweepProposal {
@@ -217,6 +224,40 @@ describe('phase 1 - the discoverability ask', () => {
     expect(h.transport.sent).toEqual([]);
   });
 
+  it('asks two families in one municipality who are alone in their own FSAs', async () => {
+    // Georgetown and Acton are both Halton Hills. Under FSA-exact neither would ever be
+    // asked, because each is the only Hale family in its own three characters.
+    const h = harness({
+      families: [
+        family({ familyId: A, areaCoarse: 'L7G 1A1' }),
+        family({ familyId: B, areaCoarse: 'L7J 2B2' }),
+      ],
+    });
+    expect((await runVillageIntroSweep(DB, h.deps, NOW)).asked).toBe(2);
+  });
+
+  it('never asks across two municipalities that merely border each other', async () => {
+    // Halton Hills and Oakville. Neighbouring towns are not one radius, so neither
+    // family has anyone to be introduced to and neither is interrupted.
+    const h = harness({
+      families: [
+        family({ familyId: A, areaCoarse: 'L7G' }),
+        family({ familyId: B, areaCoarse: 'L6H' }),
+      ],
+    });
+    expect((await runVillageIntroSweep(DB, h.deps, NOW)).asked).toBe(0);
+  });
+
+  it('never asks two Toronto families in different FSAs', async () => {
+    const h = harness({
+      families: [
+        family({ familyId: A, areaCoarse: 'M4K' }),
+        family({ familyId: B, areaCoarse: 'M4J' }),
+      ],
+    });
+    expect((await runVillageIntroSweep(DB, h.deps, NOW)).asked).toBe(0);
+  });
+
   it('never asks twice - a family with any answer on file is left alone', async () => {
     const h = harness({
       families: [family({ familyId: A }), family({ familyId: B })],
@@ -264,6 +305,41 @@ describe('phase 2 - matching and the coarse card', () => {
     expect(h.proposalsCreated[0]).toEqual(
       expect.objectContaining({ familyAId: A, familyBId: B, fsa: 'M4K', stage: 'toddler' }),
     );
+  });
+
+  it('pairs across a municipality and stores family A’s own FSA on the row', async () => {
+    const h = harness({
+      families: [
+        family({ familyId: A, areaCoarse: 'L7G 1A1' }),
+        family({ familyId: B, areaCoarse: 'L7J 2B2' }),
+      ],
+      ...optedIn,
+    });
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(result.proposed).toBe(1);
+    expect(h.proposalsCreated[0]).toEqual(
+      expect.objectContaining({ familyAId: A, familyBId: B, fsa: 'L7G' }),
+    );
+  });
+
+  it('lets a municipality pair anchor on an activity anywhere in that municipality', async () => {
+    const h = harness({
+      families: [
+        family({ familyId: A, areaCoarse: 'L7G 1A1' }),
+        family({ familyId: B, areaCoarse: 'L7J 2B2' }),
+      ],
+      ...optedIn,
+    });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    // A storytime in Acton is a fair suggestion for a Georgetown family - it is the same
+    // town's library board. Both FSAs, and no third town's.
+    expect(h.anchorSearches).toEqual([['L7G', 'L7J']]);
+  });
+
+  it('keeps a Toronto pair anchored inside its own FSA', async () => {
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })], ...optedIn });
+    await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(h.anchorSearches).toEqual([['M4K']]);
   });
 
   it('the card names the recipients OWN child and never the other family', async () => {

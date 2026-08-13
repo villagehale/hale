@@ -48,15 +48,18 @@ export const villageIntroProposals = pgTable(
   'village_intro_proposals',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** The Canadian forward sortation area both families share — the ONLY locality
-     * grain this feature ever matches on (rule #1). Never a full postal code. */
+    /** The Canadian forward sortation area the pair is anchored on — family A's own.
+     * NOT a claim that both households are in it: pairing widened to the municipality
+     * in the 905 (Halton Hills is L7G and L7J), so family B's FSA may differ. Toronto
+     * stays FSA-exact, and this is never a full postal code (rule #1). */
     fsa: text('fsa').notNull(),
     status: text('status').notNull().$type<VillageIntroStatus>(),
     /** The FamilyStage band the two families overlap on, as derived at match time. */
     stage: text('stage').notNull(),
-    /** The free civic session both families could be at, when one exists in their FSA.
-     * Null is the normal case and means the card carries no activity anchor. ON DELETE
-     * SET NULL: a superseded session must not delete a live proposal. */
+    /** The free civic session both families could be at, when one exists in the area
+     * they were matched across. Null is the normal case and means the card carries no
+     * activity anchor. ON DELETE SET NULL: a superseded session must not delete a live
+     * proposal. */
     civicSessionId: uuid('civic_session_id').references(() => civicSessions.id, {
       onDelete: 'set null',
     }),
