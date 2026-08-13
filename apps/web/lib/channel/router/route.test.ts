@@ -11,8 +11,8 @@ import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { channelSmsNoteKey } from '~/lib/coach/note-key';
 import { FakeRateLimiter } from '~/lib/rate-limit/fake';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
-import { ChannelTurnFailed } from './coach-runtime';
 import type { ApologyOutcome, TurnApology } from './apology';
+import { type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { ACK_REPLY, FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
@@ -100,7 +100,7 @@ function fakeCoach(reply = 'coach says hi'): ChannelCoachRuntime & { calls: numb
     calls: 0,
     async respond() {
       coach.calls += 1;
-      return { reply };
+      return { reply, planOffer: null };
     },
   };
   return coach;
@@ -234,6 +234,7 @@ function harness(
     smokeAlarm?: SmokeAlarmClaim;
     turns?: ReturnType<typeof fakeTurnLedger>;
     apology?: TurnApology;
+    recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
   } = {},
 ): Harness {
   const fake = makeFakeDb();
@@ -263,6 +264,7 @@ function harness(
       transport,
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
+      recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
@@ -697,19 +699,95 @@ describe('flood control', () => {
   });
 });
 
+// ── the full-plan offer ──────────────────────────────────────────────────────
+
+describe('an offered full plan', () => {
+  function offeringCoach(): ChannelCoachRuntime {
+    return {
+      async respond() {
+        return {
+          reply: "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
+          planOffer: { topic: 'sleep', childId: null },
+        };
+      },
+    };
+  }
+
+  it('is written down against the ledger row that actually carried it', async () => {
+    const offers: Array<{ channelMessageId: string | null; offer: unknown }> = [];
+    const h = harness({
+      coach: offeringCoach(),
+      recordPlanOffer: async (_db, input) => {
+        offers.push({ channelMessageId: input.channelMessageId, offer: input.offer });
+        return { status: 'recorded' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    // The MEM-10 send-time discipline: the promise points at the outbound row, so the
+    // receipts surface can show the parent the message rather than Hale's word for it.
+    const outbound = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(outbound).toHaveLength(1);
+    expect(offers).toEqual([
+      { channelMessageId: outbound[0]?.id, offer: { topic: 'sleep', childId: null } },
+    ]);
+  });
+
+  it('is not written when the turn failed before anything was sent', async () => {
+    const offers: unknown[] = [];
+    const failing: ChannelCoachRuntime = {
+      async respond() {
+        throw new Error('provider timeout');
+      },
+    };
+    const h = harness({
+      coach: failing,
+      recordPlanOffer: async (_db, input) => {
+        offers.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    // Nobody was offered anything, so nobody is owed anything. A debt minted here would
+    // sit in the founder's overdue column for a sentence that never existed.
+    expect(result.status).toBe('agent_failed');
+    expect(offers).toEqual([]);
+  });
+
+  it('costs the parent nothing when the coach promised nothing', async () => {
+    const offers: unknown[] = [];
+    const h = harness({
+      coach: fakeCoach(),
+      recordPlanOffer: async (_db, input) => {
+        offers.push(input);
+        return { status: 'recorded' as const };
+      },
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    // The overwhelmingly common turn. `planOffer: null` means one thing and the router
+    // must not translate it into a query, a row, or a write.
+    expect(offers).toEqual([]);
+  });
+});
+
 // ── slow turns and failures ──────────────────────────────────────────────────
 
 describe('the ack turn', () => {
   /** A deferred coach + an already-elapsed timer is the only deterministic way to
    * describe "the agent is taking too long" without sleeping in a test. */
   function deferredCoach(): ChannelCoachRuntime & { release: (reply: string) => void } {
-    let resolve!: (value: { reply: string }) => void;
-    const pending = new Promise<{ reply: string }>((r) => {
+    let resolve!: (value: ChannelTurnResult) => void;
+    const pending = new Promise<ChannelTurnResult>((r) => {
       resolve = r;
     });
     return {
       respond: () => pending,
-      release: (reply: string) => resolve({ reply }),
+      release: (reply: string) => resolve({ reply, planOffer: null }),
     };
   }
 
@@ -1089,7 +1167,7 @@ describe('a re-driven turn never answers twice', () => {
     let reject!: (err: unknown) => void;
     const h = harness({
       turns,
-      coach: { respond: () => new Promise<{ reply: string }>((_, r) => { reject = r; }) },
+      coach: { respond: () => new Promise<ChannelTurnResult>((_, r) => { reject = r; }) },
       ackTimer: () => ({ elapsed: Promise.resolve(), cancel: () => {} }),
     });
 

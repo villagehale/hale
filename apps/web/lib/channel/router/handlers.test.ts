@@ -29,6 +29,7 @@ const turn = (body: string): HandlerContext => ({
   parentUserId: PARENT,
   conversationId: '33333333-3333-4333-8333-333333333333',
   body,
+  phoneE164: '+14165550100',
   now: new Date('2026-07-30T12:00:00.000Z'),
 });
 

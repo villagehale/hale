@@ -6,6 +6,7 @@ import { deriveStage } from '@hale/types';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { z } from 'zod';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
+import { type PlanOffer, offerFullPlanTool } from '~/lib/channel/plan/offer';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { readWeekPlan } from '~/lib/loop/queries';
 import { weekWindow, zonedLocalInstant } from '~/lib/plan/spine';
@@ -92,6 +93,17 @@ export interface ChannelCoachToolArgs {
    * the tool returns, so a turn that fails LATER has still changed the family's queue —
    * and the router can only be honest about that if something counted (VIL-260). */
   onDraft?: (actionId: string) => void;
+  /**
+   * Told when the turn OFFERS a full coaching plan. The mirror image of `onDraft`: a
+   * draft is a row the tool already wrote, while an offer is a row that cannot be
+   * written yet — `agent_commitments.created_from` needs the outbound message id, and
+   * the message is still being composed. So the offer travels out of the turn and the
+   * router mints it once the transport has taken the reply (see plan/offer.ts).
+   *
+   * Absent in a test that is not exercising it; the tool is then not registered at all,
+   * so there is no path that can report an offer nobody is listening for.
+   */
+  onOffer?: (offer: PlanOffer) => void;
   now: Date;
 }
 
@@ -343,6 +355,11 @@ export function buildChannelCoachTools(args: ChannelCoachToolArgs): RegisteredTo
     frameworkGuidanceTool(),
   ];
   if (args.villageTool) tools.push(args.villageTool);
+  // Registered only where something is listening. An offer whose report goes nowhere is
+  // an offer the parent is told about and the ledger never hears about — a YES with
+  // nothing to resolve against — so the absent collector removes the VERB rather than
+  // silently discarding what it produces (rule #11).
+  if (args.onOffer) tools.push(offerFullPlanTool(args.onOffer));
   return tools;
 }
 
