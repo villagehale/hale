@@ -8,12 +8,12 @@ import { fsasForMunicipality, municipalitiesForFsa } from '~/lib/registration/fs
  * below is a test rather than an integration.
  *
  * MATCH QUALITY v1 IS TWO FACTS: the same locality — see {@link matchAreaKey} for how
- * wide that is — and an overlapping child stage band. That is deliberately thin. A
- * richer score (interests, schedules,
- * how chatty a parent is) needs data Hale would have to infer about families who never
- * asked to be scored, and the first version of a cross-household disclosure is the
- * wrong place to start inferring. Two families a walk apart with children the same age
- * is a good enough reason for two parents to meet; anything more is Hale's opinion.
+ * wide that is — and an overlapping child stage band. That is deliberately thin. A richer
+ * score (interests, schedules, how chatty a parent is) needs data Hale would have to
+ * infer about families who never asked to be scored, and the first version of a
+ * cross-household disclosure is the wrong place to start inferring. Two families in the
+ * same town with children the same age is a good enough reason for two parents to meet;
+ * anything more is Hale's opinion.
  *
  * THE TEEN BAND IS EXCLUDED AT THE SOURCE (see {@link eligibleAnchorChildren}), which
  * is a deliberate narrowing of the spec. The card copy applies the child_name_level and
