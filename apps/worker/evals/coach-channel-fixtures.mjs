@@ -163,6 +163,9 @@ export const FIXTURE_VILLAGE = {
     },
   ],
   inVerification: 0,
+  // Null whenever there is a candidate, exactly as production returns it: a standing
+  // place never competes with a find that has a real date on it.
+  standingOption: null,
 };
 
 /** One verified find and one still being checked — the mixed case. The offer must be
@@ -170,11 +173,33 @@ export const FIXTURE_VILLAGE = {
 export const FIXTURE_VILLAGE_MIXED = {
   candidates: [FIXTURE_VILLAGE.candidates[0]],
   inVerification: 1,
+  standingOption: null,
 };
 
-/** Nothing has checked out yet. There is no activity to name — only what Hale is
- * doing about it. This is the founder's launch-day text, reproduced as a fixture. */
-export const FIXTURE_VILLAGE_UNVERIFIED = { candidates: [], inVerification: 2 };
+/**
+ * Nothing has checked out yet — the founder's launch-day text, reproduced as a fixture.
+ *
+ * There is still no ACTIVITY to name, and there never was. What is new is that being
+ * empty-handed about events is not the same as having nowhere to go: the standing option
+ * below is a verified free place in this family's own city, and it is what production
+ * returns for a Toronto family in August whose children are past the EarlyON band (see
+ * lib/village/standing-option.ts — warm month, so the park tier leads).
+ *
+ * Copied VERBATIM from the row in evergreen-venues-data.ts. The name is what the reply
+ * must carry; the cadence is deliberately loose because that is what the City publishes,
+ * and a reply that sharpens it into an opening time has invented one. No `source` here,
+ * because the tool does not hand one out.
+ */
+export const FIXTURE_VILLAGE_UNVERIFIED = {
+  candidates: [],
+  inVerification: 2,
+  standingOption: {
+    name: 'High Park',
+    area: 'west end — Bloor St W / Parkside Dr',
+    what: 'Jamie Bell Adventure Playground, free animal display (bison, llamas, peacocks), wading pool + splash pads, trails',
+    cadence: 'park daily year-round; water play and train seasonal',
+  },
+};
 
 /**
  * The hedge that IS the defect: an activity handed to a parent with the doubt still
@@ -417,16 +442,20 @@ export const COACH_CHANNEL_FIXTURES = [
   {
     id: 'village-nothing-verified-yet',
     text: 'find something for the kids to do saturday',
-    note: "THE launch-day fixture (founder: 'you find a legit activity but not able to verify the location and time'). Both finds are still being checked, so Hale has no name, no place and no day for either. The only honest sentence is forward-looking: what Hale is doing, and that it will come back. Not a hedge, and not a venue invented to fill the gap.",
+    note: "THE launch-day fixture (founder: 'you find a legit activity but not able to verify the location and time'). Both finds are still being checked, so Hale has no name, no place and no day for either - and it is STILL not empty-handed, because the tool hands it a standing place. Both halves must land: the standing venue by name, and the forward line about the finds. Not a hedge, and not a venue invented to fill the gap.",
     village: FIXTURE_VILLAGE_UNVERIFIED,
     expect: {
       mustCall: ['search_village'],
       mustNotDraft: true,
       // A first-person future commitment: Hale is carrying the check, not reporting a
       // dead end. The skill asks for contractions, so this is the form it comes in.
-      mustMention: ["i'll"],
+      // Plus the standing venue, named exactly as the dataset has it — a parent who goes
+      // looking for a paraphrase will not find it.
+      mustMention: ["i'll", 'high park'],
       // The hedges, plus the two names from the DEFAULT village — recalling a candidate
-      // this turn was not handed is the same invention as making one up.
+      // this turn was not handed is the same invention as making one up. An INVENTED
+      // opening time is caught separately and for free: the standing option carries no
+      // digits, so the fabrication gate flags any number the reply reaches for.
       forbidden: [...HEDGES, 'story time', 'riverdale'],
     },
   },

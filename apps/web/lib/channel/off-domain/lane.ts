@@ -6,7 +6,13 @@ import {
   type GeneralAnswerFallback,
   createGeneralAnswer,
 } from './answer';
-import { ANSWER_UNAVAILABLE_REPLY, PROVIDER_ACCESS_REPLY, SAFETY_REPLY } from './copy';
+import {
+  ANSWER_UNAVAILABLE_REPLY,
+  DIRECT_ACCESS_EYE_REPLY,
+  PROVIDER_ACCESS_REPLY,
+  SAFETY_REPLY,
+  asksAboutEyeCare,
+} from './copy';
 import {
   type InboundLaneScreen,
   type LaneScreenFallback,
@@ -28,7 +34,9 @@ import {
  * `off_domain_general` now composes one brief, honest answer (see answer.ts) and stops
  * there. The other two do not move: a symptom still gets the fixed 811/911 line and a
  * parent hunting a paediatrician still gets Health Care Connect, both from copy.ts,
- * both untouched by any model.
+ * both untouched by any model. The provider door later grew a SECOND fixed line for the
+ * classes Ontario books directly (eye care today) — still copy.ts, still no model, and
+ * see the branch below for why the registry answer was wrong for those.
  *
  * WHY `status: 'deflected'` KEPT ITS NAME. It is the router's outcome enum and the
  * founder's X1 log taxonomy — it means "this lane finished the turn, no coach was
@@ -119,11 +127,25 @@ export function offDomainLane(ports: OffDomainPorts): OffDomainLane {
       // a prompt asked nicely to decline — a branch it cannot reach. Letting a model
       // anywhere near what a parent is told about their child's head injury is the
       // failure this shape makes impossible rather than merely discouraged.
+      //
+      // The provider door has TWO fixed sentences behind it, chosen by a substring test
+      // rather than by the screen. Ontario's answer to "get me a doctor" depends on WHICH
+      // KIND: a family doctor or paediatrician means the Health Care Connect registry,
+      // and an optometrist means no registry at all — you book one directly, and OHIP
+      // pays. Sending the registry line to a parent asking about eyes was not a vague
+      // answer, it was a WRONG one (founder, live gate). The split is deterministic for
+      // the same reason the door itself is: this is what a parent is told about getting
+      // care, and a cheap model choosing between two of them buys nothing.
       const { reply, replySource } =
         lane === 'safety_critical'
           ? { reply: SAFETY_REPLY, replySource: 'fixed' as const }
           : lane === 'provider_access'
-            ? { reply: PROVIDER_ACCESS_REPLY, replySource: 'fixed' as const }
+            ? {
+                reply: asksAboutEyeCare(input.text)
+                  ? DIRECT_ACCESS_EYE_REPLY
+                  : PROVIDER_ACCESS_REPLY,
+                replySource: 'fixed' as const,
+              }
             : await answerOrFallback(ports, input.text);
 
       const signal = await ports.recordUnmetIntent({

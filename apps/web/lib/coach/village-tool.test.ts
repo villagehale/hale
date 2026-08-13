@@ -22,6 +22,7 @@ const NOW = new Date('2026-07-04T12:00:00Z'); // fresh summer weekday
 function fakeDb(
   candidates: Array<Record<string, unknown>>,
   children: Array<Record<string, unknown>> = [],
+  families: Array<Record<string, unknown>> = [],
 ) {
   const build = (rows: unknown[]) => {
     const whereResult = Object.assign(Promise.resolve(rows), {
@@ -36,6 +37,7 @@ function fakeDb(
       from: (table: unknown) => {
         if (table === schema.children) return build(children);
         if (table === schema.villageCandidates) return build(candidates);
+        if (table === schema.families) return build(families);
         return build([]);
       },
     }),
@@ -71,14 +73,16 @@ function candidate(overrides: Record<string, unknown>): Record<string, unknown> 
 interface VillageToolResult {
   candidates: Array<{ title: string; venue: string; when: string }>;
   inVerification: number;
+  standingOption: { name: string; cadence: string } | null;
 }
 
 async function search(
   candidates: Array<Record<string, unknown>>,
   children: Array<Record<string, unknown>> = [],
+  families: Array<Record<string, unknown>> = [],
 ): Promise<VillageToolResult> {
   return (await invokeTool(
-    toolByName(fakeDb(candidates, children), 'search_village'),
+    toolByName(fakeDb(candidates, children, families), 'search_village'),
     {},
     { familyId: FAMILY_ID, actor: 'user-1' },
     guardDeps,
@@ -185,5 +189,66 @@ describe('search_village — offers only what it can name in full', () => {
     // have Hale promise to come back about a find it may never mention.
     expect(result.candidates.map((c) => c.title)).toEqual(['Riverdale Farm visit']);
     expect(result.inVerification).toBe(0);
+  });
+});
+
+/**
+ * The empty-handed case (founder, live gate: "what can we do tomorrow" answered with
+ * nothing). A Village run with no nameable find is not the same as there being nowhere
+ * to go, and the standing option is what closes that gap — a verified place in the
+ * family's own town, attached ONLY when there is no candidate competing with it.
+ */
+describe('search_village — the standing option when nothing is offerable', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const toddler = { id: 'kid-tot', dateOfBirth: '2024-03-04' }; // 2 at NOW
+  const toronto = [{ areaCoarse: 'M4K 1A1' }];
+
+  it('offers a verified standing venue, with no date and no URL, when nothing checked out', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search(
+      [candidate({ id: 'no-venue', title: 'Somewhere sunny', venueName: null })],
+      [toddler],
+      toronto,
+    );
+
+    expect(result.candidates).toEqual([]);
+    // The forward line and the standing venue are both true at once — one find is still
+    // being checked AND there is somewhere to go today.
+    expect(result.inVerification).toBe(1);
+    expect(result.standingOption).toEqual({
+      name: 'EarlyON Child and Family Centres (city-wide network)',
+      area: 'across Toronto — locator map by address',
+      what: 'Free drop-in play + parent support, ages 0-6; many school- and community-based sites incl. Indigenous-led, Francophone, 2SLGBTQ+ programs',
+      cadence: 'most sites run weekday sessions; contact centre / check toronto.ca locator',
+    });
+  });
+
+  it('stays out of the way when there is a real dated find to offer', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search(
+      [candidate({ id: 'ok', title: 'Central Library story time' })],
+      [toddler],
+      toronto,
+    );
+
+    expect(result.candidates).toHaveLength(1);
+    expect(result.standingOption).toBeNull();
+  });
+
+  it('stays null for a family whose area is not on file — the honest empty answer', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+
+    const result = await search([], [toddler], [{ areaCoarse: null }]);
+
+    expect(result.candidates).toEqual([]);
+    expect(result.standingOption).toBeNull();
   });
 });

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly identifies that piano is not on this week's schedule. It then offers to check next week, which is a natural and helpful next step given Hale can also read next week's schedule. No invented details, no app referral, no markdown, no sign-off. The one small question at the end is appropriate since the event isn't found. This is clean and correct.",
+    "score": 5
+  }
+}

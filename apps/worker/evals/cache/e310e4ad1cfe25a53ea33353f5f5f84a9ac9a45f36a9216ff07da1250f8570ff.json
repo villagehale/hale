@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply correctly drafts the Thursday swim cancel (one clear event matches, correct handling) and ends with \"YES to confirm.\" as required. It then offers Central Library story time — a verified offerable candidate with name, place, and day — which is exactly right. The draft cap is 2, and only 1 draft was made, so offering the activity (not drafting it) is fine. The only small blemish is the phrase \"free drop-in, all ages\" — these details were not in the offerable data, so \"free drop-in\" is a minor invention/assumption. \"All ages\" is also added without basis. This edges it just below a 5.",
+    "score": 4
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The reply drafts the move and correctly asks for YES to confirm, which is right. But it asks a question (\"Je déplace la natation de jeudi à 17h45?\") instead of stating the change clearly — the contract requires naming the change and ending with \"... YES to confirm.\" More importantly, it omits the key detail: the swim lesson is currently at 5:15pm and the parent wants it moved to 5:45pm (17h45). A proper reply would read something like \"Je déplace la natation de jeudi de 17h15 à 17h45 — YES pour confirmer.\" The question mark where a statement should be makes the drafted action ambiguous, and the current time is missing, so the parent cannot verify what is being moved. That is a shape problem, not a factual error, hence a 3."
+  }
+}

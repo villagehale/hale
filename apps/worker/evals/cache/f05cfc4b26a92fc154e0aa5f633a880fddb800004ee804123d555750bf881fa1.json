@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "There are two swim lessons this week, so the text \"cancel swim\" is genuinely ambiguous — it matches more than one event. Hale correctly identifies both events with their full details (day, time, venue) and asks which one the parent means. No draft is made, which is correct since the instruction is ambiguous. The reply is concise, contains exactly one question, no greeting, no sign-off, and no app referral. This is the correct handling of a multi-match ambiguity.",
+    "score": 5
+  }
+}

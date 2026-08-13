@@ -219,13 +219,32 @@ export async function cachedTextCall(opts) {
 // existing agent eval uses, so a launch eval and the per-agent evals agree on
 // what "good" means.
 
+/**
+ * REASON FIRST, SCORE SECOND — and the order is the point, not a style preference.
+ *
+ * A forced tool call is emitted in schema order, so `score` first meant the judge picked
+ * a number BEFORE it had written a word of analysis, and nothing afterwards could revise
+ * it. That is not a hypothesis: a cached verdict on the French fixture argued itself all
+ * the way to "The reply is accurate, appropriately shaped... This is a 5, actually" and
+ * shipped `score: 2`, because the 2 had already been written. It is also the most likely
+ * explanation for the noise the coach-channel eval's header records as unexplained —
+ * "across six calibration runs the same reply drew a 5 and a 2 from the same judge" is
+ * what scoring blind looks like.
+ *
+ * With `reason` first the number is conditioned on the argument, which is the whole
+ * reason a reason is collected at all.
+ *
+ * NOTE for anyone changing this: the cache key (see makeJudge) covers the model, the
+ * system prompt and the payload — NOT this schema. Editing the shape here does not
+ * invalidate existing verdicts, so a re-record has to delete them.
+ */
 const JUDGE_SCHEMA = {
   type: 'object',
   properties: {
-    score: { type: 'integer', minimum: 1, maximum: 5 },
     reason: { type: 'string' },
+    score: { type: 'integer', minimum: 1, maximum: 5 },
   },
-  required: ['score', 'reason'],
+  required: ['reason', 'score'],
 };
 
 export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, cost) {
@@ -238,7 +257,17 @@ export function makeJudge(model, judgeSystem, tagPrefix, cachedOnly, getClient, 
 
     const response = await getClient().messages.create({
       model,
-      max_tokens: 256,
+      // 1024, not 256. At 256 a judge writing a thorough reason ran out of tokens
+      // MID-STRING, and because Anthropic does not hard-enforce a tool's input schema
+      // the partial call still arrived as a well-formed object — `{ score: 2 }` with the
+      // `reason` the schema marks required simply absent. Nothing here validated it, so
+      // a truncated verdict was cached and replayed as a real one, and a per-fixture
+      // floor then failed CI on a score with no argument attached to inspect. That is
+      // the "one low score came back with no reason at all" the coach-channel eval's own
+      // header records as unexplained; this is the explanation. The key does not include
+      // max_tokens, so raising it leaves every cached verdict valid and only affects
+      // calls that are actually made.
+      max_tokens: 1024,
       system: judgeSystem,
       tools: [{ name: 'score', description: 'Return the score.', input_schema: JUDGE_SCHEMA }],
       tool_choice: { type: 'tool', name: 'score' },

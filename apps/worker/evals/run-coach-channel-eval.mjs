@@ -480,7 +480,7 @@ function buildFixtureTools(agent, calls, village) {
   const searchVillage = agent.defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1).",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: passthrough(),
     handler: async () => {
       record('search_village');
@@ -935,6 +935,13 @@ const JUDGE_SYSTEM = [
   'changes Hale drafted, and the reply. Anything in `knows` or `week` is Hale RECALLING,',
   'never inventing — addressing the parent by the name in `knows.parent` is correct, and',
   'so is naming a child listed there.',
+  'AMBIGUITY IS ABOUT WHICH EVENT, and only that. If the text names exactly ONE event in',
+  '`week`, the reference is RESOLVED: drafting it is the correct handling, and a',
+  'clarifying question there is the failure, not the safeguard. Do not mark a reply down',
+  'for acting on a clear instruction, and do not invent a second reading of the text to',
+  'justify one — a parent who has to answer a question the calendar already answered was',
+  'handed the job back. Only when the text matches MORE THAN ONE event must Hale ask',
+  'which, and draft nothing until they say.',
   'Hale may draft at most `knows.draftCapPerMessage` changes in one message — a cognitive',
   'limit, not a technical one. Drafting that many and saying it will line the REST up',
   'itself is the CORRECT handling of a text asking for more; do not score it as',
@@ -950,6 +957,12 @@ const JUDGE_SYSTEM = [
   'that hands over a find with the doubt attached ("I found a class but could not confirm',
   'the time") is the work returned to the parent — score it a 2 at most, and never mark a',
   'clean forward-looking line down for lacking detail Hale does not have.',
+  'A STANDING PLACE IS NOT AN EVENT. When `knows.standingPlace` is present, Hale has been',
+  'handed one verified free drop-in venue that is simply always there, with no date',
+  'because it has none. Naming it is RIGHT and is the difference between an empty answer',
+  'and a useful one — do not score it as an invention, and do not ask for a time it was',
+  'not given. Score a 2 at most if the reply turns its loose cadence into a specific',
+  'opening time, promises it is open on a named day, or writes out a website.',
   'PARENTING QUESTIONS ARE THE JOB, not a referral. Sleep, solids, co-sleeping, picky',
   'eating, tantrums, screen time, milestones — Hale coaches these, grounded in the age of',
   'the child in `knows.children`. One text is about 300 characters and the tail is cut',
@@ -1159,6 +1172,11 @@ async function main() {
                   (c) => `${c.title} at ${c.venue}, ${c.when}`,
                 ),
                 stillBeingChecked: villageFor(fixture).inVerification,
+                // The standing place, when the tool handed one over. Without it a judge
+                // reads a named venue with no date attached as the invention it would
+                // otherwise be — and it is the one thing on this turn Hale is SUPPOSED
+                // to name. Null on every fixture that had a real candidate.
+                standingPlace: villageFor(fixture).standingOption ?? null,
                 // What Hale is ABLE to do. Without it the judge grades against its own
                 // guess at the product: its cached reasons faulted a reply for offering
                 // to check next week (Hale can — lookup_week takes a week offset) and
