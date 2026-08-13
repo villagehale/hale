@@ -27,12 +27,19 @@ export const authConfig = {
       if (account?.provider === 'google') {
         token.sub = account.providerAccountId;
       } else if (
-        (account?.provider === 'credentials' || account?.provider === 'magic-link') &&
+        (account?.provider === 'credentials' ||
+          account?.provider === 'magic-link' ||
+          account?.provider === 'claim-phone') &&
         user?.id
       ) {
         // Both email-based providers return `credentials:<id>` as user.id (magic
         // link find-or-creates the same credential a password login uses), so a
         // magic-link session resolves to the same account/family as a password one.
+        // `claim-phone` returns the external_auth_id the account ALREADY holds —
+        // `sms:<blind index>` for a text-onboarded family — which is what makes
+        // signing in by phone land in that family rather than forking a new one.
+        // Enumerated rather than left to Auth.js's default so the subject a
+        // provider resolves to is a decision this file states, not one it inherits.
         token.sub = user.id;
       }
       return token;

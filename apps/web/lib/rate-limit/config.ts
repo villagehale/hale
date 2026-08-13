@@ -108,6 +108,16 @@ export const RATE_LIMITS = {
   // or family NAT could plausibly send a handful. 20/hour sits far above every honest
   // pattern yet leaves a stuffing script nowhere to go. Fail-closed.
   rsvp: { limit: 20, windowSec: 3600 },
+  // Sign-in codes texted to a number that already owns an account, per NUMBER (the
+  // blind index — the raw number never reaches the limiter table, the discipline
+  // 'sms-inbound' above set). The same budget as its enrolment twin 'sms-otp-send' on
+  // purpose: it is the same cost (a real SMS to a real handset) reached through a
+  // different door, so signing out must not buy anyone a fresh allowance. A parent
+  // claiming their account asks once, maybe twice after a mistyped digit; 5/hour covers
+  // that while blunting SMS-pumping against a number an attacker does not hold. The 60s
+  // resend cooldown handles rapid taps; this bounds the hour. Fail-closed — this is the
+  // send limit on an UNAUTHENTICATED endpoint, so a limiter outage must not lift it.
+  'claim-phone-send': { limit: 5, windowSec: 3600 },
   // VIL-220 inbound-router AGENT turns, per PARENT. Narrower than sms-inbound above and
   // stacked on top of it: that one bounds texts per number, this one bounds only the
   // expensive half — a model call plus its tool work — so a parent whose hour is spent
