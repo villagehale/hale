@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { EMERGENCY_TOKENS, SAFETY_REPLY, namesAnEmergency } from '~/lib/channel/off-domain/copy';
 import { ChannelTurnFailed } from './coach-runtime';
 import {
@@ -14,7 +14,7 @@ const PARENT = '22222222-2222-4222-8222-222222222222';
 const MESSAGE = '33333333-3333-4333-8333-333333333333';
 
 /** An Anthropic APIError of a given status, built the way the SDK builds one. */
-function apiError(status: number, message: string): Anthropic.APIError {
+function apiError(status: number, message: string): InstanceType<typeof Anthropic.APIError> {
   return new Anthropic.APIError(
     status,
     { type: 'error', error: { type: 'overloaded_error', message } },
