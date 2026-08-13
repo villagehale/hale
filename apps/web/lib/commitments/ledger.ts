@@ -50,7 +50,13 @@ export type CommitmentCancelReason =
    * offer could never be offered another, forever, and the second offer's insert would
    * conflict in silence.
    */
-  | 'plan_offer_superseded';
+  | 'plan_offer_superseded'
+  /**
+   * The parent said yes and the child turned out to be outside the method's verified
+   * age gate. The promise was a PLAN, and a refusal does not keep it — so the debt is
+   * voided rather than marked kept, which also stops a second yes re-refusing forever.
+   */
+  | 'plan_age_gated';
 
 /**
  * What became of a promise. `already_open` is deliberately NOT folded into either of the
@@ -278,6 +284,10 @@ export interface DueCommitment {
   id: string;
   familyId: string;
   topic: string | null;
+  /** The promise in Hale's own words — the method name, for the kinds that carry one.
+   * The check-in composer grounds on it so the question is about the plan they actually
+   * ran rather than about the topic in the abstract. */
+  summary: string;
   /** The outbound row that carried the promise. The sweep reads the RECIPIENT back off
    * it: the parent who was texted is the one owed the follow-up, and a household read
    * would text a co-parent about a plan they never asked for. */
@@ -303,6 +313,7 @@ export async function loadDueCommitments(
       id: schema.agentCommitments.id,
       familyId: schema.agentCommitments.familyId,
       topic: schema.agentCommitments.topic,
+      summary: schema.agentCommitments.summary,
       createdFrom: schema.agentCommitments.createdFrom,
       dueAt: schema.agentCommitments.dueAt,
     })

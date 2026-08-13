@@ -3,6 +3,7 @@ import type { Database } from '@hale/db';
 import { z } from 'zod';
 import { cancelCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { EXAMPLE_CHILD_ID } from '~/lib/coach/tools';
+import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import { PLAN_OFFER_TTL_HOURS, PLAN_TOPICS, type PlanTopic, planOfferSummary } from './topics';
 
 /**
@@ -21,17 +22,69 @@ import { PLAN_OFFER_TTL_HOURS, PLAN_TOPICS, type PlanTopic, planOfferSummary } f
  * the transport accepts the reply. A turn that fails between the two makes no promise,
  * which is the correct outcome: nobody was offered anything.
  *
- * WHY THE TOPIC IS AN ENUM. It is persisted, and three days later it selects a
- * sentence Hale sends UNPROMPTED. See topics.ts — a model-authored topic would be
- * model-authored prose on a proactive template with nobody in the loop.
+ * WHY THE TOPIC IS AN ENUM. It is persisted, and days later it selects the curated
+ * PLAYBOOK the plan is grounded on. A free-text topic would mean a family's sleep plan
+ * built from whichever playbook a fuzzy match happened to return.
+ *
+ * WHY THE OFFER SENTENCE IS AN ARGUMENT. It used to be a constant this module appended,
+ * which was the fix for a real bug (the model wrote it, it landed last, and the segment
+ * trim ate the half naming the magic word). But a constant is a preset body, and Hale
+ * does not send those. So the model WRITES the offer and hands it in here, where it is
+ * gated like any other outbound text — and a refusal throws a sentence the model reads
+ * mid-turn, which makes the agent loop itself the recompose loop. No extra machinery,
+ * no constant, and the trim still cannot touch it: the runtime appends the ACCEPTED
+ * offer after fitting the answer around it.
  */
 
-/** What the coach registered this turn: which plan it offered, and about whom. */
+/** What the coach registered this turn: which plan it offered, about whom, and the
+ * sentence it will be offered in — already gated. */
 export interface PlanOffer {
   topic: PlanTopic;
   /** The child the question was about, when the parent named one. Null for a
    * question about the household, or an only child the model did not bother to name. */
   childId: string | null;
+  /** The composed offer, verbatim as it will be sent. Protected from the reply trim. */
+  sentence: string;
+}
+
+/** The offer sentence's own ceiling. One short SMS on top of an answer that already
+ * costs two segments — anything longer and the answer is what gives way. */
+export const MAX_OFFER_CHARS = 160;
+
+/**
+ * Everything wrong with a proposed offer sentence, phrased for the model that has to
+ * rewrite it. An empty array means it may be sent.
+ *
+ * It must ASK (exactly one question) and it must name the word that accepts, because
+ * the YES handler matches a bare affirmative and a parent who was never told the word
+ * has no way in. Exported so the eval holds the same bar.
+ */
+export function offerViolations(sentence: string): string[] {
+  const violations: string[] = [];
+  const text = sentence.trim();
+
+  if (text === '') return ['The offer was empty.'];
+  if (text.length > MAX_OFFER_CHARS) {
+    violations.push(
+      `The offer is ${text.length} characters; it must be at most ${MAX_OFFER_CHARS} so the answer still fits.`,
+    );
+  }
+  const questions = (text.match(/\?/g) ?? []).length;
+  if (questions !== 1) {
+    violations.push(`The offer asks ${questions} questions; it must ask exactly one.`);
+  }
+  if (!/\byes\b/i.test(text)) {
+    violations.push(
+      'The offer never says YES. Name the word that accepts it, or the parent has no way to take it.',
+    );
+  }
+  if (smsEncoding(text) !== 'gsm7') {
+    violations.push('The offer contains a character that doubles the cost to send. Use plain ASCII.');
+  }
+  if (smsSegments(text) > 1) {
+    violations.push('The offer is longer than one SMS segment. Shorten it.');
+  }
+  return violations;
 }
 
 /**
@@ -46,21 +99,43 @@ export function offerFullPlanTool(onOffer: (offer: PlanOffer) => void): Register
   return defineTool({
     name: 'offer_full_plan',
     description:
-      "Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, day-by-day version of the answer you just gave. Call it AFTER you have already answered their question, then close your message by offering the plan and asking for a YES. It sends nothing on its own. Pass `childId` only when the parent's question was about one particular child and you have their id.",
+      "Register that you are offering this parent the COMPLETE plan for a raising-kids topic — the sequenced, night-by-night or day-by-day version of the answer you just gave, built on a named method. `offer` is the sentence that MAKES the offer, in your voice: one question, at most 160 plain-ASCII characters, and it must say YES, because that is the word the parent replies with. It is appended to your message for you, so do not write it again yourself. Nothing is sent by this tool. Pass `childId` only when the question was about one particular child and you have their id.",
     inputSchema: z.object({
       topic: z.enum(PLAN_TOPICS as [PlanTopic, ...PlanTopic[]]),
       childId: z.string().min(1).optional(),
+      offer: z.string().min(1),
     }),
     // Invented placeholder id: examples ride the cached tool-definition grammar,
     // outside message protections (rule #1; see EXAMPLE_CHILD_ID).
-    inputExamples: [{ topic: 'sleep' }, { topic: 'solids', childId: EXAMPLE_CHILD_ID }],
+    inputExamples: [
+      { topic: 'sleep', offer: "Want the full plan? Reply YES and I'll send it." },
+      {
+        topic: 'solids',
+        childId: EXAMPLE_CHILD_ID,
+        offer: 'Want the whole first-foods plan? Say YES and it is yours.',
+      },
+    ],
     monetary: false,
     // A child-scoped offer names a child, so the guarded invoker's teen check runs
     // BEFORE this handler — the same refusal propose_calendar_add gets. A 13+ child's
     // routine is not a thing Hale writes a parent a plan about (rule #1/#5).
     touchesChildContent: true,
     handler: async (input) => {
-      const offer: PlanOffer = { topic: input.topic, childId: input.childId ?? null };
+      // The gate, and the recompose loop in one: a refusal is thrown as a sentence the
+      // model reads mid-turn and answers by calling again with a better offer. Nothing
+      // is registered until one passes, so the runtime can only ever append an offer
+      // that cleared every check.
+      const violations = offerViolations(input.offer);
+      if (violations.length > 0) {
+        throw new Error(
+          `That offer cannot be sent. ${violations.join(' ')} Call offer_full_plan again with a fixed one.`,
+        );
+      }
+      const offer: PlanOffer = {
+        topic: input.topic,
+        childId: input.childId ?? null,
+        sentence: input.offer.trim(),
+      };
       onOffer(offer);
       return { offered: true as const, topic: input.topic };
     },

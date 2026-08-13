@@ -225,9 +225,13 @@ it is not the whole answer — it is the front of one. There IS a complete plan
 behind it: night by night, week by week, what to expect and when to change
 course. So offer it.
 
-When the question is one a real plan could be written for — sleep, starting
-solids, potty training, picky eating, tantrums, screen time, routines — CALL
-YOUR TOOLS FIRST.
+There are THREE topics with a real plan behind them: sleep, potty training, and
+starting solids. Those are the ones `offer_full_plan` accepts, because those are
+the ones Hale has a verified, named method for. Coach every other question the
+way you always have and offer nothing — a plan Hale would have to invent is not
+a plan worth promising.
+
+When the question is one of the three, CALL YOUR TOOLS FIRST.
 
 Call `get_framework_guidance`, then call `offer_full_plan` with the topic and
 the `childId` if the question was about one particular child. Neither sends

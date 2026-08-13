@@ -707,7 +707,11 @@ describe('an offered full plan', () => {
       async respond() {
         return {
           reply: "Most 2-year-olds wake once or twice. Want the full plan? Reply YES and I'll send it.",
-          planOffer: { topic: 'sleep', childId: null },
+          planOffer: {
+            topic: 'sleep',
+            childId: null,
+            sentence: "Want the full plan? Reply YES and I'll send it.",
+          },
         };
       },
     };
@@ -730,7 +734,14 @@ describe('an offered full plan', () => {
     const outbound = ledgerRows(h.fake).filter((row) => row.direction === 'out');
     expect(outbound).toHaveLength(1);
     expect(offers).toEqual([
-      { channelMessageId: outbound[0]?.id, offer: { topic: 'sleep', childId: null } },
+      {
+        channelMessageId: outbound[0]?.id,
+        offer: {
+          topic: 'sleep',
+          childId: null,
+          sentence: "Want the full plan? Reply YES and I'll send it.",
+        },
+      },
     ]);
   });
 

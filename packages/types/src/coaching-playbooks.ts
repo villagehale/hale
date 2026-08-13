@@ -48,6 +48,23 @@ export interface PlaybookMethod {
   expectations: string;
 }
 
+/**
+ * The age gate as a MACHINE-CHECKABLE bound — a projection of the `ageGate` prose
+ * above, not a second source of truth.
+ *
+ * It exists because "never sleep train a baby under 6 months" has to be enforced before
+ * a model is asked to write anything, and a prompt cannot be trusted with that. The
+ * prose stays the authority: a refusal quotes it, and every number here traces to an
+ * explicit phrase in it (see the test, which pins each one to its sentence).
+ *
+ * `maxMonths` is null where the verified prose sets no upper bound. Guessing one would
+ * be inventing a clinical boundary, which is the whole thing this module refuses to do.
+ */
+export interface PlaybookAgeBound {
+  minMonths: number;
+  maxMonths: number | null;
+}
+
 /** The other reasonable choice, named in one clause so the parent can pick. Hale
  * recommends the primary plainly; it does not pretend there is only one way. */
 export interface PlaybookAlternative {
@@ -77,6 +94,8 @@ export interface CoachingPlaybook {
   /** What this playbook covers, including the guidance bodies behind it. */
   topic: string;
   primaryMethod: PlaybookMethod;
+  /** The enforceable form of `primaryMethod.ageGate`. */
+  ageBound: PlaybookAgeBound;
   alternativeMethod: PlaybookAlternative;
   readinessSigns: readonly string[];
   neverDo: readonly string[];
@@ -137,6 +156,8 @@ const SLEEP_PLAYBOOK: CoachingPlaybook = {
     ageGate: '6 months or older — never younger. Under 6 months, babies still legitimately need night feeds, their circadian rhythm isn\'t consolidated, and PHAC recommends they sleep in your room for the first 6 months anyway; the trials showing safety and effectiveness started at 6 months or later. For premature babies, count from the due date, not the birth date. If there\'s any question about weight gain or whether your baby still needs a night feed, get your doctor\'s or nurse practitioner\'s OK before starting. Works up to about age 3 (toddlers in beds usually need the chair method or a modified version instead).',
     expectations: 'Crying is front-loaded: hardest on nights 1–3, with a likely extinction burst — a worse night 2 or 3 — before it breaks. Expect falling-asleep time to shorten noticeably within the first week and nights to consolidate soon after; across behavioural sleep interventions as a whole, over 80% of children show clinically significant improvement that holds for 3–6 months. Consistency is the whole mechanism: intermittent giving-in (caving at minute 9) teaches your child to cry longer, so a half-done attempt is harder on everyone than not starting. Naps can be trained the same way or left alone at first — nights come first. Expect brief regressions after illness, travel, or big milestones; re-run 2–3 nights of the table and it comes back fast. And expect to feel awful listening — that\'s normal and not a sign of harm; the five-year follow-up found no differences, positive or negative, between sleep-trained and non-sleep-trained children.',
   },
+  // '6 months or older - never younger' ... 'Works up to about age 3'.
+  ageBound: { minMonths: 6, maxMonths: 36 },
   alternativeMethod: {
     name: 'Chair method (camping out / parental fading)',
     what: 'You stay in the room while your child falls asleep, sitting in a chair beside the crib, offering calm presence and minimal touch — but not feeding or rocking to sleep. Every 3 nights or so, you move the chair farther away: beside the crib, mid-room, by the door, in the hallway in view, then gone. Takes about 2–3 weeks. This \'camping out\' approach was one of the two arms in the Hiscock 2007 trial (Arch Dis Child) — the same program whose five-year follow-up found no differences, positive or negative — so it\'s trial-tested, just slower.',
@@ -198,6 +219,8 @@ const POTTY_PLAYBOOK: CoachingPlaybook = {
     ageGate: '20 months to 3.5 years — and the readiness signs gate the start, not the birthday. CPS: some children are ready at 18 months, but most start between 2 and 4; girls are often ready earlier than boys (about 24–26 vs 29 months, AFP 2019). Starting intensive training before ~27 months brings no earlier finish (Blum 2003). Jensen herself pitches starting around 22 months and claims essentially all children are ready by then — a claim we don\'t adopt; here the signs gate the start, not the calendar. Never start a constipated child, or during a major upheaval.',
     expectations: 'Three good days typically buys \'pees in the potty with prompting\' — not \'done.\' Accidents continue for weeks; CPS counts on 3–6 months before a child is reliably out of daytime diapers. Poop usually lags pee — about 1 in 5 children go through a stool-refusal phase (Taubman 1997); it\'s handled with patience, fibre, and zero pressure. Naps and nights are a separate skill that can come months or years later — don\'t chase night dryness now. Regression after stress (new sibling, illness, move) is normal: go back to basics calmly for a few days, or back to diapers without shame and retry in a few weeks.',
   },
+  // '20 months to 3.5 years'.
+  ageBound: { minMonths: 20, maxMonths: 42 },
   alternativeMethod: {
     name: 'Gradual, child-led toilet learning (Brazelton\'s child-oriented approach — the CPS default)',
     what: 'Over weeks to months, the potty appears early as ordinary furniture: your child sits on it clothed, then bare, then you catch routine-time pees and poops, with diapers still on in between and your child setting the pace. Praise effort, skip pressure and (per CPS) skip rewards; move to training pants after about a week of steady success. Outcome data: 61% of children trained by 36 months and 98% by 48 months in a 482-child prospective cohort (Taubman 1997).',
@@ -256,6 +279,9 @@ const SOLIDS_PLAYBOOK: CoachingPlaybook = {
     ageGate: 'Start at about 6 months, when baby shows readiness signs — never before 4 months, and don\'t drift much past 6 (waiting raises iron-deficiency risk, and delaying allergens raises allergy risk). Lumpy textures no later than 9 months. Aim to have the common allergenic foods introduced and in regular rotation before 12 months. Cow milk as a drink: 9-12 months at the earliest, whole (3.25%) only. Premature babies: timing goes by corrected age — ask your provider.',
     expectations: 'Gagging is normal and is not choking: gagging is noisy — coughing, sputtering, red face — while baby works food forward and keeps breathing; choking is silent. Gagging fades with practice over the first weeks. Refusal is normal too — some babies need to try a food many times before accepting it (CPS), so a turned head today means try again another day, not never. First servings are tiny; milk stays the main source of nutrition well into the 9-12 month stretch. Stools will change colour and texture — expected. On allergens: mild reactions (a few hives near the mouth, some spit-up) are uncommon, and CPS is explicit that the risk of a severe reaction on a first home exposure is extremely low — that\'s why home introduction without prior testing is the standard recommendation. Expect mess; mess is the method.',
   },
+  // 'never before 4 months'. No upper bound is stated for STARTING solids, so none
+  // is invented here - a late start is still this plan.
+  ageBound: { minMonths: 4, maxMonths: null },
   alternativeMethod: {
     name: 'Baby-led weaning (BLISS-style soft finger foods)',
     what: 'Skip the spoon-and-purée stage: from 6 months, baby self-feeds soft, graspable pieces of family food — well-cooked vegetable strips, soft ripe fruit, toast fingers, tender strips of meat — with an iron-rich food offered at every meal and choking-hazard shapes strictly excluded. In the BLISS randomized trial this modified approach produced no more choking than spoon-feeding (Fangupo, Pediatrics 2016) and similar growth (Taylor, JAMA Pediatrics 2017). The allergen schedule, the never-list, and lumpy-by-9-months all still apply — allergens just arrive as self-fed foods (thin peanut butter on a toast strip, egg strips) instead of on a spoon.',

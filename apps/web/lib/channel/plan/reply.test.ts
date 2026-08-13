@@ -1,9 +1,9 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import { playbookFor } from '@hale/types';
 import type { PlanComposeOutcome } from './compose';
-import { PLAN_UNAVAILABLE_REPLY, type PlanReplyDeps, handlePlanYes } from './reply';
-import { PLAN_CHECK_IN_DAYS } from './topics';
+import type { NoteComposeOutcome } from './note';
+import { PlanDeferred, type PlanReplyDeps, handlePlanYes } from './reply';
 
 /**
  * The YES, end to end minus the provider and the model.
@@ -34,8 +34,8 @@ const FRESH_OFFER = {
   dueAt: new Date('2026-08-14T14:00:00.000Z'),
 };
 const PLAN = [
-  'Nights 1-3: down drowsy but awake, wait 5 minutes before going in.',
-  'Nights 4-7: same start, stretch the wait to 10 minutes.',
+  'Nights 1-3: the Ferber method - down drowsy but awake, wait 3 minutes before going in.',
+  "Nights 4-7: stretch the wait to 10. I'll check in Friday.",
 ];
 
 const database = {} as Database;
@@ -44,6 +44,8 @@ function harness(
   overrides: {
     offer?: typeof FRESH_OFFER | null;
     composed?: PlanComposeOutcome;
+    note?: NoteComposeOutcome;
+    child?: { ageMonths: number; stage: 'newborn' | 'toddler' } | null;
     question?: string | null;
     alreadySent?: string[];
     sendFailsAt?: number;
@@ -54,21 +56,30 @@ function harness(
   const audits: Array<Record<string, unknown>> = [];
   const threaded: string[] = [];
   const fulfilled: unknown[] = [];
+  const cancelled: unknown[] = [];
   const recorded: unknown[] = [];
   const grounding: unknown[] = [];
+  const noteGrounding: unknown[] = [];
 
   const deps: PlanReplyDeps = {
     loadOpenOffer: async () =>
       overrides.offer === undefined ? FRESH_OFFER : overrides.offer,
     loadQuestion: async () =>
       overrides.question === undefined ? 'he wakes at 3am every single night' : overrides.question,
-    loadChild: async () => ({ ageMonths: 26, stage: 'toddler' }),
-    loadGuidance: async () => ({ whatsNow: ['sleep consolidates'] }),
+    loadChild: async () =>
+      overrides.child === undefined ? { ageMonths: 26, stage: 'toddler' } : overrides.child,
     loadFacts: async () => ['Bedtime is 7pm.'],
+    loadTimeZone: async () => 'America/Toronto',
     composer: {
       compose: async (input) => {
         grounding.push(input);
-        return overrides.composed ?? { status: 'composed', messages: PLAN };
+        return overrides.composed ?? { status: 'composed', messages: PLAN, checkInDays: 3 };
+      },
+    },
+    noteComposer: {
+      compose: async (input) => {
+        noteGrounding.push(input);
+        return overrides.note ?? { status: 'composed', message: 'He is a bit young for that yet.' };
       },
     },
     transport: {
@@ -94,6 +105,10 @@ function harness(
       fulfilled.push(input);
       return { status: 'closed', commitmentIds: ['commitment-1'] };
     },
+    cancelCommitment: async (_db, input) => {
+      cancelled.push(input);
+      return { status: 'closed', commitmentIds: ['commitment-1'] };
+    },
     recordCommitment: async (_db, input) => {
       recorded.push(input);
       return { status: 'recorded', commitmentId: 'commitment-2' };
@@ -107,7 +122,18 @@ function harness(
       deps,
     );
 
-  return { run, sent, ledger, audits, threaded, fulfilled, recorded, grounding };
+  return {
+    run,
+    sent,
+    ledger,
+    audits,
+    threaded,
+    fulfilled,
+    cancelled,
+    recorded,
+    grounding,
+    noteGrounding,
+  };
 }
 
 describe('claiming', () => {
@@ -116,7 +142,7 @@ describe('claiming', () => {
 
     const outcome = await h.run();
 
-    expect(outcome).toEqual({ status: 'plan_sent', sent: 2 });
+    expect(outcome).toEqual({ status: 'plan_sent', sent: 2, checkInDays: 3 });
     expect(h.sent.map((s) => s.body)).toEqual(PLAN);
   });
 
@@ -165,15 +191,17 @@ describe('grounding', () => {
 
     // `topic` is only the category. "He wakes at 3am" and "we want him out of our bed"
     // are both sleep, and they are not the same plan.
-    expect(h.grounding).toEqual([
-      {
-        topic: 'sleep',
-        question: 'he wakes at 3am every single night',
-        child: { ageMonths: 26, stage: 'toddler' },
-        guidance: { whatsNow: ['sleep consolidates'] },
-        facts: ['Bedtime is 7pm.'],
-      },
-    ]);
+    expect(h.grounding).toHaveLength(1);
+    expect(h.grounding[0]).toMatchObject({
+      topic: 'sleep',
+      question: 'he wakes at 3am every single night',
+      child: { ageMonths: 26, stage: 'toddler' },
+      facts: ['Bedtime is 7pm.'],
+    });
+    // The METHOD content comes from the curated playbook, never from the model's own
+    // knowledge — that is the whole point of the arc's second pass.
+    expect((h.grounding[0] as { playbook: { primaryMethod: { name: string } } }).playbook
+      .primaryMethod.name).toBe(playbookFor('sleep').primaryMethod.name);
   });
 
   it('names it in the log when the thread no longer holds the question', async () => {
@@ -185,7 +213,7 @@ describe('grounding', () => {
     // A worse brief, deliberately, rather than refusing a parent who said yes — but a
     // plan that could not be aimed is worth a line in the log.
     expect(h.grounding).toHaveLength(1);
-    expect((h.grounding[0] as { question: string }).question).toContain('sleeping better');
+    expect((h.grounding[0] as { question: string }).question).toContain('Ferber');
     expect(logged).toHaveBeenCalledTimes(1);
     logged.mockRestore();
   });
@@ -211,7 +239,7 @@ describe('the ordered send', () => {
     const outcome = await h.run();
 
     expect(h.sent.map((s) => s.body)).toEqual([PLAN[1]]);
-    expect(outcome).toEqual({ status: 'plan_sent', sent: 1 });
+    expect(outcome).toEqual({ status: 'plan_sent', sent: 1, checkInDays: 3 });
   });
 
   it('puts what was sent in the thread, so the next turn reads it back', async () => {
@@ -250,25 +278,31 @@ describe('closing the loop', () => {
       {
         familyId: FAMILY,
         kind: 'plan_check_in',
-        summary: 'Check in on how the sleep plan is going.',
+        summary: `Check in on the ${playbookFor('sleep').primaryMethod.name} plan.`,
         topic: 'sleep',
         subjectChildId: 'child-1',
-        dueAt: new Date(NOW.getTime() + PLAN_CHECK_IN_DAYS * 24 * 3_600_000),
+        // Derived from the composer's OWN chosen offset, so the day Hale promised in
+        // prose and the day the row fires cannot disagree.
+        dueAt: new Date(NOW.getTime() + 3 * 24 * 3_600_000),
         channelMessageId: 'msg-2',
       },
     ]);
   });
 
-  it('leaves the offer open when the plan could not be composed', async () => {
-    const h = harness({ composed: { status: 'unavailable', reason: 'model_failed' } });
+  it('DEFERS rather than sending a canned apology, leaving the offer open', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = harness({
+      composed: { status: 'deferred', reason: 'gates_exhausted', violations: ['too long'] },
+    });
 
-    const outcome = await h.run();
-
-    // The parent gets an honest line and the word that retries it. Closing the offer
-    // here would strand them: a second YES would find nothing.
-    expect(outcome).toEqual({ status: 'plan_unavailable', reply: PLAN_UNAVAILABLE_REPLY });
+    // No preset body exists on this path. The throw is the point: the drain redrives
+    // the turn, the still-open offer re-claims the same YES, and a real plan lands late
+    // rather than an apology landing on time.
+    await expect(h.run()).rejects.toBeInstanceOf(PlanDeferred);
+    expect(h.sent).toEqual([]);
     expect(h.fulfilled).toEqual([]);
     expect(h.recorded).toEqual([]);
+    logged.mockRestore();
   });
 
   it('leaves the offer open when nothing reached the parent', async () => {
@@ -284,16 +318,64 @@ describe('closing the loop', () => {
   });
 });
 
-describe('the safety net', () => {
-  it('sends the reviewed line instead of a plan that reached for a phone number', async () => {
-    const h = harness({ composed: { status: 'safety' } });
+describe('the age gate', () => {
+  it('refuses a sleep plan for a 4-month-old, before a model writes a plan at all', async () => {
+    const h = harness({ child: { ageMonths: 4, stage: 'newborn' } });
 
     const outcome = await h.run();
 
-    expect(outcome).toEqual({ status: 'safety', reply: SAFETY_REPLY });
-    // Nothing of the model's is sent, and the offer is not marked kept by a line that
-    // was never the plan.
-    expect(h.sent).toEqual([]);
+    // The gate is CODE, ahead of the composer, because the whole point of a gate is
+    // that it holds on the run where the model would have said yes.
+    expect(outcome).toEqual({ status: 'age_gated', sent: 1 });
+    expect(h.grounding).toEqual([]);
+    expect(h.sent.map((s) => s.body)).toEqual(['He is a bit young for that yet.']);
+  });
+
+  it('grounds the refusal on the playbook, not on the model knowing the rule', async () => {
+    const h = harness({ child: { ageMonths: 4, stage: 'newborn' } });
+
+    await h.run();
+
+    expect(h.noteGrounding).toHaveLength(1);
+    expect(h.noteGrounding[0]).toMatchObject({
+      kind: 'too_young',
+      topic: 'sleep',
+      child: { ageMonths: 4 },
+    });
+  });
+
+  it('VOIDS the offer rather than marking it kept by a refusal', async () => {
+    const h = harness({ child: { ageMonths: 4, stage: 'newborn' } });
+
+    await h.run();
+
+    // The promise was a plan. A refusal does not keep it, so marking it fulfilled would
+    // put a false entry in the one ledger that records what Hale actually did — and
+    // leaving it open would re-refuse on every later yes.
     expect(h.fulfilled).toEqual([]);
+    expect(h.recorded).toEqual([]);
+    expect(h.cancelled).toEqual([
+      { familyId: FAMILY, kind: 'plan_offer', reason: 'plan_age_gated', now: NOW },
+    ]);
+  });
+
+  it('still plans for a child inside the bound', async () => {
+    // 26 months: inside sleep's verified 6-36. A gate that fired here would be worse
+    // than no gate, so the passing case is asserted through the same path.
+    const outcome = await harness({ child: { ageMonths: 26, stage: 'toddler' } }).run();
+
+    expect(outcome).toMatchObject({ status: 'plan_sent' });
+  });
+
+  it('composes with no age rather than inventing a refusal for one nobody knows', async () => {
+    const h = harness({
+      offer: { ...FRESH_OFFER, subjectChildId: null as unknown as string },
+      child: null,
+    });
+
+    const outcome = await h.run();
+
+    expect(outcome).toMatchObject({ status: 'plan_sent' });
+    expect((h.grounding[0] as { child: unknown }).child).toBeNull();
   });
 });

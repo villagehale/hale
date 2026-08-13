@@ -1,7 +1,7 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { PlanOfferPorts } from './offer';
-import { offerFullPlanTool, recordPlanOffer } from './offer';
+import { offerFullPlanTool, offerViolations, recordPlanOffer } from './offer';
 import { PLAN_OFFER_TTL_HOURS } from './topics';
 
 /**
@@ -16,6 +16,7 @@ import { PLAN_OFFER_TTL_HOURS } from './topics';
  */
 
 const FAMILY = 'fam-1';
+const OFFER = "Want the full plan? Reply YES and I'll send it.";
 const NOW = new Date('2026-08-12T14:00:00.000Z');
 const database = {} as Database;
 
@@ -42,21 +43,21 @@ describe('offerFullPlanTool', () => {
     const tool = offerFullPlanTool((offer) => offers.push(offer));
 
     const result = await tool.handler(
-      { topic: 'sleep', childId: 'child-1' },
+      { topic: 'sleep', childId: 'child-1', offer: OFFER },
       { familyId: FAMILY, actor: 'parent-1' },
     );
 
     expect(result).toEqual({ offered: true, topic: 'sleep' });
-    expect(offers).toEqual([{ topic: 'sleep', childId: 'child-1' }]);
+    expect(offers).toEqual([{ topic: 'sleep', childId: 'child-1', sentence: OFFER }]);
   });
 
   it('treats an unnamed child as a household question rather than guessing one', async () => {
     const offers: unknown[] = [];
     const tool = offerFullPlanTool((offer) => offers.push(offer));
 
-    await tool.handler({ topic: 'tantrums' }, { familyId: FAMILY, actor: 'parent-1' });
+    await tool.handler({ topic: 'potty', offer: OFFER }, { familyId: FAMILY, actor: 'parent-1' });
 
-    expect(offers).toEqual([{ topic: 'tantrums', childId: null }]);
+    expect(offers).toEqual([{ topic: 'potty', childId: null, sentence: OFFER }]);
   });
 
   it('is teen-gated by the guarded invoker, not by its own handler', () => {
@@ -71,8 +72,11 @@ describe('offerFullPlanTool', () => {
 
     // A free-text topic would be model-authored prose selecting a proactive template
     // three days later. The schema is what makes that unexpressible.
-    expect(tool.inputSchema.safeParse({ topic: 'sleep' }).success).toBe(true);
-    expect(tool.inputSchema.safeParse({ topic: 'is she behind' }).success).toBe(false);
+    expect(tool.inputSchema.safeParse({ topic: 'sleep', offer: OFFER }).success).toBe(true);
+    expect(tool.inputSchema.safeParse({ topic: 'is she behind', offer: OFFER }).success).toBe(false);
+    // Narrowed to the topics with a verified playbook: the four softer ones still get
+    // an ANSWER, they just do not get a week of improvised instructions.
+    expect(tool.inputSchema.safeParse({ topic: 'tantrums', offer: OFFER }).success).toBe(false);
   });
 });
 
@@ -82,7 +86,12 @@ describe('recordPlanOffer', () => {
 
     const outcome = await recordPlanOffer(
       database,
-      { familyId: FAMILY, offer: { topic: 'solids', childId: null }, channelMessageId: 'msg-1', now: NOW },
+      {
+        familyId: FAMILY,
+        offer: { topic: 'solids', childId: null, sentence: OFFER },
+        channelMessageId: 'msg-1',
+        now: NOW,
+      },
       p,
     );
 
@@ -109,7 +118,12 @@ describe('recordPlanOffer', () => {
 
     const outcome = await recordPlanOffer(
       database,
-      { familyId: FAMILY, offer: { topic: 'sleep', childId: null }, channelMessageId: null, now: NOW },
+      {
+        familyId: FAMILY,
+        offer: { topic: 'sleep', childId: null, sentence: OFFER },
+        channelMessageId: null,
+        now: NOW,
+      },
       p,
     );
 
@@ -131,12 +145,61 @@ describe('recordPlanOffer', () => {
     // one — the ledger's own benign reading of `already_open` is the wrong reading here.
     const outcome = await recordPlanOffer(
       database,
-      { familyId: FAMILY, offer: { topic: 'potty', childId: null }, channelMessageId: 'msg-1', now: NOW },
+      {
+        familyId: FAMILY,
+        offer: { topic: 'potty', childId: null, sentence: OFFER },
+        channelMessageId: 'msg-1',
+        now: NOW,
+      },
       p,
     );
 
     expect(outcome).toEqual({ status: 'not_recorded', reason: 'already_open' });
     expect(logged).toHaveBeenCalledTimes(1);
     logged.mockRestore();
+  });
+});
+
+describe('the offer sentence gates', () => {
+  it('accepts a sentence that asks once and names the word that accepts it', () => {
+    expect(offerViolations(OFFER)).toEqual([]);
+  });
+
+  it('refuses an offer that never says YES', () => {
+    // The handler matches a bare affirmative. A parent who was never told the word has
+    // no way to take the offer, and the plan they asked for silently never arrives.
+    expect(offerViolations('Want the full plan? I can send it over.')).toEqual([
+      expect.stringContaining('never says YES'),
+    ]);
+  });
+
+  it('refuses an offer that asks nothing, or asks twice', () => {
+    expect(offerViolations("Reply YES and I'll send the full plan.")).toEqual([
+      expect.stringContaining('0 questions'),
+    ]);
+    expect(offerViolations('Want the plan? Shall I send it? Reply YES.')).toEqual([
+      expect.stringContaining('2 questions'),
+    ]);
+  });
+
+  it('refuses an offer long enough to squeeze the answer out', () => {
+    const violations = offerViolations(`${'Want the full plan on this? '.repeat(8)}Reply YES?`);
+
+    expect(violations.some((v) => v.includes('characters'))).toBe(true);
+  });
+
+  it('is enforced by the TOOL, so a bad offer is never registered', async () => {
+    const offers: unknown[] = [];
+    const tool = offerFullPlanTool((offer) => offers.push(offer));
+
+    // The refusal is thrown as a sentence the model reads mid-turn and answers by
+    // calling again — the agent loop IS the recompose loop, with no extra machinery.
+    await expect(
+      tool.handler(
+        { topic: 'sleep', offer: 'More detail available.' },
+        { familyId: FAMILY, actor: 'parent-1' },
+      ),
+    ).rejects.toThrow(/cannot be sent/);
+    expect(offers).toEqual([]);
   });
 });

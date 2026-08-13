@@ -1,5 +1,4 @@
 import { SAFETY_REPLY, reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { PLAN_OFFER_LINE } from '~/lib/channel/plan/topics';
 import { smsSegments } from '~/lib/channel/sms-segments';
 import { renderChildName, resolveChildNameLevel } from '~/lib/loop/prefs';
 
@@ -48,10 +47,18 @@ export interface ReplyChild {
 export interface SmsReplyArgs {
   children: readonly ReplyChild[];
   now?: Date;
-  /** The turn called `offer_full_plan`, so the reviewed offer line is appended and the
-   * answer is fitted around it. See {@link PLAN_OFFER_LINE} for why the model is not
-   * asked to write it. */
-  offeringPlan?: boolean;
+  /**
+   * The offer sentence this turn registered through `offer_full_plan`, already gated by
+   * that tool, or absent when the turn offered nothing.
+   *
+   * It is appended AFTER the answer is fitted, which is the whole reason it travels
+   * separately: the model wrote both halves, but only this one may not be trimmed. A
+   * coaching answer plus an offer runs past the two-segment ceiling, the trim takes from
+   * the end, and parents were getting "Want the full plan?" with the half naming the
+   * magic word cut off. Fitting the ANSWER around a protected offer inverts that, and
+   * what gives way is a clause of background the plan carries anyway.
+   */
+  planOffer?: string;
 }
 
 /**
@@ -184,22 +191,29 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     console.error('channel coach: model composed a safety referral; sent the fixed line');
     return SAFETY_REPLY;
   }
-  if (args.offeringPlan !== true) return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  const offer = args.planOffer?.trim();
+  if (offer === undefined || offer === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
 
-  // The skill tells the model not to write the offer; this is the backstop for when it
-  // does anyway, because the visible cost is the sentence arriving twice.
-  const answer = dropModelWrittenOffer(redacted);
-  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, PLAN_OFFER_LINE);
-  return `${fitted} ${PLAN_OFFER_LINE}`;
+  // The tool told the model to hand the offer in rather than write it into the answer;
+  // this is the backstop for when it does both, because the visible cost is the same
+  // sentence arriving twice.
+  const answer = dropDuplicateOffer(redacted, offer);
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, offer);
+  return `${fitted} ${offer}`;
 }
 
-/** Drop a trailing sentence in which the model made the offer itself. Matched on the
- * phrase the skill puts in its mouth, and only at the END, so a reply that legitimately
- * uses the words mid-sentence is left alone. */
-function dropModelWrittenOffer(body: string): string {
-  const parts = sentences(body);
-  while (parts.length > 1 && /want the full plan|reply yes/i.test(parts[parts.length - 1] ?? '')) {
-    parts.pop();
-  }
-  return parts.join(' ');
+/**
+ * Drop the offer when the model also wrote it into the answer.
+ *
+ * Matched as a SUFFIX of the whole body rather than sentence by sentence, because the
+ * offer is itself two sentences ("Want the full plan? Reply YES and I'll send it.") and
+ * a per-sentence walk from the end stops at the first one it does not recognise. Only
+ * at the end, so an answer that legitimately uses those words mid-sentence is untouched.
+ */
+function dropDuplicateOffer(body: string, offer: string): string {
+  const needle = offer.trim().toLowerCase();
+  if (needle === '') return body;
+  const haystack = body.trim();
+  if (!haystack.toLowerCase().endsWith(needle)) return haystack;
+  return haystack.slice(0, haystack.length - needle.length).trim();
 }

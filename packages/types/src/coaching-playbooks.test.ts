@@ -107,3 +107,34 @@ describe('hasPlaybook', () => {
     }
   });
 });
+
+describe('the enforceable age bounds', () => {
+  /**
+   * Each number is pinned to the PHRASE it was read from. If someone widens a bound,
+   * this fails unless the verified prose was widened too — which is the point: the
+   * prose is the authority and the number is only its machine-checkable shadow.
+   */
+  it('sleep: 6 months from "never younger", 36 from "up to about age 3"', () => {
+    const playbook = playbookFor('sleep');
+
+    expect(playbook.primaryMethod.ageGate).toContain('6 months or older');
+    expect(playbook.primaryMethod.ageGate).toContain('age 3');
+    expect(playbook.ageBound).toEqual({ minMonths: 6, maxMonths: 36 });
+  });
+
+  it('potty: the stated 20 months to 3.5 years', () => {
+    const playbook = playbookFor('potty');
+
+    expect(playbook.primaryMethod.ageGate).toContain('20 months to 3.5 years');
+    expect(playbook.ageBound).toEqual({ minMonths: 20, maxMonths: 42 });
+  });
+
+  it('solids: 4 months from "never before 4 months", and NO invented ceiling', () => {
+    const playbook = playbookFor('solids');
+
+    expect(playbook.primaryMethod.ageGate).toContain('never before 4 months');
+    // A late start is still this plan. Inventing an upper bound would be inventing a
+    // clinical boundary, which is the one thing this module must not do.
+    expect(playbook.ageBound).toEqual({ minMonths: 4, maxMonths: null });
+  });
+});

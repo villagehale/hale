@@ -1,22 +1,28 @@
 import { type Database, schema } from '@hale/db';
-import { type FamilyStage, ageInMonths, deriveStage } from '@hale/types';
+import { type CoachingPlaybook, type FamilyStage, ageInMonths, deriveStage, playbookFor } from '@hale/types';
 import { and, eq } from 'drizzle-orm';
 import { readAffirmative } from '~/lib/channel/affirmative';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
-import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
 import { appendMessage, loadTranscript } from '~/lib/coach/conversation';
-import { fulfillCommitment, loadOpenCommitment, recordCommitment } from '~/lib/commitments/ledger';
-import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
-import { pipelineClient } from '~/lib/pipeline/client';
-import { type PlanComposer, type PlanGrounding, createPlanComposer } from './compose';
 import {
-  PLAN_CHECK_IN_DAYS,
+  cancelCommitment,
+  fulfillCommitment,
+  loadOpenCommitment,
+  recordCommitment,
+} from '~/lib/commitments/ledger';
+import { pipelineClient } from '~/lib/pipeline/client';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
+import { type PlanComposer, type PlanGrounding, createPlanComposer } from './compose';
+import { type NoteComposer, createNoteComposer } from './note';
+import {
+  PLAN_CHECK_IN_DAY_CHOICES,
+  type PlanCheckInDays,
   type PlanTopic,
+  checkInWeekday,
   isPlanTopic,
   planCheckInSummary,
-  planFallbackQuestion,
 } from './topics';
 
 /**
@@ -49,30 +55,36 @@ import {
  * stage writes advice, and a wall of household facts would drown the question. */
 const MAX_PLAN_FACTS = 5;
 
-/**
- * The honest line when the plan could not be composed.
- *
- * It keeps the offer OPEN and says the word that retries it, because the alternative is
- * a parent who said yes, got an apology, and has no way back to the thing they asked
- * for. No app, no link, no errand beyond the one word they already typed.
- */
-export const PLAN_UNAVAILABLE_REPLY =
-  "I couldn't put that plan together just now. Reply YES again in a minute and I'll have it.";
-
 export type PlanReplyOutcome =
   | { status: 'declined_to_claim' }
-  /** Sent, closed, and the three-day check-in is on the ledger. */
-  | { status: 'plan_sent'; sent: number }
-  /** Composed nothing sendable. The offer stays open so a second YES retries it. */
-  | { status: 'plan_unavailable'; reply: string }
-  /** The plan reached for a phone number on a guidance topic — the reviewed line goes
-   * instead, and the offer is left open rather than marked kept by a message that was
-   * never the plan. */
-  | { status: 'safety'; reply: string }
-  /** Claimed, but nothing reached the parent. Named rather than folded into
-   * `plan_unavailable` (rule #11): that one means Hale had nothing to say, this one
-   * means it had a plan and the wire ate it, and only the second is a provider page. */
+  /** Sent, closed, and the check-in Hale promised is on the ledger. */
+  | { status: 'plan_sent'; sent: number; checkInDays: PlanCheckInDays }
+  /** The child is outside the method's age gate. The offer is VOIDED — it can no longer
+   * be kept — and what went out is a composed refusal grounded on the playbook's own
+   * words, never a plan. */
+  | { status: 'age_gated'; sent: number }
+  /** Claimed, but nothing reached the parent. Named rather than folded in with the
+   * deferral (rule #11): a deferral means Hale had nothing sendable to say, this means
+   * it had a plan and the wire ate it, and only the second is a provider page. */
   | { status: 'not_delivered' };
+
+/**
+ * The turn could not produce a sendable message and there is no canned one to fall back
+ * on, so it DEFERS: thrown, caught by nothing here, and redriven by the drain.
+ *
+ * The offer stays open, which is what makes the redrive correct — the next attempt
+ * re-claims the same YES and composes again, and a plan that lands late beats an
+ * apology that lands on time. Typed so the router can tell it from a bug.
+ */
+export class PlanDeferred extends Error {
+  readonly reason: string;
+
+  constructor(reason: string, violations: readonly string[]) {
+    super(`coach plan deferred: ${reason}${violations.length > 0 ? ` (${violations.join(' ')})` : ''}`);
+    this.name = 'PlanDeferred';
+    this.reason = reason;
+  }
+}
 
 /** One outbound plan message, as the ledger needs it. */
 export interface PlanSendWrite {
@@ -96,11 +108,12 @@ export interface PlanReplyDeps {
   /** The question the parent originally asked, read back off their own thread. */
   loadQuestion(database: Database, conversationId: string, current: string): Promise<string | null>;
   loadChild(database: Database, familyId: string, childId: string): Promise<PlanChild | null>;
-  /** The Child Development & Wellbeing Companion for an age — the SAME tool the coach
-   * calls, so the plan is grounded in the content the answer was grounded in. */
-  loadGuidance(child: PlanChild | null, topic: PlanTopic): Promise<unknown>;
   loadFacts(database: Database, familyId: string): Promise<string[]>;
+  /** The family's own clock, so the day Hale promises is the day they will live. */
+  loadTimeZone(database: Database, familyId: string): Promise<string>;
   composer: PlanComposer;
+  /** The one-line notes: the age-gate refusal here, the check-in in the sweep. */
+  noteComposer: NoteComposer;
   /** REQUIRED (rule #11). A handler that can compose a plan and quietly fail to send it
    * is the worst version of this feature: the offer closes, the check-in is minted, and
    * the parent who said yes never hears anything. */
@@ -113,6 +126,7 @@ export interface PlanReplyDeps {
   audit(database: Database, row: Record<string, unknown>): Promise<void>;
   appendMessage: typeof appendMessage;
   fulfillCommitment: typeof fulfillCommitment;
+  cancelCommitment: typeof cancelCommitment;
   recordCommitment: typeof recordCommitment;
 }
 
@@ -148,33 +162,57 @@ export async function handlePlanYes(
   }
   const topic = offer.topic;
 
+  const playbook = playbookFor(topic);
   const child = offer.subjectChildId
     ? await deps.loadChild(database, input.familyId, offer.subjectChildId)
     : null;
-  const [question, guidance, facts] = await Promise.all([
+
+  // THE AGE GATE, IN CODE, BEFORE A MODEL IS ASKED FOR ANYTHING. A prompt cannot be
+  // trusted with "never sleep train a baby under 6 months": the whole point of a gate is
+  // that it holds on the run where the model would have said yes.
+  //
+  // It only fires on an age we actually KNOW. A plan whose offer named no child is
+  // composed with no age and the playbook's own readiness signs in front of the model —
+  // fabricating a refusal for an age nobody established would be its own kind of wrong.
+  if (child !== null && outsideAgeGate(child.ageMonths, playbook)) {
+    return sendAgeGateRefusal(database, deps, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      conversationId: input.conversationId,
+      phoneE164: input.phoneE164,
+      commitmentId: offer.id,
+      topic,
+      playbook,
+      child,
+      question: await deps.loadQuestion(database, input.conversationId, input.body),
+      now: input.now,
+    });
+  }
+
+  const [question, facts, timeZone] = await Promise.all([
     deps.loadQuestion(database, input.conversationId, input.body),
-    deps.loadGuidance(child, topic),
     deps.loadFacts(database, input.familyId),
+    deps.loadTimeZone(database, input.familyId),
   ]);
 
   const grounding: PlanGrounding = {
     topic,
-    // The thread is the only place the parent's own words live, and a compacted or
-    // deleted thread can lose them. The topic's generic question is a worse brief and an
-    // honest one — logged, because a plan written from the category alone is a plan
-    // that could not be aimed.
-    question: question ?? namedFallbackQuestion(input.familyId, topic),
+    // The thread is the only place the parent's own words live. A compacted or deleted
+    // thread can lose them, and the method question ("how do we do this") is a worse
+    // brief than the parent's own ("he wakes at 3am") — logged, because a plan written
+    // from the category alone is a plan that could not be aimed.
+    question: question ?? namedFallbackQuestion(input.familyId, topic, playbook),
     child,
-    guidance,
+    playbook,
     facts: facts.slice(0, MAX_PLAN_FACTS),
+    checkInDayNames: weekdayChoices(input.now, timeZone),
   };
 
   const composed = await deps.composer.compose(grounding);
-  if (composed.status === 'safety') {
-    return { status: 'safety', reply: SAFETY_REPLY };
-  }
-  if (composed.status === 'unavailable') {
-    return { status: 'plan_unavailable', reply: PLAN_UNAVAILABLE_REPLY };
+  if (composed.status === 'deferred') {
+    // No canned apology. The offer stays open, the drain redrives the turn, and the
+    // plan lands late rather than never.
+    throw new PlanDeferred(composed.reason, composed.violations);
   }
 
   const sentIds = await sendInOrder(database, deps, {
@@ -197,9 +235,10 @@ export async function handlePlanYes(
     return { status: 'not_delivered' };
   }
 
-  // Kept by the FIRST message, because that is the one that made good on "reply YES and
-  // I'll send it"; owed a check-in by the LAST, because the promise to come back is the
-  // one the end of the plan makes.
+  // Kept by the FIRST message, because that is the one that made good on the offer;
+  // owed a check-in by the LAST, because the promise to come back is the one the end of
+  // the plan makes. `dueAt` derives from the SAME field the prose promised, so the day
+  // Hale said and the day it returns cannot disagree.
   await deps.fulfillCommitment(database, {
     familyId: input.familyId,
     kind: 'plan_offer',
@@ -212,19 +251,97 @@ export async function handlePlanYes(
     summary: planCheckInSummary(topic),
     topic,
     subjectChildId: offer.subjectChildId,
-    dueAt: new Date(input.now.getTime() + PLAN_CHECK_IN_DAYS * 24 * 3_600_000),
+    dueAt: new Date(input.now.getTime() + composed.checkInDays * 24 * 3_600_000),
     channelMessageId: last,
   });
 
-  return { status: 'plan_sent', sent: sentIds.length };
+  return { status: 'plan_sent', sent: sentIds.length, checkInDays: composed.checkInDays };
 }
 
-function namedFallbackQuestion(familyId: string, topic: PlanTopic): string {
+/** Whether this child is outside the method's verified bounds. */
+export function outsideAgeGate(ageMonths: number, playbook: CoachingPlaybook): boolean {
+  const { minMonths, maxMonths } = playbook.ageBound;
+  return ageMonths < minMonths || (maxMonths !== null && ageMonths > maxMonths);
+}
+
+/** The weekday each allowed offset lands on, so the composer promises a day rather than
+ * doing calendar arithmetic in its head. */
+function weekdayChoices(now: Date, timeZone: string): Record<PlanCheckInDays, string> {
+  const names = {} as Record<PlanCheckInDays, string>;
+  for (const days of PLAN_CHECK_IN_DAY_CHOICES) {
+    names[days] = checkInWeekday(now, days, timeZone);
+  }
+  return names;
+}
+
+/**
+ * The child is too young (or too old) for this method, so what goes out is a composed
+ * refusal grounded on the playbook's own verified words — never a plan, and never a
+ * canned line either.
+ *
+ * The offer is VOIDED rather than fulfilled. The promise was a plan; a refusal does not
+ * keep it, and marking it kept would put a false entry in the one ledger that says what
+ * Hale actually did. Voiding also stops a second YES re-refusing forever.
+ */
+async function sendAgeGateRefusal(
+  database: Database,
+  deps: PlanReplyDeps,
+  args: {
+    familyId: string;
+    parentUserId: string;
+    conversationId: string;
+    phoneE164: string;
+    commitmentId: string;
+    topic: PlanTopic;
+    playbook: CoachingPlaybook;
+    child: PlanChild;
+    question: string | null;
+    now: Date;
+  },
+): Promise<PlanReplyOutcome> {
+  const composed = await deps.noteComposer.compose({
+    kind: 'too_young',
+    topic: args.topic,
+    playbook: args.playbook,
+    child: { ageMonths: args.child.ageMonths },
+    question: args.question,
+    promise: null,
+  });
+  if (composed.status === 'deferred') {
+    throw new PlanDeferred(composed.reason, composed.violations);
+  }
+
+  const sent = await sendInOrder(database, deps, {
+    familyId: args.familyId,
+    parentUserId: args.parentUserId,
+    conversationId: args.conversationId,
+    phoneE164: args.phoneE164,
+    commitmentId: args.commitmentId,
+    topic: args.topic,
+    messages: [composed.message],
+    now: args.now,
+  });
+  if (sent.length === 0) return { status: 'not_delivered' };
+
+  await deps.cancelCommitment(database, {
+    familyId: args.familyId,
+    kind: 'plan_offer',
+    reason: 'plan_age_gated',
+    now: args.now,
+  });
+  return { status: 'age_gated', sent: sent.length };
+}
+
+function namedFallbackQuestion(
+  familyId: string,
+  topic: PlanTopic,
+  playbook: CoachingPlaybook,
+): string {
   console.error(
     { familyId, topic },
-    'coach plan: the thread no longer holds the question - grounding on the topic alone',
+    'coach plan: the thread no longer holds the question - grounding on the method alone',
   );
-  return planFallbackQuestion(topic);
+  return `How do we do ${playbook.primaryMethod.name}?`;
 }
 
 /**
@@ -331,22 +448,6 @@ export async function loadPlanChild(
 }
 
 /**
- * The companion content, through the REAL tool the coach calls.
- *
- * Not a second reader of the same content: the answer the parent already has was
- * grounded in `get_framework_guidance`, and a plan grounded in anything else would
- * quietly contradict it. With no child named it answers for the stage's midpoint, which
- * is what the tool does for the coach too.
- */
-export async function loadPlanGuidance(child: PlanChild | null): Promise<unknown> {
-  const tool = frameworkGuidanceTool();
-  return tool.handler(
-    child ? { stage: child.stage, ageMonths: child.ageMonths } : { stage: 'toddler' },
-    { familyId: 'plan-composer', actor: 'system' },
-  );
-}
-
-/**
  * A few things Hale already knows about this household, as plain sentences.
  *
  * Teen-scoped facts are excluded at the QUERY, not filtered after: this stage never
@@ -408,12 +509,13 @@ export function defaultPlanReplyDeps(): PlanReplyDeps {
     loadOpenOffer: loadOpenCommitment,
     loadQuestion: loadPlanQuestion,
     loadChild: loadPlanChild,
-    loadGuidance: (child) => loadPlanGuidance(child),
     loadFacts: loadPlanFacts,
-    // The repo's shared lazy resolver, not a fourth private copy of it: it caches one
-    // instance and throws on a missing key, which is what buys the composer's honest
+    loadTimeZone: (database, familyId) => readFamilyTimezone(database, familyId),
+    // The repo's shared lazy resolver, not a private copy of it: it caches one instance
+    // and throws on a missing key, which is what buys the composers' honest
     // `client_unavailable` outcome instead of a route that dies at wiring time.
     composer: createPlanComposer(pipelineClient),
+    noteComposer: createNoteComposer(pipelineClient),
     transport: createTwilioTransport(),
     dedupeActive,
     recordSend: recordPlanSend,
@@ -422,6 +524,7 @@ export function defaultPlanReplyDeps(): PlanReplyDeps {
     },
     appendMessage,
     fulfillCommitment,
+    cancelCommitment,
     recordCommitment,
   };
 }

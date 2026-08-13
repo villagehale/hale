@@ -1,163 +1,109 @@
+import { type PlaybookTopic, playbookFor } from '@hale/types';
+
 /**
- * Full coaching plans — the closed vocabulary, and every sentence built from it.
+ * Full coaching plans — the vocabulary, and the two numbers the arc turns on.
  *
  * A parent asks a raising-kids question, Hale answers it AND offers the whole plan; a
- * YES delivers it; three days later Hale asks how it went. Three surfaces, separated by
- * days, and the only thing that survives between them is a topic. This module is that
- * topic and nothing else.
+ * YES delivers it; a few days later Hale asks how it went. Three surfaces separated by
+ * days, and the only things that survive between them are a topic and a promised day.
  *
- * WHY AN ENUM AND NOT THE PARENT'S WORDS. The topic is chosen by a model (the
- * `offer_full_plan` tool) and then slotted into a message Hale sends UNPROMPTED three
- * days later. A free-text topic would be model-authored prose on an outbound template
- * with nobody in the loop — the one shape the reviewed-copy discipline exists to
- * prevent. A member of a seven-item union cannot be anything but one of seven reviewed
- * sentences, and it is a category rather than content, so it is safe to persist next to
- * a family id (rule #1).
+ * NO MESSAGE BODIES LIVE HERE. Every sentence a parent reads on this path is composed
+ * per send and gated (the offer inside the coach turn, the plan, the too-young refusal,
+ * the check-in). An earlier draft kept seven fixed check-in sentences and a fixed offer
+ * line; both are gone. A preset body is a sentence nobody is writing for THIS family,
+ * and the moment one exists it becomes the thing that ships when composition is hard —
+ * which is exactly when a parent most needs a real answer.
  *
- * WHY THE CHECK-IN COPY IS A TABLE AND NOT ONE TEMPLATE WITH A NOUN SLOTTED. "How did
- * the first few <topic> go?" does not survive contact with English — nights, meals and
- * days are not interchangeable, and "how did the first few screen time go" is the kind
- * of sentence that tells a parent no one is home. Seven whole reviewed sentences cost
- * nothing and each one reads like a person wrote it.
+ * WHY THE TOPIC IS AN ENUM, still. It is persisted and it selects a curated PLAYBOOK
+ * days later. A free-text topic would mean a plan grounded on whichever playbook a
+ * fuzzy match happened to return.
  */
 
 /**
- * The plannable subjects. Deliberately SMALL: each one has to be a thing a week of
- * concrete instructions can actually be written about, which is what rules out the
- * open-ended half of parenting ("is she behind?", "should we do daycare").
+ * The plannable subjects — exactly the topics with a verified method playbook.
  *
- * Sleep is one topic, not three. Night wakeups, co-sleeping transitions and bedtime
- * resistance want the same plan shape — a night-by-night ladder — and splitting them
- * would make the model choose between labels for the same job while the parent's own
- * words, which say which of the three it is, are already in front of the composer.
+ * This is narrower than the coach's coaching remit on purpose. Hale still ANSWERS
+ * questions about tantrums, screen time, picky eating and routines; it just does not
+ * offer a week of instructions for them, because there is no named, studied method to
+ * ground one in and the alternative is Opus improvising medical content per send. That
+ * is the exact failure the playbooks exist to end, and it does not stop being a failure
+ * because the topic is softer.
  */
-export type PlanTopic =
-  | 'sleep'
-  | 'solids'
-  | 'potty'
-  | 'picky_eating'
-  | 'tantrums'
-  | 'screen_time'
-  | 'routines';
+export type PlanTopic = PlaybookTopic;
 
-export const PLAN_TOPICS: readonly PlanTopic[] = [
-  'sleep',
-  'solids',
-  'potty',
-  'picky_eating',
-  'tantrums',
-  'screen_time',
-  'routines',
-];
+export const PLAN_TOPICS: readonly PlanTopic[] = ['sleep', 'potty', 'solids'];
 
-/** Whether a persisted string is still a topic this build knows. A row written by an
- * older deploy — or by a topic since retired — reads back as unknown rather than as a
- * default, because guessing would send a parent the wrong plan's check-in. */
+/** Whether a persisted string is still a topic this build can plan for. A row written
+ * by an older deploy — or naming a topic since retired — reads back as unknown rather
+ * than as a default, because guessing sends a parent the wrong plan. */
 export function isPlanTopic(value: string | null): value is PlanTopic {
   return value !== null && (PLAN_TOPICS as readonly string[]).includes(value);
 }
 
-/** How Hale names the topic to a parent, in the middle of a sentence. Lower case
- * because every use site is mid-sentence. */
+/** How Hale names the topic mid-sentence. Used only in the ledger summary a founder
+ * digest prints — never in anything sent to a parent. */
 const PLAN_TOPIC_NOUN: Record<PlanTopic, string> = {
   sleep: 'sleep',
-  solids: 'starting solids',
   potty: 'potty training',
-  picky_eating: 'picky eating',
-  tantrums: 'tantrums',
-  screen_time: 'screen time',
-  routines: 'routines',
+  solids: 'starting solids',
 };
-
-/**
- * The ONE text the three-day check-in sends. Fixed, reviewed, whole sentences — no
- * model composes this, because there is nothing here worth a model's judgement and a
- * proactive message is the wrong place to spend one.
- *
- * Each is a question a parent can answer in a few words while walking. None of them
- * asks whether the plan "worked": a plan that did not work is the most useful thing
- * this message can surface, and a question phrased as a scorecard is one parents
- * answer with silence.
- */
-const PLAN_CHECK_IN_TEXT: Record<PlanTopic, string> = {
-  sleep: 'How did the first few nights go?',
-  solids: 'How have the first few meals gone?',
-  potty: 'How did the first few days go?',
-  picky_eating: 'How have meals been going this week?',
-  tantrums: 'How have the last few days been?',
-  screen_time: 'How has the new screen time routine been going?',
-  routines: 'How has the new routine been going?',
-};
-
-export function planCheckInText(topic: PlanTopic): string {
-  return PLAN_CHECK_IN_TEXT[topic];
-}
-
-/**
- * The brief a plan is written from when the thread no longer holds the parent's own
- * question — a compacted or deleted conversation, days after the offer.
- *
- * Deliberately a WORSE brief rather than a refusal: the parent said yes, and a generic
- * plan for the right topic at the right age is worth having. The caller logs every use,
- * because a plan written from the category alone is a plan that could not be aimed.
- */
-const PLAN_FALLBACK_QUESTION: Record<PlanTopic, string> = {
-  sleep: 'How do I get my child sleeping better through the night?',
-  solids: 'How do we start solid food?',
-  potty: 'How do we start potty training?',
-  picky_eating: 'What do we do about picky eating at meals?',
-  tantrums: 'How should we handle tantrums?',
-  screen_time: 'How much screen time, and how do we handle it?',
-  routines: 'How do we build a routine that sticks?',
-};
-
-export function planFallbackQuestion(topic: PlanTopic): string {
-  return PLAN_FALLBACK_QUESTION[topic];
-}
 
 /**
  * The ledger summary for an offer Hale is holding an answer for.
  *
- * This string is what the founder digest prints and what the coach's own context
- * recites back, so it is written to read correctly in an OVERDUE column too: an offer
- * nobody answered in two days is a loop left hanging, which is exactly what "waiting on
- * a yes" says.
+ * Internal copy: the founder digest prints it and the coach's context recites it. It is
+ * written to read correctly in an OVERDUE column too — an offer nobody answered in two
+ * days is a loop left hanging, which is what "waiting on a yes" says.
  */
 export function planOfferSummary(topic: PlanTopic): string {
   return `Offered the full ${PLAN_TOPIC_NOUN[topic]} plan - waiting on a yes.`;
 }
 
-/** The ledger summary for the promise the plan itself makes. */
+/** The ledger summary for the promise the plan itself makes. Carries the METHOD name,
+ * because that is what the check-in is asking about and what makes the row legible
+ * three days later without opening the thread. */
 export function planCheckInSummary(topic: PlanTopic): string {
-  return `Check in on how the ${PLAN_TOPIC_NOUN[topic]} plan is going.`;
+  return `Check in on the ${playbookFor(topic).primaryMethod.name} plan.`;
 }
 
 /**
- * The offer sentence itself — reviewed copy, appended by code, never composed.
+ * How many days out the check-in may be promised.
  *
- * It started as a line the skill asked the model to write, and the eval caught why that
- * could not hold: a coaching answer plus this sentence runs past the two-segment budget,
- * and the post-processor trims from the END. Parents were getting "Want the full plan?"
- * with the half that says the magic word cut off — an offer with no way to accept it.
+ * The composer CHOOSES within this band and says the day out loud, because the right
+ * gap is a property of the method: graduated check-ins show something by night three,
+ * while the 3-day method wants day four — the morning after it finishes. A fixed +3
+ * would land mid-method for one topic and late for another.
  *
- * Appending it here makes that unexpressible. The answer is fitted to the budget MINUS
- * this line, so the offer cannot be what gets dropped; whatever has to give is a clause
- * of background, which is the right thing to lose because the plan carries it anyway.
+ * The band is narrow on purpose. Under two days there is nothing to report; past five
+ * the plan has stopped being the thing the family is doing.
  */
-export const PLAN_OFFER_LINE = "Want the full plan? Reply YES and I'll send it.";
+export const PLAN_CHECK_IN_DAY_CHOICES = [2, 3, 4, 5] as const;
+export type PlanCheckInDays = (typeof PLAN_CHECK_IN_DAY_CHOICES)[number];
+
+export function isPlanCheckInDays(value: number): value is PlanCheckInDays {
+  return (PLAN_CHECK_IN_DAY_CHOICES as readonly number[]).includes(value);
+}
 
 /**
  * How long a bare YES still means "send the plan".
  *
- * Two days, because a bare affirmative is a word with several possible owners and its
- * claim on this one has to expire: a parent typing "yes" a week after an unanswered
- * offer is answering something else, and sending them a sleep plan instead of reading
- * what they meant is worse than asking. Past this the handler declines and the turn
- * falls through to the coach, which can read the message properly.
+ * Two days, because a bare affirmative has several possible owners and its claim on
+ * this one has to expire: a parent typing "yes" a week after an unanswered offer is
+ * answering something else, and sending them a sleep plan instead of reading what they
+ * meant is worse than asking. Past this the handler declines and the turn falls through
+ * to the coach, which can read the message properly.
  */
 export const PLAN_OFFER_TTL_HOURS = 48;
 
-/** How long after the plan Hale comes back. Three days is one full weekend or one
- * working stretch — long enough that there is something to report, short enough that
- * the plan is still what the family is doing. */
-export const PLAN_CHECK_IN_DAYS = 3;
+/** The weekday name the plan promises, in the family's own clock. The prose and the
+ * ledger row derive from the SAME chosen offset, so the day Hale said and the day it
+ * comes back cannot disagree. */
+export function checkInWeekday(now: Date, days: PlanCheckInDays, timeZone: string): string {
+  return weekdayIn(new Date(now.getTime() + days * 24 * 3_600_000), timeZone);
+}
+
+/** The weekday an instant falls on, in the family's own clock — how the check-in names
+ * the day it was promised for, reading it back off the row's own due time. */
+export function weekdayIn(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, weekday: 'long' }).format(at);
+}

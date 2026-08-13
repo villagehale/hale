@@ -180,12 +180,15 @@ describe('the fixed safety reply is the only siren that leaves the coach', () =>
 
 describe('the plan offer line', () => {
   const child = { name: 'Milo', gender: 'boy', dateOfBirth: '2021-05-01' };
+  // Composed by the model and already gated by offer_full_plan — the runtime only
+  // protects it from the trim; it does not author it.
+  const OFFER_LINE = "Want the full plan? Reply YES and I'll send it.";
 
   it('is appended by code, so the model never has to spend budget on it', () => {
     const reply = toSmsReply('Try a gradual fade over two weeks.', {
       children: [child],
       now: new Date('2026-08-12T12:00:00.000Z'),
-      offeringPlan: true,
+      planOffer: OFFER_LINE,
     });
 
     expect(reply).toBe(
@@ -202,7 +205,7 @@ describe('the plan offer line', () => {
     const reply = toSmsReply(long, {
       children: [child],
       now: new Date('2026-08-12T12:00:00.000Z'),
-      offeringPlan: true,
+      planOffer: OFFER_LINE,
     });
 
     expect(reply.endsWith("Want the full plan? Reply YES and I'll send it.")).toBe(true);
@@ -221,7 +224,7 @@ describe('the plan offer line', () => {
   it('sends the offer once when the model wrote it too', () => {
     const reply = toSmsReply(
       "Try a gradual fade over two weeks. Want the full plan? Reply YES and I'll send it.",
-      { children: [child], now: new Date('2026-08-12T12:00:00.000Z'), offeringPlan: true },
+      { children: [child], now: new Date('2026-08-12T12:00:00.000Z'), planOffer: OFFER_LINE },
     );
 
     expect(reply.match(/Want the full plan\?/g)).toHaveLength(1);

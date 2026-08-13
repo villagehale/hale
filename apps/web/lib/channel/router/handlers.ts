@@ -200,10 +200,13 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  *     narrowest slice of the word: only when an offer is OPEN and less than two days
  *     old (see plan/reply.ts on why the claim expires at all).
  *
- * It is the first handler that ANSWERS FOR ITSELF. A plan is two or three ordered
- * messages and the verdict's `reply` carries one body, so on the sent path it returns
- * `reply: null` — the contract's existing shape for a handler that has already spoken.
- * The two degraded paths do hand back a single line, because both are one sentence.
+ * It is the first handler that ANSWERS FOR ITSELF, and the only one that never hands
+ * the router a body at all. A plan is two or three ordered messages, which the
+ * verdict's single `reply` cannot express — so it sends through its own ordered loop
+ * and returns `reply: null`, the contract's existing shape for a handler that has
+ * already spoken. There is no fallback line either: a turn that cannot compose
+ * something sendable throws {@link PlanDeferred} and the drain redrives it, because a
+ * plan that lands late beats an apology that lands on time.
  */
 export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
   return {
@@ -221,19 +224,14 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
         },
         deps,
       );
-      switch (outcome.status) {
-        case 'declined_to_claim':
-          return { claimed: false };
-        case 'plan_unavailable':
-        case 'safety':
-          return { claimed: true, outcome: outcome.status, reply: outcome.reply };
-        default:
-          // `plan_sent` and `not_delivered` both end the turn with nothing left to say:
-          // the plan already went, or it demonstrably could not, and a second body here
-          // would either duplicate the first message or apologise after three texts of
-          // advice already landed.
-          return { claimed: true, outcome: outcome.status, reply: null };
-      }
+      if (outcome.status === 'declined_to_claim') return { claimed: false };
+      // Every other outcome ends the turn with nothing left for the router to say. The
+      // plan (or the age-gate refusal) has already gone out through this handler's own
+      // ordered send; `not_delivered` means the wire ate it, and a second body there
+      // would be an apology arriving after messages that may yet land. There is no
+      // preset line on this path at all — a turn with nothing sendable THROWS
+      // (PlanDeferred) so the drain redrives it.
+      return { claimed: true, outcome: outcome.status, reply: null };
     },
   };
 }

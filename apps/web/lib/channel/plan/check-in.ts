@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { f14Enabled, f14Allowlist } from '~/lib/channel/f14';
 import {
@@ -13,15 +14,25 @@ import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type DueCommitment, fulfillCommitment, loadDueCommitments } from '~/lib/commitments/ledger';
 import { appendMessage } from '~/lib/coach/conversation';
-import { isPlanTopic, planCheckInText } from './topics';
+import { type NoteComposer, createNoteComposer } from './note';
+import { isPlanTopic, weekdayIn } from './topics';
+import { playbookFor } from '@hale/types';
+import { pipelineClient } from '~/lib/pipeline/client';
 
 /**
  * THE CHECK-IN — step four, and the only unprompted message in this arc.
  *
- * Three days after a full plan goes out, Hale asks how it went. One text, fixed copy,
- * no model. That is the whole feature, and the restraint is the point: a plan that
- * lands and is never followed up is advice, while a plan someone comes back about is
- * a chief of staff.
+ * A few days after a full plan goes out — on the day the plan PROMISED — Hale asks how
+ * it went. One composed text. That is the whole feature, and the restraint is the
+ * point: a plan that lands and is never followed up is advice, while a plan someone
+ * comes back about is a chief of staff.
+ *
+ * COMPOSED, NOT A TEMPLATE. This shipped once as seven fixed sentences, one per topic,
+ * and they were good sentences — which is the problem. A preset body is a sentence
+ * nobody is writing for THIS family, and the check-in is the message with the most to
+ * gain from being written for them: it knows the method they ran and the day they were
+ * promised. A gate refusal is recomposed; exhausting the attempts leaves the promise
+ * OPEN for the next tick rather than sending something canned.
  *
  * IT RIDES THE HOURLY NUDGE CRON, the way village intros do, and for the same reasons:
  * that cron already exists to decide whether to interrupt a parent, it already runs at
@@ -53,6 +64,9 @@ export interface PlanCheckInResult {
    * a recipient who no longer resolves. Named rather than counted as held: a hold is a
    * policy decision and this is a broken row. */
   unsendable: number;
+  /** Due and allowed, but nothing sendable came back from the composer. The promise
+   * stays open for the next tick — never a canned sentence in its place. */
+  deferred: number;
   failed: number;
 }
 
@@ -63,6 +77,7 @@ function emptyResult(enabled: boolean): PlanCheckInResult {
     sent: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     unsendable: 0,
+    deferred: 0,
     failed: 0,
   };
 }
@@ -81,6 +96,10 @@ export interface PlanCheckInDeps {
   /** The parent who was actually texted the plan, read back off the row that carried
    * it. Never a household lookup: a co-parent did not ask this question. */
   resolveRecipient(database: Database, channelMessageId: string): Promise<CheckInRecipient | null>;
+  /** The one-line composer, shared with the age-gate refusal. */
+  noteComposer: NoteComposer;
+  /** The family's own clock — the day Hale promised is the day they live in. */
+  loadTimeZone(database: Database, familyId: string): Promise<string>;
   buildGate(database: Database): OutboundGatePorts;
   dedupeActive: typeof dedupeActive;
   resolveSendablePhone: typeof resolveSendablePhone;
@@ -183,6 +202,31 @@ async function sendOne(
   const dedupeKey = `coach_plan:checkin:${commitment.id}`;
   if (await deps.dedupeActive(dedupeKey, database)) return;
 
+  // Composed only AFTER the gate and the dedupe: a family who is over their budget or
+  // already asked must not cost a model call.
+  const timeZone = await deps.loadTimeZone(database, commitment.familyId);
+  const composed = await deps.noteComposer.compose({
+    kind: 'check_in',
+    topic: commitment.topic,
+    playbook: playbookFor(commitment.topic),
+    child: null,
+    question: null,
+    promise: {
+      summary: commitment.summary,
+      // The day this row was DUE, named the way Hale named it in the plan.
+      promisedDay: weekdayIn(commitment.dueAt, timeZone),
+    },
+  });
+  if (composed.status === 'deferred') {
+    // The promise stays open and the next tick tries again. Never a canned sentence.
+    result.deferred += 1;
+    console.error(
+      { commitmentId: commitment.id, reason: composed.reason },
+      'coach plan check-in: nothing sendable composed - promise left open for the next tick',
+    );
+    return;
+  }
+
   const to = await deps.resolveSendablePhone(database, recipient.parentUserId);
   if (!to) {
     // The gate just said this parent has a live channel, so there IS one — a missing
@@ -190,7 +234,7 @@ async function sendOne(
     throw new Error(`coach plan check-in: no send target for parent ${recipient.parentUserId}`);
   }
 
-  const body = planCheckInText(commitment.topic);
+  const body = composed.message;
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
@@ -247,6 +291,8 @@ export function defaultPlanCheckInDeps(): PlanCheckInDeps {
   return {
     loadDue: loadDueCommitments,
     resolveRecipient: resolvePlanRecipient,
+    noteComposer: createNoteComposer(pipelineClient),
+    loadTimeZone: (database, familyId) => readFamilyTimezone(database, familyId),
     buildGate: buildOutboundGatePorts,
     dedupeActive,
     resolveSendablePhone,

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { type PlanCheckInDeps, runPlanCheckInSweep } from './check-in';
+import type { NoteComposeOutcome } from './note';
 
 /**
  * The one unprompted message in the arc.
@@ -20,9 +21,11 @@ const DUE = {
   id: 'commitment-1',
   familyId: FAMILY,
   topic: 'sleep',
+  summary: 'Check in on the Graduated check-ins (Ferber method) plan.',
   createdFrom: 'msg-9',
   dueAt: new Date('2026-08-15T13:00:00.000Z'),
 };
+const COMPOSED = 'How have the first few nights gone?';
 
 const database = {} as Database;
 
@@ -37,6 +40,7 @@ function harness(
     hold?: ProactiveHoldReason;
     alreadySent?: boolean;
     recipient?: { parentUserId: string; conversationId: string | null } | null;
+    note?: NoteComposeOutcome;
   } = {},
 ) {
   const sent: Array<{ to: string; body: string }> = [];
@@ -45,6 +49,7 @@ function harness(
   const threaded: string[] = [];
   const fulfilled: unknown[] = [];
   const gated: unknown[] = [];
+  const noteGrounding: unknown[] = [];
 
   const deps: PlanCheckInDeps = {
     loadDue: async () => overrides.due ?? [DUE],
@@ -64,6 +69,13 @@ function harness(
       parentTimeZone: async () =>
         overrides.hold === 'quiet_hours' ? 'Pacific/Auckland' : 'America/Toronto',
     }),
+    noteComposer: {
+      compose: async (input) => {
+        noteGrounding.push(input);
+        return overrides.note ?? { status: 'composed', message: COMPOSED };
+      },
+    },
+    loadTimeZone: async () => 'America/Toronto',
     dedupeActive: async () => overrides.alreadySent === true,
     resolveSendablePhone: async () => '+14165550100',
     transport: {
@@ -97,6 +109,7 @@ function harness(
     threaded,
     fulfilled,
     gated,
+    noteGrounding,
   };
 }
 
@@ -137,7 +150,7 @@ describe('a due check-in', () => {
 
     const result = await h.run();
 
-    expect(h.sent).toEqual([{ to: '+14165550100', body: 'How did the first few nights go?' }]);
+    expect(h.sent).toEqual([{ to: '+14165550100', body: COMPOSED }]);
     expect(h.ledger).toEqual([
       {
         dedupeKey: 'coach_plan:checkin:commitment-1',
@@ -158,7 +171,7 @@ describe('a due check-in', () => {
 
     // There is no handler for the reply on purpose: what the parent says next is
     // conversation, and it needs the question in front of it to read as one.
-    expect(h.threaded).toEqual(['How did the first few nights go?']);
+    expect(h.threaded).toEqual([COMPOSED]);
   });
 
   it('audits the send without the body (rule #1/#6)', async () => {
@@ -179,13 +192,41 @@ describe('a due check-in', () => {
     ]);
   });
 
-  it('sends the topic its own sentence, never one template with a noun slotted', async () => {
+  it('composes the ask from the promise it is keeping, never a template', async () => {
     process.env[F14_ENABLED_ENV] = 'true';
-    const h = harness({ due: [{ ...DUE, topic: 'solids' }] });
+    const h = harness();
 
     await h.run();
 
-    expect(h.sent[0]?.body).toBe('How have the first few meals gone?');
+    // Grounded on the method the family actually ran and the day Hale named, so the
+    // question is about THEIR week rather than about the topic in the abstract.
+    expect(h.noteGrounding).toEqual([
+      {
+        kind: 'check_in',
+        topic: 'sleep',
+        playbook: expect.objectContaining({ primaryMethod: expect.anything() }),
+        child: null,
+        question: null,
+        promise: { summary: DUE.summary, promisedDay: 'Saturday' },
+      },
+    ]);
+  });
+
+  it('leaves the promise open when nothing sendable composed', async () => {
+    process.env[F14_ENABLED_ENV] = 'true';
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = harness({
+      note: { status: 'deferred', reason: 'gates_exhausted', violations: ['two questions'] },
+    });
+
+    // No canned sentence stands in. The next tick tries again, which is the only
+    // version of this that can still be true a day later.
+    const result = await h.run();
+
+    expect(h.sent).toEqual([]);
+    expect(h.fulfilled).toEqual([]);
+    expect(result).toMatchObject({ deferred: 1, sent: 0 });
+    logged.mockRestore();
   });
 });
 
