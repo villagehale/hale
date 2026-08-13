@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { and, asc, desc, eq, gte, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
@@ -33,6 +33,8 @@ import {
   routeChannelMessage,
 } from './route';
 import type { SmokeAlarmClaim } from './smoke-alarm';
+import { createTurnApology } from './apology';
+import type { InboundTurnLedger } from './turn-ledger';
 
 /**
  * VIL-220 · C1 — the production wiring. The one place the router meets real tables, a
@@ -267,6 +269,63 @@ export function auditSmokeAlarmClaim(database: Database): SmokeAlarmClaim {
   };
 }
 
+/**
+ * The two audit actions the turn ledger reads back. DATA values, like
+ * {@link SMOKE_ALARM_ACTION}: they are what a PIPEDA access request renders and what the
+ * re-drive gate reads, so they are never renamed with the code.
+ */
+export const TURN_ANSWERED_ACTION = 'sms_turn_answered';
+export const TURN_DEFERRED_ACTION = 'sms_turn_deferred';
+
+/**
+ * The router's memory of its own attempts, in audit_log — no new table and no migration,
+ * for the reason the alarm's claim gives: rule #6 already requires an immutable row for
+ * what Hale did, so the row that RECORDS the decision is the row that stops it being
+ * taken twice.
+ *
+ * ONE read answers the whole question. `answered` wins over `deferred` whatever order
+ * the rows landed in, because a turn that was deferred nine times and then answered is
+ * answered — there is no path back.
+ *
+ * `familyId` leads the WHERE because it leads the only index this table has, and because
+ * scoping every lookup to the family the job claims is the router's rule-#1 habit.
+ */
+export function auditTurnLedger(database: Database): InboundTurnLedger {
+  const write = (actionTaken: string) => async (input: {
+    familyId: string;
+    parentUserId: string;
+    channelMessageId: string;
+  }) => {
+    await database.insert(schema.auditLog).values({
+      familyId: input.familyId,
+      actor: input.parentUserId,
+      actionTaken,
+      targetTable: 'channel_messages',
+      targetId: input.channelMessageId,
+    });
+  };
+
+  return {
+    stageOf: async ({ familyId, channelMessageId }) => {
+      const rows = await database
+        .select({ actionTaken: schema.auditLog.actionTaken })
+        .from(schema.auditLog)
+        .where(
+          and(
+            eq(schema.auditLog.familyId, familyId),
+            eq(schema.auditLog.targetTable, 'channel_messages'),
+            eq(schema.auditLog.targetId, channelMessageId),
+            inArray(schema.auditLog.actionTaken, [TURN_ANSWERED_ACTION, TURN_DEFERRED_ACTION]),
+          ),
+        );
+      if (rows.some((row) => row.actionTaken === TURN_ANSWERED_ACTION)) return 'answered';
+      return rows.length > 0 ? 'deferred' : 'fresh';
+    },
+    recordAnswered: write(TURN_ANSWERED_ACTION),
+    recordDeferred: write(TURN_DEFERRED_ACTION),
+  };
+}
+
 export function channelRouterDeps(database: Database): ChannelRouterDeps {
   return {
     database,
@@ -275,6 +334,10 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     handlers: defaultHandlers(),
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
+    turns: auditTurnLedger(database),
+    // The words a broken turn gets, on the same lazy client the screen and the general
+    // answer use — one key, one failure story, resolved only by the turn that needs one.
+    apology: createTurnApology(screenClient),
     // The C2 seam (VIL-221), now the real runtime. The stub it replaces is kept as the
     // documented fallback shape rather than deleted — see coach-runtime.ts.
     coach: productionChannelCoach(database),
