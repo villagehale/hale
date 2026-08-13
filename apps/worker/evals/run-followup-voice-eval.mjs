@@ -31,9 +31,19 @@
 //     number it was never given). Every one of these is a text the family never gets.
 //   · forbidden-pattern hits — a pronoun or a relationship word in an ask composed from a
 //     title alone is a fact about a child that the model invented (rule #1).
+//   · parroted samples — an ask that matches one of the skill's own example lines word for
+//     word. The corpus's first live run produced "How was Swim class? No pressure to
+//     reply." for three of four activity fixtures, byte-identical to the single example
+//     the skill then carried: a pipeline that is LLM-composed and a MESSAGE that is a
+//     preset body, which is the doctrine's letter without its purpose. The skill now shows
+//     a range and forbids reuse; this gate is what keeps that true.
+//   · one-template corpus — every activity ask opening the same way. A parent gets these
+//     for months, and the variation the model is here to provide has to be visible across
+//     the corpus, not just absent from any single line.
 // Everything else is the judge's bar (JUDGE_MIN per fixture): one warm question about the
 // named thing, pressure taken off, nothing assumed, nothing offered, nothing else.
 
+import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tsImport } from 'tsx/esm/api';
@@ -53,6 +63,30 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'followup-voice.md');
 const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-segments.ts');
+
+/** How many distinct openings the activity asks must show between them. Two is a low bar
+ * on purpose — it catches a corpus that has collapsed onto one template without pretending
+ * to measure style. */
+const MIN_DISTINCT_OPENERS = 2;
+
+/** The skill's own blockquoted example lines. Read off the file rather than restated, so
+ * an example added later is covered without anyone remembering to add it here. */
+async function skillSampleLines() {
+  const source = await readFile(SKILL_PATH, 'utf8');
+  return source
+    .split('\n')
+    .filter((line) => line.startsWith('> '))
+    .map((line) => normalizeForCompare(line.slice(2)));
+}
+
+function normalizeForCompare(text) {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** The first three words, as the cheap stand-in for "how this message opens". */
+function opener(body) {
+  return normalizeForCompare(body).split(' ').slice(0, 3).join(' ');
+}
 
 // ── the composer's request shape, replicated from voice.ts ──────────────────
 
@@ -173,6 +207,7 @@ async function main() {
   const { smsEncoding } = await tsImport(SMS_SEGMENTS_SRC, import.meta.url);
   smsEncodingRef = smsEncoding;
   const skill = await agent.loadSkill(SKILL_PATH);
+  const samples = await skillSampleLines();
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'followup-voice', cachedOnly, getClient, cost);
@@ -208,6 +243,7 @@ async function main() {
     for (const pattern of fixture.forbiddenPatterns ?? []) {
       if (pattern.test(body)) failures.push(`forbidden:${pattern.source}`);
     }
+    if (samples.includes(normalizeForCompare(body))) failures.push('parrots_sample');
 
     const verdict = await judge(fixture.id, {
       request: userMessage,
@@ -239,6 +275,10 @@ async function main() {
   const unsendable = results.filter((r) => r.failures.some((f) => GATE_NAMES.includes(f)));
   const inventedChild = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
+  const parroted = results.filter((r) => r.failures.includes('parrots_sample'));
+  const activityOpeners = new Set(
+    results.filter((r) => r.fixture.request.kind === 'activity').map((r) => opener(r.body)),
+  );
 
   console.log('\n--- corpus metrics ---');
   console.log(
@@ -246,13 +286,20 @@ async function main() {
   );
   console.log(`invented child facts:    ${inventedChild.length}  (0 required - rule #1)`);
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
+  console.log(
+    `parroted skill samples:  ${parroted.length}  (0 required - a stored string with extra steps)`,
+  );
+  console.log(
+    `distinct activity opens: ${activityOpeners.size}  (>= ${MIN_DISTINCT_OPENERS} required - one template is a preset body)`,
+  );
 
   console.log('\n--- cost telemetry ---');
   console.log(
     `live API calls this run: ${cost.liveCalls} | estimated cost this run: $${totalUsd(cost).toFixed(4)} USD`,
   );
 
-  const allPass = results.every((r) => r.failures.length === 0);
+  const allPass =
+    results.every((r) => r.failures.length === 0) && activityOpeners.size >= MIN_DISTINCT_OPENERS;
 
   console.log('\n--- gate ---');
   if (!broken) {
