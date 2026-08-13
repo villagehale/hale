@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import { captureServerEvent } from '~/lib/analytics/server-capture';
-import { type UnsubscribeResult, isLoopEmailType, processUnsubscribe } from '~/lib/cron/email-compliance';
+import {
+  type UnsubscribeResult,
+  isLoopEmailType,
+  processUnsubscribe,
+  unsubscribeStreamLabel,
+} from '~/lib/cron/email-compliance';
 import { db } from '~/lib/db';
 import { createLoopStopNotifier, dispatchLoopStopSideEffects } from '~/lib/loop/stop-alert';
 
@@ -48,9 +53,12 @@ export default async function UnsubscribePage({ searchParams }: PageProps) {
     result.status === 'unsubscribed'
       ? "you're unsubscribed."
       : "we couldn't process that link.";
+  // The receipt names the stream the link was signed for — never a different one, and
+  // never the retired daily brief (CASL: this is the moment the parent is told what
+  // stopped, so it has to be the thing that actually stopped).
   const detail =
     result.status === 'unsubscribed'
-      ? "You won't receive daily brief emails anymore. You can still see your brief in the app, and account or security emails are unaffected."
+      ? `You won't receive ${unsubscribeStreamLabel(result.emailType)} anymore. Your other Hale emails, including account and security notices, are unaffected.`
       : 'The link may have expired or been mistyped. If you keep getting emails you did not expect, contact privacy@villagehale.com.';
 
   return (

@@ -5,6 +5,7 @@ import type { ChildNameLevel } from '~/lib/loop/prefs';
 import {
   childrenInPlan,
   dayAbbrev,
+  draftedCount,
   genericSensitiveWhat,
   gsmSafe,
   headerNames,
@@ -37,22 +38,53 @@ const SMS_ITEM_CAP = 8;
 const SEGMENT_CAP = 3;
 const FULL_WEEK_PREFIX = 'Full week: ';
 
+/**
+ * FOUNDER REVIEW (tone audit, 2026-08-13): these two are FIXED BODIES on a weekly
+ * surface, so under the 2026-08-12 "no preset message bodies" doctrine they need a class
+ * or a composer. Proposed class: STATE RECEIPT — each is a one-line report of the week's
+ * shape (nothing scheduled / everything placed) with no claim beyond it, the same class
+ * as the approval ask below, which the doctrine's count-carrying exception already
+ * covers. Left as-is tonight rather than composed: the SMS renderer takes no voice
+ * parameter at all (payload.ts documents voice as email-only), so converting them is a
+ * pipeline change, not a copy change.
+ */
 const QUIET_ASK =
   `A quiet week ${EM_DASH} nothing scheduled yet. Want ideas for Saturday? Reply IDEAS.`;
 const PLACED_ASK = 'All on your calendar.';
 
-const PENDING_TAIL = 'to your calendar, or tell me what to change.';
+const PENDING_TAIL = 'or tell me what to change.';
 
-function pendingAsk(pending: number): string {
-  const who = pending === 2 ? 'both' : 'them';
-  return `${pending} need your OK ${EM_DASH} reply YES to add ${who} ${PENDING_TAIL}`;
+/**
+ * The approval ask — the one line in this message that instructs, so it is the one that
+ * has to be true about the ROUTER as well as about the week.
+ *
+ * The count is DRAFTS (`draftedCount`), the rows the placement mint holds and the only
+ * rows a texted YES can resolve. It used to be every item that needed anything, which
+ * counted undated checkups and "shall we?" suggestions that never become approvable —
+ * and then told the parent one word would put all of them on their calendar.
+ *
+ * At two or more, the instruction says what actually happens: `resolveApproval`
+ * auto-approves a bare YES only when EXACTLY ONE row is pending and otherwise answers
+ * with the numbered "Which one?" list. It does NOT quote ordinals ("reply YES 1"),
+ * because the pending list is family-wide and oldest-first — this week's drafts are not
+ * at positions 1..n whenever anything older is still waiting, and an ordinal from here
+ * would point at somebody else's row.
+ */
+function pendingAsk(drafts: number): string {
+  const instruction =
+    drafts === 1 ? 'reply YES to add it' : "reply YES and I'll take them one at a time";
+  return `${drafts} drafted for your calendar ${EM_DASH} ${instruction}, ${PENDING_TAIL}`;
 }
 
-/** The always-present closing invitation, chosen by the week's shape. */
-function approvalAsk(itemCount: number, pending: number): string {
-  if (itemCount === 0) return QUIET_ASK;
+/** The closing line for a week that HAS items — and absent when the week asks
+ * something Hale cannot turn into a one-word approval (a decision, an undated
+ * appointment): an ask with no answerable row is the misdirection this whole line
+ * exists to avoid, so the message simply ends with the week. (An empty week is
+ * QUIET_ASK and nothing else, decided by the renderer before it gets here.) */
+function approvalAsk(pending: number, drafts: number): string | null {
   if (pending === 0) return PLACED_ASK;
-  return pendingAsk(pending);
+  if (drafts === 0) return null;
+  return pendingAsk(drafts);
 }
 
 /** One item as "{day}: {what} {time}" (day/time dropped when the item is day-coarse). */
@@ -74,19 +106,20 @@ export function renderWeeklyPlanSms(
 ): RenderedContent {
   const inPlan = childrenInPlan(payload.items, payload.children);
   const subject = weekSubject(headerNames(inPlan, level, now));
-  const pending = pendingCount(payload.items);
-  const ask = approvalAsk(payload.items.length, pending);
   const send = (body: string) => gsmSafe(`Hale: ${subject} week${HEADER_SEP}${body}`);
 
-  if (payload.items.length === 0) return { kind: 'sms', text: send(ask) };
+  if (payload.items.length === 0) return { kind: 'sms', text: send(QUIET_ASK) };
 
-  const linked = send(`${FULL_WEEK_PREFIX}${payload.deepLink}${ITEM_SEP}${ask}`);
+  const ask = approvalAsk(pendingCount(payload.items), draftedCount(payload.items));
+  const tail = ask === null ? '' : `${ITEM_SEP}${ask}`;
+
+  const linked = send(`${FULL_WEEK_PREFIX}${payload.deepLink}${tail}`);
   if (payload.items.length > SMS_ITEM_CAP) return { kind: 'sms', text: linked };
 
   const list = itemsChronological(payload.items)
     .map((i) => smsItem(i, payload.children))
     .join(ITEM_SEP);
-  const inline = send(`${list}${ITEM_SEP}${ask}`);
+  const inline = send(`${list}${tail}`);
 
   // A week too long to read inline takes the overflow form it already has, rather than
   // a fourth and fifth segment. What survives either way is the ask.

@@ -41,10 +41,10 @@ function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] }
     latestUndoable: async () => null,
     approve: async (_db, a) => {
       approved.push(a.actionId);
-      return true;
+      return { ok: true };
     },
-    decline: async () => true,
-    undo: async () => true,
+    decline: async () => ({ ok: true }),
+    undo: async () => ({ ok: true }),
   };
 }
 

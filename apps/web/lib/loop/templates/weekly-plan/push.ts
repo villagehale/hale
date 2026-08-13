@@ -7,6 +7,7 @@ import {
   genericSensitiveWhat,
   headerNames,
   itemsChronological,
+  needsYourOkHeading,
   partitionByNeed,
   strippedWhat,
   weekSubject,
@@ -60,7 +61,7 @@ export function renderWeeklyPlanPush(
   if (payload.items.length === 0) {
     body = QUIET_BODY;
   } else if (pending.length > 0) {
-    body = `${pending.length} need your OK${ITEM_SEP}${preview(pending, payload.children)}`;
+    body = `${needsYourOkHeading(pending.length)}${ITEM_SEP}${preview(pending, payload.children)}`;
   } else {
     body = `All set${ITEM_SEP}${preview(handled, payload.children)}`;
   }

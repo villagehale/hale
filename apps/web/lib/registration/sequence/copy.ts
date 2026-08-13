@@ -115,10 +115,14 @@ function headsUp(input: LegCopyInput): string {
   // The hedge is load-bearing: the match may rest on the +/-6-month tolerance the
   // matcher grants a DOB derived from a spoken age, so asserting the band would be
   // asserting something Hale does not know.
-  const hedge = shortlist.ageApproximate ? ' Worth a look if that is still their band.' : '';
+  const hedge = shortlist.ageApproximate ? " Worth a look if that's still their band." : '';
+  // The unapproved household's shortlist is an ordinary drafted_for_approval row, so the
+  // YES that approves it is the same one the app button sends (router/wiring.ts binds
+  // both to approveDraftedAction). Pointing them at the app would ask them to learn a
+  // second surface to do what the thread they are already in can do.
   const cta = headsUpPromisesPlan(input.optIn)
-    ? ' I will send your plan the evening before.'
-    : ' Open Hale to approve the shortlist and I will run the morning with you.';
+    ? " I'll send your plan the evening before."
+    : " Reply YES and I'll run the morning with you.";
   return `${windowPhrase(shortlist)} registration opens ${when(shortlist.opensForFamilyAt, input.timeZone, input.now)} for ${who}.${resident}${hedge}${cta}`;
 }
 
@@ -181,19 +185,19 @@ export function renderCheckInReply(input: CheckInReplyInput): string {
   const { shortlist, reply } = input;
   const town = townLabel(shortlist.windowRef.municipality);
   if (reply.outcome === 'registered') {
-    return `That is a spot. Noted: ${town} ${shortlist.windowRef.cycleLabel} registered.`;
+    return `That's a spot. Noted: ${town} ${shortlist.windowRef.cycleLabel} registered.`;
   }
   if (reply.outcome === 'missed') {
-    return `Sorry - that one filled. Noted, and I will flag the next ${town} window early.`;
+    return `Sorry - that one filled. Noted, and I'll flag the next ${town} window early.`;
   }
   if (reply.outcome === null) {
-    return `Sorry, I did not catch that. ${ANSWER_MENU}`;
+    return `Sorry, I didn't catch that. ${ANSWER_MENU}`;
   }
   const spot = reply.position === null ? 'Waitlisted' : `Waitlisted #${reply.position}`;
   if (shortlist.waitlistResponseHours === null || reply.deadlineAt === null) {
-    return `${spot}, noted. ${town} has no published response window, so I cannot set a clock - watch your email closely.`;
+    return `${spot}, noted. ${town} has no published response window, so I can't set a clock - watch your email closely.`;
   }
-  return `${spot}, noted. ${town} gives ${shortlist.waitlistResponseHours}h to answer an offer, so I will nudge you before ${when(reply.deadlineAt, input.timeZone, input.now)}.`;
+  return `${spot}, noted. ${town} gives ${shortlist.waitlistResponseHours}h to answer an offer, so I'll nudge you before ${when(reply.deadlineAt, input.timeZone, input.now)}.`;
 }
 
 /**

@@ -14,6 +14,11 @@ import {
 import { weekWindow } from '~/lib/plan/spine';
 import { composeWeekPlan } from './compose';
 import { gatherWeekPlanInputs } from './gather';
+import {
+  type MintPlacementsInput,
+  type MintPlacementsResult,
+  mintCalendarDraftsForWeekPlan,
+} from './mint-placements';
 import { hasWeekPlan, upsertWeekPlan } from './queries';
 import { composeWeekVoice } from './voice/week-voice';
 
@@ -34,6 +39,8 @@ import { composeWeekVoice } from './voice/week-voice';
  *      disabled) or the voice call fails/degrades, the plan persists WITHOUT voice
  *      (graceful degradation, rule #8 — the send is never blocked on the model).
  *   5. idempotent upsert (family_id, week_start) + an immutable audit row (rule #6).
+ *   6. mint the week's calendar placements as HELD drafts (VIL-219 · B3) — the rows the
+ *      Sunday SMS's approval ask counts, so the ask and the queue cannot disagree.
  */
 
 /** Per-run family cap — the blast-radius bound, mirroring the digest cron. */
@@ -46,29 +53,65 @@ const WEEK_PLAN_COMPOSE_CONCURRENCY = 5;
 const COMPOSE_SLOT_MINUTES = 60;
 const MINUTES_PER_WEEK = 10080;
 
+/**
+ * Mints the week's held calendar drafts, or says why it could not.
+ *
+ * Reviewing a draft needs a model (rule #3), so with no key there is nothing to review
+ * with — and that is a NAMED outcome rather than a zero (rule #11): zero minted and
+ * "could not mint" are different facts, and only one of them means the parent's SMS ask
+ * is about to count rows that exist.
+ */
+export type WeekPlanMint = (
+  input: MintPlacementsInput,
+  database: Database,
+) => Promise<MintPlacementsResult | 'no_reviewer'>;
+
 export interface WeekPlanDeps {
   /** The agent client for the summary stage, or null to run WITHOUT the LLM (the
    * deterministic plan still composes + persists). */
   client: AgentClient | null;
   /** The I/O gather step, injectable so the cron logic is unit-tested with a fake. */
   gather: typeof gatherWeekPlanInputs;
+  /** The placement mint (VIL-219 · B3). Non-nullable (rule #11): the weekly SMS ask
+   * counts the drafts this produces, so a compose path that could quietly skip it
+   * would ship a count with no rows under it. */
+  mint: WeekPlanMint;
 }
 
 let anthropicClient: Anthropic | undefined;
 
-export function defaultWeekPlanDeps(): WeekPlanDeps {
+/** The shared client, or null when there is no key at all. */
+function agentClient(): AgentClient | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  // No key, or the kill switch, disables the voice stage — the composer stays fully
-  // functional (rule #8), just without the model-composed voice.
-  if (!apiKey || process.env.WEEK_PLAN_SUMMARY_DISABLED === 'true') {
-    return { client: null, gather: gatherWeekPlanInputs };
-  }
+  if (!apiKey) return null;
   anthropicClient ??= new Anthropic({ apiKey });
-  return { client: anthropicClient, gather: gatherWeekPlanInputs };
+  return anthropicClient;
+}
+
+export function defaultWeekPlanDeps(): WeekPlanDeps {
+  const client = agentClient();
+  return {
+    // No key, or the kill switch, disables the VOICE stage — the composer stays fully
+    // functional (rule #8), just without the model-composed voice. The kill switch stops
+    // there on purpose: it turns off the words, not the drafts the ask counts.
+    client: process.env.WEEK_PLAN_SUMMARY_DISABLED === 'true' ? null : client,
+    gather: gatherWeekPlanInputs,
+    mint: async (input, database) =>
+      client ? mintCalendarDraftsForWeekPlan(input, database, client) : 'no_reviewer',
+  };
 }
 
 export type WeekPlanFamilyResult =
-  | { familyId: string; status: 'composed'; weekStart: string; itemCount: number; voiced: boolean }
+  | {
+      familyId: string;
+      status: 'composed';
+      weekStart: string;
+      itemCount: number;
+      voiced: boolean;
+      /** How many placements were drafted for the parent's OK, or 'no_reviewer' when
+       * there was no model to review them with. */
+      drafted: number | 'no_reviewer';
+    }
   | { familyId: string; status: 'skipped_existing'; weekStart: string };
 
 /**
@@ -107,7 +150,24 @@ export async function runWeekPlanForFamily(
   const { id: planId } = await upsertWeekPlan(db, { familyId, weekStart, summary, items, voice });
   await writeComposeAudit(db, familyId, planId);
 
-  return { familyId, status: 'composed', weekStart, itemCount: items.length, voiced: voice !== null };
+  // The placements (VIL-219 · B3), minted AFTER the plan is safely persisted: a review
+  // that throws must not cost the family their week. Every dated item the composer
+  // flagged `calendar_add` becomes a draft HELD for the parent's OK (rule #4) — which
+  // is what the Sunday SMS's "N drafted for your calendar - reply YES" is counting.
+  // Idempotent by dedup hash, so a re-compose of the same week mints nothing twice.
+  const drafted = await deps.mint(
+    { familyId, weekStart, items, timeZone, actor: 'system' },
+    db,
+  );
+
+  return {
+    familyId,
+    status: 'composed',
+    weekStart,
+    itemCount: items.length,
+    voiced: voice !== null,
+    drafted: drafted === 'no_reviewer' ? drafted : drafted.minted.length,
+  };
 }
 
 /** One immutable audit row per compose (rule #6). Actor 'system' — a scheduled run.

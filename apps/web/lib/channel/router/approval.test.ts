@@ -1,7 +1,13 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import { MAX_LISTED_APPROVALS, matchFastPath } from './fast-path';
-import { type ApprovalSpine, type PendingAction, resolveApproval } from './approval';
+import {
+  type ApprovalSpine,
+  type PendingAction,
+  type SpineOutcome,
+  type SpineRefusal,
+  resolveApproval,
+} from './approval';
 
 /**
  * The approval fast-path, resolved against a scripted spine. The spine is faked (it is
@@ -25,11 +31,14 @@ function spine(
   options: {
     pending?: PendingAction[];
     undoable?: PendingAction | null;
-    refuse?: boolean;
+    /** Which STATE the spine refuses on, when it refuses at all. */
+    refuse?: SpineRefusal;
   } = {},
 ): { spine: ApprovalSpine; calls: SpyCall[] } {
   const calls: SpyCall[] = [];
-  const ok = !options.refuse;
+  const outcome: SpineOutcome = options.refuse
+    ? { ok: false, reason: options.refuse }
+    : { ok: true };
   return {
     calls,
     spine: {
@@ -37,15 +46,15 @@ function spine(
       latestUndoable: async () => options.undoable ?? null,
       approve: async (_db, a) => {
         calls.push({ op: 'approve', actionId: a.actionId, actor: a.approvedBy });
-        return ok;
+        return outcome;
       },
       decline: async (_db, a) => {
         calls.push({ op: 'decline', actionId: a.actionId, actor: a.declinedBy });
-        return ok;
+        return outcome;
       },
       undo: async (_db, a) => {
         calls.push({ op: 'undo', actionId: a.actionId, actor: a.revertedBy });
-        return ok;
+        return outcome;
       },
     },
   };
@@ -91,11 +100,48 @@ describe('resolveApproval — one pending action', () => {
     expect(outcome.reply).toMatch(/add to your calendar/i);
   });
 
-  it('reports honestly when the spine refuses — nothing silently swallowed', async () => {
-    const { outcome } = await run('yes', { pending: [action('a-1')], refuse: true });
+  it('reports honestly when the spine refuses on a state it cannot explain', async () => {
+    const { outcome } = await run('yes', { pending: [action('a-1')], refuse: 'unavailable' });
 
     expect(outcome.status).toBe('conflict');
     expect(outcome.reply).toMatch(/nothing was changed/i);
+  });
+
+  /**
+   * The four spine refusals are permanent, correct answers about STATE — not breakages.
+   * Answering them with the failure template said three false things at once: that Hale
+   * broke, that nothing changed (the co-parent's approval DID), and that a retry would
+   * work (it fails identically, for 24h in the undo case).
+   */
+  it('says the row was already answered rather than blaming itself', async () => {
+    const { outcome } = await run('yes', {
+      pending: [action('a-1')],
+      refuse: 'already_resolved',
+    });
+
+    expect(outcome.status).toBe('conflict');
+    expect(outcome.reply).toMatch(/already handled/i);
+    expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
+  });
+
+  it('says a draft has not cleared review, and never invites a retry', async () => {
+    const { outcome } = await run('yes', {
+      pending: [action('a-1')],
+      refuse: 'not_reviewer_approved',
+    });
+
+    expect(outcome.reply).toMatch(/checks/i);
+    expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
+  });
+
+  it('declining a resolved row gets the same state receipt, not an apology', async () => {
+    const { outcome } = await run('no', {
+      pending: [action('a-1')],
+      refuse: 'already_resolved',
+    });
+
+    expect(outcome.status).toBe('conflict');
+    expect(outcome.reply).toMatch(/already handled/i);
   });
 });
 
@@ -197,11 +243,27 @@ describe('resolveApproval — undo', () => {
     expect(calls).toEqual([]);
   });
 
-  it('reports honestly when the reversal is refused', async () => {
-    const { outcome } = await run('undo', { undoable: action('a-9'), refuse: true });
+  it('says the undo window closed rather than promising another minute', async () => {
+    const { outcome } = await run('undo', {
+      undoable: action('a-9'),
+      refuse: 'undo_window_expired',
+    });
 
     expect(outcome.status).toBe('conflict');
-    expect(outcome.reply).toMatch(/nothing was changed/i);
+    expect(outcome.reply).toMatch(/undo window/i);
+    // The window does not reopen: "try me again in a minute" is false for 24 hours.
+    expect(outcome.reply).not.toMatch(/try me again/i);
+  });
+
+  it('says an action is not one it can take back, rather than that it broke', async () => {
+    const { outcome } = await run('undo', {
+      undoable: action('a-9', 'send_email'),
+      refuse: 'not_reversible',
+    });
+
+    expect(outcome.status).toBe('conflict');
+    expect(outcome.reply).toMatch(/take back/i);
+    expect(outcome.reply).not.toMatch(/went wrong|try me again/i);
   });
 
   it('ignores the pending queue entirely — undo names an EXECUTED action', async () => {

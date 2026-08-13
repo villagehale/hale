@@ -752,10 +752,10 @@ async function runToddlerJourney(): Promise<Journey> {
     latestUndoable: async () => null,
     approve: async (database, args) => {
       const result = await approveDraftedAction(database, queue, args);
-      return result.status === 202;
+      return result.status === 202 ? { ok: true } : { ok: false, reason: 'unavailable' };
     },
-    decline: async () => false,
-    undo: async () => false,
+    decline: async () => ({ ok: false, reason: 'unavailable' }),
+    undo: async () => ({ ok: false, reason: 'unavailable' }),
   };
 
   const approval = await approvalHandler(spine).handle(fake.db, {

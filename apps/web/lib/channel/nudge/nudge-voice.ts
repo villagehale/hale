@@ -136,7 +136,14 @@ function joinNames(names: readonly string[]): string {
 }
 
 function dayLabel(day: string): string {
-  return day.charAt(0).toUpperCase() + day.slice(1);
+  return sentenceCase(day);
+}
+
+/** Capitalize a phrase authored to sit mid-sentence, at the point it becomes the start
+ * of one. `weatherFact` is written as a clause ("the weekend forecast is wet") because
+ * the composer weaves it into its own sentence; the deterministic render leads with it. */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**
@@ -165,7 +172,7 @@ export function renderNudgeDeterministically(nudge: Nudge): string {
   const where = nudge.candidateRef.venueName ? ` at ${nudge.candidateRef.venueName}` : '';
   const who = nudge.kidNames.length > 0 ? ` for ${joinNames(nudge.kidNames)}` : '';
   const why = nudge.whyFacts.length > 0 ? ` (${nudge.whyFacts.join(', ')})` : '';
-  return `${nudge.weatherFact}, so ${dayLabel(nudge.day)}: ${nudge.candidateRef.title}${where}${who}${why}.`;
+  return `${sentenceCase(nudge.weatherFact)}, so ${dayLabel(nudge.day)}: ${nudge.candidateRef.title}${where}${who}${why}.`;
 }
 
 /**

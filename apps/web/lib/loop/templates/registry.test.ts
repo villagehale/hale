@@ -41,7 +41,10 @@ describe('loopTemplateRenderer', () => {
   });
 
   it('delegates a non-weekly_plan key to defaultLoopRenderer', () => {
-    const other = msg({ templateKey: 'reminder_t1h', payload: { text: 'Bath time in an hour' } });
+    const other = msg({
+      templateKey: 'reminder_t1h',
+      payload: { text: 'Bath time in an hour', html: '<p>Bath time in an hour</p>' },
+    });
     const sms = loopTemplateRenderer.render(other, 'sms', 'generic');
     expect(sms.kind).toBe('sms');
     if (sms.kind === 'sms') {
@@ -53,5 +56,19 @@ describe('loopTemplateRenderer', () => {
       // The seam's default subject when the payload carries none.
       expect(emailOut.subject).toBe('Hale');
     }
+  });
+
+  it('REFUSES a payload with no words in it rather than sending a canned line', () => {
+    // Rule #11: a dispatched message whose payload carries no text is a wiring bug, and
+    // "You have a new update from Hale." delivered it as a message — the caller looked
+    // successful and the parent got a sentence that says nothing.
+    const empty = msg({ templateKey: 'reminder_t1h', payload: {} });
+    for (const channel of ['sms', 'push', 'email'] as const) {
+      expect(() => loopTemplateRenderer.render(empty, channel, 'generic')).toThrow(/no text/i);
+    }
+    // Text but no markup is the same bug on the email leg only.
+    const textOnly = msg({ templateKey: 'reminder_t1h', payload: { text: 'Bath time' } });
+    expect(() => loopTemplateRenderer.render(textOnly, 'email', 'generic')).toThrow(/no html/i);
+    expect(loopTemplateRenderer.render(textOnly, 'sms', 'generic').kind).toBe('sms');
   });
 });

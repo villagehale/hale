@@ -8,6 +8,7 @@ import {
   recordOptOut,
   recordEmailSend,
   signUnsubscribeToken,
+  unsubscribeStreamLabel,
   unsubscribeUrl,
   verifyUnsubscribeToken,
 } from './email-compliance';
@@ -250,5 +251,30 @@ describe('isLoopEmailType — the STOP guardrail classifier', () => {
     expect(isLoopEmailType('daily_digest')).toBe(false);
     expect(isLoopEmailType('welcome')).toBe(false);
     expect(isLoopEmailType('verification')).toBe(false);
+  });
+});
+
+describe('unsubscribeStreamLabel — the confirmation page names the stream that stopped', () => {
+  it('gives every stream its own name', () => {
+    expect(unsubscribeStreamLabel('weekly_plan')).toBe('weekly plan emails');
+    expect(unsubscribeStreamLabel('reminder')).toBe('reminder emails');
+    expect(unsubscribeStreamLabel('approval')).toBe('calendar invite emails');
+    expect(unsubscribeStreamLabel('alert')).toBe('alert emails');
+    expect(unsubscribeStreamLabel('welcome')).toBe('welcome emails');
+  });
+
+  it('never tells a live stream it was the retired daily brief', () => {
+    for (const emailType of ['weekly_plan', 'reminder', 'approval', 'alert', 'welcome'] as const) {
+      expect(unsubscribeStreamLabel(emailType)).not.toContain('brief');
+    }
+    // The one stream the phrase belongs to — old links in old inboxes still land here.
+    expect(unsubscribeStreamLabel('daily_digest')).toBe('daily brief emails');
+  });
+
+  it('labels no two streams the same, so the receipt is never ambiguous', () => {
+    const labels = (['daily_digest', 'welcome', 'weekly_plan', 'reminder', 'approval', 'alert'] as const).map(
+      unsubscribeStreamLabel,
+    );
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

@@ -69,4 +69,12 @@ describe('caregiver copy · promises match the matrix', () => {
     expect(inviteBody('Ana', 'babysitter')).toContain('Ana added you');
     expect(inviteBody(null, 'babysitter')).toContain('A parent added you');
   });
+
+  it('introduces the inviter BEFORE saying "their family" — no dangling referent', () => {
+    // A stranger's first message: "the assistant that keeps their family's week
+    // straight" ahead of "A parent added you" leaves 'their' pointing at nobody.
+    for (const body of [inviteBody('Ana', 'nanny'), inviteBody(null, 'nanny')]) {
+      expect(body.indexOf('added you')).toBeLessThan(body.indexOf('their family'));
+    }
+  });
 });

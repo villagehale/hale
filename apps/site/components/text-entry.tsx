@@ -33,8 +33,8 @@ export function TextEntry({ source, smsNumber }: { source: string | null; smsNum
           Hi, I’m Hale — your family’s quiet chief of staff.
         </h1>
         <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
-          I keep watch over your week — registrations, programs, school paperwork, weather — and
-          text you before things matter.
+          I keep watch over your week — registrations, programs, checkups, weather — and text you
+          before things matter.
         </p>
       </div>
 

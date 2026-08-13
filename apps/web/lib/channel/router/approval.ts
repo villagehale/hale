@@ -2,8 +2,8 @@ import type { Database } from '@hale/db';
 import {
   UNDONE_RECEIPT,
   approvedReceipt,
+  conflictReply,
   declinedReceipt,
-  failureReply,
   nothingPendingReply,
   nothingToUndoReply,
   outOfRangeReply,
@@ -46,13 +46,37 @@ export interface PendingAction {
 }
 
 /**
+ * Why the spine refused, in the parent's terms rather than the route's.
+ *
+ * These are STATES, not breakages: the row was already answered (often by the co-parent
+ * in the app), it has not cleared Hale's own review (rule #3), the 24h undo window shut,
+ * or the last thing Hale did is not a placement it can take back. Every one of them is a
+ * permanent, correct refusal, which is what makes "try me again in a minute" false — the
+ * next attempt fails identically, and in the already-answered case something DID change.
+ *
+ * `unavailable` is the one that is genuinely a breakage (the row vanished mid-turn, or
+ * came back belonging to another family), and it is the only one the failure template
+ * still answers.
+ */
+export type SpineRefusal =
+  | 'already_resolved'
+  | 'not_reviewer_approved'
+  | 'undo_window_expired'
+  | 'not_reversible'
+  | 'unavailable';
+
+/** A mutator either did the thing, or says which state stopped it. */
+export type SpineOutcome = { ok: true } | { ok: false; reason: SpineRefusal };
+
+/**
  * The four verbs of the approvals spine, injected. Production binds these to the SAME
  * functions the app's approve/decline/undo buttons call, so a text and a tap cannot
  * diverge on preconditions, audit rows, or the reviewer gate (rule #3).
  *
- * Each mutator returns whether it succeeded. The reason it failed is deliberately NOT
- * surfaced: over SMS every refusal collapses to the same honest sentence, and a status
- * code in a text message would tell a parent nothing.
+ * Each mutator returns whether it succeeded AND, when it did not, which state refused
+ * it. The reason used to be dropped here on the argument that every refusal collapses
+ * to one sentence over SMS — but the sentence it collapsed to said Hale had broken and
+ * asked the parent to try again, which is false for all four of them.
  */
 export interface ApprovalSpine {
   /**
@@ -67,15 +91,15 @@ export interface ApprovalSpine {
   approve(
     database: Database,
     args: { actionId: string; familyId: string; approvedBy: string },
-  ): Promise<boolean>;
+  ): Promise<SpineOutcome>;
   decline(
     database: Database,
     args: { actionId: string; familyId: string; declinedBy: string },
-  ): Promise<boolean>;
+  ): Promise<SpineOutcome>;
   undo(
     database: Database,
     args: { actionId: string; familyId: string; revertedBy: string; now: Date },
-  ): Promise<boolean>;
+  ): Promise<SpineOutcome>;
 }
 
 export type ApprovalStatus =
@@ -136,7 +160,7 @@ export async function resolveApproval(
   }
 
   const approving = input.command.verb === 'yes';
-  const ok = approving
+  const outcome = approving
     ? await spine.approve(database, {
         actionId: target.actionId,
         familyId: input.familyId,
@@ -148,8 +172,8 @@ export async function resolveApproval(
         declinedBy: input.parentUserId,
       });
 
-  if (!ok) {
-    return { status: 'conflict', reply: failureReply(), actionId: target.actionId };
+  if (!outcome.ok) {
+    return { status: 'conflict', reply: conflictReply(outcome.reason), actionId: target.actionId };
   }
   return {
     status: approving ? 'approved' : 'declined',
@@ -197,15 +221,15 @@ async function resolveUndo(
     return { status: 'nothing_to_undo', reply: nothingToUndoReply(), actionId: null };
   }
 
-  const ok = await spine.undo(database, {
+  const outcome = await spine.undo(database, {
     actionId: target.actionId,
     familyId: input.familyId,
     revertedBy: input.parentUserId,
     now: input.now,
   });
-  return ok
+  return outcome.ok
     ? { status: 'undone', reply: UNDONE_RECEIPT, actionId: target.actionId }
-    : { status: 'conflict', reply: failureReply(), actionId: target.actionId };
+    : { status: 'conflict', reply: conflictReply(outcome.reason), actionId: target.actionId };
 }
 
 /** Re-exported so a caller reasoning about the numbered list has one import. */

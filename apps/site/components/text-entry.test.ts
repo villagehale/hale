@@ -37,8 +37,16 @@ describe('TextEntry (persona copy)', () => {
     for (const html of [liveHtml, unsetHtml]) {
       expect(html).toContain('Hi, I’m Hale — your family’s quiet chief of staff.');
       expect(html).toContain(
-        'I keep watch over your week — registrations, programs, school paperwork, weather — and text you before things matter.',
+        'I keep watch over your week — registrations, programs, checkups, weather — and text you before things matter.',
       );
+    }
+  });
+
+  it('names only watched things that exist — no school paperwork Hale cannot see', () => {
+    // Same bar the landing holds (landing-f14.test.ts): the health timeline and the
+    // weather read are real; there is no school-paperwork ingestion in the product.
+    for (const html of [liveHtml, unsetHtml]) {
+      expect(html).not.toContain('school paperwork');
     }
   });
 

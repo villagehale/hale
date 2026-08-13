@@ -189,7 +189,7 @@ export interface SequenceRunDeps {
   audit(database: Database, row: SequenceAuditRow): Promise<void>;
   /**
    * MEM-10 · the open-loops ledger. Both REQUIRED for the reason `transport` is (rule
-   * #11): the heads-up leg tells an approved household "I will send your plan the
+   * #11): the heads-up leg tells an approved household "I'll send your plan the
    * evening before", and a ladder assembled without these would make that sentence the
    * only record of it — a promise nobody can count, and nobody can see broken.
    */
@@ -461,7 +461,7 @@ async function runLegForSequence(
  * MEM-10 · the ladder's own promise, opened and closed.
  *
  * ONE leg makes a commitment and ONE leg keeps it. The heads-up tells an approved
- * household "I will send your plan the evening before" — a sentence with a deadline in
+ * household "I'll send your plan the evening before" — a sentence with a deadline in
  * it — and the battle plan is the message that makes good. Both are written AFTER the
  * send, against the row that carried it, so a leg that never reached a transport neither
  * opens a debt nor discharges one.
