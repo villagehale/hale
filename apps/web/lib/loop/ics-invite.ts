@@ -1,7 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
 import { and, count, eq } from 'drizzle-orm';
-import type { ResendTransport } from '~/lib/channel/resend-transport';
 import { appBaseUrl } from '~/lib/cron/email-compliance';
 import { type ChildNameLevel, loadLoopPrefsView } from '~/lib/loop/prefs';
 import { eventDescriptor, isPrivateEvent } from '~/lib/loop/templates/reminder/core';
@@ -37,6 +36,10 @@ import {
  * one row, so the count rises exactly when the event changes and never falls. A CANCEL
  * is issued one above the count so it always supersedes the last REQUEST, whatever the
  * ordering of its own audit write.
+ *
+ * SENDING IS NOT HERE. This module composes; `lib/loop/calendar-invite.ts` fans the
+ * composed part out through the A2 dispatch, which owns quiet hours, consent, the
+ * ledger and the audit row. Nothing in here reaches a provider.
  *
  * PRIVACY (rule #1): an invite is an OUTBOUND surface, so its SUMMARY/LOCATION/
  * DESCRIPTION get the same treatment as the channel carrying it — `isPrivateEvent` +
@@ -260,46 +263,69 @@ export async function loadEventInvite(
 
 // ── The email leg ────────────────────────────────────────────────────────────
 
-export interface SendEventInviteInput {
+export interface ComposeEventInviteInput {
   familyId: string;
   familyEventId: string;
   /** The recipient parent — their child_name_level dial governs the rendering. */
   parentUserId: string;
+  /** The ATTENDEE address. RFC 5546 requires one on a REQUEST, and it is the address
+   * the invite must actually be delivered to for a client to render the add card. */
   to: string;
-  subject: string;
-  /** The short quiet-operator body the caller composes; sent verbatim. */
-  text: string;
-  html?: string;
   /** One line for the calendar entry's DESCRIPTION; dropped when the event is private. */
   note?: string;
   /** REQUEST (default) invites; CANCEL withdraws a previously sent invite. */
   method?: IcsMethod;
 }
 
-export interface SendEventInviteDeps {
+export interface ComposeEventInviteDeps {
   database: Database;
-  transport: ResendTransport;
+  /** The ORGANIZER identity. It MUST equal the address the message is finally sent
+   * from or clients reject the iTIP object — which is why it resolves exactly as the
+   * A2 email adapter's from-identity does (RESEND_FROM, else the shared default). */
   from?: string;
   now?: Date;
 }
 
-export type SendEventInviteResult =
-  | { status: 'sent'; providerMessageId: string | null; sequence: number }
-  | { status: 'not_found' }
-  | { status: 'error'; message: string };
+export type ComposeEventInviteResult =
+  | {
+      status: 'composed';
+      /** The serialized iTIP object, ready to ride as a text/calendar part. */
+      ics: string;
+      method: IcsMethod;
+      sequence: number;
+      /** The event's redacted descriptor at THIS recipient's level. The caller's
+       * subject line is built from this rather than from the stored title, so the
+       * envelope can never be more revealing than the attachment (rule #1). */
+      summary: string;
+      startsAt: Date;
+    }
+  | { status: 'not_found' };
+
+/** The text/calendar part a composed invite becomes on an email. */
+export function inviteAttachment(composed: {
+  ics: string;
+  method: IcsMethod;
+}): { filename: string; content: string; contentType: string } {
+  return {
+    filename: ATTACHMENT_FILENAME,
+    content: Buffer.from(composed.ics, 'utf8').toString('base64'),
+    contentType: `text/calendar; charset=utf-8; method=${composed.method}`,
+  };
+}
 
 /**
- * Emails one event as a calendar invite: the caller's own short body, plus the iTIP
- * object as a `text/calendar` attachment the mail client offers to add. The transport is
- * injected (tests use a fake, no provider is reached).
+ * One event as an iTIP object addressed to one parent, rendered at THAT parent's
+ * privacy level — everything the email leg needs and nothing that sends it.
  *
- * This is deliberately the send only — no ledger row, no quiet-hours check, no consent
- * gate. Production wiring goes through the A2 dispatch, which owns that policy.
+ * Composing and sending are deliberately separate: the send goes through the A2
+ * dispatch (quiet hours, consent, cap, ledger, audit), which is the only path to a
+ * provider, and it needs the finished bytes to hand its email channel. See
+ * lib/loop/calendar-invite.ts for the production fan-out.
  */
-export async function sendEventInvite(
-  input: SendEventInviteInput,
-  deps: SendEventInviteDeps,
-): Promise<SendEventInviteResult> {
+export async function composeEventInvite(
+  input: ComposeEventInviteInput,
+  deps: ComposeEventInviteDeps,
+): Promise<ComposeEventInviteResult> {
   const now = deps.now ?? new Date();
   const method = input.method ?? 'REQUEST';
 
@@ -315,30 +341,14 @@ export async function sendEventInvite(
   ]);
 
   const invite = toInviteEvent(row, { level, note: input.note ?? null, sequence }, now);
-  const from = deps.from ?? process.env.RESEND_FROM ?? INVITE_FROM;
   const options = {
-    organizerEmail: from,
+    organizerEmail: deps.from ?? process.env.RESEND_FROM ?? INVITE_FROM,
     organizerName: ORGANIZER_NAME,
     attendeeEmail: input.to,
     now,
   };
-  const ics = method === 'CANCEL' ? generateEventCancel(invite, options) : generateEventInvite(invite, options);
+  const ics =
+    method === 'CANCEL' ? generateEventCancel(invite, options) : generateEventInvite(invite, options);
 
-  const { id, error } = await deps.transport.send({
-    from,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-    attachments: [
-      {
-        filename: ATTACHMENT_FILENAME,
-        content: Buffer.from(ics, 'utf8').toString('base64'),
-        contentType: `text/calendar; charset=utf-8; method=${method}`,
-      },
-    ],
-  });
-
-  if (error) return { status: 'error', message: error.message };
-  return { status: 'sent', providerMessageId: id, sequence };
+  return { status: 'composed', ics, method, sequence, summary: invite.summary, startsAt: row.startsAt };
 }
