@@ -1,8 +1,8 @@
 import type { WeekPlanItem } from '@hale/db';
 import { describe, expect, it } from 'vitest';
 import type { LoopMessage, RenderedContent } from '~/lib/channel/types';
+import { isGsm7, smsSegments } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { smsSegments } from './core';
 import { weeklyPlanRenderer } from './index';
 import type { PlanChild, WeeklyPlanPayload } from './payload';
 
@@ -107,14 +107,54 @@ function push(p: WeeklyPlanPayload, level: ChildNameLevel) {
   return r;
 }
 
+/**
+ * The real worst case the SMS budget has to survive: the item cap full, every title a
+ * long one taken from the registration corpus this product actually reads, and two
+ * children whose names carry accents. The old fixture's longest title was "Family
+ * picnic Saturday" — 22 characters — so the ≤3-segment guarantee was never tested
+ * against anything that could break it.
+ */
+const denseWeek = payload({
+  children: [
+    { id: 'c-chloe', name: 'Chloé', dateOfBirth: '2019-03-10', gender: 'girl' },
+    { id: 'c-loic', name: 'Loïc', dateOfBirth: '2021-06-01', gender: 'boy' },
+  ],
+  items: [
+    item({ title: 'Community Leadership After-School Program (CLASP) 2026/2027 school year', childIds: ['c-chloe'], startsAt: '2026-07-20T09:00', needs: 'calendar_add' }),
+    item({ title: 'After-School Recreation Care (ARC) 2026/2027 school year', childIds: ['c-loic'], startsAt: '2026-07-20T16:00', needs: 'calendar_add' }),
+    item({ title: 'Fall 2026 and Winter 2027 Aquatic Leadership programs', childIds: ['c-chloe'], startsAt: '2026-07-21T17:15' }),
+    item({ title: 'Holiday Camp (winter break) — registers in the Fall 2026 window', childIds: ['c-loic'], startsAt: '2026-07-22T10:30', needs: 'decision' }),
+    item({ title: 'Fall 2026 (Learn to Swim and Learn to Skate)', childIds: ['c-chloe'], startsAt: '2026-07-23T18:45' }),
+    item({ title: 'Fall 2026 and Winter 2027 youth programs', childIds: ['c-loic'], startsAt: '2026-07-24T08:15' }),
+    item({ title: 'Fall 2026 Programs and Winter Camps', childIds: ['c-chloe'], startsAt: '2026-07-25T11:00', needs: 'calendar_add' }),
+    item({ title: 'Winter Break Camps December 2026', childIds: ['c-loic'], startsAt: '2026-07-26T13:30' }),
+  ],
+});
+
 describe('SMS — segment budget + GSM-7 output', () => {
   it('a worst-case eight-item week stays within 3 segments and is GSM-7', () => {
     const text = sms(fullWeek, 'first_name');
     expect(smsSegments(text)).toBeLessThanOrEqual(3);
     // GSM-7 is the only way 8 items fit in 3 segments (UCS-2 would be 67/seg).
-    expect(smsSegments(text)).toBe(smsSegments(text)); // stable
+    expect(isGsm7(text)).toBe(true);
     expect(text.includes(EM_DASH)).toBe(false); // normalized away
     expect(text.includes('·')).toBe(false);
+  });
+
+  it('holds the 3-segment budget on a full week of long real-world titles', () => {
+    const text = sms(denseWeek, 'first_name');
+
+    expect(smsSegments(text)).toBeLessThanOrEqual(3);
+    expect(isGsm7(text)).toBe(true);
+    // Whatever gives way, the ask never does — it is the only actionable line.
+    // Three calendar_add items plus one decision = 4.
+    expect(text).toContain('4 need your OK');
+  });
+
+  it('keeps accented names readable through the GSM-7 fold', () => {
+    const text = sms(denseWeek, 'first_name');
+
+    expect(text).toContain("Chloé & Loic's week");
   });
 
   it('strips emoji from the SMS', () => {

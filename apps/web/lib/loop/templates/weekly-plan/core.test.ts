@@ -1,5 +1,6 @@
 import type { WeekPlanItem } from '@hale/db';
 import { describe, expect, it } from 'vitest';
+import { isGsm7 } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import {
   childrenInPlan,
@@ -7,13 +8,11 @@ import {
   genericSensitiveWhat,
   gsmSafe,
   headerNames,
-  isGsm7,
   itemsChronological,
   leveledWhat,
   partitionByNeed,
   pendingCount,
   provenanceLabel,
-  smsSegments,
   strippedWhat,
   timeLabel,
   weekRangeLabel,
@@ -52,45 +51,6 @@ function item(partial: Partial<WeekPlanItem>): WeekPlanItem {
   };
 }
 
-describe('smsSegments — GSM-7 vs UCS-2 concatenation math', () => {
-  const gsm = (n: number) => 'a'.repeat(n);
-  // Hiragana は is outside GSM-7 → forces UCS-2 (one UTF-16 code unit each).
-  const ucs = (n: number) => 'あ'.repeat(n);
-
-  it('GSM-7: a single segment holds 160 septets, then rolls to 2', () => {
-    expect(smsSegments(gsm(160))).toBe(1);
-    expect(smsSegments(gsm(161))).toBe(2);
-  });
-
-  it('GSM-7: concatenated segments carry 153 septets each (UDH overhead)', () => {
-    expect(smsSegments(gsm(153 * 2))).toBe(2);
-    expect(smsSegments(gsm(153 * 2 + 1))).toBe(3);
-  });
-
-  it('UCS-2: a single segment holds 70 code units, then rolls to 2', () => {
-    expect(smsSegments(ucs(70))).toBe(1);
-    expect(smsSegments(ucs(71))).toBe(2);
-  });
-
-  it('UCS-2: concatenated segments carry 67 code units each', () => {
-    expect(smsSegments(ucs(67 * 2))).toBe(2);
-    expect(smsSegments(ucs(67 * 2 + 1))).toBe(3);
-  });
-
-  it('GSM-7 extension chars (€) cost two septets', () => {
-    expect(isGsm7('€€€')).toBe(true);
-    // 80 × 2 = 160 septets (single); 81 × 2 = 162 (rolls to a second segment).
-    expect(smsSegments('€'.repeat(80))).toBe(1);
-    expect(smsSegments('€'.repeat(81))).toBe(2);
-  });
-
-  it('flags non-GSM text as UCS-2', () => {
-    expect(isGsm7('plain ascii')).toBe(true);
-    expect(isGsm7('smart quote ’')).toBe(false);
-    expect(isGsm7('emoji \u{1f389}')).toBe(false);
-  });
-});
-
 describe('gsmSafe normalizes SMS copy into the GSM-7 alphabet', () => {
   it('maps typographic punctuation to GSM equivalents', () => {
     expect(gsmSafe(`a ${EM_DASH} b`)).toBe('a - b');
@@ -103,6 +63,42 @@ describe('gsmSafe normalizes SMS copy into the GSM-7 alphabet', () => {
     const out = gsmSafe('Park meetup \u{1f389} today');
     expect(out).toBe('Park meetup today');
     expect(isGsm7(out)).toBe(true);
+  });
+
+  it('transliterates an accent GSM-7 cannot carry rather than deleting the letter', () => {
+    // A name is the one thing in an SMS that must survive recognizably: "Loc" is not
+    // Loïc, and this product's compliance baseline is Quebec.
+    expect(gsmSafe('Loïc has swim class')).toBe('Loic has swim class');
+    expect(gsmSafe('François - leçon de natation')).toBe('Francois - lecon de natation');
+    expect(gsmSafe('Noël with Ève')).toBe('Noel with Eve');
+  });
+
+  it('leaves the accents GSM-7 does carry exactly as written', () => {
+    expect(gsmSafe('Chloé & Zoé à Québec')).toBe('Chloé & Zoé à Québec');
+    expect(isGsm7(gsmSafe('Chloé & Zoé à Québec'))).toBe(true);
+  });
+});
+
+describe('gsmSafe folds against the same table the carrier is billed on', () => {
+  /** One table, in ~/lib/channel/sms-segments (which pins its contents against GSM
+   * 03.38). This module kept a second copy and the two had already diverged on form
+   * feed — copy folded against one alphabet and billed against the other is how a
+   * "3 segments" budget quietly becomes five. What is asserted here is the property
+   * that made the drift matter: whatever gsmSafe emits, the encoder that bills it
+   * agrees it is GSM-7. A second private notion of "safe" fails this. */
+  const CORPUS = [
+    'Hale \u2014 your week',
+    'it\u2019s Lo\u00efc\u2019s turn',
+    'Park meetup \u{1f389}',
+    'Fran\u00e7ois \u00b7 le\u00e7on de natation',
+    'Caf\u00e9 \u00a35 \u00e0 Montr\u00e9al',
+    'No\u00ebl with \u00c8ve',
+    '\f\f\f',
+    'wait\u2026 \u20ac5',
+  ];
+
+  it.each(CORPUS)('folds %j into a body the encoder bills as GSM-7', (raw) => {
+    expect(isGsm7(gsmSafe(raw))).toBe(true);
   });
 });
 

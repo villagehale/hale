@@ -1,5 +1,6 @@
 import type { WeekPlanItem } from '@hale/db';
 import { deriveStage } from '@hale/types';
+import { isGsm7 } from '~/lib/channel/sms-segments';
 import { type ChildNameLevel, loopChildName } from '~/lib/loop/prefs';
 import type { PlanChild } from './payload';
 
@@ -217,44 +218,12 @@ export function timeLabel(startsAt: string | null): string | null {
   return `${hour12}:${mStr}`;
 }
 
-// ── SMS encoding (GSM-7 vs UCS-2 segment math) ────────────────────────────────
+// ── SMS copy folded into the GSM-7 alphabet ───────────────────────────────────
 
-// GSM 03.38 default alphabet (each char = 1 septet), excluding the ESC marker.
-const GSM7_BASIC =
-  '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
-// Extension table (each char = 2 septets, preceded by ESC).
-const GSM7_EXTENSION = '\f^{}\\[~]|€';
-
-/** The GSM-7 septet length of `text`, or null when a char is outside the alphabet
- * (i.e. the message must be sent as UCS-2). */
-function septetCount(text: string): number | null {
-  let count = 0;
-  for (const ch of text) {
-    if (GSM7_BASIC.includes(ch)) count += 1;
-    else if (GSM7_EXTENSION.includes(ch)) count += 2;
-    else return null;
-  }
-  return count;
-}
-
-/** Whether `text` is encodable in the GSM-7 alphabet. */
-export function isGsm7(text: string): boolean {
-  return septetCount(text) !== null;
-}
-
-/**
- * The number of SMS segments `text` occupies. GSM-7: 160 septets in a lone segment,
- * 153 per segment once concatenated (7 septets of UDH). UCS-2: 70 UTF-16 code units
- * lone, 67 per concatenated segment. This is the concatenation math carriers bill on.
- */
-export function smsSegments(text: string): number {
-  const septets = septetCount(text);
-  if (septets !== null) {
-    return septets <= 160 ? 1 : Math.ceil(septets / 153);
-  }
-  const units = text.length;
-  return units <= 70 ? 1 : Math.ceil(units / 67);
-}
+// The alphabet itself and the segment math live in ~/lib/channel/sms-segments — one
+// table, read both by what folds the copy and by what bills it. This module used to
+// carry its own copy and the two had already drifted (form feed), which is how a body
+// gets folded against one alphabet and billed against another.
 
 const GSM_NORMALIZE: ReadonlyArray<readonly [RegExp, string]> = [
   [/[–—]/g, '-'], // en / em dash
@@ -265,14 +234,28 @@ const GSM_NORMALIZE: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 /**
- * Fold SMS copy into the GSM-7 alphabet: map typographic punctuation to its GSM
- * equivalent and drop anything still non-encodable (emoji). Keeping the SMS GSM-7 is
- * what lets a full week fit the ≤3-segment budget — a single non-GSM glyph would
- * force UCS-2 (67 chars/segment) and blow it. Applied once, at the SMS boundary.
+ * Fold SMS copy into the GSM-7 alphabet: typographic punctuation to its GSM equivalent,
+ * an accent the alphabet cannot carry to its bare letter, and only a genuinely
+ * unmappable character (an emoji) to nothing. Keeping the SMS GSM-7 is what lets a full
+ * week fit the ≤3-segment budget — a single non-GSM glyph would force UCS-2 (67
+ * chars/segment) and blow it. Applied once, at the SMS boundary.
+ *
+ * The accent is transliterated rather than deleted because the characters this reaches
+ * are overwhelmingly in NAMES: dropping it sent Loïc's parent a text about "Loc", and a
+ * name is the one word in a reminder the reader cannot reconstruct from context.
  */
 export function gsmSafe(text: string): string {
   let out = text;
   for (const [re, rep] of GSM_NORMALIZE) out = out.replace(re, rep);
-  out = [...out].filter((ch) => GSM7_BASIC.includes(ch) || GSM7_EXTENSION.includes(ch)).join('');
+  out = [...out].map(foldToGsm7).join('');
   return out.replace(/ {2,}/g, ' ');
+}
+
+/** One character as GSM-7 can carry it: itself when the alphabet has it (é and à it
+ * does), else its base letter once the combining marks are decomposed away (ï → i),
+ * else nothing at all. */
+function foldToGsm7(char: string): string {
+  if (isGsm7(char)) return char;
+  const base = char.normalize('NFD').replace(/\p{M}+/gu, '');
+  return base !== '' && isGsm7(base) ? base : '';
 }

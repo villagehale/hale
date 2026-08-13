@@ -1,5 +1,6 @@
 import type { WeekPlanItem } from '@hale/db';
 import type { RenderedContent } from '~/lib/channel/types';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
 import {
   childrenInPlan,
@@ -30,6 +31,10 @@ const ITEM_SEP = ` ${MIDDLE_DOT} `;
 // Beyond this many items the inline list is replaced by the single "Full week" link
 // (compose caps at 8; this is the defensive overflow).
 const SMS_ITEM_CAP = 8;
+// The budget in the module header, enforced rather than assumed. The item cap is a
+// proxy for it and a loose one: eight items whose titles are the long real ones the
+// registration corpus carries render four segments, and nothing measured that.
+const SEGMENT_CAP = 3;
 const FULL_WEEK_PREFIX = 'Full week: ';
 
 const QUIET_ASK =
@@ -71,19 +76,19 @@ export function renderWeeklyPlanSms(
   const subject = weekSubject(headerNames(inPlan, level, now));
   const pending = pendingCount(payload.items);
   const ask = approvalAsk(payload.items.length, pending);
+  const send = (body: string) => gsmSafe(`Hale: ${subject} week${HEADER_SEP}${body}`);
 
-  let body: string;
-  if (payload.items.length === 0) {
-    body = ask;
-  } else if (payload.items.length > SMS_ITEM_CAP) {
-    body = `${FULL_WEEK_PREFIX}${payload.deepLink}${ITEM_SEP}${ask}`;
-  } else {
-    const list = itemsChronological(payload.items)
-      .map((i) => smsItem(i, payload.children))
-      .join(ITEM_SEP);
-    body = `${list}${ITEM_SEP}${ask}`;
-  }
+  if (payload.items.length === 0) return { kind: 'sms', text: send(ask) };
 
-  const text = gsmSafe(`Hale: ${subject} week${HEADER_SEP}${body}`);
-  return { kind: 'sms', text };
+  const linked = send(`${FULL_WEEK_PREFIX}${payload.deepLink}${ITEM_SEP}${ask}`);
+  if (payload.items.length > SMS_ITEM_CAP) return { kind: 'sms', text: linked };
+
+  const list = itemsChronological(payload.items)
+    .map((i) => smsItem(i, payload.children))
+    .join(ITEM_SEP);
+  const inline = send(`${list}${ITEM_SEP}${ask}`);
+
+  // A week too long to read inline takes the overflow form it already has, rather than
+  // a fourth and fifth segment. What survives either way is the ask.
+  return { kind: 'sms', text: smsSegments(inline) <= SEGMENT_CAP ? inline : linked };
 }

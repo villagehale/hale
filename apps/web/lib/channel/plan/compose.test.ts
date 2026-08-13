@@ -70,6 +70,22 @@ describe('the shape gates', () => {
       violations.some((v) => v.includes('Message 2') && v.includes('over the') && v.includes('Move a sentence')),
     ).toBe(true);
   });
+
+  /** The gate is a SEGMENT count, and a UCS-2 body blows three segments at 202 units
+   * where a GSM-7 one takes 460. A budget quoted in the wrong currency told the model it
+   * was "-249 over the limit" — a number that is not true, in the one string the
+   * recompose loop has to learn from. */
+  it('names a true overage when the overflow comes from the encoding, not the length', () => {
+    const emojiBody = `${'a'.repeat(210)} \u{1f389} Ferber Friday`;
+
+    const overBudget = planViolations([GOOD[0] as string, emojiBody], GROUNDING, 3).filter((v) =>
+      v.includes('over the'),
+    );
+
+    expect(overBudget).toHaveLength(1);
+    const overage = Number(/, (-?\d+) over the/.exec(overBudget[0] as string)?.[1]);
+    expect(overage).toBeGreaterThan(0);
+  });
 });
 
 describe('the content gates', () => {

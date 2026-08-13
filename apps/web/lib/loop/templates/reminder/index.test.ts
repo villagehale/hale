@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LoopCategory, LoopMessage, RenderedContent } from '~/lib/channel/types';
+import { smsSegments } from '~/lib/channel/sms-segments';
 import type { ChildNameLevel } from '~/lib/loop/prefs';
-import { smsSegments } from '../weekly-plan/core';
 import { loopTemplateRenderer } from '../registry';
 import type { ReminderChild, ReminderEventView, ReminderPayload } from './payload';
 
@@ -163,6 +163,30 @@ describe('a flagged-sensitive event is generic even for a non-teen (rule #1)', (
 describe('SMS segment budget', () => {
   it('a single T-1h reminder is exactly one segment', () => {
     expect(smsSegments(sms(single, 'first_name'))).toBe(1);
+  });
+
+  /** family_events titles are freeform — a parent types what they like — so the ceiling
+   * cannot depend on every line being short. Dropping whole lines cannot rescue a batch
+   * of one, which is exactly where the cap used to be abandoned. */
+  const longTitle =
+    'Parent teacher interview about the spring reading assessment and the summer enrichment options, whether we should move up a reading level before September, and the paperwork the office needs back before the end of the month with the forms from the specialist attached to it and a note about the bus route';
+
+  it('trims the line itself when ONE event is longer than the ceiling', () => {
+    const p = payload({ offset: '-PT1H', deepLink: null, events: [ev({ title: longTitle })] });
+    const text = sms(p, 'first_name');
+
+    expect(smsSegments(text)).toBeLessThanOrEqual(2);
+    expect(text.startsWith('In an hour: Parent teacher interview')).toBe(true);
+    expect(text.endsWith('...')).toBe(true); // says it was cut rather than just stopping
+    expect(text).not.toContain('http'); // rule #6 — no link on the T-1h ping
+  });
+
+  it('holds the ceiling when the first line of a batch is the over-long one', () => {
+    const text = sms(payload({ events: [ev({ title: longTitle }), swimAt430] }), 'first_name');
+
+    expect(smsSegments(text)).toBeLessThanOrEqual(2);
+    expect(text).toContain('+1 more');
+    expect(text).toContain(DEEP_LINK);
   });
 
   it('a large batch caps the inline list to "+N more" plus the /plan link, ≤2 segments', () => {

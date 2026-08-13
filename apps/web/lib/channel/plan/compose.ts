@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { plainText } from '~/lib/channel/coach/reply';
 import { modelIsUnreachable } from '~/lib/channel/router/smoke-alarm';
 import { reachesForTheHealthLine } from '~/lib/channel/off-domain/copy';
-import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
+import { smsEncoding, smsSegments, smsUnits, smsUnitsBudget } from '~/lib/channel/sms-segments';
 import { loadCronSkill } from '~/lib/cron/skill';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import {
@@ -44,10 +44,6 @@ import {
  * and a stage trimmed to two sentences is the amputation this arc exists to undo.
  */
 export const MAX_PLAN_SEGMENTS = 3;
-
-/** The same ceiling in the unit the model can count: three GSM-7 segments. Quoted back
- * in a refusal, because "3 segments" is not something anyone can act on. */
-export const PLAN_MESSAGE_CHARS = MAX_PLAN_SEGMENTS * 153;
 
 /** The plan is two or three messages. One is the answer they already had; four is a
  * document, and a document is what the app was for. */
@@ -252,8 +248,15 @@ export function planViolations(
       // about 400 characters" produced 476, 470, 476 — the model was right that the
       // content was load-bearing and wrong about where it had to live. A stage that is
       // 20 characters over has a sentence in the wrong message, not a sentence too many.
+      //
+      // Both numbers are in the currency the carrier bills THIS body in, because the
+      // gate above is a SEGMENT count and a UCS-2 body blows three segments at 202 units
+      // where a GSM-7 one takes 460. Measured against a fixed 459-character limit, one
+      // emoji told the model it was "-249 over the limit".
+      const units = smsUnits(body);
+      const limit = smsUnitsBudget(body, MAX_PLAN_SEGMENTS);
       violations.push(
-        `Message ${stage} is ${body.length} characters, ${body.length - PLAN_MESSAGE_CHARS} over the ${PLAN_MESSAGE_CHARS} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
+        `Message ${stage} is ${units} characters, ${units - limit} over the ${limit} limit, and the WHOLE plan is refused for it. Move a sentence into another message rather than deleting the content.`,
       );
     }
     if (smsEncoding(body) !== 'gsm7') {

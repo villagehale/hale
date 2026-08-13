@@ -45,6 +45,12 @@ describe('smsSegments — GSM-7', () => {
     expect(smsSegments(`${'a'.repeat(158)}\n\n`)).toBe(1);
     expect(smsSegments(`${'a'.repeat(159)}\n\n`)).toBe(2);
   });
+
+  it('carries form feed as an extension character (0x1B 0x0A), not as UCS-2', () => {
+    expect(smsEncoding('\f')).toBe('gsm7');
+    expect(smsSegments('\f'.repeat(80))).toBe(1);
+    expect(smsSegments('\f'.repeat(81))).toBe(2);
+  });
 });
 
 describe('smsSegments — UCS-2', () => {

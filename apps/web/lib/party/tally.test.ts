@@ -75,4 +75,11 @@ describe('renderTally', () => {
     expect(line).toContain('3 coming');
     expect(line).not.toContain('maybe');
   });
+
+  it('counts one reply as a reply — the whole line is numbers a host plans with', () => {
+    expect(renderTally(tallyRsvps([guest('Priya', 'yes', 3)]))).toBe('3 coming (1 reply). - Priya');
+    expect(renderTally(tallyRsvps([guest('Priya', 'yes', 3), guest('Sam', 'yes', 1)]))).toBe(
+      '4 coming (2 replies). - Priya, Sam',
+    );
+  });
 });
