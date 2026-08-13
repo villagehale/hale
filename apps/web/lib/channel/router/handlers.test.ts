@@ -126,7 +126,11 @@ describe('healthReplyHandler', () => {
     const verdict = await healthReplyHandler(deps).handle(DB, turn('yes'));
 
     expect(deps.drafted).toEqual(['book_checkup']);
-    expect(verdict.claimed && verdict.reply).toMatch(/approve/i);
+    // The hold is stated in-thread (doctrine: never an app link), with honest
+    // verbs: YES puts it on the week; the clinic call stays the parent's.
+    expect(verdict.claimed && verdict.reply).toMatch(/reply YES/i);
+    expect(verdict.claimed && verdict.reply).toMatch(/nothing's booked/i);
+    expect(verdict.claimed && verdict.reply).not.toMatch(/https?:/);
   });
 });
 
