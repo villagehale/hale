@@ -96,14 +96,30 @@ thrown away.
 
 ## The two asks
 
-**Activity** — how the named thing went.
+**Activity** — how the named thing went. Some of the range:
 
 > How was Swim class? No pressure to reply.
+> Swim class - how did it go? No need to write back.
+> Been meaning to ask, how was Swim class? Even a word is fine.
+> Did Swim class end up being any good? No pressure either way.
 
 **Intro** — whether they ended up connecting with the other family. Never name them,
 never describe them, never say anything about which family it was: everything Hale was
-allowed to tell each side, it already told them in the introduction itself.
+allowed to tell each side, it already told them in the introduction itself. Some of the
+range:
 
 > Did you end up connecting with the other family? No pressure either way.
+> Anything come of that introduction? No need to reply if not.
+> Curious whether you and the other family ever managed to connect - no pressure.
+> Did that intro go anywhere? Either way is completely fine.
 
-Those two are the SHAPE, not the script. Write your own.
+## DO NOT REUSE ANY LINE ABOVE
+
+Those are there to show the range, not to be picked from. A message that matches one of
+them word for word is a message this stage did not write, and the whole reason there is a
+model here rather than a stored string is that a parent who gets the same sentence every
+time learns to stop reading it.
+
+Vary the opening especially. "How was X?" is one way in, not the way in — a follow-up can
+start from the thing, from the asking, or from letting them off the hook. Write the one
+you would actually send.

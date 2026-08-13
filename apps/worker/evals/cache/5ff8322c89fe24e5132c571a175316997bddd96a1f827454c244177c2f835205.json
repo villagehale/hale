@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "This is a model response. It asks one warm question about the named activity (\"How did Ari swim meet go?\"), explicitly removes pressure (\"No pressure if you don't feel like writing back\"), contains nothing else, and is short and plain. It echoes the activity title appropriately without adding any invented specifics, assumptions about outcomes, second questions, or inventing details about the child. It's exactly what a friend would text."
+  }
+}
