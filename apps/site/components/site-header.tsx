@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
 import { APP_URL } from '~/lib/app-url';
+import { f14LandingEnabled } from '~/lib/flags/landing';
+import { chromeCta, featuresHref } from '~/lib/site/chrome-cta';
 
 /**
  * The marketing header: a sticky, responsive nav shared across the homepage and
@@ -20,7 +22,7 @@ import { APP_URL } from '~/lib/app-url';
 
 const LINKS = [
   { label: 'About', href: '/about' },
-  { label: 'Features', href: '/#features' },
+  { label: 'Features', href: featuresHref() },
   { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/faq' },
   { label: 'Contact', href: '/contact' },
@@ -29,6 +31,9 @@ const LINKS = [
 export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const cta = chromeCta();
+  // Under F14 the funnel event would be a lie: the CTA no longer reaches a signup.
+  const ctaEvent = f14LandingEnabled() ? 'landing_cta_text' : 'landing_cta_signin';
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -76,11 +81,11 @@ export function SiteHeader() {
             Sign in
           </a>
           <LandingCta
-            event="landing_cta_signin"
-            href={`${APP_URL}/onboarding`}
+            event={ctaEvent}
+            href={cta.href}
             className="hidden rounded-full bg-[#17294A] px-5 py-2.5 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] sm:inline-flex"
           >
-            Get started
+            {cta.label}
           </LandingCta>
           <button
             type="button"
@@ -115,11 +120,11 @@ export function SiteHeader() {
               </a>
             ))}
             <LandingCta
-              event="landing_cta_signin"
-              href={`${APP_URL}/onboarding`}
+              event={ctaEvent}
+              href={cta.href}
               className="mt-2 inline-flex justify-center rounded-full bg-[#17294A] px-5 py-3 text-sm font-semibold text-[#F7F4EC] transition-colors hover:bg-[#101d36]"
             >
-              Get started
+              {cta.label}
             </LandingCta>
             <a
               href={`${APP_URL}/sign-in`}

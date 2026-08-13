@@ -9,10 +9,13 @@
  * `'true\n'`. A truthiness check would repoint the whole homepage on a value
  * nobody armed.
  *
- * Read in a Server Component at render time — never from a 'use client' module.
- * The NEXT_PUBLIC_ prefix is the site's convention for build-time-visible flags
- * (NEXT_PUBLIC_SHOW_TESTIMONIALS), but nothing here needs the value in the
- * browser: the branch is resolved on the server and only one variant ships.
+ * Read at render time. The homepage, its metadata, its share card and its JSON-LD
+ * all resolve this on the server, and only one variant ships. The shared SiteHeader
+ * is the one client reader — it is 'use client' for the scroll and menu state, and
+ * its CTA has to follow the flag too (lib/site/chrome-cta.ts) or every subpage keeps
+ * pointing at the signup funnel the F14 landing closed. That read is safe precisely
+ * because of the NEXT_PUBLIC_ prefix: the value is inlined at build time, so the
+ * browser gets the same literal the server did.
  */
 export const F14_LANDING_ENV = 'NEXT_PUBLIC_F14_LANDING';
 

@@ -1,7 +1,9 @@
 import { EmailCta } from '~/components/email-cta';
+import { LandingCta } from '~/components/landing-cta';
 import { QrCode } from '~/components/qr-code';
 import { APP_URL } from '~/lib/app-url';
 import { type ImpactNumber, impactNumbers } from '~/lib/landing/impact';
+import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref, displaySmsNumber } from '~/lib/text-entry';
 
 /**
@@ -41,11 +43,26 @@ const MUNICIPALITIES = [
   'Aurora',
 ] as const;
 
+/** The four things the radar actually tracks — one per `ProgramDomain` in the
+ * seeded windows, plus the waitlist clock those rows carry. Every claim here is
+ * readable off registration-windows-data.ts; nothing is aspirational. */
 const WATCHED = [
-  { title: 'Camp registration', body: 'March break and summer, the morning the window opens.' },
-  { title: 'Swim lessons', body: 'The sessions that fill in minutes, per municipality.' },
-  { title: 'Waitlist clocks', body: 'The 36 hours you get to accept a spot before it moves on.' },
-  { title: 'PA days and closures', body: 'The Thursday nobody remembers until Wednesday night.' },
+  {
+    title: 'Swim lessons',
+    body: 'The sessions that fill in minutes — and the towns that register them on a date of their own, weeks after everything else.',
+  },
+  {
+    title: 'Camps',
+    body: 'Fall programs, and the winter-break camps that quietly open for registration back in August.',
+  },
+  {
+    title: 'After-school care',
+    body: 'Where a city books it apart from the rest, on its own morning.',
+  },
+  {
+    title: 'Waitlist clocks',
+    body: 'Some towns give you a day to accept a spot, some two. I watch the clock either way.',
+  },
 ] as const;
 
 const THREE_TEXTS = [
@@ -56,7 +73,24 @@ const THREE_TEXTS = [
   },
   {
     step: 'I keep watch.',
-    body: 'After that I only text when something matters. Silence is the normal state.',
+    body: 'A brief on Monday morning. A heads-up the week a registration opens, the plan the evening before, and a nudge as it goes live. Quiet in between.',
+  },
+] as const;
+
+/** The coaching arc, which is a real sequence separated by days — the answer, the
+ * plan a YES delivers, and the check-in Hale schedules for itself three days on. */
+const COACHING = [
+  {
+    step: 'You ask.',
+    body: 'An answer in two sentences, pitched at how old your child actually is — what’s common right now, and the thing to try tonight.',
+  },
+  {
+    step: 'I offer the whole plan.',
+    body: 'Say yes and it arrives as two or three texts: nights 1–3, then 4–7, then what changes. Minutes and counts, not principles.',
+  },
+  {
+    step: 'Three days later, I ask how it went.',
+    body: 'I set that reminder myself when I send the plan, so remembering to report back was never your job.',
   },
 ] as const;
 
@@ -72,6 +106,12 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
 
   return (
     <main id="main" tabIndex={-1}>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
+      />
+
       <header className="shell flex items-center justify-between py-6">
         <a href="/" className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
           Hale
@@ -88,15 +128,15 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             Hi, I’m Hale — your family’s quiet chief of staff.
           </h1>
           <p className="mt-6 text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
-            I keep watch over your week — registrations, programs, school paperwork, weather — and
-            text you before things matter.
+            I keep watch over your week — registrations, programs, checkups, weather — and text you
+            before things matter.
           </p>
 
           {smsHref ? (
             <div className="mt-9">
-              <a href={smsHref} className="btn-primary">
+              <LandingCta event="landing_cta_text" href={smsHref} className="btn-primary">
                 Text me
-              </a>
+              </LandingCta>
               <p className="meta mt-4">
                 Your message is already written. You send it; I never text first. Standard message
                 rates apply; reply STOP any time.
@@ -191,60 +231,108 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
             ))}
           </ul>
           <p className="mt-6 text-slate-green" style={{ lineHeight: 1.6 }}>
-            Receipts for everything: every message names exactly what I did, and the full record —
-            who, what, when — waits in your account.
+            Receipts for everything: every message names exactly what I did. Say yes to a date and
+            it arrives as a calendar invite — a real event, at whatever address you give me — and I
+            keep the full record of who, what and when.
           </p>
         </div>
       </section>
 
-      {/* ── Your village, covered ─────────────────────────────────────────── */}
+      {/* ── Coaching — the questions that aren't scheduling ────────────────── */}
       <section className="band-cream py-20 lg:py-28">
         <div className="shell">
-          <span className="eyebrow">Your village</span>
+          <span className="eyebrow">When you ask me something</span>
           <h2 className="mt-3 max-w-2xl text-balance">
-            Your village, <span className="accent">covered.</span>
+            Sleep, solids, potty — <span className="accent">answered, then planned.</span>
           </h2>
+          <p className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
+            A chief of staff who only moved appointments would be a calendar. Ask me the 3 a.m.
+            question and you get a real answer in the same thread — never a link telling you to go
+            read someone else’s.
+          </p>
 
-          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <ol className="mt-10 grid gap-8 lg:grid-cols-3">
+            {COACHING.map((item, i) => (
+              <li key={item.step}>
+                <span className="font-mono text-sm text-faded-sage">0{i + 1}</span>
+                <h3 className="mt-2 text-[1.15rem] leading-snug">{item.step}</h3>
+                <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
+                  {item.body}
+                </p>
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-12 grid gap-6 lg:grid-cols-2">
             <div className="card">
-              <h3 className="text-[1.15rem] leading-snug">Grandparents and the nanny</h3>
+              <h3 className="text-[1.15rem] leading-snug">What I’ll plan with you</h3>
               <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
-                They get just the schedule — who’s where, and when to be there. Nothing else about
-                your family travels with it, and everyone opts in for themselves.
+                Sleep, starting solids, potty training, picky eating, tantrums, screen time, and the
+                routines that hold a week together.
               </p>
             </div>
             <div className="card">
-              <h3 className="text-[1.15rem] leading-snug">Your co-parent</h3>
+              <h3 className="text-[1.15rem] leading-snug">Where I stop</h3>
               <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
-                Always free. The same radar and the same reminders, on their own number — never a
-                second household to pay for.
+                I don’t diagnose and I never name a dose. A plan says what’s common and what
+                families try, and it names the one situation worth raising with your doctor.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
+      {/* ── The caregivers, scoped ────────────────────────────────────────── *
+       * "Village" is the family-to-family intros product; the people below are
+       * scoped caregivers on this family's own account, which is a different
+       * thing and was borrowing the wrong word. */}
       <section className="shell py-20 lg:py-28">
-        <span className="eyebrow">Privacy</span>
+        <span className="eyebrow">Your helpers</span>
         <h2 className="mt-3 max-w-2xl text-balance">
-          Privacy, the <span className="accent">Canadian way.</span>
+          Your helpers, <span className="accent">only what they need.</span>
         </h2>
-        <div className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
-          <p>
-            Your family’s data stays in Canada. Every permission is granular, auditable, and
-            revocable — you grant it in a text and withdraw it in a text. A child’s information is
-            sensitive by default, and a teenager’s more so.
-          </p>
-          <p className="mt-5">
-            Texting is not private the way a sealed app is: a message crosses your carrier and my
-            messaging provider before it reaches you. So I write to that reality — I name the task,
-            never the diagnosis.{' '}
-            <a href="/privacy" className="link">
-              How I handle your data
-            </a>
-            .
-          </p>
+
+        <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <div className="card">
+            <h3 className="text-[1.15rem] leading-snug">Grandparents and the nanny</h3>
+            <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
+              They get just the schedule — who’s where, and when to be there. Nothing else about
+              your family travels with it, and everyone opts in for themselves.
+            </p>
+          </div>
+          <div className="card">
+            <h3 className="text-[1.15rem] leading-snug">Your co-parent</h3>
+            <p className="mt-3 text-slate-green" style={{ lineHeight: 1.6 }}>
+              Always free. The same radar and the same reminders, on their own number — never a
+              second household to pay for.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Privacy, the Canadian way ─────────────────────────────────────── */}
+      <section className="band-cream py-20 lg:py-28">
+        <div className="shell">
+          <span className="eyebrow">Privacy</span>
+          <h2 className="mt-3 max-w-2xl text-balance">
+            Privacy, the <span className="accent">Canadian way.</span>
+          </h2>
+          <div className="mt-6 max-w-2xl text-lg text-slate-green" style={{ lineHeight: 1.6 }}>
+            <p>
+              Your family’s data stays in Canada. Every permission is granular, auditable, and
+              revocable — you grant it in a text and withdraw it in a text. A child’s information is
+              sensitive by default, and a teenager’s more so.
+            </p>
+            <p className="mt-5">
+              Texting is not private the way a sealed app is: a message crosses your carrier and my
+              messaging provider before it reaches you. So I write to that reality — I name the
+              task, never the diagnosis.{' '}
+              <a href="/privacy" className="link">
+                How I handle your data
+              </a>
+              .
+            </p>
+          </div>
         </div>
       </section>
 
@@ -261,9 +349,9 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
           </p>
           {smsHref ? (
             <div className="mt-9 flex justify-center">
-              <a href={smsHref} className="btn-on-navy">
+              <LandingCta event="landing_cta_text" href={smsHref} className="btn-on-navy">
                 Text me
-              </a>
+              </LandingCta>
             </div>
           ) : (
             <div className="mt-9 flex justify-center">
@@ -391,7 +479,7 @@ function Bubble({ from, children }: { from: 'parent' | 'hale'; children: React.R
  */
 function ImpactBand({ numbers }: { numbers: readonly ImpactNumber[] }) {
   return (
-    <section className="band-cream py-16 lg:py-20">
+    <section className="py-16 lg:py-20">
       <ul className="shell grid gap-10 text-center sm:grid-cols-3">
         {numbers.map((n) => (
           <li key={n.label}>

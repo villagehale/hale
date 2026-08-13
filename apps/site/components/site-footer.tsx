@@ -1,5 +1,6 @@
 import { LogoMark } from '~/components/logo-mark';
 import { APP_URL } from '~/lib/app-url';
+import { featuresHref } from '~/lib/site/chrome-cta';
 
 /**
  * The marketing footer: a raised white card on the warm page. Real navigation,
@@ -11,7 +12,7 @@ import { APP_URL } from '~/lib/app-url';
  */
 
 const PRODUCT = [
-  { label: 'Features', href: '/#features' },
+  { label: 'Features', href: featuresHref() },
   { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/faq' },
   { label: 'Activities', href: '/activities' },
