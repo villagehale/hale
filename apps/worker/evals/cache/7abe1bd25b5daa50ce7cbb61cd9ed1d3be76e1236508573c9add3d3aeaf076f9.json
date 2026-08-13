@@ -1,6 +1,0 @@
-{
-  "parsed": {
-    "score": 5,
-    "reason": "The reply identifies the correct event with its location, states the requested new time, and ends with the required \"YES to confirm.\" prompt. No greeting, no sign-off, no extraneous detail — exactly the shape the product requires."
-  }
-}
