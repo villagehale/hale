@@ -6,7 +6,11 @@ import {
   ingestedEventPayloadSchema,
   rerankJobPayloadSchema,
 } from '@hale/tools-contracts';
-import { executeApprovedAction, runOrchestrator } from '@hale/worker/orchestrator';
+import {
+  defaultExecuteApprovedDeps,
+  executeApprovedAction,
+  runOrchestrator,
+} from '@hale/worker/orchestrator';
 import PgBoss from 'pg-boss';
 import {
   CHANNEL_MESSAGE_RECEIVED_POLICY,
@@ -366,6 +370,7 @@ export async function runDrainCron(): Promise<DrainSummary> {
   const { resolveSendablePhone } = await import('~/lib/channels/sms-consent-core');
   const { createExpoPushChannel } = await import('~/lib/push/channel');
   const { createExpoPushClient } = await import('~/lib/push/expo-client');
+  const { createCalendarInviteSender } = await import('~/lib/loop/calendar-invite');
   const { schema } = await import('@hale/db');
   const { eq } = await import('drizzle-orm');
 
@@ -391,14 +396,24 @@ export async function runDrainCron(): Promise<DrainSummary> {
     }),
   };
 
+  // VIL-249 — the executor's invite port, bound to the SAME adapters the loop sends
+  // through. Both execution paths get it: an approved placement (actions.approved) and
+  // an autonomous one (events.ingested). Unbound, a placement would land on Hale's
+  // calendar and nowhere else, which is the hole this closes.
+  const calendarInvites = createCalendarInviteSender(db(), {
+    channels,
+    renderer: loopTemplateRenderer,
+  });
+
   const boss = new PgBoss({ connectionString, schema: 'pgboss', supervise: false });
   await boss.start();
   try {
     return await drainHotQueues({
       boss: boss as unknown as DrainBoss,
       handlers: {
-        runOrchestrator,
-        executeApprovedAction,
+        runOrchestrator: (job) => runOrchestrator(job, { calendarInvites }),
+        executeApprovedAction: (input) =>
+          executeApprovedAction(input, { ...defaultExecuteApprovedDeps(), calendarInvites }),
         rerank: (familyId) => upsertFeedRank(db(), familyId).then(() => undefined),
         channelSend: (message) =>
           dispatchLoopMessage(
