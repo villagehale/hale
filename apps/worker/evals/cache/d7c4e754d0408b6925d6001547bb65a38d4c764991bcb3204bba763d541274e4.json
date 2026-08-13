@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "Hale has a verified standing place — High Park with the Jamie Bell Adventure Playground, free animal display, splash pads, and trails — that it should have named here. `offerable` is empty but `standingPlace` is present, and the rules say naming it is the difference between an empty answer and a useful one. The reply treats the situation as if there is nothing to offer yet, which is wrong. It also omits mentioning Saturday's soccer at Cedarvale, which is context that could shape the suggestion. The two unconfirmed finds are correctly handled by promising to follow up, but ignoring the standing place entirely drops the reply to a 2."
+  }
+}

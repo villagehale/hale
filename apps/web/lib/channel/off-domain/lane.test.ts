@@ -1,7 +1,12 @@
 import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import type { GeneralAnswerFallback, GeneralAnswerOutcome } from './answer';
-import { ANSWER_UNAVAILABLE_REPLY, PROVIDER_ACCESS_REPLY, SAFETY_REPLY } from './copy';
+import {
+  ANSWER_UNAVAILABLE_REPLY,
+  DIRECT_ACCESS_EYE_REPLY,
+  PROVIDER_ACCESS_REPLY,
+  SAFETY_REPLY,
+} from './copy';
 import {
   type OffDomainPorts,
   type UnmetSignalOutcome,
@@ -74,8 +79,8 @@ function ports(
   return harness;
 }
 
-const consider = (p: OffDomainPorts) =>
-  offDomainLane(p).consider({ familyId: FAMILY, channelMessageId: MESSAGE, text: 'anything' });
+const consider = (p: OffDomainPorts, text = 'anything') =>
+  offDomainLane(p).consider({ familyId: FAMILY, channelMessageId: MESSAGE, text });
 
 describe('what each lane says', () => {
   it('answers a safety ask with the fixed line, exactly', async () => {
@@ -116,6 +121,66 @@ describe('what each lane says', () => {
     // No clinic names and no links: a wrong one sends a family across the city, and a
     // mistyped URL in a text cannot be corrected.
     expect(PROVIDER_ACCESS_REPLY).not.toMatch(/https?:|\.ca\b|\.com\b/);
+  });
+
+  /**
+   * The founder's live-gate defect. "Find me an optometrist" was answered with Health
+   * Care Connect, which is Ontario's registry for a family doctor, a nurse practitioner
+   * or a primary care team and has nothing to do with optometry — so the parent was sent
+   * to wait on a list that would never call, for a booking they could have made that
+   * afternoon. Both halves are asserted: the right answer goes out, and the wrong one
+   * cannot.
+   */
+  it('answers an eye-care ask with the direct-access truth, not the doctor registry', async () => {
+    const p = ports({
+      read: reading({ lane: 'provider_access', category: 'specialist-access' }),
+    });
+
+    const verdict = await consider(p, 'find me an optometrist');
+
+    expect(verdict).toMatchObject({ status: 'deflected', reply: DIRECT_ACCESS_EYE_REPLY });
+    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('Health Care Connect');
+    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('811');
+  });
+
+  it('leaves the family-doctor ask on the registry line it was always right for', async () => {
+    const p = ports({ read: reading({ lane: 'provider_access', category: 'doctor-access' }) });
+
+    const verdict = await consider(p, 'we just moved and need a pediatrician');
+
+    expect(verdict).toMatchObject({ status: 'deflected', reply: PROVIDER_ACCESS_REPLY });
+  });
+
+  /**
+   * An ophthalmologist is a physician specialist and IS the referral case, so the
+   * direct-access line would be the same class of wrong answer in the other direction.
+   */
+  it('does not claim direct access for an ophthalmologist', async () => {
+    const p = ports({
+      read: reading({ lane: 'provider_access', category: 'specialist-access' }),
+    });
+
+    const verdict = await consider(p, 'we need an ophthalmologist for her');
+
+    expect(verdict).toMatchObject({ reply: PROVIDER_ACCESS_REPLY });
+  });
+
+  /**
+   * The four claims the reply stands on, each traceable to a source in copy.ts's
+   * docblock, plus the one link it is allowed. "Per calendar year" is a different and
+   * wrong promise from "every 12 months", so the wording is pinned.
+   */
+  it('carries the verified eye-care facts and exactly one address', () => {
+    expect(DIRECT_ACCESS_EYE_REPLY).toContain('no referral needed');
+    expect(DIRECT_ACCESS_EYE_REPLY).toContain('every 12 months');
+    expect(DIRECT_ACCESS_EYE_REPLY).toContain('19 and under');
+    expect(DIRECT_ACCESS_EYE_REPLY).toContain('FindAnEyeDoctor.ca');
+    expect(DIRECT_ACCESS_EYE_REPLY).not.toContain('calendar year');
+    // One address, and no scheme — a bare domain is shorter and every phone links it.
+    expect(DIRECT_ACCESS_EYE_REPLY.match(/[\w-]+\.(?:ca|com|org)\b/g)).toEqual([
+      'FindAnEyeDoctor.ca',
+    ]);
+    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/https?:/);
   });
 
   /**

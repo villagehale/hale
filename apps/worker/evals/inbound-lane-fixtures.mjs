@@ -208,4 +208,25 @@ export const LANE_FIXTURES = [
     expectCategory: 'specialist-access',
   },
   { id: 'pediatric-dentist', text: 'we need a pediatric dentist', expect: 'provider_access' },
+  {
+    id: 'find-optometrist',
+    // The founder's own text, live gate 2026-08-13. It is still provider_access — they
+    // are trying to GET a provider — but the two fixed lines behind that door are not
+    // interchangeable: eye care is direct-access and Health Care Connect has nothing to
+    // do with it, so this row pins the lane the branch in off-domain/lane.ts hangs off.
+    text: 'find me an optometrist',
+    expect: 'provider_access',
+    expectCategory: 'specialist-access',
+  },
+  {
+    id: 'eye-exam-needed',
+    // NOT the same question. This asks whether a child NEEDS an exam, which is guidance
+    // about normal development, not an attempt to get a provider — the STATE-vs-GUIDANCE
+    // cleavage, and in_domain by it. It matters here because the honest answer holds two
+    // positions (optometry bodies say a first exam by 6-9 months; the CPS says well-child
+    // screening suffices without risk factors) and depends on the child's age, which the
+    // blind lane cannot see. Only the coach can answer it.
+    text: 'does my 18 month old need an eye exam',
+    expect: 'in_domain',
+  },
 ];

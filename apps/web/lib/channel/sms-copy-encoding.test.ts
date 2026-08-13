@@ -26,6 +26,7 @@ import {
 } from '~/lib/channel/intake/copy';
 import {
   ANSWER_UNAVAILABLE_REPLY,
+  DIRECT_ACCESS_EYE_REPLY,
   PROVIDER_ACCESS_REPLY,
   SAFETY_REPLY,
 } from '~/lib/channel/off-domain/copy';
@@ -186,16 +187,37 @@ describe('the off-domain lane stays GSM-7 once rendered', () => {
     ANSWER_UNAVAILABLE_REPLY,
     SAFETY_REPLY,
     PROVIDER_ACCESS_REPLY,
+    DIRECT_ACCESS_EYE_REPLY,
   };
 
   it.each(Object.entries(RENDERED))('%s', (_name, body) => {
     expect(smsEncoding(body)).toBe('gsm7');
   });
 
-  it('keeps all three fixed lines inside the two-segment ceiling', () => {
+  it('keeps all four fixed lines inside the two-segment ceiling', () => {
     expect(smsSegments(ANSWER_UNAVAILABLE_REPLY)).toBe(1);
     expect(smsSegments(SAFETY_REPLY)).toBe(1);
     expect(smsSegments(PROVIDER_ACCESS_REPLY)).toBeLessThanOrEqual(2);
+    expect(smsSegments(DIRECT_ACCESS_EYE_REPLY)).toBeLessThanOrEqual(2);
+  });
+
+  /**
+   * The one line in this file that carries an address, stated here rather than left to
+   * pass the scheme check on a technicality.
+   *
+   * The no-link rule below exists so a parent is never handed the job back, and a bare
+   * domain is still a link for that purpose. This one is allowed because the directory
+   * IS the answer — "there is a list of optometrists" without saying where is help a
+   * parent cannot act on — and it follows WATCH_OFFER's precedent: an authoritative
+   * third-party address, at the moment a decision is being made, one per message. It is
+   * pinned to exactly one so the exception cannot quietly widen.
+   */
+  it('allows the eye-care reply exactly one bare address and no more', () => {
+    expect(DIRECT_ACCESS_EYE_REPLY.match(/[\w-]+\.(?:ca|com|org|net)\b/g)).toEqual([
+      'FindAnEyeDoctor.ca',
+    ]);
+    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/https?:/i);
+    expect(DIRECT_ACCESS_EYE_REPLY).not.toMatch(/\bthe app\b/i);
   });
 
   /**

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The parent asked for four cancellations. The draft cap is 2, so Hale correctly drafts the first two (Monday swim and Thursday swim) and says it will line up the rest — that is the exact correct handling. The reply names both drafted cancellations with their times, ends with \"YES to confirm,\" and signals the remaining two will follow. No app referral, no invented details, no clarifying question where none is needed (Wednesday has only one event, a private item — but Hale is queuing soccer next anyway and the Wednesday appointment is third in the queue, so not yet drafted, which is fine). The reply is clean and short. One small note: \"these two\" is slightly redundant after already naming them, but that is a trivial blemish at most. Overall this is the product working exactly as designed.",
+    "score": 5
+  }
+}

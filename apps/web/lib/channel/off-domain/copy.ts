@@ -170,3 +170,104 @@ export function reachesForTheHealthLine(body: string): boolean {
  */
 export const PROVIDER_ACCESS_REPLY =
   "Finding you a doctor isn't something I can do - but Health Care Connect is Ontario's list for a family doctor or pediatrician, and you register by calling 811. That same number answers health questions any time.";
+
+/**
+ * The DIRECT-ACCESS answer, for the provider classes an Ontario parent does not need a
+ * registry or a referral to reach. v1 is eye care, and it exists because the line above
+ * was sent to a founder who asked for an optometrist and was WRONG — not vague, wrong.
+ *
+ * Health Care Connect matches people to a family doctor, a nurse practitioner or a
+ * primary care team, and nothing else; it does not find, register for or book
+ * optometrists (ontario.ca "Find a family doctor or nurse practitioner", updated
+ * 2026-08-09). 811 is the health-advice and navigation line, not a booking channel. So
+ * the old reply sent a parent to a registry that would never have called them back,
+ * about a service that needs no registry at all — a factual error, and the most
+ * discouraging possible one, because the true answer is that this is EASY.
+ *
+ * WHY THIS ONE IS EMPOWERING RATHER THAN A DEFLECTION. Every clause is a barrier being
+ * removed: it is free, it is annual, it needs no referral, and here is the list.
+ *
+ * VERIFIED CONTENT, claim by claim (researched and re-checked against primary sources
+ * 2026-08-13). Do not paraphrase these — the wording is what was checked:
+ *
+ *   "book an optometrist directly - no referral needed" — optometrists in Ontario are
+ *   direct-access primary eye care providers; OHIP billing for the under-20 exam
+ *   validates on the health card alone (OHIP bulletin 240506; College of Optometrists of
+ *   Ontario + OAO public booking paths). NOTE the one composite citation in this line:
+ *   no ontario.ca page states "no referral" verbatim. It is established from the
+ *   direct-access structure rather than one government sentence, and it is safe to say.
+ *
+ *   "a full eye exam every 12 months for anyone 19 and under" — OHIP covers "1 major eye
+ *   exam (for vision and general eye health) every 12 months" plus medically necessary
+ *   minor assessments, for ages 19 and under (ontario.ca "What OHIP covers", updated
+ *   2026-04-22). The 12-MONTH wording is deliberate: some secondary sources say "per
+ *   calendar year", which is a different and wrong promise.
+ *
+ *   "free with your child's health card" — the health card is the only thing a parent
+ *   needs; no cost and no paperwork (same source).
+ *
+ *   "The Ontario Association of Optometrists lists them at FindAnEyeDoctor.ca" — the
+ *   OAO's public directory, searchable by address or postal code (also reachable at
+ *   find.optom.on.ca).
+ *
+ * WHAT IT DELIBERATELY LEAVES OUT. No fee amounts (the $51 child exam fee rides on an
+ * OAO-Ministry agreement that expired 31 Mar 2025 with no announced successor, so a
+ * number here would go stale silently). No Eye See...Eye Learn (real, and a genuinely
+ * good deal for kindergarten, but its eligibility wording changes every program year).
+ * No clinic names. Nothing about whether the child NEEDS an exam — that question has two
+ * legitimate answers depending on age and risk, and this lane is BLIND to both: it sees
+ * the message text and never the family, so an age-conditioned answer cannot be written
+ * here. It belongs to the coach.
+ *
+ * THE ONE LINK, and why this file's no-URL rule bends exactly here. PROVIDER_ACCESS_REPLY
+ * carries none because Health Care Connect is reached by a phone number, so a URL would
+ * buy nothing against the risk of a mistyped link. Here the directory IS the answer, and
+ * naming a tool without its address is the shape of help a parent cannot act on. The
+ * precedent is WATCH_OFFER, which carries the privacy link at the consent moment for the
+ * same reason: an authoritative third-party address, at a decision point, one per
+ * message, no scheme (shorter, and every phone links a bare domain anyway).
+ *
+ * ONTARIO-ONLY, like the line above it and for the same reason — see its regional note.
+ * OHIP is what makes the exam free; the direct-access structure is provincial too.
+ */
+export const DIRECT_ACCESS_EYE_REPLY =
+  "You can book an optometrist directly - no referral needed. OHIP covers a full eye exam every 12 months for anyone 19 and under, so it's free with your child's health card. The Ontario Association of Optometrists lists them at FindAnEyeDoctor.ca.";
+
+/**
+ * The eye-care asks that get {@link DIRECT_ACCESS_EYE_REPLY} instead of the registry
+ * line. Same shape as {@link EMERGENCY_TOKENS}, and it needs the same kind of bar.
+ *
+ * THE BAR: a token belongs only if a parent typing it is asking about the routine eye
+ * care an optometrist provides on direct booking. That is what makes "free, annual, no
+ * referral, here is the directory" the right four facts for every message it matches.
+ *
+ * "ophthalmologist" FAILS the bar and is deliberately absent. An ophthalmologist is a
+ * physician specialist and IS the referral case, so telling that parent no referral is
+ * needed would be the same class of error this constant exists to fix. "optician" is
+ * absent too: opticians dispense glasses and do not examine eyes.
+ *
+ * A false positive here is cheap — a parent asking about eyes for a reason we did not
+ * anticipate gets four true sentences about Ontario eye care. A false negative sends
+ * them to Health Care Connect, which is the bug. Calibrated accordingly.
+ *
+ * Nothing here can reach a parent describing a HURT eye: the lane resolves
+ * `safety_critical` before it ever asks this question (see the resolution order in
+ * inbound-lane.md), so "she poked her eye and it's swollen" leaves by the 811 door.
+ */
+export const EYE_CARE_TOKENS = [
+  'optometrist',
+  'eye exam',
+  'eye doctor',
+  'eye test',
+  'eyes checked',
+  'eyes tested',
+  'vision test',
+] as const;
+
+const EYE_CARE_PATTERN = new RegExp(`\\b(?:${EYE_CARE_TOKENS.join('|')})`, 'i');
+
+/** Whether a provider-access ask is for eye care specifically — the branch between the
+ * registry answer and the direct-access one. Deterministic, and no model sees it. */
+export function asksAboutEyeCare(body: string): boolean {
+  return EYE_CARE_PATTERN.test(body);
+}

@@ -2,12 +2,13 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { type RegisteredTool, defineTool } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
-import { companionForChild, deriveStage } from '@hale/types';
+import { ageInMonths, companionForChild, deriveStage } from '@hale/types';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import { frameworkGuidanceTool } from '~/lib/coach/framework-tool';
-import { formatCalendarDayLabel } from '~/lib/format/datetime';
+import { dayKeyOf, formatCalendarDayLabel } from '~/lib/format/datetime';
 import { CONFIDENCE_FLOOR, writeFact } from '~/lib/memory/facts';
 import { toVillageCandidateView } from '~/lib/village/mappers';
+import { type StandingOption, selectStandingOption } from '~/lib/village/standing-option';
 import { visibleCandidates } from '~/lib/village/visibility';
 import { buildConnectorTools } from './connector-tools';
 
@@ -82,6 +83,42 @@ const memoryFactType = z.enum([
   'voice',
 ]);
 
+/**
+ * The standing venue for this family, read at the moment the Village run turns up
+ * nothing nameable.
+ *
+ * Only reached when `candidates` is empty, so the two extra reads never touch the common
+ * path — and, more importantly, so a real dated find is never competing with a place.
+ *
+ * The month is resolved in the FAMILY's zone rather than the server's: the season gate
+ * decides whether a splash pad is open, and a family in Toronto on the 1st of September
+ * must not be answered out of a UTC calendar.
+ */
+async function standingOptionForFamily(
+  database: Database,
+  familyId: string,
+  now: Date,
+  timeZone: string,
+): Promise<StandingOption | null> {
+  const [family] = await database
+    .select({ areaCoarse: schema.families.areaCoarse })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+
+  const children = await database
+    .select({ dateOfBirth: schema.children.dateOfBirth })
+    .from(schema.children)
+    .where(eq(schema.children.familyId, familyId));
+  const ages = children.map((child) => ageInMonths(child.dateOfBirth, now));
+
+  return selectStandingOption({
+    postal: family?.areaCoarse ?? null,
+    youngestAgeMonths: ages.length === 0 ? null : Math.min(...ages),
+    month: Number(dayKeyOf(now, timeZone).slice(5, 7)),
+  });
+}
+
 /** One activity Hale may actually put in front of a parent. Every field is non-null
  * by construction — an offer a parent cannot turn up to is not an offer. */
 interface OfferableActivity {
@@ -120,7 +157,7 @@ export function searchVillageTool(database: Database): RegisteredTool {
   return defineTool({
     name: 'search_village',
     description:
-      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1).",
+      "Local classes, groups, and activities already discovered for THIS family's area, optionally filtered by a free-text query against title/summary. `candidates` are OFFERABLE: each carries a verified `venue` and `when`, so it can be named to a parent whole. `inVerification` is a COUNT of finds whose place or date has not checked out yet — they are deliberately not listed, and there is nothing to tell a parent about them beyond that they are being checked. Teen-attributed candidates appear in neither (rule #1). `standingOption` appears ONLY when there are no candidates: one verified free drop-in place in the family's own municipality that is simply always there. It is a PLACE, not an event — it carries no date, and its `cadence` is the source's own words about when it runs, which is often an instruction to check the current schedule.",
     inputSchema: z.object({ query: z.string().optional() }),
     // Invented values only — examples are compiled into a cached grammar that sits
     // outside the protections message content gets (rule #1). See EXAMPLE_CHILD_ID.
@@ -172,7 +209,17 @@ export function searchVillageTool(database: Database): RegisteredTool {
         });
       }
 
-      return { candidates, inVerification };
+      // Nothing this family could turn up to. `inVerification` is deliberately NOT part
+      // of the condition: a parent asking about tomorrow is empty-handed the moment
+      // there is no name to give them, and two finds still being checked change nothing
+      // about their tomorrow. The forward line and the standing venue are both true at
+      // once, and the skill sends both.
+      const standingOption =
+        candidates.length === 0
+          ? await standingOptionForFamily(database, ctx.familyId, now, timeZone)
+          : null;
+
+      return { candidates, inVerification, standingOption };
     },
   });
 }

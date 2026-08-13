@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "There are two swim lessons on the schedule and the parent said only \"cancel swim\" without specifying which. Hale correctly identifies both, gives the full details of each, and asks which one — exactly one question, no extras, no sign-off, no markdown. This is the correct and complete handling of an ambiguous cancel request."
+  }
+}

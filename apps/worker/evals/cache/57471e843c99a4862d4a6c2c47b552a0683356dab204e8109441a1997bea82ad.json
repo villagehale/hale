@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "The reply answers the parenting question with age-appropriate context (less common but not unusual at 8), names plausible triggers (stress, screen time, inconsistent wind-down), and gives a parent something to act on tonight (implied: check wind-down routine). It is concise and grounded in Ada's age. It does not hand the question back, does not refer to a doctor, does not diagnose, and does not invent calendar details. The one gap is it lacks the concrete \"do this tonight\" beat the rubric requires — it names contributing factors but stops short of a specific actionable step (e.g., \"try a consistent 20-min wind-down with no screens\"). It also omits the fixed \"Want the full plan? Reply YES and I'll send it.\" line that the rubric says must follow a raising-kids answer and must never be marked down for being present. Its absence here is a real shortcoming — the product shape requires it. So: the advice is decent but thin on the actionable beat, and the required closing line is missing entirely.",
+    "score": 3
+  }
+}
