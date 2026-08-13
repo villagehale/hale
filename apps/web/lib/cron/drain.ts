@@ -13,9 +13,12 @@ import {
 } from '@hale/worker/orchestrator';
 import PgBoss from 'pg-boss';
 import {
+  CHANNEL_MESSAGE_RECEIVED_DLQ,
   CHANNEL_MESSAGE_RECEIVED_POLICY,
   CHANNEL_MESSAGE_RECEIVED_QUEUE,
+  CHANNEL_MESSAGE_RECEIVED_RETRY,
   CHANNEL_SEND_QUEUE,
+  TURN_EXPIRED_UNANSWERED,
 } from '~/lib/channel/config';
 import type { LoopMessage } from '~/lib/channel/types';
 
@@ -68,7 +71,15 @@ const CHANNEL_SEND_BUDGET_MS = 120_000;
 export interface DrainBoss {
   createQueue(
     name: string,
-    options?: { name: string; expireInSeconds?: number; policy?: string },
+    options?: {
+      name: string;
+      expireInSeconds?: number;
+      policy?: string;
+      retryLimit?: number;
+      retryDelay?: number;
+      retryBackoff?: boolean;
+      deadLetter?: string;
+    },
   ): Promise<void>;
   fetch<T>(name: string, options: { batchSize: number }): Promise<Array<{ id: string; data: T }>>;
   complete(name: string, id: string): Promise<void>;
@@ -203,13 +214,16 @@ async function processChannelSendJob(
  * the payload carries only POINTERS: the parent's message is on the channel_messages
  * row A3 wrote, so a re-run re-reads the same text rather than losing it.
  *
- * It is at-least-once, not exactly-once, and the two visible artifacts of a mid-turn
- * crash are a duplicated `messages` row for the parent's turn and a re-sent reply.
- * Neither is a wrong answer: the approvals spine refuses a second approval of an action
- * that has left `drafted_for_approval`, so a retry produces the honest failure line
- * rather than acting twice, and the singleton policy keeps a retry in order rather than
- * interleaved with a newer text. De-duplicating the turn itself would need a key on
- * `messages`, which is a schema change this ticket deliberately does not make.
+ * IT IS ALSO THE DEFER ARC'S ENGINE. The router deliberately throws when the model API
+ * is unreachable (router/route.ts TurnDeferred) precisely so this fails rather than
+ * completes: a retried turn is how a parent gets a real answer once the provider is
+ * back, instead of a canned apology while it is down. The retry ceiling and the backoff
+ * that shape that wait live with the queue definition (channel/config.ts).
+ *
+ * The re-drive used to leave two visible artifacts — a duplicated `messages` row for the
+ * parent's turn, and a re-sent reply. Both are closed by the router's turn ledger
+ * (router/turn-ledger.ts), which keys on the inbound message id and is what makes it
+ * safe to retry a turn eight times rather than twice.
  */
 async function processChannelMessageJob(
   deps: DrainDeps,
@@ -225,6 +239,40 @@ async function processChannelMessageJob(
   }
   await deps.handlers.channelMessage(parsed.data);
   return 'processed';
+}
+
+/**
+ * THE CEILING — a turn that spent every retry and was never answered.
+ *
+ * pg-boss moves a job here itself once `retryLimit` is exhausted, by any route: the
+ * router deferring through an outage that outlasted the window, or the function dying
+ * mid-turn often enough that the timeout sweep used them all up. Consuming that queue is
+ * what makes the ceiling a NAMED, COUNTABLE outcome rather than a job that silently
+ * stops existing (rule #11).
+ *
+ * NOTHING IS SENT, deliberately, and it is the sharp end of the founder's trade: a
+ * "sorry, couldn't get to that" arriving two hours after a question is worse than
+ * silence, because it is a notification that answers nothing and asks the parent to
+ * remember what they wanted. Counted as `dropped` for the same reason — the work did not
+ * happen.
+ */
+async function processExpiredTurnJob(
+  deps: DrainDeps,
+  job: { id: string; data: unknown },
+): Promise<'processed' | 'dropped'> {
+  const parsed = channelMessageReceivedPayloadSchema.safeParse(job.data);
+  deps.log.error(
+    {
+      queue: CHANNEL_MESSAGE_RECEIVED_DLQ,
+      jobId: job.id,
+      // Ids and an outcome enum, never a body — the payload is pointers only (rule #1).
+      channelMessageId: parsed.success ? parsed.data.channel_message_id : null,
+      familyId: parsed.success ? parsed.data.family_id : null,
+      outcome: TURN_EXPIRED_UNANSWERED,
+    },
+    'drain: inbound turn ran out of retries — the parent was never answered',
+  );
+  return 'dropped';
 }
 
 /**
@@ -291,14 +339,21 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     name: CHANNEL_SEND_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
   });
-  // The one queue with a POLICY. Per-conversation FIFO is a property of the queue, not
-  // of this loop: pg-boss only enforces a singleton key where the policy says to, and
-  // it hands out at most one job per key per fetch. Created here as well as by the
-  // producer so a cold start in either order lands the same queue.
+  // Before the queue that names it: pg-boss's `dead_letter` is a foreign key onto
+  // `queue(name)`.
+  await deps.boss.createQueue(CHANNEL_MESSAGE_RECEIVED_DLQ, { name: CHANNEL_MESSAGE_RECEIVED_DLQ });
+  // The one queue with a POLICY, and now with a retry ceiling as well. Both are
+  // properties of the queue rather than of this loop: pg-boss only enforces a singleton
+  // key where the policy says to, and only re-drives a deferred turn as far as the
+  // retry columns allow. Created here as well as by the producer so a cold start in
+  // either order lands the same queue — but note that create alone cannot CHANGE an
+  // existing queue, so the producer's create+update pair is what converges production.
   await deps.boss.createQueue(CHANNEL_MESSAGE_RECEIVED_QUEUE, {
     name: CHANNEL_MESSAGE_RECEIVED_QUEUE,
     expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
     policy: CHANNEL_MESSAGE_RECEIVED_POLICY,
+    ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+    deadLetter: CHANNEL_MESSAGE_RECEIVED_DLQ,
   });
 
   const startedMs = deps.now();
@@ -326,6 +381,16 @@ export async function drainHotQueues(deps: DrainDeps): Promise<DrainSummary> {
     deps,
     CHANNEL_MESSAGE_RECEIVED_QUEUE,
     processChannelMessageJob,
+    deadlineMs,
+    summary,
+  );
+  // The turns that ran out of retries, right behind the ones that have not. It is a log
+  // line and nothing else — but an unread dead-letter queue is a silent drop, which is
+  // the one thing rule #11 does not allow.
+  await drainQueue(
+    deps,
+    CHANNEL_MESSAGE_RECEIVED_DLQ,
+    processExpiredTurnJob,
     deadlineMs,
     summary,
   );

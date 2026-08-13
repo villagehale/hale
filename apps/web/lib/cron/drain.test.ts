@@ -1,5 +1,9 @@
 import type { ApprovedActionPayload, IngestedEventPayload } from '@hale/tools-contracts';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  CHANNEL_MESSAGE_RECEIVED_RETRY,
+  TURN_EXPIRED_UNANSWERED,
+} from '~/lib/channel/config';
 import { type DrainBoss, type DrainDeps, HOT_QUEUE_EXPIRE_SECONDS, drainHotQueues } from './drain';
 
 /**
@@ -17,6 +21,7 @@ const ACTIONS = 'actions.approved';
 const RERANK = 'village.rerank';
 const CHANNEL = 'channel.send';
 const INBOUND = 'channel.message.received';
+const DEAD = 'channel.message.received.dead';
 const FAMILY = '11111111-1111-1111-1111-111111111111';
 const PARENT = '22222222-2222-2222-2222-222222222222';
 
@@ -58,6 +63,18 @@ function validApproved(): ApprovedActionPayload {
  */
 type Pending = Array<{ id: string; data: unknown }>;
 
+/** Every option a queue was declared with, so the retry ceiling and the dead-letter
+ * target are assertable and not just the two A3 shipped. */
+type QueueCall = {
+  name: string;
+  expireInSeconds?: number;
+  policy?: string;
+  retryLimit?: number;
+  retryDelay?: number;
+  retryBackoff?: boolean;
+  deadLetter?: string;
+};
+
 function makeFakeBoss(initial: Record<string, Pending>) {
   const pending = new Map<string, Pending>([
     [EVENTS, [...(initial[EVENTS] ?? [])]],
@@ -65,6 +82,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [RERANK, [...(initial[RERANK] ?? [])]],
     [CHANNEL, [...(initial[CHANNEL] ?? [])]],
     [INBOUND, [...(initial[INBOUND] ?? [])]],
+    [DEAD, [...(initial[DEAD] ?? [])]],
   ]);
   const completed = new Map<string, string[]>([
     [EVENTS, []],
@@ -72,6 +90,7 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [RERANK, []],
     [CHANNEL, []],
     [INBOUND, []],
+    [DEAD, []],
   ]);
   const failed = new Map<string, string[]>([
     [EVENTS, []],
@@ -79,8 +98,9 @@ function makeFakeBoss(initial: Record<string, Pending>) {
     [RERANK, []],
     [CHANNEL, []],
     [INBOUND, []],
+    [DEAD, []],
   ]);
-  const created: Array<{ name: string; expireInSeconds?: number; policy?: string }> = [];
+  const created: QueueCall[] = [];
 
   const fetch = vi.fn(async (name: string, options: { batchSize: number }) => {
     const queue = pending.get(name) ?? [];
@@ -104,18 +124,9 @@ function makeFakeBoss(initial: Record<string, Pending>) {
   });
 
   const boss = {
-    createQueue: vi.fn(
-      async (
-        name: string,
-        options?: { name: string; expireInSeconds?: number; policy?: string },
-      ) => {
-        created.push({
-          name: options?.name ?? name,
-          expireInSeconds: options?.expireInSeconds,
-          policy: options?.policy,
-        });
-      },
-    ),
+    createQueue: vi.fn(async (name: string, options?: Omit<QueueCall, 'name'> & { name?: string }) => {
+      created.push({ ...options, name: options?.name ?? name });
+    }),
     fetch,
     complete: vi.fn(async (name: string, id: string) => {
       completed.get(name)?.push(id);
@@ -154,9 +165,15 @@ describe('drainHotQueues', () => {
     const { boss, created } = makeFakeBoss({});
     await drainHotQueues(makeDeps(boss));
 
-    expect(created).toContainEqual({ name: EVENTS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
-    expect(created).toContainEqual({ name: ACTIONS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
-    expect(created).toContainEqual({ name: RERANK, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS });
+    expect(created).toContainEqual(
+      expect.objectContaining({ name: EVENTS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS }),
+    );
+    expect(created).toContainEqual(
+      expect.objectContaining({ name: ACTIONS, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS }),
+    );
+    expect(created).toContainEqual(
+      expect.objectContaining({ name: RERANK, expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS }),
+    );
     expect(HOT_QUEUE_EXPIRE_SECONDS).toBe(180);
   });
 
@@ -171,7 +188,7 @@ describe('drainHotQueues', () => {
     await drainHotQueues(makeDeps(boss));
 
     const order = (boss.fetch as ReturnType<typeof vi.fn>).mock.calls.map(([name]) => name);
-    expect(order).toEqual([CHANNEL, INBOUND, EVENTS, ACTIONS, RERANK]);
+    expect(order).toEqual([CHANNEL, INBOUND, DEAD, EVENTS, ACTIONS, RERANK]);
   });
 
   /**
@@ -401,21 +418,21 @@ describe('drainHotQueues', () => {
       name === EVENTS ? fullBatch.map((j) => ({ ...j })) : [],
     );
 
-    // now() call 0 seeds the deadlines (= 0 + budget); calls 1 and 2 are the send and
-    // inbound queues' while checks (both fetch nothing and return); call 3 is the events
-    // queue's first check, under the deadline → one batch is fetched + processed; call 4
-    // jumps past the deadline → the loop stops, and every later queue's first check is
-    // past it too, so nothing else is fetched.
+    // now() call 0 seeds the deadlines (= 0 + budget); calls 1-3 are the send, inbound
+    // and dead-letter queues' while checks (all fetch nothing and return); call 4 is the
+    // events queue's first check, under the deadline → one batch is fetched + processed;
+    // call 5 jumps past the deadline → the loop stops, and every later queue's first
+    // check is past it too, so nothing else is fetched.
     let calls = 0;
     const deps: DrainDeps = {
       ...makeDeps(boss),
-      now: () => (calls++ < 4 ? 0 : 1_000_000_000),
+      now: () => (calls++ < 5 ? 0 : 1_000_000_000),
     };
 
     const summary = await drainHotQueues(deps);
 
-    expect(boss.fetch).toHaveBeenCalledTimes(3);
-    expect(boss.fetch).toHaveBeenNthCalledWith(3, EVENTS, { batchSize: 10 });
+    expect(boss.fetch).toHaveBeenCalledTimes(4);
+    expect(boss.fetch).toHaveBeenNthCalledWith(4, EVENTS, { batchSize: 10 });
     expect(summary.processed).toBe(10);
   });
 
@@ -471,11 +488,70 @@ describe('channel.message.received', () => {
     const { boss, created } = makeFakeBoss({});
     await drainHotQueues(makeDeps(boss));
 
-    expect(created).toContainEqual({
-      name: INBOUND,
-      expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
-      policy: 'singleton',
+    expect(created).toContainEqual(
+      expect.objectContaining({
+        name: INBOUND,
+        expireInSeconds: HOT_QUEUE_EXPIRE_SECONDS,
+        policy: 'singleton',
+      }),
+    );
+  });
+
+  /**
+   * The defer arc's ceiling. The router throws an unreachable-model turn back HERE so
+   * the job fails rather than completes, which only becomes a wait for the model rather
+   * than a lost text if the queue carries a real retry policy — pg-boss's default is two
+   * attempts with no delay between them.
+   */
+  it('creates the queue with the defer arc\'s retry ceiling and its dead letter', async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    expect(created).toContainEqual(
+      expect.objectContaining({
+        name: INBOUND,
+        ...CHANNEL_MESSAGE_RECEIVED_RETRY,
+        deadLetter: DEAD,
+      }),
+    );
+  });
+
+  /** `job.dead_letter` is a foreign key onto `queue(name)`, so the order is the
+   * difference between a working queue and a constraint violation on first use. */
+  it('creates the dead-letter queue before the queue that points at it', async () => {
+    const { boss, created } = makeFakeBoss({});
+    await drainHotQueues(makeDeps(boss));
+
+    const names = created.map((c) => c.name);
+    expect(names.indexOf(DEAD)).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf(DEAD)).toBeLessThan(names.indexOf(INBOUND));
+  });
+
+  /**
+   * A turn that spent every retry. The parent is NEVER answered — the founder's chosen
+   * trade, because a "sorry" two hours after the question is worse than silence — but
+   * the abandonment is a named, counted outcome rather than a job that quietly stops
+   * existing (rule #11).
+   */
+  it('names an expired turn on the log and sends nothing', async () => {
+    const channelMessage = vi.fn(async () => undefined);
+    const { boss, completed } = makeFakeBoss({
+      [DEAD]: [{ id: 'd1', data: inbound('SM9') }],
     });
+    const deps = makeDeps(boss, { channelMessage });
+
+    const summary = await drainHotQueues(deps);
+
+    expect(channelMessage).not.toHaveBeenCalled();
+    expect(completed(DEAD)).toEqual(['d1']);
+    expect(summary.dropped).toBe(1);
+    expect(deps.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: TURN_EXPIRED_UNANSWERED,
+        channelMessageId: inbound('SM9').channel_message_id,
+      }),
+      expect.stringContaining('never answered'),
+    );
   });
 
   it('routes a pending inbound job and completes it', async () => {
