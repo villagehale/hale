@@ -2,6 +2,9 @@ import type { Database } from '@hale/db';
 import { describe, expect, it, vi } from 'vitest';
 import {
   DISCOVERABILITY_ALREADY_OFF,
+  INTRO_ALREADY_NO,
+  INTRO_ALREADY_YES,
+  INTRO_CLOSED_AFTER_NO,
   DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
   DISCOVERABILITY_ON,
@@ -10,10 +13,12 @@ import {
   NO_OPEN_INTRO,
 } from './copy';
 import {
+  type AnswerableProposal,
   type IntroDecision,
   type IntroStanding,
   introStanding,
-  type OpenIntroProposal,
+  proposalStanding,
+  repeatedAnswer,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
   matchIntroKeyword,
@@ -82,25 +87,26 @@ const NOW = new Date('2026-08-11T15:00:00Z');
 const FAMILY_A = 'fam-a';
 const FAMILY_B = 'fam-b';
 
-function proposal(overrides: Partial<OpenIntroProposal> = {}): OpenIntroProposal {
+function proposal(overrides: Partial<AnswerableProposal> = {}): AnswerableProposal {
   return {
     id: 'prop-1',
     familyAId: FAMILY_A,
     familyBId: FAMILY_B,
     familyAReply: null,
     familyBReply: null,
+    standing: 'unanswered',
     ...overrides,
   };
 }
 
-function deps(open: OpenIntroProposal | null = null, standing: IntroStanding = 'unanswered') {
+function deps(open: AnswerableProposal | null = null, standing: IntroStanding = 'unanswered') {
   const recordDiscoverability = vi.fn(async () => {});
   const recordDecision = vi.fn(async (_db: Database, _decision: IntroDecision) => {});
   const cancelOpenProposals = vi.fn(async () => {});
   const spies: VillageIntroReplyDeps = {
     recordDiscoverability,
     discoverabilityStanding: async () => standing,
-    openProposal: async () => open,
+    answerableProposal: async () => open,
     recordDecision,
     cancelOpenProposals,
   };
@@ -349,5 +355,143 @@ describe('a first refusal is never mistaken for a repeat', () => {
       DB,
       expect.objectContaining({ granted: false }),
     );
+  });
+});
+
+/**
+ * THE SAME DEFECT ON THE PROPOSAL CARD.
+ *
+ * A repeated affirmation to a question Hale has already recorded reads as Hale forgetting,
+ * and it does not matter which of the two questions it was. This half was worse than the
+ * opt-in half: `loadOpenProposal` required `reply IS NULL`, so a parent who answered and
+ * then texted again got "I don't have an intro waiting for you right now" seconds after
+ * "I'll introduce you both by email" — and, far worse, a parent WITHDRAWING before the
+ * introduction was sent was silently ignored and the email went anyway.
+ */
+describe('answering a proposal card that already has this side answered', () => {
+  const asked = (standing: IntroStanding): AnswerableProposal => ({
+    id: 'p-1',
+    familyAId: FAMILY_A,
+    familyBId: FAMILY_B,
+    familyAReply: standing === 'unanswered' ? null : standing === 'granted' ? 'yes' : 'no',
+    familyBReply: null,
+    standing,
+  });
+
+  it('acknowledges a repeated YES briefly instead of denying the intro exists', async () => {
+    const { spies, recordDecision } = deps(asked('granted'));
+
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: 'YES INTRO', now: NOW },
+      spies,
+    );
+
+    expect(outcome).toEqual({ status: 'intro_unchanged', reply: INTRO_ALREADY_YES });
+    expect(recordDecision).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges a repeated NO briefly', async () => {
+    const { spies, recordDecision } = deps(asked('declined'));
+
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: 'NO INTRO', now: NOW },
+      spies,
+    );
+
+    expect(outcome).toEqual({ status: 'intro_unchanged', reply: INTRO_ALREADY_NO });
+    expect(recordDecision).not.toHaveBeenCalled();
+  });
+
+  it('HONOURS a withdrawal after a yes, before the introduction goes out', async () => {
+    // The consent bug the widened read exposes. `reply IS NULL` made an already-answered
+    // side invisible, so "NO INTRO" after "YES INTRO" was answered with "I don't have an
+    // intro waiting" and the sweep sent the email anyway (rule #4).
+    const { spies, recordDecision } = deps(asked('granted'));
+
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: 'NO INTRO', now: NOW },
+      spies,
+    );
+
+    expect(outcome).toEqual({ status: 'intro_declined', reply: INTRO_NO_ACK });
+    expect(recordDecision).toHaveBeenCalledWith(
+      DB,
+      expect.objectContaining({ granted: false, bothAccepted: false }),
+    );
+  });
+
+  it('does not re-open a pairing the parent already refused', async () => {
+    // The other side has been soft-closed by now. Saying yes cannot un-send that.
+    const { spies, recordDecision } = deps(asked('declined'));
+
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: 'YES INTRO', now: NOW },
+      spies,
+    );
+
+    expect(outcome).toEqual({ status: 'intro_closed', reply: INTRO_CLOSED_AFTER_NO });
+    expect(recordDecision).not.toHaveBeenCalled();
+  });
+
+  it('still records a genuine first answer', async () => {
+    // Non-vacuity: the shortcut is about the standing answer, not about the card.
+    const { spies, recordDecision } = deps(asked('unanswered'));
+
+    const outcome = await handleVillageIntroReply(
+      DB,
+      { familyId: FAMILY_A, parentUserId: 'u-a', body: 'YES INTRO', now: NOW },
+      spies,
+    );
+
+    expect(outcome).toEqual({ status: 'intro_accepted', reply: INTRO_YES_ACK });
+    expect(recordDecision).toHaveBeenCalled();
+  });
+});
+
+describe('proposalStanding', () => {
+  const pair = (a: 'yes' | 'no' | null, b: 'yes' | 'no' | null) => ({
+    familyAId: FAMILY_A,
+    familyAReply: a,
+    familyBReply: b,
+  });
+
+  it('reads each family its OWN answer, not the pairs', () => {
+    // One row, two sides. Reading the wrong column reports the counterpart's answer back
+    // to this family — a wrong receipt AND a cross-household read (rule #1) — and every
+    // handler test above injects a ready-made `standing`, so only this can see it.
+    expect(proposalStanding(pair('yes', null), FAMILY_A)).toBe('granted');
+    expect(proposalStanding(pair('yes', null), FAMILY_B)).toBe('unanswered');
+    expect(proposalStanding(pair(null, 'no'), FAMILY_B)).toBe('declined');
+    expect(proposalStanding(pair(null, 'no'), FAMILY_A)).toBe('unanswered');
+  });
+
+  it('tells an unanswered card from a refused one', () => {
+    expect(proposalStanding(pair(null, null), FAMILY_A)).toBe('unanswered');
+    expect(proposalStanding(pair('no', null), FAMILY_A)).toBe('declined');
+  });
+});
+
+/**
+ * ONE PRIMITIVE, BOTH QUESTIONS. The whole point of the shared function: the rule cannot
+ * be right for the opt-in and wrong for the card, because there is only one of it.
+ */
+describe('repeatedAnswer', () => {
+  it('is true only when the new answer is the one already on file', () => {
+    expect(repeatedAnswer('granted', true)).toBe(true);
+    expect(repeatedAnswer('declined', false)).toBe(true);
+  });
+
+  it('is false for a change of mind - a NO after a YES is always a decision', () => {
+    expect(repeatedAnswer('granted', false)).toBe(false);
+    expect(repeatedAnswer('declined', true)).toBe(false);
+  });
+
+  it('is false when nothing is on file, so a first answer is never swallowed', () => {
+    expect(repeatedAnswer('unanswered', true)).toBe(false);
+    expect(repeatedAnswer('unanswered', false)).toBe(false);
   });
 });

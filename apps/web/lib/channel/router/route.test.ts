@@ -1986,7 +1986,7 @@ describe('the 09:47 sequence', () => {
         written.push(input.granted);
       },
       discoverabilityStanding: async () => standing,
-      openProposal: async () => null,
+      answerableProposal: async () => null,
       recordDecision: async () => {},
       cancelOpenProposals: async () => {},
     };

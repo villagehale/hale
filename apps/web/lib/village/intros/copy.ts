@@ -101,6 +101,28 @@ export const INTRO_YES_ACK = "Great - if they're in too, I'll introduce you both
 export const INTRO_NO_ACK = "No problem - I'll keep looking.";
 
 /**
+ * THE SAME SECOND ANSWER, on the card instead of the opt-in (see
+ * {@link DISCOVERABILITY_ALREADY_ON}). It is one defect, so it gets one shape: short,
+ * still an answer, and it never implies anything changed.
+ *
+ * What these replaced was worse than a repeat. An already-answered side was INVISIBLE to
+ * the reader behind this lane, so a parent who texted again was told "I don't have an
+ * intro waiting for you right now" seconds after being told an introduction was coming.
+ */
+export const INTRO_ALREADY_YES = "You're already in - I'll let you know if they are too.";
+
+export const INTRO_ALREADY_NO = "Already passed on that one - I'll keep looking.";
+
+/**
+ * They said no, and now they say yes. Hale does not quietly reopen it: by the time this
+ * arrives the other family has had their soft close, and an introduction they were told
+ * was not happening cannot be un-told. The honest answer is that this one is done and
+ * Hale is still looking — which is true, and is what the next match is for.
+ */
+export const INTRO_CLOSED_AFTER_NO =
+  "That one's closed now, but I'm still looking - I'll text you at the next good match.";
+
+/**
  * What an intro keyword gets when there is no card waiting for it.
  *
  * This lane CLAIMS the message anyway, which is the opposite of how the approval
