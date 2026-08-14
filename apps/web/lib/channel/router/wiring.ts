@@ -449,7 +449,14 @@ export function defaultOpenQuestionReader(): OpenQuestionReader {
       ]);
       return askedParentUserId === parentUserId && !answered;
     },
-    introProposal: (database, familyId, now) => intros.openProposal(database, familyId, now),
+    introProposal: async (database, familyId, now) => {
+      // ONLY AN UNANSWERED CARD IS AN OPEN QUESTION. The lane's reader deliberately also
+      // returns cards this family has already answered (so a repeat can be told from a
+      // card that never existed), and offering one of those to the resolver would invite
+      // it to resolve a question that is already closed.
+      const proposal = await intros.answerableProposal(database, familyId, now);
+      return proposal?.standing === 'unanswered' ? { id: proposal.id } : null;
+    },
     planOffer: async (database, familyId, now) => {
       const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
       // The TTL lives at the caller in plan/reply.ts too, and for the same reason: an
