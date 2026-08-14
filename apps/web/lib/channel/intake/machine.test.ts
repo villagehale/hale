@@ -215,6 +215,26 @@ describe('intake · happy path', () => {
   });
 
   /**
+   * Inbound rows the machine writes are born marked handed off. The reconciler treats
+   * an unmarked inbound row as a text C1 was never given and re-drives it — which for
+   * an intake turn meant the coach answering a parent's onboarding messages a second
+   * time, minutes later and out of context. The machine consumed the text in this very
+   * request; the ledger must say so from the start.
+   */
+  it('marks its inbound rows consumed at birth, so the reconciler never re-drives them', async () => {
+    const { fake, transport, deps } = harness({ intents: [assent('yes please')] });
+    await text(fake, transport, deps, 'hi');
+    await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+    await text(fake, transport, deps, 'yes please');
+
+    const inbound = inserts(fake, schema.channelMessages).filter((r) => r.direction === 'in');
+    expect(inbound.length).toBeGreaterThan(0);
+    for (const row of inbound) {
+      expect(row.handedOffAt).toBeInstanceOf(Date);
+    }
+  });
+
+  /**
    * THE NAME ASK. Nothing in the SMS product ever collected a parent's own name — intake
    * writes `users.name = null` and the only writers are the mobile onboarding body and the
    * authed web settings form — so a text-born family stayed nameless forever, which is

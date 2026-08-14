@@ -317,6 +317,10 @@ async function writeChannelMessage(
       // copy module, and storing rendered child data is a liability (rule #1).
       body: entry.direction === 'in' ? entry.body : null,
       sentAt: now,
+      // Born marked: the machine consumed this text in this very request. The
+      // reconciler re-drives any unmarked inbound row to C1, and an intake turn
+      // re-driven is a parent answered twice — minutes later, out of context.
+      handedOffAt: entry.direction === 'in' ? now : null,
     })
     .returning({ id: schema.channelMessages.id });
   const id = row?.id;

@@ -214,6 +214,10 @@ export async function provisionFromIntake(
         // child data is a liability (rule #1).
         body: entry.direction === 'in' ? entry.body : null,
         sentAt: new Date(entry.at),
+        // Born marked: the machine already answered these turns as they happened.
+        // The reconciler re-drives unmarked inbound rows to C1, and a replayed
+        // onboarding text is a parent answered twice, out of context.
+        handedOffAt: entry.direction === 'in' ? now : null,
       });
     }
 

@@ -24,6 +24,12 @@ import type { ChannelMessageReceivedJob } from './inbound';
  *   live channel, so the router answers `unreachable` and sends nothing (CASL, rule
  *   #1). A second consent check here would be a second copy that can drift, and the
  *   drifted copy is the one that fails an audit.
+ *
+ * And one reason that lives here: SCOPE. The select matches exactly the rows the
+ * webhook's hand-off path records — sms 'reply' rows. Other recorders of inbound rows
+ * (the intake machine, the caregiver route, the email leg) consume their own messages,
+ * so "unmarked" on their rows never means "owed to C1", and re-driving one answers a
+ * parent twice.
  */
 
 /**
@@ -83,6 +89,12 @@ export async function selectUnhandedInbound(
     .from(schema.channelMessages)
     .where(
       and(
+        // Exactly what handOffToConversation records, and nothing else. Intake,
+        // caregiver, and email rows are written by handlers that consume them
+        // themselves — an unmarked row there is not a text C1 is owed, and sweeping
+        // one in replays a message that was already answered.
+        eq(schema.channelMessages.channel, 'sms'),
+        eq(schema.channelMessages.category, 'reply'),
         eq(schema.channelMessages.direction, 'in'),
         isNull(schema.channelMessages.handedOffAt),
         isNotNull(schema.channelMessages.providerMessageId),

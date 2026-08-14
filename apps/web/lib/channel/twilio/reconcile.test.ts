@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { schema } from '@hale/db';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import type { ChannelMessageReceivedJob } from './inbound';
 import {
   HANDOFF_CEILING_MS,
@@ -7,6 +9,7 @@ import {
   type UnhandedInboundRow,
   reconcileUnhandedInbound,
   reconcileWindow,
+  selectUnhandedInbound,
 } from './reconcile';
 
 /**
@@ -91,6 +94,63 @@ describe('the age band', () => {
     expect(notAfter).toEqual(new Date('2026-08-12T11:58:00.000Z'));
     expect(notBefore).toEqual(new Date('2026-08-11T12:00:00.000Z'));
     expect(HANDOFF_GRACE_MS).toBeLessThan(HANDOFF_CEILING_MS);
+  });
+});
+
+/**
+ * The selection is the whole safety of this module, and it must pick out exactly the
+ * rows `handOffToConversation` records — channel 'sms', category 'reply' — because
+ * those are the only unmarked rows that mean "C1 never got it". Every other recorder
+ * of inbound rows is its own consumer: the intake machine answers in-request, the
+ * caregiver route answers in-request, and the email leg files rows the router cannot
+ * yet speak for. Sweeping any of those into C1's queue replays a text that was already
+ * answered — which is precisely what happened to a family's onboarding turns, answered
+ * once by intake and then again, minutes later and out of context, by the coach.
+ */
+describe('what the sweep may select', () => {
+  let db: TestDb;
+
+  afterEach(async () => {
+    await db.close();
+  });
+
+  async function seedInbound(
+    family: { familyId: string; parentUserId: string },
+    providerMessageId: string,
+    over: { channel?: 'sms' | 'email'; category?: 'reply' | 'intake' | 'caregiver' } = {},
+  ) {
+    const createdAt = new Date(NOW.getTime() - 10 * 60 * 1000);
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: over.channel ?? 'sms',
+        direction: 'in',
+        category: over.category ?? 'reply',
+        providerMessageId,
+        status: 'delivered',
+        body: 'hello',
+        sentAt: createdAt,
+        createdAt,
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!row) throw new Error('seedInbound: insert returned no row');
+    return row.id;
+  }
+
+  it('selects only sms reply rows — never intake, caregiver, or email rows', async () => {
+    db = await createTestDb();
+    const family = await seedFamily(db.database);
+
+    const owed = await seedInbound(family, 'SM_owed');
+    await seedInbound(family, 'SM_intake', { category: 'intake' });
+    await seedInbound(family, 'SM_caregiver', { category: 'caregiver' });
+    await seedInbound(family, 'EM_reply', { channel: 'email' });
+
+    const rows = await selectUnhandedInbound(db.database, NOW);
+
+    expect(rows.map((r) => r.id)).toEqual([owed]);
   });
 });
 
