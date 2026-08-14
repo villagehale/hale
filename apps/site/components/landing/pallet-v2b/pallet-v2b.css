@@ -1,0 +1,867 @@
+/*
+ * Landing v2b — the "Pallet" adaptation. A light, scroll-choreographed page whose
+ * one signature is seven SMS-moment cards that fan out, gather into a single
+ * stack, descend, and cascade into a diagonal ladder.
+ *
+ * Scoped: every rule is prefixed `.v2b`. Nothing here reaches the live homepage.
+ *
+ * @layer discipline (SITE-01): every class rule below sits inside `@layer
+ * components` so Tailwind v4 utilities still win by layer order. The layer name
+ * is declared by globals.css's `@import "tailwindcss"`, which the root layout
+ * loads first, so joining it from this file keeps the same ordering. Enforced by
+ * pallet-v2b-layer.test.ts.
+ */
+
+@layer components {
+
+/* ── Tokens ──────────────────────────────────────────────────────────────── *
+ * Hale palette only. Light is primary (the template is light-native). Dark is
+ * derived from the product app's `.dark` block (apps/web/app/globals.css):
+ * Shore's warm-dark ladder for surfaces, its cream ink ladder for text, and its
+ * rule that a label ON a fill inverts to ink navy. Amber stays FILL-only in both
+ * themes — it is never a body-text colour. */
+
+.v2b {
+  --v2b-page: #f7f4ec;          /* warm cream stage */
+  --v2b-page-2: #fdfcfa;        /* the lighter band under the stage */
+  --v2b-surface: #ffffff;       /* card face */
+  --v2b-raised: #f7f9fc;        /* bubble ground (Hale side) */
+  --v2b-ink: #17294a;           /* Prussian navy — 14.1:1 on the stage */
+  --v2b-dim: #5c6b87;           /* body — 5.2:1 */
+  --v2b-faint: #8b95a9;         /* decorative meta only */
+  --v2b-rule: #e4e7ee;
+  --v2b-rule-soft: #eef1f7;
+
+  --v2b-amber: #b26b1f;         /* FILL only */
+  --v2b-amber-wash: #fef0c7;    /* navy ink on it: 11.5:1 */
+  --v2b-berry: #9c3b54;         /* FILL only */
+  --v2b-berry-wash: #f3d7dd;    /* navy ink on it: 10.0:1 */
+  --v2b-navy-wash: #eef1f7;
+
+  --v2b-bubble-parent: #17294a;
+  --v2b-bubble-parent-ink: #f7f4ec;
+  --v2b-bubble-hale: #eef1f7;
+  --v2b-bubble-hale-ink: #17294a;
+
+  --v2b-shadow-card: 0 18px 40px -18px rgb(20 26 77 / 0.28), 0 2px 6px -2px rgb(20 26 77 / 0.10);
+  --v2b-shadow-lift: 0 28px 60px -20px rgb(20 26 77 / 0.34), 0 3px 8px -3px rgb(20 26 77 / 0.12);
+
+  /* Deck geometry — read by the choreography and by the card box. */
+  --v2b-card-w: 232px;
+  --v2b-card-min-h: 248px;
+  --v2b-deck-scale: 1;
+
+  --v2b-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --v2b-hover: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  background: var(--v2b-page-2);
+  color: var(--v2b-ink);
+  /* `clip` rather than `hidden`: an ancestor with overflow:hidden kills the
+   * sticky pin, and the fan deliberately overhangs the viewport. */
+  overflow-x: clip;
+  font-family: var(--font-body);
+}
+
+@media (prefers-color-scheme: dark) {
+  .v2b {
+    --v2b-page: #14120e;
+    --v2b-page-2: #0f0e0a;
+    --v2b-surface: #1e1b15;
+    --v2b-raised: #282318;
+    --v2b-ink: #f6f1e7;
+    --v2b-dim: #c7d3e6;
+    --v2b-faint: #9bb0d0;
+    --v2b-rule: #2e2a22;
+    --v2b-rule-soft: #241f17;
+
+    --v2b-amber-wash: #33260f;
+    --v2b-berry-wash: #3a1f1a;
+    --v2b-navy-wash: #1e2740;
+
+    --v2b-bubble-parent: #f6f1e7;
+    --v2b-bubble-parent-ink: #17294a;
+    --v2b-bubble-hale: #282318;
+    --v2b-bubble-hale-ink: #f6f1e7;
+
+    --v2b-shadow-card: 0 18px 40px -22px rgb(0 0 0 / 0.62);
+    --v2b-shadow-lift: 0 26px 56px -22px rgb(0 0 0 / 0.72);
+
+    color-scheme: dark;
+  }
+}
+
+/* The explicit switch wins over the OS preference in both directions. */
+[data-theme="dark"] .v2b {
+  --v2b-page: #14120e;
+  --v2b-page-2: #0f0e0a;
+  --v2b-surface: #1e1b15;
+  --v2b-raised: #282318;
+  --v2b-ink: #f6f1e7;
+  --v2b-dim: #c7d3e6;
+  --v2b-faint: #9bb0d0;
+  --v2b-rule: #2e2a22;
+  --v2b-rule-soft: #241f17;
+  --v2b-amber-wash: #33260f;
+  --v2b-berry-wash: #3a1f1a;
+  --v2b-navy-wash: #1e2740;
+  --v2b-bubble-parent: #f6f1e7;
+  --v2b-bubble-parent-ink: #17294a;
+  --v2b-bubble-hale: #282318;
+  --v2b-bubble-hale-ink: #f6f1e7;
+  --v2b-shadow-card: 0 18px 40px -22px rgb(0 0 0 / 0.62);
+  --v2b-shadow-lift: 0 26px 56px -22px rgb(0 0 0 / 0.72);
+  color-scheme: dark;
+}
+
+[data-theme="light"] .v2b {
+  --v2b-page: #f7f4ec;
+  --v2b-page-2: #fdfcfa;
+  --v2b-surface: #ffffff;
+  --v2b-raised: #f7f9fc;
+  --v2b-ink: #17294a;
+  --v2b-dim: #5c6b87;
+  --v2b-faint: #8b95a9;
+  --v2b-rule: #e4e7ee;
+  --v2b-rule-soft: #eef1f7;
+  --v2b-amber-wash: #fef0c7;
+  --v2b-berry-wash: #f3d7dd;
+  --v2b-navy-wash: #eef1f7;
+  --v2b-bubble-parent: #17294a;
+  --v2b-bubble-parent-ink: #f7f4ec;
+  --v2b-bubble-hale: #eef1f7;
+  --v2b-bubble-hale-ink: #17294a;
+  --v2b-shadow-card: 0 18px 40px -18px rgb(20 26 77 / 0.28), 0 2px 6px -2px rgb(20 26 77 / 0.10);
+  --v2b-shadow-lift: 0 28px 60px -20px rgb(20 26 77 / 0.34), 0 3px 8px -3px rgb(20 26 77 / 0.12);
+  color-scheme: light;
+}
+
+/* Shorter laptops: the fan and the ladder both shrink from one knob rather than
+ * from a second geometry table. */
+@media (max-height: 800px) {
+  .v2b { --v2b-deck-scale: 0.84; }
+}
+@media (max-height: 680px) {
+  .v2b { --v2b-deck-scale: 0.74; }
+}
+
+.v2b :focus-visible {
+  outline: 2px solid var(--v2b-amber);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.v2b-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem clamp(1rem, 4vw, 3rem);
+  background: color-mix(in srgb, var(--v2b-page-2) 84%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 300ms var(--v2b-smooth);
+}
+.v2b-header[data-stuck="true"] { border-bottom-color: var(--v2b-rule); }
+
+.v2b-wordmark {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--v2b-ink);
+  text-decoration: none;
+}
+
+.v2b-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.v2b-header-num {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--v2b-dim);
+  text-decoration: none;
+}
+@media (min-width: 720px) { .v2b-header-num { display: inline; } }
+
+.v2b-themetoggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--v2b-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--v2b-dim);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.v2b-themetoggle:hover { color: var(--v2b-ink); border-color: var(--v2b-ink); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.v2b-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.85rem 1.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--v2b-ink);
+  color: var(--v2b-page);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 260ms var(--v2b-hover), box-shadow 260ms var(--v2b-smooth);
+  box-shadow: 0 10px 24px -14px rgb(20 26 77 / 0.55);
+}
+.v2b-btn:hover { transform: translateY(-2px) scale(1.015); box-shadow: 0 18px 34px -16px rgb(20 26 77 / 0.55); }
+.v2b-btn:active { transform: translateY(0) scale(0.995); }
+
+.v2b-btn-compact { padding: 0.5rem 0.95rem; font-size: 0.85rem; }
+
+.v2b-btn-ghost {
+  background: transparent;
+  color: var(--v2b-ink);
+  border: 1.5px solid var(--v2b-rule);
+  box-shadow: none;
+}
+.v2b-btn-ghost:hover { border-color: var(--v2b-ink); box-shadow: none; }
+
+/* ── Shared type ─────────────────────────────────────────────────────────── */
+
+.v2b-eyebrow {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v2b-dim);
+}
+
+.v2b-serif {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.v2b-meta {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--v2b-faint);
+}
+
+.v2b-num {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  color: var(--v2b-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--v2b-rule);
+}
+.v2b-num:hover { border-bottom-color: var(--v2b-ink); }
+
+/* The template's highlight line — an amber WASH block behind navy ink, never
+ * amber type. Amber as text is 4.6:1; the wash is 11.5:1 and reads louder. */
+.v2b-highlight {
+  display: inline-block;
+  background: var(--v2b-amber-wash);
+  color: var(--v2b-ink);
+  padding: 0 0.28em;
+  border-radius: 6px;
+  box-decoration-break: clone;
+}
+
+/* ── The pinned track ────────────────────────────────────────────────────── */
+
+.v2b-track {
+  position: relative;
+  height: 420vh;
+}
+
+.v2b-pin {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--v2b-page);
+}
+
+.v2b-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 clamp(1.25rem, 5vw, 5rem);
+  will-change: opacity;
+}
+
+.v2b-layer-copy { pointer-events: none; }
+.v2b-layer-copy > * { pointer-events: auto; }
+
+/* ── Hero copy ───────────────────────────────────────────────────────────── */
+
+.v2b-hero {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  align-self: start;
+  padding-top: clamp(5.5rem, 13vh, 8.5rem);
+}
+
+.v2b-hero-grid {
+  display: grid;
+  gap: 2rem;
+}
+@media (min-width: 900px) {
+  .v2b-hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); align-items: start; }
+}
+
+.v2b-h1 {
+  margin: 0.9rem 0 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+  color: var(--v2b-ink);
+  text-wrap: balance;
+  font-size: clamp(2.35rem, 6.4vw, 4.5rem);
+}
+
+.v2b-sub {
+  margin: 1.35rem 0 0;
+  max-width: 32rem;
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
+  line-height: 1.6;
+  color: var(--v2b-dim);
+}
+
+.v2b-ctarow {
+  margin-top: 1.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem 1.1rem;
+}
+
+/* ── Word-by-word headline reveal ────────────────────────────────────────── */
+
+.v2b-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.42em);
+  animation: v2b-word-up 720ms var(--v2b-smooth) both;
+}
+
+@keyframes v2b-word-up {
+  from { opacity: 0; transform: translateY(0.42em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Jelly chat bubbles ──────────────────────────────────────────────────── *
+ * The template's squash-and-stretch pop, unchanged: scaleX runs
+ * 1 · 1.25 · 0.75 · 1.15 · 0.95 · 1.05 · 1 over 0.8s with scaleY inverted. */
+
+.v2b-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 24rem;
+}
+
+.v2b-bubble {
+  --v2b-jelly-delay: 0ms;
+  align-self: flex-start;
+  max-width: 92%;
+  padding: 0.62rem 0.95rem;
+  border-radius: 18px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  opacity: 0;
+  transform-origin: left bottom;
+  animation: v2b-jelly 800ms linear var(--v2b-jelly-delay) both;
+}
+
+.v2b-bubble-parent {
+  align-self: flex-end;
+  transform-origin: right bottom;
+  border-bottom-right-radius: 5px;
+  background: var(--v2b-bubble-parent);
+  color: var(--v2b-bubble-parent-ink);
+}
+
+.v2b-bubble-hale {
+  border-bottom-left-radius: 5px;
+  background: var(--v2b-bubble-hale);
+  color: var(--v2b-bubble-hale-ink);
+}
+
+@keyframes v2b-jelly {
+  0%     { opacity: 0; transform: scale(1, 1); }
+  0.01%  { opacity: 1; }
+  16.66% { transform: scale(1.25, 0.75); }
+  33.33% { transform: scale(0.75, 1.25); }
+  50%    { transform: scale(1.15, 0.85); }
+  66.66% { transform: scale(0.95, 1.05); }
+  83.33% { transform: scale(1.05, 0.95); }
+  100%   { opacity: 1; transform: scale(1, 1); }
+}
+
+/* Tag bubbles on the second beat — same pop, fired by a class the scroll loop
+ * toggles once (not per frame). */
+.v2b-tags {
+  margin-top: 1.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.v2b-tag {
+  --v2b-jelly-delay: 0ms;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.48rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--v2b-ink);
+  opacity: 0;
+  transform-origin: center bottom;
+}
+.v2b-tag-amber { background: var(--v2b-amber-wash); }
+.v2b-tag-navy { background: var(--v2b-navy-wash); }
+
+.v2b-tags[data-pop="true"] .v2b-tag {
+  animation: v2b-jelly 800ms linear var(--v2b-jelly-delay) both;
+}
+
+/* ── The deck ────────────────────────────────────────────────────────────── */
+
+.v2b-deck {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  z-index: 2;
+  scale: var(--v2b-deck-scale);
+}
+
+.v2b-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--v2b-card-w);
+  min-height: var(--v2b-card-min-h);
+  /* The choreography writes this whole string each frame; -50%/-50% centres any
+   * card height on the deck origin so the ladder pitch stays exact. */
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+
+.v2b-card-face {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+  min-height: var(--v2b-card-min-h);
+  padding: 0.85rem 0.9rem 0.95rem;
+  border: 1px solid var(--v2b-rule);
+  border-radius: 18px;
+  background: var(--v2b-surface);
+  box-shadow: var(--v2b-shadow-card);
+  transition: transform 320ms var(--v2b-hover), box-shadow 320ms var(--v2b-smooth);
+}
+.v2b-card:hover .v2b-card-face {
+  transform: translateY(-6px) scale(1.03);
+  box-shadow: var(--v2b-shadow-lift);
+}
+
+.v2b-card-tag {
+  align-self: flex-start;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--v2b-ink);
+}
+.v2b-card-tag-amber { background: var(--v2b-amber-wash); }
+.v2b-card-tag-navy { background: var(--v2b-navy-wash); }
+.v2b-card-tag-berry { background: var(--v2b-berry-wash); }
+
+.v2b-card-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.v2b-card-bubble {
+  max-width: 94%;
+  padding: 0.36rem 0.58rem;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  line-height: 1.42;
+  margin: 0;
+}
+.v2b-card-bubble-parent {
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+  background: var(--v2b-bubble-parent);
+  color: var(--v2b-bubble-parent-ink);
+}
+.v2b-card-bubble-hale {
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  background: var(--v2b-bubble-hale);
+  color: var(--v2b-bubble-hale-ink);
+}
+
+.v2b-card-note {
+  margin: auto 0 0;
+  font-size: 0.66rem;
+  line-height: 1.4;
+  color: var(--v2b-faint);
+}
+
+/* Card 7 renders the weekly brief, which is an email rather than a text — the
+ * one card in the deck that is not a thread, on purpose. */
+.v2b-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--v2b-rule);
+  border-radius: 12px;
+  background: var(--v2b-raised);
+}
+.v2b-brief-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.66rem;
+  color: var(--v2b-faint);
+}
+.v2b-brief-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.98rem;
+  color: var(--v2b-ink);
+}
+.v2b-brief-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.3rem; }
+.v2b-brief-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--v2b-dim);
+}
+.v2b-brief-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+
+/* The ICS line on the calendar card — the real artifact Hale emails. */
+.v2b-ics {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px dashed var(--v2b-rule);
+  border-radius: 10px;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: var(--v2b-dim);
+}
+.v2b-ics-chip {
+  flex: none;
+  padding: 0.1rem 0.32rem;
+  border-radius: 4px;
+  background: var(--v2b-amber);
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* ── The stack caption — the one line the gather beat exists to say ──────── */
+
+.v2b-stackcap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  width: min(90vw, 30rem);
+  margin-top: 12.5rem;
+  transform: translateX(-50%);
+  text-align: center;
+  opacity: 0;
+  will-change: opacity;
+}
+.v2b-stackcap p {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(1.25rem, 2.6vw, 1.9rem);
+  line-height: 1.25;
+  color: var(--v2b-ink);
+}
+.v2b-stackcap span {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--v2b-faint);
+}
+
+/* ── Section two copy, inside the pin ────────────────────────────────────── */
+
+.v2b-s2 {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+}
+.v2b-s2-copy { max-width: 30rem; }
+
+.v2b-h2 {
+  margin: 0.9rem 0 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.06;
+  color: var(--v2b-ink);
+  font-size: clamp(2rem, 4.4vw, 3.2rem);
+}
+.v2b-h2 span { display: block; }
+
+.v2b-body {
+  margin: 1.3rem 0 0;
+  font-size: clamp(0.98rem, 1.25vw, 1.08rem);
+  line-height: 1.65;
+  color: var(--v2b-dim);
+}
+
+/* ── Static sections below the track ─────────────────────────────────────── */
+
+.v2b-section {
+  padding: clamp(4rem, 9vw, 7rem) clamp(1.25rem, 5vw, 5rem);
+}
+.v2b-shell { max-width: 1280px; margin-inline: auto; }
+
+.v2b-band { background: var(--v2b-page); }
+
+.v2b-pills {
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.v2b-pill {
+  padding: 0.36rem 0.85rem;
+  border-radius: 999px;
+  background: var(--v2b-amber-wash);
+  color: var(--v2b-ink);
+  font-size: 0.79rem;
+  font-weight: 600;
+}
+
+.v2b-close {
+  position: relative;
+  overflow: hidden;
+  max-width: 1100px;
+  margin-inline: auto;
+  padding: clamp(3rem, 7vw, 5rem) clamp(1.5rem, 5vw, 4rem);
+  border-radius: 28px;
+  background: var(--v2b-ink);
+  text-align: center;
+}
+.v2b-close h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.06;
+  font-size: clamp(1.9rem, 3.6vw, 2.7rem);
+  color: var(--v2b-page);
+}
+.v2b-close p {
+  margin: 1.1rem auto 0;
+  max-width: 34rem;
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--v2b-page) 74%, transparent);
+}
+.v2b-close .v2b-btn {
+  background: var(--v2b-page);
+  color: var(--v2b-ink);
+}
+.v2b-close-num {
+  display: inline-block;
+  margin-top: 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: color-mix(in srgb, var(--v2b-page) 82%, transparent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--v2b-page) 34%, transparent);
+}
+.v2b-turtle {
+  display: block;
+  width: clamp(84px, 12vw, 120px);
+  height: auto;
+  margin: 0 auto 1.5rem;
+}
+
+.v2b-footer {
+  border-top: 1px solid var(--v2b-rule);
+  padding: 2.5rem clamp(1.25rem, 5vw, 5rem);
+}
+.v2b-footer-in {
+  max-width: 1280px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  justify-content: space-between;
+}
+@media (min-width: 640px) {
+  .v2b-footer-in { flex-direction: row; align-items: flex-end; }
+}
+.v2b-footer nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; }
+.v2b-footer a {
+  padding: 0.25rem 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--v2b-dim);
+  text-decoration: none;
+}
+.v2b-footer a:hover { color: var(--v2b-ink); }
+
+.v2b-link {
+  color: var(--v2b-ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+}
+
+/* ── Sticky mobile CTA (the #453 conversion rule, kept for v2b) ──────────── */
+
+.v2b-sticky-cta {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--v2b-page-2) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--v2b-rule);
+}
+@media (min-width: 720px) { .v2b-sticky-cta { display: none; } }
+
+/* ── Breakpoint geometry ─────────────────────────────────────────────────── */
+
+@media (max-width: 1199px) {
+  .v2b { --v2b-card-w: 204px; --v2b-card-min-h: 232px; }
+}
+
+@media (max-width: 767px) {
+  .v2b { --v2b-card-w: 214px; --v2b-card-min-h: 236px; }
+  .v2b-track { height: 380vh; }
+  .v2b-hero { padding-top: clamp(4.5rem, 10vh, 6rem); }
+  .v2b-bubbles { max-width: 100%; }
+  .v2b-stackcap { margin-top: 8.5rem; }
+  .v2b-s2-copy { max-width: 100%; }
+  /* The mobile deck rides low so the section-two copy owns the upper half. */
+  .v2b-layer { align-items: flex-start; }
+  .v2b-s2 { padding-top: clamp(4.5rem, 11vh, 6rem); }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── *
+ * The choreography is the page's one flourish, so under a reduce request the
+ * whole pinned track collapses to ordinary document flow: no pin, no transforms,
+ * no 300vh of dead scroll for a reader who asked for stillness. Every word and
+ * every card survives — only the movement goes. `[data-static]` is set by the
+ * component after it reads the media query, so this holds for the class-driven
+ * path too (the media query alone cannot restyle JS-written inline transforms). */
+
+.v2b[data-static="true"] .v2b-track { height: auto; }
+.v2b[data-static="true"] .v2b-pin {
+  position: static;
+  height: auto;
+  overflow: visible;
+  padding-bottom: clamp(3rem, 7vw, 5rem);
+}
+.v2b[data-static="true"] .v2b-layer {
+  position: static;
+  display: block;
+  opacity: 1 !important;
+}
+.v2b[data-static="true"] .v2b-hero { padding-top: clamp(3rem, 8vh, 5rem); }
+.v2b[data-static="true"] .v2b-s2 { padding-top: clamp(3rem, 8vw, 5rem); }
+.v2b[data-static="true"] .v2b-stackcap { display: none; }
+.v2b[data-static="true"] .v2b-deck {
+  position: static;
+  width: auto;
+  height: auto;
+  scale: 1;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+  padding: 0 clamp(1.25rem, 5vw, 5rem);
+  max-width: 1280px;
+  margin-inline: auto;
+}
+.v2b[data-static="true"] .v2b-card {
+  position: static;
+  width: auto;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2b-word,
+  .v2b-bubble,
+  .v2b-tags[data-pop="true"] .v2b-tag {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .v2b-tag { opacity: 1; }
+  .v2b-btn,
+  .v2b-card-face,
+  .v2b-header { transition: none; }
+  .v2b-btn:hover,
+  .v2b-card:hover .v2b-card-face { transform: none; }
+}
+
+}
