@@ -1,7 +1,8 @@
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import { type EmailType, recordOptOut } from '~/lib/cron/email-compliance';
+import { UNSUBSCRIBABLE_STREAMS } from './streams';
 import { emailBlindIndex } from '~/lib/crypto/blind-index';
 import { RATE_LIMITS } from '~/lib/rate-limit/config';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
@@ -13,6 +14,7 @@ import { resolveEmailSender } from './identity';
 import { type InboundEmailEvent, parseInboundEmailEvent } from './payload';
 import { extractReply } from './reply-extract';
 import { isValidResendSignature } from './signature';
+import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { assessSenderTrust } from './trust';
 
 /**
@@ -47,14 +49,13 @@ import { assessSenderTrust } from './trust';
  *      with "I can't read attachments" would be a compliance failure dressed up as a
  *      friendly reply. This is A3's rule, kept identical.
  *
- * WHAT THIS LEG DOES NOT DO YET, deliberately and visibly (rule #11). It records the
- * message and stops: it does not hand off to C1, and it sends nothing. The router C1
- * owns resolves a reply address with `resolveSendablePhone` and sends through the Twilio
- * transport — hand it an email today and a parent who wrote to Hale would be answered by
- * TEXT, or dropped as `unreachable` if they have no number. Neither is acceptable, and
- * generalizing the router's reply channel is a change to the live SMS path rather than an
- * addition to a dark one. So `recorded` is the honest terminal outcome for this phase,
- * and it is logged and counted as such rather than looking like a delivery.
+ *  11. THE HANDOFF, which this leg now owns. The router C1 answers on the channel a
+ *      message ARRIVED on (router/reply-route.ts), so a recorded email is a turn C1 can
+ *      genuinely take — the same `channel.message.received` job A3 enqueues, pointing at
+ *      the same ledger row, joining the same conversation. Two writes, in this order and
+ *      never merged: the row is claimed by the INSERT, and `handed_off_at` is stamped
+ *      only once the job really exists. A row left unmarked is an email still owed a
+ *      reply, and the reconciler is what re-drives it.
  *
  * PRIVACY (rule #1). No branch logs a body, a subject, or an address. Outcomes are an
  * enum and ids; that is everything an operator needs to count and nothing a log
@@ -78,6 +79,9 @@ export interface EmailInboundDeps {
    */
   content: () => InboundContentReader;
   limiter: RateLimiter;
+  /** Hand the recorded email to C1. Required, never nullable (rule #11): a leg that
+   * files a parent's message and cannot pass it on is a leg that swallows it. */
+  enqueue: (job: ChannelMessageReceivedJob) => Promise<void>;
   now?: () => Date;
   /** Required, mirroring C1's router: every outcome this leg reaches without sending
    * anything is only visible if it is written down (rule #11). */
@@ -106,8 +110,12 @@ export type EmailInboundOutcome =
   | 'unsubscribed'
   /** Nothing but quoted history and a signature once stripped — no turn to act on. */
   | 'empty_after_extraction'
-  /** Filed in the family's ledger. The routing hand-off is phase 2 (see module note). */
-  | 'recorded';
+  /** Filed in the family's ledger and handed to C1's queue. */
+  | 'handed_off'
+  /** Filed, but the queue refused it: the row is left unmarked for the reconciler, and
+   * the parent is owed a reply Hale has not yet given. Never folded into `handed_off` —
+   * that value is a claim that C1 has the email. */
+  | 'enqueue_failed';
 
 /**
  * Route one authenticated inbound email. Exported so every routing decision is testable
@@ -173,8 +181,7 @@ export async function routeEmailInbound(
 
   if (!body) return 'empty_after_extraction';
 
-  await record(deps, { owner, event, body });
-  return 'recorded';
+  return record(deps, { owner, event, body });
 }
 
 /**
@@ -250,18 +257,8 @@ async function unsubscribe(
   return 'unsubscribed';
 }
 
-/** Every stream a typed "unsubscribe" covers. Listed explicitly rather than derived, so
- * adding a stream is a decision about whether an unsubscribe should reach it. */
-const UNSUBSCRIBABLE_STREAMS = [
-  'daily_digest',
-  'weekly_plan',
-  'reminder',
-  'approval',
-  'alert',
-] as const satisfies readonly EmailType[];
-
 /**
- * File the message in the family's ledger, with its audit row (rule #6).
+ * File the message in the family's ledger, audit it (rule #6), and hand it to C1.
  *
  * The body stored is the EXTRACTED turn, not the raw email. Quoted history is a copy of
  * messages already in this ledger, and a signature block is contact data nobody asked us
@@ -269,6 +266,21 @@ const UNSUBSCRIBABLE_STREAMS = [
  * needs (rule #1). Inbound bodies ARE stored, as on the SMS side: this is the parent's
  * own instruction, and the approvals path treats it as the legal instrument of a
  * decision.
+ *
+ * THE INSERT IS THE CLAIM, exactly as it is on the SMS side, and the pre-fetch dedupe
+ * above does not replace it. That check runs before the content fetch to save a provider
+ * round-trip on a retry; it cannot settle a race, because two deliveries of one
+ * Message-ID can both pass it while the first is still in flight. The partial unique
+ * index on (`provider_message_id`) where `direction = 'in'` decides it in the database
+ * instead — exactly one request wins the row, and winning the row is what confers the
+ * right (and the duty) to enqueue. Without it the loser would raise a unique violation,
+ * the webhook would 500, and the provider would redeliver a message we already had.
+ *
+ * `handed_off_at` then answers a DIFFERENT question from "have we seen this email": it
+ * answers "does C1 actually have it". Marked only after the job really exists, so a row
+ * left null is an email still owed a reply and `reconcileUnhandedInbound` is what
+ * re-drives it. Nothing re-drives it inside the request — a retry arriving seconds later
+ * cannot tell a dead attempt from one still in flight, and the reconciler can, by age.
  */
 async function record(
   deps: EmailInboundDeps,
@@ -277,7 +289,7 @@ async function record(
     event: InboundEmailEvent;
     body: string;
   },
-): Promise<void> {
+): Promise<EmailInboundOutcome> {
   const { owner, event, body } = args;
   const [row] = await deps.database
     .insert(schema.channelMessages)
@@ -292,11 +304,15 @@ async function record(
       body,
       sentAt: event.receivedAt,
     })
+    .onConflictDoNothing({
+      target: schema.channelMessages.providerMessageId,
+      where: sql`${schema.channelMessages.direction} = 'in' AND ${schema.channelMessages.providerMessageId} IS NOT NULL`,
+    })
     .returning({ id: schema.channelMessages.id });
+  // No row means another delivery of this same Message-ID won the claim. It owns the
+  // hand-off; a second job here would be a second reply to one email.
   const channelMessageId = row?.id;
-  if (!channelMessageId) {
-    throw new Error('email inbound: channel_messages insert returned no row');
-  }
+  if (!channelMessageId) return 'duplicate';
 
   await deps.database.insert(schema.auditLog).values({
     familyId: owner.familyId,
@@ -306,13 +322,34 @@ async function record(
     targetId: channelMessageId,
   });
 
-  // Named rather than silent (rule #11): the message is filed and NOTHING will answer it
-  // until the router speaks email. An operator reading this line knows the difference
-  // between "we replied" and "we have it".
-  deps.log.info('inbound email recorded; no reply — router is sms-only (phase 2)', {
-    familyId: owner.familyId,
-    channelMessageId,
-  });
+  try {
+    await deps.enqueue({
+      family_id: owner.familyId,
+      parent_user_id: owner.userId,
+      channel_message_id: channelMessageId,
+      provider_message_id: event.messageId,
+      received_at: event.receivedAt.toISOString(),
+    });
+  } catch (err) {
+    // The ids an operator can act on, and nothing the parent wrote (rule #1). The
+    // Message-ID is the sender's own envelope handle, not their words — the same value
+    // the SMS twin logs for the same reason.
+    deps.log.error(
+      {
+        channelMessageId,
+        providerMessageId: event.messageId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'email inbound: recorded the message but could not queue it for C1 — left unmarked for the reconciler',
+    );
+    return 'enqueue_failed';
+  }
+
+  await deps.database
+    .update(schema.channelMessages)
+    .set({ handedOffAt: deps.now?.() ?? new Date() })
+    .where(eq(schema.channelMessages.id, channelMessageId));
+  return 'handed_off';
 }
 
 /**

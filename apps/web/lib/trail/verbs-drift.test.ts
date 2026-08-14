@@ -125,6 +125,9 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'caregiver_invite_refused',
   ],
   'apps/web/lib/channel/router/wiring.ts': ['smoke_alarm_fired'],
+  // `REPLY_SENT_ACTION[route.channel]` — one verb per door the router can answer
+  // through, because the trail has to be able to say WHICH one an answer went out of.
+  'apps/web/lib/channel/router/route.ts': ['sms_reply_sent', 'email_reply_sent'],
   'apps/web/lib/channel/coach/draft.ts': ['channel_sms.calendar_drafted'],
   'apps/web/lib/channel/caregiver/route.ts': ['caregiver_sms_inbound', 'caregiver_sms_outbound'],
   'apps/web/lib/channel/intake/machine.ts': ['sms_intake_inbound', 'sms_intake_outbound'],

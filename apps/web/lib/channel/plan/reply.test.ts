@@ -24,7 +24,6 @@ import { PlanDeferred, type PlanReplyDeps, handlePlanYes } from './reply';
 const FAMILY = 'fam-1';
 const PARENT = 'parent-1';
 const CONVERSATION = 'conv-1';
-const PHONE = '+14165550100';
 const NOW = new Date('2026-08-12T14:00:00.000Z');
 const FRESH_OFFER = {
   id: 'commitment-1',
@@ -51,7 +50,14 @@ function harness(
     sendFailsAt?: number;
   } = {},
 ) {
-  const sent: Array<{ to: string; body: string }> = [];
+  const sent: string[] = [];
+  /** The router's bound sender, as a handler sees it: a body in, a receipt out, and no
+   * destination anywhere — which is what stops this handler picking a channel. */
+  const send = async (body: string) => {
+    if (sent.length === overrides.sendFailsAt) throw new Error('carrier rejected');
+    sent.push(body);
+    return { providerMessageId: `prov-${sent.length}`, channel: 'sms' as const };
+  };
   const ledger: Array<{ dedupeKey: string; templateKey: string }> = [];
   const audits: Array<Record<string, unknown>> = [];
   const threaded: string[] = [];
@@ -80,13 +86,6 @@ function harness(
       compose: async (input) => {
         noteGrounding.push(input);
         return overrides.note ?? { status: 'composed', message: 'He is a bit young for that yet.' };
-      },
-    },
-    transport: {
-      send: async (input) => {
-        if (sent.length === overrides.sendFailsAt) throw new Error('carrier rejected');
-        sent.push(input);
-        return { providerMessageId: `prov-${sent.length}` };
       },
     },
     dedupeActive: async (key) => (overrides.alreadySent ?? []).includes(key),
@@ -118,7 +117,7 @@ function harness(
   const run = (body = 'yes') =>
     handlePlanYes(
       database,
-      { familyId: FAMILY, parentUserId: PARENT, conversationId: CONVERSATION, body, phoneE164: PHONE, now: NOW },
+      { familyId: FAMILY, parentUserId: PARENT, conversationId: CONVERSATION, body, send, now: NOW },
       deps,
     );
 
@@ -143,7 +142,7 @@ describe('claiming', () => {
     const outcome = await h.run();
 
     expect(outcome).toEqual({ status: 'plan_sent', sent: 2, checkInDays: 3 });
-    expect(h.sent.map((s) => s.body)).toEqual(PLAN);
+    expect(h.sent).toEqual(PLAN);
   });
 
   it('leaves an ordinary message to the coach', async () => {
@@ -238,7 +237,7 @@ describe('the ordered send', () => {
     // goes — the whole reason each message carries a key of its own.
     const outcome = await h.run();
 
-    expect(h.sent.map((s) => s.body)).toEqual([PLAN[1]]);
+    expect(h.sent).toEqual([PLAN[1]]);
     expect(outcome).toEqual({ status: 'plan_sent', sent: 1, checkInDays: 3 });
   });
 
@@ -328,7 +327,7 @@ describe('the age gate', () => {
     // that it holds on the run where the model would have said yes.
     expect(outcome).toEqual({ status: 'age_gated', sent: 1 });
     expect(h.grounding).toEqual([]);
-    expect(h.sent.map((s) => s.body)).toEqual(['He is a bit young for that yet.']);
+    expect(h.sent).toEqual(['He is a bit young for that yet.']);
   });
 
   it('grounds the refusal on the playbook, not on the model knowing the rule', async () => {

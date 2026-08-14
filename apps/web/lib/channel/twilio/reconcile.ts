@@ -1,16 +1,23 @@
 import { type Database, schema } from '@hale/db';
-import { and, asc, eq, gt, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { ChannelMessageReceivedJob } from './inbound';
 
 /**
  * The reader of `handed_off_at` — the half that makes the column mean something.
  *
- * The webhook records a parent's text, then hands it to C1's queue, and those are two
+ * A webhook records a parent's message, then hands it to C1's queue, and those are two
  * separate facts because the second one can fail on its own. When it does, the row is
  * left unmarked and the request answers `enqueue_failed`: honest, logged, and still a
- * text nobody has replied to. Twilio cannot fix it — its retry loses the claim index
- * and answers 'duplicate' — so something has to come back later and finish the job.
- * This is that something.
+ * message nobody has replied to. The provider cannot fix it — a retry loses the claim
+ * index and answers 'duplicate' — so something has to come back later and finish the
+ * job. This is that something.
+ *
+ * BOTH INBOUND DOORS, one reconciler. It lives in twilio/ because SMS was the first leg
+ * to have one, but the column it reads is not the SMS leg's: the email webhook writes
+ * and stamps `handed_off_at` identically (email/inbound.ts), so an email whose enqueue
+ * failed is owed exactly what a text is. Email was excluded here until it was — #443
+ * narrowed this sweep to sms while inbound email was still recorded-and-dropped, and
+ * that exclusion expires with the phase that justified it.
  *
  * It is safe to re-drive blindly for two reasons that live elsewhere, and neither is
  * re-implemented here:
@@ -25,11 +32,10 @@ import type { ChannelMessageReceivedJob } from './inbound';
  *   #1). A second consent check here would be a second copy that can drift, and the
  *   drifted copy is the one that fails an audit.
  *
- * And one reason that lives here: SCOPE. The select matches exactly the rows the
- * webhook's hand-off path records — sms 'reply' rows. Other recorders of inbound rows
- * (the intake machine, the caregiver route, the email leg) consume their own messages,
- * so "unmarked" on their rows never means "owed to C1", and re-driving one answers a
- * parent twice.
+ * And one reason that lives here: SCOPE. The select matches exactly the rows a hand-off
+ * path records, and nothing else. The intake machine and the caregiver route also write
+ * inbound rows and consume their own messages, so "unmarked" on one of theirs never
+ * means "owed to C1", and re-driving one answers a parent twice (#443).
  */
 
 /**
@@ -70,8 +76,26 @@ export interface UnhandedInboundRow {
   createdAt: Date;
 }
 
-/** Inbound rows C1 was never given, oldest first — a parent's texts are re-driven in
- * the order they were sent, the same order the singleton key preserves. */
+/**
+ * The doors C1 consumes. Both of them, and only them: a text and an email are one
+ * queue, one router and one conversation, so a message owed a reply is owed one whichever
+ * way it arrived (email/inbound.ts, router/reply-route.ts).
+ */
+const REDRIVEN_CHANNELS = ['sms', 'email'] as const;
+
+/**
+ * Inbound rows C1 was never given, oldest first — a parent's messages are re-driven in
+ * the order they were sent, the same order the singleton key preserves.
+ *
+ * THE FILTER IS THE SAFETY, and it names what C1 owns rather than describing what it
+ * does not. `direction: 'in'` alone is far too wide: the intake machine and M6's
+ * caregiver leg both write inbound rows that no one ever marks handed-off, so an
+ * unqualified sweep finds their finished work sitting permanently unmarked and pushes it
+ * into a router that would answer a caregiver, or re-answer an intake turn (#443).
+ * `category = 'reply'` is the line between them, and the channel list is the second half
+ * of the same statement: it says which doors C1 can answer THROUGH, so a new inbound
+ * channel is opt-in here rather than swept in by default.
+ */
 export async function selectUnhandedInbound(
   database: Database,
   now: Date,
@@ -89,11 +113,11 @@ export async function selectUnhandedInbound(
     .from(schema.channelMessages)
     .where(
       and(
-        // Exactly what handOffToConversation records, and nothing else. Intake,
-        // caregiver, and email rows are written by handlers that consume them
-        // themselves — an unmarked row there is not a text C1 is owed, and sweeping
-        // one in replays a message that was already answered.
-        eq(schema.channelMessages.channel, 'sms'),
+        // Exactly what the two hand-off writers record, and nothing else. Intake and
+        // caregiver rows are written by handlers that consume them themselves — an
+        // unmarked row there is not a message C1 is owed, and sweeping one in replays
+        // something that was already answered.
+        inArray(schema.channelMessages.channel, [...REDRIVEN_CHANNELS]),
         eq(schema.channelMessages.category, 'reply'),
         eq(schema.channelMessages.direction, 'in'),
         isNull(schema.channelMessages.handedOffAt),
