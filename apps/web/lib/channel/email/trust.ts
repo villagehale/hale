@@ -120,6 +120,31 @@ function asVerdict(raw: string | undefined): AuthVerdict | null {
 }
 
 /**
+ * The signing domain of one DKIM clause.
+ *
+ * `header.d` is the signing domain and wins whenever it is present. But AWS SES — which
+ * is what Resend's inbound runs on, and therefore the ONLY MTA this leg ever reads —
+ * stamps its result with `header.i` (the AUID) and emits no `header.d` at all. The i=
+ * value is `[local]@domain`, and RFC 6376 requires that domain to be d= or a subdomain
+ * of it, so its domain part is a sound stand-in for the signing domain WHEN d is absent.
+ * Reading only d left every genuine SES-stamped pass domainless, hence unaligned, hence
+ * refused: the leg was inert against its own MTA (observed live 2026-08-14). The fallback
+ * fires only when d is missing, so a message carrying both is still judged on d.
+ */
+function dkimSigningDomain(clause: string): string | null {
+  const d = /header\.d\s*=\s*([^\s;]+)/i.exec(clause);
+  if (d?.[1]) return d[1].toLowerCase();
+
+  const i = /header\.i\s*=\s*([^\s;]+)/i.exec(clause);
+  const auid = i?.[1];
+  if (auid) {
+    const at = auid.lastIndexOf('@');
+    if (at !== -1 && at < auid.length - 1) return auid.slice(at + 1).toLowerCase();
+  }
+  return null;
+}
+
+/**
  * Parse one `Authentication-Results` header value. Returns null when there is no
  * authserv-id, because a verdict we cannot attribute to an MTA is a verdict we cannot
  * use.
@@ -154,8 +179,7 @@ export function parseAuthenticationResults(header: string): AuthenticationResult
       // keeps the domain it belongs to.
       case 'dkim': {
         if (verdict === null) break;
-        const domain = /header\.d\s*=\s*([^\s;]+)/i.exec(trimmed);
-        dkim.push({ verdict, domain: domain?.[1]?.toLowerCase() ?? null });
+        dkim.push({ verdict, domain: dkimSigningDomain(trimmed) });
         break;
       }
       case 'dmarc':
