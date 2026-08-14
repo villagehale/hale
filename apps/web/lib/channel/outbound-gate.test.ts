@@ -91,7 +91,7 @@ function callGate(now: Date, state: Partial<FakeState> = {}) {
 
 describe('assertProactiveSendAllowed', () => {
   it('allows a send when every check passes', async () => {
-    await expect(callGate(MIDDAY).verdict).resolves.toEqual({ allowed: true, includeOptOut: false });
+    await expect(callGate(MIDDAY).verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 
   it('holds when the parent has no live channel — the STOP gate', async () => {
@@ -128,7 +128,7 @@ describe('assertProactiveSendAllowed', () => {
         },
       },
     );
-    expect(verdict).toEqual({ allowed: true, includeOptOut: false });
+    expect(verdict).toEqual({ allowed: true, optOut: 'short' });
     expect(seen).not.toBeNull();
     const { since, familyId } = seen as unknown as { since: Date; familyId: string };
     // Per FAMILY (not per parent) — a co-parent must not double the family's budget.
@@ -156,7 +156,7 @@ describe('assertProactiveSendAllowed', () => {
     });
     await expect(callGate(new Date('2026-07-15T12:00:00.000Z')).verdict).resolves.toEqual({
       allowed: true,
-      includeOptOut: false,
+      optOut: 'short',
     });
   });
 
@@ -165,7 +165,7 @@ describe('assertProactiveSendAllowed', () => {
     // (EDT, UTC-4). A fixed-offset implementation gets one of these wrong.
     await expect(callGate(new Date('2026-01-15T01:30:00.000Z')).verdict).resolves.toEqual({
       allowed: true,
-      includeOptOut: false,
+      optOut: 'short',
     });
     await expect(callGate(new Date('2026-07-15T01:30:00.000Z')).verdict).resolves.toEqual({
       allowed: false,
@@ -178,7 +178,7 @@ describe('assertProactiveSendAllowed', () => {
     const evening = new Date('2026-07-16T02:30:00.000Z');
     await expect(callGate(evening, { timeZone: 'America/Vancouver' }).verdict).resolves.toEqual({
       allowed: true,
-      includeOptOut: false,
+      optOut: 'short',
     });
     await expect(callGate(evening, { timeZone: 'America/Toronto' }).verdict).resolves.toEqual({
       allowed: false,
@@ -222,7 +222,7 @@ describe('the registration-sequence class', () => {
 
   it('never even counts the family’s recent sends', async () => {
     const { calls, verdict } = callSequenceGate(MIDDAY, { recentSends: 99 });
-    await expect(verdict).resolves.toEqual({ allowed: true, includeOptOut: false });
+    await expect(verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
     expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
   });
 
@@ -254,7 +254,7 @@ describe('the registration-sequence class', () => {
       allowed: false,
       reason: 'quiet_hours',
     });
-    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true, includeOptOut: false });
+    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true, optOut: 'short' });
   });
 
   it('does NOT let a nudge claim the same exemption', async () => {
@@ -314,23 +314,38 @@ describe('gate ordering', () => {
  * every family, and it must not ride every message. These four pin both halves.
  */
 describe('the opt-out line', () => {
-  it('rides the first proactive message a family ever gets', async () => {
-    await expect(
-      callGate(MIDDAY, { contactedThisPeriod: false }).verdict,
-    ).resolves.toEqual({ allowed: true, includeOptOut: true });
+  /**
+   * CASL s.6(2)(c) / s.11 want the unsubscribe mechanism set out clearly and prominently in
+   * EVERY commercial electronic message — there is no "periodically" allowance; that one is
+   * CTIA's, and it is a US rule. So the gate no longer decides WHETHER the line rides. It
+   * decides which FORM rides (founder decision, 2026-08-14, after counsel).
+   */
+  it('rides EVERY proactive message - the mechanism is never absent', async () => {
+    for (const contactedThisPeriod of [true, false]) {
+      const verdict = await callGate(MIDDAY, { contactedThisPeriod }).verdict;
+      expect(verdict.allowed, `contactedThisPeriod=${contactedThisPeriod}`).toBe(true);
+      expect(
+        verdict.allowed && verdict.optOut,
+        'no allowed verdict may omit the unsubscribe',
+      ).toBeTruthy();
+    }
   });
 
-  it('does not ride a message to a family already contacted this period', async () => {
+  it('gives a first contact the full line and everything after it the short one', async () => {
+    await expect(callGate(MIDDAY, { contactedThisPeriod: false }).verdict).resolves.toEqual({
+      allowed: true,
+      optOut: 'full',
+    });
     await expect(callGate(MIDDAY, { contactedThisPeriod: true }).verdict).resolves.toEqual({
       allowed: true,
-      includeOptOut: false,
+      optOut: 'short',
     });
   });
 
   it('asks whether ANY proactive class has landed for THIS PARENT, not just this class', async () => {
-    // Kind-blind, because the budget is not a message class's. Per PARENT and not per
-    // family, because the five classes text different people — scoped to the household, a
-    // co-parent could be texted indefinitely and never be shown the word STOP.
+    // Kind-blind, because the form is not a message class's. Per PARENT and not per family,
+    // because the five classes text different people — scoped to the household, a co-parent
+    // could be texted for months and never once get the full line.
     let seen: { subject: string; since: Date } | null = null;
     await assertProactiveSendAllowed(
       { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now: MIDDAY },
@@ -353,15 +368,23 @@ describe('the opt-out line', () => {
     );
   });
 
-  it('is never spent by a message that was held', async () => {
-    // A held send is not a send. If the hold consumed the family's reminder, the message
-    // that finally goes out would be the one that never names the opt-out.
-    const { calls, verdict } = callGate(MIDDAY, { enrolled: false, contactedThisPeriod: false });
-    await verdict;
-    expect(calls).not.toContain('opt_out');
+  it('falls back to the FULL line when the ledger read fails', async () => {
+    // Fail toward compliance. The short form is the optimisation; the full line is the
+    // obligation, so an unknown answer resolves to the obligation.
+    await expect(
+      assertProactiveSendAllowed(
+        { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now: MIDDAY },
+        {
+          ...ports().ports,
+          async proactiveSentSince() {
+            throw new Error('ledger unavailable');
+          },
+        },
+      ),
+    ).resolves.toEqual({ allowed: true, optOut: 'full' });
   });
 
-  it('still decides the line for an urgent leg that skips the clock', async () => {
+  it('still decides the form for an urgent leg that skips the clock', async () => {
     const dawn = new Date('2026-07-15T10:30:00.000Z'); // 06:30 Toronto - inside quiet hours
     await expect(
       assertProactiveSendAllowed(
@@ -374,6 +397,13 @@ describe('the opt-out line', () => {
         },
         ports({ contactedThisPeriod: false }).ports,
       ),
-    ).resolves.toEqual({ allowed: true, includeOptOut: true });
+    ).resolves.toEqual({ allowed: true, optOut: 'full' });
+  });
+
+  it('is not read at all for a message that was held', async () => {
+    // A held send is not a send, and the gate looks at nothing it is not entitled to act on.
+    const { calls, verdict } = callGate(MIDDAY, { enrolled: false, contactedThisPeriod: false });
+    await verdict;
+    expect(calls).not.toContain('opt_out');
   });
 });

@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { F14_ALLOWLIST_ENV, F14_ENABLED_ENV } from '~/lib/channel/f14';
 import type { ProactiveHoldReason } from '~/lib/channel/outbound-gate';
@@ -151,7 +152,9 @@ describe('a due check-in', () => {
 
     const result = await h.run();
 
-    expect(h.sent).toEqual([{ to: '+14165550100', body: COMPOSED }]);
+    // Every proactive message carries the CASL unsubscribe now, and this recipient has
+    // been texted before, so it is the compact form (lib/channel/opt-out.ts).
+    expect(h.sent).toEqual([{ to: '+14165550100', body: withOptOut(COMPOSED, 'short') }]);
     expect(h.ledger).toEqual([
       {
         dedupeKey: 'coach_plan:checkin:commitment-1',
@@ -172,6 +175,8 @@ describe('a due check-in', () => {
 
     // There is no handler for the reply on purpose: what the parent says next is
     // conversation, and it needs the question in front of it to read as one.
+    // THREADED WITHOUT the compliance line: what the parent reads back in their history is
+    // Hale's sentence, not the footer the wire needed.
     expect(h.threaded).toEqual([COMPOSED]);
   });
 

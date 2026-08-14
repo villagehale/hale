@@ -384,7 +384,7 @@ async function sendIntroSms(
 
   const composed = typeof input.body === 'string' ? input.body : await input.body();
   if (composed === null) return { sent: false };
-  const body = withOptOut(composed, verdict.includeOptOut);
+  const body = withOptOut(composed, verdict.optOut);
 
   const to = await deps.resolveSendablePhone(database, input.parentUserId);
   if (!to) {
