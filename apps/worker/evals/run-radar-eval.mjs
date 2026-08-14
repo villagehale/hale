@@ -22,6 +22,19 @@
 // stand-in (a composer that invents a venue, a price and a time, re-asks the watch
 // question, and rambles past the segment budget) fails the fabrication gate, the
 // question gate, the length gate AND the tone judge — proving the gates have teeth.
+//
+// THE ATTRIBUTION GATE (2026-08-13). A correct find with nothing saying where it came
+// from is trivia: the parent reads a date they could have googled and has no idea a
+// service just ran for them. So a message that carries a find must also carry, in its
+// lead sentence, that Hale already looked — scored by its OWN judge, kept apart from
+// voice because the two come apart. That is measured, not assumed: run against the skill
+// as it stood the day before, the corpus scored a mean of 4.61 for voice and 1.88 for
+// attribution, with 14 of 17 finds landing as bare fact. Every one of those messages was
+// already shipping.
+//
+// Its twin is in fabrications(): an attribution with a SPECIFIC in it (a postal code, a
+// count of places swept, a time the sweep ran) is a new way to invent, and the same hard
+// zero catches it.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -174,9 +187,39 @@ function parseRadarVoice(answer) {
 /** Capitalised words that are not proper nouns about this family's week. */
 const ALLOWED_CAPS = new Set(['Hale', 'I', 'A', 'An', 'The', 'And', 'But', 'So', 'If', 'It']);
 
+/**
+ * Specifics about the LOOK rather than about the find — the fabrication the attribution
+ * clause opened the door to. The composer is handed facts and no geography: the postal
+ * code the parent texted never reaches this stage, and neither does a count of places
+ * checked, a radius, a time the check ran, or a cadence it runs on. Saying Hale looked is
+ * true of every one of these turns; saying WHAT it looked at is a detail invented to make
+ * the looking sound impressive, and a parent cannot tell the two apart.
+ *
+ * Checked against the same haystack as every other fabrication, so a phrase that IS in
+ * the facts (a title containing "weekly", say) is still allowed to be said.
+ */
+const INVENTED_SCOPE = [
+  'postal',
+  'postcode',
+  'zip',
+  'radius',
+  'this morning',
+  'overnight',
+  'last night',
+  'every day',
+  'every week',
+];
+
 function fabrications(message, context) {
   const hay = JSON.stringify(context).toLowerCase();
   const offenders = [];
+
+  const lowerMessage = message.toLowerCase();
+  for (const phrase of INVENTED_SCOPE) {
+    if (lowerMessage.includes(phrase) && !hay.includes(phrase)) {
+      offenders.push(`scope "${phrase}" is in no fact — Hale looked, it did not say where`);
+    }
+  }
 
   for (const number of message.match(/\d+/g) ?? []) {
     if (!hay.includes(number)) offenders.push(`number "${number}" is in no fact`);
@@ -218,7 +261,20 @@ function countSentences(message) {
     .filter((part) => part.length > 0).length;
 }
 
-function checkMessage(fixture, message, judgeScore) {
+/**
+ * Whether this turn has a find to attribute. When all three rungs are null there is
+ * nothing Hale found, and the skill hands that turn a mapping line that already says Hale
+ * is out looking — scoring it for attribution would fail the honest-absence message for
+ * being honest, and would push a second "I checked" onto the one message that must not
+ * pad. Mirrors the `emptyHanded` branch in radarVoiceContext above.
+ */
+function carriesAFind(decision) {
+  return (
+    decision.weekendPick !== null || decision.registrationLine !== null || decision.checkpoint !== null
+  );
+}
+
+function checkMessage(fixture, message, judgeScore, attributionScore) {
   const failures = [];
   if (!message) return ['answer failed to parse into a strict { message } object'];
 
@@ -272,6 +328,11 @@ function checkMessage(fixture, message, judgeScore) {
   if (judgeScore !== null && !(judgeScore >= JUDGE_MIN)) {
     failures.push(`voice score ${judgeScore} < ${JUDGE_MIN}`);
   }
+  if (attributionScore !== null && !(attributionScore >= JUDGE_MIN)) {
+    failures.push(
+      `attribution score ${attributionScore} < ${JUDGE_MIN} — the find lands as trivia, not as the watch reporting back`,
+    );
+  }
   return failures;
 }
 
@@ -288,11 +349,51 @@ const JUDGE_SYSTEM = [
   'any detail not present in the facts. Reply with ONLY the score tool.',
 ].join(' ');
 
+/**
+ * The second judge, and it scores ONE property so a lovely message cannot carry a missing
+ * one past it. Kept apart from voice deliberately: the pre-change corpus proves they come
+ * apart — the same bodies that scored 4 and 5 for voice attributed nothing at all.
+ */
+const ATTRIBUTION_JUDGE_SYSTEM = [
+  'You are scoring ONE property of the first useful text message Hale sends a parent, a',
+  "minute after they texted their kids' names to a number on a poster: does the message",
+  'present its find as the product of a look Hale ALREADY TOOK for this family? Nothing',
+  'else. Not warmth, not length, not whether the facts are the right ones.',
+  'Score 1-5.',
+  'A 5 folds a few words into the FIRST sentence that make Hale the one who went and',
+  'checked, so the fact arrives as a service reporting back on work already done. It is',
+  'half a clause, not a preamble: the useful fact is still in that first sentence.',
+  'The test is WHO DID THE LOOKING, in whatever words. A first-person verb of finding or',
+  'checking inside the lead sentence - "I found", "I checked", "I looked up", "I had a',
+  'look" - IS the attribution, and scores 5 when the fact lands in that same sentence. It',
+  'does not have to say what was searched, how much was searched, or that it was searched',
+  'for these particular children: requiring that would be requiring the invented specifics',
+  'you are told to score 1 for below. Do not invent a further test.',
+  'A 3 gestures at it late - after the fact has already landed flat, or in a sentence of',
+  'its own that the fact then follows.',
+  'A 1 states the fact with nothing at all saying where it came from. True, and',
+  'indistinguishable from a piece of trivia a stranger sent.',
+  'Score 1 ALSO for the opposite failure - a look with specifics in it. Hale was given no',
+  'postal code, no area name, no count of places checked, no time the check ran and no',
+  'schedule it runs on, so any of those is invented, and an invented scope is worse than',
+  'no attribution at all.',
+  'Score 1 for a greeting, a brand line ("Welcome to Hale"), hype, or anything that reads',
+  'as a product introducing itself. This is a person saying they already looked.',
+  'Reply with ONLY the score tool.',
+].join(' ');
+
 // Deterministic broken stand-in: invents a venue, a price and a time none of which are
 // in any fixture's decision, re-asks the watch question, and rambles past the budget.
 // Every gate must reject it — no API call, no cache read.
+//
+// It also attributes NOTHING, and that is deliberate as of the attribution gate: the
+// first line used to open "I found Sunnyside Splash Pad for you", which is a perfectly
+// good attribution wrapped around a fabricated venue, and the attribution judge duly gave
+// the broken corpus a mean of 4.8. A stand-in that passes the one gate whose teeth are a
+// model's opinion calibrates nothing, so the finding verb came out and the flat statement
+// stayed.
 const BROKEN_MESSAGE = [
-  "Great news! I found Sunnyside Splash Pad for you on Friday, and it's only $14 per child, starting at 9:15 sharp.",
+  "Great news! Sunnyside Splash Pad is on Friday, and it's only $14 per child, starting at 9:15 sharp.",
   'You should also know about the Beaches Rec Centre program which opens on September 3 at 8:00 for everyone in Etobicoke.',
   // The checkpoint failure mode, added with the third rung: a booking lead time and a
   // wait, neither of which any payload carries, wrapped around a claim about the child.
@@ -316,6 +417,14 @@ async function main() {
   const model = agent.pickModel(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const judge = makeJudge(judgeModel, JUDGE_SYSTEM, 'radar', cachedOnly, getClient, cost);
+  const attributionJudge = makeJudge(
+    judgeModel,
+    ATTRIBUTION_JUDGE_SYSTEM,
+    'radar-attribution',
+    cachedOnly,
+    getClient,
+    cost,
+  );
 
   console.log(
     `radar-eval | mode=${broken ? 'broken' : 'real'}${cachedOnly ? ' (cached-only)' : ''} | compose=${model} judge=${judgeModel}`,
@@ -348,14 +457,35 @@ async function main() {
 
     const score =
       broken || !message ? null : (await judge(fixture.id, { facts: context, message })).score;
-    results.push({ fixture, message, score, failures: checkMessage(fixture, message, score) });
+    // The attribution judge DOES run in broken mode, unlike the voice judge. It is the
+    // only gate here whose teeth are a model's opinion rather than a regex, so "would it
+    // fail a message that attributes nothing?" has to be answered by the harness itself
+    // and not by whoever last edited the rubric: the broken stand-in states invented facts
+    // flat, and a run that scores it >= 4 has a toothless judge, not a passing composer.
+    const attribution =
+      !message || !carriesAFind(fixture.decision)
+        ? null
+        : (await attributionJudge(fixture.id, { facts: context, message })).score;
+    results.push({
+      fixture,
+      message,
+      score,
+      attribution,
+      failures: checkMessage(fixture, message, score, attribution),
+    });
   }
 
   // ── report ─────────────────────────────────────────────────────────────────
   console.log('--- compose ---');
   for (const result of results) {
     const ok = result.failures.length === 0;
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${result.score === null ? '' : `  voice=${result.score}`}`);
+    const scoreLabel = [
+      result.score === null ? '' : `voice=${result.score}`,
+      result.attribution === null ? '' : `looked=${result.attribution}`,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${result.fixture.id}${scoreLabel ? `  ${scoreLabel}` : ''}`);
     for (const failure of result.failures) console.log(`        - ${failure}`);
   }
 
@@ -367,6 +497,13 @@ async function main() {
   const asking = results.filter((r) => r.message?.includes('?'));
   const scores = results.map((r) => r.score).filter((s) => typeof s === 'number');
   const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const attributions = results.map((r) => r.attribution).filter((s) => typeof s === 'number');
+  const meanAttribution = attributions.length
+    ? attributions.reduce((a, b) => a + b, 0) / attributions.length
+    : 0;
+  const unattributed = results.filter(
+    (r) => typeof r.attribution === 'number' && r.attribution < JUDGE_MIN,
+  );
   const accuracy = passes.length / results.length;
   const segmentsMean = results
     .filter((r) => r.message)
@@ -378,6 +515,12 @@ async function main() {
   console.log(`over the segment budget:      ${overBudget.length}  (0 required)`);
   console.log(`messages asking a question:   ${asking.length}  (0 required — the shell asks)`);
   console.log(`mean voice score:             ${meanScore.toFixed(2)}  (each >= ${JUDGE_MIN})`);
+  console.log(
+    `finds landing as trivia:      ${unattributed.length}  (0 required — a find with no look behind it)`,
+  );
+  console.log(
+    `mean attribution score:       ${meanAttribution.toFixed(2)}  (each >= ${JUDGE_MIN}, ${attributions.length} finds scored)`,
+  );
   if (segmentsMean.length) {
     console.log(
       `segments per payload:         min ${Math.min(...segmentsMean)} / max ${Math.max(...segmentsMean)}`,
@@ -390,7 +533,11 @@ async function main() {
   );
 
   const allPass =
-    accuracy === 1 && fabricating.length === 0 && overBudget.length === 0 && asking.length === 0;
+    accuracy === 1 &&
+    fabricating.length === 0 &&
+    overBudget.length === 0 &&
+    asking.length === 0 &&
+    unattributed.length === 0;
 
   console.log('\n--- gate ---');
   if (!broken) {

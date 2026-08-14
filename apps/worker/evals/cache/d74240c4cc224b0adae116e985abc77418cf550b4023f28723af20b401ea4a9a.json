@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message violates multiple core requirements for the \"introduction\" moment. It names and describes the other household (\"A family near you with a toddler\"), which is explicitly forbidden. It reads as a company collecting contact details with a greeting, emoji, example address, deadline (\"within 2 days\"), and a link to a website. It asks two questions instead of one. It fails to tie the ask to the introduction in the parent's own terms - instead it pitches urgency and describes the waiting family. The message does use the word \"email\" but is otherwise entirely off the mark for this moment.",
+    "score": 1
+  }
+}

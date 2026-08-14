@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on multiple counts. It opens with emoji and a greeting (\"Hi there! 😊\"), which are marked LOW. It names the other household (\"A family near you with a toddler\"), which is explicitly forbidden - the instructions say not to describe the other household \"in ANY way, including 'a family near you' or 'they have a toddler'.\" It invents a specific deadline (\"within 2 days\"), creates pressure with \"is waiting,\" points at an app (\"See www.example.com\"), includes an example address (\"sam@example.com\"), and asks two separate questions. The message reads like a company collecting contact details rather than tying the ask to the introduction in the parent's own terms. While it does attempt brevity after being told the previous version was too long, it solves length by adding prohibited elements instead of cutting unnecessary ones.",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message fails on multiple counts. It includes greeting (\"Hi there!\"), emoji, and exclamation mark - all marked LOW. It names the other household (\"A family near you with a toddler\") which is explicitly forbidden. It asks two questions instead of one. It includes an invented specific (a deadline: \"within 2 days\") and points at an app/link (www.example.com). Most critically, it never states what \"covered\" means - it never explains that Hale will keep watching dates on its own AND that the parent can text a parenting question whenever they need to. The message only asks for a name and email, with no indication of what Hale actually does from here. This reads like a company collecting contact details rather than a tail that completes the meaning of \"you're covered.\"",
+    "score": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Strong voice: quiet, conversational (\"I caught that while I was looking around\"), specific details (date, time, town, age range), plain-spoken. Faithfully states facts without padding. However, minor deduction: the \"where\" for the climbing session is null/absent, and the message doesn't explicitly acknowledge this gap (a 5 would say \"location TBD\" or similar). Otherwise exactly matches the style of a helpful neighbour who looked something up."
+  }
+}

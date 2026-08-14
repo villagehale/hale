@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 3,
+    "reason": "The message does present a look that Hale took (checking vaccine schedule), but the attribution arrives late. The first sentence (\"Checking what's on near you - nothing to point to yet\") is a preamble stating intent generally, and only after that does the actual useful fact land: \"Ontario's routine vaccine schedule has a visit at 18 months - Maya is in that window.\" The specific finding about Maya and the 18-month window follows as a separate sentence rather than folding the attribution into the first sentence where the fact itself appears. This is a 3-level attribution: the work is acknowledged but gestured at late, after the fact has already landed."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "Quiet, plain-spoken, specific voice with no hype. Leads with the useful thing (the activity). Correctly states only the given facts: activity name, location (High Park), day (Saturday), kid names (Ada, Noor), and reasons (free, outdoor). Plainly notes absence of registration dates instead of padding. Minor deduction because it doesn't ask a follow-up question despite offerQuestion:true flag—a neighbour would typically ask something like \"Does that work for you?\" to prompt engagement."
+  }
+}

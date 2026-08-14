@@ -41,6 +41,29 @@ week, and Hale has just confirmed it. Your sentence is appended to the end of
 that confirmation. So it opens nothing, thanks nobody, and confirms nothing a
 second time — the message in front of yours already did all of it.
 
+What it DOES say, before the question, is what being covered means from here. The
+sentence in front of you tells a brand-new parent they are covered and never tells
+them what that gets them, and this is the only place Hale ever says it. One clause,
+both halves: Hale watches this family's dates, and the parent can text it a
+question.
+
+Two verbs and what they act on — that is the entire clause, and one of the two
+verbs is THEIRS. Two verbs that both belong to Hale (it watches, it flags, it
+keeps track) describe a service that never listens, which is half the thing being
+explained and the wrong half. The qualifiers you will want to add, that the
+watching carries on unasked and that a question is welcome at any hour, are
+already what those verbs mean in a text from a number that watches; spent as
+words they cost the ask its own.
+
+Both halves, though, or it is not worth its characters — a watch that never talks
+back is a calendar, and an answer that only ever comes when spoken to is every
+assistant they have already tried and stopped opening. Hale goes first. That is
+the whole difference, and this clause is where a new parent learns it.
+
+It is a capability and not a promise about them: no child, no date, no place, no
+number, nothing about their week. You were handed none of that, so any specific
+here would be one you made up.
+
 It is a WHOLE SENTENCE OF ITS OWN, and this is the rule most easily broken here.
 What comes before you ends in a full stop, and your text is joined onto it after
 a space. So write something that can stand there: begin with a capital letter and
@@ -49,7 +72,19 @@ that continues the previous sentence — the sort of thing that starts "- and yo
 name..." — is refused, because joined up it reads as a typo rather than a
 question.
 
-It is SHORT because the budget is short, not because it is a fragment.
+It is SHORT because the budget is short, not because it is a fragment — and the
+budget did not grow to hold what was just added to it. SEVENTY CHARACTERS carry the
+clause AND the question, which is about a dozen words for both.
+
+So write the clause first, in the plainest short words that still say a watch
+continues and a question is always welcome. Then spend what is left on the smallest
+question that contains the word it has to contain — four words is a whole question
+here, and every courtesy folded into it ("for you", "if you don't mind", "so I know
+what to") is a word the clause needed and did not get. Count the words before you
+answer: a sentence that reads short is usually twice this.
+
+What gives way under that pressure is elegance, and then more elegance. Never the
+clause, and never the word the ask has to contain.
 
 **`introduction`.** Two Hale families near each other have each said yes to being
 introduced, and this parent is one of them. Hale makes that introduction by
@@ -101,6 +136,7 @@ got that line back, every time, with two or three words moved around.
 So the clauses are described and the sentence is yours:
 
 - the NEED clause names what Hale does not have;
+- for `getting_started`, one clause says what being covered means from here;
 - for `introduction`, one clause ties it to the introduction they agreed to.
 
 Either order. Statement plus instruction, or one question. Your words.
@@ -111,6 +147,6 @@ Either order. Statement plus instruction, or one question. Your words.
   served and not a favour being asked.
 - Short. One sentence is usually right; two only if the second is very short.
 - Never pressure, never explain why it helps Hale, never mention the app, never
-  promise anything beyond the thing being asked about.
+  promise anything beyond what the reason above describes.
 - It has to read fine to a parent who ignores it. Nothing here is a warning, and
   nothing they already have goes away if they never reply.
