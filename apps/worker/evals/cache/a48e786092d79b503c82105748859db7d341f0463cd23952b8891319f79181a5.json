@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "none",
+    "polarity": "no",
+    "confidence": "high",
+    "reason": "This is a question, not an answer. Parent is asking for information about storytime, not replying to either open question."
+  },
+  "latencyMs": 1584
+}

@@ -132,16 +132,14 @@ const GRADE = {
   intro_proposal: 'consequential',
   intro_optin: 'ordinary',
   plan_offer: 'ordinary',
-  health_checkpoint: 'ordinary',
 };
 
-/** Mirrors `ANSWERABLE`. A `no` to a plan offer or a health checkpoint has no writer. */
+/** Mirrors `ANSWERABLE`. A `no` to a plan offer has no writer — the offer just lapses. */
 const ANSWERABLE = {
   approval: { yes: true, no: true },
   intro_optin: { yes: true, no: true },
   intro_proposal: { yes: true, no: true },
   plan_offer: { yes: true, no: false },
-  health_checkpoint: { yes: true, no: false },
 };
 
 /**
@@ -327,7 +325,7 @@ async function main() {
       `${tag}  ${r.fixture.id.padEnd(24)} raw={${short(String(r.raw.target))}, ${r.raw.polarity}, ${r.raw.confidence}}  ->  ${describe(r.reading)}`,
     );
     console.log(
-      `      model's reason: ${r.raw.reason ?? '(ABSENT - the response hit max_tokens; prod rejects this)'}`,
+      `      model's reason: ${r.raw.reason ?? '(ABSENT - ran out of output tokens mid-reason; prod accepts this, the field is optional)'}`,
     );
     for (const f of r.failures) console.log(`      · ${f}`);
     if (r.failures.length > 0) console.log(`      why this fixture: ${r.fixture.why}`);

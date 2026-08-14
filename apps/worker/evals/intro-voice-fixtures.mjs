@@ -232,7 +232,13 @@ export const INTRO_VOICE_FIXTURES = [
       },
     ],
     countsTowardVariance: false,
+    // The speaker rule is NOT restated here. It is in the rubric already, and a per-fixture
+    // note that primes on "speaker" made the judge hunt for one: it scored a correct
+    // first-person ask a 2 twice, once conceding mid-reason that the construction was "technically
+    // about the other family". What is left is the thing only this fixture knows — that the
+    // refused attempt was right about everything except who was speaking, so the retry has
+    // something to preserve rather than merely something to avoid.
     watchFor:
-      'It was just told it referred to itself by name. This one must say "I" - "I can introduce you", "happy to introduce you" - and must not swap one wrong speaker for another by reaching for "we" or "us". The speaker test is ONLY about how Hale refers to ITSELF: "Hale can", "Hale will", "Hale has" and "we"/"us" are the failures. "Another Hale family" is the OTHER household - that is simply what they are called, it is not Hale talking about itself, and it must not be marked down. Everything else about the refused attempt was right: the nearby family, the toddler, Maya, the reassurance that nothing is shared. Keep all of it. Throwing the reassurance away to make room for the pronoun fix is a worse message than the one it replaced.',
+      'Its last attempt was refused for one reason only, and everything else about it was right: the nearby family, the toddler, Maya, the offer, and the reassurance that nothing is shared. The retry has to keep all of that. Throwing the reassurance away, or dropping to a bare one-line offer, is a worse message than the one it replaced.',
   },
 ];
