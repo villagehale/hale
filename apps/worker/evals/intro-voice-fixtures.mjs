@@ -184,7 +184,7 @@ export const INTRO_VOICE_FIXTURES = [
     },
     noProperNames: true,
     watchFor:
-      'A relationship possessive rather than a name, plus an activity both families are interested in. Use the possessive as given and name the activity verbatim. The one fact about the other household is the band word - it must not acquire a name, a number, a distance or a personality, and "they sound lovely" is a claim about people Hale has never seen.',
+      'A relationship possessive rather than a name, plus an activity coming up nearby that both families could go to. Use the possessive as given and name the activity verbatim. Never claim either family has shown interest in the activity, registered for it, or is attending - it is only a nearby upcoming session they could both drop into. The one fact about the other household is the band word - it must not acquire a name, a number, a distance or a personality, and "they sound lovely" is a claim about people Hale has never seen.',
   },
   {
     /**

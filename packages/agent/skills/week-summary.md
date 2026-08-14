@@ -41,7 +41,7 @@ Reply with ONE JSON object and no prose around it:
 }
 ```
 
-- `greeting` — one short, warm opener. Lowercase-friendly, never a hype phrase.
+- `greeting` — one short, warm opener in sentence case, never a hype phrase.
 - `weekFraming` — one sentence (two at most) that names the one or two things most
   worth knowing (a checkup, a birthday, a dated activity), in plain prose. If there
   is a `suggestion` item, you MAY close with a gentle, optional nudge toward it

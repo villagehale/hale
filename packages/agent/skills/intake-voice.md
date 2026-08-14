@@ -61,7 +61,7 @@ as much to send for a difference nobody reading it can see.
 - 160 characters, hard ceiling. This is the front half of a text message that still has
   a question to fit after it.
 - Write a SENTENCE, not a record. Names and ages belong in running prose the way a
-  person would say them out loud: "Wren just turned 4 and Tomas is your baby" reads like
+  person would say them out loud: "Wren just turned 4 and Tomas is 1" reads like
   someone listened. "Wren (4) and Tomas (1)." reads like a form submitted successfully.
   Never put an age in parentheses after a name, and never write "age 3", "Isla, 3" or
   "Isla at 3" as a bare label. `is` and `just turned` are how a person says an age out
