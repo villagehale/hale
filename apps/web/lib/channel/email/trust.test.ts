@@ -135,6 +135,20 @@ describe('parseAuthenticationResults', () => {
       { verdict: 'none', domain: null },
     ]);
   });
+
+  /**
+   * A single header value that is not JSON stays exactly as it was — the array decode is
+   * gated on a leading `[`, which a real authserv-id (a hostname) never has, so the common
+   * one-verdict case is untouched.
+   */
+  it('leaves an ordinary single header value alone', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass header.d=example.com`)).toEqual({
+      authservId: MX,
+      spf: null,
+      dmarc: null,
+      dkim: [{ verdict: 'pass', domain: 'example.com' }],
+    });
+  });
 });
 
 describe('assessSenderTrust', () => {
@@ -179,6 +193,50 @@ describe('assessSenderTrust', () => {
       fromDomain: 'gmail.com',
     });
     expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
+  });
+
+  /**
+   * THE FORWARDED MESSAGE, verbatim. This is exactly what Resend returned for a Gmail
+   * message forwarded aloha@ -> hale@mail on 2026-08-14: a message with TWO
+   * Authentication-Results (SES's own, plus Google's from when it first received the mail)
+   * comes back as a JSON-array-ENCODED STRING, `["<ses>","<google>"]`. The newline split
+   * found no newline, parsed the whole blob as one clause, and read the authserv-id as
+   * `["amazonses.com` — so every forwarded parent email, the PRIMARY production path, was
+   * refused. `observedAuthservIds: ['["amazonses.com']` in the prod log is what caught it.
+   */
+  it('trusts a real forwarded Gmail message whose two verdicts arrive JSON-array-encoded', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        '["amazonses.com; spf=pass (spfCheck: domain of villagehale.com designates 209.85.208.50 as permitted sender) client-ip=209.85.208.50; envelope-from=barton+caf_=hale=mail.villagehale.com@villagehale.com; helo=mail-ed1-f50.google.com; dkim=pass header.i=@gmail.com; dmarc=pass header.from=gmail.com;","mx.google.com; dkim=pass header.i=@gmail.com header.s=20251104 header.b=mkuRsUWp; arc=pass (i=1); spf=pass (google.com: domain of barton97daz@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=barton97daz@gmail.com; dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com; dara=neutral header.i=@villagehale.com"]',
+      ),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * The forgery defense survives the array decode, and is now the DESIGNED behavior rather
+   * than an accident of a mangled parse: a sender who writes their own
+   * `Authentication-Results: amazonses.com; ...` produces a second copy under our
+   * authserv-id once SES adds its real one, so both land in the array and the exactly-one
+   * rule refuses it. A legitimate forward is one-ours-plus-Google, which is not two ours.
+   */
+  it('refuses a forwarded blob carrying two copies of our own authserv-id (forged duplicate)', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        '["amazonses.com; dkim=pass header.i=@attacker.test","amazonses.com; dkim=pass header.i=@gmail.com"]',
+      ),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      // Both copies are named — the decode turned the blob into two real entries, so the
+      // exactly-one rule fires by design and the log shows why.
+      observedAuthservIds: ['amazonses.com', 'amazonses.com'],
+    });
   });
 
   /**
