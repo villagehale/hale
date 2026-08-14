@@ -6,7 +6,10 @@ import { and, asc, desc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import type { ChannelMessageReceivedPayload } from '@hale/tools-contracts';
 import { productionOffDomainLane } from '~/lib/channel/off-domain/lane';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import { resolveSendableEmail } from '~/lib/channel/email/sendable';
+import { productionEmailReply } from '~/lib/channel/email/reply-send';
 import { createTwilioTransport } from '~/lib/channel/twilio/transport';
+import type { ChannelKind } from '~/lib/channel/types';
 import { UNDO_WINDOW_HOURS, reverseExecutedCalendarAction } from '~/lib/actions/reverse-calendar';
 import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
@@ -37,6 +40,8 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import type { ReplyRoute } from './reply-route';
+import { createReplyTransport } from './reply-transport';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import { createTurnApology } from './apology';
 import type { InboundTurnLedger } from './turn-ledger';
@@ -53,13 +58,26 @@ import type { InboundTurnLedger } from './turn-ledger';
  * The BODY is read from the ledger row rather than the job, which is why the queue
  * payload can stay pointers-only: a parent's words live in exactly one place and never
  * pass through pg-boss (rule #1).
+ *
+ * THE CHANNEL IS READ FROM THAT SAME ROW, and it is what decides where the answer goes.
+ * The row is already the source of truth for what the parent said; making it the source
+ * of truth for which door they said it through means the two can never disagree — no job
+ * field to keep in step, and no way for a re-drive to answer a different channel than
+ * the original attempt. The row's `provider_message_id` rides along for the same reason:
+ * on the email leg it is the inbound Message-ID, which is what puts Hale's reply inside
+ * the parent's own mail thread.
  */
 export async function loadInboundContext(
   database: Database,
   job: ChannelMessageReceivedPayload,
 ): Promise<InboundContext | null> {
   const [message] = await database
-    .select({ body: schema.channelMessages.body, familyId: schema.channelMessages.familyId })
+    .select({
+      body: schema.channelMessages.body,
+      familyId: schema.channelMessages.familyId,
+      channel: schema.channelMessages.channel,
+      providerMessageId: schema.channelMessages.providerMessageId,
+    })
     .from(schema.channelMessages)
     .where(eq(schema.channelMessages.id, job.channel_message_id))
     .limit(1);
@@ -70,13 +88,41 @@ export async function loadInboundContext(
   // household.
   if (!message?.body || message.familyId !== job.family_id) return null;
 
-  const [role, primaryParentName, phoneE164] = await Promise.all([
+  const [role, primaryParentName, reply] = await Promise.all([
     memberRole(database, job.family_id, job.parent_user_id),
     primaryParentDisplayName(database, job.family_id),
-    resolveSendablePhone(database, job.parent_user_id),
+    resolveReplyRoute(database, job.parent_user_id, message.channel, message.providerMessageId),
   ]);
 
-  return { body: message.body, role, primaryParentName, phoneE164 };
+  return { body: message.body, role, primaryParentName, reply };
+}
+
+/**
+ * Where an answer to THIS message may go — one resolver per channel, each of which is
+ * also that channel's live consent check.
+ *
+ * `push` is not a door a parent can arrive through: nothing writes an inbound push row
+ * and there is no way to answer one, so it resolves to no route and the router says
+ * `unreachable` rather than guessing at a channel the message did not come from.
+ */
+async function resolveReplyRoute(
+  database: Database,
+  parentUserId: string,
+  channel: ChannelKind,
+  providerMessageId: string | null,
+): Promise<ReplyRoute | null> {
+  switch (channel) {
+    case 'sms': {
+      const phoneE164 = await resolveSendablePhone(database, parentUserId);
+      return phoneE164 ? { channel: 'sms', to: phoneE164 } : null;
+    }
+    case 'email': {
+      const address = await resolveSendableEmail(database, parentUserId);
+      return address ? { channel: 'email', to: address, inReplyTo: providerMessageId } : null;
+    }
+    default:
+      return null;
+  }
 }
 
 async function memberRole(
@@ -379,7 +425,13 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
   return {
     database,
     loadContext: loadInboundContext,
-    transport: createTwilioTransport(),
+    transport: createReplyTransport({
+      sms: createTwilioTransport(),
+      // Null until the inbound-email leg is provisioned, which is the same condition
+      // that makes an email route impossible to reach — dark by construction, and named
+      // rather than silent if it is ever reached anyway (reply-transport.ts).
+      email: productionEmailReply(),
+    }),
     handlers: defaultHandlers(),
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),

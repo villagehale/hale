@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
 import { type FakeDb, makeFakeDb } from '~/lib/channel/intake/fakes';
-import { FakeTransport } from '~/lib/channel/intake/transport';
+import { FakeReplyTransport, type ReplyRoute } from './reply-route';
 import type { OffDomainLane, OffDomainVerdict } from '~/lib/channel/off-domain/lane';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/twilio/inbound';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
@@ -41,6 +41,9 @@ import {
 const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const PHONE = '+14165551234';
+/** The route a text resolves to. Most of this file is about ORDER rather than delivery,
+ * so the default stays SMS and the email cases below name themselves. */
+const SMS_ROUTE: ReplyRoute = { channel: 'sms', to: PHONE };
 const NOW = new Date('2026-07-30T12:00:00.000Z');
 
 function job(overrides: Partial<ChannelMessageReceivedJob> = {}): ChannelMessageReceivedJob {
@@ -216,7 +219,7 @@ function fakeApology(
 interface Harness {
   deps: ChannelRouterDeps;
   fake: FakeDb;
-  transport: FakeTransport;
+  transport: FakeReplyTransport;
   logs: unknown[];
   turns: ReturnType<typeof fakeTurnLedger>;
 }
@@ -235,7 +238,7 @@ function harness(
   } = {},
 ): Harness {
   const fake = makeFakeDb();
-  const transport = new FakeTransport();
+  const transport = new FakeReplyTransport();
   const logs: unknown[] = [];
   const context: InboundContext | null =
     options.context === null
@@ -244,7 +247,7 @@ function harness(
           body: 'anything indoors this weekend?',
           role: 'primary_parent',
           primaryParentName: 'Sam',
-          phoneE164: PHONE,
+          reply: SMS_ROUTE,
           ...options.context,
         };
 
@@ -280,6 +283,91 @@ const conversationRows = (fake: FakeDb) => fake.rows(schema.conversations);
 const messageRows = (fake: FakeDb) => fake.rows(schema.messages);
 const auditRows = (fake: FakeDb) => fake.rows(schema.auditLog);
 const ledgerRows = (fake: FakeDb) => fake.rows(schema.channelMessages);
+
+// ── the channel a parent wrote in on ─────────────────────────────────────────
+
+/**
+ * EMAIL PHASE 2. The router consumes both doors, and the only thing it is allowed to do
+ * differently is which route it answers on. Everything asserted here is a thing that was
+ * true of a TEXT before and must now be equally true of an email — including the ones
+ * that would be silent failures if they were not: an answer sent to the wrong channel,
+ * a ledger row that files an email as a text, or an audit trail that cannot say which
+ * door Hale used.
+ */
+describe('answering on the channel the parent used', () => {
+  const EMAIL_ROUTE: ReplyRoute = {
+    channel: 'email',
+    to: 'sam@example.com',
+    inReplyTo: '<msg-1@example.com>',
+  };
+
+  it('answers an email by email, in the parent own thread', async () => {
+    const coach = fakeCoach('Saturday is dry — the splash pad is open.');
+    const h = harness({ context: { reply: EMAIL_ROUTE }, coach });
+
+    const result = await routeChannelMessage(h.deps, job({ provider_message_id: '<msg-1@example.com>' }));
+
+    expect(result.status).toBe('agent_replied');
+    // The whole point: the coach composed it, and it left by EMAIL, carrying the
+    // reference that puts it in the thread the parent wrote from.
+    expect(h.transport.sent).toEqual([
+      { route: EMAIL_ROUTE, body: 'Saturday is dry — the splash pad is open.' },
+    ]);
+  });
+
+  it('files the reply as email in the ledger and in the audit trail', async () => {
+    const h = harness({ context: { reply: EMAIL_ROUTE } });
+
+    await routeChannelMessage(h.deps, job());
+
+    const outbound = ledgerRows(h.fake).filter((row) => row.direction === 'out');
+    expect(outbound.map((row) => row.channel)).toEqual(['email']);
+    expect(auditRows(h.fake).map((r) => r.actionTaken)).toContain('email_reply_sent');
+    // The SMS action name is NOT reused: an access request must be able to say which
+    // door an answer went out of.
+    expect(auditRows(h.fake).map((r) => r.actionTaken)).not.toContain('sms_reply_sent');
+  });
+
+  it('threads an email into the same conversation a text would land in', async () => {
+    const h = harness({ context: { reply: EMAIL_ROUTE } });
+
+    await routeChannelMessage(h.deps, job());
+
+    // ONE memory, whichever door: the anchor is the parent, never the channel.
+    expect(conversationRows(h.fake)).toHaveLength(1);
+    expect(conversationRows(h.fake)[0]).toMatchObject({ noteKey: channelSmsNoteKey(PARENT) });
+    expect(messageRows(h.fake).map((row) => row.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('runs the same deterministic handlers for an email as for a text', async () => {
+    const claimed = claimingHandler('approval', 'Approved — add to your calendar.');
+    const h = harness({ context: { reply: EMAIL_ROUTE }, handlers: [claimed] });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('handled');
+    expect(h.transport.sent).toEqual([
+      { route: EMAIL_ROUTE, body: 'Approved — add to your calendar.' },
+    ]);
+  });
+
+  /**
+   * A parent who unsubscribed by email resolves to no route (email/sendable.ts), and a
+   * message of theirs already in the queue must find the door shut — the same silence a
+   * revoked number gets, and the reason the check lives at send time rather than at
+   * record time.
+   */
+  it('sends nothing to a parent who has stopped email, even mid-flight', async () => {
+    const coach = fakeCoach();
+    const h = harness({ context: { reply: null }, coach });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('unreachable');
+    expect(h.transport.sent).toEqual([]);
+    expect(coach.calls).toBe(0);
+  });
+});
 
 // ── threading ────────────────────────────────────────────────────────────────
 
@@ -1386,7 +1474,7 @@ describe('refusals', () => {
    * be a CASL failure, so the turn stops before anything is sent (rule #1). */
   it('sends nothing when there is no reachable channel', async () => {
     const coach = fakeCoach();
-    const h = harness({ context: { phoneE164: null }, coach });
+    const h = harness({ context: { reply: null }, coach });
 
     const result = await routeChannelMessage(h.deps, job());
 

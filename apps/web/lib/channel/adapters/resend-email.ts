@@ -1,3 +1,5 @@
+import { emailInboundConfig } from '../email/config';
+import { inboundReplyToAddress } from '../email/reply-send';
 import { type ResendTransport, createResendTransport } from '../resend-transport';
 import type { Channel } from '../types';
 
@@ -19,6 +21,13 @@ import type { Channel } from '../types';
 /** Mirrors DEFAULT_FROM in lib/cron/email.ts (the loop and the crons share one
  * from-identity). Kept local because this file is scope-locked to adapters/. */
 export const RESEND_DEFAULT_FROM = 'aloha@villagehale.com';
+
+/** The reply address, or nothing at all — spread into the send so an unprovisioned
+ * deployment does not carry the key with an empty value. */
+function replyTo(): { replyTo?: string } {
+  const config = emailInboundConfig();
+  return config ? { replyTo: inboundReplyToAddress(config) } : {};
+}
 
 export interface ResendEmailChannelDeps {
   /** Resolve an internal user id to their email (prod: users.email; tests: a fake). */
@@ -50,6 +59,14 @@ export function createResendEmailChannel(deps: ResendEmailChannelDeps): Channel 
       const { id, error } = await transport.send({
         from: process.env.RESEND_FROM ?? RESEND_DEFAULT_FROM,
         to,
+        // Where a reply GOES, and only once there is somewhere for it to go. Hitting
+        // reply on a weekly plan is the most natural way a parent will ever start a
+        // conversation with Hale, and this is what makes that reply arrive at the
+        // inbound webhook instead of the from-identity's mailbox. Gated on the inbound
+        // config for the same reason the whole leg is: until the MX records exist,
+        // advertising that address would send a parent's answer into a void — so an
+        // unprovisioned deployment keeps today's behaviour exactly.
+        ...replyTo(),
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
