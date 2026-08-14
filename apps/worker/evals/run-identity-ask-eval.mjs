@@ -64,6 +64,11 @@ const SMS_SEGMENTS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'sms-s
  * pretending to measure style. */
 const MIN_DISTINCT_OPENERS = 2;
 
+/** Shortest string that can be an ARGUMENT rather than a label. A real verdict here runs
+ * to a paragraph; the collision this guards against produced reasons of twelve and fifteen
+ * characters, so anything under this is a score written blind, not a low bar on prose. */
+const MIN_JUDGE_REASON_CHARS = 40;
+
 function normalizeForCompare(text) {
   return text
     .toLowerCase()
@@ -179,22 +184,39 @@ const JUDGE_SYSTEM = [
   'plain fact about the parent themselves - what to call them, an email address, or both.',
   'Hale composed this nearly blind: it was shown only WHICH facts are missing and WHY it',
   'needs them. No family, no children, no other household, no tools.',
-  'You are given the request it was answering, the message, and watchFor - fixture-specific',
-  'notes on what right and wrong look like here. Score 1-5.',
-  'There are two reasons and they are scored differently.',
-  'reason "getting_started": this message is the TAIL of a confirmation Hale has already',
+  'You are given the moment it was written for, what was missing, the message, and watchFor',
+  '- fixture-specific notes on what right and wrong look like here. Score 1-5.',
+  'The score tool takes your ARGUMENT first and the number second, and that order is the',
+  'point: write what is right and wrong with THIS message in your own words - a few',
+  'sentences quoting what it actually says - and only then score it. A one-word argument,',
+  'or an argument that merely names the moment, is not an argument.',
+  'There are two moments and they are scored differently.',
+  'MOMENT "getting_started": this message is the TAIL of a confirmation Hale has already',
   'written ("Done - you\'re covered. I only text when something actually matters, and STOP',
-  'always works."). A 5 is one short question asking what to call them, that reads as the',
-  'natural end of that sentence. Re-thanking, re-confirming the coverage, greeting, or',
-  'explaining why Hale wants a name are all LOW - the sentence in front already did the',
-  'work, and the budget is about seventy characters.',
-  'reason "introduction": days ago this parent said yes to being introduced to another Hale',
+  'always works."). That sentence says the parent is covered and never says what covered',
+  'MEANS, and this tail is the only place it is ever said. So it has TWO jobs inside about',
+  'seventy characters: one clause saying what Hale does from here - it keeps watching this',
+  "family's dates on its own AND the parent can text it a parenting question whenever they",
+  'have one - and the ask itself.',
+  'A 5 does both in one plain sentence, tight enough to fit.',
+  'A message that names only ONE of the two halves (it watches but is never spoken to, or',
+  'it answers but never watches) is a 3.',
+  'A message that only asks for the name is a 2 however well it reads: the parent is left',
+  'with a number that collects details and no idea what it does.',
+  'Do not mark it down for terseness - there is no room, and a clipped sentence that says',
+  'both things beats an elegant one that says neither.',
+  'Re-thanking, re-confirming the coverage, mentioning STOP, greeting, or explaining why',
+  'Hale wants a name are all LOW - the sentence in front already did that work.',
+  'MOMENT "introduction": days ago this parent said yes to being introduced to another Hale',
   'family, and Hale cannot make the introduction without what is missing. A 5 ties the ask',
-  "to that introduction in the parent's own terms and asks plainly. A LOW score is any of:",
+  "to that introduction in the parent's own terms and asks plainly. This parent has been a",
+  'Hale family for months, so a line about what Hale watches or what it can answer belongs',
+  'to the start of life and is LOW here - it reads as a company re-introducing itself',
+  'instead of asking the small thing it needs. A LOW score is any of:',
   'reading like a company collecting contact details; naming, counting, locating or',
   'describing the other household in ANY way, including "a family near you" or "they have a',
   'toddler"; implying Hale has been talking to them; pressure, urgency or a deadline.',
-  'LOW for either reason: more than one question; hype, exclamation marks or emoji; a',
+  'LOW at either moment: more than one question; hype, exclamation marks or emoji; a',
   'greeting or a sign-off; an example address; any invented specific - a number, a date, a',
   'place, a link, or anything about a child; pointing at an app; padding after the ask; more',
   'than about two short sentences.',
@@ -258,12 +280,27 @@ async function main() {
       if (pattern.test(body)) failures.push(`forbidden:${pattern.source.slice(0, 40)}`);
     }
 
+    // NOTHING in this payload may be called `reason`. It used to be: the judge was handed
+    // the composer's own user message, which carries `reason: "getting_started"`, and the
+    // verdict schema's FIRST property is also called `reason` — so the judge filled its
+    // argument slot with the string it had just read. Nine of twelve recorded verdicts came
+    // back as `{"reason":"getting_started","score":5}`: a number with nothing conditioning
+    // it, which is the score-blind failure lib/harness.mjs documents, wearing a key
+    // collision instead of a schema order. The radar judge, whose payload has no such key,
+    // writes real arguments — that is the control. Renaming is the fix; the guard below is
+    // what keeps it fixed.
     const verdict = await judge(fixture.id, {
-      request: userMessage,
+      moment: fixture.request.reason,
+      missing: [...fixture.request.missing],
+      refusedBefore: fixture.rejected ?? [],
       message: body,
       watchFor: fixture.watchFor,
     });
-    if (verdict.score < JUDGE_MIN) failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    if ((verdict.reason ?? '').trim().length < MIN_JUDGE_REASON_CHARS) {
+      failures.push(`judge-unargued:${verdict.score} ("${verdict.reason ?? ''}")`);
+    } else if (verdict.score < JUDGE_MIN) {
+      failures.push(`judge:${verdict.score} (${verdict.reason})`);
+    }
 
     results.push({ fixture, body, failures });
   }
@@ -295,6 +332,7 @@ async function main() {
   const unsendable = results.filter((r) => r.failures.some((f) => GATE_NAMES.includes(f)));
   const invented = results.filter((r) => r.failures.some((f) => f.startsWith('forbidden:')));
   const judgeFails = results.filter((r) => r.failures.some((f) => f.startsWith('judge:')));
+  const unargued = results.filter((r) => r.failures.some((f) => f.startsWith('judge-unargued:')));
   const introOpeners = new Set(
     results.filter((r) => r.fixture.request.reason === 'introduction').map((r) => opener(r.body)),
   );
@@ -307,6 +345,9 @@ async function main() {
     `invented counterpart:    ${invented.length}  (0 required - rule #1; it was handed no fact about them)`,
   );
   console.log(`judge below ${JUDGE_MIN}:           ${judgeFails.length}  (0 required)`);
+  console.log(
+    `verdicts with no argument: ${unargued.length}  (0 required - a score written blind is not a verdict)`,
+  );
   console.log(
     `distinct intro opens:    ${introOpeners.size}  (>= ${MIN_DISTINCT_OPENERS} required - one template is a preset body)`,
   );

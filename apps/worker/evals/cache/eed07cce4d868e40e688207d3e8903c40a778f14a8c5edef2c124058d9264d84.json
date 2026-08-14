@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 4,
+    "reason": "The message opens with \"Looking around for your family, I haven't found...\" which explicitly signals that Hale has already taken a look for this specific family. The useful fact about Ontario's 18-month well-baby visit appears in the same sentence as the child's name (\"Noor is in that window\"), embedding the finding into the first sentence. This satisfies the requirement of folding attribution into the first sentence so the fact arrives as a service reporting back on work already done. The only minor gap preventing a 5 is that the phrasing \"Looking around for your family\" is slightly more preamble-like than the most efficient half-clause construction, but it still clearly establishes Hale as the one who checked before delivering the fact."
+  }
+}

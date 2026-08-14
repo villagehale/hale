@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message states both facts flatly without attribution. The opening sentence presents the registration date as a simple statement (\"opens Aug 11, 6:30 a.m., so that's the nearest date worth flagging\") with no indication that Hale performed a look to find this. The second paragraph similarly introduces the Riverdale Farm drop-in with \"I also found\" - but this comes after the fact has already landed, making it a gestured-at attribution that arrives too late. The word \"found\" should appear in or anchor the opening sentence where the useful fact first lands. The structure reads as fact-first, then attribution-second, rather than embedding the \"I looked and checked\" into the moment the information arrives."
+  }
+}

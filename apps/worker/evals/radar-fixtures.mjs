@@ -14,6 +14,12 @@
 //   checkpoint       present / absent (the age block: an Ontario health-ADMIN window,
 //                                      the one rung that survives an empty geography)
 //
+// ATTRIBUTION is scored across the whole corpus rather than fixture by fixture, because
+// it is a property of every message that carries a find and there is nothing per-fixture
+// to say about it. The runner derives who is exempt — `1kid-nothing-at-all`, the one
+// decision with all three rungs null, whose mapping line already IS the look — so a new
+// all-null fixture is exempted by its own shape and never by remembering to flag it.
+//
 // `expect.mustRecall` tokens are derived from the DECISION, never from model output:
 // a message that drops the one fact it exists to deliver has failed regardless of how
 // nice it reads. `expect.orderedRecall` is the same, plus the CASCADE: the tokens must

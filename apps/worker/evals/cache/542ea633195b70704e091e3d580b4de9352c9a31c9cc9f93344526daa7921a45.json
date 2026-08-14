@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 2,
+    "reason": "The message states facts but fails to consistently signal that Hale performed a look for this family. The registration fact arrives with \"I also found\" which weakly attributes the second item to a search, but the first fact (registration opens Aug 11) lacks any signal that Hale checked this—it reads like bare information. The phrase \"I also found\" only modifies what follows it, not the opening sentence. The registration detail should appear earlier with attribution in the first sentence to score higher. Additionally, no invented specifics appear, which avoids a 1, but the weak and late attribution of the search work keeps this from reaching 3."
+  }
+}

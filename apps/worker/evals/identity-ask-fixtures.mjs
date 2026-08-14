@@ -41,33 +41,58 @@ const NAMES_THE_COUNTERPART =
 const INVENTED_CHILD_FACT =
   /\b(daughter|son|teen|teenager|kiddo|toddler|baby|she|he|her|his|him)\b/i;
 
+/**
+ * The `getting_started` service clause, arriving in the WRONG message. Saying what Hale
+ * watches and what it will answer is the whole point of the start-of-life tail; said to a
+ * parent who has been a Hale family for months, days after they agreed to an
+ * introduction, it is a company re-introducing itself instead of asking the one small
+ * thing it needs.
+ *
+ * A forbidden pattern nothing can trip is a test that passes on garbage, so this one has
+ * a positive control: the `getting_started` fixtures require exactly this content, judged
+ * through the same run. If the clause ever stops being produced at all, those go red
+ * before this one goes quietly green.
+ */
+const MISPLACED_CAPABILITY_PITCH =
+  /\b(any parenting question|any question|watch(ing)? (the|your) dates|keep an eye on)\b/i;
+
 export const IDENTITY_ASK_FIXTURES = [
   {
     /**
-     * THE TIGHT ONE. Appended to "Done - you're covered. I only text when something
-     * actually matters, and STOP always works." — so about seventy characters, and the
-     * sentence in front of it has already confirmed everything. Anything that opens with
-     * thanks, or repeats the coverage, has spent the whole budget saying nothing.
+     * THE TIGHT ONE, and now the loaded one. Appended to "Done - you're covered. I only
+     * text when something actually matters, and STOP always works." — so about seventy
+     * characters, and the sentence in front of it has already confirmed everything.
+     *
+     * What it has to carry changed on 2026-08-13. "Covered" is the only word a brand-new
+     * parent has for what they just switched on, and it tells them nothing: the founder
+     * read the old tail as "I am confused what Hale can do, or how it is different from
+     * ChatGPT". So the tail now also says what covered MEANS from here — Hale keeps
+     * watching the dates on its own, and they can text it a question whenever they have
+     * one. That is the whole difference, and it is stated without naming the thing it is
+     * different from: Hale goes first.
+     *
+     * Seventy characters did not become eighty to make room. Both clauses and the ask fit
+     * or the ask is refused and the parent is never asked their name at all.
      */
     id: 'start-name',
     request: { reason: 'getting_started', missing: ['name'] },
     watchFor:
-      'The tail of a confirmation that has already been written. One short question asking what name to use, containing the word "name". Must NOT re-thank, re-confirm coverage, mention STOP, greet, or explain why Hale wants it. Roughly seventy characters is the whole budget.',
+      'The tail of a confirmation that has already been written. It must do TWO things inside roughly seventy characters: say what being covered means from here (Hale keeps watching this family\'s dates by itself, AND they can text a parenting question whenever they have one), and ask what name to use, containing the word "name". A bare name question is a failure now, however well it reads. Must NOT re-thank, re-confirm coverage, mention STOP, greet, or explain why Hale wants the name.',
     forbiddenPatterns: [/\bthank/i, /\bSTOP\b/, /covered/i, /^\s*(?:and|also)\b/i],
   },
   {
     id: 'intro-email',
     request: { reason: 'introduction', missing: ['email'] },
     watchFor:
-      'The parent said yes to an introduction days ago and Hale cannot send it without an address. Must tie the ask to that introduction and use the word "email". Must not name, number or describe the other household, and must not read as a company collecting an address.',
-    forbiddenPatterns: [NAMES_THE_COUNTERPART, INVENTED_CHILD_FACT],
+      'The parent said yes to an introduction days ago and Hale cannot send it without an address. Must tie the ask to that introduction and use the word "email". Must not name, number or describe the other household, must not read as a company collecting an address, and must not pitch what Hale watches or answers - this family has known that for months.',
+    forbiddenPatterns: [NAMES_THE_COUNTERPART, INVENTED_CHILD_FACT, MISPLACED_CAPABILITY_PITCH],
   },
   {
     id: 'intro-name',
     request: { reason: 'introduction', missing: ['name'] },
     watchFor:
-      'Same moment, but what is missing is what to call them. Must contain "name" and tie to the introduction. The honest reason is that the introduction email has to greet them by name - saying so plainly is fine; inventing anything about the other family is not.',
-    forbiddenPatterns: [NAMES_THE_COUNTERPART, INVENTED_CHILD_FACT],
+      'Same moment, but what is missing is what to call them. Must contain "name" and tie to the introduction. The honest reason is that the introduction email has to greet them by name - saying so plainly is fine; inventing anything about the other family is not, and neither is a line about what Hale watches or answers.',
+    forbiddenPatterns: [NAMES_THE_COUNTERPART, INVENTED_CHILD_FACT, MISPLACED_CAPABILITY_PITCH],
   },
   {
     /**
@@ -79,7 +104,7 @@ export const IDENTITY_ASK_FIXTURES = [
     request: { reason: 'introduction', missing: ['name', 'email'] },
     watchFor:
       'Two things missing, ONE message, one question mark at most. Both "name" and "email" must appear. A statement ending in an instruction is usually the better shape here than a compound question.',
-    forbiddenPatterns: [NAMES_THE_COUNTERPART, INVENTED_CHILD_FACT],
+    forbiddenPatterns: [NAMES_THE_COUNTERPART, INVENTED_CHILD_FACT, MISPLACED_CAPABILITY_PITCH],
   },
   {
     /**
@@ -92,7 +117,7 @@ export const IDENTITY_ASK_FIXTURES = [
     request: { reason: 'getting_started', missing: ['name'] },
     rejected: [{ ask: 'What should I call you?', problems: ['name_word_missing'] }],
     watchFor:
-      'It was just told its last attempt never used the word "name". This one must contain it, stay inside the tail budget, and not have become stiff or formal in the process.',
+      'It was just told its last attempt never used the word "name". This one must contain it, keep both halves of what happens from here (Hale watches the dates by itself, they can text a question anytime), stay inside the tail budget, and not have become stiff or formal in the process. Losing the service clause to make room for the word is the failure to watch for.',
     forbiddenPatterns: [/\bthank/i, /^\s*(?:and|also)\b/i],
   },
   {
@@ -111,6 +136,6 @@ export const IDENTITY_ASK_FIXTURES = [
     ],
     watchFor:
       'It was just told its last attempt was too long. This one must fit one segment while keeping both required words and the tie to the introduction - shortened, not re-padded.',
-    forbiddenPatterns: [NAMES_THE_COUNTERPART],
+    forbiddenPatterns: [NAMES_THE_COUNTERPART, MISPLACED_CAPABILITY_PITCH],
   },
 ];

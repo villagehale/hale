@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "reason": "This message accomplishes what \"getting_started\" requires. It states both halves of what happens from here in one sentence: \"I watch your dates and you can always text me\" (Hale watches automatically, and the parent can text a question anytime), then asks plainly for the name with the word \"name\" included. The parent understands what \"covered\" means - they get automatic watching plus on-demand answers. It fits the tail budget at roughly fifty characters and stays conversational without becoming stiff. The earlier attempt failed because it never used the word \"name\"; this one fixes that while keeping both service clauses intact.",
+    "score": 5
+  }
+}

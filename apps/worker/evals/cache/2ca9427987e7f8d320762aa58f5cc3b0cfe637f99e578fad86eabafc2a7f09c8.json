@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 5,
+    "reason": "The message opens with a fact (Fall 2026 registration details) followed by \"I also found\" in the second sentence, which attributes the second fact to Hale's search. However, the first-sentence criterion for a 5 requires the attribution verb in the FIRST sentence itself. The registration fact lands in the first sentence with no attribution verb, appearing as bare information. The \"I found\" attribution comes in the second sentence, making it late. This is a 3-level construction: fact stated, then attribution gesture follows. Corrected assessment: Score is 3, as the attribution gesture comes after the facts have already landed in their own sentences."
+  }
+}
