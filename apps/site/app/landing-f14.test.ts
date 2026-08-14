@@ -87,6 +87,35 @@ describe('flag-on landing (hero)', () => {
     expect(html).toContain('+1 (647) 555-1234');
     expect(html).toContain('aria-label="QR code — scan to text Hale"');
   });
+
+  it('prints the dialable number inside the CTA block, ungated by viewport', () => {
+    // The QR card is `hidden sm:flex` — a phone cannot scan its own screen — so the
+    // number reached no mobile reader at all, and on a 1440x720 laptop it sat below
+    // the fold behind a primary CTA that silently no-ops on Windows and Linux. The
+    // number now rides the CTA block itself, as a composer link a reader can also
+    // just read off the screen and dial.
+    const cta = html.indexOf('id="start"');
+    const number = html.indexOf('+1 (647) 555-1234');
+    const gated = html.indexOf('hidden', cta);
+    expect(cta).toBeGreaterThan(-1);
+    expect(number).toBeGreaterThan(cta);
+    // Nothing between the CTA block and the number may carry a display gate: the
+    // first `hidden` after the anchor is the desktop-only QR card, further down.
+    expect(number).toBeLessThan(gated);
+    expect(html).toContain('>+1 (647) 555-1234</a>');
+  });
+
+  it('keeps a conversion surface on screen — a sticky header carrying Text Hale', () => {
+    // The page offered exactly two CTAs, 4,634px apart on desktop and 7,375px apart
+    // on mobile, under a `position: static` header that held only "Sign in".
+    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '';
+    expect(header).toContain('sticky top-0');
+    expect([...header.matchAll(/Text Hale/g)]).toHaveLength(2);
+    // Split by where each half works: the composer on a phone, and on a laptop —
+    // where `sms:` is dead — a scroll to the number the CTA block now prints.
+    expect(header).toContain('href="sms:+16475551234?&amp;body=Hi"');
+    expect(header).toContain('href="#start"');
+  });
 });
 
 describe('flag-on landing (number not provisioned)', () => {
@@ -96,6 +125,10 @@ describe('flag-on landing (number not provisioned)', () => {
     expect(html).not.toContain('sms:');
     expect(html).not.toContain('Text me');
     expect(html).not.toContain('647');
+    // The sticky header's CTA is the same promise in miniature — with no number
+    // provisioned there is nothing to offer, so it is absent rather than dead.
+    expect(html).not.toContain('Text Hale');
+    expect(html).not.toContain('href="#start"');
   });
 
   it('falls back to the honest email path and says the number is not live', () => {
@@ -358,5 +391,20 @@ describe('flag-on landing (the transcript is the real script)', () => {
   it('labels the thread as an example rather than passing it off as a screenshot', () => {
     expect(html.toLowerCase()).toContain('example');
     expect(html).not.toContain('<img');
+  });
+
+  it('opens on a three-bubble teaser and keeps the rest of the script one tap away', () => {
+    // 794px of transcript stood between the headline and everything else on the page.
+    // The teaser is the greeting, the family in one line, and the catch — the beats
+    // that carry the argument — and the yes plus the confirmation sit behind a native
+    // <details>, in order, so the script above stays the whole script.
+    const bubble = /<span class="sr-only">/g;
+    const teaser = html.slice(0, html.indexOf('<details'));
+    expect(teaser).not.toBe('');
+    expect([...teaser.matchAll(bubble)]).toHaveLength(3);
+    expect([...html.matchAll(bubble)]).toHaveLength(5);
+    // The one line dropped rather than deferred is the parent's bare "Hi" — the CTA's
+    // own pre-filled body, which the transcript was saying a second time.
+    expect(html).not.toContain('>Hi</p>');
   });
 });

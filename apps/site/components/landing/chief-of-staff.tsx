@@ -22,6 +22,11 @@ import { CONTACT_EMAIL, buildSmsHref, displaySmsNumber } from '~/lib/text-entry'
 
 const SIGN_IN = `${APP_URL}/sign-in`;
 
+/** The hero's CTA block — the one place on the page that carries both the composer
+ * link and the number as readable text, and so the target the header CTA scrolls a
+ * laptop reader to. `scroll-padding-top` in globals.css clears the sticky bar. */
+const CTA_ANCHOR = 'start';
+
 /** The municipalities the radar tracks by name — every one backed by verified
  * registration_windows rows in prod (M1 + the 2026-08-11 coverage sweep). A city
  * joins this list when its rows land, never before. */
@@ -112,13 +117,45 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
       />
 
-      <header className="shell flex items-center justify-between py-6">
-        <a href="/" className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
-          Hale
-        </a>
-        <a href={SIGN_IN} className="py-1 text-sm font-medium text-slate-green hover:text-spruce">
-          Sign in
-        </a>
+      {/* Sticky, not fixed: the bar keeps its space in the flow, so nothing under it
+          jumps. The page's only two CTAs sat ~5 viewports apart, so the way in has to
+          travel with the reader. With no number provisioned there is nothing to offer
+          here — the header stays the quiet Sign in link it has always been. */}
+      <header className="sticky top-0 z-50 border-b border-rule bg-linen/85 backdrop-blur-md">
+        <div className="shell flex items-center justify-between py-3">
+          <a href="/" className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
+            Hale
+          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href={SIGN_IN}
+              className="py-1 text-sm font-medium text-slate-green hover:text-spruce"
+            >
+              Sign in
+            </a>
+            {smsHref && (
+              <>
+                {/* One action, split by where it actually works — the same reason the QR
+                    card below is desktop-only. On a phone the composer opens; on a laptop
+                    `sms:` is a silent no-op, so the button carries the reader to the hero
+                    number instead of appearing to do nothing. */}
+                <LandingCta
+                  event="landing_cta_text"
+                  href={smsHref}
+                  className="btn-primary btn-compact min-h-11 sm:hidden"
+                >
+                  Text Hale
+                </LandingCta>
+                <a
+                  href={`#${CTA_ANCHOR}`}
+                  className="btn-primary btn-compact hidden min-h-11 sm:inline-flex"
+                >
+                  Text Hale
+                </a>
+              </>
+            )}
+          </div>
+        </div>
       </header>
 
       {/* ── Hero — the persona, the one action, and the real thread ────────── */}
@@ -133,10 +170,20 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
           </p>
 
           {smsHref ? (
-            <div className="mt-9">
+            <div id={CTA_ANCHOR} className="mt-9">
               <LandingCta event="landing_cta_text" href={smsHref} className="btn-primary">
                 Text me
               </LandingCta>
+              {/* The number as readable text, under the button on every viewport. An
+                  `sms:` link is a silent no-op on Windows and Linux, and the QR card
+                  below is desktop-only, so a Windows reader had nothing to dial and a
+                  phone reader never saw the number at all. */}
+              <p className="mt-4 text-slate-green">
+                or text{' '}
+                <a href={smsHref} className="link font-mono">
+                  {displaySmsNumber(smsNumber)}
+                </a>
+              </p>
               <p className="meta mt-4">
                 Your message is already written. You send it; I never text first. Standard message
                 rates apply; reply STOP any time.
@@ -413,7 +460,9 @@ export function ChiefOfStaffLanding({ smsNumber }: { smsNumber: string }) {
 
 /**
  * The first ten minutes, as an SMS thread — the script from the F14 Conversation
- * Design book, not a dramatisation and not a screenshot. Real DOM text in a
+ * Design book, not a dramatisation and not a screenshot. (The parent's opening
+ * "Hi" is the one line dropped: the CTA above already pre-writes it, and it cost
+ * the teaser a bubble to say so twice.) Real DOM text in a
  * plain card: no device frame, no status bar, nothing pretending to be a photo
  * of a phone. Emoji-free on purpose: the real transport is GSM-7 and Hale sends
  * none. (The em dashes and curly quotes here are the site's typographic render
@@ -431,7 +480,6 @@ function FirstConversation() {
       </figcaption>
 
       <ol className="mt-6 flex flex-col gap-3">
-        <Bubble from="parent">Hi</Bubble>
         <Bubble from="hale">
           Hi, I’m Hale — an AI that quietly runs the family week. Registration dates, weekend
           plans, the stuff that slips. Tell me your kids’ names and ages, plus your postal code —
@@ -448,12 +496,24 @@ function FirstConversation() {
             (how I handle your family’s info: villagehale.com/privacy)
           </span>
         </Bubble>
-        <Bubble from="parent">yes please</Bubble>
-        <Bubble from="hale">
-          Done — you’re covered. I only text when something actually matters, and STOP always
-          works. While I dig in: what part of the week wears you out the most?
-        </Bubble>
       </ol>
+
+      {/* The thread ran the full first ten minutes before a reader reached anything
+          else on the page. The teaser above is the greeting, the family in one line
+          and the catch; the rest of the script stays whole, one tap away, and stays
+          in order. Native <details> — no JS, keyboard- and screen-reader-native. */}
+      <details className="mt-4">
+        <summary className="cursor-pointer py-3 text-sm font-medium text-slate-green hover:text-spruce">
+          The rest of the thread
+        </summary>
+        <ol className="flex flex-col gap-3">
+          <Bubble from="parent">yes please</Bubble>
+          <Bubble from="hale">
+            Done — you’re covered. I only text when something actually matters, and STOP always
+            works. While I dig in: what part of the week wears you out the most?
+          </Bubble>
+        </ol>
+      </details>
     </figure>
   );
 }
