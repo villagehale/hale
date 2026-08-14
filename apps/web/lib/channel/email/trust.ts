@@ -231,16 +231,41 @@ function domainsAlign(signing: string, fromDomain: string): boolean {
  * duplicates: when it joins them instead, both land in one value, and picking "the first"
  * would silently depend on whether the receiving MTA prepends or appends.
  */
+/**
+ * The individual Authentication-Results values out of one header entry.
+ *
+ * A message with several of the same header — which a FORWARDED message always is, since
+ * the forwarder's MTA already stamped one before ours did — comes back from Resend not as
+ * repeated keys and not newline-joined, but as a single value that is a JSON-array-ENCODED
+ * STRING: `["<ours>","<theirs>"]` (observed live 2026-08-14). Splitting that on newlines
+ * finds none, so the whole blob parses as one clause and the authserv-id reads as
+ * `["amazonses.com` — every forwarded email refused. Decode the array when the value is
+ * one; a real authserv-id is a hostname and never begins with `[`, so the gate is exact.
+ */
+function headerValues(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((value): value is string => typeof value === 'string');
+      }
+    } catch {
+      // Not valid JSON after all — fall through and treat it as one ordinary value.
+    }
+  }
+  // Unfolding happens per-candidate inside the parser, so the split is on newlines that
+  // are NOT continuations.
+  return raw.split(/\r?\n(?![ \t])/);
+}
+
 function parsedResults(headers: Readonly<Record<string, string>>): AuthenticationResults[] {
   const raw = Object.entries(headers).find(
     ([name]) => name.toLowerCase() === 'authentication-results',
   )?.[1];
   if (!raw) return [];
 
-  // Unfolding happens per-candidate inside the parser, so the split is on newlines that
-  // are NOT continuations.
-  return raw
-    .split(/\r?\n(?![ \t])/)
+  return headerValues(raw)
     .map(parseAuthenticationResults)
     .filter((parsed): parsed is AuthenticationResults => parsed !== null);
 }
