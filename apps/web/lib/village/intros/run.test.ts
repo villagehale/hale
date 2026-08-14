@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
 import { FakeIdentityAsk, FakeIntroVoice, echoIntroAsk } from '~/lib/channel/intake/fakes';
@@ -300,8 +301,8 @@ describe('phase 1 - the discoverability ask', () => {
     expect(result.asked).toBe(2);
     expect(h.introVoice.calls).toEqual([{ kind: 'optin' }, { kind: 'optin' }]);
     expect(h.transport.bodies()).toEqual([
-      echoIntroAsk({ kind: 'optin' }),
-      echoIntroAsk({ kind: 'optin' }),
+      withOptOut(echoIntroAsk({ kind: 'optin' }), 'short'),
+      withOptOut(echoIntroAsk({ kind: 'optin' }), 'short'),
     ]);
     expect(h.audits.filter((a) => a.actionTaken === 'village_intro_ask_sent')).toHaveLength(2);
   });
@@ -446,7 +447,7 @@ describe('phase 2 - matching and the coarse card', () => {
 
     const cardToA = bodyTo(h, A) as string;
     expect(cardToA).toBe(
-      "A Hale family near you has a toddler around Maya's age. Want an intro?",
+      withOptOut("A Hale family near you has a toddler around Maya's age. Want an intro?", 'short'),
     );
     // What the composer was actually HANDED for family A. A band word and their own
     // child, and no third fact — the structural half of the privacy rule.
@@ -666,7 +667,7 @@ describe('phase 3 - resolving a pair', () => {
     });
     await runVillageIntroSweep(DB, h.deps, NOW);
 
-    expect(h.transport.bodies()).toEqual([INTRO_SOFT_CLOSE]);
+    expect(h.transport.bodies()).toEqual([withOptOut(INTRO_SOFT_CLOSE, 'short')]);
     expect(h.transport.sent[0]?.to).toBe(`phone-user-${A}`);
     expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'declined', closed: true }]);
   });
@@ -694,9 +695,12 @@ describe('phase 3 - resolving a pair', () => {
     });
     await runVillageIntroSweep(DB, expired.deps, NOW);
 
-    expect(declined.transport.bodies()).toEqual([INTRO_SOFT_CLOSE]);
+    expect(declined.transport.bodies()).toEqual([withOptOut(INTRO_SOFT_CLOSE, 'short')]);
     // Both sides were asked and neither refused, so both are owed the same sentence.
-    expect(expired.transport.bodies()).toEqual([INTRO_SOFT_CLOSE, INTRO_SOFT_CLOSE]);
+    expect(expired.transport.bodies()).toEqual([
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+    ]);
     expect(expired.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
   });
 
@@ -853,7 +857,10 @@ describe('phase 3 - the identity gap-fill', () => {
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
 
     // The same one sentence every dead pair gets — it never says which of the ways it died.
-    expect(h.transport.bodies()).toEqual([INTRO_SOFT_CLOSE, INTRO_SOFT_CLOSE]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+      withOptOut(INTRO_SOFT_CLOSE, 'short'),
+    ]);
     expect(h.statuses).toEqual([{ proposalId: 'prop-1', status: 'expired', closed: true }]);
     expect(result.closed).toBe(1);
     expect(h.identityAsk.calls).toEqual([]);

@@ -1,4 +1,5 @@
 import type { Database } from '@hale/db';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { OutboundGatePorts } from '~/lib/channel/outbound-gate';
@@ -222,7 +223,10 @@ describe('the intro follow-up', () => {
     const result = await runFollowupSweep(DB, h.deps, NOW);
 
     expect(result.introAsked).toBe(2);
-    expect(h.transport.bodies()).toEqual([INTRO_ASK, INTRO_ASK]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_ASK, 'short'),
+      withOptOut(INTRO_ASK, 'short'),
+    ]);
     expect(h.recorded).toEqual([
       {
         familyId: FAM_A,
@@ -345,7 +349,9 @@ describe('the activity follow-up', () => {
     const result = await runFollowupSweep(DB, h.deps, NOW);
 
     expect(result.activityAsked).toBe(1);
-    expect(h.transport.bodies()).toEqual(['How was Swim class? No pressure to reply.']);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut('How was Swim class? No pressure to reply.', 'short'),
+    ]);
     expect(h.recorded[0]).toMatchObject({
       templateKey: 'followup:activity',
       dedupeKey: 'followup:activity:event-1',
@@ -454,7 +460,10 @@ describe('the rails every follow-up rides', () => {
     expect(result.introAsked).toBe(2);
     expect(result.activityAsked).toBe(0);
     expect(result.held.frequency_cap).toBe(1);
-    expect(h.transport.bodies()).toEqual([INTRO_ASK, INTRO_ASK]);
+    expect(h.transport.bodies()).toEqual([
+      withOptOut(INTRO_ASK, 'short'),
+      withOptOut(INTRO_ASK, 'short'),
+    ]);
   });
 
   it('defers rather than texting a parent inside their quiet hours', async () => {
@@ -491,7 +500,9 @@ describe('when the voice has nothing sendable', () => {
     const retry = await runFollowupSweep(DB, composing.deps, new Date(NOW.getTime() + 3_600_000));
 
     expect(retry.activityAsked).toBe(1);
-    expect(composing.transport.bodies()).toEqual(['How was Swim class? No pressure to reply.']);
+    expect(composing.transport.bodies()).toEqual([
+      withOptOut('How was Swim class? No pressure to reply.', 'short'),
+    ]);
   });
 
   it.each([

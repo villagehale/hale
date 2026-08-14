@@ -235,7 +235,7 @@ async function sendOne(
     throw new Error(`coach plan check-in: no send target for parent ${recipient.parentUserId}`);
   }
 
-  const body = withOptOut(composed.message, verdict.includeOptOut);
+  const body = withOptOut(composed.message, verdict.optOut);
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,
@@ -257,8 +257,15 @@ async function sendOne(
   // Threaded so the parent's answer arrives as an ordinary coach turn with the question
   // in front of it. That is the whole reason there is no handler for the reply: what
   // they say next is conversation, and the coach's memory tools can keep it.
+  //
+  // THE COMPOSED SENTENCE, NOT THE WIRE BODY. The CASL line belongs on the wire and
+  // nowhere else: this thread is what the parent reads back in the app and what the coach
+  // re-reads on their next turn, and a compliance footer in it is noise in both. It was
+  // only ever visible on the first message of a period; now that the line rides every
+  // proactive send (lib/channel/opt-out.ts), threading it would put one in the history
+  // every time.
   if (recipient.conversationId) {
-    await deps.appendMessage(recipient.conversationId, 'assistant', body, database);
+    await deps.appendMessage(recipient.conversationId, 'assistant', composed.message, database);
   }
   await deps.fulfillCommitment(database, {
     familyId: commitment.familyId,

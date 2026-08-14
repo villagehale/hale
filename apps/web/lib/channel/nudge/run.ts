@@ -384,7 +384,7 @@ async function runForFamily(
 
   const { providerMessageId } = await deps.transport.send({
     to,
-    body: withOptOut(message, verdict.includeOptOut),
+    body: withOptOut(message, verdict.optOut),
   });
 
   const messageId = await deps.recordSend(database, {

@@ -350,7 +350,7 @@ async function sendFollowup(
 
   const { providerMessageId } = await deps.transport.send({
     to,
-    body: withOptOut(composed.body, verdict.includeOptOut),
+    body: withOptOut(composed.body, verdict.optOut),
   });
   await deps.recordSend(database, {
     familyId: input.familyId,

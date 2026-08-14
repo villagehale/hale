@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
-import { optOutPeriodStart } from './opt-out';
+import { type OptOutForm, optOutPeriodStart } from './opt-out';
 
 /**
  * F14 · THE OUTBOUND CHOKEPOINT (VIL-239 · M4 opens it).
@@ -65,20 +65,24 @@ export type ProactiveHoldReason =
   | 'quiet_hours';
 
 /**
- * `includeOptOut` is the SECOND thing this gate decides, and it lives here for the same
- * reason the first one does: there is one place that knows an unprompted message is about
- * to leave the building, so there is one place that can hold the whole family's opt-out
- * budget across all five classes. Five callers each answering it privately is five copies
- * of a CASL rule, and the three classes that never appended the line at all
- * (village_intro, followup, plan_check_in) are what that looks like when it goes wrong:
- * an intro card can be the first proactive text a family ever receives.
+ * `optOut` is the SECOND thing this gate decides, and it lives here for the same reason the
+ * first one does: there is one place that knows an unprompted message is about to leave the
+ * building, so there is one place that can answer a CASL question about it. Five callers
+ * each answering it privately is five copies of the rule, and the three classes that once
+ * appended nothing at all (village_intro, followup, plan_check_in) are what that looks like
+ * when it goes wrong — an intro card can be the first proactive text a family ever gets.
  *
- * It is DECIDED here and CLAIMED nowhere — see lib/channel/opt-out.ts on why the period
- * is a fixed grid. A send that is composed and then discarded by a dedupe key has spent
- * nothing, and the next attempt re-derives the same answer.
+ * THERE IS NO "OMIT" VARIANT, deliberately (2026-08-14, after counsel). CASL wants the
+ * unsubscribe in EVERY commercial electronic message; the only decision left is which FORM,
+ * and typing it as a two-value union rather than a boolean is what stops a future edit
+ * reintroducing an absent one. See lib/channel/opt-out.ts.
+ *
+ * It is DECIDED here and CLAIMED nowhere — the period is a fixed grid, so a send that is
+ * composed and then discarded by a dedupe key has spent nothing and the next attempt
+ * re-derives the same answer.
  */
 export type ProactiveSendVerdict =
-  | { allowed: true; includeOptOut: boolean }
+  | { allowed: true; optOut: OptOutForm }
   | { allowed: false; reason: ProactiveHoldReason };
 
 /**
@@ -189,12 +193,12 @@ export interface OutboundGatePorts {
   /**
    * Whether ANY proactive class has reached THIS PARENT since `since`.
    *
-   * Kind-blind, because the opt-out budget is not a message class's. Per PARENT and NOT
-   * per family, because the thing being budgeted is a RECIPIENT'S right to be told how to
-   * stop — and the five classes text different people: a nudge goes to the primary parent,
-   * a registration leg to whoever approved that shortlist, a plan check-in to whoever was
-   * coaching. Scoped per family, a co-parent whose household was already contacted could
-   * receive Hale-initiated texts indefinitely and never once be shown the word STOP.
+   * Kind-blind, because the form is not a message class's. Per PARENT and NOT per family,
+   * because the thing being tracked is a RECIPIENT'S first contact — and the five classes
+   * text different people: a nudge goes to the primary parent, a registration leg to
+   * whoever approved that shortlist, a plan check-in to whoever was coaching. Scoped per
+   * family, a co-parent whose household was already contacted would never once get the
+   * full line.
    */
   proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
@@ -242,7 +246,7 @@ export async function assertProactiveSendAllowed(
   // the clock: in both cases the answer could not change the verdict, and the gate's
   // standing discipline is to look at nothing it is not entitled to act on.
   if (request.urgent === true && URGENCY_ALLOWED[request.kind]) {
-    return { allowed: true, includeOptOut: await needsOptOut(ports, request) };
+    return { allowed: true, optOut: await optOutForm(ports, request) };
   }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
@@ -257,27 +261,42 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'quiet_hours' };
   }
 
-  return { allowed: true, includeOptOut: await needsOptOut(ports, request) };
+  return { allowed: true, optOut: await optOutForm(ports, request) };
 }
 
 /**
- * Does this message owe the family the opt-out line?
+ * WHICH FORM of the unsubscribe this message carries — never whether.
  *
- * YES exactly when it is the first proactive send of the current period — which, for a
- * family that has never been texted first at all, is their first proactive message ever
- * (CTIA's first-message discipline, satisfied without a special case for it).
+ * FULL on the first proactive send of the current period, which for a recipient who has
+ * never been texted first at all is their first proactive message ever. SHORT on everything
+ * after it.
  *
- * Read only after the four holds have passed, because a held message is not a send and
- * must not be the one that spends the family's reminder.
+ * IT FAILS TOWARD THE FULL LINE. A ledger read that throws resolves to `full`, because the
+ * short form is the optimisation and the long one is the obligation: the worst case of
+ * guessing wrong in this direction is a longer sentence, and in the other it is a
+ * compliance gap nobody would see. Logged rather than swallowed, and never with the
+ * recipient's id in the message.
+ *
+ * Read only after the four holds have passed — a held message is not a send, and the gate
+ * looks at nothing it is not entitled to act on.
  */
-async function needsOptOut(
+async function optOutForm(
   ports: OutboundGatePorts,
   request: ProactiveSendRequest,
-): Promise<boolean> {
-  return !(await ports.proactiveSentSince(
-    request.parentUserId,
-    optOutPeriodStart(request.now),
-  ));
+): Promise<OptOutForm> {
+  try {
+    const contacted = await ports.proactiveSentSince(
+      request.parentUserId,
+      optOutPeriodStart(request.now),
+    );
+    return contacted ? 'short' : 'full';
+  } catch (err) {
+    console.error(
+      { err: err instanceof Error ? err.constructor.name : 'unknown' },
+      'outbound gate: opt-out ledger read failed - falling back to the full line',
+    );
+    return 'full';
+  }
 }
 
 /**

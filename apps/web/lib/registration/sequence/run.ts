@@ -424,7 +424,7 @@ async function runLegForSequence(
 
   const { providerMessageId } = await deps.transport.send({
     to,
-    body: withOptOut(body, verdict.includeOptOut),
+    body: withOptOut(body, verdict.optOut),
   });
   const messageId = await deps.recordSend(database, {
     familyId: sequence.familyId,
