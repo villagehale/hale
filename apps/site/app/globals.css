@@ -728,6 +728,393 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .legal-section h2 { break-after: avoid; }
 }
 
+/* ══ Landing v2 (preview, /preview/landing-v2) ═══════════════════════════ *
+ * The motion + surface kit for the candidate homepage. Nothing here is used by
+ * the live page, and every class is `v2-`-prefixed so the two can never collide
+ * while the founder decides. Palette is the site's own — navy, cream, amber; the
+ * reference templates contributed structure and motion, never colour.
+ *
+ * Motion is CSS + one IntersectionObserver (components/landing/v2/reveal.tsx)
+ * rather than framer-motion: the durations/easings below are the spec'd values,
+ * and the library would have added ~40kB to a landing page whose whole argument
+ * is that it loads fast. Every rule has a prefers-reduced-motion reset at the
+ * foot of this block.
+ *
+ * ── Theme ────────────────────────────────────────────────────────────────
+ * v2 is where the site gets a dark mode, and it arrives the only way that is
+ * safe while v1 is still live: as custom properties re-pointed on `.v2-theme`.
+ * Custom properties inherit, so re-declaring `--color-spruce` there re-tints
+ * every Tailwind utility and every `.card` / `.pill` / `.btn-*` INSIDE v2 and
+ * nowhere else — villagehale.com/ and every subpage keep their light-only
+ * palette untouched. Sprinkling `dark:` utilities on the hex literals would
+ * have flipped nothing that the design system draws for us.
+ *
+ * The dark values are not invented: they are the app's own measured dark ladder
+ * (apps/web/app/globals.css `.dark`) — warm near-black #14120E, card #1E1B15,
+ * cream ink #F6F1E7, the #C7D3E6 / #9BB0D0 text ladder, amber #E0A44E — reused
+ * under the site's token names. Site-only roles (band, stage, glass) are cut to
+ * match that ladder's steps. Amber stays FILL/decoration in both themes; no
+ * body text is ever amber. */
+
+.v2-theme {
+  /* v2-only surfaces the site's token set has no name for. The "stage" is the
+   * navy band under the hero; it is deliberately independent of --color-navy,
+   * which dark inverts to cream so that .btn-primary and .link keep working. */
+  --v2-stage: #17294a;
+  --v2-stage-ink: #f7f4ec;
+  --v2-stage-ink-soft: rgb(247 244 236 / 0.80);
+  --v2-stage-ink-faint: rgb(247 244 236 / 0.68);
+  --v2-stage-bloom-warm: rgb(178 107 31 / 0.26);
+  --v2-stage-bloom-cool: rgb(201 210 230 / 0.12);
+
+  --v2-glass-bg: rgb(247 244 236 / 0.06);
+  --v2-glass-border: rgb(247 244 236 / 0.20);
+  --v2-bubble-parent-bg: #f7f4ec;
+  --v2-bubble-parent-ink: #17294a;
+  --v2-bubble-hale-bg: rgb(247 244 236 / 0.10);
+  --v2-bubble-hale-border: rgb(247 244 236 / 0.14);
+  --v2-rail-track: rgb(247 244 236 / 0.18);
+
+  /* The accent bloom: an amber edge and halo on the serif word. */
+  --v2-accent-stroke: rgb(178 107 31 / 0.38);
+  --v2-accent-glow-near: rgb(178 107 31 / 0.26);
+  --v2-accent-glow-far: rgb(178 107 31 / 0.12);
+
+  /* The hairline that fades toward a card's edges. */
+  --v2-edge: rgb(23 41 74 / 0.20);
+}
+
+@media (prefers-color-scheme: dark) {
+  .v2-theme {
+    color-scheme: dark;
+
+    /* Surfaces — the app's warm near-black ladder, canvas → band → card. */
+    --color-linen: #14120e;
+    --color-page: #14120e;
+    --color-band: #1b1813;
+    --color-oat: #1e1b15;
+    --color-rule: #2a251c;
+    --color-rule-strong: #3a3327;
+    --color-line: #2a251c;
+    --color-hair: #221e17;
+
+    /* Ink ladder — measured on #14120E: 16.6 / 12.4 / 8.5:1. */
+    --color-spruce: #f6f1e7;
+    --color-ink: #f6f1e7;
+    --color-slate-green: #c7d3e6;
+    --color-dim: #c7d3e6;
+    --color-faded-sage: #9bb0d0;
+    --color-faint: #9bb0d0;
+
+    /* The navy/cream pair INVERTS rather than darkening. --color-navy is both a
+     * fill (.btn-primary, .cta-band) and an ink (.link); on a near-black page a
+     * navy fill disappears and a navy link is unreadable, so cream takes the
+     * fill role and the ink that sits on it becomes the canvas. Every rule that
+     * pairs them — button, link, closing band, and .btn-on-navy inside it —
+     * inverts correctly with no extra rules. */
+    --color-navy: #f6f1e7;
+    --color-navy-deep: #ffffff;
+    --color-cream: #14120e;
+    --color-on-spruce: #14120e;
+    --color-on-spruce-soft: rgb(20 18 14 / 0.76);
+    --color-on-spruce-faint: rgb(20 18 14 / 0.58);
+
+    /* Washes — the app's dark amber tint (cream ink on it, 13.1:1) and a deep
+     * cool wash for the example thread's Hale bubbles. */
+    --color-apricot-tint: #33260f;
+    --color-sky-tint: #1c2436;
+    --color-amber: #e0a44e;
+    --color-amber-bg: #33260f;
+    /* Focus ring: warm amber reads on the near-black page at 8.5:1. */
+    --color-apricot-deep: #e0a44e;
+
+    /* The stage goes deep navy rather than warm black, so the one cool surface
+     * on the page stays the one cool surface — the band still reads as night,
+     * and the glass still has something to frost against. */
+    --v2-stage: #0c1424;
+    --v2-stage-ink: #f6f1e7;
+    --v2-stage-ink-soft: #c7d3e6;
+    --v2-stage-ink-faint: #9bb0d0;
+    --v2-stage-bloom-warm: rgb(224 164 78 / 0.16);
+    --v2-stage-bloom-cool: rgb(154 166 230 / 0.10);
+
+    --v2-glass-bg: rgb(246 241 231 / 0.05);
+    --v2-glass-border: rgb(246 241 231 / 0.16);
+    --v2-bubble-parent-bg: #f6f1e7;
+    --v2-bubble-parent-ink: #14120e;
+    --v2-bubble-hale-bg: rgb(246 241 231 / 0.08);
+    --v2-bubble-hale-border: rgb(246 241 231 / 0.12);
+    --v2-rail-track: rgb(246 241 231 / 0.16);
+
+    /* A halo that is a warmth on cream is a neon tube on charcoal: same device,
+     * roughly half the alpha, and the lighter dark-mode amber. */
+    --v2-accent-stroke: rgb(224 164 78 / 0.26);
+    --v2-accent-glow-near: rgb(224 164 78 / 0.14);
+    --v2-accent-glow-far: rgb(224 164 78 / 0.07);
+
+    --v2-edge: rgb(246 241 231 / 0.16);
+  }
+}
+
+/* The theme wrapper paints its own ground — <html> is outside it and stays on
+ * the site's light-only canvas. */
+.v2-theme {
+  background: var(--color-linen);
+  color: var(--color-spruce);
+  min-height: 100vh;
+}
+
+/* AnimatedHeading — blur-and-rise, the page's default entrance for headings. */
+.v2-reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  filter: blur(12px);
+  transition:
+    opacity 900ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 900ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.v2-reveal[data-shown="true"] { opacity: 1; transform: none; filter: none; }
+
+/* AnimatedText — the same arrival a beat later and without the blur, which on a
+ * paragraph costs a repaint per frame for an effect nobody reads. */
+.v2-reveal-soft {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1) 150ms,
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1) 150ms;
+}
+.v2-reveal-soft[data-shown="true"] { opacity: 1; transform: none; }
+
+/* MaskedImage — art wipes up from its own bottom edge rather than fading in. */
+.v2-mask {
+  clip-path: inset(100% 0 0 0);
+  transition: clip-path 1100ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.v2-mask[data-shown="true"] { clip-path: inset(0% 0 0 0); }
+
+/* Full-bleed section divider — a hairline that draws itself left to right. */
+.v2-rule {
+  height: 1px;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-rule-strong) 12%,
+    var(--color-rule-strong) 88%,
+    transparent
+  );
+  transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.v2-rule[data-shown="true"] { transform: scaleX(1); }
+
+/* The serif accent word, with a warm bloom behind it. Two layers on ONE element
+ * — an amber hairline stroke on the glyph edges plus an amber halo — rather than
+ * the reference's absolutely-positioned duplicate: a duplicate cannot follow the
+ * real text when a phrase wraps to a second line, and these phrases wrap at
+ * 390px. Amber (#b26b1f) at low alpha, so the fill stays navy and AA holds. */
+.v2-accent {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  -webkit-text-stroke: 0.4px var(--v2-accent-stroke);
+  text-shadow: 0 0 18px var(--v2-accent-glow-near), 0 0 44px var(--v2-accent-glow-far);
+}
+
+/* The navy statement band the glass card floats on — the site's own navy, lit
+ * from the top right by an amber bloom and cooled bottom left by pale navy.
+ * `--v2-stage`, not `--color-navy`: dark inverts that token to cream. */
+.v2-band-navy {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--v2-stage);
+  color: var(--v2-stage-ink);
+}
+.v2-band-navy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 48% at 84% 6%, var(--v2-stage-bloom-warm), transparent 70%),
+    radial-gradient(52% 44% at 6% 96%, var(--v2-stage-bloom-cool), transparent 70%);
+}
+.v2-band-navy :is(h2, h3) { color: var(--v2-stage-ink); }
+.v2-stage-ink { color: var(--v2-stage-ink); }
+.v2-stage-soft { color: var(--v2-stage-ink-soft); }
+.v2-stage-faint { color: var(--v2-stage-ink-faint); }
+/* .eyebrow and .meta hard-code their own colour, so the stage has to win. */
+.v2-band-navy .eyebrow.v2-stage-soft { color: var(--v2-stage-ink-soft); }
+.v2-band-navy .meta.v2-stage-faint { color: var(--v2-stage-ink-faint); }
+
+/* The glass card. Frosted cream on the stage — the one place the page spends
+ * its boldness, so everything around it stays flat. */
+.v2-glass {
+  border-radius: 20px;
+  border: 1px solid var(--v2-glass-border);
+  background: var(--v2-glass-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* The two bubbles inside it — the parent's solid, Hale's another pane of glass. */
+.v2-bubble-parent {
+  background: var(--v2-bubble-parent-bg);
+  color: var(--v2-bubble-parent-ink);
+}
+.v2-bubble-hale {
+  background: var(--v2-bubble-hale-bg);
+  border: 1px solid var(--v2-bubble-hale-border);
+  color: var(--v2-stage-ink);
+}
+
+/* One exchange inside the glass card. All three are in the DOM at once, stacked
+ * in a single grid cell so the card is sized by the tallest and never jumps;
+ * only the active one is visible (and only it is exposed to a screen reader). */
+.v2-swap {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateY(8px);
+  filter: blur(8px);
+  transition:
+    opacity 600ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 600ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.v2-swap[data-state="active"] { opacity: 1; transform: none; filter: none; }
+.v2-swap[data-state="leaving"] { opacity: 0; transform: translateY(-6px); filter: blur(8px); }
+
+/* The rail under the card: one tappable segment per exchange, the active one
+ * filling over the dwell. A control, not decoration — it is how a reader who
+ * missed one gets it back, and the only way through under reduced motion. */
+.v2-rail {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--v2-stage-ink-soft);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.v2-rail[aria-current="true"] { color: var(--v2-stage-ink); }
+.v2-rail:focus-visible {
+  outline: 2px solid var(--v2-stage-ink);
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}
+.v2-rail-track {
+  display: block;
+  height: 2px;
+  margin-bottom: 0.7rem;
+  border-radius: 2px;
+  background: var(--v2-rail-track);
+  overflow: hidden;
+}
+.v2-rail-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 2px;
+  background: var(--v2-stage-ink);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+/* Current, but not counting down: a reader who took control with the rail gets a
+ * filled bar that marks where they are, never a timer that is no longer running. */
+.v2-rail[aria-current="true"] .v2-rail-fill { transform: scaleX(1); }
+[data-rotating="true"] .v2-rail[aria-current="true"] .v2-rail-fill {
+  animation: v2-rail-fill 4000ms linear forwards;
+}
+
+@keyframes v2-rail-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* A card whose hairline border fades out toward both edges — the reference's
+ * gradient-border trick, in navy at 20%. The XOR mask paints the 1px padding
+ * ring only, so the card's own surface is untouched. */
+.v2-edge-card {
+  position: relative;
+  border-radius: var(--r-xl);
+  background: var(--color-oat);
+  box-shadow: 0 1px 2px rgb(13 27 61 / 0.04);
+  padding: clamp(1.5rem, 2.4vw, 2.25rem);
+}
+.v2-edge-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--v2-edge) 22%,
+    var(--v2-edge) 78%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* The mascot's PNG is not fully transparent — background removal left ~1.5%
+ * dark noise across the whole 1254px frame, which paints a faint but sharp
+ * rectangle on any ground that is not pure white. Feathering the outer 7% (the
+ * turtle's own flipper tips stop at ~10%) removes the edge without touching the
+ * art, and works on both themes. Union is the fallback if mask-composite is
+ * unsupported, which simply leaves the image as it is today. */
+.v2-mascot {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+  mask-composite: intersect;
+}
+
+/* A QR code has to stay scannable, and `QrCode` draws its modules in
+ * `--color-spruce` — which dark re-points to cream. The plate keeps the code
+ * navy-on-cream in both themes rather than inverting it. */
+.v2-qr-plate {
+  --color-spruce: #17294a;
+  background: #f7f4ec;
+  border-radius: var(--r-md);
+  padding: 0.5rem;
+}
+
+/* Reduced motion: every entrance resolves to its finished state, the card stops
+ * rotating (the component drops the timer too), and the rail stops filling.
+ * Same specificity as the rules above and later in source, so these win. */
+@media (prefers-reduced-motion: reduce) {
+  .v2-reveal { opacity: 1; transform: none; filter: none; transition: none; }
+  .v2-reveal-soft { opacity: 1; transform: none; transition: none; }
+  .v2-mask { clip-path: none; transition: none; }
+  .v2-rule { transform: none; transition: none; }
+  .v2-swap { transition: none; }
+  [data-rotating="true"] .v2-rail[aria-current="true"] .v2-rail-fill {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
+
 /* Amber hero pill — the homepage's Ask Hale eyebrow (amber wash + amber ink),
  * used to warm the feature-page heros. Icon + label sit inline. */
 .pill-eyebrow {
