@@ -151,6 +151,11 @@ function sentenceCase(text: string): string {
  * goes out whenever the composed voice is unusable or unavailable — so an outage, a
  * bad answer, or a fabricated venue costs a parent WARMTH, never accuracy.
  *
+ * DELIBERATELY a grounded terminal substitute, not a deferral: unlike the intro and
+ * follow-up composers, which send nothing when they cannot compose, a nudge is
+ * time-sensitive (a registration window, a dated swap), so an on-time plain render
+ * beats silence. This divergence from the followup-defers doctrine is intended.
+ *
  * Plain ASCII on purpose: one typographic dash would flip the whole SMS to UCS-2 and
  * halve the character budget (see sms-segments.ts).
  */

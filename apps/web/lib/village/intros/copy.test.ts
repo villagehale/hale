@@ -88,7 +88,7 @@ describe('introEmailBody', () => {
     expect(body).toContain('Hi Sam and Priya,');
     expect(body).toContain('you each have a toddler');
     expect(body).toContain("I'm stepping back");
-    expect(body).not.toContain('eyeing');
+    expect(body).not.toContain('coming up near you both');
   });
 
   it('adds the anchor line only when there is an activity', () => {
@@ -98,7 +98,7 @@ describe('introEmailBody', () => {
       stage: 'preschool',
       anchorTitle: 'Family Storytime',
     });
-    expect(body).toContain('You were also both eyeing Family Storytime');
+    expect(body).toContain("There's also Family Storytime coming up near you both");
   });
 
   it('never carries a child name, a postal code or a street', () => {

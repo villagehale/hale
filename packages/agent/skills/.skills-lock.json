@@ -65,11 +65,11 @@
   },
   "intake-voice.md": {
     "file": "intake-voice.md",
-    "sha256": "b9385d0652291a5b3f9f35c5e59fbcb91cd8345d47cc4b4b1e287c128930207f"
+    "sha256": "886097480805945cea7ca38ab38f5e504d9c9b478ba8dab4cf59f7c615f33b57"
   },
   "intro-voice.md": {
     "file": "intro-voice.md",
-    "sha256": "ce9ca5767bd655f9f9d11aadd6bae8fe2ac0edaa942edcad3d61a5536fd786ff"
+    "sha256": "329d7363f6481f3a2eb92276c7b6fb1b4a012a08e632195bf9b3cb269a77a443"
   },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
@@ -121,7 +121,7 @@
   },
   "week-summary.md": {
     "file": "week-summary.md",
-    "sha256": "bceb5d8fc6a0d5146363ea67efcd581a6410c381797bee9464a9b389b4521fb9"
+    "sha256": "45146aa76de2af1f3dbdb32494e99159276a4acffc8c8f62fd03632ce3fc83cb"
   },
   "welcome-voice.md": {
     "file": "welcome-voice.md",

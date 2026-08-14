@@ -171,10 +171,10 @@ export function introEmailBody(input: {
   const lines = [
     `Hi ${both},`,
     '',
-    `You're both Hale families in the same neighbourhood, you each have a ${stageWord(input.stage)}, and you both said yes to an introduction. So: meet each other.`,
+    `You're both Hale families in the same area, you each have a ${stageWord(input.stage)}, and you both said yes to an introduction. So: meet each other.`,
   ];
   if (input.anchorTitle !== null) {
-    lines.push('', `You were also both eyeing ${input.anchorTitle} - that might be the easy first hello.`);
+    lines.push('', `There's also ${input.anchorTitle} coming up near you both - that might be the easy first hello.`);
   }
   lines.push(
     '',

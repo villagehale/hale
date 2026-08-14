@@ -60,7 +60,7 @@ describe('createIntroEmailSender', () => {
     const text = (send.mock.calls[0]?.[0] as SendArg).text;
     expect(text).toContain('Hi Sam and Priya,');
     expect(text).toContain('you each have a preschooler');
-    expect(text).toContain('You were also both eyeing Family Storytime');
+    expect(text).toContain("There's also Family Storytime coming up near you both");
   });
 });
 
