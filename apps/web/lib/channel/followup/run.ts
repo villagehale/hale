@@ -3,6 +3,7 @@ import type { AgentClient } from '@hale/agent';
 import { type Database, schema } from '@hale/db';
 import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { withOptOut } from '~/lib/channel/opt-out';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -347,7 +348,10 @@ async function sendFollowup(
     throw new Error(`followup asks: no send target for parent ${input.parentUserId}`);
   }
 
-  const { providerMessageId } = await deps.transport.send({ to, body: composed.body });
+  const { providerMessageId } = await deps.transport.send({
+    to,
+    body: withOptOut(composed.body, verdict.includeOptOut),
+  });
   await deps.recordSend(database, {
     familyId: input.familyId,
     parentUserId: input.parentUserId,

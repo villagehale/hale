@@ -4,6 +4,11 @@ import type {
   IdentityAskRequest,
   IdentityAskVoice,
 } from '~/lib/channel/identity/ask-voice';
+import type {
+  IntroAskRequest,
+  IntroVoice,
+  IntroVoiceOutcome,
+} from '~/lib/village/intros/voice';
 import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAck, IntakeAckComposer } from './intake-voice';
@@ -93,6 +98,40 @@ export class FakeIdentityAsk implements IdentityAskVoice {
     this.calls.push(request);
     return this.outcome;
   }
+}
+
+/**
+ * The two intro asks' composer, faked. Records what it was HANDED, which is the assertion
+ * surface that matters for rule #1: a test proves the counterpart's real name, area and
+ * child never reached the model by reading `calls`, not by reading the body.
+ */
+export class FakeIntroVoice implements IntroVoice {
+  readonly calls: IntroAskRequest[] = [];
+  constructor(private readonly outcome?: IntroVoiceOutcome) {}
+
+  async compose(request: IntroAskRequest): Promise<IntroVoiceOutcome> {
+    this.calls.push(request);
+    return this.outcome ?? { status: 'composed', body: echoIntroAsk(request) };
+  }
+}
+
+/**
+ * What the fake composer "writes": the request, spelled out. Deliberately NOT the copy
+ * that used to be fixed — a fake that reproduces the real sentence would let a test pass
+ * by asserting the old string is still around.
+ *
+ * It exists so the sweep's PRIVACY tests keep testing the sweep. Whether the counterpart's
+ * name can reach a card is a question about what the sweep HANDS a composer, and echoing
+ * the request back is the most direct way to ask it: anything that shows up in the body
+ * was passed in, and anything that was not passed in cannot show up.
+ */
+export function echoIntroAsk(request: IntroAskRequest): string {
+  if (request.kind === 'optin') return 'Want introductions to other Hale families nearby?';
+  const anchor =
+    request.anchorTitle === null
+      ? ''
+      : ` They're also eyeing ${request.anchorTitle} ${request.anchorDay}.`;
+  return `A Hale family near you has a ${request.counterpartWord} around ${request.ownChildPossessive} age.${anchor} Want an intro?`;
 }
 
 export interface RecordedWrite {

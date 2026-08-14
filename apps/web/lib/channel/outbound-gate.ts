@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { loadSmsChannelState } from '~/lib/channels/sms-consent-core';
 import { WATCH_CONSENT_SCOPE } from '~/lib/channel/intake/watch-consent';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
+import { optOutPeriodStart } from './opt-out';
 
 /**
  * F14 · THE OUTBOUND CHOKEPOINT (VIL-239 · M4 opens it).
@@ -63,7 +64,22 @@ export type ProactiveHoldReason =
   | 'frequency_cap'
   | 'quiet_hours';
 
-export type ProactiveSendVerdict = { allowed: true } | { allowed: false; reason: ProactiveHoldReason };
+/**
+ * `includeOptOut` is the SECOND thing this gate decides, and it lives here for the same
+ * reason the first one does: there is one place that knows an unprompted message is about
+ * to leave the building, so there is one place that can hold the whole family's opt-out
+ * budget across all five classes. Five callers each answering it privately is five copies
+ * of a CASL rule, and the three classes that never appended the line at all
+ * (village_intro, followup, plan_check_in) are what that looks like when it goes wrong:
+ * an intro card can be the first proactive text a family ever receives.
+ *
+ * It is DECIDED here and CLAIMED nowhere — see lib/channel/opt-out.ts on why the period
+ * is a fixed grid. A send that is composed and then discarded by a dedupe key has spent
+ * nothing, and the next attempt re-derives the same answer.
+ */
+export type ProactiveSendVerdict =
+  | { allowed: true; includeOptOut: boolean }
+  | { allowed: false; reason: ProactiveHoldReason };
 
 /**
  * The volume budget per class, per FAMILY — or `null` where the class is bounded by
@@ -170,6 +186,17 @@ export interface OutboundGatePorts {
   watchConsentGranted(parentUserId: string): Promise<boolean>;
   /** Proactive sends of this class that actually reached the FAMILY since `since`. */
   countProactiveSends(familyId: string, kind: ProactiveSendKind, since: Date): Promise<number>;
+  /**
+   * Whether ANY proactive class has reached THIS PARENT since `since`.
+   *
+   * Kind-blind, because the opt-out budget is not a message class's. Per PARENT and NOT
+   * per family, because the thing being budgeted is a RECIPIENT'S right to be told how to
+   * stop — and the five classes text different people: a nudge goes to the primary parent,
+   * a registration leg to whoever approved that shortlist, a plan check-in to whoever was
+   * coaching. Scoped per family, a co-parent whose household was already contacted could
+   * receive Hale-initiated texts indefinitely and never once be shown the word STOP.
+   */
+  proactiveSentSince(parentUserId: string, since: Date): Promise<boolean>;
   parentTimeZone(parentUserId: string): Promise<string>;
 }
 
@@ -214,7 +241,9 @@ export async function assertProactiveSendAllowed(
   // An uncapped class does not read the ledger at all, and an urgent leg does not read
   // the clock: in both cases the answer could not change the verdict, and the gate's
   // standing discipline is to look at nothing it is not entitled to act on.
-  if (request.urgent === true && URGENCY_ALLOWED[request.kind]) return { allowed: true };
+  if (request.urgent === true && URGENCY_ALLOWED[request.kind]) {
+    return { allowed: true, includeOptOut: await needsOptOut(ports, request) };
+  }
 
   const timeZone = await ports.parentTimeZone(request.parentUserId);
   if (
@@ -228,7 +257,27 @@ export async function assertProactiveSendAllowed(
     return { allowed: false, reason: 'quiet_hours' };
   }
 
-  return { allowed: true };
+  return { allowed: true, includeOptOut: await needsOptOut(ports, request) };
+}
+
+/**
+ * Does this message owe the family the opt-out line?
+ *
+ * YES exactly when it is the first proactive send of the current period — which, for a
+ * family that has never been texted first at all, is their first proactive message ever
+ * (CTIA's first-message discipline, satisfied without a special case for it).
+ *
+ * Read only after the four holds have passed, because a held message is not a send and
+ * must not be the one that spends the family's reminder.
+ */
+async function needsOptOut(
+  ports: OutboundGatePorts,
+  request: ProactiveSendRequest,
+): Promise<boolean> {
+  return !(await ports.proactiveSentSince(
+    request.parentUserId,
+    optOutPeriodStart(request.now),
+  ));
 }
 
 /**
@@ -282,6 +331,32 @@ async function countFamilyProactiveSends(
   return rows.length;
 }
 
+/**
+ * Has ANY proactive class landed for THIS PARENT since `since`? Same ledger and the same
+ * "a message a parent could have read" rule as the per-class count, widened to every
+ * proactive category and narrowed to one recipient — see the port's note on why.
+ */
+async function parentProactiveSentSince(
+  database: Database,
+  parentUserId: string,
+  since: Date,
+): Promise<boolean> {
+  const [row] = await database
+    .select({ id: schema.channelMessages.id })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.parentUserId, parentUserId),
+        inArray(schema.channelMessages.category, Object.values(PROACTIVE_CATEGORY)),
+        eq(schema.channelMessages.direction, 'out'),
+        gte(schema.channelMessages.createdAt, since),
+        inArray(schema.channelMessages.status, ['sent', 'delivered']),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 /** The prod wiring: the gate stays a pure decision function, and this is the only
  * place it meets the database. */
 export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
@@ -291,6 +366,8 @@ export function buildOutboundGatePorts(database: Database): OutboundGatePorts {
     watchConsentGranted: (parentUserId) => readWatchConsent(database, parentUserId),
     countProactiveSends: (familyId, kind, since) =>
       countFamilyProactiveSends(database, familyId, kind, since),
+    proactiveSentSince: (parentUserId, since) =>
+      parentProactiveSentSince(database, parentUserId, since),
     parentTimeZone: async (parentUserId) => {
       const [row] = await database
         .select({ timezone: schema.users.timezone })

@@ -134,6 +134,7 @@ const openGate = (): OutboundGatePorts => ({
   channelEnrolled: async () => true,
   watchConsentGranted: async () => true,
   countProactiveSends: async () => 0,
+  proactiveSentSince: async () => false,
   parentTimeZone: async () => TZ,
 });
 

@@ -64,6 +64,7 @@ function harness(
       },
       watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
       countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+      proactiveSentSince: async () => true,
       // NOW is 14:00 UTC, which is 10:00 in Toronto — inside the sendable window. The
       // hold case moves the parent to a zone where the same instant is past 21:00.
       parentTimeZone: async () =>

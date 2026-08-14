@@ -1,7 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeIdentityAsk } from '~/lib/channel/intake/fakes';
+import { FakeIdentityAsk, FakeIntroVoice } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import {
   defaultEmailCaptureDeps,
@@ -89,6 +89,7 @@ describe('two nameless, address-less families get introduced', () => {
     channelEnrolled: async () => true,
     watchConsentGranted: async () => true,
     countProactiveSends: async () => 0,
+    proactiveSentSince: async () => true,
     parentTimeZone: async () => 'UTC',
   };
 
@@ -109,6 +110,9 @@ describe('two nameless, address-less families get introduced', () => {
       transport,
       email,
       identityAsk: new FakeIdentityAsk({ status: 'composed', body: 'IDENTITY-ASK' }),
+      // The two asks' WORDS are a model's and are proven by their own eval; what this
+      // journey is about is the state machine underneath them.
+      introVoice: new FakeIntroVoice(),
     };
   }
 

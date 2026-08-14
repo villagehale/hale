@@ -1,0 +1,9 @@
+{
+  "value": {
+    "target": "ambiguous",
+    "polarity": "yes",
+    "confidence": "medium",
+    "reason": "Plain approval to one of two similar calendar questions; cannot determine which without more context"
+  },
+  "latencyMs": 1166
+}

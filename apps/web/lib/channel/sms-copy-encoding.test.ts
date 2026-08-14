@@ -278,7 +278,11 @@ describe('nothing Hale texts sends a parent to the app', () => {
   it('discloses the approvals it could not list, without a destination', () => {
     const reply = whichOneReply(Array.from({ length: 8 }, () => 'calendar_move'));
 
-    expect(reply).toContain('+5 more');
+    expect(reply).toMatch(/5 more behind those/i);
+    // Disclosed WITHOUT a destination, and without a menu: the choices are named, the
+    // rest are reachable by answering the ones in front (2026-08-13).
+    expect(reply).not.toMatch(/\bthe app\b|https?:/i);
+    expect(reply).not.toMatch(/\bYES \d|^\d\./m);
   });
 });
 

@@ -158,6 +158,7 @@ function harness(
       channelEnrolled: async () => options.enrolled ?? true,
       watchConsentGranted: async () => options.consented ?? true,
       countProactiveSends: async () => options.recentSends ?? 0,
+      proactiveSentSince: async () => false,
       parentTimeZone: async () => TZ,
     }),
     dedupeActive: async (_db, key) => dedupeKeys.has(key),

@@ -30,7 +30,8 @@ import { matchRegistrationWindows } from '~/lib/registration/match-registration-
 import { loadClaimedWindowIds } from '~/lib/registration/sequence/claims';
 import { type WeatherPort, createOpenMeteoWeather } from '~/lib/weather/open-meteo';
 import { type Nudge, decideNudge } from './nudge-decide';
-import { NUDGE_OPT_OUT, composeNudgeMessage } from './nudge-voice';
+import { withOptOut } from '~/lib/channel/opt-out';
+import { composeNudgeMessage } from './nudge-voice';
 
 /**
  * VIL-239 · M4 — the 48-hour proactive nudge, swept hourly.
@@ -383,7 +384,7 @@ async function runForFamily(
 
   const { providerMessageId } = await deps.transport.send({
     to,
-    body: `${message}\n\n${NUDGE_OPT_OUT}`,
+    body: withOptOut(message, verdict.includeOptOut),
   });
 
   const messageId = await deps.recordSend(database, {
