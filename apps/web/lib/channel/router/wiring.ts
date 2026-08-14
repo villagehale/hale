@@ -12,6 +12,10 @@ import { approveDraftedAction } from '~/lib/actions/approve';
 import { declineDraftedAction } from '~/lib/actions/decline';
 import type { FamilyRole } from '~/lib/channel/role-scope';
 import { defaultHealthReplyDeps } from '~/lib/health/reply';
+import { CONSUMED_SEND_STATUSES } from '~/lib/channel/ledger';
+import { loadOpenCommitment } from '~/lib/commitments/ledger';
+import { discoverabilityAsked } from '~/lib/village/intros/consent';
+import { introAskDedupeKey } from '~/lib/village/intros/run';
 import { defaultSequenceReplyDeps } from '~/lib/registration/sequence/reply';
 import { getQueue } from '~/lib/queue';
 import { PostgresRateLimiter } from '~/lib/rate-limit/postgres';
@@ -37,6 +41,8 @@ import {
   type InboundContext,
   routeChannelMessage,
 } from './route';
+import { createOpenQuestionReader, type OpenQuestionReader } from './open-questions';
+import { createReplyResolver } from './resolve';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import { createTurnApology } from './apology';
 import type { InboundTurnLedger } from './turn-ledger';
@@ -381,6 +387,11 @@ export function channelRouterDeps(database: Database): ChannelRouterDeps {
     loadContext: loadInboundContext,
     transport: createTwilioTransport(),
     handlers: defaultHandlers(),
+    // What Hale is still waiting to hear back about, and the stage that reads a parent's
+    // own words against it. On the same lazy client as the screen and the apology: one
+    // key, one failure story, and a missing key never stops an approval.
+    questions: defaultOpenQuestionReader(),
+    replyResolver: createReplyResolver(screenClient),
     offDomain: defaultOffDomainLane(database),
     smokeAlarm: auditSmokeAlarmClaim(database),
     turns: auditTurnLedger(database),
@@ -406,4 +417,63 @@ export async function routeInboundChannelMessage(
   job: ChannelMessageReceivedPayload,
 ): Promise<void> {
   await routeChannelMessage(channelRouterDeps(database), job);
+}
+
+/**
+ * The open-question reader, bound to the function each OWNING module already exports.
+ *
+ * Every source here is the same reader the handler for that question uses when a keyword
+ * arrives — the spine's own pending list, the intro lane's own `openProposal`, the
+ * commitments ledger's own `loadOpenCommitment`. That is the invariant: one reader per
+ * question, so "is this open" cannot get two answers on the same turn.
+ */
+export function defaultOpenQuestionReader(): OpenQuestionReader {
+  const spine = defaultApprovalSpine();
+  const intros = defaultVillageIntroReplyDeps();
+  return createOpenQuestionReader({
+    pendingApprovals: (database, familyId) => spine.listPending(database, familyId),
+    introOptInOpen: async (database, { familyId, parentUserId }) => {
+      // ASKED AND UNANSWERED, read from two different places because they are two
+      // different facts: the ask is an outbound ledger row (so a card that was composed
+      // and never sent is not a question), and the answer is a consent row of EITHER
+      // polarity (a decline is an answer, and re-asking a family that said no would be
+      // the worst version of this feature).
+      //
+      // ASKED THIS PARENT, not this family. The dedupe key is family-scoped because the
+      // question is asked once per household, but only the parent it was TEXTED to has it
+      // open — otherwise a co-parent who never saw it could answer it, and Hale would
+      // write a consent row in their name for a question it never put to them.
+      const [askedParentUserId, answered] = await Promise.all([
+        introAskRecipient(database, familyId),
+        discoverabilityAsked(database, parentUserId),
+      ]);
+      return askedParentUserId === parentUserId && !answered;
+    },
+    introProposal: (database, familyId, now) => intros.openProposal(database, familyId, now),
+    planOffer: async (database, familyId, now) => {
+      const offer = await loadOpenCommitment(database, familyId, 'plan_offer');
+      // The TTL lives at the caller in plan/reply.ts too, and for the same reason: an
+      // expired offer is still an open ledger row, it has simply stopped being
+      // answerable. Reporting one as a question would let a parent accept a plan the
+      // handler behind it is about to decline.
+      if (!offer || offer.dueAt.getTime() < now.getTime()) return null;
+      return { id: offer.id, summary: offer.summary };
+    },
+  });
+}
+
+/** Who the one discoverability ask actually went to, or null if it never went. The
+ * dedupe key is unique across `channel_messages`, so this is a single-row lookup. */
+async function introAskRecipient(database: Database, familyId: string): Promise<string | null> {
+  const [row] = await database
+    .select({ parentUserId: schema.channelMessages.parentUserId })
+    .from(schema.channelMessages)
+    .where(
+      and(
+        eq(schema.channelMessages.dedupeKey, introAskDedupeKey(familyId)),
+        inArray(schema.channelMessages.status, [...CONSUMED_SEND_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return row?.parentUserId ?? null;
 }

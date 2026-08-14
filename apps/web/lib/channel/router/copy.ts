@@ -201,30 +201,88 @@ export function nothingToUndoReply(): string {
 }
 
 /** An ordinal past the end of the list. Says the real count rather than guessing which
- * row was meant — approving a neighbouring action is the failure this avoids. */
+ * row was meant — approving a neighbouring action is the failure this avoids.
+ *
+ * It no longer answers with another ordinal. The parent counted rows and came up short,
+ * and handing them the corrected number to retype is a form to fill in twice; saying what
+ * is actually waiting lets them answer it in words (the resolver reads them). */
 export function outOfRangeReply(pendingCount: number): string {
-  const noun = pendingCount === 1 ? 'one' : `${pendingCount}`;
-  return `I've only got ${noun} waiting on you - reply YES 1 for the first.`;
+  return pendingCount === 1
+    ? "I've only got one thing waiting on you - tell me if you want it and I'll put it through."
+    : `I've only got ${pendingCount} things waiting on you - tell me which one you mean.`;
 }
 
 /**
- * The disambiguation. This is the ONLY place an ordinal is ever printed, so the list
- * order here IS the order `resolveApproval` resolves against; they are built from the
- * same array in the same call, which is what keeps "YES 2" pointing at the row the
- * parent actually read.
+ * The disambiguation — ONE human sentence, and no menu.
  *
- * The overflow is disclosed and points nowhere (skill audit P0 #4). "In the app" was
- * the wrong destination twice over: the grammar refuses an ordinal past
- * {@link MAX_LISTED_APPROVALS} (fast-path.ts), so those rows are unreachable by text —
- * but the list is re-read every turn, so answering the three in front of them is what
- * brings the next three up. The thread does get there; it just gets there in order.
+ * It used to print "1. … 2. … - reply YES 1 or NO 1." and it was the last numbered menu
+ * Hale sent. A menu is a fine interface and a terrible thing to receive as a text: it
+ * makes the parent Hale's data-entry clerk, and it is the same instinct that produced
+ * "Reply YES INTROS". So the rows are NAMED and the parent answers however they like —
+ * "the swim one", "do the second", "just the checkup" all resolve (resolve.ts), and
+ * "YES 2" still resolves too, because no read was removed. The ORDER is unchanged and is
+ * still built from the same array in the same call as the resolver reads, so an ordinal a
+ * parent chooses to type still points at the row they were shown.
+ *
+ * Labels come in already rendered (`actionTypeLabel`), which keeps this function unable to
+ * see an action's payload at all (rule #1).
+ *
+ * The overflow is disclosed and points nowhere (skill audit P0 #4): the list is re-read
+ * every turn, so answering the ones in front is what brings the next ones up.
  */
-export function whichOneReply(actionTypes: string[]): string {
-  const shown = actionTypes.slice(0, MAX_LISTED_APPROVALS);
-  const lines = shown.map((type, i) => `${i + 1}. ${actionTypeLabel(type)}`);
-  const overflow = actionTypes.length - shown.length;
-  const tail = overflow > 0 ? ` (+${overflow} more after these)` : '';
-  return `Which one? ${lines.join(' ')} - reply YES 1 or NO 1.${tail}`;
+export function whichOneReply(subjects: readonly string[]): string {
+  const shown = subjects.slice(0, MAX_LISTED_APPROVALS);
+  const last = shown.at(-1);
+  if (last === undefined) {
+    // Both callers ask only when they are holding at least two, so this is unreachable —
+    // and it THROWS rather than casting the hole away, because the alternative is texting
+    // a parent "Which one - undefined?". A thrown turn is re-driven by the drain; a
+    // nonsense one is read by a person.
+    throw new Error('whichOneReply: nothing to choose between');
+  }
+  const head = shown.slice(0, -1);
+  const overflow = subjects.length - shown.length;
+  const tail = overflow > 0 ? ` (${overflow} more behind those.)` : '';
+  const list = head.length === 0 ? last : `${head.join(', ')} or ${last}`;
+  return `Which one - ${list}?${tail}`;
+}
+
+/**
+ * The parent said something Hale could tell was an answer and could not tell WHICH answer,
+ * with more than one question open (lib/channel/router/resolve.ts).
+ *
+ * The same SENTENCE as {@link whichOneReply}, built from a different list. It cannot just
+ * be that function: the approvals list is homogeneous and its overflow tail ("3 more
+ * behind those") is true because answering the ones in front brings the next ones up.
+ * Here the list is heterogeneous, so slicing it by position would offer a parent three
+ * calendar adds and silently drop the introduction they were actually answering — and
+ * then tell them the introduction was "behind those", which is false. Nothing is behind a
+ * drafted action except more drafted actions.
+ *
+ * So it takes ONE per kind, newest kind last, and never prints an overflow. A parent
+ * choosing between "a calendar change" and "meeting the family nearby" can then say which,
+ * and the next turn resolves the specific one.
+ */
+export function clarifyWhichQuestion(
+  questions: ReadonlyArray<{ kind: string; subject: string }>,
+): string {
+  // EVERY KIND FIRST, then fill the remaining slots in order. Taking one per kind and
+  // stopping would drop the second of two drafted changes, which is the case the numbered
+  // menu handled best; taking the first three in order buries a lone introduction behind a
+  // crowded approvals queue. This does neither.
+  const seen = new Set<string>();
+  const firstOfEachKind = questions.filter((question) => {
+    if (seen.has(question.kind)) return false;
+    seen.add(question.kind);
+    return true;
+  });
+  const ordered = [...firstOfEachKind, ...questions.filter((q) => !firstOfEachKind.includes(q))];
+  const shown = ordered.slice(0, MAX_LISTED_APPROVALS);
+  const dropped = ordered.length - shown.length;
+  const list = whichOneReply(shown.map((question) => question.subject));
+  // Honest and destination-free. NOT "behind those": nothing queues behind an
+  // introduction, so the approvals list's own tail would be a false promise here.
+  return dropped === 0 ? list : `${list} (and ${dropped} other${dropped === 1 ? '' : 's'}.)`;
 }
 
 /**

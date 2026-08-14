@@ -1,8 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
 import { matchPhrase, normalizeReply } from '~/lib/channel/affirmative';
+import { introScope, villageIntrosAllowlist } from './run';
 import { matchKeyword } from '~/lib/channel/intake/keywords';
 import {
+  type ConsentReading,
   type DiscoverabilityConsentInput,
   recordDiscoverabilityConsent,
   recordProposalConsent,
@@ -87,6 +89,25 @@ export interface IntroReplyInput {
   parentUserId: string;
   body: string;
   now: Date;
+  /**
+   * A decision the router's natural-reply stage already made about THIS message
+   * (lib/channel/router/resolve.ts), when the parent answered in their own words rather
+   * than in one of the four keywords.
+   *
+   * The keyword read still runs first and still wins — `null` is the ordinary case and
+   * the behaviour is byte-for-byte what it was. What this does NOT change is the
+   * evidence: `input.body` is still what lands in the consent ledger, so what is recorded
+   * is the sentence the parent actually sent and not a keyword Hale reverse-engineered.
+   * Under D17 that is the stronger record, because a keyword only ever proves somebody
+   * typed the token they were taught.
+   */
+  resolved?: ResolvedIntroAnswer | null;
+}
+
+/** A keyword the router's natural-reply stage inferred rather than read, and how sure it
+ * was. The confidence rides all the way to the consent row (see below). */
+export interface ResolvedIntroAnswer extends IntroKeyword {
+  confidence: 'high' | 'medium' | 'low';
 }
 
 /** The subset of a proposal a reply needs: which side is answering, and whether the
@@ -110,6 +131,7 @@ export interface IntroDecision {
   /** True only when THIS reply is the one that completes the pair. */
   bothAccepted: boolean;
   verbatimReply: string;
+  reading: ConsentReading;
   now: Date;
 }
 
@@ -140,8 +162,16 @@ export async function handleVillageIntroReply(
   input: IntroReplyInput,
   deps: VillageIntroReplyDeps,
 ): Promise<IntroReplyOutcome> {
-  const keyword = matchIntroKeyword(input.body);
+  const typed = matchIntroKeyword(input.body);
+  const keyword = typed ?? input.resolved ?? null;
   if (!keyword) return { status: 'declined_to_claim' };
+  // HOW THIS YES WAS READ, recorded with it. A keyword proves a parent typed the token
+  // Hale taught them; a resolved sentence proves more about what they meant and less about
+  // the mechanism, so the mechanism has to be in the row (rule #6).
+  const reading: ConsentReading =
+    typed !== null
+      ? { readBy: 'keyword', confidence: null }
+      : { readBy: 'reply-resolver', confidence: input.resolved?.confidence ?? null };
 
   if (keyword.target === 'discoverability') {
     await deps.recordDiscoverability(database, {
@@ -153,6 +183,7 @@ export async function handleVillageIntroReply(
       // is genuinely unavailable here rather than omitted. The verbatim reply above is
       // the evidence; the null names what is missing instead of implying a row.
       channelMessageId: null,
+      reading,
     });
     if (keyword.granted) {
       return { status: 'discoverability_granted', reply: DISCOVERABILITY_ON };
@@ -175,6 +206,7 @@ export async function handleVillageIntroReply(
     granted: keyword.granted,
     bothAccepted: keyword.granted && otherReply === 'yes',
     verbatimReply: input.body,
+    reading,
     now: input.now,
   });
 
@@ -253,6 +285,7 @@ async function writeDecision(database: Database, decision: IntroDecision): Promi
       verbatimReply: decision.verbatimReply,
       channelMessageId: null,
       question: 'village intro card',
+      reading: decision.reading,
     });
 
     await tx.insert(schema.auditLog).values({
@@ -261,7 +294,11 @@ async function writeDecision(database: Database, decision: IntroDecision): Promi
       actionTaken: decision.granted ? 'village_intro_accepted' : 'village_intro_declined',
       targetTable: 'village_intro_proposals',
       targetId: decision.proposalId,
-      after: { proposalId: decision.proposalId, bothAccepted: decision.bothAccepted },
+      after: {
+        proposalId: decision.proposalId,
+        bothAccepted: decision.bothAccepted,
+        ...decision.reading,
+      },
     });
   });
 }
@@ -297,7 +334,20 @@ async function cancelOpenProposalsFor(
 export function defaultVillageIntroReplyDeps(): VillageIntroReplyDeps {
   return {
     recordDiscoverability: recordDiscoverabilityConsent,
-    openProposal: loadOpenProposal,
+    /**
+     * THE ALLOWLIST GATES THE ANSWER TOO, not just the sweep.
+     *
+     * A pairing minted while the flag was wide open outlives the narrowing, and a card
+     * that was already sent can still be replied to. Without this, an unlisted family
+     * could still drive that proposal to `both_accepted` — a consent row, an audit row and
+     * a state change for a household the rail is supposed to have stepped away from. It
+     * gates only the QUESTION: a revocation is answered whatever the scope says, because a
+     * family withdrawing consent is never something a flag may refuse.
+     */
+    openProposal: async (database, familyId, now) =>
+      introScope(villageIntrosAllowlist())(familyId)
+        ? loadOpenProposal(database, familyId, now)
+        : null,
     recordDecision: writeDecision,
     cancelOpenProposals: cancelOpenProposalsFor,
   };

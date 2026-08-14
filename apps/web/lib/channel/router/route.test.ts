@@ -14,6 +14,8 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
+import type { OpenQuestion, OpenQuestionReader } from './open-questions';
+import type { ReplyReading, ReplyResolver } from './resolve';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
 import { approvalHandler, healthReplyHandler, sequenceReplyHandler } from './handlers';
@@ -213,6 +215,30 @@ function fakeApology(
   return apology;
 }
 
+/** What Hale is waiting on. Empty by default, which is the state that makes the natural
+ * reply stage a no-op and every pre-existing test in this file mean what it meant. */
+function fakeQuestions(questions: OpenQuestion[]): OpenQuestionReader & { calls: number } {
+  const reader = {
+    calls: 0,
+    async open() {
+      reader.calls += 1;
+      return questions;
+    },
+  };
+  return reader;
+}
+
+function fakeResolver(reading: ReplyReading): ReplyResolver & { calls: number } {
+  const resolver = {
+    calls: 0,
+    async read() {
+      resolver.calls += 1;
+      return reading;
+    },
+  };
+  return resolver;
+}
+
 interface Harness {
   deps: ChannelRouterDeps;
   fake: FakeDb;
@@ -231,6 +257,8 @@ function harness(
     smokeAlarm?: SmokeAlarmClaim;
     turns?: ReturnType<typeof fakeTurnLedger>;
     apology?: TurnApology;
+    questions?: OpenQuestionReader;
+    replyResolver?: ReplyResolver;
     recordPlanOffer?: ChannelRouterDeps['recordPlanOffer'];
   } = {},
 ): Harness {
@@ -262,6 +290,8 @@ function harness(
       handlers: options.handlers ?? [],
       coach: options.coach ?? fakeCoach(),
       recordPlanOffer: options.recordPlanOffer ?? (async () => ({ status: 'recorded' })),
+      questions: options.questions ?? fakeQuestions([]),
+      replyResolver: options.replyResolver ?? fakeResolver({ status: 'unresolved', reason: 'no_target' }),
       offDomain: options.offDomain ?? fakeLane(IN_DOMAIN),
       smokeAlarm: options.smokeAlarm ?? fakeSmokeAlarmClaim(),
       turns,
@@ -1654,5 +1684,270 @@ describe('the shipped chain, end to end', () => {
     expect(result.status).toBe('agent_replied');
     expect(result.handler).toBeNull();
     expect(coach.calls).toBe(1);
+  });
+});
+
+/**
+ * GATE 2b — natural reply resolution, through the real router.
+ *
+ * The arc's whole claim is that a parent never has to learn a keyword. What that means
+ * concretely is asserted here: the free readers still win, the stage costs nothing when
+ * Hale is waiting on nothing, and a reply the vocabularies cannot read reaches the
+ * handler that owns the question anyway — with the parent's own words intact.
+ */
+describe('natural reply resolution', () => {
+  const ACTION = 'aaaa1111-1111-4111-8111-111111111111';
+
+  function approvalQuestion(): OpenQuestion {
+    return {
+      id: ACTION,
+      kind: 'approval',
+      description: 'Reschedule on your calendar',
+      subject: 'reschedule on your calendar',
+    };
+  }
+
+  function introQuestion(): OpenQuestion {
+    return {
+      id: 'proposal-1',
+      kind: 'intro_proposal',
+      description: 'Whether to meet one nearby Hale family',
+      subject: 'meeting the family nearby',
+    };
+  }
+
+  /** A handler that claims only when the router hands it a resolved answer — the second
+   * pass, and nothing else. */
+  function owningHandler(kind: OpenQuestion['kind']) {
+    const seen: Array<{ body: string; resolved: unknown }> = [];
+    return {
+      seen,
+      handler: {
+        name: `owner_${kind}`,
+        resolves: new Set([kind]),
+        async handle(_db: unknown, ctx: { body: string; resolved: unknown }) {
+          seen.push({ body: ctx.body, resolved: ctx.resolved });
+          if (!ctx.resolved) return { claimed: false };
+          return { claimed: true, outcome: 'acted', reply: 'Done.' };
+        },
+      } as unknown as DeterministicHandler,
+    };
+  }
+
+  it('costs nothing at all when Hale is waiting on nothing', async () => {
+    const questions = fakeQuestions([]);
+    const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
+    const h = harness({ context: { body: 'yeah go ahead' }, questions, replyResolver: resolver });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(questions.calls).toBe(1);
+    // The precondition that makes this stage affordable on every inbound text.
+    expect(resolver.calls).toBe(0);
+    expect(result.status).toBe('agent_replied');
+  });
+
+  it('never runs when a deterministic handler already claimed the message', async () => {
+    const questions = fakeQuestions([approvalQuestion()]);
+    const resolver = fakeResolver({ status: 'unresolved', reason: 'no_target' });
+    const claiming: DeterministicHandler = {
+      name: 'claims_everything',
+      handle: async () => ({ claimed: true, outcome: 'ok', reply: 'Filed.' }),
+    };
+    const h = harness({
+      context: { body: 'done' },
+      handlers: [claiming],
+      questions,
+      replyResolver: resolver,
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('handled');
+    // A free, exact read always wins. No keyword was removed, only stopped being printed.
+    expect(questions.calls).toBe(0);
+    expect(resolver.calls).toBe(0);
+  });
+
+  it('hands a resolved answer to the handler that owns that kind, with the parents own words', async () => {
+    const owner = owningHandler('approval');
+    const h = harness({
+      context: { body: 'yeah go ahead with the swim move' },
+      handlers: [owner.handler],
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('resolved');
+    expect(result.handler).toBe('owner_approval');
+    // TWO passes: the free one, then the resolved one. The body is untouched on both, so
+    // whatever the owning module records as evidence is the sentence the parent sent.
+    expect(owner.seen).toEqual([
+      { body: 'yeah go ahead with the swim move', resolved: null },
+      {
+        body: 'yeah go ahead with the swim move',
+        resolved: {
+          kind: 'approval',
+          questionId: ACTION,
+          polarity: 'yes',
+          // Carried down to the consent ledger, not just used for the grade check.
+          confidence: 'high',
+        },
+      },
+    ]);
+    expect(h.transport.bodies()).toEqual(['Done.']);
+  });
+
+  it('runs ONLY the owning handler on the resolved pass', async () => {
+    // The registration handler writes `reasked_at` on the way past. A second full sweep
+    // of the chain would spend that stamp twice for one text.
+    const owner = owningHandler('approval');
+    let otherCalls = 0;
+    const other: DeterministicHandler = {
+      name: 'not_the_owner',
+      handle: async () => {
+        otherCalls += 1;
+        return { claimed: false };
+      },
+    };
+    const h = harness({
+      context: { body: 'go on then' },
+      handlers: [other, owner.handler],
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(otherCalls).toBe(1);
+  });
+
+  it('asks which one - in a sentence, never a menu - when the answer names nothing', async () => {
+    const h = harness({
+      context: { body: 'sounds good' },
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('clarified');
+    expect(h.transport.bodies()).toEqual([
+      'Which one - reschedule on your calendar or meeting the family nearby?',
+    ]);
+    // No ordinal, no numbered list, and nothing the parent has to type back verbatim.
+    expect(h.transport.bodies()[0]).not.toMatch(/\bYES\b|\b1\./);
+  });
+
+  it('does not ask when only one thing is open - it just hands the turn to the coach', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'sounds good' },
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'ambiguous' }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+  });
+
+  it('sends an ordinary message to the coach even with questions open', async () => {
+    // The failure this avoids: a parent asks "what time is storytime" while a draft is
+    // pending, and gets "which one did you mean?".
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'what time is storytime on saturday' },
+      coach,
+      questions: fakeQuestions([approvalQuestion(), introQuestion()]),
+      replyResolver: fakeResolver({ status: 'unresolved', reason: 'no_target' }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(h.transport.bodies()).toEqual(['coach says hi']);
+  });
+
+  it('falls through to the coach when the owning handler declines a resolution', async () => {
+    // The co-parent answered it in the app between the two reads. Never silence.
+    const coach = fakeCoach();
+    const declining: DeterministicHandler = {
+      name: 'owner_approval',
+      resolves: new Set(['approval']),
+      handle: async () => ({ claimed: false }),
+    };
+    const h = harness({
+      context: { body: 'go ahead' },
+      handlers: [declining],
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+  });
+
+  it('falls through to the coach when no handler owns the resolved kind', async () => {
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'go ahead' },
+      handlers: [],
+      coach,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    expect((await routeChannelMessage(h.deps, job())).status).toBe('agent_replied');
+    expect(coach.calls).toBe(1);
+    expect(JSON.stringify(h.logs)).toContain('no handler owns');
+  });
+
+  it('answers a resolved yes even when the parents hour is spent', async () => {
+    // It sits above flood control for the reason the handlers do: "yeah go ahead" is the
+    // same act as "yes", and a parent who is texting fast is usually stressed.
+    const owner = owningHandler('approval');
+    const h = harness({
+      context: { body: 'yeah do it' },
+      handlers: [owner.handler],
+      limiter: { check: async () => ({ allowed: false, remaining: 0 }) } as unknown as RateLimiter,
+      questions: fakeQuestions([approvalQuestion()]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: ACTION,
+        kind: 'approval',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('resolved');
+    expect(h.transport.bodies()).toEqual(['Done.']);
   });
 });

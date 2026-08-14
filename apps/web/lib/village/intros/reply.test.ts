@@ -129,6 +129,8 @@ describe('handleVillageIntroReply', () => {
       granted: true,
       verbatimReply: 'Yes intros!',
       channelMessageId: null,
+      // A typed keyword: no confidence, because it either matched or it did not.
+      reading: { readBy: 'keyword', confidence: null },
     });
     expect(cancelOpenProposals).not.toHaveBeenCalled();
   });

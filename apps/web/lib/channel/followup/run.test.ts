@@ -131,6 +131,7 @@ function harness(
     // `since` is ignored: every send in a test happens at NOW, so all of them are inside
     // any window the cap asks for.
     countProactiveSends: async (familyId) => recorded.filter((r) => r.familyId === familyId).length,
+    proactiveSentSince: async () => true,
     parentTimeZone: async () => overrides.timeZone ?? AWAKE_ZONE,
   };
 

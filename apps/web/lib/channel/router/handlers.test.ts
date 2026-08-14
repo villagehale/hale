@@ -10,7 +10,8 @@ import {
   sequenceReplyHandler,
   villageIntroHandler,
 } from './handlers';
-import type { HandlerContext } from './route';
+import type { OpenQuestion } from './open-questions';
+import type { HandlerContext, ResolvedAnswer } from './route';
 
 /**
  * The two handlers C1 ships wired, and — more importantly — the seam between them.
@@ -24,14 +25,40 @@ const FAMILY = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
 const DB = {} as Database;
 
-const turn = (body: string): HandlerContext => ({
+/**
+ * `open` is what Hale is waiting to hear back about, and it gates every BARE affirmative:
+ * a handler may only claim one when every open question is of its own kind
+ * (`soleOpenKind`) — the rule that stops a "yes" meant for an intro card approving a
+ * calendar write. Empty by default, which is vacuously "unambiguous" and is what the
+ * pre-existing cases in this file assume.
+ */
+const turn = (
+  body: string,
+  options: { resolved?: ResolvedAnswer | null; open?: OpenQuestion[] } = {},
+): HandlerContext => ({
   familyId: FAMILY,
   parentUserId: PARENT,
   conversationId: '33333333-3333-4333-8333-333333333333',
   body,
   phoneE164: '+14165550100',
   now: new Date('2026-07-30T12:00:00.000Z'),
+  resolved: options.resolved ?? null,
+  openQuestions: async () => options.open ?? [],
 });
+
+const APPROVAL_QUESTION: OpenQuestion = {
+  id: 'action-1',
+  kind: 'approval',
+  description: 'Add to your calendar',
+  subject: 'add to your calendar',
+};
+
+const INTRO_QUESTION: OpenQuestion = {
+  id: 'proposal-1',
+  kind: 'intro_proposal',
+  description: 'Whether to meet one nearby Hale family',
+  subject: 'meeting the family nearby',
+};
 
 function spine(pending: PendingAction[]): ApprovalSpine & { approved: string[] } {
   const approved: string[] = [];
@@ -408,5 +435,87 @@ describe('the shipped order', () => {
 
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('approval'));
     expect(names.indexOf('coach_plan')).toBeGreaterThan(names.indexOf('health'));
+  });
+});
+
+/**
+ * THE AMBIGUOUS BARE AFFIRMATIVE (2026-08-13).
+ *
+ * The intro card used to end "Reply YES INTRO", and that two-word answer is the only
+ * reason the approvals grammar could safely own every bare "yes". Composing the card
+ * removed the disambiguator; these pin what replaced it.
+ */
+describe('a bare affirmative with more than one kind of question open', () => {
+  const pending = [{ actionId: 'a-1', actionType: 'calendar_add' }];
+
+  it('does NOT approve a calendar change when an intro card is also waiting', async () => {
+    // The defect this closes: the parent answered "Want me to introduce you?" and Hale
+    // executed a calendar write they never confirmed (rule #4).
+    const s = spine(pending);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(s.approved).toEqual([]);
+  });
+
+  it('still approves when the drafted change is the only thing waiting', async () => {
+    const s = spine(pending);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes', { open: [APPROVAL_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    expect(s.approved).toEqual(['a-1']);
+  });
+
+  it('still answers an ORDINAL, which cannot be an answer to anything else', async () => {
+    // "yes 2" is not conversation and is not an intro answer. It never waits.
+    const s = spine([
+      { actionId: 'a-1', actionType: 'calendar_add' },
+      { actionId: 'a-2', actionType: 'reschedule_event' },
+    ]);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('yes 2', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
+    expect(s.approved).toEqual(['a-2']);
+  });
+
+  it('still answers UNDO, which names the last thing Hale did', async () => {
+    const s = spine([]);
+    const verdict = await approvalHandler(s).handle(
+      DB,
+      turn('undo', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+    expect(verdict.claimed).toBe(true);
+  });
+
+  it('holds the health nudge back too - its question is not even a yes/no one', async () => {
+    const health = healthDeps(BOOKING_CHECKPOINT);
+    const verdict = await healthReplyHandler(health).handle(
+      DB,
+      turn('yes', { open: [INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(false);
+    expect(health.drafted).toEqual([]);
+  });
+
+  it('never holds back an EXACT word - "done" is not ambiguous', async () => {
+    // Only the bare affirmative waits. The vocabulary each handler owns exactly is free
+    // and instant, which is the whole reason it runs first.
+    const health = healthDeps(PAPERWORK_CHECKPOINT);
+    const verdict = await healthReplyHandler(health).handle(
+      DB,
+      turn('done', { open: [APPROVAL_QUESTION, INTRO_QUESTION] }),
+    );
+
+    expect(verdict.claimed).toBe(true);
   });
 });

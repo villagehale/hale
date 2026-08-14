@@ -10,6 +10,7 @@ import {
   whichOneReply,
 } from './copy';
 import { MAX_LISTED_APPROVALS, type FastPathCommand } from './fast-path';
+import { approvalSubjects } from './open-questions';
 
 /**
  * VIL-220 · C1 — resolving a fast-path command against the approvals spine.
@@ -132,6 +133,18 @@ export async function resolveApproval(
     parentUserId: string;
     command: FastPathCommand;
     now: Date;
+    /**
+     * The action the router's natural-reply stage decided this message names
+     * (lib/channel/router/resolve.ts) — "yes to the swim move" instead of "YES 2".
+     *
+     * BY ID, NEVER BY POSITION, and that is the whole reason this is a separate field
+     * rather than a synthesised ordinal. The pending list is read twice on such a turn
+     * (once to describe the questions, once here to act), and a co-parent approving
+     * something in the app between those two reads shifts every ordinal by one. An id
+     * cannot shift. Decision 2 above — an ordinal is never clamped — becomes: a named
+     * action that is no longer pending is never silently swapped for its neighbour.
+     */
+    targetActionId?: string;
   },
   spine: ApprovalSpine,
 ): Promise<ApprovalOutcome> {
@@ -140,7 +153,21 @@ export async function resolveApproval(
   }
 
   const pending = await spine.listPending(database, input.familyId);
-  const target = pick(pending, input.command.index);
+  const target =
+    input.targetActionId === undefined
+      ? pick(pending, input.command.index)
+      : (pending.find((action) => action.actionId === input.targetActionId) ?? 'gone');
+
+  if (target === 'gone') {
+    // It was pending when the questions were read and is not now, so somebody answered
+    // it — overwhelmingly the co-parent, in the app. That is a real state and it has a
+    // true sentence; inventing a retry would be the failure this receipt class replaced.
+    return {
+      status: 'conflict',
+      reply: conflictReply('already_resolved'),
+      actionId: input.targetActionId ?? null,
+    };
+  }
 
   if (target === 'out_of_range') {
     // Reached only when an ordinal was given and the list is shorter (or empty).
@@ -151,7 +178,7 @@ export async function resolveApproval(
   if (target === 'ambiguous') {
     return {
       status: 'ambiguous',
-      reply: whichOneReply(pending.map((a) => a.actionType)),
+      reply: whichOneReply(approvalSubjects(pending)),
       actionId: null,
     };
   }
@@ -192,7 +219,7 @@ export async function resolveApproval(
 function pick(
   pending: PendingAction[],
   index: number | null,
-): PendingAction | null | 'ambiguous' | 'out_of_range' {
+): PendingAction | null | 'ambiguous' | 'out_of_range' | 'gone' {
   if (index !== null) {
     return pending[index - 1] ?? 'out_of_range';
   }

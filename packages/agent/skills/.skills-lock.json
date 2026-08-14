@@ -67,6 +67,10 @@
     "file": "intake-voice.md",
     "sha256": "b9385d0652291a5b3f9f35c5e59fbcb91cd8345d47cc4b4b1e287c128930207f"
   },
+  "intro-voice.md": {
+    "file": "intro-voice.md",
+    "sha256": "3eed7c2539a1558235264e15f085459c3c0e062de2f7afe6b47776ef5b167248"
+  },
   "nudge-voice.md": {
     "file": "nudge-voice.md",
     "sha256": "f39ab8a8f9873b6abf795c85f5fcdb68a69b4782a295d0a9cd3721cb776b4445"
@@ -98,6 +102,10 @@
   "reply-intent.md": {
     "file": "reply-intent.md",
     "sha256": "322e26a774f0c1a5d492dda049ce98d548fd7830c6ee76aa68c600c406e9b13f"
+  },
+  "reply-resolver.md": {
+    "file": "reply-resolver.md",
+    "sha256": "83fec3c09426b2c2a8b811ee00266fe2f12a0ff5b2a26752644a181e95a8890c"
   },
   "triage-child-event.md": {
     "file": "triage-child-event.md",

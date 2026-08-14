@@ -10,9 +10,11 @@ import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type ChannelCoachRuntime, type ChannelTurn, draftsFromFailure } from './coach-runtime';
-import { FLOOD_REPLY, partialFailureReply } from './copy';
+import { FLOOD_REPLY, clarifyWhichQuestion, partialFailureReply } from './copy';
 import { AGENT_TURN_LIMIT, AGENT_TURN_ROUTE } from './flood';
 import { type SmokeAlarmClaim, classifyTurnFailure, considerSmokeAlarm } from './smoke-alarm';
+import type { OpenQuestion, OpenQuestionKind, OpenQuestionReader } from './open-questions';
+import { type ReplyConfidence, type ReplyResolver, warrantsClarifying } from './resolve';
 import type { InboundTurnLedger } from './turn-ledger';
 
 /**
@@ -91,6 +93,39 @@ export interface InboundContext {
  */
 export interface HandlerContext extends ChannelTurn {
   phoneE164: string;
+  /**
+   * A decision the natural-reply stage already made about this message (resolve.ts), or
+   * null on the ordinary first pass.
+   *
+   * Non-optional so every handler has to see it exists. When it is set, the router is on
+   * its SECOND pass and is calling exactly one handler — the one that declared this kind
+   * in {@link DeterministicHandler.resolves} — so a handler reading a kind that is not
+   * its own is a wiring bug rather than a case to handle.
+   */
+  resolved: ResolvedAnswer | null;
+  /**
+   * What Hale is still waiting to hear back about — read at most ONCE per turn, and only
+   * if something asks.
+   *
+   * A thunk rather than a value because the overwhelming majority of inbound texts never
+   * need it: a handler consults it only when it is about to claim a BARE affirmative,
+   * which is the one case where the word alone does not say which question it answers
+   * (see `soleOpenKind`). The resolver stage below shares the same memo, so a turn that
+   * both checks and resolves still costs one read.
+   */
+  openQuestions(): Promise<readonly OpenQuestion[]>;
+}
+
+/** What the resolver decided, in the form the owning handler needs: which question, and
+ * which way. The `questionId` is the row's own id (open-questions.ts), never a position. */
+export interface ResolvedAnswer {
+  kind: OpenQuestionKind;
+  questionId: string;
+  polarity: 'yes' | 'no';
+  /** How sure the stage said it was. Carried down to the CONSENT LEDGER, not just used
+   * for the grade check: rule #6's trail has to be able to answer "did a person type a
+   * token, or did a model read a sentence, and how sure was it" months later. */
+  confidence: ReplyConfidence;
 }
 
 export type { ChannelCoachRuntime, ChannelTurn };
@@ -111,6 +146,17 @@ export type HandlerVerdict =
  */
 export interface DeterministicHandler {
   readonly name: string;
+  /**
+   * The open-question kinds this handler OWNS — the ones it can act on when the resolver
+   * has read a parent's own words as an answer (resolve.ts). Absent for the handlers that
+   * answer only exact shapes and have no question behind them (the address and name
+   * captures, the registration check-in).
+   *
+   * Declared here rather than in a lookup table so the mapping cannot drift from the
+   * chain: a kind nobody claims is visible as an unhandled resolution in the log, and a
+   * handler that starts owning a kind says so in its own definition.
+   */
+  readonly resolves?: ReadonlySet<OpenQuestionKind>;
   handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict>;
 }
 
@@ -122,6 +168,15 @@ export interface ChannelRouterDeps {
   ): Promise<InboundContext | null>;
   transport: ChannelTransport;
   handlers: readonly DeterministicHandler[];
+  /**
+   * What Hale is still waiting to hear back about, and the stage that reads a parent's own
+   * words against it (open-questions.ts, resolve.ts). Both non-nullable (rule #11): a
+   * router with no question reader would silently stop understanding every reply that is
+   * not a keyword, which is the failure this arc exists to remove — and it would do it
+   * invisibly, because the turn would simply go to the coach and look fine.
+   */
+  questions: OpenQuestionReader;
+  replyResolver: ReplyResolver;
   /** The cheap screen that answers what Hale does not do, before the coach is woken.
    * Non-nullable (rule #11): "no lane wired" is not a state this router has — a lane
    * that cannot run says so by returning `in_domain` with a named fallback. */
@@ -198,6 +253,13 @@ export type RouterStatus =
   | 'unreachable'
   /** A deterministic handler owned it. */
   | 'handled'
+  /** A parent answered an open question in their own words, and the handler that owns
+   * that question acted on it (resolve.ts). Distinct from `handled` on purpose: it is
+   * the number that says whether this arc is working. */
+  | 'resolved'
+  /** More than one question was open and the reply named none of them, so Hale asked
+   * which — in one sentence, never a menu. */
+  | 'clarified'
   | 'flood_held'
   /** The off-domain lane answered it with a fixed line; no coach turn was spent. */
   | 'deflected'
@@ -316,6 +378,18 @@ export async function routeChannelMessage(
     await appendMessage(conversationId, 'user', context.body, deps.database);
   }
 
+  // Read at most once per turn, by whoever needs it first — a handler about to claim a
+  // bare affirmative, the resolver, or nobody at all.
+  let openQuestions: Promise<readonly OpenQuestion[]> | null = null;
+  const readOpenQuestions = () => {
+    openQuestions ??= deps.questions.open(deps.database, {
+      familyId: job.family_id,
+      parentUserId: job.parent_user_id,
+      now,
+    });
+    return openQuestions;
+  };
+
   const turn: HandlerContext = {
     familyId: job.family_id,
     parentUserId: job.parent_user_id,
@@ -323,6 +397,8 @@ export async function routeChannelMessage(
     body: context.body,
     phoneE164,
     now,
+    resolved: null,
+    openQuestions: readOpenQuestions,
   };
 
   /** The turn's ANSWER: sent, then claimed, so a re-drive can never send a second one. */
@@ -341,6 +417,19 @@ export async function routeChannelMessage(
       lane: null,
     });
   }
+
+  // GATE 2b — DID THEY JUST ANSWER SOMETHING? The words a parent uses are theirs, and
+  // Hale never hands them a keyword to recite (resolve.ts). This runs ONLY when both of
+  // its preconditions hold: every free reader above declined, AND Hale is actually
+  // holding a question. On the overwhelming majority of turns the second is false and
+  // this costs one batch of indexed selects and no model call at all.
+  //
+  // It sits ABOVE flood control for the reason the handlers do: answering "yeah go ahead"
+  // is the same act as answering "yes", and a parent whose hour is spent must still be
+  // able to approve, decline and opt out. It sits BELOW them because a free, exact read
+  // must always win — no keyword was removed, only stopped being printed.
+  const natural = await resolveNaturalReply(deps, turn, answer);
+  if (natural) return done(deps, job, { ...natural, conversationId, lane: null });
 
   // GATE 3 — can we afford to think. Counted only here, so a deterministic answer never
   // spends a parent's hourly budget — and counted once per TEXT, because `check` COUNTS
@@ -385,6 +474,79 @@ export async function routeChannelMessage(
     hasAnswered: () => answered,
     conversationId,
   });
+}
+
+/**
+ * GATE 2b — the parent's own words, read against what Hale is actually waiting on.
+ *
+ * Returns null when the turn should carry on to the coach, which is the majority outcome
+ * and every degraded outcome. Three things can happen instead:
+ *
+ *   RESOLVED. The owning handler acts, exactly as it would have for the keyword, and the
+ *   parent gets that handler's own receipt. The handler is found by asking which one
+ *   DECLARES the kind, so the mapping lives in the chain rather than in a table beside it
+ *   — and only that one handler runs on this pass, which is what keeps M7's `reasked_at`
+ *   stamp (a side effect on the way past) from being spent a second time.
+ *
+ *   CLARIFIED. They plainly answered something and Hale cannot tell what, with more than
+ *   one thing open. One sentence naming them, and no menu — the parent answers it in
+ *   words and the next turn resolves easily. This is the ONLY case where Hale asks; an
+ *   ordinary message that happens to arrive while something is pending goes to the coach
+ *   untouched.
+ *
+ *   NOTHING. Everything else, including a handler that declined the resolution because
+ *   the row moved underneath it. Logged, named, never silent (rule #11).
+ */
+async function resolveNaturalReply(
+  deps: ChannelRouterDeps,
+  turn: HandlerContext,
+  answer: (body: string) => Promise<string>,
+): Promise<Pick<RouterResult, 'status' | 'handler'> | null> {
+  const questions = await turn.openQuestions();
+  // NO OPEN QUESTION, NO MODEL CALL. The precondition that makes this stage affordable on
+  // every inbound text.
+  if (questions.length === 0) return null;
+
+  const reading = await deps.replyResolver.read({ text: turn.body, questions });
+  if (reading.status === 'unresolved') {
+    if (questions.length > 1 && warrantsClarifying(reading.reason)) {
+      await answer(clarifyWhichQuestion(questions));
+      return { status: 'clarified', handler: null };
+    }
+    return null;
+  }
+
+  const owner = deps.handlers.find((handler) => handler.resolves?.has(reading.kind));
+  if (!owner) {
+    // A kind nobody owns. Impossible with the shipped chain and loud rather than silent,
+    // because the failure it would otherwise cause is a parent's plain yes disappearing.
+    deps.log.error(
+      { kind: reading.kind },
+      'channel router: no handler owns this resolved question kind',
+    );
+    return null;
+  }
+
+  const verdict = await owner.handle(deps.database, {
+    ...turn,
+    resolved: {
+      kind: reading.kind,
+      questionId: reading.questionId,
+      polarity: reading.polarity,
+      confidence: reading.confidence,
+    },
+  });
+  if (!verdict.claimed) {
+    // The question closed between the two reads — the co-parent answered it in the app,
+    // the offer expired. The coach takes the turn and can say something true about it.
+    deps.log.info(
+      { handler: owner.name, kind: reading.kind },
+      'channel router: the owning handler declined a resolved answer',
+    );
+    return null;
+  }
+  if (verdict.reply !== null) await answer(verdict.reply);
+  return { status: 'resolved', handler: owner.name };
 }
 
 /**

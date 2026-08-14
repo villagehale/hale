@@ -1,13 +1,10 @@
 import type { Database } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OutboundGatePorts, ProactiveHoldReason } from '~/lib/channel/outbound-gate';
-import { FakeIdentityAsk } from '~/lib/channel/intake/fakes';
+import { FakeIdentityAsk, FakeIntroVoice, echoIntroAsk } from '~/lib/channel/intake/fakes';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import type { IntroEmailRequest, IntroEmailResult, IntroEmailSender } from './email';
-import {
-  DISCOVERABILITY_ASK,
-  INTRO_SOFT_CLOSE,
-} from './copy';
+import { INTRO_SOFT_CLOSE } from './copy';
 import {
   VILLAGE_INTROS_ALLOWLIST_ENV,
   VILLAGE_INTROS_ENABLED_ENV,
@@ -70,6 +67,9 @@ interface Harness {
   statuses: Array<{ proposalId: string; status: string; closed: boolean }>;
   expiries: Array<{ proposalId: string; expiresAt: Date }>;
   identityAsk: FakeIdentityAsk;
+  /** Every request the two composed asks were handed. The rule-#1 surface: a card cannot
+   * name the other family if the other family was never passed to the composer. */
+  introVoice: FakeIntroVoice;
   /** Every ledger write, so a test can assert the TEMPLATE KEY an ask was stamped with —
    * the only thing that makes the reply findable by a capture handler. */
   sends: Array<{ templateKey: string; dedupeKey: string; parentUserId: string }>;
@@ -87,6 +87,7 @@ function harness(overrides: {
   emailResult?: IntroEmailResult;
   nameLevel?: 'first_name' | 'relation' | 'generic';
   identityAsk?: FakeIdentityAsk;
+  introVoice?: FakeIntroVoice;
 } = {}): Harness {
   const transport = new FakeTransport();
   const emails: IntroEmailRequest[] = [];
@@ -98,11 +99,13 @@ function harness(overrides: {
   const expiries: Harness['expiries'] = [];
   const sends: Harness['sends'] = [];
   const identityAsk = overrides.identityAsk ?? new FakeIdentityAsk();
+  const introVoice = overrides.introVoice ?? new FakeIntroVoice();
 
   const gate: OutboundGatePorts = {
     channelEnrolled: async () => overrides.hold !== 'not_enrolled',
     watchConsentGranted: async () => overrides.hold !== 'no_watch_consent',
     countProactiveSends: async () => (overrides.hold === 'frequency_cap' ? 99 : 0),
+    proactiveSentSince: async () => true,
     parentTimeZone: async () => (overrides.hold === 'quiet_hours' ? 'America/Toronto' : 'UTC'),
   };
 
@@ -141,6 +144,7 @@ function harness(overrides: {
       expiries.push({ proposalId, expiresAt });
     },
     identityAsk,
+    introVoice,
     buildGate: () => gate,
     dedupeActive: async () => false,
     resolveSendablePhone: async (_db, userId) => `phone-${userId}`,
@@ -170,6 +174,7 @@ function harness(overrides: {
     statuses,
     expiries,
     identityAsk,
+    introVoice,
     sends,
   };
 }
@@ -229,13 +234,61 @@ describe('the dark-launch gate', () => {
     expect((await runVillageIntroSweep(DB, h.deps, NOW)).enabled).toBe(false);
   });
 
-  it('an allowlist arms only the families it names', async () => {
-    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'false';
+  it('an allowlist narrows the sweep to the families it names', async () => {
     process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = `${A},${B}`;
     const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
     expect(result.enabled).toBe(true);
     expect(result.asked).toBe(2);
+  });
+
+  it('an allowlist does not ARM anything - the flag is still the kill switch', async () => {
+    // One job each. An allowlist that could arm the sweep on its own would mean
+    // VILLAGE_INTROS_ENABLED=false stops nothing while one is set, which is the one
+    // control a founder reaches for during an incident.
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'false';
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = `${A},${B}`;
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.enabled).toBe(false);
+    expect(h.transport.sent).toEqual([]);
+  });
+
+  it('a non-empty allowlist outranks the flag - an unlisted family is never asked', async () => {
+    // The live defect (2026-08-13): the flag was ON, an allowlist was added as a safety
+    // rail, and the rail did nothing — `allFamilies || allowlist.has(id)` short-circuits
+    // past it, so a family nobody listed was asked AND matched.
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'true';
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = A;
+    const h = harness({ families: [family({ familyId: A }), family({ familyId: B })] });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.asked).toBe(0); // A is listed but now alone in its FSA, so nobody is asked
+    expect(bodyTo(h, B)).toBeUndefined();
+    expect(h.sends).toEqual([]);
+  });
+
+  it('never matches, cards or names an unlisted family - even when the other side is listed', async () => {
+    process.env[VILLAGE_INTROS_ENABLED_ENV] = 'true';
+    process.env[VILLAGE_INTROS_ALLOWLIST_ENV] = A;
+    const h = harness({
+      families: [family({ familyId: A }), family({ familyId: B })],
+      discoverable: new Set([`user-${A}`, `user-${B}`]),
+      proposals: [proposal()],
+    });
+
+    const result = await runVillageIntroSweep(DB, h.deps, NOW);
+
+    expect(result.proposed).toBe(0);
+    expect(h.proposalsCreated).toEqual([]);
+    expect(h.asked).toEqual([]);
+    expect(h.transport.sent).toEqual([]);
+    // The rail is COUNTED, not just effective — a silent skip is the shape rule #11 exists
+    // to forbid, and this counter is the only way a run says the rail did something.
+    expect(result.notAllowlisted).toBeGreaterThan(0);
   });
 });
 
@@ -245,7 +298,11 @@ describe('phase 1 - the discoverability ask', () => {
     const result = await runVillageIntroSweep(DB, h.deps, NOW);
 
     expect(result.asked).toBe(2);
-    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ASK, DISCOVERABILITY_ASK]);
+    expect(h.introVoice.calls).toEqual([{ kind: 'optin' }, { kind: 'optin' }]);
+    expect(h.transport.bodies()).toEqual([
+      echoIntroAsk({ kind: 'optin' }),
+      echoIntroAsk({ kind: 'optin' }),
+    ]);
     expect(h.audits.filter((a) => a.actionTaken === 'village_intro_ask_sent')).toHaveLength(2);
   });
 
@@ -389,8 +446,17 @@ describe('phase 2 - matching and the coarse card', () => {
 
     const cardToA = bodyTo(h, A) as string;
     expect(cardToA).toBe(
-      "A Hale family near you has a toddler around Maya's age. Want an intro? Reply YES INTRO or NO INTRO.",
+      "A Hale family near you has a toddler around Maya's age. Want an intro?",
     );
+    // What the composer was actually HANDED for family A. A band word and their own
+    // child, and no third fact — the structural half of the privacy rule.
+    expect(h.introVoice.calls[0]).toEqual({
+      kind: 'proposal',
+      counterpartWord: 'toddler',
+      ownChildPossessive: "Maya's",
+      anchorTitle: null,
+      anchorDay: null,
+    });
     for (const secret of Object.values(SENTINELS)) {
       expect(cardToA, `family A's card must never carry "${secret}"`).not.toContain(secret);
     }
@@ -436,6 +502,10 @@ describe('phase 2 - matching and the coarse card', () => {
       ],
     });
     await runVillageIntroSweep(DB, h.deps, NOW);
+    expect(h.introVoice.calls[0]).toMatchObject({
+      anchorTitle: 'Ready for Reading (Ages 3-6)',
+      anchorDay: 'Saturday',
+    });
     expect(h.transport.bodies()[0]).toContain(
       "They're also eyeing Ready for Reading (Ages 3-6) Saturday.",
     );

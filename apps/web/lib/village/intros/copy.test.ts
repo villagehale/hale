@@ -2,7 +2,6 @@ import { FAMILY_STAGES } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { smsEncoding, smsSegments } from '~/lib/channel/sms-segments';
 import {
-  DISCOVERABILITY_ASK,
   DISCOVERABILITY_OFF,
   DISCOVERABILITY_ON,
   INTRO_EMAIL_SUBJECT,
@@ -10,8 +9,6 @@ import {
   INTRO_SOFT_CLOSE,
   INTRO_YES_ACK,
   NO_OPEN_INTRO,
-  activityAnchor,
-  coarseCard,
   introEmailBody,
   stageWord,
 } from './copy';
@@ -33,52 +30,7 @@ const COUNTERPART = {
   exactAge: '31 months',
 };
 
-describe('DISCOVERABILITY_ASK', () => {
-  it('is the spec sentence, verbatim', () => {
-    expect(DISCOVERABILITY_ASK).toBe(
-      "Something new: other Hale families are near you. Want me to introduce you when there's a great match? Reply YES INTROS or NO INTROS.",
-    );
-  });
-
-  it('names both keywords so a bare yes is never needed', () => {
-    expect(DISCOVERABILITY_ASK).toContain('YES INTROS');
-    expect(DISCOVERABILITY_ASK).toContain('NO INTROS');
-  });
-
-  it('asks before it has looked - it never mentions a specific family or place', () => {
-    expect(DISCOVERABILITY_ASK).not.toMatch(/[A-Z]\d[A-Z]/);
-  });
-});
-
-describe('coarseCard', () => {
-  it('carries the recipients own child and the other side as a band word only', () => {
-    expect(coarseCard('toddler', "Maya's", null)).toBe(
-      "A Hale family near you has a toddler around Maya's age. Want an intro? Reply YES INTRO or NO INTRO.",
-    );
-  });
-
-  it('splices the activity anchor between the fact and the question', () => {
-    expect(coarseCard('preschool', "Noah's", activityAnchor('Baby Time', 'Saturday'))).toBe(
-      "A Hale family near you has a preschooler around Noah's age. They're also eyeing Baby Time Saturday. Want an intro? Reply YES INTRO or NO INTRO.",
-    );
-  });
-
-  it('renders a redacted own-child identifier without leaking a name', () => {
-    // What loopChildName hands back for a 13+ child, or for the default name level.
-    expect(coarseCard('child', "your kid's", null)).toBe(
-      "A Hale family near you has a kid around your kid's age. Want an intro? Reply YES INTRO or NO INTRO.",
-    );
-  });
-
-  it('cannot name the other family - none of their strings can reach the card', () => {
-    // Non-vacuity: the counterpart fixture is real data, it just is not an input here.
-    expect(COUNTERPART.childName).not.toBe('');
-    const card = coarseCard('toddler', "Maya's", activityAnchor('Family Storytime', 'Saturday'));
-    for (const secret of Object.values(COUNTERPART)) {
-      expect(card, `the coarse card must never carry "${secret}"`).not.toContain(secret);
-    }
-  });
-
+describe('stageWord', () => {
   it('has a stage word for every stage, and none of them is the raw stage key', () => {
     // 'preschool' and 'teenager' are labels, not nouns a sentence can hold.
     expect(stageWord('preschool')).toBe('preschooler');
@@ -89,11 +41,26 @@ describe('coarseCard', () => {
   });
 });
 
-describe('activityAnchor', () => {
-  it('passes the dataset title through verbatim', () => {
-    expect(activityAnchor('Ready for Reading (Ages 3-6)', 'Thursday')).toBe(
-      "They're also eyeing Ready for Reading (Ages 3-6) Thursday.",
-    );
+describe('the acks that stayed fixed', () => {
+  it('never instruct a keyword - the arc that composed the two asks (2026-08-13)', () => {
+    // STOP is exempt everywhere it appears: it is the CASL vocabulary the carrier and the
+    // intake machine both honour, and softening it would break a legal off-ramp. What may
+    // not survive is Hale handing a parent a token to recite in order to be understood.
+    const instruction = /\b(reply|respond|text|send|type)\b[^.?!]{0,20}\b(yes|no|intro|intros)\b/i;
+    for (const [name, body] of [
+      ['DISCOVERABILITY_ON', DISCOVERABILITY_ON],
+      ['DISCOVERABILITY_OFF', DISCOVERABILITY_OFF],
+      ['INTRO_YES_ACK', INTRO_YES_ACK],
+      ['INTRO_NO_ACK', INTRO_NO_ACK],
+      ['NO_OPEN_INTRO', NO_OPEN_INTRO],
+      ['INTRO_SOFT_CLOSE', INTRO_SOFT_CLOSE],
+    ] as const) {
+      expect(body, `${name} must not tell a parent which word to type`).not.toMatch(instruction);
+    }
+  });
+
+  it('still gives the opt-in ack a real off-ramp, in words', () => {
+    expect(DISCOVERABILITY_ON.toLowerCase()).toContain('tell me to stop');
   });
 });
 
@@ -156,19 +123,15 @@ describe('every outbound SMS body', () => {
   /** The worst case each template can produce, so the budget is asserted against the
    * longest real rendering rather than the shortest. */
   const bodies: Array<[string, string]> = [
-    ['DISCOVERABILITY_ASK', DISCOVERABILITY_ASK],
     ['DISCOVERABILITY_ON', DISCOVERABILITY_ON],
     ['DISCOVERABILITY_OFF', DISCOVERABILITY_OFF],
     ['INTRO_YES_ACK', INTRO_YES_ACK],
     ['INTRO_NO_ACK', INTRO_NO_ACK],
     ['INTRO_SOFT_CLOSE', INTRO_SOFT_CLOSE],
     ['NO_OPEN_INTRO', NO_OPEN_INTRO],
-    ...FAMILY_STAGES.map(
-      (stage): [string, string] => [
-        `coarseCard:${stage}`,
-        coarseCard(stage, "your daughter's", activityAnchor('Ready for Reading (Ages 3-6)', 'Wednesday')),
-      ],
-    ),
+    // The two ASKS are composed now and are held to the same envelope by their own
+    // refusals (voice.ts) and by the eval, not by a string in this file.
+    ...FAMILY_STAGES.map((stage): [string, string] => [`stageWord:${stage}`, stageWord(stage)]),
   ];
 
   it.each(bodies)('%s stays in the GSM-7 alphabet', (_name, body) => {

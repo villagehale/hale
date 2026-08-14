@@ -103,6 +103,12 @@ jobs:
       - name: Reminder voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:reminder-voice
 
+      - name: Introduction ask composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intro-voice
+
+      - name: Natural reply resolver eval (cached-only)
+        run: pnpm --filter @hale/worker eval:reply-resolver
+
       - name: Radar payload composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:radar
 

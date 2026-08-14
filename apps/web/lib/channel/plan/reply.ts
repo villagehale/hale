@@ -139,12 +139,19 @@ export async function handlePlanYes(
     body: string;
     phoneE164: string;
     now: Date;
+    /** The router's natural-reply stage already read this message as a yes to the open
+     * plan offer (lib/channel/router/resolve.ts). The shared vocabulary is tried first
+     * and still wins; this is what lets "go on then" accept a plan without Hale ever
+     * having told the parent to type a word. */
+    resolved?: 'yes' | null;
   },
   deps: PlanReplyDeps,
 ): Promise<PlanReplyOutcome> {
   // Checked before any query: most inbound traffic is not a bare affirmative, and an
   // ordinary message must not cost this handler a round trip.
-  if (readAffirmative(input.body) !== 'yes') return { status: 'declined_to_claim' };
+  if (readAffirmative(input.body) !== 'yes' && input.resolved !== 'yes') {
+    return { status: 'declined_to_claim' };
+  }
 
   const offer = await deps.loadOpenOffer(database, input.familyId, 'plan_offer');
   if (!offer || offer.dueAt.getTime() < input.now.getTime()) {

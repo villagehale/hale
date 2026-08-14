@@ -532,6 +532,9 @@ async function runToddlerJourney(): Promise<Journey> {
         gateCalls.push('frequency_cap');
         return real.countProactiveSends(fid, kind, since);
       },
+      // A brand-new family: nothing proactive has reached them yet, so the nudge below is
+      // their first proactive contact ever and carries the CASL opt-out line.
+      proactiveSentSince: async () => false,
       parentTimeZone: async (id) => {
         gateCalls.push('quiet_hours');
         return real.parentTimeZone(id);
@@ -768,6 +771,8 @@ async function runToddlerJourney(): Promise<Journey> {
     primaryParentName: null,
     conversationId: null,
     now: SEQUENCE_AT,
+    resolved: null,
+    openQuestions: async () => [],
   } as never);
   const approvedPayload =
     (queue.send.mock.calls[0]?.[1] as Record<string, unknown> | undefined) ?? null;

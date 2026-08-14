@@ -185,12 +185,23 @@ describe('resolveApproval — more than one pending action', () => {
     expect(calls).toEqual([]);
   });
 
-  it('numbers the choices in the order an ordinal resolves against', async () => {
+  it('names the choices in one sentence, and never as a numbered menu', async () => {
+    // The menu ("1. ... 2. ... - reply YES 1 or NO 1.") was the last one Hale sent, and
+    // it went with the keyword instructions (2026-08-13). What replaced it has to still
+    // let a parent pick, which is what the naming below is for.
     const { outcome } = await run('yes', { pending: three });
 
-    expect(outcome.reply).toContain('1. Add to your calendar');
-    expect(outcome.reply).toContain('2. Reschedule on your calendar');
-    expect(outcome.reply).toContain('YES 1');
+    expect(outcome.reply).toContain('add to your calendar');
+    expect(outcome.reply).toContain('reschedule on your calendar');
+    expect(outcome.reply).not.toMatch(/\b1\.|\bYES 1\b/);
+    expect(outcome.reply).toMatch(/^Which one - /);
+  });
+
+  it('still resolves the ordinal a parent chooses to type - no read was removed', async () => {
+    // Nothing prints "YES 2" any more. It keeps working, because a parent who learned it
+    // must not discover it has been taken away.
+    const { calls } = await run('yes 2', { pending: three });
+    expect(calls).toEqual([{ op: 'approve', actionId: 'a-2', actor: PARENT }]);
   });
 
   it('resolves the ordinal to the action at that position', async () => {
@@ -210,18 +221,26 @@ describe('resolveApproval — more than one pending action', () => {
     expect(calls).toEqual([]);
   });
 
-  it('never lists more than the grammar can name', async () => {
+  it('never lists more than the grammar can name, and discloses the rest', async () => {
     const many = Array.from({ length: 8 }, (_, i) => action(`a-${i + 1}`));
     const { outcome } = await run('yes', { pending: many });
 
     expect(outcome.status).toBe('ambiguous');
-    for (let n = 1; n <= MAX_LISTED_APPROVALS; n += 1) {
-      expect(outcome.reply).toContain(`${n}.`);
-    }
-    expect(outcome.reply).not.toContain(`${MAX_LISTED_APPROVALS + 1}.`);
-    // The overflow is disclosed, never hidden — and it now points at the next turn of
-    // this thread rather than at the app (skill audit P0 #4).
-    expect(outcome.reply).toMatch(/\+5 more after these/i);
+    // Every one of the eight shares a label, so naming alone cannot tell them apart.
+    // Position does — as a description, never as an instruction.
+    expect(outcome.reply).toContain('(the first)');
+    expect(outcome.reply).toContain(`(the ${['first', 'second', 'third'][MAX_LISTED_APPROVALS - 1]})`);
+    expect(outcome.reply).not.toContain('(the fourth)');
+    // The overflow is disclosed, never hidden — and it points at the next turn of this
+    // thread rather than at the app (skill audit P0 #4).
+    expect(outcome.reply).toMatch(/5 more behind those/i);
+  });
+
+  it('leaves distinct labels completely alone - no position where none is needed', async () => {
+    const { outcome } = await run('yes', {
+      pending: [action('a-1'), { actionId: 'a-2', actionType: 'reschedule_event' }],
+    });
+    expect(outcome.reply).not.toContain('(the first)');
   });
 });
 

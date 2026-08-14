@@ -14,13 +14,50 @@ import {
 import { type HealthReplyDeps, handleHealthCheckpointReply } from '~/lib/health/reply';
 import { type PlanReplyDeps, handlePlanYes } from '~/lib/channel/plan/reply';
 import {
+  type ResolvedIntroAnswer,
   type VillageIntroReplyDeps,
   handleVillageIntroReply,
 } from '~/lib/village/intros/reply';
 import { type ApprovalSpine, resolveApproval } from './approval';
+import { type OpenQuestionKind, soleOpenKind } from './open-questions';
 import { checkupDraftedReply, healthDoneReply } from './copy';
 import { matchFastPath } from './fast-path';
+import { readAffirmative } from '~/lib/channel/affirmative';
 import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './route';
+
+/**
+ * May this handler act on a BARE affirmative right now?
+ *
+ * An ordinal ("yes 2") and an undo are exempt: neither can be conversation and neither can
+ * be an answer to any question but the numbered one. Everything else consults
+ * {@link soleOpenKind} — see there for why the old priority order had to go.
+ */
+async function mayClaimBareWord(
+  ctx: HandlerContext,
+  command: { verb: string; index: number | null },
+  kind: OpenQuestionKind,
+): Promise<boolean> {
+  if (command.index !== null || command.verb === 'undo') return true;
+  return soleOpenKind(await ctx.openQuestions(), kind);
+}
+
+/**
+ * A resolved intro answer, in the shape the lane's own reader produces.
+ *
+ * The lane is keyed on the two-word keyword's NOUN (`intro` vs `intros`), and the resolver
+ * is keyed on the question kind. This is the one place the two vocabularies meet, and it
+ * is three lines rather than a shared enum because the lane's shape is the older and the
+ * more load-bearing of the two: it is what the consent ledger's writer branches on.
+ */
+function introKeywordFrom(ctx: HandlerContext): ResolvedIntroAnswer | null {
+  const resolved = ctx.resolved;
+  if (resolved?.kind !== 'intro_optin' && resolved?.kind !== 'intro_proposal') return null;
+  return {
+    target: resolved.kind === 'intro_optin' ? 'discoverability' : 'proposal',
+    granted: resolved.polarity === 'yes',
+    confidence: resolved.confidence,
+  };
+}
 
 /**
  * VIL-220 · C1 — the deterministic handlers, and the order they run in.
@@ -30,9 +67,10 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  * lives in M8. What lives HERE is only the mapping from those verdicts to a text
  * message, and the order.
  *
- * THE ORDER. "yes" is the one word both handlers could claim, and the rule that settles
- * it is not "approvals are more important" — it is that a handler may only claim a word
- * when it has something concrete for the word to mean:
+ * THE ORDER. "yes" is the one word several handlers could claim, and the rule that
+ * settles it is not "approvals are more important" — it is that a handler may only claim a
+ * word when it has something concrete for the word to mean, AND when that thing is the
+ * only thing the word could mean:
  *
  *   · The approval handler claims a bare affirmative ONLY when an action is actually
  *     drafted and waiting. With none — the overwhelmingly common case — it declines,
@@ -40,14 +78,19 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  *     handler in the chain from starving the ones behind it, and it is asserted in
  *     handlers.test.ts in both directions.
  *
- *   · When BOTH are open, approvals win. A draft is a question Hale asked and is holding
- *     an answer for, and it is the only one of the two whose wrong answer executes
- *     something the parent cannot see — a mis-filed "done" is recoverable, a mis-fired
- *     calendar write needs an undo.
+ *   · When TWO KINDS of question are open, NOBODY claims it (see `soleOpenKind` in
+ *     open-questions.ts). Approvals used to win that tie on the grounds that a mis-fired
+ *     calendar write is the most expensive wrong answer — which was true, and was still a
+ *     coin flip resolved in favour of the expensive outcome being possible. It survived
+ *     only because the intro card ended "Reply YES INTRO", so a bare "yes" could not have
+ *     meant the intro. Composing that card (2026-08-13) removed the disambiguator, and
+ *     the tie-break went with it: the turn now falls through to the natural-reply stage,
+ *     which either reads which question the words name or has Hale ask, in a sentence.
  *
  * An ORDINAL ("YES 2") never reaches the health handler at all: M8 matches exact words,
  * so it declines anything carrying a number, and the approval handler answers it even
- * when the queue is empty.
+ * when the queue is empty — and it never waits on `soleOpenKind`, because a number cannot
+ * be an answer to anything but a numbered list.
  *
  * WHY REGISTRATION IS LAST. The first two handlers claim only words they recognise
  * exactly. M7's does something none of the others do: inside an open check-in window it
@@ -61,7 +104,13 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
  */
 
 /**
- * Village intros — YES INTROS / NO INTROS / YES INTRO / NO INTRO.
+ * Village intros — YES INTROS / NO INTROS / YES INTRO / NO INTRO, and, since 2026-08-13,
+ * whatever else the parent actually said.
+ *
+ * NOTHING PRINTS THOSE FOUR PHRASES ANY MORE. The asks are composed and ask their
+ * question in English (lib/village/intros/voice.ts). The phrases are still READ, because
+ * a parent who learned one must not discover it has been taken away — and reading them
+ * here is free, which is why this handler still runs before the model does.
  *
  * FIRST IN THE CHAIN, and the narrowest thing in it: it claims a two-word phrase whose
  * second word is `intro` or `intros` and nothing else, so it cannot starve a handler
@@ -76,6 +125,11 @@ import type { DeterministicHandler, HandlerContext, HandlerVerdict } from './rou
 export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicHandler {
   return {
     name: 'village_intro',
+    // Both intro questions. The lane already distinguishes them by the noun in the
+    // keyword; on a resolved turn the KIND carries that distinction instead, and the
+    // grade above it is what makes the proposal (a disclosure) need `high` while the
+    // opt-in does not.
+    resolves: new Set<OpenQuestionKind>(['intro_optin', 'intro_proposal']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
       const outcome = await handleVillageIntroReply(
         database,
@@ -84,6 +138,7 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
           parentUserId: ctx.parentUserId,
           body: ctx.body,
           now: ctx.now,
+          resolved: introKeywordFrom(ctx),
         },
         deps,
       );
@@ -101,9 +156,19 @@ export function villageIntroHandler(deps: VillageIntroReplyDeps): DeterministicH
 export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
   return {
     name: 'approval',
+    resolves: new Set<OpenQuestionKind>(['approval']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const command = matchFastPath(ctx.body);
+      // A resolved answer NAMES its action, so it does not need — and must not use — the
+      // ordinal grammar: the two reads of the pending list are a co-parent's tap apart,
+      // and only an id survives that.
+      const resolved = ctx.resolved?.kind === 'approval' ? ctx.resolved : null;
+      const command = resolved
+        ? ({ verb: resolved.polarity, index: null } as const)
+        : matchFastPath(ctx.body);
       if (!command) return { claimed: false };
+      if (!resolved && !(await mayClaimBareWord(ctx, command, 'approval'))) {
+        return { claimed: false };
+      }
 
       const outcome = await resolveApproval(
         database,
@@ -112,6 +177,7 @@ export function approvalHandler(spine: ApprovalSpine): DeterministicHandler {
           parentUserId: ctx.parentUserId,
           command,
           now: ctx.now,
+          targetActionId: resolved?.questionId,
         },
         spine,
       );
@@ -205,6 +271,18 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
   return {
     name: 'health',
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      // A tick or the word "done" is unambiguous and claims immediately. A bare "yes" is
+      // not, and M8's own reading of one drafts an appointment — so it waits for
+      // `soleOpenKind` like every other bare affirmative.
+      // Health is not a tracked kind (its nudge asks a two-option question, not a yes/no
+      // one — see open-questions.ts), so `null`: any open question makes a bare word
+      // ambiguous for it.
+      if (
+        readAffirmative(ctx.body) === 'yes' &&
+        !soleOpenKind(await ctx.openQuestions(), null)
+      ) {
+        return { claimed: false };
+      }
       const outcome = await handleHealthCheckpointReply(
         database,
         { familyId: ctx.familyId, parentUserId: ctx.parentUserId, body: ctx.body },
@@ -252,7 +330,12 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
 export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
   return {
     name: 'coach_plan',
+    resolves: new Set<OpenQuestionKind>(['plan_offer']),
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
+      const resolved = ctx.resolved?.kind === 'plan_offer';
+      if (!resolved && readAffirmative(ctx.body) === 'yes') {
+        if (!soleOpenKind(await ctx.openQuestions(), 'plan_offer')) return { claimed: false };
+      }
       const outcome = await handlePlanYes(
         database,
         {
@@ -262,6 +345,7 @@ export function planReplyHandler(deps: PlanReplyDeps): DeterministicHandler {
           body: ctx.body,
           phoneE164: ctx.phoneE164,
           now: ctx.now,
+          resolved: resolved ? 'yes' : null,
         },
         deps,
       );

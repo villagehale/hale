@@ -3,6 +3,7 @@ import type { FamilyStage } from '@hale/types';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { MIN_SURFACE_CONFIDENCE } from '~/lib/civic/parse-hours';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { withOptOut } from '~/lib/channel/opt-out';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import {
   type OutboundGatePorts,
@@ -20,12 +21,8 @@ import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { type ChildNameLevel, loadLoopPrefsView, loopChildName } from '~/lib/loop/prefs';
 import { discoverableUserIds } from './consent';
-import {
-  DISCOVERABILITY_ASK,
-  INTRO_SOFT_CLOSE,
-  activityAnchor,
-  coarseCard,
-} from './copy';
+import { INTRO_SOFT_CLOSE, stageWord } from './copy';
+import { type IntroAskRequest, type IntroVoice, productionIntroVoice } from './voice';
 import { type IntroEmailSender, createIntroEmailSender, introFirstName } from './email';
 import {
   type IntroSkipReason,
@@ -91,6 +88,38 @@ export function villageIntrosAllowlist(): Set<string> {
       .map((id) => id.trim())
       .filter((id) => id.length > 0),
   );
+}
+
+/**
+ * May this feature touch this family AT ALL — the one reader, consulted at selection and
+ * again at the send chokepoint.
+ *
+ * A NON-EMPTY ALLOWLIST OUTRANKS THE FLAG. It used to be the other way round
+ * (`allFamilies || allowlist.has(id)`), which made the allowlist a no-op the moment
+ * VILLAGE_INTROS_ENABLED was on — and that is how a family nobody listed was asked and
+ * matched on 2026-08-13. An allowlist is only ever added to NARROW a live flag; reading
+ * it as a widener meant the one control a founder reaches for in an incident did nothing.
+ *
+ * Empty allowlist = the flag decides, which is the post-density flip. Non-empty = strict,
+ * whatever the flag says.
+ */
+export type IntroScope = (familyId: string) => boolean;
+
+export function introScope(allowlist: ReadonlySet<string>): IntroScope {
+  if (allowlist.size === 0) return () => true;
+  return (familyId) => allowlist.has(familyId);
+}
+
+/**
+ * The opt-in ask's idempotency key — ONE per family, ever.
+ *
+ * Exported because it is also the only record that the question was ASKED: the router's
+ * open-question reader (lib/channel/router/open-questions.ts) reads this key back to know
+ * whether a family has a discoverability question outstanding. One writer, one reader, one
+ * string — a second copy of the format in the reader is a silent no-op waiting to happen.
+ */
+export function introAskDedupeKey(familyId: string): string {
+  return `village_intro:ask:${familyId}`;
 }
 
 /** How long a card waits for an answer before the pair lapses. A week covers a busy
@@ -218,6 +247,10 @@ export interface IntroSweepDeps {
    * with. Its own DEFERRAL is the named absence — nothing sent, nothing recorded, asked
    * again next tick. */
   identityAsk: IdentityAskVoice;
+  /** The two asks' words (voice.ts). REQUIRED (rule #11): there is no fixed sentence left
+   * under either of them, so a sweep with no composer has nothing to say and must not be
+   * constructible. A composer that cannot run says so by DEFERRING, per send. */
+  introVoice: IntroVoice;
 }
 
 /**
@@ -250,6 +283,10 @@ export interface IntroSweepResult {
   waiting: Record<IntroWaitReason, number>;
   /** Gap-fill asks that actually reached a phone this tick. */
   identityAsked: number;
+  /** Sends the scope rail refused. Zero in every healthy run — a non-zero here means a
+   * phase found a family outside the allowlist by some route the selection filter does
+   * not cover, which is a bug and not a state (rule #11). */
+  notAllowlisted: number;
   closed: number;
   held: Record<ProactiveHoldReason, number>;
   skipped: Record<IntroSkipReason, number>;
@@ -266,6 +303,7 @@ function emptyResult(enabled: boolean): IntroSweepResult {
     introFailed: 0,
     waiting: { awaiting_email: 0, awaiting_name: 0 },
     identityAsked: 0,
+    notAllowlisted: 0,
     closed: 0,
     held: { not_enrolled: 0, no_watch_consent: 0, frequency_cap: 0, quiet_hours: 0 },
     skipped: { no_fsa: 0, no_matchable_child: 0 },
@@ -283,14 +321,25 @@ function weekdayIn(instant: Date, timeZone: string): string {
 interface SendOutcome {
   sent: boolean;
   held?: ProactiveHoldReason;
+  /** The scope rail refused (see {@link introScope}). Never silent, and counted. */
+  skipped?: 'not_allowlisted';
 }
 
 /**
- * The ONE way this feature reaches a phone: gate, dedupe, resolve, compose, send, ledger.
+ * The ONE way this feature reaches a phone: SCOPE, gate, dedupe, resolve, compose, send,
+ * ledger.
  *
  * Every intro text goes through here, so the four gate checks and the idempotency key
  * cannot be forgotten by one call site. `dedupeKey` is the message's natural identity,
  * which is what lets an hourly cron fire twice in a slot and send once.
+ *
+ * THE SCOPE CHECK IS FIRST AND IS A SECOND READING. The selection filter in
+ * {@link runVillageIntroSweep} already drops every family outside the allowlist, and
+ * every downstream phase resolves its families through that filtered map — so this can
+ * only fire if a future phase finds a family some other way. That is exactly why it is
+ * here: the rail that stops an unlisted household being texted must not depend on which
+ * map a new phase happens to read. It is loud, because reaching it means the invariant
+ * above it broke.
  *
  * `body` MAY BE A THUNK, and the order is why. The fixed sentences pass a string; the one
  * composed message passes a function, which is called only after the gate and the dedupe
@@ -302,6 +351,7 @@ interface SendOutcome {
 async function sendIntroSms(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   input: {
     familyId: string;
     parentUserId: string;
@@ -311,6 +361,14 @@ async function sendIntroSms(
     now: Date;
   },
 ): Promise<SendOutcome> {
+  if (!scope(input.familyId)) {
+    console.error(
+      { familyId: input.familyId, templateKey: input.templateKey },
+      'village intros: a send reached the transport for a family outside the allowlist - refused',
+    );
+    return { sent: false, skipped: 'not_allowlisted' };
+  }
+
   const verdict = await assertProactiveSendAllowed(
     {
       familyId: input.familyId,
@@ -324,8 +382,9 @@ async function sendIntroSms(
 
   if (await deps.dedupeActive(database, input.dedupeKey)) return { sent: false };
 
-  const body = typeof input.body === 'string' ? input.body : await input.body();
-  if (body === null) return { sent: false };
+  const composed = typeof input.body === 'string' ? input.body : await input.body();
+  if (composed === null) return { sent: false };
+  const body = withOptOut(composed, verdict.includeOptOut);
 
   const to = await deps.resolveSendablePhone(database, input.parentUserId);
   if (!to) {
@@ -350,6 +409,7 @@ async function sendIntroSms(
 async function runAskPhase(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   families: readonly IntroSweepFamily[],
   result: IntroSweepResult,
   now: Date,
@@ -378,14 +438,18 @@ async function runAskPhase(
     if (asked.has(family.parentUserId)) continue;
 
     try {
-      const outcome = await sendIntroSms(database, deps, {
+      const outcome = await sendIntroSms(database, deps, scope, {
         familyId: family.familyId,
         parentUserId: family.parentUserId,
-        body: DISCOVERABILITY_ASK,
+        body: () => composeIntroAsk(deps, { kind: 'optin' }),
         templateKey: 'village_intro:discoverability_ask',
-        dedupeKey: `village_intro:ask:${family.familyId}`,
+        dedupeKey: introAskDedupeKey(family.familyId),
         now,
       });
+      if (outcome.skipped) {
+        result.notAllowlisted += 1;
+        continue;
+      }
       if (outcome.held) {
         result.held[outcome.held] += 1;
         continue;
@@ -411,6 +475,7 @@ async function runAskPhase(
 async function runMatchPhase(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   families: readonly IntroSweepFamily[],
   result: IntroSweepResult,
   now: Date,
@@ -419,7 +484,7 @@ async function runMatchPhase(
     database,
     families.map((f) => f.parentUserId),
   );
-  const optedIn = families.filter((f) => discoverable.has(f.parentUserId));
+  const optedIn = families.filter((f) => scope(f.familyId) && discoverable.has(f.parentUserId));
   if (optedIn.length < 2) return;
 
   const [openFamilyIds, pairedBefore] = await Promise.all([
@@ -509,6 +574,7 @@ function sidesOf(proposal: SweepProposal): Array<{ key: 'a' | 'b'; self: Side; o
 async function runProposalPhase(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   families: readonly IntroSweepFamily[],
   result: IntroSweepResult,
   now: Date,
@@ -518,20 +584,31 @@ async function runProposalPhase(
 
   for (const proposal of proposals) {
     try {
+      // THE RAIL IS PER PAIRING, NOT PER SIDE. A live proposal minted while the flag was
+      // wide open can name a family the allowlist has since narrowed away, and carding
+      // the LISTED side of that pair is still this feature acting on the unlisted one —
+      // it just does it without saying their name. Being listed does not entitle a family
+      // to be introduced to somebody who is not. The pairing waits (never closed, so the
+      // soft close is not spent either) until the scope widens or the window expires.
+      if (!scope(proposal.familyAId) || !scope(proposal.familyBId)) {
+        result.notAllowlisted += 1;
+        continue;
+      }
+
       // Expiry is decided here rather than by a clock elsewhere, so "past its window"
       // and "told the other side" are one pass over one row.
       const status =
         proposal.status === 'proposed' && proposal.expiresAt <= now ? 'expired' : proposal.status;
 
       if (status === 'proposed') {
-        await cardUnaskedSides(database, deps, proposal, byId, result, now);
+        await cardUnaskedSides(database, deps, scope, proposal, byId, result, now);
         continue;
       }
       if (status === 'both_accepted') {
-        await introduce(database, deps, proposal, byId, result, now);
+        await introduce(database, deps, scope, proposal, byId, result, now);
         continue;
       }
-      await softClose(database, deps, proposal, status, byId, result, now);
+      await softClose(database, deps, scope, proposal, status, byId, result, now);
     } catch (err) {
       result.failed += 1;
       console.error({ err, proposalId: proposal.id }, 'village intros: proposal step failed');
@@ -543,6 +620,7 @@ async function runProposalPhase(
 async function cardUnaskedSides(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   proposal: SweepProposal,
   byId: ReadonlyMap<string, IntroSweepFamily>,
   result: IntroSweepResult,
@@ -560,22 +638,31 @@ async function cardUnaskedSides(
     if (!child) continue;
 
     const nameLevel = await deps.loadNameLevel(database, family.parentUserId);
-    const anchor =
-      proposal.anchorTitle !== null && proposal.anchorStartsAt !== null
-        ? activityAnchor(proposal.anchorTitle, weekdayIn(proposal.anchorStartsAt, family.timeZone))
-        : null;
+    const anchored = proposal.anchorTitle !== null && proposal.anchorStartsAt !== null;
     // loopChildName composes the parent's dial with the deterministic teen gate, so a
     // 13+ child reads as "your kid" whatever the dial says (rule #1).
-    const body = coarseCard(proposal.stage, `${loopChildName(child, nameLevel, now)}'s`, anchor);
+    const request = {
+      kind: 'proposal',
+      counterpartWord: stageWord(proposal.stage),
+      ownChildPossessive: `${loopChildName(child, nameLevel, now)}'s`,
+      anchorTitle: anchored ? proposal.anchorTitle : null,
+      anchorDay: anchored
+        ? weekdayIn(proposal.anchorStartsAt as Date, family.timeZone)
+        : null,
+    } as const;
 
-    const outcome = await sendIntroSms(database, deps, {
+    const outcome = await sendIntroSms(database, deps, scope, {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
-      body,
+      body: () => composeIntroAsk(deps, request),
       templateKey: 'village_intro:card',
       dedupeKey: `village_intro:card:${proposal.id}:${side.key}`,
       now,
     });
+    if (outcome.skipped) {
+      result.notAllowlisted += 1;
+      continue;
+    }
     if (outcome.held) {
       result.held[outcome.held] += 1;
       continue;
@@ -591,7 +678,7 @@ async function cardUnaskedSides(
       targetTable: 'village_intro_proposals',
       targetId: proposal.id,
       // Enum-shaped provenance only, never the rendered body (rule #1).
-      after: { stage: proposal.stage, anchored: anchor !== null },
+      after: { stage: proposal.stage, anchored },
     });
   }
 }
@@ -609,6 +696,7 @@ async function cardUnaskedSides(
 async function introduce(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   proposal: SweepProposal,
   byId: ReadonlyMap<string, IntroSweepFamily>,
   result: IntroSweepResult,
@@ -632,12 +720,25 @@ async function introduce(
     return;
   }
 
+  // The one effect in this feature that does NOT go through {@link sendIntroSms}, and the
+  // largest: an email naming two households to each other. So it carries the scope rail
+  // itself rather than inheriting one. Both sides, because an introduction discloses in
+  // both directions and being listed does not entitle a family to meet an unlisted one.
+  if (!scope(proposal.familyAId) || !scope(proposal.familyBId)) {
+    result.notAllowlisted += 1;
+    console.error(
+      { proposalId: proposal.id },
+      'village intros: introduction refused - a paired family is outside the allowlist',
+    );
+    return;
+  }
+
   const nameA = familyA.parentName;
   const nameB = familyB.parentName;
   const emailA = familyA.parentEmail;
   const emailB = familyB.parentEmail;
   if (!nameA?.trim() || !nameB?.trim() || !emailA || !emailB) {
-    await awaitIdentity(database, deps, proposal, byId, result, now);
+    await awaitIdentity(database, deps, scope, proposal, byId, result, now);
     return;
   }
 
@@ -724,6 +825,7 @@ function identityGaps(family: IntroSweepFamily): IdentityGap[] {
 async function awaitIdentity(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   proposal: SweepProposal,
   byId: ReadonlyMap<string, IntroSweepFamily>,
   result: IntroSweepResult,
@@ -732,7 +834,7 @@ async function awaitIdentity(
   if (proposal.expiresAt <= now) {
     // The ask went unanswered for its whole window (or never composed). Same one sentence
     // every dead pair gets, and the REASON lands in the audit row rather than the text.
-    await softClose(database, deps, proposal, 'expired', byId, result, now);
+    await softClose(database, deps, scope, proposal, 'expired', byId, result, now);
     return;
   }
 
@@ -744,7 +846,7 @@ async function awaitIdentity(
     if (missing.length === 0) continue;
     for (const gap of missing) result.waiting[WAIT_REASON[gap]] += 1;
 
-    const outcome = await sendIntroSms(database, deps, {
+    const outcome = await sendIntroSms(database, deps, scope, {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       body: () => composeIdentityAsk(deps, missing),
@@ -752,6 +854,10 @@ async function awaitIdentity(
       dedupeKey: `village_intro:identity:${proposal.id}:${side.key}`,
       now,
     });
+    if (outcome.skipped) {
+      result.notAllowlisted += 1;
+      continue;
+    }
     if (outcome.held) {
       result.held[outcome.held] += 1;
       continue;
@@ -778,6 +884,17 @@ async function awaitIdentity(
   }
 }
 
+/** The two asks' words (voice.ts). A deferral returns null, which {@link sendIntroSms}
+ * turns into "nothing sent, nothing recorded, ask again next tick" — so a model that is
+ * down costs this family a week's delay and never a wrong sentence. */
+async function composeIntroAsk(
+  deps: IntroSweepDeps,
+  request: IntroAskRequest,
+): Promise<string | null> {
+  const ask = await deps.introVoice.compose(request);
+  return ask.status === 'composed' ? ask.body : null;
+}
+
 /** The gap-fill ask's words. Composed, never preset (founder, 2026-08-12) — and a
  * deferral returns null, which {@link sendIntroSms} turns into "nothing sent, nothing
  * recorded, ask again next tick". */
@@ -796,6 +913,7 @@ async function composeIdentityAsk(
 async function softClose(
   database: Database,
   deps: IntroSweepDeps,
+  scope: IntroScope,
   proposal: SweepProposal,
   status: 'declined' | 'expired',
   byId: ReadonlyMap<string, IntroSweepFamily>,
@@ -809,7 +927,7 @@ async function softClose(
     const family = byId.get(side.self.familyId);
     if (!family) continue;
 
-    const outcome = await sendIntroSms(database, deps, {
+    const outcome = await sendIntroSms(database, deps, scope, {
       familyId: family.familyId,
       parentUserId: family.parentUserId,
       body: INTRO_SOFT_CLOSE,
@@ -817,6 +935,10 @@ async function softClose(
       dedupeKey: `village_intro:close:${proposal.id}:${side.key}`,
       now,
     });
+    if (outcome.skipped) {
+      result.notAllowlisted += 1;
+      continue;
+    }
     if (outcome.held) {
       result.held[outcome.held] += 1;
       continue;
@@ -843,19 +965,22 @@ export async function runVillageIntroSweep(
   deps: IntroSweepDeps = defaultIntroSweepDeps(),
   now: Date = new Date(),
 ): Promise<IntroSweepResult> {
-  const allFamilies = villageIntrosEnabled();
-  const allowlist = villageIntrosAllowlist();
-  if (!allFamilies && allowlist.size === 0) return emptyResult(false);
+  // ONE JOB EACH: the flag ARMS, the allowlist NARROWS. The flag was briefly the only
+  // thing that could arm the sweep AND something an allowlist could override, which left
+  // `VILLAGE_INTROS_ENABLED=false` unable to stop a sweep that had an allowlist set — the
+  // one control a founder reaches for in an incident, doing nothing.
+  if (!villageIntrosEnabled()) return emptyResult(false);
+  const scope = introScope(villageIntrosAllowlist());
 
   const result = emptyResult(true);
   const families = (await deps.selectFamilies(database, now))
-    .filter((family) => allFamilies || allowlist.has(family.familyId))
+    .filter((family) => scope(family.familyId))
     .slice(0, MAX_FAMILIES_PER_RUN);
   if (families.length === 0) return result;
 
-  await runAskPhase(database, deps, families, result, now);
-  await runMatchPhase(database, deps, families, result, now);
-  await runProposalPhase(database, deps, families, result, now);
+  await runAskPhase(database, deps, scope, families, result, now);
+  await runMatchPhase(database, deps, scope, families, result, now);
+  await runProposalPhase(database, deps, scope, families, result, now);
   return result;
 }
 
@@ -918,12 +1043,12 @@ async function readAskedUserIds(
     .from(schema.consentRecords)
     .where(
       and(
+        inArray(schema.consentRecords.userId, [...userIds]),
         eq(schema.consentRecords.consentType, 'village_intro'),
         eq(schema.consentRecords.consentScope, 'village_intro:discoverability'),
       ),
     );
-  const asked = new Set(rows.map((row) => row.userId));
-  return new Set(userIds.filter((id) => asked.has(id)));
+  return new Set(rows.map((row) => row.userId));
 }
 
 async function readOpenProposalFamilyIds(database: Database): Promise<Set<string>> {
@@ -1118,5 +1243,6 @@ export function defaultIntroSweepDeps(): IntroSweepDeps {
     transport: createTwilioTransport(),
     email: createIntroEmailSender(),
     identityAsk: productionIdentityAskVoice(),
+    introVoice: productionIntroVoice(),
   };
 }

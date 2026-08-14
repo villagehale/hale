@@ -8,12 +8,13 @@
  */
 
 /**
- * The CASL opt-out, appended to every proactive nudge. Not the model's to write and
- * not optional: an unsolicited commercial electronic message has to carry a working
- * unsubscribe, and 'STOP' is the keyword the intake machine actually honours
- * (lib/channel/intake/keywords.ts), so the copy names it verbatim.
+ * The CASL opt-out. Not the model's to write, and no longer appended to EVERY nudge —
+ * the outbound gate decides which sends carry it (lib/channel/opt-out.ts), at most once
+ * per family per period. Re-exported here under its old name because the two segment
+ * budgets below are written against a body that includes it, and they stay that way: a
+ * message must fit two segments on the periods when the line does ride.
  */
-export const NUDGE_OPT_OUT = 'Reply STOP to opt out.';
+export { OPT_OUT_LINE as NUDGE_OPT_OUT } from '../opt-out';
 
 /** The whole payload — a message plus the appended opt-out — must fit two SMS
  * segments. Every renderer holds itself to this before its words reach a transport. */

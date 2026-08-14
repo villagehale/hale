@@ -64,11 +64,15 @@ const PENDING_TAIL = 'or tell me what to change.';
  * and then told the parent one word would put all of them on their calendar.
  *
  * At two or more, the instruction says what actually happens: `resolveApproval`
- * auto-approves a bare YES only when EXACTLY ONE row is pending and otherwise answers
- * with the numbered "Which one?" list. It does NOT quote ordinals ("reply YES 1"),
- * because the pending list is family-wide and oldest-first — this week's drafts are not
- * at positions 1..n whenever anything older is still waiting, and an ordinal from here
- * would point at somebody else's row.
+ * auto-approves a bare YES only when EXACTLY ONE row is pending and otherwise answers by
+ * NAMING the choices in one sentence (router/copy.ts `whichOneReply`). It does not quote
+ * an ordinal, and that was true before the menu went and is true for a second reason
+ * now: the pending list is family-wide and oldest-first, so this week's drafts are not at
+ * positions 1..n whenever anything older is still waiting, and an ordinal from here would
+ * point at somebody else's row.
+ *
+ * A bare "reply YES" is still printed and still fine. "Yes" is English; "YES 1" and
+ * "YES INTRO" were vocabulary, and those are what the 2026-08-13 arc removed.
  */
 function pendingAsk(drafts: number): string {
   const instruction =

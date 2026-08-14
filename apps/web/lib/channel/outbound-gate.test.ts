@@ -5,6 +5,7 @@ import {
   PROACTIVE_QUIET_HOURS,
   assertProactiveSendAllowed,
 } from './outbound-gate.js';
+import { OPT_OUT_PERIOD_DAYS, optOutPeriodStart } from './opt-out.js';
 
 /**
  * VIL-239 · M4 — the F14 outbound chokepoint.
@@ -28,6 +29,10 @@ interface FakeState {
   consented: boolean;
   recentSends: number;
   timeZone: string;
+  /** Whether ANY proactive class has reached this family in the current opt-out period.
+   * True by default: the steady state is a family Hale has texted before, and the tests
+   * that care about the CASL line set it false to mean "first contact ever". */
+  contactedThisPeriod: boolean;
 }
 
 function ports(state: Partial<FakeState> = {}): {
@@ -39,6 +44,7 @@ function ports(state: Partial<FakeState> = {}): {
     consented: true,
     recentSends: 0,
     timeZone: 'America/Toronto',
+    contactedThisPeriod: true,
     ...state,
   };
   const calls: string[] = [];
@@ -56,6 +62,10 @@ function ports(state: Partial<FakeState> = {}): {
       async countProactiveSends() {
         calls.push('cap');
         return resolved.recentSends;
+      },
+      async proactiveSentSince() {
+        calls.push('opt_out');
+        return resolved.contactedThisPeriod;
       },
       async parentTimeZone() {
         calls.push('tz');
@@ -81,7 +91,7 @@ function callGate(now: Date, state: Partial<FakeState> = {}) {
 
 describe('assertProactiveSendAllowed', () => {
   it('allows a send when every check passes', async () => {
-    await expect(callGate(MIDDAY).verdict).resolves.toEqual({ allowed: true });
+    await expect(callGate(MIDDAY).verdict).resolves.toEqual({ allowed: true, includeOptOut: false });
   });
 
   it('holds when the parent has no live channel — the STOP gate', async () => {
@@ -118,7 +128,7 @@ describe('assertProactiveSendAllowed', () => {
         },
       },
     );
-    expect(verdict).toEqual({ allowed: true });
+    expect(verdict).toEqual({ allowed: true, includeOptOut: false });
     expect(seen).not.toBeNull();
     const { since, familyId } = seen as unknown as { since: Date; familyId: string };
     // Per FAMILY (not per parent) — a co-parent must not double the family's budget.
@@ -146,6 +156,7 @@ describe('assertProactiveSendAllowed', () => {
     });
     await expect(callGate(new Date('2026-07-15T12:00:00.000Z')).verdict).resolves.toEqual({
       allowed: true,
+      includeOptOut: false,
     });
   });
 
@@ -154,6 +165,7 @@ describe('assertProactiveSendAllowed', () => {
     // (EDT, UTC-4). A fixed-offset implementation gets one of these wrong.
     await expect(callGate(new Date('2026-01-15T01:30:00.000Z')).verdict).resolves.toEqual({
       allowed: true,
+      includeOptOut: false,
     });
     await expect(callGate(new Date('2026-07-15T01:30:00.000Z')).verdict).resolves.toEqual({
       allowed: false,
@@ -166,6 +178,7 @@ describe('assertProactiveSendAllowed', () => {
     const evening = new Date('2026-07-16T02:30:00.000Z');
     await expect(callGate(evening, { timeZone: 'America/Vancouver' }).verdict).resolves.toEqual({
       allowed: true,
+      includeOptOut: false,
     });
     await expect(callGate(evening, { timeZone: 'America/Toronto' }).verdict).resolves.toEqual({
       allowed: false,
@@ -209,8 +222,8 @@ describe('the registration-sequence class', () => {
 
   it('never even counts the family’s recent sends', async () => {
     const { calls, verdict } = callSequenceGate(MIDDAY, { recentSends: 99 });
-    await expect(verdict).resolves.toEqual({ allowed: true });
-    expect(calls).toEqual(['enrolled', 'consent', 'tz']);
+    await expect(verdict).resolves.toEqual({ allowed: true, includeOptOut: false });
+    expect(calls).toEqual(['enrolled', 'consent', 'tz', 'opt_out']);
   });
 
   it('still fails the checks that are about CONSENT, not volume', async () => {
@@ -241,7 +254,7 @@ describe('the registration-sequence class', () => {
       allowed: false,
       reason: 'quiet_hours',
     });
-    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true });
+    await expect(callSequenceGate(dawn, {}, true).verdict).resolves.toEqual({ allowed: true, includeOptOut: false });
   });
 
   it('does NOT let a nudge claim the same exemption', async () => {
@@ -272,7 +285,9 @@ describe('gate ordering', () => {
   it('runs enrolled → consent → cap → quiet hours', async () => {
     const { calls, verdict } = callGate(MIDDAY);
     await verdict;
-    expect(calls).toEqual(['enrolled', 'consent', 'cap', 'tz']);
+    // 'opt_out' runs LAST and only on the allowed path: a held message is not a send,
+    // so it must not spend the family's reminder.
+    expect(calls).toEqual(['enrolled', 'consent', 'cap', 'tz', 'opt_out']);
   });
 
   it('stops at the first failure — an unenrolled family is never counted or clock-checked', async () => {
@@ -291,5 +306,74 @@ describe('gate ordering', () => {
     const { calls, verdict } = callGate(MIDDAY, { recentSends: 1 });
     await verdict;
     expect(calls).toEqual(['enrolled', 'consent', 'cap']);
+  });
+});
+
+/**
+ * THE CASL OPT-OUT BUDGET (2026-08-13). The line is a right, not a footer: it must reach
+ * every family, and it must not ride every message. These four pin both halves.
+ */
+describe('the opt-out line', () => {
+  it('rides the first proactive message a family ever gets', async () => {
+    await expect(
+      callGate(MIDDAY, { contactedThisPeriod: false }).verdict,
+    ).resolves.toEqual({ allowed: true, includeOptOut: true });
+  });
+
+  it('does not ride a message to a family already contacted this period', async () => {
+    await expect(callGate(MIDDAY, { contactedThisPeriod: true }).verdict).resolves.toEqual({
+      allowed: true,
+      includeOptOut: false,
+    });
+  });
+
+  it('asks whether ANY proactive class has landed for THIS PARENT, not just this class', async () => {
+    // Kind-blind, because the budget is not a message class's. Per PARENT and not per
+    // family, because the five classes text different people — scoped to the household, a
+    // co-parent could be texted indefinitely and never be shown the word STOP.
+    let seen: { subject: string; since: Date } | null = null;
+    await assertProactiveSendAllowed(
+      { familyId: FAMILY, parentUserId: PARENT, kind: 'nudge', now: MIDDAY },
+      {
+        ...ports().ports,
+        async proactiveSentSince(parentUserId, since) {
+          seen = { subject: parentUserId, since };
+          return true;
+        },
+      },
+    );
+    const asked = seen as unknown as { subject: string; since: Date };
+    expect(asked.subject).toBe(PARENT);
+    expect(asked.subject).not.toBe(FAMILY);
+    // A fixed 30-day grid, so the window start is the same instant for every family and
+    // every surface, and nothing has to be stored to agree on it.
+    expect(asked.since).toEqual(optOutPeriodStart(MIDDAY));
+    expect(MIDDAY.getTime() - asked.since.getTime()).toBeLessThan(
+      OPT_OUT_PERIOD_DAYS * 24 * 3_600_000,
+    );
+  });
+
+  it('is never spent by a message that was held', async () => {
+    // A held send is not a send. If the hold consumed the family's reminder, the message
+    // that finally goes out would be the one that never names the opt-out.
+    const { calls, verdict } = callGate(MIDDAY, { enrolled: false, contactedThisPeriod: false });
+    await verdict;
+    expect(calls).not.toContain('opt_out');
+  });
+
+  it('still decides the line for an urgent leg that skips the clock', async () => {
+    const dawn = new Date('2026-07-15T10:30:00.000Z'); // 06:30 Toronto - inside quiet hours
+    await expect(
+      assertProactiveSendAllowed(
+        {
+          familyId: FAMILY,
+          parentUserId: PARENT,
+          kind: 'registration_sequence',
+          now: dawn,
+          urgent: true,
+        },
+        ports({ contactedThisPeriod: false }).ports,
+      ),
+    ).resolves.toEqual({ allowed: true, includeOptOut: true });
   });
 });

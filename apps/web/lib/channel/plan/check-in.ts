@@ -1,6 +1,7 @@
 import { type Database, schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { dedupeActive } from '~/lib/channel/ledger';
+import { withOptOut } from '~/lib/channel/opt-out';
 import { readFamilyTimezone } from '~/lib/dashboard/trail-query';
 import type { ChannelTransport } from '~/lib/channel/intake/transport';
 import { f14Enabled, f14Allowlist } from '~/lib/channel/f14';
@@ -234,7 +235,7 @@ async function sendOne(
     throw new Error(`coach plan check-in: no send target for parent ${recipient.parentUserId}`);
   }
 
-  const body = composed.message;
+  const body = withOptOut(composed.message, verdict.includeOptOut);
   const { providerMessageId } = await deps.transport.send({ to, body });
   const channelMessageId = await deps.recordSend(database, {
     familyId: commitment.familyId,

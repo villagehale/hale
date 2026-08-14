@@ -7,7 +7,7 @@ import { createTwilioTransport } from '~/lib/channel/twilio/transport';
 import { dedupeActive } from '~/lib/channel/ledger';
 import { fulfillCommitment, recordCommitment } from '~/lib/commitments/ledger';
 import { f14Allowlist, f14Enabled } from '~/lib/channel/nudge/run';
-import { NUDGE_OPT_OUT } from '~/lib/channel/nudge/shell';
+import { withOptOut } from '~/lib/channel/opt-out';
 import {
   type OutboundGatePorts,
   type ProactiveHoldReason,
@@ -424,7 +424,7 @@ async function runLegForSequence(
 
   const { providerMessageId } = await deps.transport.send({
     to,
-    body: `${body}\n\n${NUDGE_OPT_OUT}`,
+    body: withOptOut(body, verdict.includeOptOut),
   });
   const messageId = await deps.recordSend(database, {
     familyId: sequence.familyId,
