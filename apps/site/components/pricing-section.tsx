@@ -1,6 +1,6 @@
 import { PLAN_DISPLAY, PLAN_TIERS_ORDERED, type PlanTier, formatPlanPrice } from '@hale/types';
 import { Check } from 'lucide-react';
-import { APP_URL } from '~/lib/app-url';
+import { chromeCta } from '~/lib/site/chrome-cta';
 
 // Marketing presentation per tier — the panel tint and the one-line "do more"
 // framing. The NAMES, PRICES, and FEATURES come from the shared source of truth
@@ -23,11 +23,14 @@ const TIER_PRESENTATION = {
 /**
  * The landing pricing section. Free leads — the village is free; Plus and Family
  * are framed as "for when you want Hale to do more." Monthly and annual are both
- * shown, with annual as the better value (about two months free). Paid CTAs
- * capture the waitlist (billing isn't wired); the only live signup CTA is
- * "Join free." Names/prices/features render from @hale/types so they never drift.
+ * shown, with annual as the better value (about two months free). Every tier's CTA
+ * is the one front door the site chrome offers — texting Hale — because there is no
+ * other way in: these buttons pointed at the app's /onboarding wizard, which F14
+ * deleted, so a pricing page's only action 308'd back to the homepage.
+ * Names/prices/features render from @hale/types so they never drift.
  */
 export function PricingSection() {
+  const cta = chromeCta();
   return (
     <section id="pricing" className="shell pb-20 lg:pb-28">
       <div className="max-w-2xl mb-10 lg:mb-12">
@@ -96,15 +99,14 @@ export function PricingSection() {
                   </li>
                 ))}
               </ul>
-              {isFree ? (
-                <a href={`${APP_URL}/onboarding`} className="btn-primary self-start mt-8">
-                  Join free
-                </a>
-              ) : (
-                <a href={`${APP_URL}/onboarding`} className="btn-secondary self-start mt-8">
-                  Start free — upgrade when it ships
-                </a>
-              )}
+              {/* Every tier opens the same door — you start by texting Hale — so the
+                * free and paid cards differ only in emphasis, not destination. */}
+              <a
+                href={cta.href}
+                className={`${isFree ? 'btn-primary' : 'btn-secondary'} self-start mt-8`}
+              >
+                {cta.label}
+              </a>
             </div>
           );
         })}

@@ -4,7 +4,7 @@ import { CtaBand } from '~/components/cta-band';
 import { PricingSection } from '~/components/pricing-section';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
-import { APP_URL } from '~/lib/app-url';
+import { chromeCta } from '~/lib/site/chrome-cta';
 
 const TITLE = 'Pricing · Hale';
 const DESCRIPTION =
@@ -26,6 +26,8 @@ export const metadata: Metadata = {
 };
 
 export default function PricingPage() {
+  // Texting Hale is the one front door: /onboarding was deleted in F14.
+  const cta = chromeCta();
   return (
     <main id="main" tabIndex={-1} className="relative">
       <SiteHeader />
@@ -61,8 +63,8 @@ export default function PricingPage() {
           Start free today — and let Hale grow into the rest when you’re ready.
         </p>
         <div className="mt-8 flex justify-center">
-          <a href={`${APP_URL}/onboarding`} className="btn-on-navy">
-            Join free
+          <a href={cta.href} className="btn-on-navy">
+            {cta.label}
           </a>
         </div>
       </CtaBand>

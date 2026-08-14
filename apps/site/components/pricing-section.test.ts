@@ -1,7 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
-import { PLAN_DISPLAY } from '@hale/types';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PLAN_DISPLAY, PLAN_TIERS_ORDERED } from '@hale/types';
+import { F14_LANDING_ENV } from '~/lib/flags/landing.js';
+import { chromeCta } from '~/lib/site/chrome-cta.js';
 import { PricingSection } from './pricing-section.js';
 
 /**
@@ -10,6 +12,13 @@ import { PricingSection } from './pricing-section.js';
  * framing. Rendered to static markup — the section is a pure server component.
  */
 const html = renderToStaticMarkup(createElement(PricingSection));
+
+/** Escape a string for use inside a RegExp — hrefs carry `+`, `?` and `.`. */
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('PricingSection (landing pricing)', () => {
   it('renders all three tiers with their display names', () => {
@@ -28,15 +37,37 @@ describe('PricingSection (landing pricing)', () => {
   it('leads with the village being free', () => {
     expect(html).toContain('Free');
     expect(html).toContain('The village is free');
-    expect(html).toContain('Join free');
   });
 
-  it('routes paid tiers to start-free — no dead waitlist, checkout, or "Coming soon"', () => {
+  it('routes every tier to a LIVE action — no dead waitlist, checkout, or "Coming soon"', () => {
     expect(html).not.toContain('Coming soon');
     expect(html).not.toContain('#waitlist');
     expect(html.toLowerCase()).not.toContain('checkout');
-    // Paid tiers invite starting free now; billing/upgrade is deferred until it ships.
-    expect(html).toContain('Start free — upgrade when it ships');
+    // Free and paid alike open the one front door the site chrome offers. There is one
+    // CTA per tier, and all three carry the same destination — free vs paid differs in
+    // emphasis (btn-primary vs btn-secondary), not in where it goes.
+    const { href, label } = chromeCta();
+    expect([...html.matchAll(new RegExp(escapeRe(href.replace(/&/g, '&amp;')), 'g'))]).toHaveLength(
+      PLAN_TIERS_ORDERED.length,
+    );
+    expect([...html.matchAll(new RegExp(escapeRe(label), 'g'))]).toHaveLength(
+      PLAN_TIERS_ORDERED.length,
+    );
+  });
+
+  /**
+   * The regression this replaced a label-pin with. Every tier CTA used to hardcode the
+   * app's /onboarding wizard, which F14 deleted — so the pricing page's only action
+   * 308'd the reader back to the marketing homepage. Asserted under the LIVE config,
+   * because that is what a reader actually gets.
+   */
+  it('sends a reader to the texting door under the live config — never the deleted wizard', () => {
+    vi.stubEnv(F14_LANDING_ENV, 'true');
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+16475551234');
+    const live = renderToStaticMarkup(createElement(PricingSection));
+    expect(chromeCta().href).toMatch(/^sms:/);
+    expect(live).toContain('sms:+16475551234');
+    expect(live).not.toContain('/onboarding');
   });
 
   it('carries the founding-families banner with the first-100 badge promise', () => {
