@@ -16,7 +16,6 @@ const PRODUCT = [
   { label: 'Pricing', href: '/pricing' },
   { label: 'FAQ', href: '/faq' },
   { label: 'Activities', href: '/activities' },
-  { label: 'Milestones', href: '/milestones' },
 ] as const;
 
 const RESOURCES = [

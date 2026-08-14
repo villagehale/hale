@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { type ReactNode, useState } from 'react';
 import { BookButton } from '~/components/hale/book-button';
 import { HomeChildRow2 } from '~/components/hale/home-child-row2';
@@ -24,22 +23,19 @@ export interface HomeChildSnapshot {
  * snapshot" + "this week"), "up next", and Row 2 (today's highlights / sleep / meals)
  * all follow the SAME child. A segmented control switches the active child when the
  * family has more than one; a single child renders no control. The family-wide Row-1
- * cards — the quick-links tile grid and "from your village" — are server-rendered and
- * passed in as slots so they sit in the Row-1 grid without re-rendering on selection.
- * Stats are family-wide and stay fixed as the selection changes; Row 2 + "this week"
- * are per active child.
+ * card — "from your village" — is server-rendered and passed in as a slot so it sits
+ * in the Row-1 grid without re-rendering on selection. Stats are family-wide and stay
+ * fixed as the selection changes; Row 2 + "this week" are per active child.
  */
 export function HomeChildPanels({
   kids,
   statCells,
   daysByChild,
-  quickLinks,
   villagePick,
 }: {
   kids: HomeChildSnapshot[];
   statCells: StatCell[];
   daysByChild: Record<string, HomeChildDays>;
-  quickLinks: ReactNode;
   villagePick: ReactNode;
 }) {
   const [activeId, setActiveId] = useState(kids[0]?.id ?? '');
@@ -107,10 +103,6 @@ export function HomeChildPanels({
             </div>
 
             {days ? <ThisWeek days={days} /> : null}
-
-            <Link href="/companion" className="link mt-4 inline-block">
-              view all insights &rarr;
-            </Link>
           </div>
         </div>
 
@@ -142,7 +134,6 @@ export function HomeChildPanels({
           </div>
         </div>
 
-        {quickLinks}
         {villagePick}
       </div>
 

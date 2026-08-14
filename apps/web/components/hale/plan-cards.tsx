@@ -1,9 +1,8 @@
-import { ArrowRight, Shield } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { ChildTag } from '~/components/hale/child-tag';
 import { CompletePlanButton } from '~/components/hale/complete-plan-button';
 import { DeletePlanButton } from '~/components/hale/delete-plan-button';
 import { Card } from '~/components/ui/card';
-import { Icon } from '~/components/ui/icon';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import type { DayColumn } from '~/lib/plan/spine';
@@ -106,7 +105,9 @@ export function PlanItemCard({ item }: { item: PlanChildItem }) {
     );
   }
   return (
-    <Card href="/companion">
+    // Static, not a link: this used to open the companion, and that surface is retired.
+    // A card-interactive shell with nowhere to go would lie about being clickable.
+    <Card>
       <span className="eyebrow text-ink">{item.kindLabel}</span>
       <p className="text-lg text-ink leading-relaxed mt-3" data-hale-pii>
         {item.what}
@@ -114,10 +115,6 @@ export function PlanItemCard({ item }: { item: PlanChildItem }) {
       <p className="meta mt-1 text-ink-2">
         <span data-hale-pii>{item.childName}</span> · {item.when}
       </p>
-      <span className="meta mt-4 inline-flex items-center gap-1.5 text-apricot-deep">
-        open in companion
-        <Icon as={ArrowRight} size={14} />
-      </span>
     </Card>
   );
 }

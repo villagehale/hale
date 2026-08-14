@@ -66,37 +66,26 @@ describe('sitemap', () => {
     }
   });
 
-  it('includes the /milestones hub and all 12 published checkpoint pages', () => {
-    const milestoneUrls = urls
-      .filter((u) => u.startsWith(`${SITE_URL}/milestones`))
-      .sort();
-    const expectedMilestoneSlugs = [
-      '2-months',
-      '4-months',
-      '6-months',
-      '9-months',
-      '12-months',
-      '15-months',
-      '18-months',
-      '2-years',
-      '30-months',
-      '3-years',
-      '4-years',
-      '5-years',
-    ];
-    const expected = [
-      `${SITE_URL}/milestones`,
-      ...expectedMilestoneSlugs.map((slug) => `${SITE_URL}/milestones/${slug}`),
-    ].sort();
-    expect(milestoneUrls).toEqual(expected);
+  /**
+   * The milestones hub and its twelve checkpoint pages were retired to a permanent
+   * redirect (receipts-room slimdown). A retired route must never be advertised for
+   * indexing — a sitemap entry that 308s is a crawl budget spent on a redirect, and it
+   * keeps the old positioning alive in search results.
+   *
+   * The two positive controls run the SAME filter over the SAME `urls` list, so this
+   * cannot pass vacuously: if the sitemap were empty (or the URL shape changed), the
+   * /answers and /activities assertions below would fail first.
+   */
+  it('advertises no milestones URL — the route is retired', () => {
+    expect(urls.filter((u) => u.startsWith(`${SITE_URL}/milestones`))).toEqual([]);
+    // Positive controls through the identical prefix filter.
+    expect(urls.filter((u) => u.startsWith(`${SITE_URL}/answers`)).length).toBeGreaterThan(0);
+    expect(urls.filter((u) => u.startsWith(`${SITE_URL}/activities`)).length).toBeGreaterThan(0);
   });
 
-  it('gives each published milestone page monthly/0.6 sitemap metadata', () => {
+  it('still carries no checkpoint slug anywhere in the sitemap', () => {
     for (const checkpoint of allCheckpoints) {
-      const entry = entries.find((e) => e.url === `${SITE_URL}/milestones/${checkpoint.slug}`);
-      expect(entry).toBeDefined();
-      expect(entry?.changeFrequency).toBe('monthly');
-      expect(entry?.priority).toBe(0.6);
+      expect(entries.find((e) => e.url.endsWith(`/${checkpoint.slug}`))).toBeUndefined();
     }
   });
 });

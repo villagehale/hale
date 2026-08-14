@@ -1,14 +1,8 @@
 import { stageDisplayLabel } from '@hale/types';
-import { Files, Route, Ruler, Sparkles } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import type { Route as NextRoute } from 'next';
 import Link from 'next/link';
-import { AskBar } from '~/components/hale/ask-bar';
-import { HaleTip } from '~/components/hale/hale-tip';
 import { HomeChildPanels, type HomeChildSnapshot } from '~/components/hale/home-child-panels';
 import { Mascot } from '~/components/hale/mascot';
 import { QuickLog } from '~/components/hale/quick-log';
-import { Icon } from '~/components/ui/icon';
 import { loadCompanion } from '~/lib/companion/queries';
 import { formatCalendarDate } from '~/lib/format/datetime';
 import { loadHomeStats } from '~/lib/home/aggregates';
@@ -83,21 +77,6 @@ function VillagePickCard({ topPick }: { topPick: VillageCandidateView | null }) 
   );
 }
 
-interface QuickActionRow {
-  icon: LucideIcon;
-  label: string;
-  href: NextRoute;
-}
-
-// Deep-link the tiles to the companion tab they promise (companion honours `?tab=`
-// via tabFromParam) instead of dumping the parent on Overview / the wrong tab (WEB-08).
-const QUICK_ACTIONS: QuickActionRow[] = [
-  { icon: Sparkles, label: 'add a memory', href: '/companion' },
-  { icon: Ruler, label: 'track growth', href: '/companion?tab=growth' as NextRoute },
-  { icon: Route, label: 'view routines', href: '/companion?tab=routines' as NextRoute },
-  { icon: Files, label: 'all documents', href: '/companion?tab=documents' as NextRoute },
-];
-
 export default async function HomePage() {
   const [children, stats, feed, days] = await Promise.all([
     loadCompanion(),
@@ -132,10 +111,6 @@ export default async function HomePage() {
             </Link>
           </div>
         </section>
-
-        <section className="rise rise-4 mt-12">
-          <AskBar />
-        </section>
       </div>
     );
   }
@@ -167,49 +142,16 @@ export default async function HomePage() {
         />
       </section>
 
-      {/* ── Ask Hale — the compact single-line entry into the full conversation. ── */}
-      <section className="rise rise-2 mb-6">
-        <AskBar />
-      </section>
-
       {/* ── Rows 1 + 2 (design handoff §4.2). HomeChildPanels owns the single
        * active-child selection so the snapshot, "up next" and Row 2 all follow the
-       * same child; the family-wide quick-links + village cards are passed in as
-       * Row-1 slots. Both grids collapse sensibly below 1024px. ── */}
+       * same child; the family-wide village card is passed in as a Row-1 slot. Both
+       * grids collapse sensibly below 1024px. ── */}
       <HomeChildPanels
         kids={snapshots}
         statCells={homeStatCells(stats)}
         daysByChild={daysByChild}
-        quickLinks={<QuickLinksColumn />}
         villagePick={<VillagePickCard topPick={topPick} />}
       />
-    </div>
-  );
-}
-
-/** Row-1 col 3 (design handoff §4.2): the 2×2 quick-links tile grid + the dismissible
- * Hale tip. Family-wide (not per active child), so it renders server-side and is
- * passed to HomeChildPanels as a slot. */
-function QuickLinksColumn() {
-  return (
-    <div className="rise rise-5 home-col-stack">
-      <div className="home-col-grow">
-        <p className="eyebrow text-faded-sage">quick links</p>
-        <div className="card home-card-fill">
-          <div className="grid flex-1 grid-cols-2 gap-3">
-            {QUICK_ACTIONS.map((action) => (
-              <Link key={action.label} href={action.href} className="quick-link-tile">
-                <Icon as={action.icon} size={20} className="text-slate-green" />
-                <span className="min-w-0 text-[0.8125rem] font-medium leading-snug">
-                  {action.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <HaleTip />
     </div>
   );
 }
