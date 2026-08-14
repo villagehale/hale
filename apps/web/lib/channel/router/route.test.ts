@@ -15,6 +15,13 @@ import type { ApologyOutcome, TurnApology } from './apology';
 import { type ChannelTurnResult, ChannelTurnFailed } from './coach-runtime';
 import type { SmokeAlarmClaim } from './smoke-alarm';
 import type { OpenQuestion, OpenQuestionReader } from './open-questions';
+import type { VillageIntroReplyDeps } from '~/lib/village/intros/reply';
+import {
+  DISCOVERABILITY_ALREADY_ON,
+  DISCOVERABILITY_OFF,
+  DISCOVERABILITY_ON,
+} from '~/lib/village/intros/copy';
+import { villageIntroHandler } from './handlers';
 import type { ReplyReading, ReplyResolver } from './resolve';
 import type { InboundTurnLedger, TurnStage } from './turn-ledger';
 import { FLOOD_REPLY, capabilityReply, failureReply, partialFailureReply } from './copy';
@@ -1949,5 +1956,101 @@ describe('natural reply resolution', () => {
 
     expect(result.status).toBe('resolved');
     expect(h.transport.bodies()).toEqual(['Done.']);
+  });
+});
+
+/**
+ * THE 09:47 SEQUENCE, end to end through the real intro lane.
+ *
+ * From the founder's live test on 2026-08-13, and the reason this arc exists. Hale asked
+ * at 08:01; at 09:47:48 the parent replied "Yes"; at 09:47:59, having been answered about
+ * an unrelated calendar draft, they retyped "Yes intros". They got two contradictory
+ * replies eleven seconds apart.
+ *
+ * Both halves are asserted here because they fail in opposite directions: the first text
+ * must be UNDERSTOOD, and the second must NOT be treated as a new decision.
+ */
+describe('the 09:47 sequence', () => {
+  const OPT_IN: OpenQuestion = {
+    id: `intro_optin:${FAMILY}`,
+    kind: 'intro_optin',
+    description: 'Whether to be introduced to other Hale families nearby',
+    subject: 'introductions to other Hale families nearby',
+  };
+
+  /** The real lane, over spies. `standing` is what the ledger already holds. */
+  function introChain(standing: 'unanswered' | 'granted') {
+    const written: boolean[] = [];
+    const deps: VillageIntroReplyDeps = {
+      recordDiscoverability: async (_db, input) => {
+        written.push(input.granted);
+      },
+      discoverabilityStanding: async () => standing,
+      openProposal: async () => null,
+      recordDecision: async () => {},
+      cancelOpenProposals: async () => {},
+    };
+    return { written, handlers: [villageIntroHandler(deps)] };
+  }
+
+  it('understands the bare "Yes" - one reply, consent recorded, no coach turn', async () => {
+    const chain = introChain('unanswered');
+    const coach = fakeCoach();
+    const h = harness({
+      context: { body: 'Yes' },
+      handlers: chain.handlers,
+      coach,
+      questions: fakeQuestions([OPT_IN]),
+      replyResolver: fakeResolver({
+        status: 'resolved',
+        questionId: OPT_IN.id,
+        kind: 'intro_optin',
+        polarity: 'yes',
+        confidence: 'high',
+      }),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.status).toBe('resolved');
+    expect(chain.written).toEqual([true]);
+    // ONE message. What happened live was a coach turn about a stale calendar draft.
+    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ON]);
+    expect(coach.calls).toBe(0);
+  });
+
+  it('does not answer the retyped "Yes intros" as a second decision', async () => {
+    // Eleven seconds later, the answer already recorded. A parent who texts twice because
+    // they think the first one did not land is not making a second choice.
+    const chain = introChain('granted');
+    const h = harness({
+      context: { body: 'Yes intros' },
+      handlers: chain.handlers,
+      // The question is closed now, so nothing is open and the resolver never runs.
+      questions: fakeQuestions([]),
+    });
+
+    const result = await routeChannelMessage(h.deps, job());
+
+    expect(result.handler).toBe('village_intro');
+    expect(chain.written).toEqual([]);
+    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_ALREADY_ON]);
+    // Not the full acknowledgement a second time.
+    expect(h.transport.bodies()[0]).not.toBe(DISCOVERABILITY_ON);
+  });
+
+  it('still honours a revocation seconds after the grant', async () => {
+    // The one thing the shortcut may never swallow.
+    const chain = introChain('granted');
+    const h = harness({
+      context: { body: 'no intros' },
+      handlers: chain.handlers,
+      questions: fakeQuestions([]),
+    });
+
+    await routeChannelMessage(h.deps, job());
+
+    expect(chain.written).toEqual([false]);
+    expect(h.transport.bodies()).toEqual([DISCOVERABILITY_OFF]);
   });
 });

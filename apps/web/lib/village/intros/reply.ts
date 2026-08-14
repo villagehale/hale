@@ -6,10 +6,14 @@ import { matchKeyword } from '~/lib/channel/intake/keywords';
 import {
   type ConsentReading,
   type DiscoverabilityConsentInput,
+  discoverabilityAsked,
+  discoverabilityGranted,
   recordDiscoverabilityConsent,
   recordProposalConsent,
 } from './consent';
 import {
+  DISCOVERABILITY_ALREADY_OFF,
+  DISCOVERABILITY_ALREADY_ON,
   DISCOVERABILITY_OFF,
   DISCOVERABILITY_ON,
   INTRO_NO_ACK,
@@ -38,6 +42,31 @@ import {
  * recorded decision the next sweep converges on, never a decision recorded twice or an
  * email sent for a pair whose row never committed.
  */
+
+/**
+ * What a parent has already said about being discoverable.
+ *
+ * A TRI-STATE, and it has to be: `unanswered` and `declined` are the same boolean and
+ * completely different facts. A decline WRITES A ROW — the matcher reads it, and an absent
+ * row is indistinguishable from never having been asked, which is the state that makes
+ * Hale ask again. Collapsing the two would mean a family's first "no intros" was answered
+ * with "already off" and never recorded, and they would be asked a second time.
+ */
+export type IntroStanding = 'granted' | 'declined' | 'unanswered';
+
+/**
+ * The two consent facts, resolved into one standing answer.
+ *
+ * A PURE FUNCTION, separated from the two queries above it deliberately. The queries are
+ * wiring and are covered by the journey; the DECISION is the part that can be silently
+ * wrong, and folding `unanswered` into `declined` is a change no fake-injected test can
+ * see — the handler tests stub this reader, so they keep passing while the real one starts
+ * swallowing every family's first refusal.
+ */
+export function introStanding(facts: { answered: boolean; granted: boolean }): IntroStanding {
+  if (!facts.answered) return 'unanswered';
+  return facts.granted ? 'granted' : 'declined';
+}
 
 /** Which question a keyword answers, and what the answer was. */
 export interface IntroKeyword {
@@ -80,6 +109,8 @@ export type IntroReplyOutcome =
   | { status: 'declined_to_claim' }
   | { status: 'discoverability_granted'; reply: string }
   | { status: 'discoverability_revoked'; reply: string }
+  /** They said again what they already said. Answered briefly, nothing written. */
+  | { status: 'discoverability_unchanged'; reply: string }
   | { status: 'intro_accepted'; reply: string }
   | { status: 'intro_declined'; reply: string }
   | { status: 'no_open_intro'; reply: string };
@@ -137,6 +168,9 @@ export interface IntroDecision {
 
 export interface VillageIntroReplyDeps {
   recordDiscoverability(database: Database, input: DiscoverabilityConsentInput): Promise<void>;
+  /** What this parent has ALREADY said about being discoverable. Read before writing, so
+   * a repeated answer is recognised as the repeat it is. */
+  discoverabilityStanding(database: Database, parentUserId: string): Promise<IntroStanding>;
   /** The proposal this family may answer right now, or null. */
   openProposal(
     database: Database,
@@ -174,6 +208,21 @@ export async function handleVillageIntroReply(
       : { readBy: 'reply-resolver', confidence: input.resolved?.confidence ?? null };
 
   if (keyword.target === 'discoverability') {
+    // ALREADY THEIR ANSWER? Then this is a repeat, not a decision (see
+    // DISCOVERABILITY_ALREADY_ON). Compared against the STANDING answer rather than
+    // against a recency window, because what makes it a repeat is that nothing would
+    // change — a parent re-confirming a month later is just as much not-a-new-decision.
+    //
+    // Only when the answers MATCH. A "no intros" after a yes is a revocation and is always
+    // honoured; a revocation that gets deduplicated is not a revocation.
+    const standing = await deps.discoverabilityStanding(database, input.parentUserId);
+    if (standing === (keyword.granted ? 'granted' : 'declined')) {
+      return {
+        status: 'discoverability_unchanged',
+        reply: keyword.granted ? DISCOVERABILITY_ALREADY_ON : DISCOVERABILITY_ALREADY_OFF,
+      };
+    }
+
     await deps.recordDiscoverability(database, {
       familyId: input.familyId,
       userId: input.parentUserId,
@@ -216,6 +265,24 @@ export async function handleVillageIntroReply(
 }
 
 // ── prod wiring ──────────────────────────────────────────────────────────────
+
+/**
+ * The two consent reads that make up one standing answer.
+ *
+ * `discoverabilityAsked` is "is there a row at all" and `discoverabilityGranted` is
+ * latest-row-wins over both withdrawal conventions. Neither alone can tell a decline from
+ * a silence, and telling those apart is the whole point (see {@link IntroStanding}).
+ */
+async function readDiscoverabilityStanding(
+  database: Database,
+  parentUserId: string,
+): Promise<IntroStanding> {
+  const [answered, granted] = await Promise.all([
+    discoverabilityAsked(database, parentUserId),
+    discoverabilityGranted(database, parentUserId),
+  ]);
+  return introStanding({ answered, granted });
+}
 
 /**
  * The proposal a family may answer: still open, still inside its window, and one this
@@ -334,6 +401,7 @@ async function cancelOpenProposalsFor(
 export function defaultVillageIntroReplyDeps(): VillageIntroReplyDeps {
   return {
     recordDiscoverability: recordDiscoverabilityConsent,
+    discoverabilityStanding: readDiscoverabilityStanding,
     /**
      * THE ALLOWLIST GATES THE ANSWER TOO, not just the sweep.
      *

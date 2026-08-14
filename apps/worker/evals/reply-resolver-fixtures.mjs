@@ -88,6 +88,33 @@ const APPROVAL_CHECKUP = {
 export const REPLY_RESOLVER_FIXTURES = [
   // ── must resolve ──────────────────────────────────────────────────────────
   {
+    /**
+     * THE PROD FAILURE, 2026-08-13. Hale sent the intro opt-in ask at 08:01. At 09:47:48
+     * the parent replied with a bare "Yes" — which the keyword machine could not read, so
+     * the turn went to the coach, which answered it against a stale calendar context: "I
+     * don't have a draft waiting for your YES right now. Did you want to book Sebastian's
+     * eye exam on the calendar?" Eleven seconds later, getting no traction, they retyped
+     * "Yes intros" and the keyword handler answered THAT. Two contradictory replies.
+     *
+     * A bare "Yes" an hour and a half after the only question Hale asked is not a hard
+     * read. It only looked hard because the reader was a string comparison.
+     */
+    id: 'prod-bare-yes-intro-optin',
+    text: 'Yes',
+    questions: [OPT_IN],
+    expect: {
+      status: 'resolved',
+      questionId: OPT_IN.id,
+      kind: 'intro_optin',
+      polarity: 'yes',
+    },
+    why:
+      'One open question, one bare affirmative, no ambiguity to resolve. This is the ' +
+      'floor: a resolver that cannot read this is a resolver that teaches keywords. Note ' +
+      'the ELAPSED TIME is not an input and must not need to be — the question was open, ' +
+      'and an open question does not expire between 08:01 and 09:47.',
+  },
+  {
     id: 'clear-yes-one-approval',
     text: 'yeah go ahead',
     questions: [APPROVAL_MOVE],

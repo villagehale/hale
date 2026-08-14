@@ -75,6 +75,23 @@ export const DISCOVERABILITY_ON =
  * sure": a revocation that gets argued with is not a revocation. */
 export const DISCOVERABILITY_OFF = "Done - no intros. I won't bring this up again.";
 
+/**
+ * THE SECOND YES, AND THE SECOND NO.
+ *
+ * From the founder's live test (2026-08-13, 09:47:48 -> 09:47:59): the parent texted
+ * "Yes", got no traction, and eleven seconds later retyped "Yes intros". A parent who
+ * texts twice because they think the first one did not land is not making a second
+ * decision, and answering them with the full acknowledgement a second time is Hale failing
+ * to remember a conversation it is currently having.
+ *
+ * SHORT, and it still ANSWERS. Silence would read as the second text not landing either,
+ * which is the very thing that produced the second text. What it does not do is re-explain
+ * a thing they have already been told, or imply anything changed.
+ */
+export const DISCOVERABILITY_ALREADY_ON = "You're already set - I'll keep an eye out.";
+
+export const DISCOVERABILITY_ALREADY_OFF = "Already off - I won't bring it up.";
+
 /** Acknowledges a yes to one intro. Deliberately says nothing about the other side:
  * at this moment their answer is unknown, and even "waiting on them" would disclose
  * that a specific household was asked. */

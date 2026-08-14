@@ -367,6 +367,7 @@ describe('handler order — registration last', () => {
 describe('the village intro lane and the lanes behind it', () => {
   const introDeps: VillageIntroReplyDeps = {
     recordDiscoverability: async () => {},
+    discoverabilityStanding: async () => 'unanswered' as const,
     openProposal: async () => null,
     recordDecision: async () => {},
     cancelOpenProposals: async () => {},
