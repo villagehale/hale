@@ -82,7 +82,16 @@ export interface AuthenticationResults {
 
 export type SenderTrust =
   | { trusted: true; basis: 'dkim_aligned' }
-  | { trusted: false; reason: TrustFailure };
+  /** No verdict from our own MTA. Carries every authserv-id the header DID claim, in
+   * order and with duplicates kept: a mismatch tells the operator what the MTA really
+   * stamps (provisioning reads this instead of a dashboard), and our own id twice is
+   * how a sender-forged copy shows up. MTA hostnames only — never message content. */
+  | {
+      trusted: false;
+      reason: 'no_trusted_verdict';
+      observedAuthservIds: readonly string[];
+    }
+  | { trusted: false; reason: Exclude<TrustFailure, 'no_trusted_verdict'> };
 
 /** Why a sender could not be trusted. An enum, never free text: it is logged and
  * counted, so it must be safe to emit and stable to aggregate on (rule #1). */
@@ -198,23 +207,26 @@ function domainsAlign(signing: string, fromDomain: string): boolean {
  * duplicates: when it joins them instead, both land in one value, and picking "the first"
  * would silently depend on whether the receiving MTA prepends or appends.
  */
-function trustedResults(
-  headers: Readonly<Record<string, string>>,
-  authservId: string,
-): AuthenticationResults | null {
+function parsedResults(headers: Readonly<Record<string, string>>): AuthenticationResults[] {
   const raw = Object.entries(headers).find(
     ([name]) => name.toLowerCase() === 'authentication-results',
   )?.[1];
-  if (!raw) return null;
+  if (!raw) return [];
 
-  const wanted = authservId.toLowerCase();
   // Unfolding happens per-candidate inside the parser, so the split is on newlines that
   // are NOT continuations.
-  const ours = raw
+  return raw
     .split(/\r?\n(?![ \t])/)
     .map(parseAuthenticationResults)
-    .filter((parsed) => parsed !== null && parsed.authservId.toLowerCase() === wanted);
+    .filter((parsed): parsed is AuthenticationResults => parsed !== null);
+}
 
+function trustedResults(
+  candidates: readonly AuthenticationResults[],
+  authservId: string,
+): AuthenticationResults | null {
+  const wanted = authservId.toLowerCase();
+  const ours = candidates.filter((parsed) => parsed.authservId.toLowerCase() === wanted);
   return ours.length === 1 ? (ours[0] as AuthenticationResults) : null;
 }
 
@@ -230,9 +242,14 @@ export function assessSenderTrust(input: {
   authservId: string;
   fromDomain: string;
 }): SenderTrust {
-  const results = trustedResults(input.headers, input.authservId);
+  const candidates = parsedResults(input.headers);
+  const results = trustedResults(candidates, input.authservId);
   if (!results) {
-    return { trusted: false, reason: 'no_trusted_verdict' };
+    return {
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: candidates.map((parsed) => parsed.authservId.toLowerCase()),
+    };
   }
 
   // Only signatures that actually verified may vouch for anything. Filtering FIRST is

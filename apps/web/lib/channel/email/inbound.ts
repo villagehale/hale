@@ -153,7 +153,14 @@ export async function routeEmailInbound(
     fromDomain: sender.domain,
   });
   if (!trust.trusted) {
-    deps.log.info('inbound email: sender not trusted', { reason: trust.reason });
+    // MTA hostnames only (rule #1) — and the operator's one clue when the configured
+    // authserv-id and the one the MTA really stamps disagree.
+    deps.log.info(
+      'inbound email: sender not trusted',
+      trust.reason === 'no_trusted_verdict'
+        ? { reason: trust.reason, observedAuthservIds: trust.observedAuthservIds }
+        : { reason: trust.reason },
+    );
     return 'untrusted';
   }
 
