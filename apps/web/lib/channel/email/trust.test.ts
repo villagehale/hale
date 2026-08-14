@@ -235,7 +235,31 @@ describe('assessSenderTrust', () => {
       headers: header('attacker-controlled; dkim=pass header.d=example.com'),
       ...trusted,
     });
-    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: ['attacker-controlled'],
+    });
+  });
+
+  /** The refusal names every authserv-id it DID see, in header order — the operator's
+   * one clue when the configured id and the MTA's real one disagree (provisioning
+   * checklist 8a reads this instead of a dashboard). */
+  it('reports the observed authserv-ids, in order, when none of them is ours', () => {
+    const verdict = assessSenderTrust({
+      headers: {
+        'authentication-results': [
+          'first.test; dkim=pass header.d=example.com',
+          'second.test; dkim=fail header.d=example.com',
+        ].join('\n'),
+      },
+      ...trusted,
+    });
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: ['first.test', 'second.test'],
+    });
   });
 
   it('picks our MTA’s verdict out of a list of hops, ignoring another MTA’s', () => {
@@ -264,7 +288,13 @@ describe('assessSenderTrust', () => {
       headers: { 'authentication-results': copies.join('\n') },
       ...trusted,
     });
-    expect(verdict).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+    // Multiplicity is kept on purpose: our own id listed TWICE is how a forged
+    // duplicate shows up in the log (provisioning checklist 8c observes exactly this).
+    expect(verdict).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: [MX, MX],
+    });
   });
 
   it('still accepts a single verdict that arrives folded across lines', () => {
@@ -279,6 +309,7 @@ describe('assessSenderTrust', () => {
     expect(assessSenderTrust({ headers: header(undefined), ...trusted })).toEqual({
       trusted: false,
       reason: 'no_trusted_verdict',
+      observedAuthservIds: [],
     });
   });
 
@@ -303,7 +334,11 @@ describe('assessSenderTrust', () => {
         headers: header(`${MX}.evil.test; dkim=pass header.d=example.com`),
         ...trusted,
       }),
-    ).toEqual({ trusted: false, reason: 'no_trusted_verdict' });
+    ).toEqual({
+      trusted: false,
+      reason: 'no_trusted_verdict',
+      observedAuthservIds: [`${MX}.evil.test`],
+    });
   });
 
   /** A quoted or punctuation-trailed domain is misread rather than parsed — and a domain
