@@ -59,6 +59,38 @@ describe('parseAuthenticationResults', () => {
     ]);
   });
 
+  /**
+   * THE REAL RECEIVING MTA. AWS SES — which is what Resend's inbound runs on — reports a
+   * DKIM result as `header.i` (the AUID) and emits NO `header.d`. Observed from a live
+   * Gmail message on 2026-08-14. The parser read only `header.d`, so every genuine inbound
+   * came back domainless and was rejected as `dkim_not_aligned`: the leg was inert against
+   * the only MTA it will ever see. The i= domain (the part after the last `@`) is the
+   * signing domain — RFC 6376 requires i= to be d= or a subdomain of it — so it is a sound
+   * fallback WHEN d is absent, never a replacement for it.
+   */
+  it('reads the signing domain from header.i when the MTA emits no header.d (real AWS SES)', () => {
+    const header =
+      'amazonses.com; spf=pass (spfCheck: domain of _spf.google.com designates 209.85.214.169 as permitted sender) client-ip=209.85.214.169; envelope-from=barton97daz@gmail.com; helo=mail-pl1-f169.google.com; dkim=pass header.i=@gmail.com; dmarc=pass header.from=gmail.com;';
+    expect(parseAuthenticationResults(header)).toEqual({
+      authservId: 'amazonses.com',
+      spf: 'pass',
+      dmarc: 'pass',
+      dkim: [{ verdict: 'pass', domain: 'gmail.com' }],
+    });
+  });
+
+  it('takes the domain after the @ when header.i carries a local part', () => {
+    expect(
+      parseAuthenticationResults(`${MX}; dkim=pass header.i=user@sub.example.com`)?.dkim,
+    ).toEqual([{ verdict: 'pass', domain: 'sub.example.com' }]);
+  });
+
+  it('falls closed when header.i names no domain', () => {
+    expect(parseAuthenticationResults(`${MX}; dkim=pass header.i=nobody`)?.dkim).toEqual([
+      { verdict: 'pass', domain: null },
+    ]);
+  });
+
   it('does not read header.d out of a longer parameter name', () => {
     expect(parseAuthenticationResults(`${MX}; dkim=pass header.dkim=nope.test`)?.dkim).toEqual([
       { verdict: 'pass', domain: null },
@@ -118,6 +150,35 @@ describe('assessSenderTrust', () => {
       ...trusted,
     });
     expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /**
+   * THE END-TO-END REAL CASE. The exact Authentication-Results a live Gmail message
+   * carried through Resend/SES on 2026-08-14, from barton97daz@gmail.com. Before the
+   * header.i fallback this returned dkim_not_aligned — a real parent, refused — which is
+   * how the leg was proven inert against its own MTA. This is the regression anchor: if
+   * the fallback is ever removed, a genuine inbound stops being trusted and this flips.
+   */
+  it('trusts a genuine Gmail message stamped by AWS SES (header.i, no header.d)', () => {
+    const verdict = assessSenderTrust({
+      headers: header(
+        'amazonses.com; spf=pass (spfCheck: domain of _spf.google.com designates 209.85.214.169 as permitted sender) client-ip=209.85.214.169; envelope-from=barton97daz@gmail.com; helo=mail-pl1-f169.google.com; dkim=pass header.i=@gmail.com; dmarc=pass header.from=gmail.com;',
+      ),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({ trusted: true, basis: 'dkim_aligned' });
+  });
+
+  /** The fallback must not become a hole: an SES-stamped pass whose i= domain is NOT the
+   * From domain still fails closed, exactly as a mismatched header.d would. */
+  it('refuses a header.i pass whose domain is not the From domain', () => {
+    const verdict = assessSenderTrust({
+      headers: header('amazonses.com; dkim=pass header.i=@attacker.test'),
+      authservId: 'amazonses.com',
+      fromDomain: 'gmail.com',
+    });
+    expect(verdict).toEqual({ trusted: false, reason: 'dkim_not_aligned' });
   });
 
   /**
