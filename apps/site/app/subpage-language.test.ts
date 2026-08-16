@@ -189,7 +189,7 @@ describe('/about — the paragraph that reads itself', () => {
       );
       if (!animates) return;
       const guards: string[] = [];
-      let parent = rule.parent;
+      let parent: postcss.Container | postcss.Document | undefined = rule.parent;
       while (parent) {
         if (parent.type === 'atrule') {
           const at = parent as postcss.AtRule;
