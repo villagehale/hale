@@ -4,6 +4,7 @@ import { LandingCta } from '~/components/landing-cta';
 import { ProductFaqAccordion } from '~/components/product-faq-accordion';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { WordsPullUp } from '~/components/words-pull-up';
 import { FAQ, faqJsonLd } from '~/lib/faq/index';
 import { chromeCta } from '~/lib/site/chrome-cta';
 
@@ -37,18 +38,19 @@ export default function FaqPage() {
       <SiteHeader />
 
       <section className="shell pt-10 sm:pt-16 pb-16 lg:pb-24">
-        <div className="max-w-2xl rise rise-1">
+        <div className="max-w-2xl">
           <span className="eyebrow">Questions, answered</span>
-          <h1 className="mt-3">
-            Is Hale right for <span className="accent">your family?</span>
-          </h1>
-          <p className="meta mt-6 text-lg" style={{ lineHeight: 1.6 }}>
+          <WordsPullUp
+            className="mt-3"
+            segments={[{ text: 'Is Hale right for' }, { text: 'your family?', accent: true }]}
+          />
+          <p className="meta reading-measure mt-6 text-lg" style={{ lineHeight: 1.6 }}>
             The honest answers parents ask us most — about cost, privacy, and how Hale actually
             works.
           </p>
         </div>
 
-        <div className="mt-14 max-w-3xl rise rise-2">
+        <div className="mt-14 max-w-3xl">
           <ProductFaqAccordion items={FAQ} />
         </div>
       </section>
