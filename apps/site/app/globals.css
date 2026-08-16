@@ -784,8 +784,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 
   /* The warm bloom the thread column sits in — the page's only gradient, and
    * the reason a lone bubble on a wide screen still has a centre of gravity. */
-  --v3-bloom-warm: rgb(178 107 31 / 0.16);
-  --v3-bloom-cool: rgb(23 41 74 / 0.07);
+  --v3-bloom-warm: rgb(178 107 31 / 0.24);
+  --v3-bloom-cool: rgb(23 41 74 / 0.09);
 
   /* The suggestion strip. Unpressed reads as an offer, pressed as the message
    * about to be sent — navy fill, so the chosen one is unmistakable. */
@@ -901,18 +901,21 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   margin-inline: auto;
 }
 
-/* The one gradient on the page, behind the column. Sized in vmax so it stays a
- * wash on a phone and a room on a 1440. */
+/* The one gradient on the page, behind the column. It bleeds DOWN past the hero
+ * so the wash has somewhere to end, but never sideways: a negative inline inset
+ * on an absolutely-positioned pseudo-element widens the document's scroll box
+ * even though no element reports as overflowing, which is a horizontal
+ * scrollbar nothing in the DOM inspector accounts for. */
 .v3-bloom { position: relative; isolation: isolate; }
 .v3-bloom::before {
   content: "";
   position: absolute;
-  inset: -12% -20% -30%;
+  inset: -10% 0 -26%;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(42% 38% at 50% 22%, var(--v3-bloom-warm), transparent 72%),
-    radial-gradient(58% 46% at 50% 96%, var(--v3-bloom-cool), transparent 74%);
+    radial-gradient(46% 34% at 50% 26%, var(--v3-bloom-warm), transparent 70%),
+    radial-gradient(70% 44% at 50% 98%, var(--v3-bloom-cool), transparent 72%);
 }
 
 /* ── Hale's bubble ──────────────────────────────────────────────────────── *
@@ -1057,6 +1060,109 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   mask-composite: exclude;
 }
 
+/* ── The shore, closing the page ────────────────────────────────────────── *
+ * Hale is Hawaiian for home, the mark is a honu, and the support address is
+ * aloha@ — the shoreline is the brand's own world rather than decoration
+ * borrowed for atmosphere. It appears once, at the foot of the page.
+ *
+ * The band's colours are FIXED, not tokens: `--color-navy` inverts to cream in
+ * dark, which would have put a moonlit night scene behind navy-on-cream text.
+ * One navy band, one night, both themes — which is also why the art needs no
+ * light/dark fork.
+ *
+ * The scrim is a vertical ramp rather than a flat wash: the moon and the sky at
+ * the top stay legible as art, and it deepens toward the foot where the cream
+ * sand would otherwise sit under the CTA. Contrast is measured, not assumed —
+ * the preview screenshots are sampled under each text box. */
+
+.v3-shore-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: #0c1424;
+  color: #f6f1e7;
+}
+
+/* The scene is a 4:1 panorama composed with its copy space on the right, and a
+ * phone is not 4:1. Cropping it to fit was tried and thrown away: a fifth of a
+ * panorama at full height is abstract smudges, and the wide navy the artwork
+ * reserves for words showed no shore at all.
+ *
+ * So the frame changes shape instead of the crop. On a phone the panorama keeps
+ * its own aspect and closes the card as a horizon strip, in flow beneath the
+ * copy — no overlap to pad around, and the whole scene is legible. From lg it
+ * becomes the full-bleed ground the composition was drawn for, with the copy in
+ * the open right side. */
+.v3-shore-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 2508 / 627;
+}
+
+.v3-shore-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #0c1424 0%, rgb(12 20 36 / 0.55) 30%, transparent 62%);
+}
+
+.v3-shore-art { object-fit: cover; }
+
+@media (min-width: 1024px) {
+  .v3-shore-frame {
+    position: absolute;
+    inset: 0;
+    aspect-ratio: auto;
+  }
+  .v3-shore-art { object-position: 20% 50%; }
+  /* Copy has moved right, so the scrim ramps the same way: the shore keeps its
+   * own light on the left, and the half the words sit on goes to deep navy. */
+  .v3-shore-frame::after {
+    background: linear-gradient(
+      90deg,
+      rgb(9 18 38 / 0.10) 0%,
+      rgb(9 18 38 / 0.20) 32%,
+      rgb(9 18 38 / 0.64) 50%,
+      rgb(9 18 38 / 0.82) 68%,
+      rgb(9 18 38 / 0.86) 100%
+    );
+  }
+}
+
+/* Above both the art and the scrim, which are z-index auto and so paint in tree
+ * order — the pseudo-element is the last child and would otherwise cover this. */
+.v3-shore-copy { position: relative; z-index: 1; }
+
+.v3-shore-band :is(h2, p) { color: #f6f1e7; }
+.v3-shore-sub { color: rgb(246 241 231 / 0.84); }
+
+/* The CTA on that band. Fixed colours for the same reason the band has them. */
+.v3-btn-shore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.75rem;
+  background: #f6f1e7;
+  color: #101c33;
+  border: 0;
+  border-radius: var(--r-full);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 200ms var(--ease-breathe);
+}
+.v3-btn-shore:hover { transform: translateY(-1px); }
+.v3-btn-shore:active { transform: none; }
+.v3-btn-shore:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px #101c33, 0 0 0 5px #f6f1e7;
+}
+
 /* The closing lockup: the brand tile on the navy band needs a hairline to lift
  * its own navy ground off the band's. */
 .v3-logo-tile {
@@ -1069,6 +1175,8 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
 @media (prefers-reduced-motion: reduce) {
   .v3-caret { animation: none; }
   .v3-chip { transition: none; }
+  .v3-btn-shore { transition: none; }
+  .v3-btn-shore:hover { transform: none; }
 }
 
 }

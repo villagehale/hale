@@ -1,7 +1,9 @@
+import Image from 'next/image';
+import shore from '~/assets/hale-shore-night.webp';
+import { EmailCta } from '~/components/email-cta';
 import { HeroConversation } from '~/components/landing/v3/hero-conversation';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
-import { EmailCta } from '~/components/email-cta';
 import { APP_URL } from '~/lib/app-url';
 import { type ImpactNumber, impactNumbers } from '~/lib/landing/impact';
 import { siteJsonLd } from '~/lib/site/structured-data';
@@ -359,37 +361,50 @@ export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
       {/* ── Impact numbers — rendered only once the counts are real ───────── */}
       {impact && <ImpactBand numbers={impact} />}
 
-      {/* ── Founding families — the brand lockup, not a mascot ────────────── */}
+      {/* ── Founding families — the shore, and the brand lockup ───────────── *
+       * Hale is Hawaiian for home and the mark is a honu, so the page closes on
+       * the shoreline the name comes from rather than on a flat band. One image,
+       * one placement, decorative: the argument is still entirely in the words. */}
       <section className="px-4 pb-16 sm:px-6 lg:pb-24">
-        <div className="cta-band mx-auto max-w-[1100px] rounded-[28px] px-6 py-14 text-center sm:px-12 md:py-20">
-          <span className="inline-flex items-center gap-3">
-            <LogoMark size={44} className="v3-logo-tile" />
-            <span className="font-serif text-[1.6rem] font-semibold leading-none text-cream">
-              Hale
+        <div className="v3-shore-band mx-auto max-w-[1100px] rounded-[28px]">
+          <div className="v3-shore-copy px-6 pb-12 pt-14 text-center sm:px-12 lg:ml-auto lg:max-w-[30rem] lg:py-24 lg:text-left">
+            <span className="inline-flex items-center gap-3">
+              <LogoMark size={44} className="v3-logo-tile" />
+              <span className="font-serif text-[1.6rem] font-semibold leading-none">Hale</span>
             </span>
-          </span>
-          <h2 className="mx-auto mt-6 max-w-2xl text-[clamp(1.8rem,3.4vw,2.6rem)]">
-            Founding families
-          </h2>
-          <p className="cta-sub mx-auto mt-5 max-w-xl text-lg" style={{ lineHeight: 1.6 }}>
-            I’m free while I’m new, and the families who start now keep their founding rate for
-            good. No countdown, no waiting list — just the number.
-          </p>
-          {smsHref ? (
-            <div className="mt-9 flex justify-center">
-              <LandingCta event="landing_cta_text" href={smsHref} className="btn-on-navy">
-                Text me
-              </LandingCta>
-            </div>
-          ) : (
-            <div className="mt-9 flex justify-center">
-              <EmailCta
-                email={CONTACT_EMAIL}
-                buttonClassName="btn-on-navy"
-                copyClassName="btn-on-navy"
-              />
-            </div>
-          )}
+            <h2 className="mt-6 text-[clamp(1.8rem,3.4vw,2.6rem)]">Founding families</h2>
+            <p className="v3-shore-sub mt-5 text-lg" style={{ lineHeight: 1.6 }}>
+              I’m free while I’m new, and the families who start now keep their founding rate for
+              good. No countdown, no waiting list — just the number.
+            </p>
+            {smsHref ? (
+              <div className="mt-9 flex justify-center lg:justify-start">
+                <LandingCta event="landing_cta_text" href={smsHref} className="v3-btn-shore">
+                  Text me
+                </LandingCta>
+              </div>
+            ) : (
+              <div className="mt-9 flex justify-center lg:justify-start">
+                <EmailCta
+                  email={CONTACT_EMAIL}
+                  buttonClassName="v3-btn-shore"
+                  copyClassName="v3-btn-shore"
+                />
+              </div>
+            )}
+          </div>
+          {/* After the copy in the DOM as well as under it on screen: decorative
+              art belongs behind the words in reading order too. */}
+          <div className="v3-shore-frame">
+            <Image
+              src={shore}
+              alt=""
+              aria-hidden="true"
+              fill
+              sizes="(max-width: 1148px) 100vw, 1100px"
+              className="v3-shore-art"
+            />
+          </div>
         </div>
       </section>
 
@@ -410,7 +425,13 @@ export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
                 Hale
               </span>
             </span>
+            {/* The name, said out loud. It carries the whole brand — Hawaiian for
+                home, a honu for a mark, aloha@ for an address — and the live
+                landing is the one surface that dropped it. */}
             <p className="meta mt-3">
+              Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
+            </p>
+            <p className="meta mt-1">
               Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.
             </p>
             <p className="meta mt-1">© {new Date().getFullYear()} Hale.</p>

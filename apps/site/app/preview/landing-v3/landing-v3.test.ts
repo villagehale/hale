@@ -100,7 +100,9 @@ describe('landing v3 — the preview is a preview', () => {
     postcss.parse(css).walkAtRules('media', (rule) => {
       if (!rule.params.includes('prefers-color-scheme')) return;
       if (!rule.params.includes('dark')) return;
-      rule.walkRules((inner) => selectors.push(inner.selector.replace(/\s+/g, ' ').trim()));
+      rule.walkRules((inner) => {
+        selectors.push(inner.selector.replace(/\s+/g, ' ').trim());
+      });
     });
 
     // Positive control: the dark block exists at all, so the assertion below is
@@ -207,7 +209,7 @@ describe('landing v3 — the number is reachable and never readable', () => {
   });
 });
 
-describe('landing v3 — the mark is the flat turtle, and there is no mascot', () => {
+describe('landing v3 — the brand tile, the shore, and nothing else', () => {
   const html = render();
 
   it('puts the logo tile in the header beside the wordmark', () => {
@@ -217,11 +219,52 @@ describe('landing v3 — the mark is the flat turtle, and there is no mascot', (
     expect(header).toContain('>Hale</span>');
   });
 
-  it('closes on the same tile, and references no mascot art anywhere', () => {
-    expect([...html.matchAll(/hale-logo/g)].length).toBeGreaterThanOrEqual(3);
-    for (const mascot of ['hale-turtle', 'village-illustration', 'v3-mascot']) {
+  /**
+   * The honesty pin, widened rather than dropped. The live page pins "no <img>
+   * at all", which was the right rule for a page whose only picture would have
+   * been a fake screenshot. v3 carries two kinds of image — the brand tile and
+   * one shore panel — and the rule that has to survive is the one underneath
+   * it: no image on this page carries an argument. Every one is decorative, from
+   * the known asset set, and none of them is anywhere near the conversation.
+   */
+  it('allows only decorative images, only from the brand set', () => {
+    const imgs = html.match(/<img[^>]*>/g) ?? [];
+    // Positive control: there ARE images, so the per-image assertions below are
+    // checking something rather than iterating an empty list.
+    expect(imgs.length).toBeGreaterThanOrEqual(3);
+    for (const img of imgs) {
+      expect(img, 'every image is decorative').toContain('alt=""');
+      expect(img, 'every image is hidden from assistive tech').toContain('aria-hidden="true"');
+      expect(img, `unexpected asset: ${img.slice(0, 90)}`).toMatch(
+        /hale-logo|hale-shore-night/,
+      );
+    }
+  });
+
+  it('keeps the conversation image-free — a message, never a picture of one', () => {
+    const hero = html.slice(html.indexOf('<h1'), html.indexOf('What I watch'));
+    expect(hero).not.toContain('<img');
+    // Positive control: the slice really is the hero.
+    expect(hero).toContain('v3-bubble');
+  });
+
+  it('closes on the shore — one panel, once — and no mascot art anywhere', () => {
+    // Counted as <img> elements, not as filename occurrences: next/image emits
+    // the same asset name once per srcset candidate.
+    const shorePanels = (html.match(/<img[^>]*>/g) ?? []).filter((img) =>
+      img.includes('hale-shore-night'),
+    );
+    expect(shorePanels).toHaveLength(1);
+    for (const mascot of ['hale-turtle', 'village-illustration', 'diamondhead', 'shore-ultrawide']) {
       expect(html, `${mascot} must not appear`).not.toContain(mascot);
     }
+  });
+
+  it('says the name out loud in the footer', () => {
+    // The brand line every subpage carries (site-footer.tsx) and the live
+    // landing dropped. Hale is Hawaiian for home; the mark is a honu.
+    const footer = html.match(/<footer[\s\S]*?<\/footer>/)?.[0] ?? '';
+    expect(visibleText(footer)).toContain('Hale /HAH-leh/ — Hawaiian for home.');
   });
 });
 
