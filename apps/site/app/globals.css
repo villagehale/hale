@@ -6,12 +6,27 @@
  * Source Serif 4 for title accents and JetBrains Mono for data, a warm page
  * (#fdfcfa) carrying navy ink (#17294a) and a single amber accent family
  * (#b26b1f / #fef0c7), gently rounded clean cards, Lucide icons, and a
- * hand-built flat color-block SVG illustration kit. Light-only (the 2026-07
- * redesign removed dark mode).
+ * hand-built flat color-block SVG illustration kit.
+ *
+ * ── One theme system, whole site ─────────────────────────────────────────
+ * Every themed token is declared ONCE, as `light-dark(light, dark)`. The pair
+ * lives on the token, so a light value can never be promoted without its dark
+ * counterpart being written beside it — which is exactly how the landing came
+ * to have a navy night while eight subpages stayed light-only (#463 scoped the
+ * dark ladder to a `.v3-theme` wrapper). `color-scheme` on :root picks which
+ * half is used: `light dark` follows the OS, and `[data-theme]` (written before
+ * first paint by the layout's no-flash script) overrides it in either
+ * direction. With JavaScript off, the OS preference still wins.
+ *
+ * The dark ladder is Hale's own brand navy, not a neutral dark. Ground is a
+ * deep Prussian navy (#0C1A36) and the surfaces step UP toward the brand navy
+ * itself (#17294A, which is the card): the page reads as night navy rather than
+ * as black. Amber is FILL, glow and hairline in both themes — never body text.
+ * #B26B1F cannot carry that job on navy (4.12:1 on the ground), so dark uses
+ * the lighter #E2A75A at 8.14:1 for marks.
  *
  * The subpage token roles below keep their original names (linen/spruce/apricot)
- * so existing subpage markup + token utilities flip to the warm palette for
- * free; the homepage itself is inline-hex and untouched by these tokens.
+ * so existing subpage markup + token utilities flip with the theme for free.
  *
  * Hard rules baked in:
  *   - Three families only: warm white + navy + amber. Amber is FILL / large /
@@ -23,61 +38,74 @@
  */
 
 @theme {
-  /* ── Palette (hex + computed WCAG ratio on the warm page) ────────────── *
-   * Retuned (2026-07) so the long-form subpages read as one world with the
-   * warm-white homepage: warm page + navy ink + amber accent. Names are kept
-   * (linen/spruce/apricot) so the existing subpage markup + token utilities
-   * (text-spruce, border-rule, var(--color-slate-green)…) flip for free. */
-  --color-linen: #fdfcfa;       /* canvas — warm page (matches the homepage) */
-  --color-oat: #ffffff;         /* card surface — pure white, separated by a light border + faint shadow */
-  --color-spruce: #17294a;      /* primary ink / navy headline — 14.1:1 on page */
-  --color-slate-green: #5c6b87; /* secondary / body text — 5.24:1 */
-  --color-faded-sage: #647290;  /* tertiary / meta / disclaimers — 4.71:1 */
+  /* ── Palette — every themed role as light-dark(light, dark) ───────────── *
+   * Ratios in the comments are light-on-warm-page / dark-on-card, the card
+   * (--color-oat) being the lightest surface any dark ink lands on and so the
+   * binding constraint for the whole dark ladder. */
+  --color-linen: light-dark(#fdfcfa, #0c1a36);       /* canvas — warm page / deep Prussian navy ground */
+  --color-oat: light-dark(#ffffff, #17294a);         /* card surface — white / the brand navy itself */
+  --color-spruce: light-dark(#17294a, #f7f4ec);      /* primary ink — 14.1:1 / 13.15:1 */
+  --color-slate-green: light-dark(#5c6b87, #b7c4dc); /* secondary / body text — 5.24:1 / 8.22:1 */
+  --color-faded-sage: light-dark(#647290, #93a3c2);  /* tertiary / meta — 4.71:1 / 5.69:1 */
 
-  --color-apricot: #b26b1f;       /* amber — illustration fill, small marks */
-  --color-apricot-deep: #b26b1f;  /* amber accent — 4.08:1 (large/UI only; links use navy) */
-  --color-apricot-tint: #fef0c7;  /* amber wash panel / pill — ink 11.5:1 on it */
+  --color-apricot: light-dark(#b26b1f, #e2a75a);       /* amber — illustration fill, small marks */
+  --color-apricot-deep: light-dark(#b26b1f, #e2a75a);  /* amber accent — 4.08:1 (large/UI only; links use navy) */
+  --color-apricot-tint: light-dark(#fef0c7, rgb(226 167 90 / 0.08)); /* amber wash — see the alpha note below */
 
-  --color-sky: #c9d2e6;        /* pale navy — illustration clouds/roofs (no teal at chrome level) */
-  --color-sky-deep: #5c6b87;   /* slate — illustration limbs, kept distinct from the navy shell */
-  --color-sky-tint: #eef1f7;   /* pale navy wash — chip pills, illustration scutes */
+  --color-sky: #c9d2e6;                              /* pale navy — illustration clouds/roofs; light on either ground */
+  --color-sky-deep: light-dark(#5c6b87, #8fa3c9);    /* slate — illustration limbs/doors, lit so they clear the navy shell */
+  --color-sky-tint: light-dark(#eef1f7, #16233f);    /* pale navy wash — chip pills, illustration scutes */
 
-  --color-sea: #17294a;        /* navy — illustration figures/roofs */
+  --color-sea: light-dark(#17294a, #9fb4e0);         /* illustration figures/roofs. In dark the CARD is #17294a,
+                                                      * so a navy roof would vanish into its own house. */
 
-  --color-sage: #4a5a3c;       /* "done / handled" tone — 6.62:1 */
-  --color-sage-tint: #dde4d2;  /* done-tone pill — Spruce ink 10.33:1 */
+  --color-sage: light-dark(#4a5a3c, #9dbb87);  /* "done / handled" tone — 6.62:1 / 6.66:1 */
+  --color-sage-tint: #dde4d2;                  /* done-tone pill — Spruce ink 10.33:1 */
 
   --color-berry: #9c3b54;      /* "needs your eye" — sparing, 5.89:1 */
   --color-berry-tint: #f3d7dd; /* soft attention pill — Spruce 9.99:1 */
 
-  /* Hairlines: cool light-gray card borders (mockup's crisp #E6E8EC card outlines on white) */
-  --color-rule: #e4e7ee;
-  --color-rule-strong: #d8dbe0;
+  /* Hairlines: cool light-gray card borders in light, lifted navy in dark
+   * (--color-rule-strong is .btn-secondary's 1.5px edge — 3.40:1 on the ground). */
+  --color-rule: light-dark(#e4e7ee, #26375c);
+  --color-rule-strong: light-dark(#d8dbe0, #556da8);
 
-  /* On-dark (navy night section) text — cream, matching the homepage navy bands */
-  --color-on-spruce: #f7f4ec;
-  --color-on-spruce-soft: rgb(250 247 241 / 0.74);
-  --color-on-spruce-faint: rgb(250 247 241 / 0.50);
+  /* On-dark (navy night section) text. The pair INVERTS rather than darkening:
+   * see --color-navy / --color-cream below. */
+  --color-on-spruce: light-dark(#f7f4ec, #0c1a36);
+  --color-on-spruce-soft: light-dark(rgb(250 247 241 / 0.74), rgb(12 26 54 / 0.76));
+  --color-on-spruce-faint: light-dark(rgb(250 247 241 / 0.50), rgb(12 26 54 / 0.58));
 
-  /* ── Landing (2026-07) — warm white with navy drama ──────────────────── *
-   * The marketing homepage + shared nav/footer palette. Light-only: a warm
-   * page (#FDFCFA) carrying deep-navy statement surfaces. Distinct token
-   * names so the subpage design system above is untouched. */
-  --color-page: #fdfcfa;        /* warm page canvas */
-  --color-band: #f7f5f0;        /* warm cream band (testimonials, feature washes) */
-  --color-ink: #17294a;         /* headline ink — 12.6:1 on page */
-  --color-navy: #17294a;        /* Prussian navy — statement surfaces, CTA fill.
-                                 * Deliberately NOT the app's --color-brand (#1B2160):
-                                 * that indigo reads violet when flooded across large
-                                 * marketing bands, so the site stays on the ink hue. */
-  --color-navy-deep: #101d36;   /* navy card depth */
-  --color-cream: #f7f4ec;       /* text on navy */
-  --color-line: #e4e7ee;        /* card border */
-  --color-hair: #f0f2f6;        /* hairline */
-  --color-dim: #5c6b87;         /* body-safe muted — 5.6:1 on page */
-  --color-faint: #8b95a9;       /* small non-essential muted — 3.4:1, large/decorative only */
-  --color-amber: #b26b1f;       /* amber accent text — 4.6:1 on page */
-  --color-amber-bg: #fef0c7;
+  /* ── Landing + chrome roles ──────────────────────────────────────────── *
+   * The homepage and the shared header/footer palette. Distinct token names so
+   * the subpage design system above is untouched. */
+  --color-page: light-dark(#fdfcfa, #0c1a36);  /* page canvas */
+  --color-band: light-dark(#f7f5f0, #101f3f);  /* section band, one step off the canvas */
+  --color-ink: light-dark(#17294a, #f7f4ec);   /* headline ink — 12.6:1 on page */
+  /* --color-navy is both a FILL (.btn-primary, .cta-band, .night) and an INK
+   * (.link). On a navy page a navy fill disappears and a navy link is
+   * unreadable, so in dark cream takes the fill role and the ink that sits on
+   * it becomes the ground: every rule that pairs them inverts with no extra
+   * rules. Deliberately NOT the app's --color-brand (#1B2160): that indigo
+   * reads violet when flooded across large marketing bands. */
+  --color-navy: light-dark(#17294a, #f7f4ec);
+  --color-navy-deep: light-dark(#101d36, #ffffff); /* pressed/hover depth */
+  --color-cream: light-dark(#f7f4ec, #0c1a36);     /* text on --color-navy */
+  --color-line: light-dark(#e4e7ee, #26375c);      /* card border */
+  --color-hair: light-dark(#f0f2f6, #182a4b);      /* hairline */
+  --color-dim: light-dark(#5c6b87, #b7c4dc);       /* body-safe muted — 5.6:1 on page */
+  --color-faint: light-dark(#8b95a9, #93a3c2);     /* small non-essential muted, large/decorative only */
+  --color-amber: light-dark(#b26b1f, #e2a75a);     /* amber accent — 4.6:1 on page / 6.82:1 on the card */
+  /* The dark wash stays low-alpha rather than flattened to a hex, so it
+   * composites over whichever navy is behind it. The alpha is set by the
+   * LARGEST surface that wears it: amber and navy are near-complementary, so a
+   * wash strong enough to read on a 12px pill turns an 800px panel into warm
+   * grey (measured: 0.15 did exactly that). At 0.08 both stay blue-dominant and
+   * the amber signal is carried by --color-amber-ring below instead. */
+  --color-amber-bg: light-dark(#fef0c7, rgb(226 167 90 / 0.08));
+  /* The inset hairline that gives an amber pill or panel its edge once the wash
+   * is held down. Transparent in light, where the wash reads on its own. */
+  --color-amber-ring: light-dark(transparent, rgb(226 167 90 / 0.30));
   --color-lime: #1f8a4c;        /* green accent text — 4.0:1 on page (used on tint) */
   --color-lime-bg: #e7f6ec;
   --color-cobalt: #3b5bdb;      /* blue accent text */
@@ -108,6 +136,74 @@
 
   /* ── Curves — the one slow "breathing" easing ────────────────────────── */
   --ease-breathe: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Which half of every light-dark() pair is used ───────────────────────── *
+ * `light dark` means "follow the OS", so the whole site responds to
+ * prefers-color-scheme with no JavaScript at all. The layout's pre-paint script
+ * writes data-theme ONLY for an explicit choice, and that single declaration
+ * overrides the OS in either direction — light on a dark machine included. */
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* ── Non-utility surface tokens ──────────────────────────────────────────── *
+ * Roles the design system uses through named classes rather than Tailwind
+ * utilities, so they stay out of @theme (which is the utility registry). */
+:root {
+  /* The chrome's glass: a translucent wash of the page ground, a soft blur, an
+   * inset top highlight, and a gradient hairline drawn as a masked ring
+   * (.site-glass). Light is the restrained half — a white highlight over cream
+   * is nearly invisible by design, and the navy bottom edge is what actually
+   * separates the bar from the page. Dark is where the recipe shines: the cream
+   * top edge reads as light catching the leading edge of the glass. */
+  --glass-bg: light-dark(rgb(253 252 250 / 0.72), rgb(12 26 54 / 0.72));
+  --glass-highlight: light-dark(rgb(255 255 255 / 0.80), rgb(247 244 236 / 0.10));
+  --glass-edge-top: light-dark(rgb(255 255 255 / 0.55), rgb(247 244 236 / 0.26));
+  --glass-edge-bottom: light-dark(rgb(23 41 74 / 0.10), rgb(247 244 236 / 0.05));
+
+  /* ── The landing's conversational hero kit ───────────────────────────── */
+
+  /* Hale's bubble: warm white lifted off the page by a hairline and a soft
+   * shadow, not by a card. Named separately from --color-oat because the bubble
+   * is the one surface on the page that must read as a message — which is why
+   * in dark it sits a step ABOVE the card rather than level with it. */
+  --v3-bubble-bg: light-dark(#ffffff, #1d3157);
+  --v3-bubble-border: light-dark(rgb(23 41 74 / 0.10), rgb(247 244 236 / 0.15));
+  --v3-bubble-shadow: 0 20px 48px -34px light-dark(rgb(23 41 74 / 0.55), rgb(2 6 16 / 0.85));
+
+  /* The warm bloom the thread column sits in — the page's only gradient, and
+   * the reason a lone bubble on a wide screen still has a centre of gravity. */
+  --v3-bloom-warm: light-dark(rgb(178 107 31 / 0.24), rgb(226 167 90 / 0.13));
+  --v3-bloom-cool: light-dark(rgb(23 41 74 / 0.09), rgb(120 152 224 / 0.10));
+
+  /* The suggestion strip. Unpressed reads as an offer, pressed as the message
+   * about to be sent — navy fill, so the chosen one is unmistakable. Fill and
+   * edge both lift in dark, because a navy chip on a navy ground has only its
+   * hairline to be found by. */
+  --v3-chip-bg: light-dark(rgb(23 41 74 / 0.045), rgb(247 244 236 / 0.07));
+  --v3-chip-border: light-dark(rgb(23 41 74 / 0.14), rgb(247 244 236 / 0.24));
+  --v3-chip-hover: light-dark(rgb(23 41 74 / 0.09), rgb(247 244 236 / 0.13));
+
+  --v3-caret: light-dark(#b26b1f, #e2a75a);
+
+  /* The amber edge and halo on the serif accent word. A halo that is a warmth
+   * on cream is a neon tube on navy: same device, roughly half the alpha. */
+  --v3-accent-stroke: light-dark(rgb(178 107 31 / 0.38), rgb(226 167 90 / 0.28));
+  --v3-accent-glow-near: light-dark(rgb(178 107 31 / 0.26), rgb(226 167 90 / 0.15));
+  --v3-accent-glow-far: light-dark(rgb(178 107 31 / 0.12), rgb(226 167 90 / 0.07));
+
+  /* The hairline that fades toward a card's edges. */
+  --v3-edge: light-dark(rgb(23 41 74 / 0.20), rgb(247 244 236 / 0.22));
+
+  /* The closing shore band's own night, and the scrim ramped over the art. The
+   * band is night in BOTH themes — it never inverts, which is why it cannot use
+   * --color-navy. What changes is only how the night meets the page: against
+   * the warm page it is a statement card; on the navy ground it is the same
+   * navy, so the 28px corners dissolve and the art runs into the page. */
+  --v3-shore-ground: light-dark(#0c1424, #0c1a36);
+  --v3-shore-scrim: light-dark(#091226, #0c1a36);
+  --v3-shore-ink: #f7f4ec;
 }
 
 /* Component + presentational classes live in @layer components so Tailwind v4
@@ -143,9 +239,10 @@
   .skip-link { transition: none; }
 }
 
-/* The night section is a dark Spruce band that inverts its text to cream — used
- * by the answer/milestone subpages. Light-only site (2026-07 warm-white
- * redesign), so there is no dark-mode override. */
+/* The night section is a statement band that inverts its text — used by the
+ * answer subpages. --color-navy / --color-on-spruce are an inverting pair, so
+ * on the navy page it becomes a cream band carrying navy ink: still the one
+ * surface on the page that is the opposite of everything around it. */
 .night {
   background: var(--color-navy);
   color: var(--color-on-spruce);
@@ -157,7 +254,6 @@
 html {
   background: var(--color-linen);
   color: var(--color-spruce);
-  color-scheme: light;
   font-family: var(--font-body);
   font-feature-settings: "kern", "liga", "calt";
   -webkit-font-smoothing: antialiased;
@@ -266,7 +362,11 @@ strong { font-weight: 700; }
   border-radius: var(--r-xl);
 }
 .panel-sky-tint { background: var(--color-sky-tint); border-radius: var(--r-xl); }
-.panel-apricot-tint { background: var(--color-apricot-tint); border-radius: var(--r-xl); }
+.panel-apricot-tint {
+  background: var(--color-apricot-tint);
+  border-radius: var(--r-xl);
+  box-shadow: inset 0 0 0 1px var(--color-amber-ring);
+}
 .panel-sage-tint { background: var(--color-sage-tint); border-radius: var(--r-xl); }
 .panel-berry-tint { background: var(--color-berry-tint); border-radius: var(--r-xl); }
 
@@ -296,7 +396,15 @@ strong { font-weight: 700; }
   letter-spacing: 0.04em;
 }
 
-.pill-apricot { background: var(--color-apricot-tint); color: var(--color-spruce); }
+/* The amber surfaces carry an inset hairline rather than a border, so gaining it
+ * costs no layout. It is transparent in light (where the #FEF0C7 wash reads on
+ * its own) and amber in dark, where the wash is held to 0.08 to keep the big
+ * panels navy and the hairline is what actually carries the amber. */
+.pill-apricot {
+  background: var(--color-apricot-tint);
+  color: var(--color-spruce);
+  box-shadow: inset 0 0 0 1px var(--color-amber-ring);
+}
 .pill-sky { background: var(--color-sky-tint); color: var(--color-spruce); }
 .pill-berry { background: var(--color-berry-tint); color: var(--color-spruce); }
 
@@ -744,6 +852,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.01em;
+  box-shadow: inset 0 0 0 1px var(--color-amber-ring);
 }
 
 }
@@ -765,170 +874,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
  * Every rule has a prefers-reduced-motion reset at the foot of this block.
  *
  * ── Theme ────────────────────────────────────────────────────────────────
- * Dark mode arrives as custom properties re-pointed on `.v3-theme`. Custom
- * properties inherit, so re-declaring `--color-spruce` there re-tints every
- * Tailwind utility and every `.card` / `.pill` / `.btn-*` INSIDE the landing and
- * nowhere else — every subpage stays on the light-only palette it was drawn for,
- * and a dark rule that escaped this wrapper would flip the whole marketing site
- * in the same deploy.
- *
- * The dark ladder is Hale's own brand navy, not a neutral dark. Ground is a deep
- * Prussian navy (#0C1A36) and the surfaces step UP toward the brand navy itself
- * (#17294A, which is the card): the page reads as night navy rather than as
- * black, and the night-shore art that closes it needs no separate treatment
- * because its own edges are already #051C3B–#081E3D.
- *
- * Amber is FILL, glow and hairline in both themes — never body text. #B26B1F
- * cannot carry that job in dark (4.12:1 on the ground, and only 3.81:1 under
- * cream ink when used as a fill), so dark uses the lighter #E2A75A at 8.14:1 for
- * marks, and the #FEF0C7 wash becomes low-alpha amber composited live over
- * whatever navy is behind it. */
-
-.v3-theme {
-  /* Hale's bubble: warm white lifted off the page by a hairline and a soft
-   * shadow, not by a card. Named separately from --color-oat because the bubble
-   * is the one surface on the page that must read as a message. */
-  --v3-bubble-bg: #ffffff;
-  --v3-bubble-border: rgb(23 41 74 / 0.10);
-  --v3-bubble-shadow: 0 20px 48px -34px rgb(23 41 74 / 0.55);
-
-  /* The warm bloom the thread column sits in — the page's only gradient, and
-   * the reason a lone bubble on a wide screen still has a centre of gravity. */
-  --v3-bloom-warm: rgb(178 107 31 / 0.24);
-  --v3-bloom-cool: rgb(23 41 74 / 0.09);
-
-  /* The suggestion strip. Unpressed reads as an offer, pressed as the message
-   * about to be sent — navy fill, so the chosen one is unmistakable. */
-  --v3-chip-bg: rgb(23 41 74 / 0.045);
-  --v3-chip-border: rgb(23 41 74 / 0.14);
-  --v3-chip-hover: rgb(23 41 74 / 0.09);
-
-  --v3-caret: #b26b1f;
-
-  /* The amber edge and halo on the serif accent word. */
-  --v3-accent-stroke: rgb(178 107 31 / 0.38);
-  --v3-accent-glow-near: rgb(178 107 31 / 0.26);
-  --v3-accent-glow-far: rgb(178 107 31 / 0.12);
-
-  /* The hairline that fades toward a card's edges. */
-  --v3-edge: rgb(23 41 74 / 0.20);
-
-  /* The closing shore band's own night, and the scrim ramped over the art. In
-   * light these are a statement surface against the warm page; in dark they
-   * become the page ground itself, so the band stops being a card. */
-  --v3-shore-ground: #0c1424;
-  --v3-shore-scrim: 9 18 38;
-  --v3-shore-ink: #f7f4ec;
-}
-
-@media (prefers-color-scheme: dark) {
-  .v3-theme {
-    color-scheme: dark;
-
-    /* Surfaces — a Prussian-navy ladder derived from the brand navy. Ground is
-     * the deepest step and each surface rises TOWARD #17294A, which is the card:
-     * the brand colour is the lit surface rather than the dark. */
-    --color-linen: #0c1a36;       /* page ground — deep Prussian navy */
-    --color-page: #0c1a36;
-    --color-band: #101f3f;        /* section band, one step up */
-    --color-oat: #17294a;         /* card — the brand navy itself */
-    --color-rule: #26375c;
-    --color-rule-strong: #556da8; /* .btn-secondary's 1.5px edge — 3.40:1 on the ground */
-    --color-line: #26375c;
-    --color-hair: #182a4b;
-
-    /* Ink ladder, measured on the ground / on the card (the lightest surface any
-     * of it sits on): cream 15.70 / 13.15, body 9.82 / 8.22, meta 6.79 / 5.69.
-     * Every step clears AA on every surface, including the amber wash. */
-    --color-spruce: #f7f4ec;
-    --color-ink: #f7f4ec;
-    --color-slate-green: #b7c4dc;
-    --color-dim: #b7c4dc;
-    --color-faded-sage: #93a3c2;
-    --color-faint: #93a3c2;
-
-    /* The navy/cream pair INVERTS rather than darkening. --color-navy is both a
-     * fill (.btn-primary, .cta-band) and an ink (.link); on a navy page a navy
-     * fill disappears and a navy link is unreadable, so cream takes the fill
-     * role and the ink that sits on it becomes the ground. Every rule that pairs
-     * them — button, link, closing band, and .btn-on-navy inside it — inverts
-     * correctly with no extra rules. */
-    --color-navy: #f7f4ec;
-    --color-navy-deep: #ffffff;
-    --color-cream: #0c1a36;
-    --color-on-spruce: #0c1a36;
-    --color-on-spruce-soft: rgb(12 26 54 / 0.76);
-    --color-on-spruce-faint: rgb(12 26 54 / 0.58);
-
-    /* The amber wash, navy-tinted. Left at low alpha rather than flattened to a
-     * hex so it composites over whichever navy is behind it — the pills sit on
-     * the band, the ladder panel on the ground — and both stay in the navy
-     * family instead of becoming one brown block.
-     *
-     * The alpha is set by the LARGEST surface that wears it, not the smallest.
-     * Amber and navy are near-complementary, so any wash strong enough to read
-     * as amber on a 12px pill turns an 800px panel into warm grey and punches a
-     * hole in the navy world (measured: 0.15 did exactly that). At 0.08 both
-     * composites stay blue-dominant — #1D2539 on the ground, #212A41 on the band
-     * — and the amber signal is carried by the hairline below instead. Cream on
-     * either: >12:1. */
-    --color-apricot-tint: rgb(226 167 90 / 0.08);
-    --color-amber-bg: rgb(226 167 90 / 0.08);
-    --color-sky-tint: #16233f;
-    /* Marks and the focus ring. #B26B1F is 4.12:1 here and cannot carry either;
-     * the lighter amber is 8.14:1 on the ground and 6.82:1 on the card. */
-    --color-amber: #e2a75a;
-    --color-apricot-deep: #e2a75a;
-
-    /* The bubble is the one surface that must read as an incoming message, so it
-     * sits a step ABOVE the card rather than level with it. */
-    --v3-bubble-bg: #1d3157;
-    --v3-bubble-border: rgb(247 244 236 / 0.15);
-    --v3-bubble-shadow: 0 20px 48px -34px rgb(2 6 16 / 0.85);
-
-    --v3-bloom-warm: rgb(226 167 90 / 0.13);
-    --v3-bloom-cool: rgb(120 152 224 / 0.10);
-
-    /* Chip fill and edge both lift, because a navy chip on a navy ground has
-     * only its hairline to be found by. */
-    --v3-chip-bg: rgb(247 244 236 / 0.07);
-    --v3-chip-border: rgb(247 244 236 / 0.24);
-    --v3-chip-hover: rgb(247 244 236 / 0.13);
-
-    --v3-caret: #e2a75a;
-
-    /* A halo that is a warmth on cream is a neon tube on navy: same device,
-     * roughly half the alpha, and the lighter dark-mode amber. */
-    --v3-accent-stroke: rgb(226 167 90 / 0.28);
-    --v3-accent-glow-near: rgb(226 167 90 / 0.15);
-    --v3-accent-glow-far: rgb(226 167 90 / 0.07);
-
-    --v3-edge: rgb(247 244 236 / 0.22);
-
-    /* The shore band stops being a card: its night and the page's are the same
-     * navy, so the 28px corners dissolve and the art runs into the ground it
-     * was painted for. */
-    --v3-shore-ground: #0c1a36;
-    --v3-shore-scrim: 12 26 54;
-  }
-
-  /* With the wash held down to 0.08 so the big surfaces stay navy, the hairline
-   * is what actually carries amber and what gives a pill or a panel its edge.
-   * Inset, so gaining it costs no layout. */
-  .v3-theme .pill-apricot,
-  .v3-theme .pill-eyebrow,
-  .v3-theme .panel-apricot-tint {
-    box-shadow: inset 0 0 0 1px rgb(226 167 90 / 0.30);
-  }
-}
-
-/* The theme wrapper paints its own ground — <html> is outside it and stays on
- * the site's light-only canvas. */
-.v3-theme {
-  background: var(--color-linen);
-  color: var(--color-spruce);
-  min-height: 100vh;
-}
+ * There is no landing-only theme any more. Every token these classes read is a
+ * light-dark() pair at :root (top of this file), so the hero, the chips and the
+ * shore respond to the same switch as every subpage. The `v3-` prefix is now
+ * only what it says: a namespace, keeping the landing's kit from colliding with
+ * the subpage design system. */
 
 /* The serif accent word, with a warm bloom behind it. Two layers on ONE element
  * — an amber hairline stroke on the glyph edges plus an amber halo — rather than
@@ -1162,7 +1112,7 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   background: linear-gradient(
     180deg,
     var(--v3-shore-ground) 0%,
-    rgb(var(--v3-shore-scrim) / 0.55) 30%,
+    color-mix(in srgb, var(--v3-shore-scrim) 55%, transparent) 30%,
     transparent 62%
   );
 }
@@ -1181,11 +1131,11 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v3-shore-frame::after {
     background: linear-gradient(
       90deg,
-      rgb(var(--v3-shore-scrim) / 0.10) 0%,
-      rgb(var(--v3-shore-scrim) / 0.20) 32%,
-      rgb(var(--v3-shore-scrim) / 0.64) 50%,
-      rgb(var(--v3-shore-scrim) / 0.82) 68%,
-      rgb(var(--v3-shore-scrim) / 0.86) 100%
+      color-mix(in srgb, var(--v3-shore-scrim) 10%, transparent) 0%,
+      color-mix(in srgb, var(--v3-shore-scrim) 20%, transparent) 32%,
+      color-mix(in srgb, var(--v3-shore-scrim) 64%, transparent) 50%,
+      color-mix(in srgb, var(--v3-shore-scrim) 82%, transparent) 68%,
+      color-mix(in srgb, var(--v3-shore-scrim) 86%, transparent) 100%
     );
   }
 }
@@ -1237,6 +1187,144 @@ html, body, .panel-oat, .panel-sky-tint, .panel-apricot-tint, .panel-sage-tint, 
   .v3-chip { transition: none; }
   .v3-btn-shore { transition: none; }
   .v3-btn-shore:hover { transform: none; }
+}
+
+}
+@layer components {
+
+/* ══ Shared chrome — one header and one footer, every page ═══════════════ *
+ * The header is glass: a translucent wash of the page ground with a short
+ * blur behind it, an inset highlight along the top inside edge, and a hairline
+ * drawn as a masked gradient RING rather than a border, so it can be bright
+ * where the light would catch it and fade to nothing where it would not. The
+ * mask trick is the same one .v3-edge-card uses — paint a 1px padding ring and
+ * XOR out the interior, leaving the card's own surface untouched.
+ *
+ * The alphas are tuned per theme in --glass-* at the top of this file: on the
+ * warm page the ring is nearly all bottom edge (a white highlight over cream is
+ * invisible, and inventing contrast for it would just draw a grey box); on the
+ * navy ground the top edge is the whole point. */
+
+.site-glass {
+  position: relative;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(4px) saturate(1.4);
+  backdrop-filter: blur(4px) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.site-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--glass-edge-top), var(--glass-edge-bottom));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* A nav link in the bar: quiet until it is wanted. */
+.chrome-link {
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-slate-green);
+  text-decoration: none;
+  transition: color 200ms var(--ease-breathe);
+}
+.chrome-link:hover { color: var(--color-spruce); }
+.chrome-link:focus-visible {
+  outline: 2px solid var(--color-spruce);
+  outline-offset: 4px;
+}
+
+/* ── Theme controls ──────────────────────────────────────────────────────── *
+ * Two surfaces on the same store: an icon that cycles in the header, and the
+ * named three-way in the footer for a reader who wants to see the options.
+ *
+ * The icon pair is chosen by CSS, not by React state, so the button is already
+ * correct in the first painted frame — before hydration, and with JavaScript
+ * off. `data-theme` is only ever written for an explicit choice, so the media
+ * query below is what "system" resolves through. */
+
+.theme-icon-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-icon-light { display: none; }
+  :root:not([data-theme="light"]) .theme-icon-dark { display: block; }
+}
+:root[data-theme="light"] .theme-icon-light { display: block; }
+:root[data-theme="light"] .theme-icon-dark { display: none; }
+:root[data-theme="dark"] .theme-icon-light { display: none; }
+:root[data-theme="dark"] .theme-icon-dark { display: block; }
+
+/* The bar's icon buttons — the theme cycle and the hamburger. 44px square, the
+ * touch target, with the glyph sized well inside it. */
+.chrome-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-slate-green);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 200ms var(--ease-breathe), color 200ms var(--ease-breathe);
+}
+.chrome-icon-btn:hover { background: var(--color-hair); color: var(--color-spruce); }
+.chrome-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-linen), 0 0 0 4px var(--color-apricot-deep);
+}
+
+/* A <fieldset>, which is what a labelled group of controls is — so its UA
+ * block/min-content sizing has to be overridden back to a pill. */
+.theme-choice {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  min-inline-size: 0;
+  border-radius: var(--r-full);
+  border: 1px solid var(--color-rule);
+  background: var(--color-oat);
+}
+
+.theme-choice-option {
+  min-height: 34px;
+  padding: 0.25rem 0.7rem;
+  border: 0;
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--color-slate-green);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 200ms var(--ease-breathe), color 200ms var(--ease-breathe);
+}
+.theme-choice-option:hover { color: var(--color-spruce); }
+.theme-choice-option[aria-pressed="true"] {
+  background: var(--color-navy);
+  color: var(--color-cream);
+}
+.theme-choice-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-oat), 0 0 0 4px var(--color-apricot-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chrome-link,
+  .chrome-icon-btn,
+  .theme-choice-option { transition: none; }
 }
 
 }
