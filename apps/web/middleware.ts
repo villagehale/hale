@@ -66,12 +66,20 @@ export default auth((req) => {
   }
 
   // VIL-244 · M9 (D4/D20): under the receipts-room IA the daily feed is DEMOTED and the
-  // week view is the landing surface. The forward lives HERE rather than in the page,
-  // because a page-level `redirect()` under a streaming `force-dynamic` layout resolves
-  // as a mid-stream client navigation (200 + a soft push), not a redirect the browser
-  // or a link-checker can see. The route itself is untouched — deleting it is a later PR.
+  // landing surface is APPROVALS — the receipts room itself. It used to forward to the
+  // week view, but #455 demoted `/plan` out of the nav too, so the landing was a surface
+  // the sidebar no longer lists: reachable, but incoherent as the first thing a parent
+  // sees. Approvals is the one stop that is both the nav's first entry and the room the
+  // whole IA is named for. The forward lives HERE rather than in the page, because a
+  // page-level `redirect()` under a streaming `force-dynamic` layout resolves as a
+  // mid-stream client navigation (200 + a soft push), not a redirect the browser or a
+  // link-checker can see. The route itself is untouched — deleting it is a later PR.
+  //
+  // Every post-auth target elsewhere stays `/home` on purpose: this line is the single
+  // flag-conditional hinge, so with the flag OFF `/home` remains the real daily feed and
+  // the real landing. Retargeting those call sites would break the flag-off path.
   if (receiptsIaEnabled() && (pathname === '/home' || pathname.startsWith('/home/'))) {
-    return NextResponse.redirect(new URL('/plan', req.nextUrl), 302);
+    return NextResponse.redirect(new URL('/approvals', req.nextUrl), 302);
   }
 
   if (!authConfigured()) {
