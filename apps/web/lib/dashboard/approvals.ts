@@ -1,5 +1,6 @@
 import { formatDateTime } from '~/lib/format/datetime';
 import { actionTypeLabel } from '~/lib/format/labels';
+import { type ActionReview, type ReviewFacts, toActionReview } from './action-review';
 import { TEEN_REDACTED_PLACEHOLDER } from './mappers';
 
 /**
@@ -154,6 +155,38 @@ function instantLabel(iso: string, timeZone: string): string | null {
  * never asked to decide on invisible content: they can request time-limited access. */
 const TEEN_REQUEST_ACCESS_SUMMARY =
   'content is private — request your teen’s okay to see it before deciding';
+
+/**
+ * A draft in the LIVE queue, which carries its provenance as well as its content:
+ * the reviewer's recorded note, the checks it invoked, and where the draft has got
+ * to. History rows deliberately don't extend this — a settled action's card offers a
+ * reversal, not a decision, so it has no use for the reasoning behind a "yes" the
+ * parent already gave.
+ */
+export interface PendingApprovalView extends ApprovalView {
+  review: ActionReview;
+}
+
+/** The live queue's view shape: the shared card fields plus its provenance. */
+export function toPendingApprovalView(
+  row: PendingApprovalRow,
+  facts: Omit<ReviewFacts, 'reviewerVerdict' | 'draftedAt' | 'teenRedacted'>,
+  timeZone: string,
+): PendingApprovalView {
+  const base = toApprovalView(row, timeZone);
+  return {
+    ...base,
+    review: toActionReview(
+      {
+        ...facts,
+        reviewerVerdict: row.reviewerVerdict,
+        draftedAt: row.draftedAt,
+        teenRedacted: base.teenRedacted,
+      },
+      timeZone,
+    ),
+  };
+}
 
 export function toApprovalView(row: PendingApprovalRow, timeZone: string): ApprovalView {
   const summary = VERDICT_SUMMARY[row.reviewerVerdict] ?? 'awaiting your approval';
