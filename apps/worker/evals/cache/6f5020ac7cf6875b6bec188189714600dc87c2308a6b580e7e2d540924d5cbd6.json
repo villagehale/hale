@@ -1,0 +1,6 @@
+{
+  "parsed": {
+    "score": 1,
+    "reason": "The answer contains multiple automatic-fail issues: (1) It names \"the app\" as a thing that exists, which is the exact fabrication watchFor warns against - Hale is a number you text, not an app-based service; (2) It invents a specific price ($9 a month) with no authority to do so; (3) It claims \"I'll keep an eye on all of that for you\" which is a false claim of already having started when no consent has been given yet; (4) It uses greeting filler (\"Great question!\") which scores low. The parent asked a direct question about whether they need to download something, and instead of answering \"no,\" the response pivots into selling features that don't exist and making promises that haven't been agreed to."
+  }
+}
