@@ -45,11 +45,22 @@ export function buildSmsBody(source: string | null): string {
 }
 
 /**
- * The composer deep link. `?&body=` rather than `?body=` is the cross-platform
- * form: iOS wants the body as a second parameter, Android reads either.
+ * The composer deep link for a message we hand the parent verbatim. `?&body=`
+ * rather than `?body=` is the cross-platform form: iOS wants the body as a
+ * second parameter, Android reads either.
+ *
+ * Split from {@link buildSmsHref} for the landing's reply chips, which pre-write
+ * the parent's own question ("When should Mia start solids?") rather than the
+ * bare greeting. The body is still the parent's to edit or delete before they
+ * send it — Hale never texts first.
  */
+export function buildSmsHrefForBody(number: string, body: string): string {
+  return `sms:${number}?&body=${encodeURIComponent(body)}`;
+}
+
+/** The composer deep link for the QR/entry greeting, venue token included. */
 export function buildSmsHref(number: string, source: string | null): string {
-  return `sms:${number}?&body=${encodeURIComponent(buildSmsBody(source))}`;
+  return buildSmsHrefForBody(number, buildSmsBody(source));
 }
 
 /**
