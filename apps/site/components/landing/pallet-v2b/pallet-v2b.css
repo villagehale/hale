@@ -135,13 +135,34 @@
   color-scheme: light;
 }
 
-/* Shorter laptops: the fan and the ladder both shrink from one knob rather than
- * from a second geometry table. */
+/* The document background has to carry the theme too, not just this wrapper: the
+ * header is translucent and blurred, so it composites against the ROOT, and
+ * globals.css pins that to the light page (the marketing site is light-only).
+ * Without this the dark header showed a white band across its top.
+ *
+ * `!important` is load-bearing, not laziness. globals.css sets `html {
+ * background }` UNLAYERED, and an unlayered declaration beats every layered one
+ * regardless of specificity — the same layer-order rule SITE-01 exists to
+ * enforce, running the other way. Importance is what reverses it, and moving
+ * this rule out of the layer instead would break that gate. Scoped to pages
+ * that actually contain the variant, so no other route is touched. */
+html:has(.v2b) { background: #fdfcfa !important; }
+@media (prefers-color-scheme: dark) {
+  html:has(.v2b) { background: #0f0e0a !important; color-scheme: dark; }
+}
+html[data-theme="dark"]:has(.v2b) { background: #0f0e0a !important; color-scheme: dark; }
+html[data-theme="light"]:has(.v2b) { background: #fdfcfa !important; color-scheme: light; }
+
+/* Shorter viewports: the fan and the ladder both shrink from one knob rather
+ * than from a second geometry table. */
+@media (max-height: 920px) {
+  .v2b { --v2b-deck-scale: 0.9; }
+}
 @media (max-height: 800px) {
-  .v2b { --v2b-deck-scale: 0.84; }
+  .v2b { --v2b-deck-scale: 0.82; }
 }
 @media (max-height: 680px) {
-  .v2b { --v2b-deck-scale: 0.74; }
+  .v2b { --v2b-deck-scale: 0.72; }
 }
 
 .v2b :focus-visible {
@@ -268,18 +289,20 @@
  * number has to travel to the phone. It travels as a QR code or through the
  * clipboard — never as digits on the page. */
 
+/* Lives in the hero's right column under the bubbles, not under the primary
+ * CTA: the fan owns the bottom third of the pin, and anything stacked below the
+ * left column's button lands behind it. */
 .v2b-qr {
   display: none;
   align-items: center;
-  gap: 1.1rem;
-  margin-top: 1.9rem;
-  padding: 0.9rem 1.1rem;
+  gap: 0.9rem;
+  margin-top: 1.5rem;
+  padding: 0.8rem 0.95rem;
   border: 1px solid var(--v2b-rule);
   border-radius: 18px;
   background: var(--v2b-surface);
-  max-width: 25rem;
 }
-@media (min-width: 720px) { .v2b-qr { display: flex; } }
+@media (min-width: 900px) { .v2b-qr { display: flex; } }
 
 /* The code needs its own white quiet zone in both themes — the module path is
  * drawn in the site's fixed navy. */
@@ -369,31 +392,34 @@
   .v2b-hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); align-items: start; }
 }
 
+/* The hero column has to finish above the fan, which is anchored to the middle
+ * of the pin — so the type scale here is bounded by the layout, not by taste
+ * alone. */
 .v2b-h1 {
-  margin: 0.9rem 0 0;
+  margin: 0.8rem 0 0;
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: -0.025em;
   line-height: 1.02;
   color: var(--v2b-ink);
   text-wrap: balance;
-  font-size: clamp(2.35rem, 6.4vw, 4.5rem);
+  font-size: clamp(2.25rem, 5.4vw, 4rem);
 }
 
 .v2b-sub {
-  margin: 1.35rem 0 0;
-  max-width: 32rem;
-  font-size: clamp(1rem, 1.4vw, 1.15rem);
-  line-height: 1.6;
+  margin: 1.1rem 0 0;
+  max-width: 30rem;
+  font-size: clamp(0.98rem, 1.3vw, 1.1rem);
+  line-height: 1.55;
   color: var(--v2b-dim);
 }
 
 .v2b-ctarow {
-  margin-top: 1.9rem;
+  margin-top: 1.5rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.85rem 1.1rem;
+  gap: 0.75rem 1rem;
 }
 
 /* ── Word-by-word headline reveal ────────────────────────────────────────── */
@@ -475,6 +501,10 @@
   gap: 0.4rem;
   padding: 0.48rem 0.9rem;
   border-radius: 999px;
+  /* The navy wash is only 1.4:1 against the dark ground, so the pill shape
+   * disappeared even though its cream label still read. A hairline in the ink
+   * colour restores the chip in dark and firms it up in light. */
+  border: 1px solid color-mix(in srgb, var(--v2b-ink) 14%, transparent);
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--v2b-ink);
@@ -526,7 +556,10 @@
   animation: v2b-card-reveal 620ms var(--v2b-smooth) var(--v2b-reveal-delay, 0ms) both;
 }
 
-.v2b-deck[data-intro] .v2b-card[data-lead="true"] {
+/* The boost lasts only as long as the entrance. Left on `[data-intro]` it also
+ * matched `done`, which kept the lead card pinned above its neighbours in the
+ * cascade and buried the calendar card's tag. */
+.v2b-deck[data-intro="running"] .v2b-card[data-lead="true"] {
   z-index: 20;
   animation: v2b-lead-in 2920ms linear both;
 }
@@ -749,7 +782,7 @@
   max-width: 1280px;
   margin-inline: auto;
 }
-.v2b-s2-copy { max-width: 30rem; }
+.v2b-s2-copy { max-width: 28rem; }
 
 .v2b-h2 {
   margin: 0.9rem 0 0;
@@ -899,12 +932,30 @@
   .v2b { --v2b-card-w: 214px; --v2b-card-min-h: 236px; }
   .v2b-track { height: 380vh; }
   .v2b-hero { padding-top: clamp(4.5rem, 10vh, 6rem); }
-  .v2b-bubbles { max-width: 100%; }
   .v2b-stackcap { margin-top: 8.5rem; }
   .v2b-s2-copy { max-width: 100%; }
   /* The mobile deck rides low so the section-two copy owns the upper half. */
   .v2b-layer { align-items: flex-start; }
   .v2b-s2 { padding-top: clamp(4.5rem, 11vh, 6rem); }
+
+  /* The hero's three teaser bubbles are the same conversation device the seven
+   * cards already are. On a phone there is one column, so they landed directly
+   * behind the peek stack — two versions of the same idea, overlapping. The
+   * cards win: they carry all seven moments, not one. */
+  .v2b-bubbles { display: none; }
+
+  /* Clear the sticky CTA so the last footer link is never under it. */
+  .v2b-footer { padding-bottom: 6rem; }
+
+  /* Section two keeps only its argument inside the pin. Its buttons and tag
+   * bubbles would push the copy down into the deck's only space — and both are
+   * already reachable: the CTA from the sticky bar that is on screen the whole
+   * time, the two tag facts from the coverage section directly below. */
+  .v2b-s2 { padding-top: 5rem; }
+  .v2b-s2 .v2b-ctarow,
+  .v2b-s2 .v2b-tags { display: none; }
+  .v2b-h2 { font-size: clamp(1.7rem, 8vw, 2.4rem); }
+  .v2b-s2 .v2b-body { font-size: 0.95rem; }
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────── *
@@ -937,10 +988,12 @@
   scale: 1;
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  /* Four across at most, so seven cards read as 4 + 3 rather than stranding one
+   * or two on an orphan row. */
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   margin-top: clamp(2.5rem, 6vw, 4rem);
   padding: 0 clamp(1.25rem, 5vw, 5rem);
-  max-width: 1280px;
+  max-width: 1180px;
   margin-inline: auto;
 }
 .v2b[data-static="true"] .v2b-card {

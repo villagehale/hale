@@ -145,6 +145,16 @@ describe('v2b — the choreography', () => {
     expect(new Set(xs).size).toBe(MOMENTS.length);
   });
 
+  it('keeps the mobile cascade below centre, clear of the section-two copy', () => {
+    // One column cannot hold the copy and the deck side by side, so the deck's
+    // last beat has to stay in the half the copy does not use. A ladder that
+    // started above centre ran straight through the headline.
+    for (const moment of MOMENTS) {
+      const cascade = poseAt(trackForSlot(moment.slot, 'mobile'), 1);
+      expect(cascade.y, `slot ${moment.slot}`).toBeGreaterThan(0);
+    }
+  });
+
   it('fits inside a 390px viewport on mobile at every beat', () => {
     // Half the card plus its offset must clear half the narrowest phone we
     // support, or the page scrolls sideways — the failure the template's

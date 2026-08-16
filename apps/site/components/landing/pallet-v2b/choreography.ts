@@ -37,9 +37,9 @@ const FAN_SCALE = [0.88, 0.92, 0.96, 1, 0.96, 0.92, 0.88] as const;
  * becoming one thing tells) at a geometry that fits a 320px viewport, which a
  * swipe carousel could not: a carousel has no scroll-linked convergence.
  */
-const PEEK_X = [-42, -28, -14, 0, 14, 28, 42] as const;
+const PEEK_X = [-50, -33, -17, 0, 17, 33, 50] as const;
 const PEEK_Y = [26, 18, 10, 0, 10, 18, 26] as const;
-const PEEK_ROTATE = [-9, -6, -3, 0, 3, 6, 9] as const;
+const PEEK_ROTATE = [-11, -7.5, -4, 0, 4, 7.5, 11] as const;
 const PEEK_SCALE = [0.86, 0.9, 0.94, 1, 0.94, 0.9, 0.86] as const;
 
 /** Per-layout constants: fan spread, where the deck sits, and the ladder. */
@@ -49,7 +49,9 @@ const GEOMETRY = {
     fanOffsetY: 200,
     stack: { y: 40, scale: 1.02 },
     descend: { y: 200, scale: 0.9 },
-    cascade: { x0: 30, dx: 92, y0: -230, dy: 76, rotate0: -3, dRotate: 3, scale: 0.84 },
+    /* The ladder has to clear the copy column on its left and stay inside a
+     * 1200px viewport on its right — that pair, not taste, sets x0 and dx. */
+    cascade: { x0: -90, dx: 94, y0: -230, dy: 76, rotate0: -3, dRotate: 3, scale: 0.78 },
   },
   tablet: {
     fanScale: 0.62,
@@ -63,8 +65,14 @@ const GEOMETRY = {
     fanOffsetY: 210,
     stack: { y: 40, scale: 1 },
     descend: { y: 150, scale: 0.95 },
-    /** Vertical ladder: the diagonal becomes a slight left-right sway. */
-    cascade: { x0: -13, dx: 4.4, y0: -186, dy: 74, rotate0: -2.4, dRotate: 0.8, scale: 0.82 },
+    /**
+     * A shallow vertical spread in the lower half, NOT a full ladder. On one
+     * column the deck and the section-two copy cannot sit side by side, so a
+     * 74px-pitch ladder ran straight through the headline and body. This keeps
+     * the fourth beat — the stack opening back out — inside the space below the
+     * copy, which is the only space it has.
+     */
+    cascade: { x0: -20, dx: 6.7, y0: 30, dy: 38, rotate0: -2, dRotate: 0.7, scale: 0.78 },
   },
 } as const;
 

@@ -137,35 +137,14 @@ export function PalletLandingV2b({ smsNumber }: { smsNumber: string }) {
                     </p>
 
                     {smsHref ? (
-                      <>
-                        <div className="v2b-ctarow">
-                          <LandingCta
-                            event="landing_cta_text"
-                            href={smsHref}
-                            className="v2b-btn"
-                          >
-                            Text Hale
-                          </LandingCta>
-                          <p className="v2b-meta" style={{ maxWidth: '19rem' }}>
-                            Your message is already written. You send it; I never text first.
-                          </p>
-                        </div>
-
-                        <div className="v2b-qr">
-                          <span className="v2b-qr-tile">
-                            <QrCode value={smsHref} size={104} />
-                          </span>
-                          <div>
-                            <p className="v2b-meta" style={{ marginTop: 0 }}>
-                              On a laptop? Scan this with your phone’s camera, or take my number
-                              with you.
-                            </p>
-                            <div style={{ marginTop: '0.7rem' }}>
-                              <CopyNumberButton number={smsNumber} />
-                            </div>
-                          </div>
-                        </div>
-                      </>
+                      <div className="v2b-ctarow">
+                        <LandingCta event="landing_cta_text" href={smsHref} className="v2b-btn">
+                          Text Hale
+                        </LandingCta>
+                        <p className="v2b-meta" style={{ maxWidth: '18rem' }}>
+                          Your message is already written. You send it; I never text first.
+                        </p>
+                      </div>
                     ) : (
                       <div className="v2b-ctarow">
                         <a href={mailHref} className="v2b-btn">
@@ -179,24 +158,42 @@ export function PalletLandingV2b({ smsNumber }: { smsNumber: string }) {
                     )}
                   </div>
 
-                  <ol className="v2b-bubbles" aria-label="An example exchange">
-                    {HERO_BUBBLES.map((bubble, i) => (
-                      <li
-                        key={bubble.text}
-                        className={`v2b-bubble v2b-bubble-${bubble.from}`}
-                        style={
-                          {
-                            '--v2b-jelly-delay': `${900 + i * 620}ms`,
-                          } as React.CSSProperties
-                        }
-                      >
-                        <span className="sr-only">
-                          {bubble.from === 'parent' ? 'Parent: ' : 'Hale: '}
+                  <div>
+                    <ol className="v2b-bubbles" aria-label="An example exchange">
+                      {HERO_BUBBLES.map((bubble, i) => (
+                        <li
+                          key={bubble.text}
+                          className={`v2b-bubble v2b-bubble-${bubble.from}`}
+                          style={
+                            {
+                              '--v2b-jelly-delay': `${900 + i * 620}ms`,
+                            } as React.CSSProperties
+                          }
+                        >
+                          <span className="sr-only">
+                            {bubble.from === 'parent' ? 'Parent: ' : 'Hale: '}
+                          </span>
+                          {bubble.text}
+                        </li>
+                      ))}
+                    </ol>
+
+                    {smsHref && (
+                      <div className="v2b-qr">
+                        <span className="v2b-qr-tile">
+                          <QrCode value={smsHref} size={92} />
                         </span>
-                        {bubble.text}
-                      </li>
-                    ))}
-                  </ol>
+                        <div>
+                          <p className="v2b-meta" style={{ marginTop: 0 }}>
+                            On a laptop? Scan this with your phone’s camera.
+                          </p>
+                          <div style={{ marginTop: '0.6rem' }}>
+                            <CopyNumberButton number={smsNumber} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
