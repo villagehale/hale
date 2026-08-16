@@ -103,11 +103,14 @@ describe('shareReferralLinkTool', () => {
     expect(shared).toEqual([{ forward: GOOD_FORWARD, link: referralLink(FAMILY) }]);
   });
 
-  it('takes no phone number, by construction (CASL: Hale never texts the friend first)', () => {
+  it('drops a phone number handed to it (CASL: Hale never texts the friend first)', () => {
     const { tool } = build();
-    // The schema is the guarantee. A tool that accepted a number is one a model could be
-    // talked into using; there is no such argument, so there is no such turn.
-    expect(Object.keys(tool.inputSchema.shape)).toEqual(['forward']);
+    // The schema is the guarantee, and this is it exercised: a number does not reach the
+    // handler even when one is supplied. There is no argument through which this turn
+    // could acquire a recipient, so there is no turn on which it could send to one.
+    expect(tool.inputSchema.parse({ forward: GOOD_FORWARD, to: '+15195551234' })).toEqual({
+      forward: GOOD_FORWARD,
+    });
   });
 
   it('registers NOTHING when the line is refused, and says how to fix it', async () => {
