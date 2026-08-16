@@ -102,6 +102,16 @@ describe('TextEntry (number live)', () => {
     expect(qrPath(liveHtml)).not.toBe(qrPath(liveNoSourceHtml));
   });
 
+  it('draws the code on its own light plate, never in theme colours', () => {
+    // A QR is not decoration. Drawn in var(--color-spruce) it followed the site
+    // theme, and dark mode inverted it to cream modules on navy — a code many
+    // scanners refuse. Dark-on-light, whatever the page is doing around it.
+    const svg = /<svg[^>]*QR code[\s\S]*?<\/svg>/.exec(liveHtml)?.[0] ?? '';
+    expect(svg).toContain('fill="#ffffff"');
+    expect(svg).toContain('fill="#17294a"');
+    expect(svg, 'a themed fill would invert the code in dark').not.toContain('var(--');
+  });
+
   it('discloses the attribution token instead of smuggling it', () => {
     expect(liveHtml).toContain('(via earlyon-richmondhill)');
     expect(liveNoSourceHtml).not.toContain('(via');
