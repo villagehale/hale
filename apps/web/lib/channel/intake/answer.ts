@@ -118,8 +118,8 @@ const DISCLOSES_AI = /\b(ai|a\.i\.|bot|software|a program|not a (real )?(person|
 
 /**
  * Why a composed pair may not be sent. Mechanical, and each one is a different story in
- * the log: the transport gates are a model writing something a carrier mangles, and the
- * last three are a model writing something FALSE.
+ * the log: the first six are a model writing something a carrier mangles or a shape the
+ * turn cannot use, and the last four are a model writing something FALSE.
  */
 export type IntakeAnswerRefusal =
   | 'over_char_cap'
