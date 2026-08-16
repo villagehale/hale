@@ -3980,6 +3980,25 @@ html, body, .sidebar, .panel, .card, .field {
   line-height: 1.55;
 }
 
+/* The name, said out loud — the auth card's closing line. A hairline lifts it off the
+ * trust copy above so it reads as a signature rather than more fine print. Ink-3 holds
+ * AA on every surface this panel can take (7.88:1 canvas · 7.18:1 card).
+ *
+ * Layered, unlike its unlayered `.auth-*` siblings above: globals-layer.test.ts is a
+ * ratchet on that pre-existing debt, and new classes go inside `@layer components` so a
+ * utility can still win. Re-opening the layer here keeps the rule beside the surface it
+ * belongs to instead of exiling it to the layered block further down. */
+@layer components {
+  .auth-pronounce {
+    margin-top: 0.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-hairline);
+    color: var(--color-faded-sage);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+}
+
 /* Full-width "Continue with Google" — on the card surface with the brand G. */
 .auth-google {
   display: inline-flex;
