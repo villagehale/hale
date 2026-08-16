@@ -59,6 +59,10 @@
     "file": "infer-memory.md",
     "sha256": "e59396e8e8de4ccd095c5740ef8d79d911b9d21f77ad751cbdd97d3f37c1adb2"
   },
+  "intake-answer.md": {
+    "file": "intake-answer.md",
+    "sha256": "a0acae9c4b3fe96dcb935a5d2dc7da3b68e9fcacff93f2873f7fd1e465bb428f"
+  },
   "intake-extraction.md": {
     "file": "intake-extraction.md",
     "sha256": "720f3851d0d2e369beb3fdfea82f191c3e8aa5369fe9f1daee20effe2a554f5d"

@@ -1,6 +1,6 @@
 import { schema } from '@hale/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, makeFakeDb } from '~/lib/channel/intake/fakes';
+import { FakeExtractor, FakeIdentityAsk, FakeIntentReader, type FakeDb, fakeAckComposer, fakeRadar, fakeSilentAnswerComposer, makeFakeDb } from '~/lib/channel/intake/fakes';
 import { type IntakeDeps, handleInboundSms } from '~/lib/channel/intake/machine';
 import { FakeTransport } from '~/lib/channel/intake/transport';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
@@ -42,6 +42,7 @@ function harness(now: Date = NOW): { fake: FakeDb; transport: FakeTransport; dep
       ]),
       radar: fakeRadar,
       ackComposer: fakeAckComposer,
+      answerComposer: fakeSilentAnswerComposer,
       identityAsk: new FakeIdentityAsk(),
       limiter: new FakeRateLimiter(() => now.getTime()),
       now,

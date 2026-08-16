@@ -164,6 +164,17 @@ export function followUp(summary: string, missing: readonly IntakeGap[]): string
 }
 
 /**
+ * The consent question ITSELF, without the link that rides with it.
+ *
+ * Split out because a second reader now needs it: when a parent answers this with a
+ * question of their own, the answering turn is handed the pending ask so it can get
+ * back to it in different words (answer.ts). It is handed the QUESTION and not the
+ * whole message — a privacy URL inside a model's context is a URL a model can quote,
+ * and this stage is forbidden from writing links at all.
+ */
+export const WATCH_OFFER_ASK = 'Want me to keep an eye on all of this for you?';
+
+/**
  * The consent moment, and the one message in intake that carries a link.
  *
  * The privacy URL lives HERE rather than in the greeting because this is the turn where
@@ -172,7 +183,7 @@ export function followUp(summary: string, missing: readonly IntakeGap[]): string
  * to answer it three messages too early. Built from the {@link PRIVACY_URL} constant so a
  * policy move cannot leave a stale URL inside a consent record's own question.
  */
-export const WATCH_OFFER = `Want me to keep an eye on all of this for you? (how I handle your family's info: ${PRIVACY_URL})`;
+export const WATCH_OFFER = `${WATCH_OFFER_ASK} (how I handle your family's info: ${PRIVACY_URL})`;
 
 /**
  * The yes. Names the restraint (only when it matters) and keeps the CASL escape hatch

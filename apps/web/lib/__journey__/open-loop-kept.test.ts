@@ -6,6 +6,7 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
@@ -106,6 +107,7 @@ async function runIntakeRadar(): Promise<Intake> {
     resolveCenter: async () => null,
     discoveryTrigger: () => {},
     ackComposer: createIntakeAckComposer(null),
+    answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,

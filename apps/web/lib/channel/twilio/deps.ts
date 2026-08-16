@@ -8,6 +8,7 @@ import {
   CHANNEL_MESSAGE_RECEIVED_RETRY,
 } from '~/lib/channel/config';
 import { createIdentityAskVoice } from '~/lib/channel/identity/ask-voice';
+import { createIntakeAnswerComposer } from '~/lib/channel/intake/answer';
 import { createIntakeExtractor } from '~/lib/channel/intake/extract';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
 import { createReplyIntentReader } from '~/lib/channel/intake/intent';
@@ -51,6 +52,7 @@ export function buildIntakeDeps(): IntakeDeps {
     intentReader: createReplyIntentReader(client),
     radar: createRadarComposer({ database, weather: createOpenMeteoWeather(), client }),
     ackComposer: createIntakeAckComposer(client),
+    answerComposer: createIntakeAnswerComposer(client),
     identityAsk: createIdentityAskVoice(() => client),
     limiter: new PostgresRateLimiter(database),
   };

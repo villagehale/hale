@@ -9,6 +9,11 @@ import type {
   IntroVoice,
   IntroVoiceOutcome,
 } from '~/lib/village/intros/voice';
+import type {
+  IntakeAnswerComposer,
+  IntakeAnswerInput,
+  IntakeAnswerOutcome,
+} from './answer';
 import { followUp } from './copy';
 import type { IntakeCollected, IntakeExtractor } from './extract';
 import type { IntakeAck, IntakeAckComposer } from './intake-voice';
@@ -82,6 +87,34 @@ export const fakeAckComposer: IntakeAckComposer = {
     };
   },
 };
+
+/**
+ * An answer composer that always finds nothing to answer — the DETERMINISTIC outcome,
+ * which is the script every routing test that predates the escape is asserting against.
+ * A fake that composed a canned sentence would make every one of them assert on wording
+ * instead; what Hale actually says is the gates' job (answer.test.ts) and the eval's
+ * (rule #8).
+ */
+export const fakeSilentAnswerComposer: IntakeAnswerComposer = {
+  async compose(): Promise<IntakeAnswerOutcome> {
+    return { status: 'nothing_to_answer' };
+  },
+};
+
+/**
+ * A scripted answer composer, recording what it was HANDED — the assertion surface for
+ * rule #1: a test proves the postal code and the session state never reached the model
+ * by reading `calls`, not by reading the body.
+ */
+export class FakeAnswerComposer implements IntakeAnswerComposer {
+  readonly calls: IntakeAnswerInput[] = [];
+  constructor(private readonly outcome: IntakeAnswerOutcome) {}
+
+  async compose(input: IntakeAnswerInput): Promise<IntakeAnswerOutcome> {
+    this.calls.push(input);
+    return this.outcome;
+  }
+}
 
 /**
  * A scripted identity-ask composer. Its body is deliberately not a sentence — the machine

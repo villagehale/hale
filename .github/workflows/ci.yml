@@ -82,6 +82,9 @@ jobs:
       - name: Intake voice composer eval (cached-only)
         run: pnpm --filter @hale/worker eval:intake-voice
 
+      - name: Mid-signup answer composer eval (cached-only)
+        run: pnpm --filter @hale/worker eval:intake-answer
+
       - name: Off-domain capability lane eval (cached-only)
         run: pnpm --filter @hale/worker eval:inbound-lane
 

@@ -21,6 +21,7 @@ import {
   FakeExtractor,
   FakeIdentityAsk,
   FakeIntentReader,
+  fakeSilentAnswerComposer,
   makeFakeDb,
 } from '~/lib/channel/intake/fakes';
 import { createIntakeAckComposer } from '~/lib/channel/intake/intake-voice';
@@ -462,6 +463,7 @@ async function runToddlerJourney(): Promise<Journey> {
     // fallback path (`null` client renders the deterministic follow-up and names the
     // reason), so the journey reads the words a family actually gets when voice is off.
     ackComposer: createIntakeAckComposer(null),
+    answerComposer: fakeSilentAnswerComposer,
     identityAsk: new FakeIdentityAsk(),
     limiter: new FakeRateLimiter(() => INTAKE_AT.getTime()),
     now: INTAKE_AT,

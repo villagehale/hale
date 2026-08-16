@@ -28,10 +28,13 @@ import { optOutGuestRemindersOnStop } from '~/lib/party/store';
 import type { IdentityAskVoice } from '~/lib/channel/identity/ask-voice';
 import { PARENT_NAME_ASK_TEMPLATE_KEY } from '~/lib/channel/identity/asked';
 import { parentNeedsName } from '~/lib/channel/identity/name-reply';
+import { SAFETY_REPLY } from '~/lib/channel/off-domain/copy';
+import type { IntakeAnswerComposer } from './answer';
 import { findRevokedChannelOwner, reenrolOnStart } from './channel-state';
 import {
   AMBIGUOUS_CLARIFY,
   ASSENT_ACK,
+  COLD_START_ASK,
   DECLINE_ACK,
   HELP_REPLY,
   type IntakeGap,
@@ -39,6 +42,7 @@ import {
   START_ACK,
   STOP_ACK,
   WATCH_OFFER,
+  WATCH_OFFER_ASK,
   detailsBlocked,
   greeting,
   sourceCodeFromBody,
@@ -92,6 +96,11 @@ export interface IntakeDeps {
    * (rule #11): it owns its own deterministic fallback and always returns a whole
    * message, so "no composer" would be a silently colder intake with nothing logged. */
   ackComposer: IntakeAckComposer;
+  /** Answers a question the parent asked INSTEAD of answering intake's (answer.ts).
+   * Required, never nullable (rule #11): withholding it would restore the exact bug it
+   * closed — an off-script question silently becoming a re-ask — and its own "there was
+   * nothing to answer" is a named outcome, so absence has no meaning left to carry. */
+  answerComposer: IntakeAnswerComposer;
   /** Writes the question on the end of the consent acknowledgment — what to call this
    * parent. Required, never nullable (rule #11): withholding it would be a silently
    * nameless family, which is the exact hole this closed. Its own DEFERRAL is the named
@@ -132,6 +141,16 @@ export type IntakeOutcome =
    * states an operator reading this outcome needs to be able to tell from a send. */
   | { status: 'watch_recorded'; intent: ReplyIntent; granted: boolean; nameAsked: boolean }
   | { status: 'clarified' }
+  /**
+   * The parent asked Hale something instead of answering it, and Hale answered them —
+   * then asked its own question again in different words. The step DOES NOT MOVE: no
+   * consent is read out of a question, no follow-up budget is spent on one, and the
+   * next inbound is handled by the same branch as if this turn had not happened.
+   *
+   * `source` separates the two very different messages that can go out: `composed` is
+   * the answer, `safety` is the fixed 811/911 line with no signup question after it.
+   */
+  | { status: 'question_answered'; source: 'composed' | 'safety' }
   | { status: 'stopped' }
   | { status: 'helped' }
   | { status: 'restarted' }
@@ -337,6 +356,35 @@ async function writeChannelMessage(
   return id;
 }
 
+/**
+ * THE ESCAPE FROM THE SCRIPT — the one shape both wobble seams share.
+ *
+ * Intake asks a question and then reads the next inbound as an answer to it. Every text
+ * that is not one used to become a RE-ASK: a question mid-consent came back `ambiguous`
+ * and Hale replied with its own question again (live, 2026-08-12, "Does Sebastian needs
+ * eye exam?"). The parent was never answered.
+ *
+ * So before either seam sends its script reply, the parent's words get one chance to be
+ * a question. When they are, the message that goes out is the ANSWER plus Hale's own
+ * question again in different words — one text, the thread intact.
+ *
+ * Null is "there was nothing to answer" and the caller sends what it always sent. It is
+ * not a silent absence: the composer names and logs every degraded path itself
+ * (answer.ts), and what a caller could do differently with the distinction is nothing —
+ * its own reply is written for exactly this turn.
+ */
+async function offScriptReply(
+  args: { parentWords: string; pendingAsk: string; children: readonly ExtractedChild[] },
+  deps: IntakeDeps,
+): Promise<{ body: string; source: 'composed' | 'safety' } | null> {
+  const outcome = await deps.answerComposer.compose(args);
+  // The fixed line goes out ALONE. A parent standing over a hurt child should be
+  // dialling, not choosing whether Hale may watch their registration dates.
+  if (outcome.status === 'safety') return { body: SAFETY_REPLY, source: 'safety' };
+  if (outcome.status !== 'answered') return null;
+  return { body: outcome.body, source: 'composed' };
+}
+
 // ── branches ─────────────────────────────────────────────────────────────────
 
 async function greet(
@@ -386,9 +434,22 @@ async function handleDetails(
 
   const base: SessionPatch = { collected, lastProviderId: inbound.providerId };
 
-  // Nothing readable came back. The honest response is to say what Hale is for, not to
-  // ask the same question again in different words.
+  // Nothing readable came back. Before falling back to what Hale is for, find out
+  // whether they asked something — a stranger's second text is as likely to be "who is
+  // this?" as it is to be two names and two ages, and the capability line answers
+  // neither of them.
   if (collected.children.length === 0) {
+    const offScript = await offScriptReply(
+      { parentWords: inbound.body, pendingAsk: COLD_START_ASK, children: collected.children },
+      deps,
+    );
+    if (offScript) {
+      ({ transcript } = await sendAndRecord(database, ctx, offScript.body, deps, transcript));
+      // The step does not move: `state` and `followUpCount` are untouched, so the ask
+      // is still outstanding and the one follow-up is still unspent.
+      await saveSession(database, session, { ...base, transcript }, now);
+      return { status: 'question_answered', source: offScript.source };
+    }
     ({ transcript } = await sendAndRecord(database, ctx, HELP_REPLY, deps, transcript));
     await saveSession(database, session, { ...base, transcript }, now);
     return { status: 'helped' };
@@ -657,6 +718,29 @@ async function handleWatchReply(
   const recorded = await recordInbound(database, ctx, inbound, session.transcript);
 
   const reading = await deps.intentReader.read({ question: WATCH_OFFER, reply: inbound.body });
+
+  // A PARENT WHO ASKED SOMETHING IS NOT A PARENT GIVING A WOBBLY ANSWER, and until this
+  // branch existed the two were the same `ambiguous`. Checked before the clarify budget
+  // and before the conservative no, because a question must cost neither: asking one is
+  // not a refusal to decide, and recording it as a decline would be Hale reading consent
+  // out of a sentence that was never about consent (rule #4).
+  if (reading.intent === 'ambiguous') {
+    const offScript = await offScriptReply(
+      {
+        parentWords: inbound.body,
+        pendingAsk: WATCH_OFFER_ASK,
+        children: session.collected.children,
+      },
+      deps,
+    );
+    if (offScript) {
+      await sendAndRecord(database, ctx, offScript.body, deps, recorded.transcript);
+      // `state` and `clarifyCount` are untouched: the consent ask is still outstanding
+      // and the one clarification is still unspent, so the next inbound lands here again.
+      await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
+      return { status: 'question_answered', source: offScript.source };
+    }
+  }
 
   // One gentle clarification, then Hale decides conservatively. Asking twice about
   // the same yes/no is pestering; guessing "yes" would manufacture consent.
