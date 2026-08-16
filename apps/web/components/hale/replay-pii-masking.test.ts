@@ -4,11 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolCard } from '@hale/agent';
 import type { LogsPage } from '~/lib/companion/logs-view';
-import type { ApprovalView } from '~/lib/dashboard/approvals';
+import type { ActionReview } from '~/lib/dashboard/action-review';
+import type { PendingApprovalView } from '~/lib/dashboard/approvals';
 import type { HistoryView } from '~/lib/dashboard/history';
 import type { TrailView } from '~/lib/dashboard/mappers';
 import type { AuthoredPlanView } from '~/lib/plan/authored';
 import { AccountMenuView } from './account-menu-view';
+import { ReviewNote } from './action-progress';
 import { ApprovalCard, ReversibleCard } from './approval-card';
 import { AttachmentChip } from './ask-hale-thread';
 import { ChildSwitcherView } from './child-switcher-view';
@@ -168,6 +170,8 @@ describe('history timeline masks each entry summary + child name', () => {
       link: '/approvals',
       childLabel: 'Maya',
       teenRedacted: false,
+      actionId: null,
+      reversalKept: false,
     },
   ];
 
@@ -184,6 +188,62 @@ describe('history timeline masks each entry summary + child name', () => {
     // The non-PII frame — day heading, the deep link — survives the strip.
     expect(residue).toContain('Thursday, Jun 11');
     expect(residue).toContain('view this draft');
+  });
+});
+
+/**
+ * W5 — a lifecycle folds several audit rows into one `<details>`, so BOTH the
+ * summary (the step the action got to) and the collapsed steps carry sentences a
+ * replay must not read. A closed disclosure is no protection: rrweb records the DOM,
+ * not the viewport, so the hidden steps are in the recording exactly as the open ones
+ * would be.
+ */
+describe('a trail trace masks the folded step sentences as well as its summary', () => {
+  const ACTION_ID = 'ac710000-0000-4000-8000-000000000009';
+  const DRAFTED = 'drafted Maya’s swim lesson for your calendar';
+  const EXECUTED = 'put Maya’s swim lesson on your calendar';
+
+  const step = (id: string, time: string, summary: string): TrailView => ({
+    id,
+    time,
+    date: 'Thursday, Jun 11',
+    dayKey: '2026-06-11',
+    tone: 'done',
+    actor: 'hale',
+    summary,
+    noun: 'draft',
+    link: '/approvals',
+    childLabel: 'Maya',
+    teenRedacted: false,
+    actionId: ACTION_ID,
+    reversalKept: false,
+  });
+
+  const html = renderToStaticMarkup(
+    h(TrailTimeline, { entries: [step('e2', '16:31', EXECUTED), step('e1', '16:02', DRAFTED)] }),
+  );
+
+  it('folds the two rows into one anchored disclosure (guards against a vacuous pass)', () => {
+    expect(html).toContain(`id="${ACTION_ID}"`);
+    expect(html).toContain('2 steps on this one');
+    // Both sentences render — the summary's, and the one only the open trace shows.
+    expect(html).toContain(EXECUTED);
+    expect(html).toContain(DRAFTED);
+  });
+
+  it('leaves neither sentence, nor the child name, outside a masked subtree', () => {
+    const residue = visibleText(stripMaskedSubtrees(html));
+    expect(residue).not.toContain(EXECUTED);
+    expect(residue).not.toContain(DRAFTED);
+    expect(residue).not.toContain('Maya');
+    // The non-PII frame survives: the day heading and the step count.
+    expect(residue).toContain('Thursday, Jun 11');
+    expect(residue).toContain('2 steps on this one');
+  });
+
+  it('keeps every step individually anchored, so an M9 deep link still resolves', () => {
+    expect(html).toContain('id="e1"');
+    expect(html).toContain('id="e2"');
   });
 });
 
@@ -376,8 +436,24 @@ describe('the approvals row body is masked for replay', () => {
   const PREVIEW = 'Reply to Dr. Chen — confirm Maya’s Tuesday 3pm';
   const SUMMARY = 'Hale matched this to Maya’s 18-month checkup';
   const PAYLOAD_BODY = 'Hi Dr. Chen — Tuesday at 3 works for Maya. Thank you!';
+  /** W5: the reviewer's own sentence is prose ABOUT the family, written by a model
+   * that can and does name the child — so it is PII like any other card body. */
+  const REVIEWER_NOTE = 'Dr. Chen is already on the recipient list for Maya’s care.';
 
-  const approval: ApprovalView = {
+  const REVIEW: ActionReview = {
+    note: REVIEWER_NOTE,
+    checks: [
+      { label: 'known recipient', ok: true, capUsd: null },
+      { label: 'over your cap', ok: false, capUsd: 50 },
+    ],
+    steps: [
+      { key: 'drafted', label: 'drafted', at: 'today at 8:04 am', tone: 'done' },
+      { key: 'reviewed', label: 'verified', at: 'today at 8:05 am', tone: 'done' },
+      { key: 'open', label: 'waiting on your yes', at: null, tone: 'awaiting' },
+    ],
+  };
+
+  const approval: PendingApprovalView = {
     id: 'a1',
     actionType: 'reply_to_email',
     summary: SUMMARY,
@@ -389,22 +465,44 @@ describe('the approvals row body is masked for replay', () => {
     draftedAt: 'today at 8:04 am',
     teenRedacted: false,
     teenUnlockable: false,
+    review: REVIEW,
   };
 
-  it('leaves no preview, verdict summary, child name or drafted payload outside a masked subtree', () => {
+  it('leaves no preview, verdict summary, child name, drafted payload or reviewer note outside a masked subtree', () => {
     const residue = visibleText(
       stripMaskedSubtrees(renderToStaticMarkup(h(ApprovalCard, { approval }))),
     );
-    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, 'Maya']) {
+    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, REVIEWER_NOTE, 'Maya']) {
       expect(residue, `${value} must not survive the mask`).not.toContain(value);
     }
   });
 
   it('is a real check — the same values ARE in the unmasked render', () => {
     const html = renderToStaticMarkup(h(ApprovalCard, { approval }));
-    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, 'Maya']) {
+    for (const value of [PREVIEW, SUMMARY, PAYLOAD_BODY, REVIEWER_NOTE, 'Maya']) {
       expect(html).toContain(value);
     }
+  });
+
+  /**
+   * Non-vacuity for the transparency block itself. The masking assertions above would
+   * pass trivially if the rail and the checks silently stopped rendering, so pin that
+   * they are on the card — including the spending cap, which is the one figure the
+   * chips carry and only on the branch that actually stores it.
+   *
+   * They sit INSIDE the card's `data-hale-pii` wrapper and are therefore masked in a
+   * replay too. That is deliberate: rule #1 is "default to most restrictive", and a
+   * rung label is not worth a second, narrower masking boundary to keep readable.
+   */
+  it('renders the rail, the checks and the stored cap', () => {
+    const html = renderToStaticMarkup(h(ApprovalCard, { approval }));
+    for (const value of ['drafted', 'verified', 'waiting on your yes', 'known recipient']) {
+      expect(html).toContain(value);
+    }
+    expect(html).toContain('over your cap');
+    expect(html).toContain('$50');
+    // The standalone "drafted <time>" line the rail replaced is gone, not doubled.
+    expect(html).not.toContain('drafted today at 8:04 am');
   });
 
   it('masks the needs-you branch too, where the summary rides the tone label', () => {
@@ -553,6 +651,8 @@ const FILE_NAME = 'Marisol-immunization-record.pdf';
 const AREA = 'Riverdale, Ontario';
 const PARENT = 'Priya Raman';
 const DRIVE_FILE = 'Custody-agreement-2026.pdf';
+const REVIEWER_RATIONALE = 'The swim school is already on Marisol’s recipient list.';
+const TRACE_STEP = 'put Marisol’s swim lesson on your calendar';
 
 const PLAN: AuthoredPlanView = {
   id: 'p1',
@@ -655,6 +755,49 @@ const SENTINEL_SURFACES: AttributeSurface[] = [
           onToggle: () => {},
           onSelect: () => {},
           onSignOut: () => {},
+        }),
+      ),
+  },
+  {
+    // W5 — the reviewer's rationale is model-written prose about this family, and it
+    // sits beside chips that are NOT PII, which is exactly the mix that has produced
+    // an aria-label leak twice before.
+    name: 'a reviewer note + its verification chips (approvals)',
+    sentinels: [REVIEWER_RATIONALE],
+    render: () =>
+      renderToStaticMarkup(
+        h(ReviewNote, {
+          review: {
+            note: REVIEWER_RATIONALE,
+            checks: [{ label: 'known recipient', ok: true, capUsd: null }],
+            steps: [],
+          },
+        }),
+      ),
+  },
+  {
+    // W5 — a folded lifecycle: the summary names the child, and so do the steps
+    // inside the closed disclosure, which a recording keeps all the same.
+    name: 'a trail trace (one action’s folded lifecycle)',
+    sentinels: [TRACE_STEP],
+    render: () =>
+      renderToStaticMarkup(
+        h(TrailTimeline, {
+          entries: [0, 1].map((n) => ({
+            id: `t${n}`,
+            time: `1${n}:00`,
+            date: 'Thursday, Jun 11',
+            dayKey: '2026-06-11',
+            tone: 'done' as const,
+            actor: 'hale' as const,
+            summary: TRACE_STEP,
+            noun: 'draft',
+            link: '/approvals',
+            childLabel: CHILD,
+            teenRedacted: false,
+            actionId: 'ac710000-0000-4000-8000-00000000000a',
+            reversalKept: n === 0,
+          })),
         }),
       ),
   },

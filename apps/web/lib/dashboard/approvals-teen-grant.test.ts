@@ -26,6 +26,8 @@ const APPROVAL_ROW = {
   actionType: 'reply_to_email',
   payload: { to: 'teacher@example.com', subject: 'about Maya', body: TEEN_QUOTE },
   reviewerVerdict: 'approved',
+  reviewerVerdictAt: new Date('2026-08-02T08:05:00.000Z'),
+  reviewerToolResults: [],
   draftedAt: new Date('2026-06-20T10:00:00Z'),
   teenContent: true,
   childId: TEEN_ID,
@@ -66,6 +68,16 @@ function fakeDb(grants: Array<Record<string, unknown>>) {
     // candidateGrantsQuery: the teen-access grant read.
     if (keys.includes('safetyEscalation') && keys.includes('scope')) {
       return { from: () => ({ where: async () => grants }) };
+    }
+    // buildActorResolver: select({ userId, role }) from family_members — an empty
+    // household means every audit actor resolves to Hale, which is the safe default
+    // these fixtures want (none of them exercise a human approval).
+    if (keys.length === 2 && keys.includes('userId') && keys.includes('role')) {
+      return { from: () => ({ where: async () => [] }) };
+    }
+    // loadActionAuditFacts: the reviewer-note + human-approval audit read.
+    if (keys.includes('actionTaken') && keys.includes('occurredAt')) {
+      return { from: () => ({ where: () => ({ orderBy: async () => [] }) }) };
     }
     const node = () =>
       Object.assign(Promise.resolve([APPROVAL_ROW]), {
