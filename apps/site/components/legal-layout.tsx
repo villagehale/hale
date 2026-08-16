@@ -46,7 +46,10 @@ export function LegalLayout({
       </header>
 
       <section className="shell pb-24 pt-6">
-        <div className="legal-measure">
+        {/* The only motion on a policy page: one quiet fade on the masthead. A
+            document a reader may be checking a legal promise in should not be
+            performing while they read it. */}
+        <div className="legal-measure rise rise-1">
           <span className="eyebrow">Legal</span>
           <h1 className="legal-title mt-4">{title}</h1>
           <p className="meta mt-3">Last updated {lastUpdated}</p>
