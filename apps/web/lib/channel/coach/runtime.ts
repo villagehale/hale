@@ -21,6 +21,7 @@ import {
   ChannelTurnFailed,
 } from '~/lib/channel/router/coach-runtime';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
+import { type ReferralShare, referralBlock } from '~/lib/channel/referral/share';
 import { type AgentContext, type LoadAgentContextInput, loadAgentContext } from '~/lib/coach/context';
 import { type TranscriptMessage, loadTranscript } from '~/lib/coach/conversation';
 import { buildGuardDeps } from '~/lib/coach/guards';
@@ -103,11 +104,14 @@ export interface ChannelCoachPorts {
   loadChildren(familyId: string): Promise<ReplyChild[]>;
   /** `onDraft` is called with every actionId the turn mints, so a failure can say what
    * it already committed rather than claiming nothing happened (VIL-260); `onOffer`
-   * with the full plan the turn offered, which the router writes down after the send. */
+   * with the full plan the turn offered, which the router writes down after the send;
+   * `onShare` with the referral line and link, which never leaves this runtime — it is
+   * appended to the reply, and a link a parent forwards is not a thing to persist. */
   buildTools(
     turn: ChannelTurn,
     onDraft: (actionId: string) => void,
     onOffer: (offer: PlanOffer) => void,
+    onShare: (share: ReferralShare) => void,
   ): RegisteredTool[];
   guardDeps: GuardDeps;
   /**
@@ -137,6 +141,11 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // one turn is a model that changed its mind mid-compose, and the offer the parent
       // can actually see is the one in the sentence it ended up writing.
       let planOffer: PlanOffer | null = null;
+      // The referral link this turn handed over, if it did. Local to the runtime: unlike
+      // an offer, nothing later resolves against it — there is no YES to match and no
+      // ledger row to mint, because the parent forwarding a message is not a promise
+      // Hale owes them.
+      let referral: ReferralShare | null = null;
       const failed = (message: string, cause?: unknown): ChannelTurnFailed =>
         new ChannelTurnFailed(message, { cause, draftedActionIds });
 
@@ -166,6 +175,14 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
       // is the guarantee: the model composes no link because it was handed none, and
       // the post-processor cannot append one to an over-budget reply because it no
       // longer takes one either (skill audit P0 #4).
+      //
+      // THE REFERRAL LINK DID NOT BREAK THAT, which is the whole reason it is shaped the
+      // way it is. `share_referral_link` returns `{ shared: true }` and nothing else —
+      // the URL is assembled down in this function, after the fit, from the family id.
+      // So the invariant still reads exactly as it did: a URL in a model's answer is a
+      // URL it invented. The one link Hale now sends is the one it was never in a
+      // position to get wrong, and it points at /text (a stranger's front door) rather
+      // than at the app.
       const context = {
         ...familyContext,
         channel: 'sms' as const,
@@ -189,6 +206,9 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             (actionId) => draftedActionIds.push(actionId),
             (offer) => {
               planOffer = offer;
+            },
+            (share) => {
+              referral = share;
             },
           );
           // A tool that throws, a provider that times out, a step that runs long: the
@@ -240,10 +260,12 @@ export function channelCoachRuntime(ports: ChannelCoachPorts): ChannelCoachRunti
             );
           }
 
+          const share = referral as ReferralShare | null;
           const reply = toSmsReply(result.answer, {
             children,
             now,
             planOffer: (planOffer as PlanOffer | null)?.sentence,
+            referral: share ? referralBlock(share) : undefined,
           });
           await ports.recordRun(record('completed'));
           return { reply, planOffer };
@@ -277,7 +299,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
     loadTranscript: (conversationId) => loadTranscript(conversationId, database),
     loadContext: (input) => loadAgentContext(input, database),
     loadChildren: (familyId) => loadReplyChildren(database, familyId),
-    buildTools: (turn, onDraft, onOffer) =>
+    buildTools: (turn, onDraft, onOffer, onShare) =>
       buildChannelCoachTools({
         familyId: turn.familyId,
         reader: channelScheduleReader(database),
@@ -285,6 +307,7 @@ export function productionChannelCoach(database: Database): ChannelCoachRuntime 
         villageTool: searchVillageTool(database),
         onDraft,
         onOffer,
+        onShare,
         now: turn.now,
       }),
     guardDeps: buildGuardDeps(database),

@@ -59,6 +59,16 @@ export interface SmsReplyArgs {
    * what gives way is a clause of background the plan carries anyway.
    */
   planOffer?: string;
+  /**
+   * The forwardable line plus the family's own link, registered through
+   * `share_referral_link` and already gated by it, or absent when the turn shared
+   * nothing (referral/share.ts `referralBlock`).
+   *
+   * Protected for the same reason the offer is, and more sharply: the last thing in it
+   * is a URL, so a trim from the end does not shorten the message — it breaks the one
+   * thing the message exists to deliver.
+   */
+  referral?: string;
 }
 
 /**
@@ -205,18 +215,35 @@ export function toSmsReply(raw: string, args: SmsReplyArgs): string {
     console.error('channel coach: model composed a safety referral; sent the fixed line');
     return SAFETY_REPLY;
   }
-  const offer = args.planOffer?.trim();
-  if (offer === undefined || offer === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
+  // The protected tail. Both sources are model-composed and both were accepted by the
+  // tool that gated them, so both are appended after the fit rather than trimmed with
+  // the answer. They are JOINED rather than made exclusive because "which one wins" is
+  // not a judgement this function is in a position to make — and a turn that somehow
+  // registered both is a turn where the parent must see both, or be promised something
+  // that is not in the message.
+  //
+  // Redacted with the answer, not after it: the referral line is composed by the model
+  // and is the one piece of outbound text a parent forwards to somebody outside the
+  // family, so the age-derived teen floor (rule #1) has to cover it too.
+  const suffix = redactTeenNames(
+    [args.planOffer, args.referral]
+      .map((part) => part?.trim() ?? '')
+      .filter((part) => part !== '')
+      .join(' '),
+    args.children,
+    args.now,
+  );
+  if (suffix === '') return fitToBudget(redacted, MAX_REPLY_SEGMENTS);
 
-  // The tool told the model to hand the offer in rather than write it into the answer;
+  // The tools told the model to hand these in rather than write them into the answer;
   // this is the backstop for when it does both, because the visible cost is the same
   // sentence arriving twice.
-  const answer = dropDuplicateOffer(redacted, offer);
-  // Nothing but the offer left: the model answered with the offer and nothing else, so
-  // the offer IS the reply. Joining an empty answer to it would send a leading space.
-  if (answer === '') return offer;
-  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, offer);
-  return `${fitted} ${offer}`;
+  const answer = dropDuplicateOffer(redacted, suffix);
+  // Nothing but the suffix left: the model answered with it and nothing else, so it IS
+  // the reply. Joining an empty answer to it would send a leading space.
+  if (answer === '') return suffix;
+  const fitted = fitToBudget(answer, MAX_REPLY_SEGMENTS, suffix);
+  return `${fitted} ${suffix}`;
 }
 
 /**

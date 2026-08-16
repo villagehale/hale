@@ -21,10 +21,12 @@ describe('coach-channel-sms tools ↔ skill allowlist (live path)', () => {
       reader: {} as never,
       draftPort: {} as never,
       villageTool: searchVillageTool({} as never),
-      // Production always passes a collector (see productionChannelCoach), and the
-      // offer verb is only registered when something is listening for it — so parity
-      // has to be checked against the set the live path actually builds.
+      // Production always passes both collectors (see productionChannelCoach), and the
+      // offer and referral verbs are only registered when something is listening for
+      // them — so parity has to be checked against the set the live path actually
+      // builds.
       onOffer: () => {},
+      onShare: () => {},
       now: new Date(),
     }).map((t) => t.name);
 
