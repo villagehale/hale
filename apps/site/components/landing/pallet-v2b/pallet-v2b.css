@@ -43,6 +43,16 @@
   --v2b-bubble-hale: #eef1f7;
   --v2b-bubble-hale-ink: #17294a;
 
+  /* The closing statement band. Its own token because it must NOT follow the ink
+   * role: in dark, ink inverts to cream, which turned the band into a bright
+   * slab. Dark takes Shore's raised surface instead — the app's own answer, and
+   * separating by lightness is how its dark mode separates surfaces at all. The
+   * app's indigo chrome (#1B2160) is deliberately not used here: globals.css
+   * records that it reads violet flooded across a large marketing band. */
+  --v2b-statement: #17294a;
+  --v2b-statement-ink: #f7f4ec;
+  --v2b-statement-edge: transparent;
+
   --v2b-shadow-card: 0 18px 40px -18px rgb(20 26 77 / 0.28), 0 2px 6px -2px rgb(20 26 77 / 0.10);
   --v2b-shadow-lift: 0 28px 60px -20px rgb(20 26 77 / 0.34), 0 3px 8px -3px rgb(20 26 77 / 0.12);
 
@@ -83,6 +93,10 @@
     --v2b-bubble-hale: #282318;
     --v2b-bubble-hale-ink: #f6f1e7;
 
+    --v2b-statement: #282318;
+    --v2b-statement-ink: #f6f1e7;
+    --v2b-statement-edge: #2e2a22;
+
     --v2b-shadow-card: 0 18px 40px -22px rgb(0 0 0 / 0.62);
     --v2b-shadow-lift: 0 26px 56px -22px rgb(0 0 0 / 0.72);
 
@@ -108,6 +122,9 @@
   --v2b-bubble-parent-ink: #17294a;
   --v2b-bubble-hale: #282318;
   --v2b-bubble-hale-ink: #f6f1e7;
+  --v2b-statement: #282318;
+  --v2b-statement-ink: #f6f1e7;
+  --v2b-statement-edge: #2e2a22;
   --v2b-shadow-card: 0 18px 40px -22px rgb(0 0 0 / 0.62);
   --v2b-shadow-lift: 0 26px 56px -22px rgb(0 0 0 / 0.72);
   color-scheme: dark;
@@ -130,6 +147,9 @@
   --v2b-bubble-parent-ink: #f7f4ec;
   --v2b-bubble-hale: #eef1f7;
   --v2b-bubble-hale-ink: #17294a;
+  --v2b-statement: #17294a;
+  --v2b-statement-ink: #f7f4ec;
+  --v2b-statement-edge: transparent;
   --v2b-shadow-card: 0 18px 40px -18px rgb(20 26 77 / 0.28), 0 2px 6px -2px rgb(20 26 77 / 0.10);
   --v2b-shadow-lift: 0 28px 60px -20px rgb(20 26 77 / 0.34), 0 3px 8px -3px rgb(20 26 77 / 0.12);
   color-scheme: light;
@@ -835,7 +855,8 @@ html[data-theme="light"]:has(.v2b) { background: #fdfcfa !important; color-schem
   margin-inline: auto;
   padding: clamp(3rem, 7vw, 5rem) clamp(1.5rem, 5vw, 4rem);
   border-radius: 28px;
-  background: var(--v2b-ink);
+  background: var(--v2b-statement);
+  border: 1px solid var(--v2b-statement-edge);
   text-align: center;
 }
 .v2b-close h2 {
@@ -845,29 +866,31 @@ html[data-theme="light"]:has(.v2b) { background: #fdfcfa !important; color-schem
   letter-spacing: -0.02em;
   line-height: 1.06;
   font-size: clamp(1.9rem, 3.6vw, 2.7rem);
-  color: var(--v2b-page);
+  color: var(--v2b-statement-ink);
 }
 .v2b-close p {
   margin: 1.1rem auto 0;
   max-width: 34rem;
   font-size: 1.02rem;
   line-height: 1.6;
-  color: color-mix(in srgb, var(--v2b-page) 74%, transparent);
+  color: color-mix(in srgb, var(--v2b-statement-ink) 74%, transparent);
 }
+/* Cream fill in both themes — on navy it is the inverse, on the warm-dark band
+ * it is the only high-contrast fill available. */
 .v2b-close .v2b-btn {
-  background: var(--v2b-page);
-  color: var(--v2b-ink);
+  background: var(--v2b-statement-ink);
+  color: var(--v2b-statement);
 }
 .v2b-close .v2b-copy {
-  color: var(--v2b-page);
-  border-color: color-mix(in srgb, var(--v2b-page) 34%, transparent);
+  color: var(--v2b-statement-ink);
+  border-color: color-mix(in srgb, var(--v2b-statement-ink) 34%, transparent);
 }
-.v2b-close .v2b-copy:hover { border-color: var(--v2b-page); }
+.v2b-close .v2b-copy:hover { border-color: var(--v2b-statement-ink); }
 
 .v2b-close-note {
   margin-top: 1.4rem;
   font-size: 0.82rem;
-  color: color-mix(in srgb, var(--v2b-page) 60%, transparent);
+  color: color-mix(in srgb, var(--v2b-statement-ink) 60%, transparent);
 }
 
 .v2b-footer {
