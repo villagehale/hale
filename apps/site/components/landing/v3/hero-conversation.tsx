@@ -160,7 +160,13 @@ export function HeroConversation({ smsNumber }: { smsNumber: string }) {
             <LandingCta event="landing_cta_text" href={href} className="btn-primary">
               Text me
             </LandingCta>
-            <CopyNumberButton number={smsNumber} />
+            {/* Sentence case here, unlike the live page's lowercase chip: this
+                one sits beside "Text me" and the pair has to read as one row. */}
+            <CopyNumberButton
+              number={smsNumber}
+              className="btn-secondary"
+              label="Copy my number"
+            />
           </div>
           <p className="meta">
             You send it; I never text first. Standard message rates apply; reply STOP any time.
