@@ -138,8 +138,8 @@ function TrailRow({ entry }: { entry: TrailView }) {
  */
 function TrailTrace({ actionId, rows }: { actionId: string; rows: TrailView[] }) {
   const latest = rows[0];
-  const steps = [...rows].reverse();
   if (!latest) return null;
+  const steps = [...rows].reverse();
   return (
     <details id={actionId} className="scroll-mt-24 border-b border-rule last:border-b-0">
       <summary className="trace-summary">
@@ -173,8 +173,8 @@ function TrailTrace({ actionId, rows }: { actionId: string; rows: TrailView[] })
       <ol className="trace-steps">
         {steps.map((step) => (
           // Each step keeps its own audit_log anchor, so the M9 deep links that
-          // point INTO a lifecycle still resolve (the effect above opens the
-          // disclosure they landed in).
+          // point INTO a lifecycle still resolve — TrailTimeline's mount effect
+          // opens the disclosure the hash landed in.
           <li key={step.id} id={step.id} className="trace-step scroll-mt-24">
             <span className="meta tabular text-ink-3">{step.time}</span>
             <span className="eyebrow">{ACTOR_LABEL[step.actor]}</span>
