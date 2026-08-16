@@ -40,11 +40,9 @@ function readLayout(): Layout {
 }
 
 export function PalletDeck({
-  moments,
   children,
 }: {
-  moments: readonly Moment[];
-  /** Hero copy, stack caption and section-two copy, as three positioned layers. */
+  /** The header, the pinned stage and everything below it. */
   children: React.ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
