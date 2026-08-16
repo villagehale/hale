@@ -83,26 +83,23 @@ describe('flag-on landing (hero)', () => {
     expect(html).toContain('Text me');
   });
 
-  it('covers desktop, where sms: links are dead, with the number and a scannable QR', () => {
-    expect(html).toContain('+1 (647) 555-1234');
+  it('covers desktop, where sms: links are dead, with a copy chip and a scannable QR', () => {
     expect(html).toContain('aria-label="QR code — scan to text Hale"');
+    expect(html).toContain('phone number to your clipboard');
   });
 
-  it('prints the dialable number inside the CTA block, ungated by viewport', () => {
-    // The QR card is `hidden sm:flex` — a phone cannot scan its own screen — so the
-    // number reached no mobile reader at all, and on a 1440x720 laptop it sat below
-    // the fold behind a primary CTA that silently no-ops on Windows and Linux. The
-    // number now rides the CTA block itself, as a composer link a reader can also
-    // just read off the screen and dial.
+  it('never prints the digits — the founder rule: reachable, never displayed', () => {
+    // Positive controls first, so the absence below cannot pass vacuously: the
+    // composer link exists, and the copy chip sits inside the CTA block.
+    expect(html).toContain('sms:+16475551234');
     const cta = html.indexOf('id="start"');
-    const number = html.indexOf('+1 (647) 555-1234');
-    const gated = html.indexOf('hidden', cta);
+    const chip = html.indexOf('copy my number', cta);
     expect(cta).toBeGreaterThan(-1);
-    expect(number).toBeGreaterThan(cta);
-    // Nothing between the CTA block and the number may carry a display gate: the
-    // first `hidden` after the anchor is the desktop-only QR card, further down.
-    expect(number).toBeLessThan(gated);
-    expect(html).toContain('>+1 (647) 555-1234</a>');
+    expect(chip).toBeGreaterThan(cta);
+    // …and the number itself renders nowhere as text, in any common formatting.
+    expect(html).not.toContain('+1 (647) 555-1234');
+    expect(html).not.toContain('647-555-1234');
+    expect(html).not.toContain('(647) 555-1234');
   });
 
   it('keeps a conversion surface on screen — a sticky header carrying Text Hale', () => {
@@ -112,7 +109,7 @@ describe('flag-on landing (hero)', () => {
     expect(header).toContain('sticky top-0');
     expect([...header.matchAll(/Text Hale/g)]).toHaveLength(2);
     // Split by where each half works: the composer on a phone, and on a laptop —
-    // where `sms:` is dead — a scroll to the number the CTA block now prints.
+    // where `sms:` is dead — a scroll to the CTA block, where the copy chip lives.
     expect(header).toContain('href="sms:+16475551234?&amp;body=Hi"');
     expect(header).toContain('href="#start"');
   });
@@ -390,7 +387,12 @@ describe('flag-on landing (the transcript is the real script)', () => {
 
   it('labels the thread as an example rather than passing it off as a screenshot', () => {
     expect(html.toLowerCase()).toContain('example');
-    expect(html).not.toContain('<img');
+    // The one <img> allowed is the decorative turtle brand tile in the header —
+    // the conversation itself stays typed DOM, never a screenshot.
+    const imgs = [...html.matchAll(/<img[^>]*>/g)].map((m) => m[0]);
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0]).toContain('aria-hidden="true"');
+    expect(imgs[0]).toContain('hale-logo');
   });
 
   it('opens on a three-bubble teaser and keeps the rest of the script one tap away', () => {
