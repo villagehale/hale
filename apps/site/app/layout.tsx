@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { SITE_URL } from '~/lib/app-url';
+import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
 import './globals.css';
 
 // Self-hosted variable fonts (app/fonts/, Fontsource-packaged, OFL). next/font/google
@@ -65,9 +66,15 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Matches the warm-white page background so the mobile browser chrome blends
-  // with the top of every page (the site is light-only).
-  themeColor: '#FDFCFA',
+  // Matches the real page canvas in each scheme — warm white in light, deep
+  // Prussian navy in dark — so the mobile browser chrome blends with the top of
+  // every page. These MUST track globals.css --color-linen; a literal is
+  // unavoidable here (Next needs a static value), and lib/site/theme.ts carries
+  // the same pair for the toggle's override tag.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: THEME_COLOR.light },
+    { media: '(prefers-color-scheme: dark)', color: THEME_COLOR.dark },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -75,7 +82,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       className={`${instrumentSans.variable} ${sourceSerif.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: the pre-paint theme
+            script must run before hydration, or the page flashes the wrong theme. */}
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+      </head>
       <body>
         <a href="#main" className="skip-link">
           Skip to content

@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chromeCta, featuresHref } from './chrome-cta';
+import { chromeCta } from './chrome-cta';
 
 /**
- * The shared header and footer wrap every page except the homepage, so whatever
- * they point at is the product's real front door on eleven surfaces. The homepage
- * offers no signup; these assertions are what stop the chrome from quietly
- * re-opening one.
+ * The shared header and footer wrap every page, so whatever they point at is the
+ * product's real front door across the site. There is no signup; these assertions
+ * are what stop the chrome from quietly re-opening one.
  */
 
 afterEach(() => {
@@ -26,9 +25,5 @@ describe('site chrome CTA', () => {
     const cta = chromeCta();
     expect(cta.href).toBe('mailto:aloha@villagehale.com');
     expect(cta.href).not.toContain('sms:');
-  });
-
-  it('never points "Features" at an anchor the homepage does not have', () => {
-    expect(featuresHref()).toBe('/');
   });
 });

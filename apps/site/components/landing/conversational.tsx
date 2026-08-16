@@ -4,7 +4,8 @@ import { EmailCta } from '~/components/email-cta';
 import { HeroConversation } from '~/components/landing/v3/hero-conversation';
 import { LandingCta } from '~/components/landing-cta';
 import { LogoMark } from '~/components/logo-mark';
-import { APP_URL } from '~/lib/app-url';
+import { SiteFooter } from '~/components/site-footer';
+import { SiteHeader } from '~/components/site-header';
 import { type ImpactNumber, impactNumbers } from '~/lib/landing/impact';
 import { siteJsonLd } from '~/lib/site/structured-data';
 import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
@@ -32,8 +33,6 @@ import { CONTACT_EMAIL, buildSmsHref } from '~/lib/text-entry';
  * named municipalities, the radar, the ladder, the coaching boundary, the
  * privacy register, the JSON-LD graph. app/landing.test.ts is the gate on that.
  */
-
-const SIGN_IN = `${APP_URL}/sign-in`;
 
 /** The hero's CTA block — where the header's laptop CTA scrolls a reader to.
  * `scroll-padding-top` in globals.css clears the sticky bar. */
@@ -118,64 +117,23 @@ const LADDER = [
 ] as const;
 
 export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
-  // The bare-greeting composer link, for the header CTA only. The hero builds
-  // its own from whichever question the reader picked.
+  // The bare-greeting composer link, for the closing band. The hero builds its
+  // own from whichever question the reader picked, and the header resolves the
+  // same door through chromeCta().
   const smsHref = smsNumber ? buildSmsHref(smsNumber, null) : null;
   const impact = impactNumbers();
 
   return (
-    // `v3-theme` is the whole dark-mode mechanism: the class re-points the design
-    // system's custom properties to the Prussian-navy ladder under
-    // prefers-color-scheme: dark, for this subtree only, so every subpage stays
-    // on the light-only palette it was drawn for.
-    <main id="main" tabIndex={-1} className="v3-theme">
+    <main id="main" tabIndex={-1}>
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input) — the standard way to emit SEO structured data.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()) }}
       />
 
-      {/* Sticky, not fixed: the bar keeps its space in the flow, so nothing under
-          it jumps. With no number provisioned there is nothing to offer here — the
-          header stays the quiet Sign in link it has always been. */}
-      <header className="sticky top-0 z-50 border-b border-rule bg-linen/90 backdrop-blur-md">
-        <div className="shell flex items-center justify-between py-3">
-          <a href="/" className="flex items-center gap-2.5">
-            <LogoMark size={30} />
-            <span className="font-serif text-[1.35rem] font-semibold leading-none text-spruce">
-              Hale
-            </span>
-          </a>
-          <div className="flex items-center gap-3">
-            <a
-              href={SIGN_IN}
-              className="py-1 text-sm font-medium text-slate-green hover:text-spruce"
-            >
-              Sign in
-            </a>
-            {smsHref && (
-              <>
-                {/* One action, split by where it actually works. On a phone the
-                    composer opens; on a laptop `sms:` is a silent no-op, so the
-                    button carries the reader back to the hero's CTA block. */}
-                <LandingCta
-                  event="landing_cta_text"
-                  href={smsHref}
-                  className="btn-primary btn-compact min-h-11 sm:hidden"
-                >
-                  Text Hale
-                </LandingCta>
-                <a
-                  href={`#${CTA_ANCHOR}`}
-                  className="btn-primary btn-compact hidden min-h-11 sm:inline-flex"
-                >
-                  Text Hale
-                </a>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      {/* The same bar every subpage carries. `sms:` is a silent no-op on a laptop,
+          so the desktop pill is handed the hero's CTA block to scroll to instead. */}
+      <SiteHeader scrollTargetId={CTA_ANCHOR} />
 
       {/* ── Hero — one column, and Hale takes the first turn ───────────────── */}
       <section className="v3-bloom shell pb-20 pt-12 sm:pt-16 lg:pb-28 lg:pt-20">
@@ -414,45 +372,7 @@ export function ConversationalLanding({ smsNumber }: { smsNumber: string }) {
         .
       </p>
 
-      <footer className="border-t border-rule">
-        <div className="shell flex flex-col gap-6 py-10 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <span className="flex items-center gap-2.5">
-              <LogoMark size={24} />
-              <span className="font-serif text-[1.2rem] font-semibold leading-none text-spruce">
-                Hale
-              </span>
-            </span>
-            {/* The name, said out loud. It carries the whole brand — Hawaiian for
-                home, a honu for a mark, aloha@ for an address — and the live
-                landing is the one surface that dropped it. */}
-            <p className="meta mt-3">
-              Hale <span className="font-mono">/HAH-leh/</span> — Hawaiian for home.
-            </p>
-            <p className="meta mt-1">
-              Village Hale Technologies Inc., Georgetown, Ontario. Your data stays in Canada.
-            </p>
-            <p className="meta mt-1">© {new Date().getFullYear()} Hale.</p>
-          </div>
-          <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-1">
-            {[
-              { label: 'FAQ', href: '/faq' },
-              { label: 'Privacy', href: '/privacy' },
-              { label: 'Terms', href: '/terms' },
-              { label: 'Contact', href: '/contact' },
-              { label: 'Sign in', href: SIGN_IN },
-            ].map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className="py-1 text-sm font-medium text-slate-green hover:text-spruce"
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

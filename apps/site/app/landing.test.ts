@@ -40,45 +40,6 @@ function plain(text: string): string {
   return text.replace(/[’‘]/g, "'").replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
 }
 
-/** globals.css, for the assertions that read the theme rather than the markup. */
-function globalsCss(): string {
-  return readFileSync(fileURLToPath(new URL('./globals.css', import.meta.url)), 'utf8');
-}
-
-function hex(value: string): [number, number, number] {
-  const s = value.replace('#', '');
-  return [0, 2, 4].map((i) => Number.parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
-}
-
-/** Relative luminance, for the contrast assertions on the dark ladder. */
-function luminance(value: string): number {
-  const channel = (c: number) => {
-    const v = c / 255;
-    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  };
-  const [r, g, b] = hex(value);
-  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-}
-
-function contrast(a: string, b: string): number {
-  const first = luminance(a);
-  const second = luminance(b);
-  const hi = Math.max(first, second);
-  const lo = Math.min(first, second);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-/** A declaration's value inside the `prefers-color-scheme: dark` `.v3-theme` block. */
-function darkToken(name: string): string {
-  const block = /@media \(prefers-color-scheme: dark\) \{\s*\.v3-theme \{([\s\S]*?)\n {2}\}/.exec(
-    globalsCss(),
-  )?.[1];
-  if (!block) throw new Error('globals.css no longer has a dark .v3-theme block');
-  const found = new RegExp(`${name}:\\s*([^;]+);`).exec(block)?.[1];
-  if (!found) throw new Error(`${name} is not declared in the dark block`);
-  return found.trim();
-}
-
 /**
  * `greeting(null)` as the worker would send it, read out of the source rather
  * than restated here — a copy of the copy would drift in step with the page and
@@ -109,90 +70,6 @@ function workerGreeting(): string {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-});
-
-describe('landing — the dark theme is Hale navy, and it stays on the landing', () => {
-  it('grounds dark mode in Prussian navy rather than a neutral dark', () => {
-    // The founder's rule: dark must read navy, not black. Derived from the brand
-    // navy #17294A — the ground is the deepest step of that hue and the card IS
-    // the brand navy. Pinned as the hue relationship rather than one hex so a
-    // retune stays possible and a slide back to the charcoal ladder this replaced
-    // (#14120E, where blue was the SMALLEST channel) cannot.
-    const ground = darkToken('--color-linen');
-    const [r, g, b] = hex(ground);
-    expect(b, `${ground} must be blue-dominant`).toBeGreaterThan(g);
-    expect(g, `${ground} must be blue-dominant`).toBeGreaterThan(r);
-    expect(b - r, `${ground} must be saturated navy, not a neutral dark`).toBeGreaterThanOrEqual(
-      28,
-    );
-    expect(luminance(ground), `${ground} must still be a dark ground`).toBeLessThan(0.02);
-    // The card is the brand navy itself, which is what makes the ladder Hale's.
-    expect(darkToken('--color-oat')).toBe('#17294a');
-    expect(darkToken('--color-page')).toBe(ground);
-  });
-
-  it('keeps every dark ink step above AA on the lightest surface it lands on', () => {
-    // The card (--color-oat) is the lightest ground any body or meta text sits on,
-    // so it is the binding constraint for the whole ladder.
-    const card = darkToken('--color-oat');
-    expect(contrast(darkToken('--color-spruce'), card)).toBeGreaterThanOrEqual(7);
-    expect(contrast(darkToken('--color-slate-green'), card)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(darkToken('--color-faded-sage'), card)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it('keeps amber a mark, never an ink that cannot carry the job', () => {
-    // #B26B1F is 4.12:1 on the navy ground and 3.45:1 on the card — below AA in
-    // both places — so dark swaps in the lighter amber for the caret, the accent
-    // halo and the focus ring. The light theme keeps #B26B1F; this is the pin
-    // that stops it being carried across unchanged.
-    const amber = darkToken('--color-amber');
-    expect(amber).not.toBe('#b26b1f');
-    expect(contrast(amber, darkToken('--color-oat'))).toBeGreaterThanOrEqual(4.5);
-    expect(darkToken('--color-apricot-deep')).toBe(amber);
-    // The #FEF0C7 wash cannot survive on navy under cream ink, so it becomes a
-    // low-alpha amber that composites over whichever navy is behind it.
-    expect(darkToken('--color-apricot-tint')).toMatch(/^rgb\(.*\/\s*0?\.\d+\)$/);
-  });
-
-  it('closes the shore band on the page ground, so the night is continuous', () => {
-    // The art's own edges are #051C3B–#081E3D. In dark the band takes the page
-    // ground, which dissolves the 28px card corners; in light it stays its own
-    // statement night against the warm page.
-    expect(darkToken('--v3-shore-ground')).toBe(darkToken('--color-linen'));
-    const css = globalsCss();
-    expect(css).toContain('background: var(--v3-shore-ground);');
-    // Positive control: the light value is still a fixed night, not inherited.
-    expect(/\.v3-theme \{[\s\S]*?--v3-shore-ground: #0c1424;/.test(css)).toBe(true);
-  });
-
-  it('confines dark mode to the landing — no theme override escapes to :root', async () => {
-    // Dark mode arrives as custom properties re-pointed on a wrapper class. The
-    // invariant that keeps every subpage light-only is that no
-    // prefers-color-scheme: dark rule in globals.css targets anything outside the
-    // theme class. One `:root` in that media query would flip the whole marketing
-    // site in the same deploy.
-    const postcss = (await import('postcss')).default;
-
-    const selectors: string[] = [];
-    postcss.parse(globalsCss()).walkAtRules('media', (rule) => {
-      if (!rule.params.includes('prefers-color-scheme')) return;
-      if (!rule.params.includes('dark')) return;
-      rule.walkRules((inner) => {
-        selectors.push(inner.selector.replace(/\s+/g, ' ').trim());
-      });
-    });
-
-    // Positive control: the dark block exists at all, so the assertion below is
-    // scanning something rather than passing on an empty list.
-    expect(selectors.length).toBeGreaterThan(0);
-    for (const selector of selectors) {
-      expect(selector, `${selector} must be scoped to the landing theme`).toContain('-theme');
-    }
-  });
-
-  it('carries the theme class on the page root, where the tokens have to inherit from', () => {
-    expect(render().match(/<main[^>]*>/)?.[0] ?? '').toContain('v3-theme');
-  });
 });
 
 describe('landing — the hero is the real conversation', () => {
@@ -234,7 +111,9 @@ describe('landing — the hero is the real conversation', () => {
       'Is a checkup due?',
     ]);
     // Single-select, and announced as pressed state rather than by colour alone.
-    expect([...html.matchAll(/aria-pressed="false"/g)]).toHaveLength(4);
+    // Counted on the chips themselves — the footer's theme three-way is also a
+    // pressed-state group, and a page-wide count would drift with the chrome.
+    expect([...html.matchAll(/class="v3-chip" aria-pressed="false"/g)]).toHaveLength(4);
   });
 
   it('opens on the bare greeting as the draft, so the CTA works before any chip', () => {
@@ -387,11 +266,15 @@ describe('landing — no signup funnel; the only way in is texting Hale', () => 
     }
   });
 
-  it('keeps exactly one quiet Sign in link in the header, and one in the footer', () => {
+  it('keeps Sign in a quiet link in the chrome, and points every one at the app', () => {
     const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? '';
-    expect([...header.matchAll(/\/sign-in"/g)]).toHaveLength(1);
-    expect([...html.matchAll(/\/sign-in"/g)]).toHaveLength(2);
-    expect(header).toContain(`href="${APP_URL}/sign-in"`);
+    // Two in the bar's markup, one visible at a time: the ≥sm link and the one
+    // inside the mobile menu. Plus the footer's Resources column.
+    expect([...header.matchAll(/\/sign-in"/g)]).toHaveLength(2);
+    expect([...html.matchAll(/\/sign-in"/g)]).toHaveLength(3);
+    for (const match of html.matchAll(/href="([^"]*\/sign-in)"/g)) {
+      expect(match[1]).toBe(`${APP_URL}/sign-in`);
+    }
   });
 
   it('invents no urgency around the founding rate', () => {

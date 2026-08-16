@@ -23,7 +23,7 @@ export function ProductFaqAccordion({ items }: { items: readonly FaqItem[] }) {
         const panelId = `faq-panel-${i}`;
         const buttonId = `faq-button-${i}`;
         return (
-          <div key={item.question} className="border-b border-dashed border-[#5C6B87]/40">
+          <div key={item.question} className="border-b border-dashed border-slate-green/40">
             <h3>
               <button
                 type="button"
@@ -31,12 +31,12 @@ export function ProductFaqAccordion({ items }: { items: readonly FaqItem[] }) {
                 aria-expanded={isOpen}
                 aria-controls={panelId}
                 onClick={() => setOpen(isOpen ? -1 : i)}
-                className="group flex w-full items-center justify-between gap-6 py-6 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#17294A] md:py-8"
+                className="group flex w-full items-center justify-between gap-6 py-6 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-spruce md:py-8"
               >
-                <span className="text-xl font-medium tracking-tight text-[#17294A] transition-opacity group-hover:opacity-70 md:text-[1.7rem]">
+                <span className="text-xl font-medium tracking-tight text-spruce transition-opacity group-hover:opacity-70 md:text-[1.7rem]">
                   {item.question}
                 </span>
-                <span aria-hidden className="shrink-0 text-[#17294A]">
+                <span aria-hidden className="shrink-0 text-spruce">
                   {isOpen ? (
                     <Minus className="w-6 md:w-7" strokeWidth={1.5} />
                   ) : (
@@ -53,7 +53,7 @@ export function ProductFaqAccordion({ items }: { items: readonly FaqItem[] }) {
               }`}
             >
               <div className="overflow-hidden">
-                <p className="pb-8 pr-4 text-base leading-relaxed text-[#5C6B87] md:pr-12 md:text-lg">
+                <p className="pb-8 pr-4 text-base leading-relaxed text-slate-green md:pr-12 md:text-lg">
                   {item.answer}
                 </p>
               </div>
